@@ -10,6 +10,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
 
+    public DbSet<Job> Jobs => Set<Job>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -50,6 +52,23 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
                 .HasForeignKey(file => file.LibraryId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(file => file.LibraryId);
+        });
+
+        modelBuilder.Entity<Job>(entity =>
+        {
+            entity.HasKey(job => job.Id);
+            entity.Property(job => job.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
+
+            // Deleting a media file (e.g. via its library) removes its jobs too.
+            entity.HasOne(job => job.MediaFile)
+                .WithMany()
+                .HasForeignKey(job => job.MediaFileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The scheduler queries by status and orders by priority then enqueue time.
+            entity.HasIndex(job => job.Status);
+            entity.HasIndex(job => new { job.Priority, job.EnqueuedAt });
         });
     }
 }

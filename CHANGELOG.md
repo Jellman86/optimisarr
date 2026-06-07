@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Phase 3: transcode queue (foundation)
+
+- Added the `Job` entity and `JobStatus` state machine (Queued → Probing →
+  Transcoding → Verifying → ReadyToReplace → Completed, plus Failed/Cancelled),
+  with the `AddJobs` migration and indexes for the scheduler's queries. A job
+  never touches the original; it only produces an output under `/work`.
+- Added a pure, unit-tested `JobScheduler` that selects which queued jobs to start
+  given the running count and global concurrency limit, ordered priority-desc then
+  FIFO (enqueue time, then id).
+- Added a pure, unit-tested `FfmpegCommandBuilder` that emits an ffmpeg argument
+  list (never a shell string): codec→encoder mapping (libx265/libx264/libsvtav1),
+  CRF and preset, remux-only (`-c copy`), HDR→SDR tone-map filter, `-map 0`, and
+  audio/subtitle passthrough.
+
 ### Per-library configuration and global queue settings
 
 - Each library can now override how it is optimised, on top of its rule-profile
