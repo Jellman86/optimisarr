@@ -27,6 +27,10 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasIndex(library => library.Path).IsUnique();
             entity.Property(library => library.MediaType).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.RuleProfile).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
+            entity.Property(library => library.TargetContainer).HasMaxLength(32);
+            entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
         });
 
         modelBuilder.Entity<MediaFile>(entity =>

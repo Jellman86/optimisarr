@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Per-library configuration and global queue settings
+
+- Each library can now override how it is optimised, on top of its rule-profile
+  preset: target video codec, target container, HDR handling, minimum file size,
+  maximum resolution (height), path exclusions, and a queue priority. Overrides
+  are resolved by a new pure `RuleResolver` (profile defaults + non-null
+  overrides), kept fully unit tested.
+- Reworked HDR handling from a boolean into an `HdrHandling` enum
+  (`Preserve` / `Exclude` / `TonemapToSdr`); `Exclude` remains the safe default
+  for the conservative and compatibility profiles. `RuleSettings` also gained an
+  explicit `TargetContainer` (replacing the hard-coded matroska keyword set).
+- New `Library` columns (`Priority`, `MinFileSizeBytes`, `MaxHeight`,
+  `TargetVideoCodec`, `TargetContainer`, `HdrHandling`, `ExcludePaths`) via the
+  `AddLibraryRuleOverrides` migration; all nullable/defaulted, so applying it to
+  an existing database is non-destructive.
+- `GET /api/candidates` now evaluates each file against its library's resolved
+  rules (including overrides). `GET /api/library-options` also returns the HDR
+  handling vocabulary.
+- New global settings: `GET`/`PUT /api/settings` with `maxConcurrentJobs`
+  (default 1), stored via `SettingsStore`. This is the global concurrency limit
+  the upcoming transcode queue will honour.
+- UI: the Libraries page is now Add-button + expandable cards — each card expands
+  to a handling form (preset, target codec/container, HDR, size/resolution
+  limits, path exclusions, priority). New global **Settings** page for the
+  concurrency limit; the Settings nav item is now enabled.
+
 ### Phase 2: candidate rules
 
 - Added a pure, fully unit-tested eligibility engine in `Optimisarr.Core`

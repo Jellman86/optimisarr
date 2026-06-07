@@ -6,6 +6,7 @@
   import Inventory from './lib/pages/Inventory.svelte'
   import Candidates from './lib/pages/Candidates.svelte'
   import Tools from './lib/pages/Tools.svelte'
+  import Settings from './lib/pages/Settings.svelte'
 
   // Map the active route to its page component.
   let page = $derived.by(() => {
@@ -14,6 +15,7 @@
     if (path.startsWith('/inventory')) return Inventory
     if (path.startsWith('/candidates')) return Candidates
     if (path.startsWith('/tools')) return Tools
+    if (path.startsWith('/settings')) return Settings
     return Dashboard
   })
 </script>

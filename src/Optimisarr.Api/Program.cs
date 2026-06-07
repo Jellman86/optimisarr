@@ -56,6 +56,31 @@ app.MapGet("/api/health", () => Results.Ok(new
 }))
 .WithName("GetHealth");
 
+app.MapGet("/api/settings", async (
+    SettingsStore settings,
+    CancellationToken cancellationToken) =>
+{
+    var maxConcurrentJobs = await settings.GetMaxConcurrentJobsAsync(cancellationToken);
+    return Results.Ok(new SettingsDto(maxConcurrentJobs));
+})
+.WithName("GetSettings");
+
+app.MapPut("/api/settings", async (
+    SettingsDto request,
+    SettingsStore settings,
+    CancellationToken cancellationToken) =>
+{
+    if (request.MaxConcurrentJobs < 1)
+    {
+        return Results.BadRequest(new { error = "Max concurrent jobs must be at least 1." });
+    }
+
+    await settings.SetMaxConcurrentJobsAsync(request.MaxConcurrentJobs, cancellationToken);
+    var maxConcurrentJobs = await settings.GetMaxConcurrentJobsAsync(cancellationToken);
+    return Results.Ok(new SettingsDto(maxConcurrentJobs));
+})
+.WithName("UpdateSettings");
+
 app.MapGet("/api/system/tools", async (
     ToolDetectionService tools,
     CancellationToken cancellationToken) =>
@@ -111,7 +136,8 @@ app.MapGet("/api/fs/browse", (string? path) =>
 app.MapGet("/api/library-options", () => Results.Ok(new
 {
     mediaTypes = Enum.GetNames<MediaType>(),
-    ruleProfiles = Enum.GetNames<RuleProfile>()
+    ruleProfiles = Enum.GetNames<RuleProfile>(),
+    hdrHandlings = Enum.GetNames<HdrHandling>()
 }))
 .WithName("GetLibraryOptions");
 
@@ -120,19 +146,10 @@ app.MapGet("/api/libraries", async (OptimisarrDbContext db, CancellationToken ca
     var libraries = await db.Libraries
         .AsNoTracking()
         .OrderBy(library => library.Name)
-        .Select(library => new LibraryDto(
-            library.Id,
-            library.Name,
-            library.Path,
-            library.MediaType.ToString(),
-            library.RuleProfile.ToString(),
-            library.Enabled,
-            library.MediaFiles.Count,
-            library.CreatedAt,
-            library.UpdatedAt))
+        .Select(library => new { Library = library, FileCount = library.MediaFiles.Count })
         .ToListAsync(cancellationToken);
 
-    return Results.Ok(libraries);
+    return Results.Ok(libraries.Select(row => LibraryDto.From(row.Library, row.FileCount)));
 })
 .WithName("ListLibraries");
 
@@ -157,7 +174,14 @@ app.MapPost("/api/libraries", async (
         Path = parsed.Path,
         MediaType = parsed.MediaType,
         RuleProfile = parsed.RuleProfile,
-        Enabled = parsed.Enabled
+        Enabled = parsed.Enabled,
+        Priority = parsed.Priority,
+        MinFileSizeBytes = parsed.MinFileSizeBytes,
+        MaxHeight = parsed.MaxHeight,
+        TargetVideoCodec = parsed.TargetVideoCodec,
+        TargetContainer = parsed.TargetContainer,
+        HdrHandling = parsed.HdrHandling,
+        ExcludePaths = parsed.ExcludePaths
     };
     db.Libraries.Add(library);
     await db.SaveChangesAsync(cancellationToken);
@@ -193,6 +217,13 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.MediaType = parsed.MediaType;
     library.RuleProfile = parsed.RuleProfile;
     library.Enabled = parsed.Enabled;
+    library.Priority = parsed.Priority;
+    library.MinFileSizeBytes = parsed.MinFileSizeBytes;
+    library.MaxHeight = parsed.MaxHeight;
+    library.TargetVideoCodec = parsed.TargetVideoCodec;
+    library.TargetContainer = parsed.TargetContainer;
+    library.HdrHandling = parsed.HdrHandling;
+    library.ExcludePaths = parsed.ExcludePaths;
     library.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 
@@ -345,6 +376,8 @@ static string ResolveConfigDirectory(IHostEnvironment environment)
         : Path.Combine(environment.ContentRootPath, "config");
 }
 
+internal sealed record SettingsDto(int MaxConcurrentJobs);
+
 internal sealed record DirectoryEntry(string Name, string Path);
 
 internal sealed record BrowseResponse(string Path, string? Parent, IReadOnlyList<DirectoryEntry> Directories);
@@ -354,7 +387,14 @@ internal sealed record SaveLibraryRequest(
     string? Path,
     string? MediaType,
     string? RuleProfile,
-    bool? Enabled);
+    bool? Enabled,
+    int? Priority,
+    long? MinFileSizeBytes,
+    int? MaxHeight,
+    string? TargetVideoCodec,
+    string? TargetContainer,
+    string? HdrHandling,
+    string? ExcludePaths);
 
 internal sealed record LibraryDto(
     int Id,
@@ -363,6 +403,13 @@ internal sealed record LibraryDto(
     string MediaType,
     string RuleProfile,
     bool Enabled,
+    int Priority,
+    long? MinFileSizeBytes,
+    int? MaxHeight,
+    string? TargetVideoCodec,
+    string? TargetContainer,
+    string? HdrHandling,
+    string? ExcludePaths,
     int FileCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -374,6 +421,13 @@ internal sealed record LibraryDto(
         library.MediaType.ToString(),
         library.RuleProfile.ToString(),
         library.Enabled,
+        library.Priority,
+        library.MinFileSizeBytes,
+        library.MaxHeight,
+        library.TargetVideoCodec,
+        library.TargetContainer,
+        library.HdrHandling?.ToString(),
+        library.ExcludePaths,
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);

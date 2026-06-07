@@ -15,7 +15,17 @@ export type ToolCheck = {
   error: string | null
 }
 
-export type Library = {
+export type LibraryRules = {
+  priority: number
+  minFileSizeBytes: number | null
+  maxHeight: number | null
+  targetVideoCodec: string | null
+  targetContainer: string | null
+  hdrHandling: string | null
+  excludePaths: string | null
+}
+
+export type Library = LibraryRules & {
   id: number
   name: string
   path: string
@@ -27,7 +37,7 @@ export type Library = {
   updatedAt: string
 }
 
-export type SaveLibrary = {
+export type SaveLibrary = LibraryRules & {
   name: string
   path: string
   mediaType: string
@@ -38,6 +48,11 @@ export type SaveLibrary = {
 export type LibraryOptions = {
   mediaTypes: string[]
   ruleProfiles: string[]
+  hdrHandlings: string[]
+}
+
+export type Settings = {
+  maxConcurrentJobs: number
 }
 
 export type MediaFile = {
@@ -125,4 +140,8 @@ export const api = {
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
+
+  settings: () => request<Settings>('/api/settings'),
+  saveSettings: (body: Settings) =>
+    request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
 }

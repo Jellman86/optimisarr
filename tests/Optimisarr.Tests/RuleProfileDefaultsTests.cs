@@ -27,8 +27,8 @@ public sealed class RuleProfileDefaultsTests
     [Fact]
     public void Conservative_and_compatibility_profiles_exclude_hdr_by_default()
     {
-        Assert.True(RuleProfileDefaults.For(RuleProfile.ConservativeHevc).ExcludeHdr);
-        Assert.True(RuleProfileDefaults.For(RuleProfile.CompatibilityH264).ExcludeHdr);
+        Assert.Equal(HdrHandling.Exclude, RuleProfileDefaults.For(RuleProfile.ConservativeHevc).Hdr);
+        Assert.Equal(HdrHandling.Exclude, RuleProfileDefaults.For(RuleProfile.CompatibilityH264).Hdr);
     }
 
     [Fact]

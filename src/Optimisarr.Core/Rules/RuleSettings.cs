@@ -18,11 +18,10 @@ public sealed record RuleSettings
     public string? TargetVideoCodec { get; init; }
 
     /// <summary>
-    /// ffprobe <c>format_name</c> keywords that count as an already-clean container
-    /// for remux profiles (matched case-insensitively as substrings).
+    /// The container to remux/mux into (e.g. "mkv"). A file whose container already
+    /// matches is considered clean for remux-only profiles.
     /// </summary>
-    public IReadOnlySet<string> AcceptableContainerKeywords { get; init; } =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "matroska" };
+    public string TargetContainer { get; init; } = "mkv";
 
     /// <summary>Files smaller than this are not worth optimising.</summary>
     public long MinFileSizeBytes { get; init; }
@@ -30,8 +29,8 @@ public sealed record RuleSettings
     /// <summary>When set, files taller than this many pixels are left untouched.</summary>
     public int? MaxHeight { get; init; }
 
-    /// <summary>When true, HDR / Dolby Vision content is excluded to avoid tone-mapping risk.</summary>
-    public bool ExcludeHdr { get; init; } = true;
+    /// <summary>How HDR / Dolby Vision content is handled. Defaults to the safe Exclude.</summary>
+    public HdrHandling Hdr { get; init; } = HdrHandling.Exclude;
 
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();

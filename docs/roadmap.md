@@ -18,12 +18,19 @@ the replacement workflow is trustworthy.
   decisions with a human-readable reason for every file (eligible or skipped):
   min size, resolution limit, HDR/Dolby Vision exclusion, path exclusions,
   codec/container matching, and already-processed detection. Surfaced via
-  `GET /api/candidates` and a Candidates page. Still to come: per-library
-  include/exclude path rules editable in the UI, and a measured minimum-saving
-  estimate (today's proxy is "already in the target codec").
+  `GET /api/candidates` and a Candidates page. Per-library overrides (target
+  codec/container, HDR handling, size/resolution limits, path exclusions,
+  priority) are editable from expandable cards on the Libraries page and resolved
+  by a pure `RuleResolver`. Still to come: a measured minimum-saving estimate
+  (today's proxy is "already in the target codec").
+- **Queue prerequisites in place.** The global concurrency limit
+  (`maxConcurrentJobs`, via `GET`/`PUT /api/settings` and a Settings page) and
+  per-library `Priority` now exist, ready for the queue to consume.
 - **Next: Phase 3 (Queue and Worker)** — a robust transcode queue feeding from
-  these candidates, with a global concurrency limit plus per-library priority,
-  priority-then-FIFO scheduling, and crash-safe recovery.
+  these candidates, with the global concurrency limit plus per-library priority,
+  priority-then-FIFO scheduling, crash-safe recovery, and the transcode-target
+  knobs (quality/CRF, encoder preset) added to the per-library config as the
+  worker that consumes them lands.
 
 ## Guiding principles
 

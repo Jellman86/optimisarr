@@ -47,6 +47,34 @@ public sealed class CandidateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Applies_per_library_overrides_when_evaluating()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library
+            {
+                Name = "Films",
+                Path = "/data/films",
+                RuleProfile = RuleProfile.ConservativeHevc,
+                HdrHandling = HdrHandling.TonemapToSdr,   // HDR becomes eligible
+                ExcludePaths = "Extras"                    // anything under Extras is skipped
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            db.MediaFiles.Add(Probed(library.Id, "feature.mkv", videoCodec: "h264", isHdr: true));
+            db.MediaFiles.Add(Probed(library.Id, "Extras/clip.mkv", videoCodec: "h264"));
+            await db.SaveChangesAsync();
+        }
+
+        var results = await EvaluateAsync(libraryId: null);
+
+        Assert.True(Single(results, "feature.mkv").Eligible);          // tonemap override allows HDR
+        Assert.False(Single(results, "Extras/clip.mkv").Eligible);     // path override skips it
+        Assert.Contains("Extras", Single(results, "Extras/clip.mkv").Reason);
+    }
+
+    [Fact]
     public async Task Ignores_files_that_have_not_been_probed()
     {
         await using (var db = new OptimisarrDbContext(_options))

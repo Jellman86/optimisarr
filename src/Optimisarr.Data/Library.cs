@@ -22,6 +22,29 @@ public sealed class Library
     /// <summary>When false, the library is skipped by scans.</summary>
     public bool Enabled { get; set; } = true;
 
+    // --- Per-library rule overrides. Null means "use the profile default"; the
+    // effective settings are resolved by Optimisarr.Core.Rules.RuleResolver. ---
+
+    /// <summary>Queue priority; higher runs sooner. Defaults to 0.</summary>
+    public int Priority { get; set; }
+
+    public long? MinFileSizeBytes { get; set; }
+
+    /// <summary>Files taller than this (pixels) are skipped.</summary>
+    public int? MaxHeight { get; set; }
+
+    /// <summary>Overrides the profile's target video codec (ffprobe name, e.g. "hevc").</summary>
+    public string? TargetVideoCodec { get; set; }
+
+    /// <summary>Overrides the profile's target container (e.g. "mkv").</summary>
+    public string? TargetContainer { get; set; }
+
+    /// <summary>Overrides the profile's HDR / Dolby Vision handling.</summary>
+    public HdrHandling? HdrHandling { get; set; }
+
+    /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
+    public string? ExcludePaths { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Core.Rules;
 
@@ -24,9 +25,9 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Path excluded by rule: \"{excludedSegment}\"");
         }
 
-        if (rules.ExcludeHdr && media.IsHdr)
+        if (rules.Hdr == HdrHandling.Exclude && media.IsHdr)
         {
-            return CandidateDecision.Skipped("HDR / Dolby Vision excluded to avoid tone-mapping risk");
+            return CandidateDecision.Skipped("HDR / Dolby Vision excluded by this library's rules");
         }
 
         if (media.SizeBytes < rules.MinFileSizeBytes)
@@ -43,13 +44,13 @@ public static class CandidateEvaluator
         // Remux/cleanup-only profile never re-encodes; it only acts on containers.
         if (rules.TargetVideoCodec is null)
         {
+            var keyword = ContainerKeyword(rules.TargetContainer);
             var alreadyClean = media.Container is not null &&
-                rules.AcceptableContainerKeywords.Any(keyword =>
-                    media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+                media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase);
 
             return alreadyClean
-                ? CandidateDecision.Skipped("Already in a clean container")
-                : CandidateDecision.Eligible($"Remux to a clean container ({media.Container} → mkv)");
+                ? CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})")
+                : CandidateDecision.Eligible($"Remux to {rules.TargetContainer} ({media.Container} → {rules.TargetContainer})");
         }
 
         if (string.Equals(media.VideoCodec, rules.TargetVideoCodec, StringComparison.OrdinalIgnoreCase))
@@ -59,6 +60,17 @@ public static class CandidateEvaluator
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetVideoCodec}");
     }
+
+    // ffprobe reports the demuxer's format_name (e.g. "matroska,webm"), which uses
+    // long names rather than the file extension the operator picks as the target.
+    private static string ContainerKeyword(string targetContainer) =>
+        targetContainer.Trim().ToLowerInvariant() switch
+        {
+            "mkv" => "matroska",
+            "mka" => "matroska",
+            "m4v" => "mp4",
+            var other => other
+        };
 
     private static string FormatSize(long bytes)
     {

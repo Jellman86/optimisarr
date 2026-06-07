@@ -1,5 +1,4 @@
 using Optimisarr.Core.Domain;
-using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
@@ -8,7 +7,14 @@ internal readonly record struct ParsedLibrary(
     string Path,
     MediaType MediaType,
     RuleProfile RuleProfile,
-    bool Enabled);
+    bool Enabled,
+    int Priority,
+    long? MinFileSizeBytes,
+    int? MaxHeight,
+    string? TargetVideoCodec,
+    string? TargetContainer,
+    HdrHandling? HdrHandling,
+    string? ExcludePaths);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -49,8 +55,49 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        parsed = new ParsedLibrary(name, path, mediaType, ruleProfile, request.Enabled ?? true);
+        HdrHandling? hdrHandling = null;
+        if (!string.IsNullOrWhiteSpace(request.HdrHandling))
+        {
+            if (!Enum.TryParse<HdrHandling>(request.HdrHandling, ignoreCase: true, out var parsedHdr))
+            {
+                error = $"Unknown HDR handling: {request.HdrHandling}. Expected one of {string.Join(", ", Enum.GetNames<HdrHandling>())}.";
+                return false;
+            }
+            hdrHandling = parsedHdr;
+        }
+
+        if (request.MinFileSizeBytes is < 0)
+        {
+            error = "Minimum file size cannot be negative.";
+            return false;
+        }
+
+        if (request.MaxHeight is <= 0)
+        {
+            error = "Maximum resolution must be greater than zero.";
+            return false;
+        }
+
+        parsed = new ParsedLibrary(
+            name,
+            path,
+            mediaType,
+            ruleProfile,
+            request.Enabled ?? true,
+            request.Priority ?? 0,
+            request.MinFileSizeBytes,
+            request.MaxHeight,
+            Trim(request.TargetVideoCodec),
+            Trim(request.TargetContainer),
+            hdrHandling,
+            Trim(request.ExcludePaths));
         error = null;
         return true;
+    }
+
+    private static string? Trim(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 }

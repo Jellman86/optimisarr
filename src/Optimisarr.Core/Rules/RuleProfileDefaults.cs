@@ -17,28 +17,28 @@ public static class RuleProfileDefaults
             Profile = profile,
             TargetVideoCodec = "hevc",
             MinFileSizeBytes = DefaultMinReencodeSize,
-            ExcludeHdr = true
+            Hdr = HdrHandling.Exclude
         },
         RuleProfile.CompatibilityH264 => new RuleSettings
         {
             Profile = profile,
             TargetVideoCodec = "h264",
             MinFileSizeBytes = DefaultMinReencodeSize,
-            ExcludeHdr = true
+            Hdr = HdrHandling.Exclude
         },
         RuleProfile.ExperimentalAv1 => new RuleSettings
         {
             Profile = profile,
             TargetVideoCodec = "av1",
             MinFileSizeBytes = DefaultMinReencodeSize,
-            ExcludeHdr = false
+            Hdr = HdrHandling.Preserve
         },
         RuleProfile.RemuxCleanup => new RuleSettings
         {
             Profile = profile,
             TargetVideoCodec = null,
             MinFileSizeBytes = 0,
-            ExcludeHdr = false
+            Hdr = HdrHandling.Preserve
         },
         _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown rule profile")
     };

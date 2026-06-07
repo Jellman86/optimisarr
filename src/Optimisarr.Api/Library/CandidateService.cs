@@ -27,9 +27,9 @@ public sealed class CandidateService(OptimisarrDbContext db)
 {
     public async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId, CancellationToken cancellationToken)
     {
-        var profilesByLibrary = await db.Libraries
+        var librariesById = await db.Libraries
             .AsNoTracking()
-            .ToDictionaryAsync(library => library.Id, library => library.RuleProfile, cancellationToken);
+            .ToDictionaryAsync(library => library.Id, cancellationToken);
 
         var query = db.MediaFiles
             .AsNoTracking()
@@ -45,9 +45,9 @@ public sealed class CandidateService(OptimisarrDbContext db)
         var candidates = new List<Candidate>(files.Count);
         foreach (var file in files)
         {
-            var profile = file.LibraryId is { } id && profilesByLibrary.TryGetValue(id, out var libraryProfile)
-                ? libraryProfile
-                : RuleProfile.ConservativeHevc;
+            var library = file.LibraryId is { } id && librariesById.TryGetValue(id, out var match) ? match : null;
+            var profile = library?.RuleProfile ?? RuleProfile.ConservativeHevc;
+            var rules = RuleResolver.Resolve(profile, ToOverrides(library));
 
             var media = new MediaProperties(
                 file.Container,
@@ -58,7 +58,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.IsHdr,
                 file.RelativePath);
 
-            var decision = CandidateEvaluator.Evaluate(media, RuleProfileDefaults.For(profile));
+            var decision = CandidateEvaluator.Evaluate(media, rules);
 
             candidates.Add(new Candidate(
                 file.Id,
@@ -74,5 +74,38 @@ public sealed class CandidateService(OptimisarrDbContext db)
         }
 
         return candidates;
+    }
+
+    private static RuleOverrides ToOverrides(Data.Library? library)
+    {
+        if (library is null)
+        {
+            return RuleOverrides.None;
+        }
+
+        return new RuleOverrides
+        {
+            MinFileSizeBytes = library.MinFileSizeBytes,
+            MaxHeight = library.MaxHeight,
+            TargetVideoCodec = library.TargetVideoCodec,
+            TargetContainer = library.TargetContainer,
+            Hdr = library.HdrHandling,
+            ExcludePathSegments = ParseExcludePaths(library.ExcludePaths)
+        };
+    }
+
+    // Operators enter one path substring per line; blank lines are ignored.
+    private static IReadOnlyList<string>? ParseExcludePaths(string? excludePaths)
+    {
+        if (string.IsNullOrWhiteSpace(excludePaths))
+        {
+            return null;
+        }
+
+        var segments = excludePaths
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+
+        return segments.Length > 0 ? segments : null;
     }
 }
