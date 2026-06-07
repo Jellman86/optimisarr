@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Continuous integration (Node 24)
+
+- Opted CI into Node 24 for JavaScript-based actions
+  (`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`) ahead of GitHub forcing it on
+  2026-06-16, and verified the pipeline passes on Node 24.
+
 ### Multiple libraries with per-library rules
 
 - Replaced the single `library.root` setting with a first-class `Library`

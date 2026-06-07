@@ -4,6 +4,19 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
+## Current status (2026-06-07)
+
+- **Phase 0 (Foundation): done.** Repo, three .NET projects + Svelte UI, Docker
+  image building and publishing to GHCR via CI, health endpoint, SQLite under
+  `/config` via EF Core migrations.
+- **Phase 1 (Discovery & Inventory): done, extended.** Recursive settling-aware
+  scanning, ffprobe inspection, inventory UI. Extended beyond the original plan
+  to support **multiple libraries**, each with its own media type and rule
+  profile, plus a folder-picker for paths.
+- **Next: Phase 2 (Candidate Rules)** — turn the per-library rule profiles into
+  real eligibility decisions, with include/exclude path rules (the current scan
+  indexes everything under a library root).
+
 ## Guiding principles
 
 - Safety beats savings.
