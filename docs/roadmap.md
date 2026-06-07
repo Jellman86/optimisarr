@@ -23,14 +23,16 @@ the replacement workflow is trustworthy.
   priority) are editable from expandable cards on the Libraries page and resolved
   by a pure `RuleResolver`. Still to come: a measured minimum-saving estimate
   (today's proxy is "already in the target codec").
-- **Queue prerequisites in place.** The global concurrency limit
-  (`maxConcurrentJobs`, via `GET`/`PUT /api/settings` and a Settings page) and
-  per-library `Priority` now exist, ready for the queue to consume.
-- **Next: Phase 3 (Queue and Worker)** — a robust transcode queue feeding from
-  these candidates, with the global concurrency limit plus per-library priority,
-  priority-then-FIFO scheduling, crash-safe recovery, and the transcode-target
-  knobs (quality/CRF, encoder preset) added to the per-library config as the
-  worker that consumes them lands.
+- **Phase 3 (Queue and Worker): done.** A `Job` state machine, a pure
+  `JobScheduler` (priority-then-FIFO, global `maxConcurrentJobs`), a pure
+  `FfmpegCommandBuilder`/`TranscodeSpecResolver`, and a single-writer
+  `QueueDispatcher` background worker that runs ffmpeg out-of-process with
+  cancellation, live progress over SignalR, and crash recovery. Enqueue from a
+  library's eligible candidates; manage from the Queue page. Outputs land in
+  `/work` as `ReadyToReplace` — originals are never touched.
+- **Next: Phase 4 (Verification)** — prove a converted output is healthy
+  (full-decode check, duration tolerance, stream policy, size saving) before a job
+  may move past `ReadyToReplace` toward replacement.
 
 ## Guiding principles
 

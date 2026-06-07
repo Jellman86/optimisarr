@@ -5,6 +5,7 @@
   import Libraries from './lib/pages/Libraries.svelte'
   import Inventory from './lib/pages/Inventory.svelte'
   import Candidates from './lib/pages/Candidates.svelte'
+  import Queue from './lib/pages/Queue.svelte'
   import Tools from './lib/pages/Tools.svelte'
   import Settings from './lib/pages/Settings.svelte'
 
@@ -14,6 +15,7 @@
     if (path.startsWith('/libraries')) return Libraries
     if (path.startsWith('/inventory')) return Inventory
     if (path.startsWith('/candidates')) return Candidates
+    if (path.startsWith('/queue')) return Queue
     if (path.startsWith('/tools')) return Tools
     if (path.startsWith('/settings')) return Settings
     return Dashboard

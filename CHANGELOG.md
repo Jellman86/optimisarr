@@ -18,6 +18,9 @@
   after too many attempts) and their partial outputs cleaned up.
 - Added `GET /api/jobs` and `POST /api/jobs/{id}/cancel` (cancelling stops the
   running ffmpeg and marks the job Cancelled).
+- UI: new **Queue** page (nav enabled) listing jobs with status, a live progress
+  bar for the running transcode, and cancel; it polls while open. Library cards
+  gained an **Enqueue** action that queues the library's eligible files.
 
 ### Phase 3: transcode queue (foundation)
 

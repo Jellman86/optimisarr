@@ -60,6 +60,27 @@ export type Settings = {
   maxConcurrentJobs: number
 }
 
+export type Job = {
+  id: number
+  mediaFileId: number
+  libraryId: number | null
+  relativePath: string | null
+  status: string
+  priority: number
+  progress: number
+  errorMessage: string | null
+  ffmpegArguments: string | null
+  enqueuedAt: string
+  startedAt: string | null
+  finishedAt: string | null
+}
+
+export type EnqueueResult = {
+  enqueued: number
+  alreadyQueued: number
+  ineligible: number
+}
+
 export type MediaFile = {
   id: number
   libraryId: number
@@ -149,4 +170,9 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+
+  jobs: () => request<Job[]>('/api/jobs'),
+  cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  enqueueLibrary: (id: number) =>
+    request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
 }

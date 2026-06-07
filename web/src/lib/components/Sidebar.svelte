@@ -10,7 +10,7 @@
     { path: '/inventory', label: 'Inventory', icon: 'M4 5h16v4H4zM4 11h16v8H4z', enabled: true },
     { path: '/candidates', label: 'Candidates', icon: 'M3 4h18l-7 8v6l-4 2v-8z', enabled: true },
     { path: '/tools', label: 'Tools', icon: 'M11 4a4 4 0 015.66 5.66l-9 9L4 20l1.34-3.66 9-9A4 4 0 0111 4z', enabled: true },
-    { path: '/queue', label: 'Queue', icon: 'M4 6h16M4 12h16M4 18h7', enabled: false },
+    { path: '/queue', label: 'Queue', icon: 'M4 6h16M4 12h16M4 18h7', enabled: true },
     { path: '/verification', label: 'Verification', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', enabled: false },
     { path: '/quarantine', label: 'Quarantine', icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z', enabled: false },
     { path: '/schedule', label: 'Schedule', icon: 'M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z', enabled: false },

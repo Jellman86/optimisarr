@@ -173,6 +173,21 @@
     }
   }
 
+  async function enqueue(library: Library) {
+    busyId = library.id
+    error = null
+    message = null
+    try {
+      const result = await api.enqueueLibrary(library.id)
+      message = `"${library.name}": queued ${result.enqueued} job(s) (${result.alreadyQueued} already queued, ${result.ineligible} not eligible).`
+      if (result.enqueued > 0) message += ' See the Queue page.'
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Enqueue failed'
+    } finally {
+      busyId = null
+    }
+  }
+
   async function remove(library: Library) {
     if (!confirm(`Delete "${library.name}"? This removes its ${library.fileCount} inventory entries (your media files are not touched).`)) {
       return
@@ -362,6 +377,9 @@
           <div class="flex flex-shrink-0 gap-2">
             <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
               {busyId === library.id ? 'Working' : 'Scan'}
+            </button>
+            <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title="Queue this library's eligible files">
+              Enqueue
             </button>
             <button class="btn" onclick={() => (editingId === library.id ? cancelEdit() : startEdit(library))} disabled={busyId === library.id}>
               {editingId === library.id ? 'Close' : 'Configure'}
