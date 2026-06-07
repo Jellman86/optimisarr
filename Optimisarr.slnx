@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Optimisarr.Api/Optimisarr.Api.csproj" />
+    <Project Path="src/Optimisarr.Core/Optimisarr.Core.csproj" />
+    <Project Path="src/Optimisarr.Data/Optimisarr.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Optimisarr.Tests/Optimisarr.Tests.csproj" />
+  </Folder>
+</Solution>

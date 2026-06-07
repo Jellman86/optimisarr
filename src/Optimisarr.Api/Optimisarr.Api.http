@@ -1,0 +1,6 @@
+@Optimisarr.Api_HostAddress = http://localhost:5195
+
+GET {{Optimisarr.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

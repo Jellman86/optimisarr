@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/TestResults/
+web/node_modules/
+src/Optimisarr.Api/wwwroot/
+config/
+.env
+*.user

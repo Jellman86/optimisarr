@@ -1,0 +1,34 @@
+services:
+  optimisarr:
+    image: ghcr.io/jellman86/optimisarr:dev
+    container_name: optimisarr
+    restart: unless-stopped
+    ports:
+      - "${OPTIMISARR_PORT:-8787}:8787"
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      UMASK: "${UMASK:-002}"
+      TZ: "${TZ:-Europe/London}"
+      ASPNETCORE_URLS: "http://0.0.0.0:8787"
+      OPTIMISARR_CONFIG_DIR: "${OPTIMISARR_CONFIG_DIR:-/config}"
+      Logging__LogLevel__Default: "${OPTIMISARR_LOG_LEVEL:-Information}"
+    volumes:
+      - ./config:/config
+      - /path/to/media:/data
+      - /path/to/work:/work
+      - /path/to/trash:/trash
+    devices:
+      # Intel/AMD VAAPI/QSV. Remove this block if the host has no /dev/dri.
+      - /dev/dri:/dev/dri
+
+  # NVIDIA users can add this block to the optimisarr service when the NVIDIA
+  # Container Toolkit is installed on the Docker host.
+  #
+  # deploy:
+  #   resources:
+  #     reservations:
+  #       devices:
+  #         - driver: nvidia
+  #           count: 1
+  #           capabilities: [gpu]
