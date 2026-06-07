@@ -1,0 +1,56 @@
+// Small UI state holders: dark theme, sidebar collapse, and hash-based routing.
+
+function createTheme() {
+  const stored = localStorage.getItem('optimisarr.theme')
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  let dark = $state(stored ? stored === 'dark' : prefersDark)
+
+  function apply() {
+    document.documentElement.classList.toggle('dark', dark)
+  }
+  apply()
+
+  return {
+    get isDark() {
+      return dark
+    },
+    toggle() {
+      dark = !dark
+      localStorage.setItem('optimisarr.theme', dark ? 'dark' : 'light')
+      apply()
+    },
+  }
+}
+
+function createLayout() {
+  let collapsed = $state(localStorage.getItem('optimisarr.sidebar') === 'collapsed')
+  return {
+    get collapsed() {
+      return collapsed
+    },
+    toggle() {
+      collapsed = !collapsed
+      localStorage.setItem('optimisarr.sidebar', collapsed ? 'collapsed' : 'expanded')
+    },
+  }
+}
+
+function createRouter() {
+  const current = () => (window.location.hash.replace(/^#/, '') || '/')
+  let route = $state(current())
+  window.addEventListener('hashchange', () => {
+    route = current()
+  })
+  return {
+    get path() {
+      return route
+    },
+    go(path: string) {
+      window.location.hash = path
+    },
+  }
+}
+
+export const theme = createTheme()
+export const layout = createLayout()
+export const router = createRouter()

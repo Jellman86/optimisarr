@@ -16,11 +16,33 @@ public sealed class LibraryInventoryService(
     LibraryScanner scanner,
     MediaProbeService probe)
 {
-    public async Task<ScanSummary> ScanAsync(string root, CancellationToken cancellationToken)
+    /// <summary>Scans every enabled library and returns the combined summary.</summary>
+    public async Task<ScanSummary> ScanEnabledAsync(CancellationToken cancellationToken)
     {
-        var result = scanner.Scan(root, new LibraryScanOptions(), DateTimeOffset.UtcNow);
+        var libraries = await db.Libraries
+            .Where(library => library.Enabled)
+            .ToListAsync(cancellationToken);
+
+        var total = new ScanSummary(0, 0, 0, 0);
+        foreach (var library in libraries)
+        {
+            var summary = await ScanAsync(library, cancellationToken);
+            total = new ScanSummary(
+                total.Discovered + summary.Discovered,
+                total.Added + summary.Added,
+                total.Updated + summary.Updated,
+                total.SkippedUnsettled + summary.SkippedUnsettled);
+        }
+
+        return total;
+    }
+
+    public async Task<ScanSummary> ScanAsync(Data.Library library, CancellationToken cancellationToken)
+    {
+        var result = scanner.Scan(library.Path, new LibraryScanOptions(), DateTimeOffset.UtcNow);
 
         var existingByPath = await db.MediaFiles
+            .Where(file => file.LibraryId == library.Id)
             .ToDictionaryAsync(file => file.Path, cancellationToken);
 
         var added = 0;
@@ -33,6 +55,7 @@ public sealed class LibraryInventoryService(
             {
                 db.MediaFiles.Add(new MediaFile
                 {
+                    LibraryId = library.Id,
                     Path = scanned.AbsolutePath,
                     RelativePath = scanned.RelativePath,
                     SizeBytes = scanned.SizeBytes,

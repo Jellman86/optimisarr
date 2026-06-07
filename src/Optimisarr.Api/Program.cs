@@ -32,6 +32,9 @@ using (var scope = app.Services.CreateScope())
     // is a no-op, so this is safe to run on every startup.
     var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
     await db.Database.MigrateAsync();
+
+    var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
+    await LibrarySeeder.MigrateLegacyLibraryRootAsync(db, settings, CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())
@@ -64,61 +67,202 @@ app.MapGet("/api/system/tools", async (
 })
 .WithName("GetSystemTools");
 
-app.MapGet("/api/settings", async (SettingsStore settings, CancellationToken cancellationToken) =>
+// Lists immediate subdirectories of a path so the UI can offer a folder picker
+// instead of free-text paths. Defaults to /data (the conventional media mount).
+app.MapGet("/api/fs/browse", (string? path) =>
 {
-    var libraryRoot = await settings.GetLibraryRootAsync(cancellationToken);
-    return Results.Ok(new { libraryRoot });
-})
-.WithName("GetSettings");
+    var target = string.IsNullOrWhiteSpace(path)
+        ? (Directory.Exists("/data") ? "/data" : "/")
+        : path;
 
-app.MapPut("/api/settings/library-root", async (
-    SetLibraryRootRequest request,
-    SettingsStore settings,
+    if (!Directory.Exists(target))
+    {
+        return Results.BadRequest(new { error = $"Not a directory: {target}" });
+    }
+
+    var fullPath = Path.GetFullPath(target);
+    var parent = Directory.GetParent(fullPath)?.FullName;
+
+    var directories = new List<DirectoryEntry>();
+    try
+    {
+        foreach (var dir in Directory.EnumerateDirectories(fullPath).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(dir);
+            if (!string.IsNullOrEmpty(name))
+            {
+                directories.Add(new DirectoryEntry(name, dir));
+            }
+        }
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.BadRequest(new { error = $"Access denied: {fullPath}" });
+    }
+
+    return Results.Ok(new BrowseResponse(fullPath, parent, directories));
+})
+.WithName("BrowseFileSystem");
+
+// The valid enum values for library media types and rule profiles, so the UI
+// can render selectors without hard-coding the backend's vocabulary.
+app.MapGet("/api/library-options", () => Results.Ok(new
+{
+    mediaTypes = Enum.GetNames<MediaType>(),
+    ruleProfiles = Enum.GetNames<RuleProfile>()
+}))
+.WithName("GetLibraryOptions");
+
+app.MapGet("/api/libraries", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var libraries = await db.Libraries
+        .AsNoTracking()
+        .OrderBy(library => library.Name)
+        .Select(library => new LibraryDto(
+            library.Id,
+            library.Name,
+            library.Path,
+            library.MediaType.ToString(),
+            library.RuleProfile.ToString(),
+            library.Enabled,
+            library.MediaFiles.Count,
+            library.CreatedAt,
+            library.UpdatedAt))
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(libraries);
+})
+.WithName("ListLibraries");
+
+app.MapPost("/api/libraries", async (
+    SaveLibraryRequest request,
+    OptimisarrDbContext db,
     CancellationToken cancellationToken) =>
 {
-    if (string.IsNullOrWhiteSpace(request.Path))
+    if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
     {
-        return Results.BadRequest(new { error = "A library root path is required." });
+        return Results.BadRequest(new { error });
     }
 
-    if (!Directory.Exists(request.Path))
+    if (await db.Libraries.AnyAsync(library => library.Path == parsed.Path, cancellationToken))
     {
-        return Results.BadRequest(new { error = $"Directory does not exist: {request.Path}" });
+        return Results.Conflict(new { error = $"A library already exists for path: {parsed.Path}" });
     }
 
-    await settings.SetLibraryRootAsync(request.Path, cancellationToken);
-    return Results.Ok(new { libraryRoot = request.Path });
+    var library = new Library
+    {
+        Name = parsed.Name,
+        Path = parsed.Path,
+        MediaType = parsed.MediaType,
+        RuleProfile = parsed.RuleProfile,
+        Enabled = parsed.Enabled
+    };
+    db.Libraries.Add(library);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Created($"/api/libraries/{library.Id}", LibraryDto.From(library, 0));
 })
-.WithName("SetLibraryRoot");
+.WithName("CreateLibrary");
 
-app.MapPost("/api/library/scan", async (
-    SettingsStore settings,
+app.MapPut("/api/libraries/{id:int}", async (
+    int id,
+    SaveLibraryRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+    if (library is null)
+    {
+        return Results.NotFound(new { error = $"No library with id {id}." });
+    }
+
+    if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    if (await db.Libraries.AnyAsync(l => l.Path == parsed.Path && l.Id != id, cancellationToken))
+    {
+        return Results.Conflict(new { error = $"A library already exists for path: {parsed.Path}" });
+    }
+
+    library.Name = parsed.Name;
+    library.Path = parsed.Path;
+    library.MediaType = parsed.MediaType;
+    library.RuleProfile = parsed.RuleProfile;
+    library.Enabled = parsed.Enabled;
+    library.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+
+    var fileCount = await db.MediaFiles.CountAsync(f => f.LibraryId == id, cancellationToken);
+    return Results.Ok(LibraryDto.From(library, fileCount));
+})
+.WithName("UpdateLibrary");
+
+app.MapDelete("/api/libraries/{id:int}", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+    if (library is null)
+    {
+        return Results.NotFound(new { error = $"No library with id {id}." });
+    }
+
+    db.Libraries.Remove(library);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+})
+.WithName("DeleteLibrary");
+
+app.MapPost("/api/libraries/{id:int}/scan", async (
+    int id,
+    OptimisarrDbContext db,
     LibraryInventoryService inventory,
     CancellationToken cancellationToken) =>
 {
-    var libraryRoot = await settings.GetLibraryRootAsync(cancellationToken);
-    if (string.IsNullOrWhiteSpace(libraryRoot))
+    var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+    if (library is null)
     {
-        return Results.BadRequest(new { error = "No library root is configured." });
+        return Results.NotFound(new { error = $"No library with id {id}." });
     }
 
-    if (!Directory.Exists(libraryRoot))
+    if (!Directory.Exists(library.Path))
     {
-        return Results.BadRequest(new { error = $"Configured library root does not exist: {libraryRoot}" });
+        return Results.BadRequest(new { error = $"Library path does not exist: {library.Path}" });
     }
 
-    var summary = await inventory.ScanAsync(libraryRoot, cancellationToken);
+    var summary = await inventory.ScanAsync(library, cancellationToken);
     return Results.Ok(summary);
 })
 .WithName("ScanLibrary");
 
-app.MapGet("/api/media", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+app.MapPost("/api/libraries/scan", async (
+    LibraryInventoryService inventory,
+    CancellationToken cancellationToken) =>
 {
-    var files = await db.MediaFiles
-        .AsNoTracking()
+    var summary = await inventory.ScanEnabledAsync(cancellationToken);
+    return Results.Ok(summary);
+})
+.WithName("ScanAllLibraries");
+
+app.MapGet("/api/media", async (
+    int? libraryId,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var query = db.MediaFiles.AsNoTracking();
+    if (libraryId is not null)
+    {
+        query = query.Where(file => file.LibraryId == libraryId);
+    }
+
+    var files = await query
         .OrderBy(file => file.RelativePath)
         .Select(file => new MediaFileDto(
             file.Id,
+            file.LibraryId,
             file.RelativePath,
             file.SizeBytes,
             file.Status.ToString(),
@@ -151,6 +295,7 @@ app.MapPost("/api/media/{id:int}/probe", async (
 
     return Results.Ok(new MediaFileDto(
         file.Id,
+        file.LibraryId,
         file.RelativePath,
         file.SizeBytes,
         file.Status.ToString(),
@@ -186,10 +331,43 @@ static string ResolveConfigDirectory(IHostEnvironment environment)
         : Path.Combine(environment.ContentRootPath, "config");
 }
 
-internal sealed record SetLibraryRootRequest(string Path);
+internal sealed record DirectoryEntry(string Name, string Path);
+
+internal sealed record BrowseResponse(string Path, string? Parent, IReadOnlyList<DirectoryEntry> Directories);
+
+internal sealed record SaveLibraryRequest(
+    string? Name,
+    string? Path,
+    string? MediaType,
+    string? RuleProfile,
+    bool? Enabled);
+
+internal sealed record LibraryDto(
+    int Id,
+    string Name,
+    string Path,
+    string MediaType,
+    string RuleProfile,
+    bool Enabled,
+    int FileCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt)
+{
+    public static LibraryDto From(Library library, int fileCount) => new(
+        library.Id,
+        library.Name,
+        library.Path,
+        library.MediaType.ToString(),
+        library.RuleProfile.ToString(),
+        library.Enabled,
+        fileCount,
+        library.CreatedAt,
+        library.UpdatedAt);
+}
 
 internal sealed record MediaFileDto(
     int Id,
+    int? LibraryId,
     string RelativePath,
     long SizeBytes,
     string Status,

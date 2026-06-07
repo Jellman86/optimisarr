@@ -6,6 +6,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 {
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
+    public DbSet<Library> Libraries => Set<Library>();
+
     public DbSet<MediaFile> MediaFiles => Set<MediaFile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -15,6 +17,16 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(setting => setting.Key);
             entity.Property(setting => setting.Key).HasMaxLength(160);
             entity.Property(setting => setting.Value).IsRequired();
+        });
+
+        modelBuilder.Entity<Library>(entity =>
+        {
+            entity.HasKey(library => library.Id);
+            entity.Property(library => library.Name).IsRequired().HasMaxLength(160);
+            entity.Property(library => library.Path).IsRequired().HasMaxLength(1024);
+            entity.HasIndex(library => library.Path).IsUnique();
+            entity.Property(library => library.MediaType).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.RuleProfile).HasConversion<string>().HasMaxLength(32);
         });
 
         modelBuilder.Entity<MediaFile>(entity =>
@@ -27,6 +39,13 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.Container).HasMaxLength(32);
             entity.Property(file => file.VideoCodec).HasMaxLength(64);
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
+
+            // Removing a library removes its inventory; orphan media files make no sense.
+            entity.HasOne(file => file.Library)
+                .WithMany(library => library.MediaFiles)
+                .HasForeignKey(file => file.LibraryId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(file => file.LibraryId);
         });
     }
 }

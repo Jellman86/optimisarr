@@ -11,6 +11,15 @@ public sealed class MediaFile
 {
     public int Id { get; set; }
 
+    /// <summary>
+    /// The library this file was discovered under. Nullable so the schema can be
+    /// added to an existing database without violating the foreign key; scans
+    /// always set it, and the seeder backfills any legacy rows.
+    /// </summary>
+    public int? LibraryId { get; set; }
+
+    public Library? Library { get; set; }
+
     /// <summary>Absolute path to the file on disk.</summary>
     public string Path { get; set; } = string.Empty;
 

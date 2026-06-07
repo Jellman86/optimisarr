@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Multiple libraries with per-library rules
+
+- Replaced the single `library.root` setting with a first-class `Library`
+  entity: each library has a name, path, media type (Film/Tv/Music/Other) and
+  rule profile (ConservativeHevc/CompatibilityH264/ExperimentalAv1/RemuxCleanup),
+  so different content can be optimised by different rules. Rule enforcement
+  lands in Phase 2; profiles are stored per library now.
+- `MediaFile` now belongs to a `Library` (nullable FK, cascade delete). The
+  `LibraryId` is nullable so the schema applies to an existing database without
+  a foreign-key violation; scans always set it.
+- Added the `AddLibraries` migration and an idempotent startup seeder that
+  migrates any pre-existing `library.root` into a default library and relinks
+  already-discovered files to it.
+- New endpoints: `GET /api/libraries`, `POST /api/libraries`,
+  `PUT/DELETE /api/libraries/{id}`, `POST /api/libraries/{id}/scan`,
+  `POST /api/libraries/scan` (all enabled), `GET /api/library-options`, and
+  `GET /api/fs/browse` for directory browsing. `GET /api/media` accepts an
+  optional `libraryId` filter.
+- Added tests for library-scoped scanning, idempotency, and cascade delete.
+
+### Web UI redesign (yawamf-style sidebar)
+
+- Rebuilt the frontend around a collapsible sidebar shell with dark mode and
+  hash-based routing (Tailwind CSS v4 via the Vite plugin).
+- Pages: Dashboard, Libraries (add/edit/scan/delete), Inventory (per-library
+  filter + probe), Tools. Queue/Verification/Quarantine/Schedule/Settings appear
+  as disabled "soon" items to show the roadmap.
+- Library paths are chosen with a folder-picker dialog (backed by
+  `GET /api/fs/browse`) instead of free-text entry.
+
 ### Continuous integration
 
 - Added `.github/workflows/ci.yml`: backend build (`-warnaserror`) and tests,

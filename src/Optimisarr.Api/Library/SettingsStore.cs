@@ -3,9 +3,13 @@ using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
-/// <summary>Reads and writes well-known application settings in the database.</summary>
+/// <summary>Reads well-known application settings from the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db)
 {
+    /// <summary>
+    /// The legacy single library root, if one was configured before the
+    /// multi-library model existed. Used once by the seeder to migrate it.
+    /// </summary>
     public async Task<string?> GetLibraryRootAsync(CancellationToken cancellationToken)
     {
         var setting = await db.AppSettings
@@ -13,28 +17,5 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             .FirstOrDefaultAsync(s => s.Key == SettingKeys.LibraryRoot, cancellationToken);
 
         return setting?.Value;
-    }
-
-    public async Task SetLibraryRootAsync(string path, CancellationToken cancellationToken)
-    {
-        var existing = await db.AppSettings
-            .FirstOrDefaultAsync(s => s.Key == SettingKeys.LibraryRoot, cancellationToken);
-
-        if (existing is null)
-        {
-            db.AppSettings.Add(new AppSetting
-            {
-                Key = SettingKeys.LibraryRoot,
-                Value = path,
-                UpdatedAt = DateTimeOffset.UtcNow
-            });
-        }
-        else
-        {
-            existing.Value = path;
-            existing.UpdatedAt = DateTimeOffset.UtcNow;
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 }
