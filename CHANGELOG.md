@@ -14,6 +14,8 @@
   solution format); it previously referenced a non-existent `Optimisarr.sln`,
   which would have failed the image build.
 - Codified the CI/CD process and image-tagging rules in `CLAUDE.md` (§9).
+- Added `curl` to the runtime image so container healthchecks (e.g.
+  `GET /api/health`) work out of the box.
 
 ### Engineering standards
 
