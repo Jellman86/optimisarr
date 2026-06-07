@@ -1,0 +1,15 @@
+namespace Optimisarr.Core.Rules;
+
+/// <summary>
+/// The probed facts about a media file that drive an eligibility decision. A pure
+/// input record so <see cref="CandidateEvaluator"/> can be tested without a
+/// database or live ffprobe.
+/// </summary>
+public sealed record MediaProperties(
+    string? Container,
+    string? VideoCodec,
+    int? Width,
+    int? Height,
+    long SizeBytes,
+    bool IsHdr,
+    string RelativePath);

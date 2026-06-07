@@ -1,3 +1,4 @@
+using Optimisarr.Core.Domain;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;

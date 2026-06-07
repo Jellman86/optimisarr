@@ -58,6 +58,19 @@ export type MediaFile = {
   probeError: string | null
 }
 
+export type Candidate = {
+  mediaFileId: number
+  libraryId: number | null
+  relativePath: string
+  sizeBytes: number
+  videoCodec: string | null
+  height: number | null
+  isHdr: boolean
+  profile: string
+  eligible: boolean
+  reason: string
+}
+
 export type ScanSummary = {
   discovered: number
   added: number
@@ -109,4 +122,7 @@ export const api = {
   media: (libraryId?: number) =>
     request<MediaFile[]>(`/api/media${libraryId ? `?libraryId=${libraryId}` : ''}`),
   probe: (id: number) => request<MediaFile>(`/api/media/${id}/probe`, { method: 'POST' }),
+
+  candidates: (libraryId?: number) =>
+    request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
 }

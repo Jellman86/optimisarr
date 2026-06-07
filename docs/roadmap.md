@@ -13,9 +13,17 @@ the replacement workflow is trustworthy.
   scanning, ffprobe inspection, inventory UI. Extended beyond the original plan
   to support **multiple libraries**, each with its own media type and rule
   profile, plus a folder-picker for paths.
-- **Next: Phase 2 (Candidate Rules)** — turn the per-library rule profiles into
-  real eligibility decisions, with include/exclude path rules (the current scan
-  indexes everything under a library root).
+- **Phase 2 (Candidate Rules): largely done.** A pure, unit-tested
+  `CandidateEvaluator` turns per-library rule profiles into eligibility
+  decisions with a human-readable reason for every file (eligible or skipped):
+  min size, resolution limit, HDR/Dolby Vision exclusion, path exclusions,
+  codec/container matching, and already-processed detection. Surfaced via
+  `GET /api/candidates` and a Candidates page. Still to come: per-library
+  include/exclude path rules editable in the UI, and a measured minimum-saving
+  estimate (today's proxy is "already in the target codec").
+- **Next: Phase 3 (Queue and Worker)** — a robust transcode queue feeding from
+  these candidates, with a global concurrency limit plus per-library priority,
+  priority-then-FIFO scheduling, and crash-safe recovery.
 
 ## Guiding principles
 

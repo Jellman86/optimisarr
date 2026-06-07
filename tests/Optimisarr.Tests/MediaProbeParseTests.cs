@@ -44,4 +44,68 @@ public sealed class MediaProbeParseTests
         Assert.Empty(result.AudioCodecs);
         Assert.Equal(0, result.SubtitleTrackCount);
     }
+
+    [Fact]
+    public void Parse_treats_sdr_content_as_not_hdr()
+    {
+        var result = MediaProbeService.Parse(SampleJson);
+
+        Assert.False(result.IsHdr);
+    }
+
+    [Fact]
+    public void Parse_detects_hdr10_from_pq_color_transfer()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "color_transfer": "smpte2084" }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.True(result.IsHdr);
+    }
+
+    [Fact]
+    public void Parse_detects_hlg_hdr_from_color_transfer()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "color_transfer": "arib-std-b67" }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.True(result.IsHdr);
+    }
+
+    [Fact]
+    public void Parse_detects_dolby_vision_from_side_data()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "hevc",
+              "color_transfer": "bt709",
+              "side_data_list": [ { "side_data_type": "DOVI configuration record" } ]
+            }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.True(result.IsHdr);
+    }
 }

@@ -14,10 +14,11 @@ public sealed record MediaProbeResult(
     IReadOnlyList<string> AudioCodecs,
     int AudioTrackCount,
     int SubtitleTrackCount,
+    bool IsHdr,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, error);
+        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, error);
 }
 
 /// <summary>
@@ -116,6 +117,7 @@ public sealed class MediaProbeService
         string? videoCodec = null;
         int? width = null;
         int? height = null;
+        var isHdr = false;
         var audioCodecs = new List<string>();
         var subtitleCount = 0;
 
@@ -142,6 +144,7 @@ public sealed class MediaProbeService
                         {
                             height = heightValue;
                         }
+                        isHdr = IsHdrVideoStream(stream);
                         break;
                     case "audio":
                         audioCodecs.Add(codecName ?? "unknown");
@@ -163,7 +166,36 @@ public sealed class MediaProbeService
             audioCodecs,
             audioCodecs.Count,
             subtitleCount,
+            isHdr,
             null);
+    }
+
+    // HDR10/HDR10+ and HLG are signalled by the transfer characteristics; Dolby
+    // Vision is carried as stream side data even when the transfer is SDR-tagged.
+    private static bool IsHdrVideoStream(JsonElement videoStream)
+    {
+        if (videoStream.TryGetProperty("color_transfer", out var transferElement) &&
+            transferElement.GetString() is { } transfer &&
+            (transfer is "smpte2084" or "arib-std-b67"))
+        {
+            return true;
+        }
+
+        if (videoStream.TryGetProperty("side_data_list", out var sideData) &&
+            sideData.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in sideData.EnumerateArray())
+            {
+                if (entry.TryGetProperty("side_data_type", out var typeElement) &&
+                    typeElement.GetString() is { } sideDataType &&
+                    sideDataType.Contains("DOVI", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static string? FirstLine(string value) =>

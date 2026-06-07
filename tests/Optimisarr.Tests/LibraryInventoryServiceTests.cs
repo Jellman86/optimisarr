@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Data;
 

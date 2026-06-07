@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Phase 2: candidate rules
+
+- Added a pure, fully unit-tested eligibility engine in `Optimisarr.Core`
+  (`CandidateEvaluator`) that decides whether a probed file should be optimised
+  under a rule profile — without ever running FFmpeg. Every decision carries a
+  human-readable reason, so the UI can always explain why a file is eligible or
+  skipped. Checks: no video stream, path exclusions, HDR/Dolby Vision exclusion,
+  minimum file size, resolution limit, already-target-codec, and (for
+  remux/cleanup) already-clean container.
+- Each `RuleProfile` resolves to concrete `RuleSettings` via `RuleProfileDefaults`
+  (HEVC/H264/AV1 targets, remux-only has no target codec; conservative profiles
+  exclude HDR by default).
+- Moved the domain enums `MediaType` and `RuleProfile` from `Optimisarr.Data` to
+  `Optimisarr.Core` (`Optimisarr.Core.Domain`) so rules logic owns its vocabulary.
+  Stored as strings, so no migration was required.
+- Probing now detects HDR/HLG (transfer characteristics) and Dolby Vision (stream
+  side data); persisted via the new `MediaFile.IsHdr` column
+  (`AddMediaFileIsHdr` migration, non-destructive default `false`).
+- New endpoint `GET /api/candidates` (optional `libraryId` filter) backed by
+  `CandidateService`, which evaluates each probed file against its library's
+  profile. New **Candidates** page in the UI with all/eligible/skipped filters
+  and a per-file reason column.
+
 ### Continuous integration (Node 24)
 
 - Opted CI into Node 24 for JavaScript-based actions

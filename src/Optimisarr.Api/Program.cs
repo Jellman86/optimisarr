@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Tools;
 using Optimisarr.Data;
@@ -14,6 +15,7 @@ builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<LibraryInventoryService>();
+builder.Services.AddScoped<CandidateService>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
@@ -311,6 +313,18 @@ app.MapPost("/api/media/{id:int}/probe", async (
         file.ProbeError));
 })
 .WithName("ProbeMedia");
+
+// Phase 2: optimisation candidates derived from the probed inventory, with a
+// human-readable reason for every file (eligible or skipped). No FFmpeg runs here.
+app.MapGet("/api/candidates", async (
+    int? libraryId,
+    CandidateService candidates,
+    CancellationToken cancellationToken) =>
+{
+    var results = await candidates.EvaluateAsync(libraryId, cancellationToken);
+    return Results.Ok(results);
+})
+.WithName("ListCandidates");
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

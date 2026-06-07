@@ -4,6 +4,7 @@
   import Dashboard from './lib/pages/Dashboard.svelte'
   import Libraries from './lib/pages/Libraries.svelte'
   import Inventory from './lib/pages/Inventory.svelte'
+  import Candidates from './lib/pages/Candidates.svelte'
   import Tools from './lib/pages/Tools.svelte'
 
   // Map the active route to its page component.
@@ -11,6 +12,7 @@
     const path = router.path
     if (path.startsWith('/libraries')) return Libraries
     if (path.startsWith('/inventory')) return Inventory
+    if (path.startsWith('/candidates')) return Candidates
     if (path.startsWith('/tools')) return Tools
     return Dashboard
   })

@@ -55,6 +55,9 @@ public sealed class MediaFile
 
     public int? SubtitleTrackCount { get; set; }
 
+    /// <summary>True when the video stream is HDR10/HLG or carries Dolby Vision side data.</summary>
+    public bool IsHdr { get; set; }
+
     public DateTimeOffset? ProbedAt { get; set; }
 
     public string? ProbeError { get; set; }
