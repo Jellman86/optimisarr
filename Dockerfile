@@ -36,7 +36,7 @@ RUN apt-get update \
         tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
 COPY --from=api-build /app/publish/ /app/
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \

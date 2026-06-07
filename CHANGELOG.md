@@ -16,6 +16,10 @@
 - Codified the CI/CD process and image-tagging rules in `CLAUDE.md` (§9).
 - Added `curl` to the runtime image so container healthchecks (e.g.
   `GET /api/health`) work out of the box.
+- Fixed the container failing to start with `exec: "/entrypoint.sh":
+  permission denied`: `entrypoint.sh` was tracked as non-executable, so the
+  copied file had no execute bit. Copy it with `--chmod=0755` and mark it
+  executable in git.
 
 ### Engineering standards
 
