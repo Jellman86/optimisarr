@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Run JavaScript-based actions on Node 24 ahead of GitHub forcing it on
+# 2026-06-16, so we catch any incompatibility now rather than on the deadline.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # Only one CI run per branch/PR at a time; newer pushes cancel older runs.
 concurrency:
   group: ci-${{ github.ref }}
