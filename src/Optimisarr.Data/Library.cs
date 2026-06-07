@@ -51,6 +51,16 @@ public sealed class Library
     /// <summary>Encoder speed/quality preset (e.g. "medium", "slow"). Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 
+    /// <summary>
+    /// When true, a completed output is moved into <see cref="TargetFolder"/> (mirroring
+    /// the library's relative layout) and the job is marked Completed. The original is
+    /// never touched — handy for testing without consuming the source.
+    /// </summary>
+    public bool MoveOnComplete { get; set; }
+
+    /// <summary>Destination root for completed outputs when <see cref="MoveOnComplete"/> is on.</summary>
+    public string? TargetFolder { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

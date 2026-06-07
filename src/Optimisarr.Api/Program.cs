@@ -195,7 +195,9 @@ app.MapPost("/api/libraries", async (
         HdrHandling = parsed.HdrHandling,
         ExcludePaths = parsed.ExcludePaths,
         QualityCrf = parsed.QualityCrf,
-        EncoderPreset = parsed.EncoderPreset
+        EncoderPreset = parsed.EncoderPreset,
+        MoveOnComplete = parsed.MoveOnComplete,
+        TargetFolder = parsed.TargetFolder
     };
     db.Libraries.Add(library);
     await db.SaveChangesAsync(cancellationToken);
@@ -240,6 +242,8 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.ExcludePaths = parsed.ExcludePaths;
     library.QualityCrf = parsed.QualityCrf;
     library.EncoderPreset = parsed.EncoderPreset;
+    library.MoveOnComplete = parsed.MoveOnComplete;
+    library.TargetFolder = parsed.TargetFolder;
     library.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 
@@ -397,28 +401,7 @@ app.MapPost("/api/libraries/{id:int}/enqueue", async (
 .WithName("EnqueueLibrary");
 
 app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
-{
-    var jobs = await db.Jobs
-        .AsNoTracking()
-        .OrderByDescending(job => job.Priority)
-        .ThenBy(job => job.EnqueuedAt)
-        .Select(job => new JobDto(
-            job.Id,
-            job.MediaFileId,
-            job.LibraryId,
-            job.MediaFile != null ? job.MediaFile.RelativePath : null,
-            job.Status.ToString(),
-            job.Priority,
-            job.Progress,
-            job.ErrorMessage,
-            job.FfmpegArguments,
-            job.EnqueuedAt,
-            job.StartedAt,
-            job.FinishedAt))
-        .ToListAsync(cancellationToken);
-
-    return Results.Ok(jobs);
-})
+    Results.Ok(await JobQueries.ListAsync(db, cancellationToken)))
 .WithName("ListJobs");
 
 app.MapPost("/api/jobs/{id:int}/cancel", async (
@@ -471,20 +454,6 @@ static string ResolveConfigDirectory(IHostEnvironment environment)
 
 internal sealed record SettingsDto(int MaxConcurrentJobs);
 
-internal sealed record JobDto(
-    int Id,
-    int MediaFileId,
-    int? LibraryId,
-    string? RelativePath,
-    string Status,
-    int Priority,
-    double Progress,
-    string? ErrorMessage,
-    string? FfmpegArguments,
-    DateTimeOffset EnqueuedAt,
-    DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
-
 internal sealed record DirectoryEntry(string Name, string Path);
 
 internal sealed record BrowseResponse(string Path, string? Parent, IReadOnlyList<DirectoryEntry> Directories);
@@ -503,7 +472,9 @@ internal sealed record SaveLibraryRequest(
     string? HdrHandling,
     string? ExcludePaths,
     int? QualityCrf,
-    string? EncoderPreset);
+    string? EncoderPreset,
+    bool? MoveOnComplete,
+    string? TargetFolder);
 
 internal sealed record LibraryDto(
     int Id,
@@ -521,6 +492,8 @@ internal sealed record LibraryDto(
     string? ExcludePaths,
     int? QualityCrf,
     string? EncoderPreset,
+    bool MoveOnComplete,
+    string? TargetFolder,
     int FileCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -541,6 +514,8 @@ internal sealed record LibraryDto(
         library.ExcludePaths,
         library.QualityCrf,
         library.EncoderPreset,
+        library.MoveOnComplete,
+        library.TargetFolder,
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);

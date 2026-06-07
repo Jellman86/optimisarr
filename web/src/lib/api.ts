@@ -25,6 +25,8 @@ export type LibraryRules = {
   excludePaths: string | null
   qualityCrf: number | null
   encoderPreset: string | null
+  moveOnComplete: boolean
+  targetFolder: string | null
 }
 
 export type Library = LibraryRules & {

@@ -46,6 +46,7 @@
   let message = $state<string | null>(null)
   let busyId = $state<number | null>(null)
   let pickerOpen = $state(false)
+  let targetPickerOpen = $state(false)
 
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
@@ -75,6 +76,8 @@
       excludePaths: null,
       qualityCrf: null,
       encoderPreset: null,
+      moveOnComplete: false,
+      targetFolder: null,
     }
   }
 
@@ -111,6 +114,8 @@
       excludePaths: library.excludePaths,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
+      moveOnComplete: library.moveOnComplete,
+      targetFolder: library.targetFolder,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     editingId = library.id
@@ -137,6 +142,7 @@
       excludePaths: emptyToNull(form.excludePaths),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
+      targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
     }
   }
 
@@ -232,6 +238,17 @@
       pickerOpen = false
     }}
     onClose={() => (pickerOpen = false)}
+  />
+{/if}
+
+{#if targetPickerOpen}
+  <FolderPicker
+    initialPath={form.targetFolder ?? ''}
+    onSelect={(path) => {
+      form.targetFolder = path
+      targetPickerOpen = false
+    }}
+    onClose={() => (targetPickerOpen = false)}
   />
 {/if}
 
@@ -337,6 +354,24 @@
       <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
     </div>
   </div>
+
+  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Completed output</h3>
+  <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+    <input type="checkbox" bind:checked={form.moveOnComplete} /> Move output to a target folder when complete
+  </label>
+  <p class="mt-1 text-xs text-slate-400">
+    Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder
+    below (your originals are never touched) — useful for testing without re-copying source files.
+  </p>
+  {#if form.moveOnComplete}
+    <div class="mt-3 max-w-xl">
+      <label class="label" for="lib-target">Target folder</label>
+      <div class="flex gap-2">
+        <input id="lib-target" class="input" readonly placeholder="Choose a folder…" value={form.targetFolder ?? ''} />
+        <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>Browse</button>
+      </div>
+    </div>
+  {/if}
 
   <label class="mt-5 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
     <input type="checkbox" bind:checked={form.enabled} /> Enabled (included in scans)

@@ -196,7 +196,7 @@ public sealed partial class QueueDispatcher(
 
             if (run.ExitCode == 0)
             {
-                await CompleteAsync(jobId, JobStatus.ReadyToReplace, progress: 1.0);
+                await FinishSuccessfulJobAsync(jobId, spec.OutputPath, work.Value);
             }
             else
             {
@@ -224,7 +224,12 @@ public sealed partial class QueueDispatcher(
         }
     }
 
-    private readonly record struct JobWork(TranscodeSpec Spec, IReadOnlyList<string> Arguments, double? DurationSeconds)
+    private readonly record struct JobWork(
+        TranscodeSpec Spec,
+        IReadOnlyList<string> Arguments,
+        double? DurationSeconds,
+        bool MoveOnComplete,
+        string? TargetFolder)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -262,7 +267,12 @@ public sealed partial class QueueDispatcher(
             library?.QualityCrf,
             library?.EncoderPreset);
 
-        return new JobWork(spec, FfmpegCommandBuilder.Build(spec), media.DurationSeconds);
+        return new JobWork(
+            spec,
+            FfmpegCommandBuilder.Build(spec),
+            media.DurationSeconds,
+            library?.MoveOnComplete ?? false,
+            library?.TargetFolder);
     }
 
     private sealed record FfmpegRun(int ExitCode, string? Error);
@@ -391,6 +401,46 @@ public sealed partial class QueueDispatcher(
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
+
+    // On success the original is never touched. If the library collects outputs in a
+    // target folder, move our work output there and mark the job Completed; otherwise
+    // leave it in the work directory as ReadyToReplace (safe replacement is a later phase).
+    private async Task FinishSuccessfulJobAsync(int jobId, string outputPath, JobWork work)
+    {
+        if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
+        {
+            var destination = MoveTarget.Resolve(_workRoot, outputPath, targetFolder);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            MoveFile(outputPath, destination);
+
+            await WithJobAsync(jobId, job =>
+            {
+                job.Status = JobStatus.Completed;
+                job.Progress = 1.0;
+                job.WorkOutputPath = destination;
+                job.FinishedAt = DateTimeOffset.UtcNow;
+                job.UpdatedAt = DateTimeOffset.UtcNow;
+            }, CancellationToken.None);
+            return;
+        }
+
+        await CompleteAsync(jobId, JobStatus.ReadyToReplace, progress: 1.0);
+    }
+
+    // Move our own work output; never the original. Falls back to copy+delete across
+    // filesystems, where an atomic rename isn't possible.
+    private static void MoveFile(string source, string destination)
+    {
+        try
+        {
+            File.Move(source, destination, overwrite: true);
+        }
+        catch (IOException)
+        {
+            File.Copy(source, destination, overwrite: true);
+            File.Delete(source);
+        }
+    }
 
     // The cancel endpoint already set the status to Cancelled; just tidy the output.
     private async Task HandleCancelledAsync(int jobId)

@@ -70,8 +70,7 @@ The full suite must pass before any commit. "It builds" is not "it works".
 - All EF calls are async and take a `CancellationToken`. Read-only queries use
   `AsNoTracking()`.
 
-To add a migration (note the local SDK lives in `/tmp/dotnet`, so `DOTNET_ROOT`
-must be set — see §7):
+To add a migration (the env from §7 must be set so `dotnet`/`dotnet ef` resolve):
 
 ```bash
 dotnet ef migrations add <Name> \
@@ -120,14 +119,24 @@ A change is done when **all** of these hold:
 
 ## 7. Commands & local environment
 
-This WSL environment has the .NET 10 SDK under `/tmp/dotnet` (not on the global
-PATH) and the `dotnet-ef` tool under `~/.dotnet/tools`. EF tooling needs
-`DOTNET_ROOT`. Export these for any backend command:
+This WSL environment has the .NET 10 SDK installed under `~/.dotnet` (a
+persistent location — `/tmp` is wiped on the nightly reboot) and the `dotnet-ef`
+tool under `~/.dotnet/tools`. `~/.bashrc` exports the variables below, so an
+interactive shell already has `dotnet` on its PATH. For non-interactive shells,
+export them first:
 
 ```bash
-export PATH="/tmp/dotnet:$PATH:$HOME/.dotnet/tools"
-export DOTNET_ROOT=/tmp/dotnet
+export DOTNET_ROOT="$HOME/.dotnet"
+export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+```
+
+If the SDK is ever missing (e.g. a clean machine), reinstall it to the same
+persistent path:
+
+```bash
+curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- \
+  --version 10.0.300 --install-dir "$HOME/.dotnet"
 ```
 
 Then:

@@ -16,7 +16,9 @@ internal readonly record struct ParsedLibrary(
     HdrHandling? HdrHandling,
     string? ExcludePaths,
     int? QualityCrf,
-    string? EncoderPreset);
+    string? EncoderPreset,
+    bool MoveOnComplete,
+    string? TargetFolder);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -86,6 +88,23 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var moveOnComplete = request.MoveOnComplete ?? false;
+        var targetFolder = Trim(request.TargetFolder);
+        if (moveOnComplete)
+        {
+            if (targetFolder is null)
+            {
+                error = "A target folder is required when 'move output on complete' is enabled.";
+                return false;
+            }
+
+            if (!Directory.Exists(targetFolder))
+            {
+                error = $"Target folder does not exist: {targetFolder}";
+                return false;
+            }
+        }
+
         parsed = new ParsedLibrary(
             name,
             path,
@@ -100,7 +119,9 @@ internal static class LibraryRequestParser
             hdrHandling,
             Trim(request.ExcludePaths),
             request.QualityCrf,
-            Trim(request.EncoderPreset));
+            Trim(request.EncoderPreset),
+            moveOnComplete,
+            targetFolder);
         error = null;
         return true;
     }

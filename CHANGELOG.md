@@ -21,6 +21,17 @@
 - UI: new **Queue** page (nav enabled) listing jobs with status, a live progress
   bar for the running transcode, and cancel; it polls while open. Library cards
   gained an **Enqueue** action that queues the library's eligible files.
+- Per-library **move-on-complete**: a library can opt to move a finished output
+  to a target folder (with the `AddLibraryMoveOnComplete` migration and a pure,
+  unit-tested `MoveTarget` resolver). The original is still never touched; this
+  only relocates our own work output, falling back to copy+delete across
+  filesystems. Off by default — outputs stay in the work directory as
+  `ReadyToReplace`. The library form gained a "Completed output" toggle and a
+  target-folder picker.
+- Fixed `GET /api/jobs` returning HTTP 500 (the Queue page failed to load):
+  SQLite cannot translate an `ORDER BY` over the `DateTimeOffset` `EnqueuedAt`
+  column, so the priority/enqueue ordering is now applied client-side after
+  materialisation. Extracted into `JobQueries.ListAsync` with a regression test.
 
 ### Phase 3: transcode queue (foundation)
 
