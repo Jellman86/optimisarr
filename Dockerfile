@@ -10,7 +10,7 @@ RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
 WORKDIR /src
-COPY Optimisarr.sln global.json ./
+COPY Optimisarr.slnx global.json ./
 COPY src/Optimisarr.Api/Optimisarr.Api.csproj src/Optimisarr.Api/
 COPY src/Optimisarr.Core/Optimisarr.Core.csproj src/Optimisarr.Core/
 COPY src/Optimisarr.Data/Optimisarr.Data.csproj src/Optimisarr.Data/

@@ -148,7 +148,48 @@ src/Optimisarr.Data   EF Core: DbContext, entities, migrations. References Core.
 web                   Svelte 5 + TypeScript SPA, built to Api/wwwroot.
 tests/Optimisarr.Tests xUnit. References Core and Api.
 docs                  Product, architecture, and roadmap.
+.github/workflows     CI: build/test gates and GHCR image publishing (see §9).
+Dockerfile            Multi-stage build (Node UI -> .NET publish -> aspnet runtime + ffmpeg).
 ```
 
 Dependency direction is strict: `Api → Data → Core`, and `Api → Core`. Nothing
 flows back toward `Core`.
+
+## 9. Continuous integration & images
+
+CI is defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and is
+the enforcement point for the Definition of Done. Three jobs run on every push
+to `dev`/`main`, every tag `v*`, and every pull request targeting `dev`/`main`:
+
+- **backend** — `dotnet restore` → `dotnet build … -warnaserror` → `dotnet test`.
+  The `-warnaserror` flag makes the §6 zero-warnings rule a hard gate; a warning
+  fails the build. Do not silence it.
+- **frontend** — `npm ci` → `npm run check`. Must be clean.
+- **docker** — builds the image (after backend + frontend pass) and **publishes
+  to GHCR** as `ghcr.io/jellman86/optimisarr`.
+
+### Image tags (publishing rules)
+
+Images are pushed only on `push` and tag events — **never on pull requests**
+(PRs build the image to catch Dockerfile breakage but have no registry
+credentials, especially from forks). Tagging is automatic via
+`docker/metadata-action`:
+
+- push to `dev` → `:dev`
+- push to `main` (default branch) → `:main` **and** `:latest`
+- tag `vX.Y.Z` → `:X.Y.Z` and `:X.Y`
+
+Publishing uses the built-in `GITHUB_TOKEN` with `packages: write`; no personal
+access token or manually managed secret is required. The first published image
+may create a private GHCR package — make it public (or grant pull access) from
+the repo's package settings if anonymous `docker pull` is expected.
+
+### Rules for changing CI
+
+- Keep CI and local commands in lock-step with §7. If you change how the app is
+  built or tested locally, update the workflow in the same commit.
+- Anything in the Definition of Done that *can* be machine-checked *should* be a
+  CI gate. CI is allowed to be stricter than a local run, never looser.
+- The `Dockerfile` is part of the build contract: it must reference real files
+  (e.g. `Optimisarr.slnx`, not a stale `.sln`) and stay in sync with the project
+  layout. A green `docker` job is required before merge.

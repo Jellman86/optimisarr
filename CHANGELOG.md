@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Continuous integration
+
+- Added `.github/workflows/ci.yml`: backend build (`-warnaserror`) and tests,
+  frontend `npm run check`, and a Docker image build.
+- The Docker job publishes to GHCR as `ghcr.io/jellman86/optimisarr` using the
+  built-in `GITHUB_TOKEN` (no PAT required): `dev` -> `:dev`, `main` ->
+  `:main` and `:latest`, and `vX.Y.Z` tags -> semver tags. Pull requests build
+  the image but never push.
+- Fixed the `Dockerfile` to copy `Optimisarr.slnx` (the repo uses the `.slnx`
+  solution format); it previously referenced a non-existent `Optimisarr.sln`,
+  which would have failed the image build.
+- Codified the CI/CD process and image-tagging rules in `CLAUDE.md` (§9).
+
 ### Engineering standards
 
 - Added `CLAUDE.md` as the authoritative engineering standard for the repo
