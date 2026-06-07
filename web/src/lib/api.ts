@@ -23,6 +23,8 @@ export type LibraryRules = {
   targetContainer: string | null
   hdrHandling: string | null
   excludePaths: string | null
+  qualityCrf: number | null
+  encoderPreset: string | null
 }
 
 export type Library = LibraryRules & {
@@ -49,6 +51,9 @@ export type LibraryOptions = {
   mediaTypes: string[]
   ruleProfiles: string[]
   hdrHandlings: string[]
+  videoCodecs: string[]
+  containers: string[]
+  encoderPresets: string[]
 }
 
 export type Settings = {

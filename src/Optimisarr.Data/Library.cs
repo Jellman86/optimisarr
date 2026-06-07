@@ -45,6 +45,12 @@ public sealed class Library
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 
+    /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
+    public int? QualityCrf { get; set; }
+
+    /// <summary>Encoder speed/quality preset (e.g. "medium", "slow"). Null uses the encoder default.</summary>
+    public string? EncoderPreset { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

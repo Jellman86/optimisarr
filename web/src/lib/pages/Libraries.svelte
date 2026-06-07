@@ -3,7 +3,45 @@
   import FolderPicker from '../components/FolderPicker.svelte'
 
   let libraries = $state<Library[]>([])
-  let options = $state<LibraryOptions>({ mediaTypes: [], ruleProfiles: [], hdrHandlings: [] })
+  let options = $state<LibraryOptions>({
+    mediaTypes: [],
+    ruleProfiles: [],
+    hdrHandlings: [],
+    videoCodecs: [],
+    containers: [],
+    encoderPresets: [],
+  })
+
+  // Named queue-priority levels, so the card uses a dropdown instead of a raw number.
+  const priorityLevels = [
+    { value: 2, label: 'Highest' },
+    { value: 1, label: 'High' },
+    { value: 0, label: 'Normal' },
+    { value: -1, label: 'Low' },
+    { value: -2, label: 'Lowest' },
+  ]
+
+  const resolutionLimits = [
+    { value: null, label: 'No limit' },
+    { value: 2160, label: '2160p (4K)' },
+    { value: 1440, label: '1440p' },
+    { value: 1080, label: '1080p' },
+    { value: 720, label: '720p' },
+    { value: 480, label: '480p' },
+  ]
+
+  const DEFAULT_CRF = 23
+
+  function toggleCustomQuality(on: boolean) {
+    form.qualityCrf = on ? (form.qualityCrf ?? DEFAULT_CRF) : null
+  }
+
+  function hdrLabel(hdr: string): string {
+    if (hdr === 'TonemapToSdr') return 'Tonemap to SDR'
+    if (hdr === 'Exclude') return 'Exclude (skip HDR)'
+    if (hdr === 'Preserve') return 'Preserve HDR'
+    return hdr
+  }
   let error = $state<string | null>(null)
   let message = $state<string | null>(null)
   let busyId = $state<number | null>(null)
@@ -35,6 +73,8 @@
       targetContainer: null,
       hdrHandling: null,
       excludePaths: null,
+      qualityCrf: null,
+      encoderPreset: null,
     }
   }
 
@@ -69,6 +109,8 @@
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
       excludePaths: library.excludePaths,
+      qualityCrf: library.qualityCrf,
+      encoderPreset: library.encoderPreset,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     editingId = library.id
@@ -93,6 +135,8 @@
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
       excludePaths: emptyToNull(form.excludePaths),
+      qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
+      encoderPreset: emptyToNull(form.encoderPreset),
     }
   }
 
@@ -204,35 +248,74 @@
   </div>
 
   <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">
-    Handling overrides <span class="font-normal normal-case">— leave blank to use the profile default</span>
+    Target output <span class="font-normal normal-case">— "Profile default" uses the preset above</span>
   </h3>
   <div class="grid gap-4 sm:grid-cols-2">
     <div>
       <label class="label" for="lib-codec">Target video codec</label>
-      <input id="lib-codec" class="input" placeholder="profile default (e.g. hevc)" bind:value={form.targetVideoCodec} />
+      <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
+        <option value={null}>Profile default</option>
+        {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
+      </select>
     </div>
     <div>
       <label class="label" for="lib-container">Target container</label>
-      <input id="lib-container" class="input" placeholder="profile default (e.g. mkv)" bind:value={form.targetContainer} />
+      <select id="lib-container" class="input" bind:value={form.targetContainer}>
+        <option value={null}>Profile default</option>
+        {#each options.containers as container}<option value={container}>.{container}</option>{/each}
+      </select>
     </div>
     <div>
       <label class="label" for="lib-hdr">HDR / Dolby Vision</label>
       <select id="lib-hdr" class="input" bind:value={form.hdrHandling}>
         <option value={null}>Profile default</option>
-        {#each options.hdrHandlings as hdr}<option value={hdr}>{hdr}</option>{/each}
+        {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
       </select>
     </div>
     <div>
+      <label class="label" for="lib-preset">Encoder preset</label>
+      <select id="lib-preset" class="input" bind:value={form.encoderPreset}>
+        <option value={null}>Encoder default</option>
+        {#each options.encoderPresets as preset}<option value={preset}>{preset}</option>{/each}
+      </select>
+    </div>
+    <div class="sm:col-span-2">
+      <div class="mb-1 flex items-center justify-between">
+        <label class="label mb-0" for="lib-crf">Quality (CRF)</label>
+        <label class="flex items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+          <input type="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
+          Set custom quality
+        </label>
+      </div>
+      {#if form.qualityCrf != null}
+        <div class="flex items-center gap-3">
+          <input id="lib-crf" class="flex-1 accent-emerald-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+          <span class="badge w-10 justify-center bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{form.qualityCrf}</span>
+        </div>
+        <p class="mt-1 text-xs text-slate-400">Lower = higher quality and larger files. 18–24 is a good range.</p>
+      {:else}
+        <p class="text-xs text-slate-400">Using the encoder's default quality.</p>
+      {/if}
+    </div>
+  </div>
+
+  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Eligibility &amp; queue</h3>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
       <label class="label" for="lib-priority">Queue priority</label>
-      <input id="lib-priority" class="input" type="number" placeholder="0" bind:value={form.priority} />
+      <select id="lib-priority" class="input" bind:value={form.priority}>
+        {#each priorityLevels as level}<option value={level.value}>{level.label}</option>{/each}
+      </select>
+    </div>
+    <div>
+      <label class="label" for="lib-maxheight">Max resolution (skip above)</label>
+      <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
+        {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
+      </select>
     </div>
     <div>
       <label class="label" for="lib-minsize">Minimum file size (MB)</label>
       <input id="lib-minsize" class="input" type="number" min="0" placeholder="profile default" bind:value={minSizeMb} />
-    </div>
-    <div>
-      <label class="label" for="lib-maxheight">Max resolution height (px)</label>
-      <input id="lib-maxheight" class="input" type="number" min="1" placeholder="no limit" bind:value={form.maxHeight} />
     </div>
     <div class="sm:col-span-2">
       <label class="label" for="lib-exclude">Exclude paths (one per line)</label>
@@ -240,7 +323,7 @@
     </div>
   </div>
 
-  <label class="mt-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+  <label class="mt-5 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
     <input type="checkbox" bind:checked={form.enabled} /> Enabled (included in scans)
   </label>
   <div class="mt-5 flex gap-2">

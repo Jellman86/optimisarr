@@ -137,7 +137,15 @@ app.MapGet("/api/library-options", () => Results.Ok(new
 {
     mediaTypes = Enum.GetNames<MediaType>(),
     ruleProfiles = Enum.GetNames<RuleProfile>(),
-    hdrHandlings = Enum.GetNames<HdrHandling>()
+    hdrHandlings = Enum.GetNames<HdrHandling>(),
+    videoCodecs = new[] { "hevc", "h264", "av1" },
+    containers = new[] { "mkv", "mp4" },
+    // x264/x265 speed presets; slower = smaller files for the same quality.
+    encoderPresets = new[]
+    {
+        "ultrafast", "superfast", "veryfast", "faster", "fast",
+        "medium", "slow", "slower", "veryslow"
+    }
 }))
 .WithName("GetLibraryOptions");
 
@@ -181,7 +189,9 @@ app.MapPost("/api/libraries", async (
         TargetVideoCodec = parsed.TargetVideoCodec,
         TargetContainer = parsed.TargetContainer,
         HdrHandling = parsed.HdrHandling,
-        ExcludePaths = parsed.ExcludePaths
+        ExcludePaths = parsed.ExcludePaths,
+        QualityCrf = parsed.QualityCrf,
+        EncoderPreset = parsed.EncoderPreset
     };
     db.Libraries.Add(library);
     await db.SaveChangesAsync(cancellationToken);
@@ -224,6 +234,8 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.TargetContainer = parsed.TargetContainer;
     library.HdrHandling = parsed.HdrHandling;
     library.ExcludePaths = parsed.ExcludePaths;
+    library.QualityCrf = parsed.QualityCrf;
+    library.EncoderPreset = parsed.EncoderPreset;
     library.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 
@@ -394,7 +406,9 @@ internal sealed record SaveLibraryRequest(
     string? TargetVideoCodec,
     string? TargetContainer,
     string? HdrHandling,
-    string? ExcludePaths);
+    string? ExcludePaths,
+    int? QualityCrf,
+    string? EncoderPreset);
 
 internal sealed record LibraryDto(
     int Id,
@@ -410,6 +424,8 @@ internal sealed record LibraryDto(
     string? TargetContainer,
     string? HdrHandling,
     string? ExcludePaths,
+    int? QualityCrf,
+    string? EncoderPreset,
     int FileCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -428,6 +444,8 @@ internal sealed record LibraryDto(
         library.TargetContainer,
         library.HdrHandling?.ToString(),
         library.ExcludePaths,
+        library.QualityCrf,
+        library.EncoderPreset,
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);

@@ -14,7 +14,9 @@ internal readonly record struct ParsedLibrary(
     string? TargetVideoCodec,
     string? TargetContainer,
     HdrHandling? HdrHandling,
-    string? ExcludePaths);
+    string? ExcludePaths,
+    int? QualityCrf,
+    string? EncoderPreset);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -78,6 +80,12 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (request.QualityCrf is < 0 or > 63)
+        {
+            error = "Quality (CRF) must be between 0 and 63.";
+            return false;
+        }
+
         parsed = new ParsedLibrary(
             name,
             path,
@@ -90,7 +98,9 @@ internal static class LibraryRequestParser
             Trim(request.TargetVideoCodec),
             Trim(request.TargetContainer),
             hdrHandling,
-            Trim(request.ExcludePaths));
+            Trim(request.ExcludePaths),
+            request.QualityCrf,
+            Trim(request.EncoderPreset));
         error = null;
         return true;
     }

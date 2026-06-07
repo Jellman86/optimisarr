@@ -15,6 +15,17 @@
   list (never a shell string): codec→encoder mapping (libx265/libx264/libsvtav1),
   CRF and preset, remux-only (`-c copy`), HDR→SDR tone-map filter, `-map 0`, and
   audio/subtitle passthrough.
+- Added a pure, unit-tested `TranscodeSpecResolver` that builds a `TranscodeSpec`
+  from a library's resolved rules and a media file (work-root output path, target
+  codec/container, and tone-map only when re-encoding an HDR source that the
+  library asks to tone-map).
+- Added per-library encoder settings (`QualityCrf`, `EncoderPreset`) via the
+  `AddLibraryEncoderSettings` migration, surfaced in the library config card.
+- Polished the library config card: free-text fields are now dropdowns (target
+  codec, container, encoder preset, HDR handling, resolution limit, priority),
+  quality is a CRF slider with an "encoder default" toggle, and the form is
+  grouped into "Target output" and "Eligibility & queue" sections.
+  `GET /api/library-options` now also returns the codec/container/preset vocab.
 
 ### Per-library configuration and global queue settings
 
