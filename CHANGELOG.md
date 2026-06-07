@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Phase 3: transcode queue (worker)
+
+- Added `JobEnqueueService` + `POST /api/libraries/{id}/enqueue`, which turns a
+  library's eligible candidates into queued jobs. Idempotent: a media file with an
+  active (non-terminal) job is never enqueued twice.
+- Added `QueueDispatcher`, a `BackgroundService` that drives the queue: a single
+  loop owns all job-state writes (SQLite has one writer), selects work via the
+  pure `JobScheduler` up to the global `maxConcurrentJobs`, and runs ffmpeg
+  out-of-process through an argument list (never a shell) with a `CancellationToken`
+  and captured output. Progress is parsed from ffmpeg and pushed live over SignalR
+  (`JobsHub`). A job only ever writes to the work directory; the original is never
+  touched (successful jobs land in `ReadyToReplace`, pending safe replacement).
+- Crash recovery: on startup, jobs left mid-flight are reset to Queued (or Failed
+  after too many attempts) and their partial outputs cleaned up.
+- Added `GET /api/jobs` and `POST /api/jobs/{id}/cancel` (cancelling stops the
+  running ffmpeg and marks the job Cancelled).
+
 ### Phase 3: transcode queue (foundation)
 
 - Added the `Job` entity and `JobStatus` state machine (Queued → Probing →

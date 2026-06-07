@@ -46,8 +46,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
         foreach (var file in files)
         {
             var library = file.LibraryId is { } id && librariesById.TryGetValue(id, out var match) ? match : null;
-            var profile = library?.RuleProfile ?? RuleProfile.ConservativeHevc;
-            var rules = RuleResolver.Resolve(profile, ToOverrides(library));
+            var profile = LibraryRuleResolution.ProfileOf(library);
+            var rules = LibraryRuleResolution.Resolve(library);
 
             var media = new MediaProperties(
                 file.Container,
@@ -74,38 +74,5 @@ public sealed class CandidateService(OptimisarrDbContext db)
         }
 
         return candidates;
-    }
-
-    private static RuleOverrides ToOverrides(Data.Library? library)
-    {
-        if (library is null)
-        {
-            return RuleOverrides.None;
-        }
-
-        return new RuleOverrides
-        {
-            MinFileSizeBytes = library.MinFileSizeBytes,
-            MaxHeight = library.MaxHeight,
-            TargetVideoCodec = library.TargetVideoCodec,
-            TargetContainer = library.TargetContainer,
-            Hdr = library.HdrHandling,
-            ExcludePathSegments = ParseExcludePaths(library.ExcludePaths)
-        };
-    }
-
-    // Operators enter one path substring per line; blank lines are ignored.
-    private static IReadOnlyList<string>? ParseExcludePaths(string? excludePaths)
-    {
-        if (string.IsNullOrWhiteSpace(excludePaths))
-        {
-            return null;
-        }
-
-        var segments = excludePaths
-            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .ToArray();
-
-        return segments.Length > 0 ? segments : null;
     }
 }

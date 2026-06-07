@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
@@ -16,6 +17,9 @@ builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
+builder.Services.AddScoped<JobEnqueueService>();
+builder.Services.AddSingleton<QueueDispatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
@@ -369,6 +373,83 @@ app.MapGet("/api/candidates", async (
 })
 .WithName("ListCandidates");
 
+// Phase 3: enqueue a library's eligible candidates as transcode jobs.
+app.MapPost("/api/libraries/{id:int}/enqueue", async (
+    int id,
+    OptimisarrDbContext db,
+    JobEnqueueService enqueue,
+    QueueDispatcher dispatcher,
+    CancellationToken cancellationToken) =>
+{
+    var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+    if (library is null)
+    {
+        return Results.NotFound(new { error = $"No library with id {id}." });
+    }
+
+    var result = await enqueue.EnqueueEligibleAsync(library, cancellationToken);
+    if (result.Enqueued > 0)
+    {
+        dispatcher.Wake();
+    }
+    return Results.Ok(result);
+})
+.WithName("EnqueueLibrary");
+
+app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var jobs = await db.Jobs
+        .AsNoTracking()
+        .OrderByDescending(job => job.Priority)
+        .ThenBy(job => job.EnqueuedAt)
+        .Select(job => new JobDto(
+            job.Id,
+            job.MediaFileId,
+            job.LibraryId,
+            job.MediaFile != null ? job.MediaFile.RelativePath : null,
+            job.Status.ToString(),
+            job.Priority,
+            job.Progress,
+            job.ErrorMessage,
+            job.FfmpegArguments,
+            job.EnqueuedAt,
+            job.StartedAt,
+            job.FinishedAt))
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(jobs);
+})
+.WithName("ListJobs");
+
+app.MapPost("/api/jobs/{id:int}/cancel", async (
+    int id,
+    OptimisarrDbContext db,
+    QueueDispatcher dispatcher,
+    CancellationToken cancellationToken) =>
+{
+    var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+    if (job is null)
+    {
+        return Results.NotFound(new { error = $"No job with id {id}." });
+    }
+
+    if (!JobEnqueueService.ActiveStatuses.Contains(job.Status))
+    {
+        return Results.BadRequest(new { error = $"Job {id} is already {job.Status} and cannot be cancelled." });
+    }
+
+    job.Status = JobStatus.Cancelled;
+    job.FinishedAt = DateTimeOffset.UtcNow;
+    job.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+
+    // Stop the running ffmpeg, if this job is in flight.
+    dispatcher.RequestCancel(job.Id);
+
+    return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
+})
+.WithName("CancelJob");
+
 app.MapHub<JobsHub>("/hubs/jobs");
 
 app.MapFallbackToFile("index.html");
@@ -389,6 +470,20 @@ static string ResolveConfigDirectory(IHostEnvironment environment)
 }
 
 internal sealed record SettingsDto(int MaxConcurrentJobs);
+
+internal sealed record JobDto(
+    int Id,
+    int MediaFileId,
+    int? LibraryId,
+    string? RelativePath,
+    string Status,
+    int Priority,
+    double Progress,
+    string? ErrorMessage,
+    string? FfmpegArguments,
+    DateTimeOffset EnqueuedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? FinishedAt);
 
 internal sealed record DirectoryEntry(string Name, string Path);
 
