@@ -12,6 +12,38 @@ public sealed record FileMoveResult(bool CrossFilesystem);
 /// </summary>
 public static class FileMover
 {
+    public static bool CanMoveAtomically(string sourceDirectory, string destinationDirectory)
+    {
+        Directory.CreateDirectory(sourceDirectory);
+        Directory.CreateDirectory(destinationDirectory);
+
+        var source = Path.Combine(sourceDirectory, $".optimisarr-move-probe-{Guid.NewGuid():N}.tmp");
+        var destination = Path.Combine(destinationDirectory, Path.GetFileName(source));
+
+        try
+        {
+            File.WriteAllBytes(source, Array.Empty<byte>());
+            File.Move(source, destination);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (File.Exists(source))
+            {
+                File.Delete(source);
+            }
+
+            if (File.Exists(destination))
+            {
+                File.Delete(destination);
+            }
+        }
+    }
+
     public static FileMoveResult Move(string source, string destination)
     {
         if (!File.Exists(source))

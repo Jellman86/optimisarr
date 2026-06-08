@@ -14,6 +14,8 @@
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
     verificationRequireSizeReduction: true,
+    replacementAllowCrossFilesystem: false,
+    replacementQuarantineRetentionDays: 0,
   })
   let minFreeDiskGiB = $state('10')
   let loading = $state(true)
@@ -189,6 +191,25 @@
     <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
       Decode health, output readability, and a video stream are always required.
     </p>
+
+    <h3 class="mt-6 text-sm font-semibold text-slate-900 dark:text-slate-100">Replacement</h3>
+    <div class="mt-3 grid gap-3 text-sm text-slate-700 dark:text-slate-200">
+      <label class="flex items-center gap-2">
+        <input type="checkbox" bind:checked={settings.replacementAllowCrossFilesystem} />
+        Allow cross-filesystem replacement (copy-plus-delete instead of atomic move)
+      </label>
+      <div class="flex items-center gap-2">
+        <span>Quarantine retention</span>
+        <input
+          class="input w-24"
+          type="number"
+          min="0"
+          step="1"
+          bind:value={settings.replacementQuarantineRetentionDays}
+        />
+        <span class="text-sm text-slate-500 dark:text-slate-400">days (0 = keep indefinitely)</span>
+      </div>
+    </div>
 
     <div class="mt-5">
       <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving' : 'Save'}</button>

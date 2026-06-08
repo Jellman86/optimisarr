@@ -44,14 +44,17 @@ public sealed class ReplacementService
     private readonly OptimisarrDbContext _db;
     private readonly LibraryInventoryService _inventory;
     private readonly ILogger<ReplacementService> _logger;
+    private readonly SettingsStore _settings;
     private readonly string _trashRoot;
+    private readonly Func<string, string, bool> _canMoveAtomically;
 
     public ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
+        SettingsStore settings,
         IHostEnvironment environment,
         ILogger<ReplacementService> logger)
-        : this(db, inventory, ResolveTrashRoot(environment), logger)
+        : this(db, inventory, settings, ResolveTrashRoot(environment), logger)
     {
     }
 
@@ -59,13 +62,17 @@ public sealed class ReplacementService
     internal ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
+        SettingsStore settings,
         string trashRoot,
-        ILogger<ReplacementService> logger)
+        ILogger<ReplacementService> logger,
+        Func<string, string, bool>? canMoveAtomically = null)
     {
         _db = db;
         _inventory = inventory;
+        _settings = settings;
         _trashRoot = trashRoot;
         _logger = logger;
+        _canMoveAtomically = canMoveAtomically ?? FileMover.CanMoveAtomically;
     }
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
@@ -101,19 +108,35 @@ public sealed class ReplacementService
         }
 
         var plan = ReplacementPlanner.Plan(media.Path, job.WorkOutputPath, _trashRoot, DateTimeOffset.UtcNow);
+        var settings = await _settings.GetQueueSettingsAsync(cancellationToken);
+        if (!settings.ReplacementAllowCrossFilesystem)
+        {
+            var originalDirectory = Path.GetDirectoryName(plan.OriginalPath) ?? string.Empty;
+            var quarantineDirectory = Path.GetDirectoryName(plan.QuarantinePath) ?? _trashRoot;
+            var outputDirectory = Path.GetDirectoryName(job.WorkOutputPath) ?? string.Empty;
+            var finalDirectory = Path.GetDirectoryName(plan.FinalPath) ?? originalDirectory;
+
+            if (!_canMoveAtomically(originalDirectory, quarantineDirectory)
+                || !_canMoveAtomically(outputDirectory, finalDirectory))
+            {
+                return ReplacementActionResult.Invalid(
+                    "Replacement would require a cross-filesystem copy-plus-delete move. Enable cross-filesystem replacement in Settings if this mount layout is intentional.");
+            }
+        }
+
         var originalSize = new FileInfo(media.Path).Length;
         var outputSize = new FileInfo(job.WorkOutputPath).Length;
 
         // Step 1: preserve the original by quarantining it. From here the original
         // is safe and every subsequent failure restores it.
-        FileMover.Move(media.Path, plan.QuarantinePath);
+        var quarantineMove = FileMover.Move(media.Path, plan.QuarantinePath);
 
         bool crossFilesystem;
         try
         {
             // Step 2: move the verified output into the original's place.
             var move = FileMover.Move(job.WorkOutputPath, plan.FinalPath);
-            crossFilesystem = move.CrossFilesystem;
+            crossFilesystem = quarantineMove.CrossFilesystem || move.CrossFilesystem;
 
             // Step 3: a final-path integrity check — the placed file must exist and
             // match the output we verified, or we do not trust the replacement.

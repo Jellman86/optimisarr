@@ -85,6 +85,8 @@ export type Settings = {
   verificationRequireAudioRetained: boolean
   verificationRequireSubtitlesRetained: boolean
   verificationRequireSizeReduction: boolean
+  replacementAllowCrossFilesystem: boolean
+  replacementQuarantineRetentionDays: number
 }
 
 export type QueueStatus = Settings & {

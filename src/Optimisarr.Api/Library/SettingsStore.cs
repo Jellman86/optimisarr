@@ -14,7 +14,9 @@ public sealed record QueueSettings(
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     EncoderMode EncoderMode,
-    VerificationPolicy VerificationPolicy);
+    VerificationPolicy VerificationPolicy,
+    bool ReplacementAllowCrossFilesystem,
+    int ReplacementQuarantineRetentionDays);
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db)
@@ -64,7 +66,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationDurationTolerancePercent
                 || setting.Key == SettingKeys.VerificationRequireAudioRetained
                 || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
-                || setting.Key == SettingKeys.VerificationRequireSizeReduction)
+                || setting.Key == SettingKeys.VerificationRequireSizeReduction
+                || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
+                || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
 
         return new QueueSettings(
@@ -88,7 +92,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                     VerificationPolicy.Default.RequireSubtitlesRetained),
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationRequireSizeReduction),
-                    VerificationPolicy.Default.RequireSizeReduction)));
+                    VerificationPolicy.Default.RequireSizeReduction)),
+            ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
+            ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
     }
 
     /// <summary>Sets the global concurrency limit. Clamped to at least 1.</summary>
@@ -116,7 +122,11 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.VerificationRequireSubtitlesRetained] =
                 settings.VerificationPolicy.RequireSubtitlesRetained.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationRequireSizeReduction] =
-                settings.VerificationPolicy.RequireSizeReduction.ToString(CultureInfo.InvariantCulture)
+                settings.VerificationPolicy.RequireSizeReduction.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.ReplacementAllowCrossFilesystem] =
+                settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.ReplacementQuarantineRetentionDays] =
+                Math.Max(0, settings.ReplacementQuarantineRetentionDays).ToString(CultureInfo.InvariantCulture)
         }, cancellationToken);
     }
 

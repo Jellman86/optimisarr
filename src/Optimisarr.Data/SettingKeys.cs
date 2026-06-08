@@ -38,4 +38,10 @@ public static class SettingKeys
 
     /// <summary>Whether verification requires the output to be smaller than the original.</summary>
     public const string VerificationRequireSizeReduction = "verification.requireSizeReduction";
+
+    /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
+    public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
+
+    /// <summary>How many days quarantined originals should be retained; 0 means indefinitely.</summary>
+    public const string ReplacementQuarantineRetentionDays = "replacement.quarantineRetentionDays";
 }

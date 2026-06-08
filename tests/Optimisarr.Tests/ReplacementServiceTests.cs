@@ -91,6 +91,35 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_refuses_cross_filesystem_moves_when_policy_disallows_them()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var result = await ReplaceAsync(jobId, canMoveAtomically: (_, _) => false);
+
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Contains("cross-filesystem", result.Message);
+        Assert.True(File.Exists(originalPath));
+        Assert.True(File.Exists(outputPath));
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+    }
+
+    [Fact]
+    public async Task Replace_allows_cross_filesystem_moves_when_policy_allows_them()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        await SetCrossFilesystemReplacementAsync(allowed: true);
+
+        var result = await ReplaceAsync(jobId, canMoveAtomically: (_, _) => false);
+
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.False(File.Exists(originalPath));
+        Assert.Equal("NEW", File.ReadAllText(result.Replacement!.FinalPath));
+    }
+
+    [Fact]
     public async Task Rollback_restores_the_original_and_removes_the_replacement_output()
     {
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL-DATA", "NEW");
@@ -164,10 +193,12 @@ public sealed class ReplacementServiceTests : IDisposable
         return job.Id;
     }
 
-    private async Task<ReplacementActionResult> ReplaceAsync(int jobId)
+    private async Task<ReplacementActionResult> ReplaceAsync(
+        int jobId,
+        Func<string, string, bool>? canMoveAtomically = null)
     {
         await using var db = new OptimisarrDbContext(_options);
-        var service = NewService(db);
+        var service = NewService(db, canMoveAtomically);
         return await service.ReplaceAsync(jobId, CancellationToken.None);
     }
 
@@ -178,10 +209,26 @@ public sealed class ReplacementServiceTests : IDisposable
         return await service.RollbackAsync(replacementId, CancellationToken.None);
     }
 
-    private ReplacementService NewService(OptimisarrDbContext db)
+    private ReplacementService NewService(
+        OptimisarrDbContext db,
+        Func<string, string, bool>? canMoveAtomically = null)
     {
         var inventory = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService());
-        return new ReplacementService(db, inventory, _trashDir, NullLogger<ReplacementService>.Instance);
+        return new ReplacementService(
+            db,
+            inventory,
+            new SettingsStore(db),
+            _trashDir,
+            NullLogger<ReplacementService>.Instance,
+            canMoveAtomically);
+    }
+
+    private async Task SetCrossFilesystemReplacementAsync(bool allowed)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var settings = new SettingsStore(db);
+        var current = await settings.GetQueueSettingsAsync(CancellationToken.None);
+        await settings.SetQueueSettingsAsync(current with { ReplacementAllowCrossFilesystem = allowed }, CancellationToken.None);
     }
 
     public void Dispose()

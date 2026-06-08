@@ -102,6 +102,11 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "Verification duration tolerance cannot be negative." });
     }
 
+    if (request.ReplacementQuarantineRetentionDays < 0)
+    {
+        return Results.BadRequest(new { error = "Quarantine retention days cannot be negative." });
+    }
+
     if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
     {
         return Results.BadRequest(new { error = "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi." });
@@ -129,7 +134,9 @@ app.MapPut("/api/settings", async (
             request.VerificationDurationTolerancePercent,
             request.VerificationRequireAudioRetained,
             request.VerificationRequireSubtitlesRetained,
-            request.VerificationRequireSizeReduction)), cancellationToken);
+            request.VerificationRequireSizeReduction),
+        request.ReplacementAllowCrossFilesystem,
+        request.ReplacementQuarantineRetentionDays), cancellationToken);
 
     var queue = await settings.GetQueueSettingsAsync(cancellationToken);
     return Results.Ok(SettingsDto.From(queue));
@@ -570,7 +577,9 @@ internal sealed record SettingsDto(
     double VerificationDurationTolerancePercent,
     bool VerificationRequireAudioRetained,
     bool VerificationRequireSubtitlesRetained,
-    bool VerificationRequireSizeReduction)
+    bool VerificationRequireSizeReduction,
+    bool ReplacementAllowCrossFilesystem,
+    int ReplacementQuarantineRetentionDays)
 {
     public static SettingsDto From(QueueSettings settings) => new(
         settings.MaxConcurrentJobs,
@@ -583,7 +592,9 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.DurationTolerancePercent,
         settings.VerificationPolicy.RequireAudioRetained,
         settings.VerificationPolicy.RequireSubtitlesRetained,
-        settings.VerificationPolicy.RequireSizeReduction);
+        settings.VerificationPolicy.RequireSizeReduction,
+        settings.ReplacementAllowCrossFilesystem,
+        settings.ReplacementQuarantineRetentionDays);
 
     private static string FormatTime(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
 }
