@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Safe replacement: cross-filesystem guard
+
+- Replacement now refuses by default to fall back to a cross-filesystem
+  copy-plus-delete, since the atomic rename is what makes quarantine-then-replace
+  safe. A new `replacement.allowCrossFilesystem` setting opts into the fallback
+  for intentional split-mount layouts, and `replacement.quarantineRetentionDays`
+  records how long quarantined originals are kept (`0` = indefinitely). Both are
+  stored in `AppSettings` (no migration) and exposed on the Settings page.
+
 ### Phase 6: scheduling and resource controls
 
 - Added queue dispatch policy controls for processing windows and free disk
@@ -31,6 +40,12 @@
   Queue page shows whether dispatch is ready or paused.
 - Added tests for the new settings defaults, persistence, and invalid-value
   fallback, building on the pure `DispatchPolicyEvaluator` tests.
+- Fixed hardware encoders being reported as available purely because FFmpeg was
+  built with them, which made `Auto` mode pick `hevc_nvenc` on a host with no
+  usable GPU and fail every job immediately (`Cannot load libcuda.so.1`). A
+  hardware encoder is now only available when the hardware is actually usable:
+  NVENC requires a working NVIDIA runtime and QSV/VAAPI require a DRI render
+  device, so `Auto` correctly falls back to CPU when no GPU is present.
 
 ### Phase 5: safe replacement and rollback
 

@@ -41,9 +41,19 @@ public static class HardwareCapabilityParser
         return accelerators;
     }
 
-    public static IReadOnlyList<EncoderCapability> ParseEncoders(string output)
+    /// <summary>
+    /// Maps FFmpeg's <c>-encoders</c> listing to known encoders. A hardware encoder is
+    /// only reported available when the underlying hardware is actually usable here, not
+    /// merely compiled into FFmpeg: NVENC requires a working NVIDIA runtime, and QSV/VAAPI
+    /// require a DRI render device. Listing the encoder is necessary but not sufficient —
+    /// FFmpeg ships with these encoders built in and will list them even on a GPU-less host.
+    /// </summary>
+    public static IReadOnlyList<EncoderCapability> ParseEncoders(
+        string output,
+        bool nvidiaRuntimeAvailable,
+        bool driDeviceAvailable)
     {
-        var available = output
+        var listed = output
             .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Select(ParseEncoderName)
             .Where(name => name is not null)
@@ -54,9 +64,17 @@ public static class HardwareCapabilityParser
                 encoder.Name,
                 encoder.Codec,
                 encoder.Mode,
-                available.Contains(encoder.Name)))
+                listed.Contains(encoder.Name)
+                    && HardwarePresent(encoder.Mode, nvidiaRuntimeAvailable, driDeviceAvailable)))
             .ToList();
     }
+
+    private static bool HardwarePresent(string mode, bool nvidiaRuntimeAvailable, bool driDeviceAvailable) => mode switch
+    {
+        "NVIDIA NVENC" => nvidiaRuntimeAvailable,
+        "Intel QSV" or "VAAPI" => driDeviceAvailable,
+        _ => true
+    };
 
     private static string? ParseEncoderName(string line)
     {

@@ -19,11 +19,17 @@ public sealed class HardwareCapabilityService
             errors.Add(encoders.Error ?? "ffmpeg -encoders failed.");
         }
 
+        var nvidiaRuntimeAvailable =
+            await CommandSucceedsAsync("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"], cancellationToken);
+        var driDeviceAvailable = Directory.Exists("/dev/dri");
+
         return new HardwareCapabilityResult(
             hwaccels.ExitCode == 0 ? HardwareCapabilityParser.ParseHardwareAccelerators(hwaccels.Output) : [],
-            encoders.ExitCode == 0 ? HardwareCapabilityParser.ParseEncoders(encoders.Output) : [],
-            await CommandSucceedsAsync("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"], cancellationToken),
-            Directory.Exists("/dev/dri"),
+            encoders.ExitCode == 0
+                ? HardwareCapabilityParser.ParseEncoders(encoders.Output, nvidiaRuntimeAvailable, driDeviceAvailable)
+                : [],
+            nvidiaRuntimeAvailable,
+            driDeviceAvailable,
             errors.Count > 0 ? string.Join(' ', errors) : null);
     }
 
