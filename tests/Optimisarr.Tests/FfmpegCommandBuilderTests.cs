@@ -41,6 +41,23 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("0", args[mapIndex + 1]);
     }
 
+    [Fact]
+    public void Adds_global_thread_limit_when_configured()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(), threads: 2);
+
+        var threadsIndex = IndexOf(args, "-threads");
+        Assert.Equal("2", args[threadsIndex + 1]);
+        Assert.True(threadsIndex < IndexOf(args, "-i"));
+    }
+
+    [Fact]
+    public void Omits_thread_limit_when_zero_or_negative()
+    {
+        Assert.DoesNotContain("-threads", FfmpegCommandBuilder.Build(Reencode(), threads: 0));
+        Assert.DoesNotContain("-threads", FfmpegCommandBuilder.Build(Reencode(), threads: -1));
+    }
+
     [Theory]
     [InlineData("hevc", "libx265")]
     [InlineData("h264", "libx264")]
@@ -51,6 +68,15 @@ public sealed class FfmpegCommandBuilderTests
 
         var vIndex = IndexOf(args, "-c:v");
         Assert.Equal(encoder, args[vIndex + 1]);
+    }
+
+    [Fact]
+    public void Uses_selected_video_encoder_when_provided()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "hevc"), videoEncoder: "hevc_nvenc");
+
+        var vIndex = IndexOf(args, "-c:v");
+        Assert.Equal("hevc_nvenc", args[vIndex + 1]);
     }
 
     [Fact]

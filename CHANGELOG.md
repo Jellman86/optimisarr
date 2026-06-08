@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Phase 6: scheduling and resource controls
+
+- Added queue dispatch policy controls for processing windows and free disk
+  safety. The worker now checks the configured local processing window and the
+  free space on the work filesystem before starting new jobs; running jobs are
+  not interrupted by these gates.
+- Expanded global settings with `scheduleEnabled`, `scheduleWindowStart`,
+  `scheduleWindowEnd`, and `minFreeDiskBytes`. These are stored in the existing
+  `AppSettings` table, so no schema migration is required.
+- Added `GET /api/queue/status`, exposing whether dispatch can currently start
+  work, the blocked reason, running/max jobs, work root, and measured free disk
+  space.
+- Added a global CPU thread limit setting, wired into generated FFmpeg arguments
+  as `-threads`; `0` leaves thread selection to FFmpeg.
+- Added hardware capability detection for FFmpeg hardware accelerators, known
+  CPU/NVENC/QSV/VAAPI encoders, NVIDIA runtime availability, and `/dev/dri`
+  mapping. Surfaced through `GET /api/system/hardware` and the Tools page.
+- Added global encoder mode selection (`Auto`, `CPU`, `NVIDIA NVENC`, `Intel QSV`,
+  `VAAPI`). The worker validates the requested mode against detected FFmpeg
+  encoders before starting a job and uses the selected encoder in generated
+  FFmpeg arguments.
+- Added configurable verification policy settings for duration tolerance, audio
+  retention, subtitle retention, and required size reduction. Decode health,
+  output readability, and video-stream presence remain mandatory safety gates.
+- UI: the Settings page now edits the processing window and minimum free work
+  disk threshold plus encoder mode, CPU thread limit, and verification gates; the
+  Queue page shows whether dispatch is ready or paused.
+- Added tests for the new settings defaults, persistence, and invalid-value
+  fallback, building on the pure `DispatchPolicyEvaluator` tests.
+
 ### Phase 5: safe replacement and rollback
 
 - A verified `ReadyToReplace` job can now replace its original — the first

@@ -8,7 +8,9 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
+using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
@@ -25,6 +27,7 @@ public sealed partial class QueueDispatcher(
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
     VerificationService verification,
+    HardwareCapabilityService hardware,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -128,7 +131,15 @@ public sealed partial class QueueDispatcher(
 
     private async Task DispatchAsync(CancellationToken stoppingToken)
     {
-        var maxConcurrent = await GetMaxConcurrentJobsAsync(stoppingToken);
+        var settings = await GetQueueSettingsAsync(stoppingToken);
+        var policy = EvaluateDispatchPolicy(settings);
+        if (!policy.CanStart)
+        {
+            logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
+            return;
+        }
+
+        var maxConcurrent = settings.MaxConcurrentJobs;
         if (maxConcurrent - _running.Count <= 0)
         {
             return;
@@ -268,6 +279,8 @@ public sealed partial class QueueDispatcher(
         var media = job.MediaFile;
         var library = media.Library;
         var rules = LibraryRuleResolution.Resolve(library);
+        var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
+        var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
 
         var spec = TranscodeSpecResolver.Resolve(
             rules,
@@ -284,9 +297,18 @@ public sealed partial class QueueDispatcher(
             media.AudioTrackCount ?? 0,
             media.SubtitleTrackCount ?? 0);
 
+        var videoEncoder = await ResolveVideoEncoderAsync(
+            rules.TargetVideoCodec,
+            queueSettings.EncoderMode,
+            cancellationToken);
+        if (videoEncoder is { Succeeded: false })
+        {
+            throw new InvalidOperationException(videoEncoder.Error);
+        }
+
         return new JobWork(
             spec,
-            FfmpegCommandBuilder.Build(spec),
+            FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoder.EncoderName),
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
@@ -434,8 +456,9 @@ public sealed partial class QueueDispatcher(
         }, cancellationToken);
         await NotifyAsync();
 
+        var settings = await GetQueueSettingsAsync(cancellationToken);
         var outcome = await verification.VerifyAsync(
-            work.Original, outputPath, VerificationPolicy.Default, cancellationToken);
+            work.Original, outputPath, settings.VerificationPolicy, cancellationToken);
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>
@@ -538,11 +561,55 @@ public sealed partial class QueueDispatcher(
         }
     }
 
-    private async Task<int> GetMaxConcurrentJobsAsync(CancellationToken cancellationToken)
+    public async Task<QueueDispatchStatus> GetDispatchStatusAsync(CancellationToken cancellationToken)
+    {
+        var settings = await GetQueueSettingsAsync(cancellationToken);
+        var decision = EvaluateDispatchPolicy(settings);
+        var freeDiskBytes = TryGetFreeDiskBytes(_workRoot);
+
+        return new QueueDispatchStatus(
+            decision.CanStart,
+            decision.BlockedReason,
+            _running.Count,
+            settings.MaxConcurrentJobs,
+            settings.ScheduleEnabled,
+            settings.ScheduleWindowStart,
+            settings.ScheduleWindowEnd,
+            settings.MinFreeDiskBytes,
+            settings.CpuThreadLimit,
+            settings.EncoderMode,
+            freeDiskBytes,
+            _workRoot);
+    }
+
+    private async Task<QueueSettings> GetQueueSettingsAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
-        return await settings.GetMaxConcurrentJobsAsync(cancellationToken);
+        return await settings.GetQueueSettingsAsync(cancellationToken);
+    }
+
+    private DispatchDecision EvaluateDispatchPolicy(QueueSettings settings) =>
+        DispatchPolicyEvaluator.Evaluate(
+            settings.ScheduleEnabled,
+            settings.ScheduleWindowStart,
+            settings.ScheduleWindowEnd,
+            TimeOnly.FromDateTime(DateTime.Now),
+            settings.MinFreeDiskBytes,
+            TryGetFreeDiskBytes(_workRoot));
+
+    private async Task<EncoderSelection> ResolveVideoEncoderAsync(
+        string? targetCodec,
+        EncoderMode encoderMode,
+        CancellationToken cancellationToken)
+    {
+        if (targetCodec is null)
+        {
+            return EncoderSelection.Success("copy");
+        }
+
+        var detected = await hardware.DetectAsync(cancellationToken);
+        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders);
     }
 
     private Task NotifyAsync() => hub.Clients.All.SendAsync("jobsChanged");
@@ -594,4 +661,41 @@ public sealed partial class QueueDispatcher(
             ? "/work"
             : Path.Combine(environment.ContentRootPath, "work");
     }
+
+    private static long? TryGetFreeDiskBytes(string path)
+    {
+        try
+        {
+            var target = Directory.Exists(path)
+                ? path
+                : Path.GetDirectoryName(path);
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                return null;
+            }
+
+            var root = Path.GetPathRoot(Path.GetFullPath(target));
+            return string.IsNullOrWhiteSpace(root)
+                ? null
+                : new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
+
+public sealed record QueueDispatchStatus(
+    bool CanStart,
+    string? BlockedReason,
+    int RunningJobs,
+    int MaxConcurrentJobs,
+    bool ScheduleEnabled,
+    TimeOnly ScheduleWindowStart,
+    TimeOnly ScheduleWindowEnd,
+    long MinFreeDiskBytes,
+    int CpuThreadLimit,
+    EncoderMode EncoderMode,
+    long? FreeDiskBytes,
+    string WorkRoot);

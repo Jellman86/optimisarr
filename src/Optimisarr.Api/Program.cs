@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
@@ -5,6 +6,7 @@ using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
@@ -14,6 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ToolDetectionService>();
+builder.Services.AddSingleton<HardwareCapabilityService>();
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddSingleton<DecodeHealthCheck>();
@@ -69,8 +72,8 @@ app.MapGet("/api/settings", async (
     SettingsStore settings,
     CancellationToken cancellationToken) =>
 {
-    var maxConcurrentJobs = await settings.GetMaxConcurrentJobsAsync(cancellationToken);
-    return Results.Ok(new SettingsDto(maxConcurrentJobs));
+    var queue = await settings.GetQueueSettingsAsync(cancellationToken);
+    return Results.Ok(SettingsDto.From(queue));
 })
 .WithName("GetSettings");
 
@@ -84,11 +87,63 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "Max concurrent jobs must be at least 1." });
     }
 
-    await settings.SetMaxConcurrentJobsAsync(request.MaxConcurrentJobs, cancellationToken);
-    var maxConcurrentJobs = await settings.GetMaxConcurrentJobsAsync(cancellationToken);
-    return Results.Ok(new SettingsDto(maxConcurrentJobs));
+    if (request.MinFreeDiskBytes < 0)
+    {
+        return Results.BadRequest(new { error = "Minimum free disk space cannot be negative." });
+    }
+
+    if (request.CpuThreadLimit < 0)
+    {
+        return Results.BadRequest(new { error = "CPU thread limit cannot be negative." });
+    }
+
+    if (request.VerificationDurationTolerancePercent < 0)
+    {
+        return Results.BadRequest(new { error = "Verification duration tolerance cannot be negative." });
+    }
+
+    if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
+    {
+        return Results.BadRequest(new { error = "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi." });
+    }
+
+    if (!TryParseTime(request.ScheduleWindowStart, out var start))
+    {
+        return Results.BadRequest(new { error = "Schedule window start must use HH:mm format." });
+    }
+
+    if (!TryParseTime(request.ScheduleWindowEnd, out var end))
+    {
+        return Results.BadRequest(new { error = "Schedule window end must use HH:mm format." });
+    }
+
+    await settings.SetQueueSettingsAsync(new QueueSettings(
+        request.MaxConcurrentJobs,
+        request.ScheduleEnabled,
+        start,
+        end,
+        request.MinFreeDiskBytes,
+        request.CpuThreadLimit,
+        encoderMode,
+        new VerificationPolicy(
+            request.VerificationDurationTolerancePercent,
+            request.VerificationRequireAudioRetained,
+            request.VerificationRequireSubtitlesRetained,
+            request.VerificationRequireSizeReduction)), cancellationToken);
+
+    var queue = await settings.GetQueueSettingsAsync(cancellationToken);
+    return Results.Ok(SettingsDto.From(queue));
 })
 .WithName("UpdateSettings");
+
+app.MapGet("/api/queue/status", async (
+    QueueDispatcher dispatcher,
+    CancellationToken cancellationToken) =>
+{
+    var status = await dispatcher.GetDispatchStatusAsync(cancellationToken);
+    return Results.Ok(QueueStatusDto.From(status));
+})
+.WithName("GetQueueDispatchStatus");
 
 app.MapGet("/api/system/tools", async (
     ToolDetectionService tools,
@@ -102,6 +157,19 @@ app.MapGet("/api/system/tools", async (
     });
 })
 .WithName("GetSystemTools");
+
+app.MapGet("/api/system/hardware", async (
+    HardwareCapabilityService hardware,
+    CancellationToken cancellationToken) =>
+{
+    var result = await hardware.DetectAsync(cancellationToken);
+    return Results.Ok(new
+    {
+        checkedAt = DateTimeOffset.UtcNow,
+        hardware = result
+    });
+})
+.WithName("GetHardwareCapabilities");
 
 // Lists immediate subdirectories of a path so the UI can offer a folder picker
 // instead of free-text paths. Defaults to /data (the conventional media mount).
@@ -484,7 +552,72 @@ static string ResolveConfigDirectory(IHostEnvironment environment)
         : Path.Combine(environment.ContentRootPath, "config");
 }
 
-internal sealed record SettingsDto(int MaxConcurrentJobs);
+static bool TryParseTime(string? value, out TimeOnly time)
+{
+    time = default;
+    return value is not null &&
+        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
+}
+
+internal sealed record SettingsDto(
+    int MaxConcurrentJobs,
+    bool ScheduleEnabled,
+    string? ScheduleWindowStart,
+    string? ScheduleWindowEnd,
+    long MinFreeDiskBytes,
+    int CpuThreadLimit,
+    string EncoderMode,
+    double VerificationDurationTolerancePercent,
+    bool VerificationRequireAudioRetained,
+    bool VerificationRequireSubtitlesRetained,
+    bool VerificationRequireSizeReduction)
+{
+    public static SettingsDto From(QueueSettings settings) => new(
+        settings.MaxConcurrentJobs,
+        settings.ScheduleEnabled,
+        FormatTime(settings.ScheduleWindowStart),
+        FormatTime(settings.ScheduleWindowEnd),
+        settings.MinFreeDiskBytes,
+        settings.CpuThreadLimit,
+        settings.EncoderMode.ToString(),
+        settings.VerificationPolicy.DurationTolerancePercent,
+        settings.VerificationPolicy.RequireAudioRetained,
+        settings.VerificationPolicy.RequireSubtitlesRetained,
+        settings.VerificationPolicy.RequireSizeReduction);
+
+    private static string FormatTime(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
+}
+
+internal sealed record QueueStatusDto(
+    bool CanStart,
+    string? BlockedReason,
+    int RunningJobs,
+    int MaxConcurrentJobs,
+    bool ScheduleEnabled,
+    string ScheduleWindowStart,
+    string ScheduleWindowEnd,
+    long MinFreeDiskBytes,
+    int CpuThreadLimit,
+    string EncoderMode,
+    long? FreeDiskBytes,
+    string WorkRoot)
+{
+    public static QueueStatusDto From(QueueDispatchStatus status) => new(
+        status.CanStart,
+        status.BlockedReason,
+        status.RunningJobs,
+        status.MaxConcurrentJobs,
+        status.ScheduleEnabled,
+        FormatTime(status.ScheduleWindowStart),
+        FormatTime(status.ScheduleWindowEnd),
+        status.MinFreeDiskBytes,
+        status.CpuThreadLimit,
+        status.EncoderMode.ToString(),
+        status.FreeDiskBytes,
+        status.WorkRoot);
+
+    private static string FormatTime(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
+}
 
 internal sealed record DirectoryEntry(string Name, string Path);
 

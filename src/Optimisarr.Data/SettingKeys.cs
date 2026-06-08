@@ -8,4 +8,34 @@ public static class SettingKeys
 
     /// <summary>Maximum number of transcode jobs allowed to run at once across all libraries.</summary>
     public const string MaxConcurrentJobs = "queue.maxConcurrentJobs";
+
+    /// <summary>Whether new transcode jobs may start only inside a processing window.</summary>
+    public const string ScheduleEnabled = "queue.schedule.enabled";
+
+    /// <summary>Local time at which the processing window starts, formatted HH:mm.</summary>
+    public const string ScheduleWindowStart = "queue.schedule.windowStart";
+
+    /// <summary>Local time at which the processing window ends, formatted HH:mm.</summary>
+    public const string ScheduleWindowEnd = "queue.schedule.windowEnd";
+
+    /// <summary>Minimum free bytes on the work filesystem before new jobs may start.</summary>
+    public const string MinFreeDiskBytes = "queue.minFreeDiskBytes";
+
+    /// <summary>Maximum CPU threads ffmpeg may use per job; 0 lets ffmpeg decide.</summary>
+    public const string CpuThreadLimit = "queue.cpuThreadLimit";
+
+    /// <summary>Preferred encoder mode for new transcode jobs.</summary>
+    public const string EncoderMode = "queue.encoderMode";
+
+    /// <summary>Allowed output duration drift, as a percentage of original duration.</summary>
+    public const string VerificationDurationTolerancePercent = "verification.durationTolerancePercent";
+
+    /// <summary>Whether verification requires all original audio tracks to be retained.</summary>
+    public const string VerificationRequireAudioRetained = "verification.requireAudioRetained";
+
+    /// <summary>Whether verification requires all original subtitle tracks to be retained.</summary>
+    public const string VerificationRequireSubtitlesRetained = "verification.requireSubtitlesRetained";
+
+    /// <summary>Whether verification requires the output to be smaller than the original.</summary>
+    public const string VerificationRequireSizeReduction = "verification.requireSizeReduction";
 }

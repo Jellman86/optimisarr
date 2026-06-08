@@ -15,6 +15,21 @@ export type ToolCheck = {
   error: string | null
 }
 
+export type EncoderCapability = {
+  name: string
+  codec: string
+  mode: string
+  available: boolean
+}
+
+export type HardwareCapability = {
+  hardwareAccelerators: string[]
+  encoders: EncoderCapability[]
+  nvidiaRuntimeAvailable: boolean
+  driDeviceAvailable: boolean
+  error: string | null
+}
+
 export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
@@ -60,6 +75,24 @@ export type LibraryOptions = {
 
 export type Settings = {
   maxConcurrentJobs: number
+  scheduleEnabled: boolean
+  scheduleWindowStart: string
+  scheduleWindowEnd: string
+  minFreeDiskBytes: number
+  cpuThreadLimit: number
+  encoderMode: string
+  verificationDurationTolerancePercent: number
+  verificationRequireAudioRetained: boolean
+  verificationRequireSubtitlesRetained: boolean
+  verificationRequireSizeReduction: boolean
+}
+
+export type QueueStatus = Settings & {
+  canStart: boolean
+  blockedReason: string | null
+  runningJobs: number
+  freeDiskBytes: number | null
+  workRoot: string
 }
 
 export type VerificationCheck = {
@@ -175,6 +208,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<Health>('/api/health'),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
+  hardware: () => request<{ hardware: HardwareCapability }>('/api/system/hardware').then((r) => r.hardware),
 
   libraryOptions: () => request<LibraryOptions>('/api/library-options'),
   libraries: () => request<Library[]>('/api/libraries'),
@@ -201,6 +235,7 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  queueStatus: () => request<QueueStatus>('/api/queue/status'),
 
   jobs: () => request<Job[]>('/api/jobs'),
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),

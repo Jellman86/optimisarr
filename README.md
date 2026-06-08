@@ -13,11 +13,19 @@ Early development. What works today:
 - Recursive, settling-aware **scanning** that builds a media inventory (idempotent).
 - **ffprobe** inspection of individual files (codec, resolution, duration, tracks).
 - FFmpeg/ffprobe **tool detection** and a health endpoint.
-- Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Tools).
+- Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Tools,
+  Queue, Quarantine, Settings).
+- Queue resource controls: max concurrent jobs, CPU thread limits, processing
+  windows, and free work-disk safety pause.
+- Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
+  NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
+- Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.
+- Configurable verification gates for duration tolerance, audio/subtitle
+  retention, and required size reduction.
 
-Not built yet (see the [roadmap](docs/roadmap.md)): candidate rules, the
-transcode queue and worker, verification, safe replacement/rollback, scheduling,
-and GPU encoder selection.
+Not built yet (see the [roadmap](docs/roadmap.md)): optional service-activity
+pauses, configurable replacement/quarantine policy, hardware-specific encoder
+quality notes, and library integrations.
 
 ## Quick start (Docker)
 

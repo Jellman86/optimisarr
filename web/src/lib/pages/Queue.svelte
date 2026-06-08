@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { api, type Job, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type Job, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize } from '../format'
   import { router } from '../stores/ui.svelte'
 
   let jobs = $state<Job[]>([])
+  let queueStatus = $state<QueueStatus | null>(null)
   let error = $state<string | null>(null)
   let loading = $state(true)
   let cancellingId = $state<number | null>(null)
@@ -19,7 +20,9 @@
 
   async function load() {
     try {
-      jobs = await api.jobs()
+      const [nextJobs, nextStatus] = await Promise.all([api.jobs(), api.queueStatus()])
+      jobs = nextJobs
+      queueStatus = nextStatus
       error = null
     } catch (err) {
       error = err instanceof Error ? err.message : 'Unable to load jobs'
@@ -107,6 +110,17 @@
 
 {#if error}
   <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+{/if}
+
+{#if queueStatus && !queueStatus.canStart}
+  <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+    Queue dispatch is paused: {queueStatus.blockedReason}
+  </div>
+{:else if queueStatus}
+  <div class="card mb-4 p-3 text-xs text-slate-500 dark:text-slate-400">
+    Dispatch ready · {queueStatus.runningJobs}/{queueStatus.maxConcurrentJobs} running · work free:
+    {queueStatus.freeDiskBytes === null ? 'unknown' : formatSize(queueStatus.freeDiskBytes)}
+  </div>
 {/if}
 
 {#if loading}

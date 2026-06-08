@@ -49,9 +49,15 @@ the replacement workflow is trustworthy.
   and removes the replacement. Pure `ReplacementPlanner` and the replace/rollback
   service are unit tested; originals are retained in quarantine (no auto-purge yet).
   Surfaced via the Queue **Replace** action and the new **Quarantine** page.
-- **Next: Phase 6 (Scheduling and Resource Controls)** — processing windows, CPU
-  thread limits, disk-space safety pause, and making verification/replacement
-  policy configurable (today's thresholds are fixed defaults).
+- **Phase 6 (Scheduling and Resource Controls): in progress.** Processing
+  windows, global max concurrent jobs, CPU thread limits, and disk-space safety
+  pause are wired into queue dispatch/FFmpeg arguments and surfaced in
+  Settings/Queue. Running jobs are never interrupted; the gates only decide
+  whether new jobs may start. Hardware capability detection for FFmpeg
+  accelerators and encoders is surfaced on Tools, and global encoder mode
+  selection is wired into generated FFmpeg arguments. Verification policy is
+  configurable from Settings. Still to come: optional service activity pauses and
+  configurable replacement/quarantine policy.
 
 ## Guiding principles
 
@@ -220,13 +226,14 @@ Goal: make the app safe to run continuously on a home server.
 
 Deliverables:
 
-- Processing windows.
-- Max concurrent jobs, initially defaulting to 1.
-- CPU thread limits.
-- GPU/CPU worker mode selection.
-- Pause while disk free space is below threshold.
+- Processing windows. **Done.**
+- Max concurrent jobs, initially defaulting to 1. **Done.**
+- CPU thread limits. **Done.**
+- GPU/CPU worker mode selection. **Done.**
+- Pause while disk free space is below threshold. **Done.**
 - Pause while configured services are active, optional later.
-- Per-library priority.
+- Per-library priority. **Done.**
+- Configurable verification policy. **Done.**
 
 Exit criteria:
 
@@ -239,7 +246,8 @@ Goal: make hardware encoding discoverable, explicit, and testable.
 
 Deliverables:
 
-- Encoder capability detection:
+- Encoder capability detection: **Done** (FFmpeg hwaccels, known encoder
+  availability, NVIDIA runtime, `/dev/dri` mapping surfaced on Tools).
   - CPU x264/x265
   - NVIDIA NVENC
   - Intel QSV
@@ -249,8 +257,10 @@ Deliverables:
 - Compose examples:
   - NVIDIA GPU reservation
   - `/dev/dri` Intel/AMD mapping
-- Encoder presets with quality/speed notes.
-- Startup warnings when selected GPU mode is unavailable.
+- Encoder presets with quality/speed notes. **Partly done** (CPU presets exist;
+  hardware-specific notes still to come).
+- Startup warnings when selected GPU mode is unavailable. **Done for jobs** (jobs
+  fail before FFmpeg starts with a clear unavailable-encoder reason).
 
 Exit criteria:
 

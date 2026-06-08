@@ -25,14 +25,24 @@ public static class FfmpegCommandBuilder
         "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable," +
         "zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
 
-    public static IReadOnlyList<string> Build(TranscodeSpec spec)
+    /// <param name="threads">
+    /// CPU thread cap for encoding; <c>0</c> (or less) lets ffmpeg decide. Surfaced
+    /// as a global option so it applies to a remux copy as well as a re-encode.
+    /// </param>
+    public static IReadOnlyList<string> Build(TranscodeSpec spec, int threads = 0, string? videoEncoder = null)
     {
-        var args = new List<string>
+        var args = new List<string> { "-y" };
+
+        if (threads > 0)
         {
-            "-y",
-            "-i", spec.InputPath,
-            "-map", "0"
-        };
+            args.Add("-threads");
+            args.Add(threads.ToString());
+        }
+
+        args.Add("-i");
+        args.Add(spec.InputPath);
+        args.Add("-map");
+        args.Add("0");
 
         if (spec.VideoCodec is null)
         {
@@ -49,7 +59,7 @@ public static class FfmpegCommandBuilder
             }
 
             args.Add("-c:v");
-            args.Add(EncoderFor(spec.VideoCodec));
+            args.Add(videoEncoder ?? EncoderFor(spec.VideoCodec));
 
             if (spec.Crf is { } crf)
             {
