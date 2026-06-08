@@ -46,7 +46,7 @@
   >
     <div class="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
       <h2 class="font-semibold text-slate-800 dark:text-slate-100">Choose a folder</h2>
-      <button class="btn !border-0 !bg-transparent px-2" onclick={onClose} aria-label="Close">✕</button>
+      <button class="btn btn-ghost px-2" onclick={onClose} aria-label="Close">✕</button>
     </div>
 
     <div class="border-b border-slate-200 p-3 dark:border-slate-700">

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### UI: consistent control primitives
+
+- Polished and unified the form controls into a small, consistent set: every
+  button, input, select, and checkbox now shares one emerald focus ring, selects
+  draw a custom chevron instead of the raw OS widget, and a new `Toggle` switch
+  replaces bare checkboxes for on/off feature settings (with the whole row
+  clickable and keyboard-operable). Added a `.btn-ghost` variant, replacing the
+  ad-hoc `!border-0 !bg-transparent` overrides in the sidebar and folder picker.
+- Simplified the Settings page: the two duplicate Save buttons became a single
+  Save action, and Replacement moved out of the Verification card into its own
+  section so each card covers one concern.
+
 ### Safe replacement: cross-filesystem guard
 
 - Replacement now refuses by default to fall back to a cross-filesystem

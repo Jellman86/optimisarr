@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Library, type LibraryOptions, type SaveLibrary } from '../api'
   import FolderPicker from '../components/FolderPicker.svelte'
+  import Toggle from '../components/Toggle.svelte'
 
   let libraries = $state<Library[]>([])
   let options = $state<LibraryOptions>({
@@ -314,8 +315,8 @@
     <div class="sm:col-span-2">
       <div class="mb-1 flex items-center justify-between">
         <label class="label mb-0" for="lib-crf">Quality (CRF)</label>
-        <label class="flex items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
-          <input type="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
+        <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+          <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
           Set custom quality
         </label>
       </div>
@@ -356,13 +357,11 @@
   </div>
 
   <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Completed output</h3>
-  <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-    <input type="checkbox" bind:checked={form.moveOnComplete} /> Move output to a target folder when complete
-  </label>
-  <p class="mt-1 text-xs text-slate-400">
-    Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder
-    below (your originals are never touched) — useful for testing without re-copying source files.
-  </p>
+  <Toggle
+    bind:checked={form.moveOnComplete}
+    label="Move output to a target folder when complete"
+    hint="Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — your originals are never touched. Useful for testing without re-copying source files."
+  />
   {#if form.moveOnComplete}
     <div class="mt-3 max-w-xl">
       <label class="label" for="lib-target">Target folder</label>
@@ -373,9 +372,9 @@
     </div>
   {/if}
 
-  <label class="mt-5 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-    <input type="checkbox" bind:checked={form.enabled} /> Enabled (included in scans)
-  </label>
+  <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
+    <Toggle bind:checked={form.enabled} label="Enabled" hint="Included in scans and eligible for the queue." />
+  </div>
   <div class="mt-5 flex gap-2">
     <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path}>Save</button>
     <button class="btn" onclick={cancelEdit}>Cancel</button>

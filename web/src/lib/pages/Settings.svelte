@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Settings } from '../api'
   import { formatSize } from '../format'
+  import Toggle from '../components/Toggle.svelte'
 
   let settings = $state<Settings>({
     maxConcurrentJobs: 1,
@@ -79,8 +80,6 @@
 
 {#if error}
   <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
-{:else if message}
-  <div class="card mb-4 border-emerald-300 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{message}</div>
 {/if}
 
 {#if loading}
@@ -132,11 +131,12 @@
     </div>
 
     <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <label class="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-        <input type="checkbox" bind:checked={settings.scheduleEnabled} />
-        Restrict new jobs to a processing window
-      </label>
-      <div class="grid gap-4 sm:grid-cols-2">
+      <Toggle
+        bind:checked={settings.scheduleEnabled}
+        label="Restrict new jobs to a processing window"
+        hint="Outside the window, running jobs finish but no new ones start."
+      />
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
           <label class="label" for="window-start">Window start</label>
           <input id="window-start" class="input" type="time" bind:value={settings.scheduleWindowStart} disabled={!settings.scheduleEnabled} />
@@ -150,14 +150,13 @@
         A start and end of 00:00 means all day. Overnight windows such as 22:00 to 06:00 are supported.
       </p>
     </div>
-
-    <div class="mt-5">
-      <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving' : 'Save'}</button>
-    </div>
   </div>
 
   <div class="card mt-5 max-w-2xl p-5">
-    <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">Verification gates</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Verification gates</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      Decode health, output readability, and a video stream are always required. These add extra gates.
+    </p>
     <div class="max-w-xs">
       <label class="label" for="duration-tolerance">Duration tolerance</label>
       <div class="flex items-center gap-2">
@@ -173,46 +172,42 @@
       </div>
     </div>
 
-    <div class="mt-5 grid gap-3 text-sm text-slate-700 dark:text-slate-200">
-      <label class="flex items-center gap-2">
-        <input type="checkbox" bind:checked={settings.verificationRequireAudioRetained} />
-        Require all audio tracks to be retained
-      </label>
-      <label class="flex items-center gap-2">
-        <input type="checkbox" bind:checked={settings.verificationRequireSubtitlesRetained} />
-        Require all subtitle tracks to be retained
-      </label>
-      <label class="flex items-center gap-2">
-        <input type="checkbox" bind:checked={settings.verificationRequireSizeReduction} />
-        Require output to be smaller than the original
-      </label>
+    <div class="mt-5 grid gap-4 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle bind:checked={settings.verificationRequireAudioRetained} label="Require all audio tracks to be retained" />
+      <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label="Require all subtitle tracks to be retained" />
+      <Toggle bind:checked={settings.verificationRequireSizeReduction} label="Require output to be smaller than the original" />
     </div>
+  </div>
 
-    <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
-      Decode health, output readability, and a video stream are always required.
+  <div class="card mt-5 max-w-2xl p-5">
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Replacement</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      How verified outputs take the place of your originals.
     </p>
-
-    <h3 class="mt-6 text-sm font-semibold text-slate-900 dark:text-slate-100">Replacement</h3>
-    <div class="mt-3 grid gap-3 text-sm text-slate-700 dark:text-slate-200">
-      <label class="flex items-center gap-2">
-        <input type="checkbox" bind:checked={settings.replacementAllowCrossFilesystem} />
-        Allow cross-filesystem replacement (copy-plus-delete instead of atomic move)
-      </label>
+    <Toggle
+      bind:checked={settings.replacementAllowCrossFilesystem}
+      label="Allow cross-filesystem replacement"
+      hint="Falls back to copy-plus-delete instead of an atomic move. Off is safer; enable only for intentional split-mount layouts."
+    />
+    <div class="mt-5 max-w-xs border-t border-slate-200 pt-5 dark:border-slate-800">
+      <label class="label" for="quarantine-retention">Quarantine retention</label>
       <div class="flex items-center gap-2">
-        <span>Quarantine retention</span>
         <input
-          class="input w-24"
+          id="quarantine-retention"
+          class="input"
           type="number"
           min="0"
           step="1"
           bind:value={settings.replacementQuarantineRetentionDays}
         />
-        <span class="text-sm text-slate-500 dark:text-slate-400">days (0 = keep indefinitely)</span>
+        <span class="text-sm text-slate-500 dark:text-slate-400">days</span>
       </div>
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">How long quarantined originals are kept. Set 0 to keep them indefinitely.</p>
     </div>
+  </div>
 
-    <div class="mt-5">
-      <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving' : 'Save'}</button>
-    </div>
+  <div class="mt-5 flex max-w-2xl items-center gap-3">
+    <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
+    {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
   </div>
 {/if}
