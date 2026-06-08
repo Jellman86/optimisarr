@@ -27,9 +27,12 @@ the replacement workflow is trustworthy.
   `JobScheduler` (priority-then-FIFO, global `maxConcurrentJobs`), a pure
   `FfmpegCommandBuilder`/`TranscodeSpecResolver`, and a single-writer
   `QueueDispatcher` background worker that runs ffmpeg out-of-process with
-  cancellation, live progress over SignalR, and crash recovery. Enqueue from a
-  library's eligible candidates; manage from the Queue page. Outputs land in
-  `/work` as `ReadyToReplace` — originals are never touched.
+  cancellation and crash recovery. Live progress is pushed to the SignalR client
+  in the Queue UI: a determinate bar with encode speed and ETA while
+  transcoding (parsed by a pure, unit-tested `FfmpegProgressParser`) and an
+  indeterminate sweep for the probing/verifying phases. Enqueue from a library's
+  eligible candidates; manage from the Queue page. Outputs land in `/work` as
+  `ReadyToReplace` — originals are never touched.
 - **Phase 4 (Verification): done.** A clean ffmpeg exit no longer trusts the
   output. The worker runs a real `Verifying` step — a full-decode health check
   (`DecodeHealthCheck`), an output ffprobe, and a comparison against the original —
@@ -287,7 +290,100 @@ Exit criteria:
 - Replaced media can trigger downstream library refreshes.
 - Integrations remain optional and disabled by default.
 
-## Phase 9: Release Hardening
+## Phase 9: Gold-Standard Health Verification
+
+Goal: raise verification from "the output decodes and roughly matches" to a
+defensible, evidence-backed guarantee that the converted file is as good as it
+needs to be — so replacing an original is a decision the user can fully trust.
+This deepens Phase 4 rather than replacing it; every existing gate stays.
+
+Deliverables:
+
+- **Perceptual/structural quality scoring** of the output against the original:
+  VMAF (with model selection), plus SSIM and PSNR as corroborating signals,
+  computed by FFmpeg's `libvmaf`/filters and parsed by a pure, unit-tested
+  evaluator. A configurable minimum VMAF gate (conservative default) blocks
+  replacement when quality drops too far.
+- **Per-frame decode integrity**, not just a single full-decode pass: count and
+  surface decoder errors/corrupt frames, dropped/duplicated frames, and any
+  packet-level read errors over the whole file.
+- **Container and stream integrity**: A/V sync drift within tolerance, monotonic
+  timestamps, no truncated/partial last GOP, correct frame count within
+  tolerance, and color metadata (primaries/transfer/matrix, HDR10/HDR10+/Dolby
+  Vision side data) preserved or intentionally transformed.
+- **Audio fidelity checks** appropriate to the operation: channel layout and
+  sample-rate retention, loudness (EBU R128) drift within tolerance, and no
+  clipping introduced.
+- **Per-rule-profile thresholds** so an "archive" profile can demand near-lossless
+  scores while a "space-saver" profile accepts more, all surfaced in the
+  `VerificationReport` with the measured numbers, not just pass/fail.
+
+Exit criteria:
+
+- A passing report includes measured quality scores (e.g. VMAF) and integrity
+  counts, and a configurable quality gate can fail a job that decodes cleanly but
+  looks materially worse than the original.
+- All scoring logic is pure and unit tested against captured FFmpeg output; no
+  live FFmpeg in tests.
+
+## Phase 10: Multi-Media Optimisation (Video, Audio, Images)
+
+Goal: extend the same safe pipeline — candidate rules, transcode, gold-standard
+verification, quarantine/rollback — from video to **audio-only files and
+images**, so a library of music or photos benefits from the same guarantees.
+
+Deliverables:
+
+- **Media-kind detection** in scanning/probe so each file is classified as video,
+  audio, or image, with kind-specific inventory columns.
+- **Audio optimisation**: target codec/bitrate/sample-rate rules (e.g. lossless →
+  efficient lossy or re-pack), with verification on loudness, channel layout,
+  duration, and decode health. Tag/metadata and embedded-art preservation.
+- **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
+  with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
+  as verification gates; configurable max-dimension downscaling.
+- **Per-kind rule profiles and encoder settings**, reusing the existing
+  per-library override model.
+- Pure, unit-tested resolvers/evaluators per kind; the worker dispatches by media
+  kind to the right command builder and verifier.
+
+Exit criteria:
+
+- A user can point a library at music or photos, see kind-appropriate candidates,
+  and run optimise → verify → replace with rollback, never losing an original.
+- Image/audio verification gates block replacement on quality or metadata loss.
+
+## Phase 11: Settings Preview and Compare
+
+Goal: let a user *try* a library's configured settings on a real file and see the
+result before committing — a temporary, throwaway optimisation shown side by side
+with the original, with hard numbers, so tuning settings is empirical instead of
+guesswork.
+
+Deliverables:
+
+- **One-off preview job**: optimise a chosen file (or a representative sample/clip
+  to keep it fast) into a temporary location using the library's resolved
+  settings, never touching the original and never entering the replace flow;
+  auto-cleaned afterwards.
+- **Side-by-side compare UI**: original vs optimised players in sync (or matched
+  frame thumbnails), plus a statistics panel — file size and % change, bitrate,
+  codec/container, resolution, audio layout, and the Phase 9 quality scores
+  (VMAF/SSIM) and verification summary.
+- **Clip mode** to preview just a segment (e.g. 60 s) for a fast turnaround on
+  large files, with an explicit note that scores are for the sampled segment.
+- **Apply-from-preview**: if happy, the same settings are already saved; the
+  preview output is discarded and the real queue run uses them.
+- Pure helpers for the comparison statistics; the temporary-job lifecycle reuses
+  the existing worker with a "preview" job type that is exempt from replacement.
+
+Exit criteria:
+
+- A user can preview settings on a file, watch original vs optimised side by side,
+  read the size/quality deltas, and decide — with the original guaranteed
+  untouched and the preview artifact cleaned up.
+
+## Phase 12: Release Hardening
 
 Goal: make the first public image safe for real libraries.
 
