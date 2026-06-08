@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Current status (2026-06-07)
+## Current status (2026-06-08)
 
 - **Phase 0 (Foundation): done.** Repo, three .NET projects + Svelte UI, Docker
   image building and publishing to GHCR via CI, health endpoint, SQLite under
@@ -30,9 +30,19 @@ the replacement workflow is trustworthy.
   cancellation, live progress over SignalR, and crash recovery. Enqueue from a
   library's eligible candidates; manage from the Queue page. Outputs land in
   `/work` as `ReadyToReplace` — originals are never touched.
-- **Next: Phase 4 (Verification)** — prove a converted output is healthy
-  (full-decode check, duration tolerance, stream policy, size saving) before a job
-  may move past `ReadyToReplace` toward replacement.
+- **Phase 4 (Verification): done.** A clean ffmpeg exit no longer trusts the
+  output. The worker runs a real `Verifying` step — a full-decode health check
+  (`DecodeHealthCheck`), an output ffprobe, and a comparison against the original —
+  and feeds the evidence to a pure, unit-tested `VerificationEvaluator`. The
+  `VerificationReport` (decode health, output readable, video stream present,
+  duration tolerance, audio/subtitle retention, size saving) is persisted on the
+  job and surfaced on the Queue page. Only a passing report advances toward
+  replacement; a failure marks the job `Failed` with the output retained for
+  inspection and the original untouched. Thresholds are fixed conservative
+  defaults for now (`VerificationPolicy.Default`).
+- **Next: Phase 5 (Safe Replacement and Rollback)** — quarantine originals under
+  `/trash`, replace with the verified output (atomic where possible, copy+verify
+  otherwise), record a reversible replacement transaction, and expose rollback.
 
 ## Guiding principles
 

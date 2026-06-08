@@ -14,6 +14,10 @@ public sealed record JobDto(
     double Progress,
     string? ErrorMessage,
     string? FfmpegArguments,
+    long? OutputSizeBytes,
+    bool? VerificationPassed,
+    string? VerificationReportJson,
+    DateTimeOffset? VerifiedAt,
     DateTimeOffset EnqueuedAt,
     DateTimeOffset? StartedAt,
     DateTimeOffset? FinishedAt);
@@ -41,6 +45,10 @@ public static class JobQueries
                 job.Progress,
                 job.ErrorMessage,
                 job.FfmpegArguments,
+                job.OutputSizeBytes,
+                job.VerificationPassed,
+                job.VerificationReportJson,
+                job.VerifiedAt,
                 job.EnqueuedAt,
                 job.StartedAt,
                 job.FinishedAt))

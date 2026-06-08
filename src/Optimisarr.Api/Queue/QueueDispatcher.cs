@@ -1,12 +1,15 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -21,10 +24,17 @@ public sealed partial class QueueDispatcher(
     IServiceScopeFactory scopeFactory,
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
+    VerificationService verification,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private const int MaxAttempts = 3;
+
+    private static readonly JsonSerializerOptions ReportJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     private readonly string _workRoot = ResolveWorkRoot(environment);
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
@@ -196,7 +206,7 @@ public sealed partial class QueueDispatcher(
 
             if (run.ExitCode == 0)
             {
-                await FinishSuccessfulJobAsync(jobId, spec.OutputPath, work.Value);
+                await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
             }
             else
             {
@@ -229,7 +239,8 @@ public sealed partial class QueueDispatcher(
         IReadOnlyList<string> Arguments,
         double? DurationSeconds,
         bool MoveOnComplete,
-        string? TargetFolder)
+        string? TargetFolder,
+        OriginalSnapshot Original)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -267,12 +278,19 @@ public sealed partial class QueueDispatcher(
             library?.QualityCrf,
             library?.EncoderPreset);
 
+        var original = new OriginalSnapshot(
+            media.SizeBytes,
+            media.DurationSeconds,
+            media.AudioTrackCount ?? 0,
+            media.SubtitleTrackCount ?? 0);
+
         return new JobWork(
             spec,
             FfmpegCommandBuilder.Build(spec),
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
-            library?.TargetFolder);
+            library?.TargetFolder,
+            original);
     }
 
     private sealed record FfmpegRun(int ExitCode, string? Error);
@@ -401,6 +419,44 @@ public sealed partial class QueueDispatcher(
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
+
+    // A clean ffmpeg exit only means the transcode ran; it does not mean the output
+    // is sound. Verification is the gate to ReadyToReplace: a full-decode health
+    // check plus duration/stream/size comparison against the original. A failed
+    // report leaves the job Failed with the output retained for inspection — the
+    // original is never touched either way.
+    private async Task VerifyAndFinishAsync(int jobId, string outputPath, JobWork work, CancellationToken cancellationToken)
+    {
+        await WithJobAsync(jobId, job =>
+        {
+            job.Status = JobStatus.Verifying;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, cancellationToken);
+        await NotifyAsync();
+
+        var outcome = await verification.VerifyAsync(
+            work.Original, outputPath, VerificationPolicy.Default, cancellationToken);
+        var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
+
+        await WithJobAsync(jobId, job =>
+        {
+            job.OutputSizeBytes = outcome.OutputSizeBytes;
+            job.VerificationReportJson = reportJson;
+            job.VerificationPassed = outcome.Report.Passed;
+            job.VerifiedAt = DateTimeOffset.UtcNow;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, CancellationToken.None);
+
+        if (!outcome.Report.Passed)
+        {
+            var failed = outcome.Report.Checks.Where(check => check.Outcome == CheckOutcome.Failed);
+            var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
+            await CompleteAsync(jobId, JobStatus.Failed, error: summary);
+            return;
+        }
+
+        await FinishSuccessfulJobAsync(jobId, outputPath, work);
+    }
 
     // On success the original is never touched. If the library collects outputs in a
     // target folder, move our work output there and mark the job Completed; otherwise

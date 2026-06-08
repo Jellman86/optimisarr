@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { api, type Job } from '../api'
+  import { api, type Job, type VerificationCheck, type VerificationReport } from '../api'
 
   let jobs = $state<Job[]>([])
   let error = $state<string | null>(null)
   let loading = $state(true)
   let cancellingId = $state<number | null>(null)
+  let expandedId = $state<number | null>(null)
 
   // Active jobs change quickly, so poll while this page is mounted.
   $effect(() => {
@@ -48,7 +49,6 @@
       case 'Verifying':
         return 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
       case 'ReadyToReplace':
-        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
       case 'Completed':
         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
       case 'Failed':
@@ -60,13 +60,35 @@
     }
   }
 
+  function parseReport(job: Job): VerificationCheck[] | null {
+    if (!job.verificationReportJson) return null
+    try {
+      const report = JSON.parse(job.verificationReportJson) as VerificationReport
+      return report.checks ?? null
+    } catch {
+      return null
+    }
+  }
+
+  function toggle(job: Job) {
+    if (!parseReport(job)) return
+    expandedId = expandedId === job.id ? null : job.id
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes <= 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+  }
+
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
 </script>
 
 <header class="mb-6">
   <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Queue</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400">
-    Transcode jobs. Outputs are written to the work directory — your originals are never touched.
+    Transcode jobs. Outputs are verified before they are marked ready — your originals are never touched.
     {#if activeCount > 0}<span class="text-slate-400"> · {activeCount} active</span>{/if}
   </p>
 </header>
@@ -85,12 +107,14 @@
           <th class="px-4 py-3">Status</th>
           <th class="px-4 py-3">File</th>
           <th class="px-4 py-3 w-48">Progress</th>
+          <th class="px-4 py-3">Verification</th>
           <th class="px-4 py-3">Priority</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
         {#each jobs as job (job.id)}
+          {@const checks = parseReport(job)}
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{job.status}</span></td>
             <td class="max-w-xs truncate px-4 py-2 font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</td>
@@ -102,8 +126,24 @@
                   </div>
                   <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
                 </div>
+              {:else if job.status === 'Verifying'}
+                <span class="text-xs text-sky-600 dark:text-sky-400">verifying…</span>
               {:else if job.status === 'Failed' && job.errorMessage}
                 <span class="text-xs text-red-600" title={job.errorMessage}>error</span>
+              {:else}
+                <span class="text-xs text-slate-400">—</span>
+              {/if}
+            </td>
+            <td class="px-4 py-2">
+              {#if checks}
+                <button
+                  class="text-xs font-medium hover:underline {job.verificationPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}"
+                  onclick={() => toggle(job)}
+                >
+                  {job.verificationPassed ? '✓ passed' : '✗ failed'}
+                  {#if job.outputSizeBytes}<span class="text-slate-400"> · {formatBytes(job.outputSizeBytes)}</span>{/if}
+                  <span class="text-slate-400">{expandedId === job.id ? ' ▾' : ' ▸'}</span>
+                </button>
               {:else}
                 <span class="text-xs text-slate-400">—</span>
               {/if}
@@ -117,6 +157,23 @@
               {/if}
             </td>
           </tr>
+          {#if expandedId === job.id && checks}
+            <tr class="bg-slate-50 dark:bg-slate-900/40">
+              <td colspan="6" class="px-4 py-3">
+                <ul class="space-y-1.5">
+                  {#each checks as check (check.name)}
+                    <li class="flex items-start gap-2 text-xs">
+                      <span class={check.outcome === 'Passed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+                        {check.outcome === 'Passed' ? '✓' : '✗'}
+                      </span>
+                      <span class="w-32 shrink-0 font-medium text-slate-600 dark:text-slate-300">{check.name}</span>
+                      <span class="text-slate-500 dark:text-slate-400">{check.detail}</span>
+                    </li>
+                  {/each}
+                </ul>
+              </td>
+            </tr>
+          {/if}
         {/each}
       </tbody>
     </table>

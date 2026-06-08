@@ -5,6 +5,7 @@ using Optimisarr.Api.Realtime;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Tools;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,8 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<ToolDetectionService>();
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
+builder.Services.AddSingleton<DecodeHealthCheck>();
+builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();

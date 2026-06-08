@@ -62,6 +62,16 @@ export type Settings = {
   maxConcurrentJobs: number
 }
 
+export type VerificationCheck = {
+  name: string
+  outcome: 'Passed' | 'Failed'
+  detail: string
+}
+
+export type VerificationReport = {
+  checks: VerificationCheck[]
+}
+
 export type Job = {
   id: number
   mediaFileId: number
@@ -72,6 +82,10 @@ export type Job = {
   progress: number
   errorMessage: string | null
   ffmpegArguments: string | null
+  outputSizeBytes: number | null
+  verificationPassed: boolean | null
+  verificationReportJson: string | null
+  verifiedAt: string | null
   enqueuedAt: string
   startedAt: string | null
   finishedAt: string | null

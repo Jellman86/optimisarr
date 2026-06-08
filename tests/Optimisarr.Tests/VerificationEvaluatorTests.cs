@@ -1,0 +1,166 @@
+using Optimisarr.Core.Verification;
+
+namespace Optimisarr.Tests;
+
+public sealed class VerificationEvaluatorTests
+{
+    // A converted output that passes every default gate: decodes cleanly, probes,
+    // keeps duration and audio, and is meaningfully smaller than the original.
+    private static VerificationInput Healthy() => new(
+        DecodeSucceeded: true,
+        DecodeError: null,
+        OutputProbeSucceeded: true,
+        OutputProbeError: null,
+        OutputVideoCodec: "hevc",
+        OriginalSizeBytes: 1_000_000_000,
+        OutputSizeBytes: 600_000_000,
+        OriginalDurationSeconds: 3600,
+        OutputDurationSeconds: 3600,
+        OriginalAudioTrackCount: 2,
+        OutputAudioTrackCount: 2,
+        OriginalSubtitleTrackCount: 1,
+        OutputSubtitleTrackCount: 1);
+
+    private static CheckOutcome Outcome(VerificationReport report, string name) =>
+        report.Checks.Single(check => check.Name == name).Outcome;
+
+    [Fact]
+    public void A_healthy_output_passes_every_check()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.All(report.Checks, check => Assert.Equal(CheckOutcome.Passed, check.Outcome));
+    }
+
+    [Fact]
+    public void Decode_failure_fails_verification()
+    {
+        var input = Healthy() with { DecodeSucceeded = false, DecodeError = "corrupt frame" };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Decode health"));
+    }
+
+    [Fact]
+    public void Unreadable_output_fails_verification()
+    {
+        var input = Healthy() with { OutputProbeSucceeded = false, OutputProbeError = "invalid data" };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Output readable"));
+        Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void Missing_video_stream_fails_verification()
+    {
+        var input = Healthy() with { OutputVideoCodec = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video stream"));
+    }
+
+    [Fact]
+    public void Duration_drift_within_tolerance_passes()
+    {
+        // 18s of 3600s is 0.5%, under the 1% default tolerance.
+        var input = Healthy() with { OutputDurationSeconds = 3582 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
+    }
+
+    [Fact]
+    public void Duration_drift_beyond_tolerance_fails()
+    {
+        // 90s of 3600s is 2.5%, over the 1% default tolerance.
+        var input = Healthy() with { OutputDurationSeconds = 3510 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Duration"));
+    }
+
+    [Fact]
+    public void Unknown_durations_fail_the_duration_check()
+    {
+        var noOriginal = Healthy() with { OriginalDurationSeconds = null };
+        var noOutput = Healthy() with { OutputDurationSeconds = null };
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(
+            VerificationEvaluator.Evaluate(noOriginal, VerificationPolicy.Default), "Duration"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(
+            VerificationEvaluator.Evaluate(noOutput, VerificationPolicy.Default), "Duration"));
+    }
+
+    [Fact]
+    public void Lost_audio_track_fails_when_retention_is_required()
+    {
+        var input = Healthy() with { OutputAudioTrackCount = 1 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
+    public void Lost_audio_track_passes_when_retention_is_not_required()
+    {
+        var input = Healthy() with { OutputAudioTrackCount = 1 };
+        var policy = VerificationPolicy.Default with { RequireAudioRetained = false };
+
+        var report = VerificationEvaluator.Evaluate(input, policy);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
+    public void Lost_subtitles_pass_by_default_but_fail_when_required()
+    {
+        var input = Healthy() with { OutputSubtitleTrackCount = 0 };
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(
+            VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Subtitle tracks"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(
+            VerificationEvaluator.Evaluate(input, VerificationPolicy.Default with { RequireSubtitlesRetained = true }),
+            "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void Output_that_is_not_smaller_fails_the_size_check()
+    {
+        var input = Healthy() with { OutputSizeBytes = 1_200_000_000 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Size saving"));
+    }
+
+    [Fact]
+    public void Equal_size_fails_when_reduction_required_but_passes_when_not()
+    {
+        var input = Healthy() with { OutputSizeBytes = 1_000_000_000 };
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(
+            VerificationEvaluator.Evaluate(input, VerificationPolicy.Default), "Size saving"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(
+            VerificationEvaluator.Evaluate(input, VerificationPolicy.Default with { RequireSizeReduction = false }),
+            "Size saving"));
+    }
+
+    [Fact]
+    public void Empty_output_fails_the_size_check()
+    {
+        var input = Healthy() with { OutputSizeBytes = 0 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Size saving"));
+    }
+}

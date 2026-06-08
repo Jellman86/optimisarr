@@ -51,6 +51,19 @@ public sealed class Job
 
     public string? ErrorMessage { get; set; }
 
+    // --- Verification (Phase 4: populated once the output has been verified) ---
+
+    /// <summary>Size of the produced output in bytes, recorded at verification time.</summary>
+    public long? OutputSizeBytes { get; set; }
+
+    /// <summary>Whether the output passed every verification gate. Null until verified.</summary>
+    public bool? VerificationPassed { get; set; }
+
+    /// <summary>The full verification report (per-check outcomes) serialised as JSON for display.</summary>
+    public string? VerificationReportJson { get; set; }
+
+    public DateTimeOffset? VerifiedAt { get; set; }
+
     public DateTimeOffset EnqueuedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? StartedAt { get; set; }

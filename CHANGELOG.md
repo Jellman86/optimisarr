@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Phase 4: verification
+
+- A clean ffmpeg exit no longer sends a job straight to `ReadyToReplace`. The
+  worker now runs a real **`Verifying`** step first: a full software-decode health
+  check (`ffmpeg -v error -xerror -i <output> -f null -`, via the new
+  `DecodeHealthCheck`), an ffprobe of the output, and a comparison against the
+  original. Only a passing report advances the job toward replacement; a failing
+  report marks the job `Failed` with the failed gate names, **retaining the output
+  for inspection**. The original is never touched either way.
+- Added a pure, fully unit-tested `VerificationEvaluator` (in `Optimisarr.Core`)
+  that turns gathered evidence into a `VerificationReport` of per-check outcomes:
+  decode health, output readable, video stream present, duration within tolerance,
+  audio retention, subtitle retention, and size saving. Thresholds live in a
+  conservative `VerificationPolicy.Default` (1% duration tolerance, audio must be
+  retained, output must be smaller; subtitle retention off by default).
+- Added `VerificationService` (the only place verification touches FFmpeg/disk),
+  which gathers the decode + probe results and hands them to the pure evaluator.
+- Persisted the result on the job: `OutputSizeBytes`, `VerificationPassed`,
+  `VerificationReportJson`, and `VerifiedAt` (`AddJobVerification` migration,
+  additive and backwards-safe). Surfaced through `GET /api/jobs`.
+- UI: the **Queue** page gained a Verification column showing pass/fail and the
+  output size, expandable to the full per-check report with reasons.
+
 ### Phase 3: transcode queue (worker)
 
 - Added `JobEnqueueService` + `POST /api/libraries/{id}/enqueue`, which turns a
