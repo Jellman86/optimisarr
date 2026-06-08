@@ -1,10 +1,13 @@
 <script lang="ts">
   import { api, type Job, type VerificationCheck, type VerificationReport } from '../api'
+  import { formatSize } from '../format'
+  import { router } from '../stores/ui.svelte'
 
   let jobs = $state<Job[]>([])
   let error = $state<string | null>(null)
   let loading = $state(true)
   let cancellingId = $state<number | null>(null)
+  let replacingId = $state<number | null>(null)
   let expandedId = $state<number | null>(null)
 
   // Active jobs change quickly, so poll while this page is mounted.
@@ -75,11 +78,20 @@
     expandedId = expandedId === job.id ? null : job.id
   }
 
-  function formatBytes(bytes: number): string {
-    if (bytes <= 0) return '0 B'
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+  async function replace(job: Job) {
+    if (!confirm('Replace the original with the verified output?\n\nThe original is moved to quarantine first and can be rolled back at any time.')) {
+      return
+    }
+    replacingId = job.id
+    try {
+      await api.replaceFromJob(job.id)
+      await load()
+      router.go('/quarantine')
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Replace failed'
+    } finally {
+      replacingId = null
+    }
   }
 
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
@@ -141,7 +153,7 @@
                   onclick={() => toggle(job)}
                 >
                   {job.verificationPassed ? '✓ passed' : '✗ failed'}
-                  {#if job.outputSizeBytes}<span class="text-slate-400"> · {formatBytes(job.outputSizeBytes)}</span>{/if}
+                  {#if job.outputSizeBytes}<span class="text-slate-400"> · {formatSize(job.outputSizeBytes)}</span>{/if}
                   <span class="text-slate-400">{expandedId === job.id ? ' ▾' : ' ▸'}</span>
                 </button>
               {:else}
@@ -150,8 +162,13 @@
             </td>
             <td class="px-4 py-2 text-xs">{job.priority}</td>
             <td class="px-4 py-2 text-right">
+              {#if job.status === 'ReadyToReplace' && job.verificationPassed}
+                <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => replace(job)} disabled={replacingId === job.id}>
+                  {replacingId === job.id ? 'Replacing' : 'Replace'}
+                </button>
+              {/if}
               {#if isActive(job.status)}
-                <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => cancel(job)} disabled={cancellingId === job.id}>
+                <button class="btn btn-danger ml-1 px-3 py-1 text-xs" onclick={() => cancel(job)} disabled={cancellingId === job.id}>
                   {cancellingId === job.id ? 'Cancelling' : 'Cancel'}
                 </button>
               {/if}

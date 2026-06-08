@@ -40,9 +40,18 @@ the replacement workflow is trustworthy.
   replacement; a failure marks the job `Failed` with the output retained for
   inspection and the original untouched. Thresholds are fixed conservative
   defaults for now (`VerificationPolicy.Default`).
-- **Next: Phase 5 (Safe Replacement and Rollback)** — quarantine originals under
-  `/trash`, replace with the verified output (atomic where possible, copy+verify
-  otherwise), record a reversible replacement transaction, and expose rollback.
+- **Phase 5 (Safe Replacement and Rollback): done.** A verified `ReadyToReplace`
+  job can replace its original — the original is quarantined under `/trash` first,
+  then the verified output is moved into place, with a recorded `Replacement` as
+  the rollback path. Moves are atomic on one filesystem and fall back to a verified
+  copy-plus-delete across mounts (reported in the UI). A final-path integrity check
+  and re-probe follow; the job moves to `Completed`. Rollback restores the original
+  and removes the replacement. Pure `ReplacementPlanner` and the replace/rollback
+  service are unit tested; originals are retained in quarantine (no auto-purge yet).
+  Surfaced via the Queue **Replace** action and the new **Quarantine** page.
+- **Next: Phase 6 (Scheduling and Resource Controls)** — processing windows, CPU
+  thread limits, disk-space safety pause, and making verification/replacement
+  policy configurable (today's thresholds are fixed defaults).
 
 ## Guiding principles
 

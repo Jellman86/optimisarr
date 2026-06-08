@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Phase 5: safe replacement and rollback
+
+- A verified `ReadyToReplace` job can now replace its original — the first
+  destructive action in Optimisarr, and a fully reversible one. The original is
+  moved to **quarantine** (`/trash`) *first*, then the verified output is moved
+  into the original's place; the move is recorded as a `Replacement` so it can be
+  rolled back. If any step fails, the original is restored from quarantine, so a
+  failure never loses data.
+- The output takes the original's directory and base name but the output's
+  extension (a transcode may change container, e.g. `.avi` → `.mkv`), computed by
+  the pure, unit-tested `ReplacementPlanner`. Quarantine paths are timestamped so
+  same-named files never collide and rollback always has a unique source.
+- Cross-filesystem aware: an atomic rename is used when source and destination
+  share a filesystem; otherwise a **verified copy-plus-delete** runs (the source is
+  removed only after the copy exists and its size matches). The fallback is
+  recorded and surfaced in the UI as a "copied" badge.
+- After replacement a final-path integrity check confirms the placed file matches
+  the verified output, and the inventory is re-probed from the file now at the
+  original's location. The job moves to `Completed`.
+- **Rollback** restores the original from quarantine and removes the replacement
+  output; the `Replacement` is marked `RolledBack`. Originals are retained in
+  quarantine (never auto-purged) so rollback stays available.
+- Added the `Replacement` entity (`AddReplacements` migration) and endpoints:
+  `POST /api/jobs/{id}/replace`, `GET /api/replacements`,
+  `POST /api/replacements/{id}/rollback`.
+- UI: the **Quarantine** page (nav enabled) lists replacements with size saving,
+  cross-filesystem indicator, and a roll-back action; the **Queue** page gained a
+  **Replace** action on verified `ReadyToReplace` jobs.
+- The compose example documents putting `/trash` on the same filesystem as `/data`
+  so replacement can use an atomic move.
+
 ### Phase 4: verification
 
 - A clean ffmpeg exit no longer sends a job straight to `ReadyToReplace`. The

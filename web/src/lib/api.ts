@@ -97,6 +97,21 @@ export type EnqueueResult = {
   ineligible: number
 }
 
+export type Replacement = {
+  id: number
+  jobId: number
+  mediaFileId: number
+  originalPath: string
+  quarantinePath: string
+  finalPath: string
+  originalSizeBytes: number
+  newSizeBytes: number
+  crossFilesystem: boolean
+  status: 'Replaced' | 'RolledBack'
+  replacedAt: string
+  rolledBackAt: string | null
+}
+
 export type MediaFile = {
   id: number
   libraryId: number
@@ -191,4 +206,10 @@ export const api = {
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
+  replaceFromJob: (id: number) =>
+    request<Replacement>(`/api/jobs/${id}/replace`, { method: 'POST' }),
+
+  replacements: () => request<Replacement[]>('/api/replacements'),
+  rollbackReplacement: (id: number) =>
+    request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
 }

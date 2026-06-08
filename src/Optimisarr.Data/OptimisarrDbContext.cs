@@ -12,6 +12,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<Job> Jobs => Set<Job>();
 
+    public DbSet<Replacement> Replacements => Set<Replacement>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -71,6 +73,24 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             // The scheduler queries by status and orders by priority then enqueue time.
             entity.HasIndex(job => job.Status);
             entity.HasIndex(job => new { job.Priority, job.EnqueuedAt });
+        });
+
+        modelBuilder.Entity<Replacement>(entity =>
+        {
+            entity.HasKey(replacement => replacement.Id);
+            entity.Property(replacement => replacement.OriginalPath).IsRequired().HasMaxLength(1024);
+            entity.Property(replacement => replacement.QuarantinePath).IsRequired().HasMaxLength(1024);
+            entity.Property(replacement => replacement.FinalPath).IsRequired().HasMaxLength(1024);
+            entity.Property(replacement => replacement.Status).HasConversion<string>().HasMaxLength(32);
+
+            // A replacement records destructive moves; keep it even if the job row is
+            // removed, so quarantine and rollback history is never silently lost.
+            entity.HasOne(replacement => replacement.Job)
+                .WithMany()
+                .HasForeignKey(replacement => replacement.JobId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(replacement => replacement.Status);
         });
     }
 }

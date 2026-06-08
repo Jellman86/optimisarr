@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Tools;
@@ -21,6 +22,7 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
+builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 
@@ -435,6 +437,33 @@ app.MapPost("/api/jobs/{id:int}/cancel", async (
     return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
 })
 .WithName("CancelJob");
+
+// Phase 5: safe replacement. A verified ReadyToReplace job can replace its
+// original — the original is quarantined first and the move is recorded so it can
+// always be rolled back.
+app.MapPost("/api/jobs/{id:int}/replace", async (
+    int id,
+    ReplacementService replacement,
+    CancellationToken cancellationToken) =>
+{
+    var result = await replacement.ReplaceAsync(id, cancellationToken);
+    return ReplacementResults.ToHttp(result);
+})
+.WithName("ReplaceFromJob");
+
+app.MapGet("/api/replacements", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+    Results.Ok(await ReplacementQueries.ListAsync(db, cancellationToken)))
+.WithName("ListReplacements");
+
+app.MapPost("/api/replacements/{id:int}/rollback", async (
+    int id,
+    ReplacementService replacement,
+    CancellationToken cancellationToken) =>
+{
+    var result = await replacement.RollbackAsync(id, cancellationToken);
+    return ReplacementResults.ToHttp(result);
+})
+.WithName("RollbackReplacement");
 
 app.MapHub<JobsHub>("/hubs/jobs");
 
