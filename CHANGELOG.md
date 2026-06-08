@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Live queue progress over SignalR
+
+- The Queue page now subscribes to the jobs SignalR hub instead of only polling:
+  the server pushes live transcode telemetry and the UI updates instantly (a slow
+  poll remains as a safety net and to refresh free-disk/running counts).
+- Transcoding rows show a determinate bar with **encode speed and ETA**, parsed
+  from FFmpeg's stderr by a new pure, unit-tested `FfmpegProgressParser`. The
+  probing and verifying phases show an indeterminate sweep, and queued rows read
+  "waiting" — every phase now communicates state instead of a bare dash.
+- Added a `jobProgress` hub event carrying `{ progress, fps, speed, etaSeconds }`
+  so telemetry streams without a database round-trip; `job.Progress` is still
+  persisted for durability.
+
 ### UI: consistent control primitives
 
 - Polished and unified the form controls into a small, consistent set: every

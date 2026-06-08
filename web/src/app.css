@@ -75,4 +75,26 @@ body {
   .badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
   }
+
+  /* Progress bar: a determinate fill for transcoding, an indeterminate sweep for
+     phases without a percentage (probing, verifying). */
+  .progress-track {
+    @apply relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700;
+  }
+  .progress-fill {
+    @apply h-full rounded-full bg-emerald-600 transition-[width] duration-300 ease-out;
+  }
+  .progress-indeterminate {
+    @apply absolute inset-y-0 w-2/5 rounded-full bg-sky-500/70;
+    animation: progress-sweep 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes progress-sweep {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
 }

@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -22,7 +20,7 @@ namespace Optimisarr.Api.Queue;
 /// and running ffmpeg out-of-process. A job only ever writes to the work directory;
 /// it never deletes or overwrites the original — safe replacement is a later phase.
 /// </summary>
-public sealed partial class QueueDispatcher(
+public sealed class QueueDispatcher(
     IServiceScopeFactory scopeFactory,
     IHubContext<JobsHub> hub,
     IHostEnvironment environment,
@@ -43,9 +41,6 @@ public sealed partial class QueueDispatcher(
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
     private readonly SemaphoreSlim _dbLock = new(1, 1);
     private readonly SemaphoreSlim _wake = new(0, 1);
-
-    [GeneratedRegex(@"time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")]
-    private static partial Regex ProgressTime();
 
     /// <summary>Nudges the loop to dispatch immediately (e.g. right after enqueue).</summary>
     public void Wake()
@@ -358,8 +353,8 @@ public sealed partial class QueueDispatcher(
         return new FfmpegRun(process.ExitCode, process.ExitCode == 0 ? null : tail);
     }
 
-    // Reads ffmpeg's stderr, updating progress from "time=" lines (throttled) and
-    // keeping the last few lines for a useful failure message.
+    // Reads ffmpeg's stderr, pushing live progress/speed/ETA from its "time=" lines
+    // (throttled) and keeping the last few lines for a useful failure message.
     private async Task<string?> ReadStderrAsync(
         Process process,
         int jobId,
@@ -378,35 +373,32 @@ public sealed partial class QueueDispatcher(
                 tail.Dequeue();
             }
 
-            if (durationSeconds is > 0 && TryParseElapsed(line, out var elapsed))
+            if (durationSeconds is not > 0)
             {
-                var progress = Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999);
-                if (progress - lastReported >= 0.01)
-                {
-                    lastReported = progress;
-                    await UpdateProgressAsync(jobId, progress);
-                    await NotifyAsync();
-                }
+                continue;
             }
+
+            var sample = FfmpegProgressParser.Parse(line);
+            if (sample.ElapsedSeconds is not { } elapsed)
+            {
+                continue;
+            }
+
+            var progress = Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999);
+            if (progress - lastReported < 0.01)
+            {
+                continue;
+            }
+
+            lastReported = progress;
+            await UpdateProgressAsync(jobId, progress);
+            var eta = sample.Speed is { } speed
+                ? FfmpegProgressParser.EstimateRemainingSeconds(durationSeconds.Value, elapsed, speed)
+                : null;
+            await BroadcastProgressAsync(jobId, progress, sample.Fps, sample.Speed, eta);
         }
 
         return tail.Count > 0 ? string.Join('\n', tail) : null;
-    }
-
-    private static bool TryParseElapsed(string line, out double seconds)
-    {
-        seconds = 0;
-        var match = ProgressTime().Match(line);
-        if (!match.Success)
-        {
-            return false;
-        }
-
-        var hours = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-        var minutes = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
-        var secs = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
-        seconds = (hours * 3600) + (minutes * 60) + secs;
-        return true;
     }
 
     private async Task BeginTranscodeAsync(int jobId, string outputPath, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
@@ -613,6 +605,11 @@ public sealed partial class QueueDispatcher(
     }
 
     private Task NotifyAsync() => hub.Clients.All.SendAsync("jobsChanged");
+
+    // Live transcode telemetry. Sent as a lightweight payload (not persisted beyond
+    // job.Progress) so the UI can move the bar and show speed/ETA without re-fetching.
+    private Task BroadcastProgressAsync(int jobId, double progress, double? fps, double? speed, double? etaSeconds) =>
+        hub.Clients.All.SendAsync("jobProgress", new { jobId, progress, fps, speed, etaSeconds });
 
     private void DeleteWorkOutput(string? path)
     {

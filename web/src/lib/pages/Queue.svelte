@@ -1,34 +1,74 @@
 <script lang="ts">
   import { api, type Job, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
-  import { formatSize } from '../format'
+  import { formatSize, formatDuration } from '../format'
+  import { createJobsConnection, type JobProgress } from '../realtime'
   import { router } from '../stores/ui.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
+  // Live transcode telemetry keyed by job id, pushed over SignalR between reloads.
+  let live = $state<Record<number, JobProgress>>({})
   let error = $state<string | null>(null)
   let loading = $state(true)
   let cancellingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let expandedId = $state<number | null>(null)
 
-  // Active jobs change quickly, so poll while this page is mounted.
+  // Updates arrive over SignalR (jobsChanged + jobProgress). A slow poll is kept
+  // only as a safety net and to refresh queue status (free disk, running counts),
+  // which is not pushed.
   $effect(() => {
     void load()
-    const timer = setInterval(load, 2000)
-    return () => clearInterval(timer)
+    const connection = createJobsConnection({
+      onChanged: () => void load(),
+      onProgress: applyProgress,
+    })
+    connection.start().catch(() => {
+      /* fall back to the safety poll below if the socket can't connect */
+    })
+    const timer = setInterval(load, 10000)
+    return () => {
+      clearInterval(timer)
+      void connection.stop()
+    }
   })
+
+  function applyProgress(progress: JobProgress) {
+    live[progress.jobId] = progress
+    const job = jobs.find((j) => j.id === progress.jobId)
+    if (job) job.progress = progress.progress
+  }
 
   async function load() {
     try {
       const [nextJobs, nextStatus] = await Promise.all([api.jobs(), api.queueStatus()])
       jobs = nextJobs
       queueStatus = nextStatus
+      // Drop stale telemetry for jobs that are no longer transcoding.
+      const transcoding = new Set(nextJobs.filter((j) => j.status === 'Transcoding').map((j) => j.id))
+      for (const id of Object.keys(live)) {
+        if (!transcoding.has(Number(id))) delete live[Number(id)]
+      }
       error = null
     } catch (err) {
       error = err instanceof Error ? err.message : 'Unable to load jobs'
     } finally {
       loading = false
     }
+  }
+
+  function speedLabel(speed: number | null): string {
+    return speed == null ? '' : `${speed.toFixed(speed < 10 ? 2 : 1)}×`
+  }
+
+  function etaLabel(seconds: number | null): string {
+    if (seconds == null) return ''
+    return seconds < 60 ? `~${Math.round(seconds)}s left` : `~${formatDuration(seconds)} left`
+  }
+
+  function telemetryLabel(progress: JobProgress | undefined): string {
+    if (!progress) return ''
+    return [speedLabel(progress.speed), etaLabel(progress.etaSeconds)].filter(Boolean).join(' · ')
   }
 
   async function cancel(job: Job) {
@@ -146,14 +186,24 @@
             <td class="max-w-xs truncate px-4 py-2 font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</td>
             <td class="px-4 py-2">
               {#if job.status === 'Transcoding'}
-                <div class="flex items-center gap-2">
-                  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                    <div class="h-full rounded-full bg-emerald-600 transition-all" style="width: {Math.round(job.progress * 100)}%"></div>
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <div class="progress-track">
+                      <div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div>
+                    </div>
+                    <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
                   </div>
-                  <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
+                  {#if telemetryLabel(live[job.id])}
+                    <div class="text-[11px] tabular-nums text-slate-400">{telemetryLabel(live[job.id])}</div>
+                  {/if}
                 </div>
-              {:else if job.status === 'Verifying'}
-                <span class="text-xs text-sky-600 dark:text-sky-400">verifying…</span>
+              {:else if job.status === 'Probing' || job.status === 'Verifying'}
+                <div class="space-y-1">
+                  <div class="progress-track"><div class="progress-indeterminate"></div></div>
+                  <div class="text-[11px] text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? 'probing…' : 'verifying…'}</div>
+                </div>
+              {:else if job.status === 'Queued'}
+                <span class="text-xs text-slate-400">waiting…</span>
               {:else if job.status === 'Failed' && job.errorMessage}
                 <span class="text-xs text-red-600" title={job.errorMessage}>error</span>
               {:else}
