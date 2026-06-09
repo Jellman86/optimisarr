@@ -280,7 +280,37 @@ manager.
 
 Deliverables:
 
-- Optional Plex/Jellyfin library refresh webhook after replacement.
+- **Authenticated media-server connections** so Optimisarr can tell the server to
+  re-scan a title after a verified replacement (a replaced file keeps its path but
+  changes container/codec/size, so the server should re-read it). Each provider's
+  login is different and must use the provider's own supported flow — we never ask
+  the user to paste a raw password we store:
+  - **Plex — OAuth/PIN flow.** Create a PIN (`POST https://plex.tv/api/v2/pins`
+    with `X-Plex-Product` and a stable `X-Plex-Client-Identifier`), send the user
+    to `https://app.plex.tv/auth#?clientID=…&code=…&forwardUrl=…`, then poll
+    `GET https://plex.tv/api/v2/pins/{id}?code=…` until `authToken` is present.
+    Store that token and call the server with `X-Plex-Token`. Refresh a section
+    with `GET /library/sections/{id}/refresh` — and prefer a **targeted** refresh
+    of just the changed file via `?path=<dir>` so a replacement doesn't trigger a
+    full library scan.
+  - **Jellyfin — Quick Connect (preferred) or an admin API key.** Quick Connect:
+    initiate a code, the user approves it from a signed-in Jellyfin session, then
+    poll until it yields an access token; alternatively accept an admin-issued API
+    key. Authenticate with `Authorization: MediaBrowser Token=<token>`. Trigger a
+    rescan via the "Scan Media Library" scheduled task
+    (`POST /ScheduledTasks/Running/{taskId}`) or notify a specific path with
+    `POST /Library/Media/Updated` (`Path` + `UpdateType`).
+  - **Emby — admin API key (its Connect login is account-owned).** Same
+    MediaBrowser lineage as Jellyfin: authenticate with `X-Emby-Token` / the
+    `api_key` query / `Authorization: MediaBrowser Token=`, refresh with
+    `POST /Library/Refresh`, or notify a path with `POST /Library/Media/Updated`.
+  - Tokens/keys are stored as provider connections (encrypted at rest), validated
+    on save, and **reusable by the Phase 6 activity-pause watchers** so a user
+    configures each server once. A connection that fails auth is surfaced, not
+    silently ignored.
+- **Trigger a targeted refresh after each successful replacement** (and on
+  rollback), best-effort and never blocking or undoing the replacement if the
+  server is unreachable.
 - Optional Sonarr/Radarr path-aware exclusions.
 - Optional notifications:
   - Apprise
@@ -290,7 +320,11 @@ Deliverables:
 
 Exit criteria:
 
-- Replaced media can trigger downstream library refreshes.
+- A user can connect Plex (via OAuth/PIN), Jellyfin (via Quick Connect or API
+  key), and Emby (via API key), and Optimisarr validates each connection.
+- A verified replacement triggers a targeted re-scan of just the changed title on
+  every connected server, and a server being offline never affects the
+  replacement's safety.
 - Integrations remain optional and disabled by default.
 
 ## Phase 9: Gold-Standard Health Verification
