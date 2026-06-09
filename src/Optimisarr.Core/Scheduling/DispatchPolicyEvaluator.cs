@@ -7,10 +7,11 @@ public sealed record DispatchDecision(bool CanStart, string? BlockedReason);
 
 /// <summary>
 /// Pure policy for whether the queue may start new work: it must be inside the
-/// configured processing window and have enough free disk. No clocks, no disk I/O —
-/// the caller passes the current local time and measured free space in, so the
-/// decision is deterministic and unit tested. Running jobs are never interrupted by
-/// this gate; it only governs starting new ones.
+/// configured processing window, no watched media server may be streaming, and
+/// there must be enough free disk. No clocks, no disk I/O, no HTTP — the caller
+/// passes the current local time, the measured service-activity signal, and measured
+/// free space in, so the decision is deterministic and unit tested. Running jobs are
+/// never interrupted by this gate; it only governs starting new ones.
 /// </summary>
 public static class DispatchPolicyEvaluator
 {
@@ -20,12 +21,20 @@ public static class DispatchPolicyEvaluator
         TimeOnly windowEnd,
         TimeOnly nowLocal,
         long minFreeDiskBytes,
-        long? freeDiskBytes)
+        long? freeDiskBytes,
+        bool servicesActive = false,
+        string? servicesActiveReason = null)
     {
         if (scheduleEnabled && !WithinWindow(windowStart, windowEnd, nowLocal))
         {
             return new DispatchDecision(false,
                 $"Outside the processing window {windowStart:HH:mm}–{windowEnd:HH:mm}.");
+        }
+
+        if (servicesActive)
+        {
+            return new DispatchDecision(false,
+                servicesActiveReason ?? "A watched media server is currently active.");
         }
 
         // A null measurement means we could not read free space; we do not pause on

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
+using Optimisarr.Core.Activity;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Tools;
@@ -26,6 +27,7 @@ public sealed class QueueDispatcher(
     IHostEnvironment environment,
     VerificationService verification,
     HardwareCapabilityService hardware,
+    ActivityMonitor activityMonitor,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -127,7 +129,8 @@ public sealed class QueueDispatcher(
     private async Task DispatchAsync(CancellationToken stoppingToken)
     {
         var settings = await GetQueueSettingsAsync(stoppingToken);
-        var policy = EvaluateDispatchPolicy(settings);
+        var activity = await activityMonitor.GetActivityAsync(stoppingToken);
+        var policy = EvaluateDispatchPolicy(settings, activity);
         if (!policy.CanStart)
         {
             logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
@@ -556,7 +559,8 @@ public sealed class QueueDispatcher(
     public async Task<QueueDispatchStatus> GetDispatchStatusAsync(CancellationToken cancellationToken)
     {
         var settings = await GetQueueSettingsAsync(cancellationToken);
-        var decision = EvaluateDispatchPolicy(settings);
+        var activity = await activityMonitor.GetActivityAsync(cancellationToken);
+        var decision = EvaluateDispatchPolicy(settings, activity);
         var freeDiskBytes = TryGetFreeDiskBytes(_workRoot);
 
         return new QueueDispatchStatus(
@@ -581,14 +585,16 @@ public sealed class QueueDispatcher(
         return await settings.GetQueueSettingsAsync(cancellationToken);
     }
 
-    private DispatchDecision EvaluateDispatchPolicy(QueueSettings settings) =>
+    private DispatchDecision EvaluateDispatchPolicy(QueueSettings settings, ActivityDecision activity) =>
         DispatchPolicyEvaluator.Evaluate(
             settings.ScheduleEnabled,
             settings.ScheduleWindowStart,
             settings.ScheduleWindowEnd,
             TimeOnly.FromDateTime(DateTime.Now),
             settings.MinFreeDiskBytes,
-            TryGetFreeDiskBytes(_workRoot));
+            TryGetFreeDiskBytes(_workRoot),
+            activity.Active,
+            activity.Reason);
 
     private async Task<EncoderSelection> ResolveVideoEncoderAsync(
         string? targetCodec,

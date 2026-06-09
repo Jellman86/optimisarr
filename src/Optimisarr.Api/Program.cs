@@ -27,6 +27,9 @@ builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<QuarantinePurgeService>();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ActivityMonitor>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
@@ -153,6 +156,93 @@ app.MapGet("/api/queue/status", async (
     return Results.Ok(QueueStatusDto.From(status));
 })
 .WithName("GetQueueDispatchStatus");
+
+// Activity watchers: media servers Optimisarr polls so the queue pauses while
+// someone is streaming. Tokens are write-only — they are never returned.
+app.MapGet("/api/activity-watchers", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var watchers = await db.ActivityWatchers
+        .AsNoTracking()
+        .OrderBy(watcher => watcher.Name)
+        .ToListAsync(cancellationToken);
+    return Results.Ok(watchers.Select(ActivityWatcherDto.From));
+})
+.WithName("ListActivityWatchers");
+
+app.MapPost("/api/activity-watchers", async (
+    SaveActivityWatcherRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (!ActivityWatcherRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    var watcher = new ActivityWatcher
+    {
+        Name = parsed.Name,
+        Type = parsed.Type,
+        BaseUrl = parsed.BaseUrl,
+        ApiToken = parsed.ApiToken,
+        Enabled = parsed.Enabled
+    };
+    db.ActivityWatchers.Add(watcher);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Created($"/api/activity-watchers/{watcher.Id}", ActivityWatcherDto.From(watcher));
+})
+.WithName("CreateActivityWatcher");
+
+app.MapPut("/api/activity-watchers/{id:int}", async (
+    int id,
+    SaveActivityWatcherRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+    if (watcher is null)
+    {
+        return Results.NotFound(new { error = $"No activity watcher with id {id}." });
+    }
+
+    if (!ActivityWatcherRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    watcher.Name = parsed.Name;
+    watcher.Type = parsed.Type;
+    watcher.BaseUrl = parsed.BaseUrl;
+    // A blank token on update keeps the stored secret rather than wiping it.
+    if (parsed.ApiToken is not null)
+    {
+        watcher.ApiToken = parsed.ApiToken;
+    }
+    watcher.Enabled = parsed.Enabled;
+    watcher.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(ActivityWatcherDto.From(watcher));
+})
+.WithName("UpdateActivityWatcher");
+
+app.MapDelete("/api/activity-watchers/{id:int}", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+    if (watcher is null)
+    {
+        return Results.NotFound(new { error = $"No activity watcher with id {id}." });
+    }
+
+    db.ActivityWatchers.Remove(watcher);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+})
+.WithName("DeleteActivityWatcher");
 
 app.MapGet("/api/system/tools", async (
     ToolDetectionService tools,

@@ -14,6 +14,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<Replacement> Replacements => Set<Replacement>();
 
+    public DbSet<ActivityWatcher> ActivityWatchers => Set<ActivityWatcher>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -91,6 +93,15 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(replacement => replacement.Status);
+        });
+
+        modelBuilder.Entity<ActivityWatcher>(entity =>
+        {
+            entity.HasKey(watcher => watcher.Id);
+            entity.Property(watcher => watcher.Name).IsRequired().HasMaxLength(160);
+            entity.Property(watcher => watcher.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(watcher => watcher.BaseUrl).IsRequired().HasMaxLength(1024);
+            entity.Property(watcher => watcher.ApiToken).HasMaxLength(512);
         });
     }
 }

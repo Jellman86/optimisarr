@@ -148,6 +148,27 @@ export type Replacement = {
   purgedAt: string | null
 }
 
+export type ActivityWatcherType = 'Plex' | 'Jellyfin' | 'Emby'
+
+export type ActivityWatcher = {
+  id: number
+  name: string
+  type: ActivityWatcherType
+  baseUrl: string
+  hasToken: boolean
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type SaveActivityWatcher = {
+  name: string
+  type: ActivityWatcherType
+  baseUrl: string
+  apiToken: string
+  enabled: boolean
+}
+
 export type MediaFile = {
   id: number
   libraryId: number
@@ -239,6 +260,14 @@ export const api = {
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   queueStatus: () => request<QueueStatus>('/api/queue/status'),
+
+  activityWatchers: () => request<ActivityWatcher[]>('/api/activity-watchers'),
+  createActivityWatcher: (body: SaveActivityWatcher) =>
+    request<ActivityWatcher>('/api/activity-watchers', { method: 'POST', body: JSON.stringify(body) }),
+  updateActivityWatcher: (id: number, body: SaveActivityWatcher) =>
+    request<ActivityWatcher>(`/api/activity-watchers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteActivityWatcher: (id: number) =>
+    request<void>(`/api/activity-watchers/${id}`, { method: 'DELETE' }),
 
   jobs: () => request<Job[]>('/api/jobs'),
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),

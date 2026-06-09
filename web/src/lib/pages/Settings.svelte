@@ -1,7 +1,67 @@
 <script lang="ts">
-  import { api, type Settings } from '../api'
+  import { api, type Settings, type ActivityWatcher, type ActivityWatcherType, type SaveActivityWatcher } from '../api'
   import { formatSize } from '../format'
   import Toggle from '../components/Toggle.svelte'
+
+  const watcherTypes: ActivityWatcherType[] = ['Plex', 'Jellyfin', 'Emby']
+  const emptyWatcher = (): SaveActivityWatcher => ({ name: '', type: 'Plex', baseUrl: '', apiToken: '', enabled: true })
+
+  let watchers = $state<ActivityWatcher[]>([])
+  let watcherError = $state<string | null>(null)
+  let editingId = $state<number | null>(null)
+  let watcherDraft = $state<SaveActivityWatcher>(emptyWatcher())
+  let savingWatcher = $state(false)
+
+  async function loadWatchers() {
+    try {
+      watchers = await api.activityWatchers()
+      watcherError = null
+    } catch (err) {
+      watcherError = err instanceof Error ? err.message : 'Unable to load watchers'
+    }
+  }
+
+  function startAdd() {
+    editingId = null
+    watcherDraft = emptyWatcher()
+  }
+
+  function startEdit(w: ActivityWatcher) {
+    editingId = w.id
+    // Token is write-only; leave blank to keep the stored secret.
+    watcherDraft = { name: w.name, type: w.type, baseUrl: w.baseUrl, apiToken: '', enabled: w.enabled }
+  }
+
+  async function saveWatcher() {
+    savingWatcher = true
+    watcherError = null
+    try {
+      if (editingId === null) {
+        await api.createActivityWatcher(watcherDraft)
+      } else {
+        await api.updateActivityWatcher(editingId, watcherDraft)
+      }
+      watcherDraft = emptyWatcher()
+      editingId = null
+      await loadWatchers()
+    } catch (err) {
+      watcherError = err instanceof Error ? err.message : 'Unable to save watcher'
+    } finally {
+      savingWatcher = false
+    }
+  }
+
+  async function deleteWatcher(w: ActivityWatcher) {
+    if (!confirm(`Remove the activity watcher "${w.name}"?`)) return
+    watcherError = null
+    try {
+      await api.deleteActivityWatcher(w.id)
+      if (editingId === w.id) startAdd()
+      await loadWatchers()
+    } catch (err) {
+      watcherError = err instanceof Error ? err.message : 'Unable to remove watcher'
+    }
+  }
 
   let settings = $state<Settings>({
     maxConcurrentJobs: 1,
@@ -26,6 +86,7 @@
 
   $effect(() => {
     void load()
+    void loadWatchers()
   })
 
   async function load() {
@@ -209,5 +270,82 @@
   <div class="mt-5 flex max-w-2xl items-center gap-3">
     <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
+  </div>
+
+  <div class="card mt-5 max-w-2xl p-5">
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Service activity</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      While any enabled media server is streaming, new jobs pause so transcodes never compete with playback.
+      Running jobs are never interrupted. An unreachable server does not pause the queue.
+    </p>
+
+    {#if watcherError}
+      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{watcherError}</div>
+    {/if}
+
+    {#if watchers.length > 0}
+      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        {#each watchers as w (w.id)}
+          <li class="flex items-center gap-3 py-2">
+            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</div>
+              <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
+            </div>
+            {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+            {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
+            <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
+            <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="mb-4 text-sm text-slate-400">No watchers yet. Add one to pause processing while you stream.</p>
+    {/if}
+
+    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {editingId === null ? 'Add a watcher' : 'Edit watcher'}
+      </h3>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label" for="watcher-name">Name</label>
+          <input id="watcher-name" class="input" placeholder="Living room Plex" bind:value={watcherDraft.name} />
+        </div>
+        <div>
+          <label class="label" for="watcher-type">Type</label>
+          <select id="watcher-type" class="input" bind:value={watcherDraft.type}>
+            {#each watcherTypes as t}<option value={t}>{t}</option>{/each}
+          </select>
+        </div>
+        <div>
+          <label class="label" for="watcher-url">Base URL</label>
+          <input id="watcher-url" class="input" placeholder="http://192.168.1.10:32400" bind:value={watcherDraft.baseUrl} />
+        </div>
+        <div>
+          <label class="label" for="watcher-token">
+            {watcherDraft.type === 'Plex' ? 'Plex token' : 'API key'}
+          </label>
+          <input
+            id="watcher-token"
+            class="input"
+            type="password"
+            placeholder={editingId === null ? '' : 'Leave blank to keep current'}
+            bind:value={watcherDraft.apiToken}
+          />
+        </div>
+      </div>
+      <div class="mt-3">
+        <Toggle bind:checked={watcherDraft.enabled} label="Enabled" />
+      </div>
+      <div class="mt-4 flex items-center gap-2">
+        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>
+          {savingWatcher ? 'Saving…' : editingId === null ? 'Add watcher' : 'Save changes'}
+        </button>
+        {#if editingId !== null}
+          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>Cancel</button>
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}

@@ -63,7 +63,10 @@ the replacement workflow is trustworthy.
   configurable from Settings. Replacement/quarantine policy is now configurable —
   cross-filesystem fallback is opt-in and a background worker enforces the
   quarantine retention window, purging originals (and dropping their rollback path)
-  once it expires. Still to come: optional service activity pauses.
+  once it expires. Optional **service-activity pauses** are done too: configurable
+  Plex/Jellyfin/Emby watchers hold new jobs while a server is streaming, decided by
+  a pure, unit-tested evaluator that ignores unreachable servers so one offline
+  server never wedges the queue. Phase 6 is now feature-complete.
 
 ## Guiding principles
 
@@ -237,7 +240,7 @@ Deliverables:
 - CPU thread limits. **Done.**
 - GPU/CPU worker mode selection. **Done.**
 - Pause while disk free space is below threshold. **Done.**
-- Pause while configured services are active, optional later.
+- Pause while configured services are active (Plex/Jellyfin/Emby). **Done.**
 - Per-library priority. **Done.**
 - Configurable verification policy. **Done.**
 

@@ -12,14 +12,18 @@ public sealed class DispatchPolicyEvaluatorTests
         string end = "00:00",
         string now = "12:00",
         long minFreeDiskBytes = 0,
-        long? freeDiskBytes = null) =>
+        long? freeDiskBytes = null,
+        bool servicesActive = false,
+        string? servicesActiveReason = null) =>
         DispatchPolicyEvaluator.Evaluate(
             scheduleEnabled,
             TimeOnly.Parse(start),
             TimeOnly.Parse(end),
             TimeOnly.Parse(now),
             minFreeDiskBytes,
-            freeDiskBytes);
+            freeDiskBytes,
+            servicesActive,
+            servicesActiveReason);
 
     [Fact]
     public void Allows_starting_when_scheduling_is_disabled()
@@ -74,6 +78,32 @@ public sealed class DispatchPolicyEvaluatorTests
     public void A_zero_threshold_disables_the_disk_check()
     {
         Assert.True(Evaluate(minFreeDiskBytes: 0, freeDiskBytes: 1).CanStart);
+    }
+
+    [Fact]
+    public void Blocks_while_a_watched_service_is_active()
+    {
+        var decision = Evaluate(servicesActive: true, servicesActiveReason: "Plex is streaming.");
+
+        Assert.False(decision.CanStart);
+        Assert.Equal("Plex is streaming.", decision.BlockedReason);
+    }
+
+    [Fact]
+    public void Does_not_block_when_no_watched_service_is_active()
+    {
+        Assert.True(Evaluate(servicesActive: false).CanStart);
+    }
+
+    [Fact]
+    public void The_window_takes_priority_over_an_active_service()
+    {
+        var decision = Evaluate(
+            scheduleEnabled: true, start: "09:00", end: "17:00", now: "03:00",
+            servicesActive: true, servicesActiveReason: "Plex is streaming.");
+
+        Assert.False(decision.CanStart);
+        Assert.Contains("processing window", decision.BlockedReason);
     }
 
     [Fact]

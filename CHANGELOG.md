@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Pause processing while a media server is streaming
+
+- New **activity watchers** let Optimisarr pause the queue while Plex, Jellyfin, or
+  Emby has active playback, so a transcode never competes with someone's stream.
+  Running jobs are never interrupted — the gate only decides whether *new* jobs may
+  start, alongside the existing processing-window and free-disk gates, and the
+  pause reason ("Paused while Living room Plex is active (1 stream)") shows on the
+  Queue page.
+- Watchers are a dedicated table with CRUD on the Settings page (type, base URL,
+  token/API key, enabled). Tokens are write-only — they are stored but never
+  returned to the browser, and a blank token on edit keeps the stored secret. Plex
+  is polled via `/status/sessions` (XML) and Jellyfin/Emby via the shared
+  MediaBrowser `/Sessions` (JSON); a session counts only when it is actually
+  playing something.
+- The parsing (`PlexSessionsParser`, `JellyfinSessionsParser`) and the pause
+  decision (`ActivityPauseEvaluator`) are pure and unit tested. An **unreachable**
+  server is treated as not-active on purpose, so one offline server or a stale
+  token can never wedge the queue. `ActivityMonitor` caches results briefly so the
+  dispatch loop and status endpoint share one set of HTTP calls.
+
 ### Quarantine retention: purge old originals
 
 - The `replacement.quarantineRetentionDays` setting is now enforced. A background
