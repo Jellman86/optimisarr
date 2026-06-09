@@ -34,9 +34,7 @@
     class="flex items-center gap-3 border-b border-slate-200 p-4 dark:border-slate-700"
     onclick={() => router.go('/')}
   >
-    <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-600 font-bold text-white">
-      O
-    </div>
+    <img src="/favicon-192.png" alt="Optimisarr" class="h-9 w-9 flex-shrink-0" />
     {#if !collapsed}
       <div class="text-left leading-tight">
         <div class="font-bold text-slate-800 dark:text-slate-100">Optimisarr</div>
