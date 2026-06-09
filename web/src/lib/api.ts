@@ -171,6 +171,10 @@ export type SaveActivityWatcher = {
   refreshOnReplace: boolean
 }
 
+export type PlexConnectStart = { id: number; code: string; authUrl: string }
+export type JellyfinConnectStart = { code: string; secret: string }
+export type ConnectResult = { authorized: boolean; token: string | null }
+
 export type MediaFile = {
   id: number
   libraryId: number
@@ -270,6 +274,13 @@ export const api = {
     request<ActivityWatcher>(`/api/activity-watchers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteActivityWatcher: (id: number) =>
     request<void>(`/api/activity-watchers/${id}`, { method: 'DELETE' }),
+
+  plexConnectStart: () => request<PlexConnectStart>('/api/connect/plex/start', { method: 'POST' }),
+  plexConnectPoll: (id: number) => request<ConnectResult>(`/api/connect/plex/poll?id=${id}`),
+  jellyfinConnectStart: (baseUrl: string) =>
+    request<JellyfinConnectStart>('/api/connect/jellyfin/start', { method: 'POST', body: JSON.stringify({ baseUrl }) }),
+  jellyfinConnectPoll: (baseUrl: string, secret: string) =>
+    request<ConnectResult>('/api/connect/jellyfin/poll', { method: 'POST', body: JSON.stringify({ baseUrl, secret }) }),
 
   jobs: () => request<Job[]>('/api/jobs'),
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),

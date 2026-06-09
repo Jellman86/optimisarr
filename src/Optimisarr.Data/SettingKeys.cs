@@ -44,4 +44,7 @@ public static class SettingKeys
 
     /// <summary>How many days quarantined originals should be retained; 0 means indefinitely.</summary>
     public const string ReplacementQuarantineRetentionDays = "replacement.quarantineRetentionDays";
+
+    /// <summary>Stable client identifier Optimisarr presents to Plex during the OAuth/PIN flow.</summary>
+    public const string PlexClientIdentifier = "connect.plexClientIdentifier";
 }

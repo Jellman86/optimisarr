@@ -12,6 +12,87 @@
   let watcherDraft = $state<SaveActivityWatcher>(emptyWatcher())
   let savingWatcher = $state(false)
 
+  // Interactive sign-in (Plex OAuth/PIN, Jellyfin Quick Connect).
+  let connecting = $state(false)
+  let connectMessage = $state<string | null>(null)
+  let jellyfinCode = $state<string | null>(null)
+  let connectCancelled = false
+
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  function resetConnect() {
+    connectCancelled = true
+    connecting = false
+    connectMessage = null
+    jellyfinCode = null
+  }
+
+  async function pollForToken(check: () => Promise<{ authorized: boolean; token: string | null }>) {
+    connectCancelled = false
+    for (let i = 0; i < 60 && !connectCancelled; i++) {
+      await delay(2000)
+      if (connectCancelled) return null
+      const result = await check()
+      if (result.authorized && result.token) return result.token
+    }
+    if (!connectCancelled) connectMessage = 'Timed out waiting for approval. Try again.'
+    return null
+  }
+
+  async function connect() {
+    watcherError = null
+    if (watcherDraft.type === 'Plex') return connectPlex()
+    if (watcherDraft.type === 'Jellyfin') return connectJellyfin()
+  }
+
+  async function connectPlex() {
+    connecting = true
+    jellyfinCode = null
+    connectMessage = 'Opening the Plex sign-in page…'
+    try {
+      const start = await api.plexConnectStart()
+      window.open(start.authUrl, '_blank', 'noopener')
+      connectMessage = 'Approve Optimisarr in the opened Plex tab, then come back here…'
+      const token = await pollForToken(() => api.plexConnectPoll(start.id))
+      if (token) {
+        watcherDraft.apiToken = token
+        connectMessage = 'Connected to Plex — token filled in. Save the watcher to keep it.'
+      }
+    } catch (err) {
+      watcherError = err instanceof Error ? err.message : 'Plex sign-in failed'
+      connectMessage = null
+    } finally {
+      connecting = false
+    }
+  }
+
+  async function connectJellyfin() {
+    const baseUrl = watcherDraft.baseUrl.trim()
+    if (!baseUrl) {
+      watcherError = 'Enter the Jellyfin base URL first.'
+      return
+    }
+    connecting = true
+    connectMessage = 'Starting Quick Connect…'
+    try {
+      const start = await api.jellyfinConnectStart(baseUrl)
+      jellyfinCode = start.code
+      connectMessage = 'In Jellyfin, open Quick Connect and enter this code, then keep this open…'
+      const token = await pollForToken(() => api.jellyfinConnectPoll(baseUrl, start.secret))
+      if (token) {
+        watcherDraft.apiToken = token
+        jellyfinCode = null
+        connectMessage = 'Connected to Jellyfin — token filled in. Save the watcher to keep it.'
+      }
+    } catch (err) {
+      watcherError = err instanceof Error ? err.message : 'Quick Connect failed'
+      connectMessage = null
+      jellyfinCode = null
+    } finally {
+      connecting = false
+    }
+  }
+
   async function loadWatchers() {
     try {
       watchers = await api.activityWatchers()
@@ -24,12 +105,14 @@
   function startAdd() {
     editingId = null
     watcherDraft = emptyWatcher()
+    resetConnect()
   }
 
   function startEdit(w: ActivityWatcher) {
     editingId = w.id
     // Token is write-only; leave blank to keep the stored secret.
     watcherDraft = { name: w.name, type: w.type, baseUrl: w.baseUrl, apiToken: '', enabled: w.enabled, refreshOnReplace: w.refreshOnReplace }
+    resetConnect()
   }
 
   async function saveWatcher() {
@@ -43,6 +126,7 @@
       }
       watcherDraft = emptyWatcher()
       editingId = null
+      resetConnect()
       await loadWatchers()
     } catch (err) {
       watcherError = err instanceof Error ? err.message : 'Unable to save watcher'
@@ -327,13 +411,30 @@
           <label class="label" for="watcher-token">
             {watcherDraft.type === 'Plex' ? 'Plex token' : 'API key'}
           </label>
-          <input
-            id="watcher-token"
-            class="input"
-            type="password"
-            placeholder={editingId === null ? '' : 'Leave blank to keep current'}
-            bind:value={watcherDraft.apiToken}
-          />
+          <div class="flex items-center gap-2">
+            <input
+              id="watcher-token"
+              class="input"
+              type="password"
+              placeholder={editingId === null ? '' : 'Leave blank to keep current'}
+              bind:value={watcherDraft.apiToken}
+            />
+            {#if watcherDraft.type !== 'Emby'}
+              {#if connecting}
+                <button class="btn btn-ghost whitespace-nowrap px-3 py-1 text-xs" onclick={resetConnect}>Cancel</button>
+              {:else}
+                <button class="btn whitespace-nowrap px-3 py-1 text-xs" onclick={connect}>
+                  {watcherDraft.type === 'Plex' ? 'Sign in with Plex' : 'Quick Connect'}
+                </button>
+              {/if}
+            {/if}
+          </div>
+          {#if connectMessage}
+            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{connectMessage}</p>
+          {/if}
+          {#if jellyfinCode}
+            <p class="mt-1 font-mono text-lg tracking-widest text-emerald-600 dark:text-emerald-400">{jellyfinCode}</p>
+          {/if}
         </div>
       </div>
       <div class="mt-3 grid gap-3">

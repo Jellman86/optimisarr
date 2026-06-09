@@ -26,6 +26,7 @@ builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<LibraryRefreshService>();
+builder.Services.AddScoped<ProviderConnectService>();
 builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<QuarantinePurgeService>();
 builder.Services.AddHttpClient();
@@ -246,6 +247,86 @@ app.MapDelete("/api/activity-watchers/{id:int}", async (
     return Results.NoContent();
 })
 .WithName("DeleteActivityWatcher");
+
+// Interactive sign-in: acquire a provider token without the user pasting a raw one.
+// Each flow is start-then-poll; the client opens the auth URL / shows the code, then
+// polls until the user approves. A failure to reach the provider is a 502.
+app.MapPost("/api/connect/plex/start", async (
+    ProviderConnectService connect,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var start = await connect.StartPlexAsync(cancellationToken);
+        return Results.Ok(start);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Problem($"Could not start Plex sign-in: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+})
+.WithName("StartPlexConnect");
+
+app.MapGet("/api/connect/plex/poll", async (
+    long id,
+    ProviderConnectService connect,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await connect.PollPlexAsync(id, cancellationToken);
+        return Results.Ok(result);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Problem($"Could not check Plex sign-in: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+})
+.WithName("PollPlexConnect");
+
+app.MapPost("/api/connect/jellyfin/start", async (
+    JellyfinConnectRequest request,
+    ProviderConnectService connect,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.BaseUrl))
+    {
+        return Results.BadRequest(new { error = "Enter the Jellyfin server's base URL first." });
+    }
+
+    try
+    {
+        var start = await connect.StartJellyfinAsync(request.BaseUrl, cancellationToken);
+        return Results.Ok(start);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Problem($"Could not start Quick Connect: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+})
+.WithName("StartJellyfinConnect");
+
+app.MapPost("/api/connect/jellyfin/poll", async (
+    JellyfinPollRequest request,
+    ProviderConnectService connect,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.BaseUrl) || string.IsNullOrWhiteSpace(request.Secret))
+    {
+        return Results.BadRequest(new { error = "Quick Connect session details are missing." });
+    }
+
+    try
+    {
+        var result = await connect.PollJellyfinAsync(request.BaseUrl, request.Secret, cancellationToken);
+        return Results.Ok(result);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Problem($"Could not check Quick Connect: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+})
+.WithName("PollJellyfinConnect");
 
 app.MapGet("/api/system/tools", async (
     ToolDetectionService tools,
@@ -724,6 +805,10 @@ internal sealed record QueueStatusDto(
 
     private static string FormatTime(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
 }
+
+internal sealed record JellyfinConnectRequest(string? BaseUrl);
+
+internal sealed record JellyfinPollRequest(string? BaseUrl, string? Secret);
 
 internal sealed record DirectoryEntry(string Name, string Path);
 

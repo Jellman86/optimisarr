@@ -97,6 +97,25 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
     }
 
+    /// <summary>
+    /// Returns the stable client identifier Optimisarr presents to Plex, creating and
+    /// persisting one on first use. Plex ties the issued token to this identifier, so
+    /// it must stay constant across the create-PIN and poll steps and across restarts.
+    /// </summary>
+    public async Task<string> GetOrCreatePlexClientIdentifierAsync(CancellationToken cancellationToken)
+    {
+        var existing = await db.AppSettings
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.PlexClientIdentifier, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(existing?.Value))
+        {
+            return existing.Value;
+        }
+
+        var identifier = Guid.NewGuid().ToString("N");
+        await UpsertAsync(SettingKeys.PlexClientIdentifier, identifier, cancellationToken);
+        return identifier;
+    }
+
     /// <summary>Sets the global concurrency limit. Clamped to at least 1.</summary>
     public async Task SetMaxConcurrentJobsAsync(int value, CancellationToken cancellationToken)
     {

@@ -284,9 +284,10 @@ manager.
 Status: started. A verified replacement (and a rollback) now triggers a
 best-effort re-scan on connected Plex/Jellyfin/Emby servers, reusing the Phase 6
 activity-pause connections (per-watcher "refresh after replacements" toggle, pure
-unit-tested `LibraryRefreshRequestBuilder`). Still to come: the dedicated
-OAuth/PIN and Quick Connect login flows for acquiring tokens (today a token/API
-key is pasted in), Sonarr/Radarr exclusions, notifications, and import/export.
+unit-tested `LibraryRefreshRequestBuilder`). Token acquisition is now interactive
+too: **Plex OAuth/PIN** and **Jellyfin Quick Connect** sign-in flows fill in the
+token instead of the user pasting a raw one (Emby keeps a manual API key). Still
+to come: Sonarr/Radarr exclusions, notifications, and import/export.
 
 Deliverables:
 

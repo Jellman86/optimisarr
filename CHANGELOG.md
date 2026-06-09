@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Sign in to Plex and Jellyfin instead of pasting a token
+
+- Adding a Plex or Jellyfin watcher no longer requires hunting down a raw token.
+  **Sign in with Plex** runs Plex's OAuth/PIN flow — Optimisarr creates a PIN,
+  opens `app.plex.tv` for you to approve, and polls until Plex issues a token,
+  which it fills into the form. **Quick Connect** does the Jellyfin equivalent:
+  it shows a code to enter in your Jellyfin session and polls until you approve,
+  then exchanges it for an access token. Emby keeps the manual API key (it has no
+  comparable flow), and pasting a token by hand still works for all three.
+- Plex ties an issued token to a client identifier, so Optimisarr generates a
+  stable one once (`connect.plexClientIdentifier`) and reuses it across the
+  create-PIN and poll steps and across restarts. The JSON parsing for both flows
+  (`PlexPinParser`, `JellyfinQuickConnectParser`) is pure and unit tested; the
+  `/api/connect/*` endpoints report a provider that can't be reached as a 502.
+
 ### Refresh media servers after a replacement
 
 - After a verified replacement (and after a rollback), Optimisarr now asks the
