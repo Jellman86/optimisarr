@@ -6,7 +6,13 @@ public enum ReplacementStatus
     Replaced = 0,
 
     /// <summary>The original has been restored from quarantine and the output removed.</summary>
-    RolledBack = 1
+    RolledBack = 1,
+
+    /// <summary>
+    /// The quarantined original has been deleted because its retention window
+    /// expired. The replacement is no longer reversible — there is nothing to restore.
+    /// </summary>
+    Purged = 2
 }
 
 /// <summary>
@@ -49,4 +55,7 @@ public sealed class Replacement
     public DateTimeOffset ReplacedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? RolledBackAt { get; set; }
+
+    /// <summary>When the quarantined original was purged after its retention window expired.</summary>
+    public DateTimeOffset? PurgedAt { get; set; }
 }

@@ -142,9 +142,10 @@ export type Replacement = {
   originalSizeBytes: number
   newSizeBytes: number
   crossFilesystem: boolean
-  status: 'Replaced' | 'RolledBack'
+  status: 'Replaced' | 'RolledBack' | 'Purged'
   replacedAt: string
   rolledBackAt: string | null
+  purgedAt: string | null
 }
 
 export type MediaFile = {

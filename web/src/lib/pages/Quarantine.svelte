@@ -49,6 +49,7 @@
   <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Quarantine</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400">
     Replaced originals are kept here, not deleted. Roll back to restore an original and remove its replacement.
+    Once a quarantine retention window is set in Settings, originals past it are purged and can no longer be rolled back.
     {#if activeCount > 0}<span class="text-slate-400"> · {activeCount} in quarantine</span>{/if}
   </p>
 </header>
@@ -77,6 +78,8 @@
             <td class="px-4 py-2">
               {#if r.status === 'Replaced'}
                 <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Replaced</span>
+              {:else if r.status === 'Purged'}
+                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="The retention window expired, so the quarantined original was deleted. This replacement can no longer be rolled back.">Purged</span>
               {:else}
                 <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">Rolled back</span>
               {/if}
@@ -86,7 +89,11 @@
             </td>
             <td class="px-4 py-2">
               <div class="max-w-md truncate font-mono text-xs" title={r.finalPath}>{r.finalPath}</div>
-              <div class="max-w-md truncate font-mono text-[11px] text-slate-400" title={r.quarantinePath}>↳ original in {r.quarantinePath}</div>
+              {#if r.status === 'Purged'}
+                <div class="text-[11px] text-slate-400">↳ original purged after retention window</div>
+              {:else if r.status === 'Replaced'}
+                <div class="max-w-md truncate font-mono text-[11px] text-slate-400" title={r.quarantinePath}>↳ original in {r.quarantinePath}</div>
+              {/if}
             </td>
             <td class="px-4 py-2 text-xs tabular-nums">
               {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}

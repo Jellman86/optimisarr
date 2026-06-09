@@ -50,7 +50,8 @@ the replacement workflow is trustworthy.
   copy-plus-delete across mounts (reported in the UI). A final-path integrity check
   and re-probe follow; the job moves to `Completed`. Rollback restores the original
   and removes the replacement. Pure `ReplacementPlanner` and the replace/rollback
-  service are unit tested; originals are retained in quarantine (no auto-purge yet).
+  service are unit tested; originals are retained in quarantine until the
+  configurable retention window (Phase 6) expires.
   Surfaced via the Queue **Replace** action and the new **Quarantine** page.
 - **Phase 6 (Scheduling and Resource Controls): in progress.** Processing
   windows, global max concurrent jobs, CPU thread limits, and disk-space safety
@@ -59,8 +60,10 @@ the replacement workflow is trustworthy.
   whether new jobs may start. Hardware capability detection for FFmpeg
   accelerators and encoders is surfaced on Tools, and global encoder mode
   selection is wired into generated FFmpeg arguments. Verification policy is
-  configurable from Settings. Still to come: optional service activity pauses and
-  configurable replacement/quarantine policy.
+  configurable from Settings. Replacement/quarantine policy is now configurable —
+  cross-filesystem fallback is opt-in and a background worker enforces the
+  quarantine retention window, purging originals (and dropping their rollback path)
+  once it expires. Still to come: optional service activity pauses.
 
 ## Guiding principles
 

@@ -17,7 +17,8 @@ public sealed record ReplacementDto(
     bool CrossFilesystem,
     string Status,
     DateTimeOffset ReplacedAt,
-    DateTimeOffset? RolledBackAt)
+    DateTimeOffset? RolledBackAt,
+    DateTimeOffset? PurgedAt)
 {
     public static ReplacementDto From(ReplacementEntity replacement) => new(
         replacement.Id,
@@ -31,7 +32,8 @@ public sealed record ReplacementDto(
         replacement.CrossFilesystem,
         replacement.Status.ToString(),
         replacement.ReplacedAt,
-        replacement.RolledBackAt);
+        replacement.RolledBackAt,
+        replacement.PurgedAt);
 }
 
 public static class ReplacementQueries

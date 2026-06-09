@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Quarantine retention: purge old originals
+
+- The `replacement.quarantineRetentionDays` setting is now enforced. A background
+  worker sweeps quarantine on startup and every six hours, and once a replaced
+  original has sat in quarantine longer than the configured window it is deleted
+  and its replacement is marked **Purged** (recorded with a `PurgedAt` timestamp,
+  added by a new additive migration). The default of `0` keeps originals
+  indefinitely, so nothing is ever purged until a retention window is set.
+- The decision of which originals have expired is a pure, unit-tested
+  `QuarantineRetentionEvaluator`; the `QuarantinePurgeService` only ever touches
+  `Replaced` rows and is best-effort about a file that is already gone, so a
+  failed delete never aborts the sweep. Purging deliberately discards the rollback
+  path — the Quarantine page shows a Purged badge, drops the Roll back action, and
+  notes that purged originals can no longer be restored.
+
 ### Live queue progress over SignalR
 
 - The Queue page now subscribes to the jobs SignalR hub instead of only polling:

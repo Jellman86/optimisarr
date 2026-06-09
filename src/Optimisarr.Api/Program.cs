@@ -26,8 +26,10 @@ builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<ReplacementService>();
+builder.Services.AddScoped<QuarantinePurgeService>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
+builder.Services.AddHostedService<QuarantinePurgeWorker>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
