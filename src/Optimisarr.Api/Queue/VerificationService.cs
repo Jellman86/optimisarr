@@ -89,7 +89,15 @@ public sealed class VerificationService(
             LoudnessMeasured: loudnessMeasured,
             LoudnessError: loudnessError,
             OriginalLoudnessLufs: originalLoudness?.IntegratedLufs,
-            OutputLoudnessLufs: outputLoudness?.IntegratedLufs);
+            OutputLoudnessLufs: outputLoudness?.IntegratedLufs,
+            OriginalColorPrimaries: originalProbe.ColorPrimaries,
+            OutputColorPrimaries: outputProbe.ColorPrimaries,
+            OriginalColorTransfer: originalProbe.ColorTransfer,
+            OutputColorTransfer: outputProbe.ColorTransfer,
+            OriginalColorSpace: originalProbe.ColorSpace,
+            OutputColorSpace: outputProbe.ColorSpace,
+            OutputVideoStartSeconds: outputProbe.VideoStartSeconds,
+            OutputAudioStartSeconds: outputProbe.AudioStartSeconds);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

@@ -36,6 +36,20 @@ public static class VerificationEvaluator
             checks.Add(AudioFidelity(input));
         }
 
+        // Colour metadata is only worth comparing when the original declared some.
+        if (input.OriginalColorPrimaries is not null
+            || input.OriginalColorTransfer is not null
+            || input.OriginalColorSpace is not null)
+        {
+            checks.Add(ColorMetadataPreserved(input));
+        }
+
+        // A/V sync is only meaningful when both stream start times are known.
+        if (input.OutputVideoStartSeconds is not null && input.OutputAudioStartSeconds is not null)
+        {
+            checks.Add(AvSync(input));
+        }
+
         // The perceptual-quality gate only contributes when the user has opted in;
         // otherwise the report and its cost are unchanged.
         if (policy.QualityGateEnabled)
@@ -68,6 +82,46 @@ public static class VerificationEvaluator
         return drift <= policy.MaxLoudnessDriftLufs
             ? Pass("Audio loudness (EBU R128)", detail)
             : Fail("Audio loudness (EBU R128)", detail);
+    }
+
+    private static VerificationCheck ColorMetadataPreserved(VerificationInput input)
+    {
+        // Only a definite change is a failure: the original and output both declare a
+        // value and they differ (e.g. BT.709 re-tagged as BT.601). A dropped tag on the
+        // output is treated as benign, since absence usually means "container default".
+        var mismatches = new List<string>();
+        AddMismatch(mismatches, "primaries", input.OriginalColorPrimaries, input.OutputColorPrimaries);
+        AddMismatch(mismatches, "transfer", input.OriginalColorTransfer, input.OutputColorTransfer);
+        AddMismatch(mismatches, "matrix", input.OriginalColorSpace, input.OutputColorSpace);
+
+        return mismatches.Count == 0
+            ? Pass("Colour metadata", "Colour primaries, transfer, and matrix preserved.")
+            : Fail("Colour metadata", $"Colour metadata changed: {string.Join("; ", mismatches)}.");
+    }
+
+    private static void AddMismatch(List<string> mismatches, string label, string? original, string? output)
+    {
+        if (original is not null && output is not null
+            && !string.Equals(original, output, StringComparison.OrdinalIgnoreCase))
+        {
+            mismatches.Add($"{label} {original} → {output}");
+        }
+    }
+
+    private static VerificationCheck AvSync(VerificationInput input)
+    {
+        // A small start offset (audio priming, container quirks) is normal; only a gross
+        // divergence indicates the output's audio and video are out of sync.
+        const double toleranceSeconds = 0.5;
+        var drift = Math.Abs(input.OutputVideoStartSeconds!.Value - input.OutputAudioStartSeconds!.Value);
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "Video starts at {0:0.###}s, audio at {1:0.###}s ({2:0.###}s offset, tolerance {3:0.###}s).",
+            input.OutputVideoStartSeconds.Value, input.OutputAudioStartSeconds.Value, drift, toleranceSeconds);
+
+        return drift <= toleranceSeconds
+            ? Pass("A/V sync", detail)
+            : Fail("A/V sync", detail);
     }
 
     private static VerificationCheck AudioFidelity(VerificationInput input)

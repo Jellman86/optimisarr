@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Colour metadata and A/V sync integrity
+
+- Verification now compares the output's **colour primaries, transfer, and matrix**
+  against the original and fails a definite mismatch (e.g. BT.709 re-tagged as
+  BT.601); a dropped tag is treated as benign. It also checks **A/V sync** from the
+  output's video and audio start times, failing only a gross offset (> 0.5 s) so
+  normal priming offsets don't trip it. Both reuse existing probe data, are pure and
+  unit tested, and only run when the relevant metadata is present.
+
 ### Audio fidelity checks
 
 - Verification now guards audio. An always-on **channel/sample-rate retention** gate

@@ -17,10 +17,16 @@ public sealed record MediaProbeResult(
     bool IsHdr,
     int MaxAudioChannels,
     int MaxAudioSampleRate,
+    string? ColorPrimaries,
+    string? ColorTransfer,
+    string? ColorSpace,
+    double? VideoStartSeconds,
+    double? AudioStartSeconds,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0, error);
+        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0,
+            null, null, null, null, null, error);
 }
 
 /// <summary>
@@ -124,6 +130,11 @@ public sealed class MediaProbeService
         var subtitleCount = 0;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
+        string? colorPrimaries = null;
+        string? colorTransfer = null;
+        string? colorSpace = null;
+        double? videoStart = null;
+        double? audioStart = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -149,9 +160,14 @@ public sealed class MediaProbeService
                             height = heightValue;
                         }
                         isHdr = IsHdrVideoStream(stream);
+                        colorPrimaries = ReadString(stream, "color_primaries");
+                        colorTransfer = ReadString(stream, "color_transfer");
+                        colorSpace = ReadString(stream, "color_space");
+                        videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
                         audioCodecs.Add(codecName ?? "unknown");
+                        audioStart ??= ReadStartTime(stream);
                         if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var channels))
                         {
                             maxAudioChannels = Math.Max(maxAudioChannels, channels);
@@ -183,6 +199,11 @@ public sealed class MediaProbeService
             isHdr,
             maxAudioChannels,
             maxAudioSampleRate,
+            colorPrimaries,
+            colorTransfer,
+            colorSpace,
+            videoStart,
+            audioStart,
             null);
     }
 
@@ -212,6 +233,30 @@ public sealed class MediaProbeService
         }
 
         return false;
+    }
+
+    private static string? ReadString(JsonElement stream, string property)
+    {
+        if (stream.TryGetProperty(property, out var element) && element.ValueKind == JsonValueKind.String)
+        {
+            var value = element.GetString();
+            // ffprobe writes "unknown"/"reserved" for unspecified color metadata; treat as absent.
+            return string.IsNullOrWhiteSpace(value) || value is "unknown" or "reserved" ? null : value;
+        }
+
+        return null;
+    }
+
+    private static double? ReadStartTime(JsonElement stream)
+    {
+        if (stream.TryGetProperty("start_time", out var element)
+            && element.ValueKind == JsonValueKind.String
+            && double.TryParse(element.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            return value;
+        }
+
+        return null;
     }
 
     private static string? FirstLine(string value) =>

@@ -360,10 +360,9 @@ preserves HDR must keep its HDR signal (HDR10/HDR10+/HLG/Dolby Vision) or the jo
 fails, while an intentional tone-map to SDR passes — reusing existing probe data for
 no extra cost. Remaining: bundling a libvmaf-enabled ffmpeg in the image (Debian's
 stock build lacks it), wiring PSNR/SSIM as corroborating signals into the scoring
-command, the rest of container/stream and color-metadata integrity
-(primaries/transfer/matrix, A/V sync) and per-rule-profile thresholds.
-Decode-integrity counts, audio fidelity (channel/sample-rate retention + EBU R128
-loudness) are done.
+command, and per-rule-profile thresholds. Decode-integrity counts, audio fidelity
+(channel/sample-rate retention + EBU R128 loudness), and colour-metadata/A-V-sync
+integrity are done.
 
 Deliverables:
 
@@ -381,7 +380,8 @@ Deliverables:
   timestamps, no truncated/partial last GOP, correct frame count within
   tolerance, and color metadata (primaries/transfer/matrix, HDR10/HDR10+/Dolby
   Vision side data) preserved or intentionally transformed. **HDR signal
-  preservation done**; full primaries/transfer/matrix and A/V-sync checks still to come.
+  preservation, colour primaries/transfer/matrix preservation, and A/V-sync checks
+  done.** Monotonic-timestamp and truncated-GOP checks still to come.
 - **Audio fidelity checks** appropriate to the operation: channel layout and
   sample-rate retention, loudness (EBU R128) drift within tolerance, and no
   clipping introduced. **Channel/sample-rate retention and EBU R128 loudness drift

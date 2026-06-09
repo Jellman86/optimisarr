@@ -225,6 +225,73 @@ public sealed class VerificationEvaluatorTests
         Assert.DoesNotContain(report.Checks, check => check.Name == AudioFidelityCheck);
     }
 
+    private const string ColorCheck = "Colour metadata";
+    private const string SyncCheck = "A/V sync";
+
+    [Fact]
+    public void Colour_metadata_check_is_absent_when_the_original_declares_none()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == ColorCheck);
+    }
+
+    [Fact]
+    public void Preserved_colour_metadata_passes()
+    {
+        var input = Healthy() with
+        {
+            OriginalColorPrimaries = "bt709", OutputColorPrimaries = "bt709",
+            OriginalColorTransfer = "bt709", OutputColorTransfer = "bt709",
+            OriginalColorSpace = "bt709", OutputColorSpace = "bt709"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
+    public void A_definite_colour_mismatch_fails()
+    {
+        var input = Healthy() with { OriginalColorPrimaries = "bt709", OutputColorPrimaries = "bt601" };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
+    public void A_dropped_colour_tag_on_the_output_is_treated_as_benign()
+    {
+        var input = Healthy() with { OriginalColorPrimaries = "bt709", OutputColorPrimaries = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
+    public void Aligned_audio_and_video_starts_pass_sync()
+    {
+        var input = Healthy() with { OutputVideoStartSeconds = 0.0, OutputAudioStartSeconds = 0.02 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, SyncCheck));
+    }
+
+    [Fact]
+    public void Gross_av_desync_fails()
+    {
+        var input = Healthy() with { OutputVideoStartSeconds = 0.0, OutputAudioStartSeconds = 1.5 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, SyncCheck));
+    }
+
     private const string HdrCheck = "HDR signal";
 
     [Fact]

@@ -35,4 +35,12 @@ public sealed record VerificationInput(
     bool LoudnessMeasured = false,
     string? LoudnessError = null,
     double? OriginalLoudnessLufs = null,
-    double? OutputLoudnessLufs = null);
+    double? OutputLoudnessLufs = null,
+    string? OriginalColorPrimaries = null,
+    string? OutputColorPrimaries = null,
+    string? OriginalColorTransfer = null,
+    string? OutputColorTransfer = null,
+    string? OriginalColorSpace = null,
+    string? OutputColorSpace = null,
+    double? OutputVideoStartSeconds = null,
+    double? OutputAudioStartSeconds = null);
