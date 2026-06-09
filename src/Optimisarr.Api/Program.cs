@@ -920,6 +920,44 @@ app.MapPost("/api/jobs/{id:int}/cancel", async (
 })
 .WithName("CancelJob");
 
+// Re-queue a failed or cancelled job so the user can deliberately try a file again
+// (e.g. after fixing an encoder setting). The history guard otherwise holds failed
+// files back, so this is the explicit way to retry one.
+app.MapPost("/api/jobs/{id:int}/retry", async (
+    int id,
+    OptimisarrDbContext db,
+    QueueDispatcher dispatcher,
+    CancellationToken cancellationToken) =>
+{
+    var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+    if (job is null)
+    {
+        return Results.NotFound(new { error = $"No job with id {id}." });
+    }
+
+    if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
+    {
+        return Results.BadRequest(new { error = $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}." });
+    }
+
+    job.Status = JobStatus.Queued;
+    job.ErrorMessage = null;
+    job.Progress = 0;
+    job.StartedAt = null;
+    job.FinishedAt = null;
+    job.WorkOutputPath = null;
+    job.OutputSizeBytes = null;
+    job.VerificationPassed = null;
+    job.VerificationReportJson = null;
+    job.VerifiedAt = null;
+    job.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+
+    dispatcher.Wake();
+    return Results.Ok(new { id = job.Id, status = job.Status.ToString() });
+})
+.WithName("RetryJob");
+
 // Phase 5: safe replacement. A verified ReadyToReplace job can replace its
 // original — the original is quarantined first and the move is recorded so it can
 // always be rolled back.

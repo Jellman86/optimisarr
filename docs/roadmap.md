@@ -21,8 +21,11 @@ the replacement workflow is trustworthy.
   `GET /api/candidates` and a Candidates page. Per-library overrides (target
   codec/container, HDR handling, size/resolution limits, path exclusions,
   priority) are editable from expandable cards on the Libraries page and resolved
-  by a pure `RuleResolver`. Still to come: a measured minimum-saving estimate
-  (today's proxy is "already in the target codec").
+  by a pure `RuleResolver`. **Already-processed detection** now also covers prior
+  jobs: a file optimised (or failed) for its current version is held back by a pure
+  `OptimisationHistoryEvaluator` so the queue never loops on it, and a genuinely
+  changed file becomes eligible again. Still to come: a measured minimum-saving
+  estimate (today's proxy is "already in the target codec").
 - **Phase 3 (Queue and Worker): done.** A `Job` state machine, a pure
   `JobScheduler` (priority-then-FIFO, global `maxConcurrentJobs`), a pure
   `FfmpegCommandBuilder`/`TranscodeSpecResolver`, and a single-writer

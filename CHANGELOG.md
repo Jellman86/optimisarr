@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Don't optimise the same file twice
+
+- A file that has already been optimised — or that already failed — for its current
+  version is no longer offered as a candidate or re-queued, so the queue can't loop on
+  the same file (which previously affected failed jobs and the move-on-complete flow,
+  where the original never changes). The rule is version-aware via a pure, unit-tested
+  `OptimisationHistoryEvaluator`: a job only counts if it finished at or after the
+  file's modified time, so a genuinely changed file (a fresh rip) becomes eligible
+  again. The Candidates list explains why with "Already optimised" or "Previously
+  failed".
+- Failed and cancelled jobs can be **retried** from the queue (`POST /api/jobs/{id}/retry`),
+  which re-queues the file as a fresh attempt — the deliberate way to re-run a file the
+  history guard is holding back.
+
 ### libvmaf-enabled ffmpeg and PSNR/SSIM
 
 - The image now bundles **jellyfin-ffmpeg** (a Debian-packaged ffmpeg with libvmaf and

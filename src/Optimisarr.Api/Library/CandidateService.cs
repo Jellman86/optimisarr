@@ -42,6 +42,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
 
         var files = await query.OrderBy(file => file.RelativePath).ToListAsync(cancellationToken);
 
+        var history = await LoadHistoryAsync(libraryId, cancellationToken);
+
         var candidates = new List<Candidate>(files.Count);
         foreach (var file in files)
         {
@@ -58,7 +60,14 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.IsHdr,
                 file.RelativePath);
 
+            // The rule decision says whether the file is worth optimising; the history
+            // overlay then stops a file we've already optimised (or that failed) for its
+            // current version being offered again.
             var decision = CandidateEvaluator.Evaluate(media, rules);
+            decision = OptimisationHistoryEvaluator.Apply(
+                decision,
+                history.GetValueOrDefault(file.Id, OptimisationHistory.None),
+                file.ModifiedAt);
 
             candidates.Add(new Candidate(
                 file.Id,
@@ -74,5 +83,39 @@ public sealed class CandidateService(OptimisarrDbContext db)
         }
 
         return candidates;
+    }
+
+    /// <summary>
+    /// The most recent successful and failed job finish times per media file, used to
+    /// decide whether a file has already been handled for its current version.
+    /// </summary>
+    private async Task<Dictionary<int, OptimisationHistory>> LoadHistoryAsync(
+        int? libraryId, CancellationToken cancellationToken)
+    {
+        var query = db.Jobs.AsNoTracking()
+            .Where(job => job.FinishedAt != null
+                && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed));
+        if (libraryId is not null)
+        {
+            query = query.Where(job => job.LibraryId == libraryId);
+        }
+
+        // SQLite stores DateTimeOffset as text and can't aggregate it server-side, so
+        // fetch the terminal jobs and reduce to the latest per file in memory.
+        var rows = await query
+            .Select(job => new { job.MediaFileId, job.Status, job.FinishedAt })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => row.MediaFileId)
+            .ToDictionary(
+                group => group.Key,
+                group => new OptimisationHistory(
+                    LastCompletedAt: group
+                        .Where(row => row.Status == JobStatus.Completed)
+                        .Max(row => row.FinishedAt),
+                    LastFailedAt: group
+                        .Where(row => row.Status == JobStatus.Failed)
+                        .Max(row => row.FinishedAt)));
     }
 }

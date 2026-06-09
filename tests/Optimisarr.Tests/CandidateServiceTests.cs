@@ -75,6 +75,96 @@ public sealed class CandidateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_file_with_a_completed_job_is_no_longer_offered()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");
+            file.ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+
+            // A successful job that finished after the file was last modified.
+            db.Jobs.Add(new Job
+            {
+                MediaFileId = file.Id,
+                LibraryId = library.Id,
+                Status = JobStatus.Completed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T01:00:00Z")
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = Single(await EvaluateAsync(libraryId: null), "a.mkv");
+
+        Assert.False(result.Eligible);
+        Assert.Equal("Already optimised", result.Reason);
+    }
+
+    [Fact]
+    public async Task A_file_with_a_failed_job_is_held_back_until_retried()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");
+            file.ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(new Job
+            {
+                MediaFileId = file.Id,
+                LibraryId = library.Id,
+                Status = JobStatus.Failed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T01:00:00Z")
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = Single(await EvaluateAsync(libraryId: null), "a.mkv");
+
+        Assert.False(result.Eligible);
+        Assert.Contains("Previously failed", result.Reason);
+    }
+
+    [Fact]
+    public async Task A_file_changed_after_its_job_becomes_eligible_again()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");
+            file.ModifiedAt = DateTimeOffset.Parse("2026-06-02T00:00:00Z"); // re-ripped after the job
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(new Job
+            {
+                MediaFileId = file.Id,
+                LibraryId = library.Id,
+                Status = JobStatus.Completed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T01:00:00Z")
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = Single(await EvaluateAsync(libraryId: null), "a.mkv");
+
+        Assert.True(result.Eligible);
+    }
+
+    [Fact]
     public async Task Ignores_files_that_have_not_been_probed()
     {
         await using (var db = new OptimisarrDbContext(_options))
