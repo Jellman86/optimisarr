@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Never silently strip HDR
+
+- Verification now includes an always-on **HDR preservation** gate: if the original
+  carries an HDR signal (HDR10/HDR10+/HLG transfer or Dolby Vision side data) and the
+  library is set to preserve it, the output must still be HDR or the job fails — so a
+  transcode can never quietly drop HDR. When the library intentionally tone-maps HDR
+  to SDR, the gate passes; SDR originals are unaffected. It reuses the existing probe
+  data, so it adds no extra FFmpeg work, and the decision is pure and unit tested.
+
 ### Perceptual quality gate (VMAF)
 
 - Verification can now measure the output's **perceptual quality against the

@@ -355,10 +355,14 @@ Status: in progress. **Perceptual quality scoring (VMAF) is done** — an opt-in
 fail-closed gate measures the output against the original with `libvmaf` and blocks
 replacement unless it clears both a harmonic-mean floor and a per-frame minimum
 floor (pure unit-tested `QualityScoreParser` and gate logic; measured numbers shown
-in the report). Remaining: bundling a libvmaf-enabled ffmpeg in the image (Debian's
+in the report). An always-on **HDR preservation** gate is done too: an HDR original whose library
+preserves HDR must keep its HDR signal (HDR10/HDR10+/HLG/Dolby Vision) or the job
+fails, while an intentional tone-map to SDR passes — reusing existing probe data for
+no extra cost. Remaining: bundling a libvmaf-enabled ffmpeg in the image (Debian's
 stock build lacks it), wiring PSNR/SSIM as corroborating signals into the scoring
-command, per-frame decode-integrity counts, container/stream and color-metadata
-integrity, audio fidelity (EBU R128), and per-rule-profile thresholds.
+command, per-frame decode-integrity counts, the rest of container/stream and
+color-metadata integrity (primaries/transfer/matrix, A/V sync), audio fidelity
+(EBU R128), and per-rule-profile thresholds.
 
 Deliverables:
 
@@ -375,7 +379,8 @@ Deliverables:
 - **Container and stream integrity**: A/V sync drift within tolerance, monotonic
   timestamps, no truncated/partial last GOP, correct frame count within
   tolerance, and color metadata (primaries/transfer/matrix, HDR10/HDR10+/Dolby
-  Vision side data) preserved or intentionally transformed.
+  Vision side data) preserved or intentionally transformed. **HDR signal
+  preservation done**; full primaries/transfer/matrix and A/V-sync checks still to come.
 - **Audio fidelity checks** appropriate to the operation: channel layout and
   sample-rate retention, loudness (EBU R128) drift within tolerance, and no
   clipping introduced.

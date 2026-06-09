@@ -8,6 +8,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Activity;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Tools;
@@ -298,7 +299,9 @@ public sealed class QueueDispatcher(
             media.SizeBytes,
             media.DurationSeconds,
             media.AudioTrackCount ?? 0,
-            media.SubtitleTrackCount ?? 0);
+            media.SubtitleTrackCount ?? 0,
+            media.IsHdr,
+            rules.Hdr == HdrHandling.TonemapToSdr);
 
         var videoEncoder = await ResolveVideoEncoderAsync(
             rules.TargetVideoCodec,

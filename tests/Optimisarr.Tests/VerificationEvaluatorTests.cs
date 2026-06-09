@@ -164,6 +164,48 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Size saving"));
     }
 
+    private const string HdrCheck = "HDR signal";
+
+    [Fact]
+    public void Hdr_check_is_absent_for_an_sdr_original()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == HdrCheck);
+    }
+
+    [Fact]
+    public void Hdr_original_that_keeps_its_hdr_signal_passes()
+    {
+        var input = Healthy() with { OriginalIsHdr = true, OutputIsHdr = true };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, HdrCheck));
+    }
+
+    [Fact]
+    public void Hdr_original_that_silently_loses_hdr_fails()
+    {
+        var input = Healthy() with { OriginalIsHdr = true, OutputIsHdr = false };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, HdrCheck));
+    }
+
+    [Fact]
+    public void Hdr_original_intentionally_tone_mapped_to_sdr_passes()
+    {
+        var input = Healthy() with { OriginalIsHdr = true, OutputIsHdr = false, HdrConvertedToSdr = true };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, HdrCheck));
+    }
+
     private static readonly VerificationPolicy QualityGate =
         VerificationPolicy.Default with { QualityGateEnabled = true };
 

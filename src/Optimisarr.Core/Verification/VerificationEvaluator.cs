@@ -22,6 +22,13 @@ public static class VerificationEvaluator
             SizeReduced(input, policy)
         };
 
+        // HDR preservation only matters when the original carries an HDR signal, so
+        // SDR sources don't get a noisy not-applicable line.
+        if (input.OriginalIsHdr)
+        {
+            checks.Add(HdrPreserved(input));
+        }
+
         // The perceptual-quality gate only contributes when the user has opted in;
         // otherwise the report and its cost are unchanged.
         if (policy.QualityGateEnabled)
@@ -30,6 +37,18 @@ public static class VerificationEvaluator
         }
 
         return new VerificationReport(checks);
+    }
+
+    private static VerificationCheck HdrPreserved(VerificationInput input)
+    {
+        if (input.HdrConvertedToSdr)
+        {
+            return Pass("HDR signal", "Original is HDR and was intentionally tone-mapped to SDR.");
+        }
+
+        return input.OutputIsHdr
+            ? Pass("HDR signal", "HDR signal preserved in the output.")
+            : Fail("HDR signal", "Original is HDR but the output lost its HDR signal.");
     }
 
     private static VerificationCheck PerceptualQuality(VerificationInput input, VerificationPolicy policy)

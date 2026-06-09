@@ -9,7 +9,9 @@ public sealed record OriginalSnapshot(
     long SizeBytes,
     double? DurationSeconds,
     int AudioTrackCount,
-    int SubtitleTrackCount);
+    int SubtitleTrackCount,
+    bool IsHdr,
+    bool HdrConvertedToSdr);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -52,6 +54,9 @@ public sealed class VerificationService(MediaProbeService probe, DecodeHealthChe
             OutputAudioTrackCount: outputProbe.AudioTrackCount,
             OriginalSubtitleTrackCount: original.SubtitleTrackCount,
             OutputSubtitleTrackCount: outputProbe.SubtitleTrackCount,
+            OriginalIsHdr: original.IsHdr,
+            OutputIsHdr: outputProbe.IsHdr,
+            HdrConvertedToSdr: original.HdrConvertedToSdr,
             QualityMeasured: qualityResult?.Measured ?? false,
             QualityError: qualityResult?.Error,
             QualityScores: qualityResult?.Scores);

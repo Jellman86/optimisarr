@@ -21,6 +21,9 @@ public sealed record VerificationInput(
     int OutputAudioTrackCount,
     int OriginalSubtitleTrackCount,
     int OutputSubtitleTrackCount,
+    bool OriginalIsHdr = false,
+    bool OutputIsHdr = false,
+    bool HdrConvertedToSdr = false,
     bool QualityMeasured = false,
     string? QualityError = null,
     QualityScores? QualityScores = null);
