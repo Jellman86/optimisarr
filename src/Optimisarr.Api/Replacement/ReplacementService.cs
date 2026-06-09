@@ -47,25 +47,29 @@ public sealed class ReplacementService
     private readonly SettingsStore _settings;
     private readonly string _trashRoot;
     private readonly Func<string, string, bool> _canMoveAtomically;
+    private readonly LibraryRefreshService? _refresh;
 
     public ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
         SettingsStore settings,
         IHostEnvironment environment,
+        LibraryRefreshService refresh,
         ILogger<ReplacementService> logger)
-        : this(db, inventory, settings, ResolveTrashRoot(environment), logger)
+        : this(db, inventory, settings, ResolveTrashRoot(environment), logger, refresh: refresh)
     {
     }
 
-    // Test seam: lets the suite point the trash root at a temp directory.
+    // Test seam: lets the suite point the trash root at a temp directory. The library
+    // refresh is optional so tests need not stand up an HTTP stack.
     internal ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
         SettingsStore settings,
         string trashRoot,
         ILogger<ReplacementService> logger,
-        Func<string, string, bool>? canMoveAtomically = null)
+        Func<string, string, bool>? canMoveAtomically = null,
+        LibraryRefreshService? refresh = null)
     {
         _db = db;
         _inventory = inventory;
@@ -73,6 +77,7 @@ public sealed class ReplacementService
         _trashRoot = trashRoot;
         _logger = logger;
         _canMoveAtomically = canMoveAtomically ?? FileMover.CanMoveAtomically;
+        _refresh = refresh;
     }
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
@@ -180,6 +185,9 @@ public sealed class ReplacementService
         // just because a re-probe could not run.
         await TryReprobeAsync(media.Id, cancellationToken);
 
+        // Best effort: tell connected media servers to re-scan the new file.
+        await TryRefreshLibrariesAsync(media.Path, cancellationToken);
+
         return ReplacementActionResult.Ok(replacement);
     }
 
@@ -238,7 +246,27 @@ public sealed class ReplacementService
             await TryReprobeAsync(media.Id, cancellationToken);
         }
 
+        // Best effort: the restored original is back in place; have servers re-scan it.
+        await TryRefreshLibrariesAsync(replacement.OriginalPath, cancellationToken);
+
         return ReplacementActionResult.Ok(replacement);
+    }
+
+    private async Task TryRefreshLibrariesAsync(string changedPath, CancellationToken cancellationToken)
+    {
+        if (_refresh is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _refresh.RefreshForPathAsync(changedPath, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Library refresh after change to {Path} failed", changedPath);
+        }
     }
 
     private async Task TryReprobeAsync(int mediaFileId, CancellationToken cancellationToken)

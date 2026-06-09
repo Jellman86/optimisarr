@@ -11,6 +11,7 @@ public sealed record ActivityWatcherDto(
     string BaseUrl,
     bool HasToken,
     bool Enabled,
+    bool RefreshOnReplace,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
@@ -21,6 +22,7 @@ public sealed record ActivityWatcherDto(
         watcher.BaseUrl,
         !string.IsNullOrEmpty(watcher.ApiToken),
         watcher.Enabled,
+        watcher.RefreshOnReplace,
         watcher.CreatedAt,
         watcher.UpdatedAt);
 }
@@ -30,14 +32,16 @@ public sealed record SaveActivityWatcherRequest(
     string? Type,
     string? BaseUrl,
     string? ApiToken,
-    bool? Enabled);
+    bool? Enabled,
+    bool? RefreshOnReplace = null);
 
 public sealed record ParsedActivityWatcher(
     string Name,
     ActivityWatcherType Type,
     string BaseUrl,
     string? ApiToken,
-    bool Enabled);
+    bool Enabled,
+    bool RefreshOnReplace);
 
 public static class ActivityWatcherRequestParser
 {
@@ -76,7 +80,8 @@ public static class ActivityWatcherRequestParser
         }
 
         var token = string.IsNullOrWhiteSpace(request.ApiToken) ? null : request.ApiToken.Trim();
-        parsed = new ParsedActivityWatcher(name, type, baseUrl, token, request.Enabled ?? true);
+        parsed = new ParsedActivityWatcher(
+            name, type, baseUrl, token, request.Enabled ?? true, request.RefreshOnReplace ?? true);
         return true;
     }
 }

@@ -281,6 +281,13 @@ Exit criteria:
 Goal: fit cleanly into existing media stacks without becoming a second media
 manager.
 
+Status: started. A verified replacement (and a rollback) now triggers a
+best-effort re-scan on connected Plex/Jellyfin/Emby servers, reusing the Phase 6
+activity-pause connections (per-watcher "refresh after replacements" toggle, pure
+unit-tested `LibraryRefreshRequestBuilder`). Still to come: the dedicated
+OAuth/PIN and Quick Connect login flows for acquiring tokens (today a token/API
+key is pasted in), Sonarr/Radarr exclusions, notifications, and import/export.
+
 Deliverables:
 
 - **Authenticated media-server connections** so Optimisarr can tell the server to

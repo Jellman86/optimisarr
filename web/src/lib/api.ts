@@ -157,6 +157,7 @@ export type ActivityWatcher = {
   baseUrl: string
   hasToken: boolean
   enabled: boolean
+  refreshOnReplace: boolean
   createdAt: string
   updatedAt: string
 }
@@ -167,6 +168,7 @@ export type SaveActivityWatcher = {
   baseUrl: string
   apiToken: string
   enabled: boolean
+  refreshOnReplace: boolean
 }
 
 export type MediaFile = {

@@ -25,6 +25,7 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
+builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<QuarantinePurgeService>();
 builder.Services.AddHttpClient();
@@ -185,7 +186,8 @@ app.MapPost("/api/activity-watchers", async (
         Type = parsed.Type,
         BaseUrl = parsed.BaseUrl,
         ApiToken = parsed.ApiToken,
-        Enabled = parsed.Enabled
+        Enabled = parsed.Enabled,
+        RefreshOnReplace = parsed.RefreshOnReplace
     };
     db.ActivityWatchers.Add(watcher);
     await db.SaveChangesAsync(cancellationToken);
@@ -220,6 +222,7 @@ app.MapPut("/api/activity-watchers/{id:int}", async (
         watcher.ApiToken = parsed.ApiToken;
     }
     watcher.Enabled = parsed.Enabled;
+    watcher.RefreshOnReplace = parsed.RefreshOnReplace;
     watcher.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 

@@ -25,6 +25,13 @@ public sealed class ActivityWatcher
     /// <summary>When false, the watcher is ignored by the pause gate.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// When true, this server is told to re-scan after a verified replacement (or a
+    /// rollback) so its library reflects the new file. The same connection serves
+    /// both the activity-pause gate and post-replacement refresh.
+    /// </summary>
+    public bool RefreshOnReplace { get; set; } = true;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

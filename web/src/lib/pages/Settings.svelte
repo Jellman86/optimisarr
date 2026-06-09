@@ -4,7 +4,7 @@
   import Toggle from '../components/Toggle.svelte'
 
   const watcherTypes: ActivityWatcherType[] = ['Plex', 'Jellyfin', 'Emby']
-  const emptyWatcher = (): SaveActivityWatcher => ({ name: '', type: 'Plex', baseUrl: '', apiToken: '', enabled: true })
+  const emptyWatcher = (): SaveActivityWatcher => ({ name: '', type: 'Plex', baseUrl: '', apiToken: '', enabled: true, refreshOnReplace: true })
 
   let watchers = $state<ActivityWatcher[]>([])
   let watcherError = $state<string | null>(null)
@@ -29,7 +29,7 @@
   function startEdit(w: ActivityWatcher) {
     editingId = w.id
     // Token is write-only; leave blank to keep the stored secret.
-    watcherDraft = { name: w.name, type: w.type, baseUrl: w.baseUrl, apiToken: '', enabled: w.enabled }
+    watcherDraft = { name: w.name, type: w.type, baseUrl: w.baseUrl, apiToken: '', enabled: w.enabled, refreshOnReplace: w.refreshOnReplace }
   }
 
   async function saveWatcher() {
@@ -293,6 +293,7 @@
               <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
             </div>
             {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+            {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title="Re-scans this server after a verified replacement.">refresh</span>{/if}
             {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
             <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
             <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
@@ -335,8 +336,9 @@
           />
         </div>
       </div>
-      <div class="mt-3">
-        <Toggle bind:checked={watcherDraft.enabled} label="Enabled" />
+      <div class="mt-3 grid gap-3">
+        <Toggle bind:checked={watcherDraft.enabled} label="Enabled" hint="Watch this server for active playback to pause processing." />
+        <Toggle bind:checked={watcherDraft.refreshOnReplace} label="Refresh after replacements" hint="Tell this server to re-scan the title after a verified replacement or rollback." />
       </div>
       <div class="mt-4 flex items-center gap-2">
         <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>

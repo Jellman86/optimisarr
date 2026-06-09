@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Refresh media servers after a replacement
+
+- After a verified replacement (and after a rollback), Optimisarr now asks the
+  connected media servers to re-scan the changed title, so Plex/Jellyfin/Emby pick
+  up the new file without waiting for their own scheduled scan. It reuses the same
+  server connections configured for activity-pause — configure each server once.
+- A new **Refresh after replacements** toggle on each watcher (default on) controls
+  this; the watcher list shows a "refresh" badge for enabled targets. Plex is asked
+  to refresh its sections (`/library/sections/all/refresh`); Jellyfin and Emby are
+  notified of the changed folder via `/Library/Media/Updated` so the scan is
+  targeted. The request shaping is a pure, unit-tested `LibraryRefreshRequestBuilder`.
+- The refresh is strictly **best-effort**: it runs only after the replacement is
+  already safely committed, and a server that is offline or rejects the call is
+  logged and ignored — it can never affect the replacement's outcome or safety.
+
 ### Pause processing while a media server is streaming
 
 - New **activity watchers** let Optimisarr pause the queue while Plex, Jellyfin, or
