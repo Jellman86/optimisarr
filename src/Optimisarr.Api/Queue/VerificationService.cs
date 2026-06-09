@@ -5,6 +5,7 @@ namespace Optimisarr.Api.Queue;
 
 /// <summary>The properties of the original file a converted output is judged against.</summary>
 public sealed record OriginalSnapshot(
+    string Path,
     long SizeBytes,
     double? DurationSeconds,
     int AudioTrackCount,
@@ -19,7 +20,7 @@ public sealed record VerificationOutcome(VerificationReport Report, long OutputS
 /// <see cref="VerificationEvaluator"/>. This is the only place verification touches
 /// the filesystem or FFmpeg; the judgement itself stays pure and testable.
 /// </summary>
-public sealed class VerificationService(MediaProbeService probe, DecodeHealthCheck decode)
+public sealed class VerificationService(MediaProbeService probe, DecodeHealthCheck decode, QualityScoreService quality)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -30,6 +31,12 @@ public sealed class VerificationService(MediaProbeService probe, DecodeHealthChe
         var decodeResult = await decode.CheckAsync(outputPath, cancellationToken);
         var outputProbe = await probe.ProbeAsync(outputPath, cancellationToken);
         var outputSize = TryGetSize(outputPath);
+
+        // VMAF is expensive (a second full decode of both files), so only measure it
+        // when the user has opted into the quality gate.
+        var qualityResult = policy.QualityGateEnabled
+            ? await quality.MeasureAsync(original.Path, outputPath, cancellationToken)
+            : null;
 
         var input = new VerificationInput(
             DecodeSucceeded: decodeResult.Healthy,
@@ -44,7 +51,10 @@ public sealed class VerificationService(MediaProbeService probe, DecodeHealthChe
             OriginalAudioTrackCount: original.AudioTrackCount,
             OutputAudioTrackCount: outputProbe.AudioTrackCount,
             OriginalSubtitleTrackCount: original.SubtitleTrackCount,
-            OutputSubtitleTrackCount: outputProbe.SubtitleTrackCount);
+            OutputSubtitleTrackCount: outputProbe.SubtitleTrackCount,
+            QualityMeasured: qualityResult?.Measured ?? false,
+            QualityError: qualityResult?.Error,
+            QualityScores: qualityResult?.Scores);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

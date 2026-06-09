@@ -26,6 +26,11 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+# NOTE: Debian's ffmpeg is not built with libvmaf, so the opt-in perceptual
+# quality (VMAF) gate cannot run on this stock binary — it fails closed with a
+# clear message until a libvmaf-enabled ffmpeg is provided. Swapping in such a
+# build (e.g. a BtbN static build) is a deliberate, separately tested change so
+# it does not regress the hardware-encode paths; see roadmap Phase 9.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \

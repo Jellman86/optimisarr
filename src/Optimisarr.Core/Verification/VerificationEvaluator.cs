@@ -22,7 +22,62 @@ public static class VerificationEvaluator
             SizeReduced(input, policy)
         };
 
+        // The perceptual-quality gate only contributes when the user has opted in;
+        // otherwise the report and its cost are unchanged.
+        if (policy.QualityGateEnabled)
+        {
+            checks.Add(PerceptualQuality(input, policy));
+        }
+
         return new VerificationReport(checks);
+    }
+
+    private static VerificationCheck PerceptualQuality(VerificationInput input, VerificationPolicy policy)
+    {
+        // Fail closed: if the gate is on but quality could not be measured, we cannot
+        // prove the output is good enough, so replacement must not proceed.
+        if (!input.QualityMeasured || input.QualityScores is null)
+        {
+            return Fail("Perceptual quality (VMAF)", $"Quality could not be measured: {Describe(input.QualityError)}");
+        }
+
+        var scores = input.QualityScores;
+        if (scores.VmafHarmonicMean is not { } harmonic || scores.VmafMin is not { } min)
+        {
+            return Fail("Perceptual quality (VMAF)", "VMAF aggregates were missing from the measurement.");
+        }
+
+        var detail = DescribeScores(scores, policy);
+        return harmonic >= policy.MinimumVmafHarmonicMean && min >= policy.MinimumVmafMin
+            ? Pass("Perceptual quality (VMAF)", detail)
+            : Fail("Perceptual quality (VMAF)", $"{detail} Below the quality gate.");
+    }
+
+    private static string DescribeScores(QualityScores scores, VerificationPolicy policy)
+    {
+        var parts = new List<string>
+        {
+            string.Format(
+                CultureInfo.InvariantCulture,
+                "VMAF harmonic mean {0:0.##} (gate {1:0.##}), lowest frame {2:0.##} (gate {3:0.##})",
+                scores.VmafHarmonicMean, policy.MinimumVmafHarmonicMean,
+                scores.VmafMin, policy.MinimumVmafMin)
+        };
+
+        if (scores.VmafMean is { } mean)
+        {
+            parts.Add(string.Format(CultureInfo.InvariantCulture, "mean {0:0.##}", mean));
+        }
+        if (scores.PsnrYMean is { } psnr)
+        {
+            parts.Add(string.Format(CultureInfo.InvariantCulture, "PSNR-Y {0:0.##} dB", psnr));
+        }
+        if (scores.SsimMean is { } ssim)
+        {
+            parts.Add(string.Format(CultureInfo.InvariantCulture, "SSIM {0:0.####}", ssim));
+        }
+
+        return string.Join("; ", parts) + ".";
     }
 
     private static VerificationCheck DecodeHealth(VerificationInput input) =>

@@ -46,6 +46,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationRequireAudioRetained,
         SettingKeys.VerificationRequireSubtitlesRetained,
         SettingKeys.VerificationRequireSizeReduction,
+        SettingKeys.VerificationQualityGateEnabled,
+        SettingKeys.VerificationMinimumVmafHarmonicMean,
+        SettingKeys.VerificationMinimumVmafMin,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
@@ -89,6 +92,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationRequireAudioRetained
                 || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
                 || setting.Key == SettingKeys.VerificationRequireSizeReduction
+                || setting.Key == SettingKeys.VerificationQualityGateEnabled
+                || setting.Key == SettingKeys.VerificationMinimumVmafHarmonicMean
+                || setting.Key == SettingKeys.VerificationMinimumVmafMin
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
@@ -114,7 +120,18 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                     VerificationPolicy.Default.RequireSubtitlesRetained),
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationRequireSizeReduction),
-                    VerificationPolicy.Default.RequireSizeReduction)),
+                    VerificationPolicy.Default.RequireSizeReduction),
+                ParseBool(
+                    settings.GetValueOrDefault(SettingKeys.VerificationQualityGateEnabled),
+                    VerificationPolicy.Default.QualityGateEnabled),
+                ParseDouble(
+                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafHarmonicMean),
+                    VerificationPolicy.Default.MinimumVmafHarmonicMean,
+                    min: 0),
+                ParseDouble(
+                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
+                    VerificationPolicy.Default.MinimumVmafMin,
+                    min: 0)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
     }
@@ -164,6 +181,12 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.RequireSubtitlesRetained.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationRequireSizeReduction] =
                 settings.VerificationPolicy.RequireSizeReduction.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationQualityGateEnabled] =
+                settings.VerificationPolicy.QualityGateEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationMinimumVmafHarmonicMean] =
+                Math.Max(0, settings.VerificationPolicy.MinimumVmafHarmonicMean).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationMinimumVmafMin] =
+                Math.Max(0, settings.VerificationPolicy.MinimumVmafMin).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementQuarantineRetentionDays] =

@@ -351,13 +351,24 @@ defensible, evidence-backed guarantee that the converted file is as good as it
 needs to be — so replacing an original is a decision the user can fully trust.
 This deepens Phase 4 rather than replacing it; every existing gate stays.
 
+Status: in progress. **Perceptual quality scoring (VMAF) is done** — an opt-in,
+fail-closed gate measures the output against the original with `libvmaf` and blocks
+replacement unless it clears both a harmonic-mean floor and a per-frame minimum
+floor (pure unit-tested `QualityScoreParser` and gate logic; measured numbers shown
+in the report). Remaining: bundling a libvmaf-enabled ffmpeg in the image (Debian's
+stock build lacks it), wiring PSNR/SSIM as corroborating signals into the scoring
+command, per-frame decode-integrity counts, container/stream and color-metadata
+integrity, audio fidelity (EBU R128), and per-rule-profile thresholds.
+
 Deliverables:
 
 - **Perceptual/structural quality scoring** of the output against the original:
   VMAF (with model selection), plus SSIM and PSNR as corroborating signals,
   computed by FFmpeg's `libvmaf`/filters and parsed by a pure, unit-tested
   evaluator. A configurable minimum VMAF gate (conservative default) blocks
-  replacement when quality drops too far.
+  replacement when quality drops too far. **VMAF gate done** (harmonic-mean +
+  per-frame minimum floors); PSNR/SSIM corroboration and VMAF model selection still
+  to come.
 - **Per-frame decode integrity**, not just a single full-decode pass: count and
   surface decoder errors/corrupt frames, dropped/duplicated frames, and any
   packet-level read errors over the whole file.

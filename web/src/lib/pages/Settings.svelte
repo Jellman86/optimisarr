@@ -288,6 +288,9 @@
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
     verificationRequireSizeReduction: true,
+    verificationQualityGateEnabled: false,
+    verificationMinimumVmafHarmonicMean: 93,
+    verificationMinimumVmafMin: 80,
     replacementAllowCrossFilesystem: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -327,6 +330,8 @@
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
+        verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
+        verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
@@ -346,6 +351,10 @@
 
   function bytesToGiB(value: number) {
     return (value / 1024 / 1024 / 1024).toString()
+  }
+
+  function clamp01to100(value: number) {
+    return Math.min(100, Math.max(0, Number(value) || 0))
   }
 
   // Backup & restore: export a secret-free config snapshot, or import one.
@@ -502,6 +511,44 @@
       <Toggle bind:checked={settings.verificationRequireAudioRetained} label="Require all audio tracks to be retained" />
       <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label="Require all subtitle tracks to be retained" />
       <Toggle bind:checked={settings.verificationRequireSizeReduction} label="Require output to be smaller than the original" />
+    </div>
+
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.verificationQualityGateEnabled}
+        label="Measure perceptual quality (VMAF) and gate on it"
+        hint="Compares the output to the original with FFmpeg's libvmaf. Needs an ffmpeg built with libvmaf and roughly doubles verification time, so it is off by default. A score of ~95 means visually indistinguishable from the source."
+      />
+      <div class="mt-4 grid gap-4 sm:grid-cols-2" class:opacity-50={!settings.verificationQualityGateEnabled}>
+        <div>
+          <label class="label" for="vmaf-harmonic">Minimum VMAF (harmonic mean)</label>
+          <input
+            id="vmaf-harmonic"
+            class="input"
+            type="number"
+            min="0"
+            max="100"
+            step="0.5"
+            bind:value={settings.verificationMinimumVmafHarmonicMean}
+            disabled={!settings.verificationQualityGateEnabled}
+          />
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Overall quality floor. The harmonic mean penalises bad frames more than a plain average.</p>
+        </div>
+        <div>
+          <label class="label" for="vmaf-min">Minimum VMAF (worst frame)</label>
+          <input
+            id="vmaf-min"
+            class="input"
+            type="number"
+            min="0"
+            max="100"
+            step="0.5"
+            bind:value={settings.verificationMinimumVmafMin}
+            disabled={!settings.verificationQualityGateEnabled}
+          />
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Catches short artifact bursts a healthy average would hide. If quality can't be measured, the gate fails closed.</p>
+        </div>
+      </div>
     </div>
   </div>
 

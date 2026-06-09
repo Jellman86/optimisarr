@@ -294,6 +294,7 @@ public sealed class QueueDispatcher(
             library?.EncoderPreset);
 
         var original = new OriginalSnapshot(
+            media.Path,
             media.SizeBytes,
             media.DurationSeconds,
             media.AudioTrackCount ?? 0,

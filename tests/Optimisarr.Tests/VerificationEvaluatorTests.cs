@@ -163,4 +163,75 @@ public sealed class VerificationEvaluatorTests
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Size saving"));
     }
+
+    private static readonly VerificationPolicy QualityGate =
+        VerificationPolicy.Default with { QualityGateEnabled = true };
+
+    private const string QualityCheck = "Perceptual quality (VMAF)";
+
+    [Fact]
+    public void Quality_gate_is_absent_unless_enabled()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == QualityCheck);
+    }
+
+    [Fact]
+    public void Quality_gate_passes_when_vmaf_clears_both_floors()
+    {
+        var input = Healthy() with
+        {
+            QualityMeasured = true,
+            QualityScores = new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99)
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, QualityGate);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, QualityCheck));
+    }
+
+    [Fact]
+    public void Quality_gate_fails_when_a_bad_frame_drops_below_the_min_floor()
+    {
+        // Healthy harmonic mean, but one stretch of frames falls to 70 — under the 80 floor.
+        var input = Healthy() with
+        {
+            QualityMeasured = true,
+            QualityScores = new QualityScores(94.0, 93.5, 70.0, 44.0, 0.98)
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, QualityGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, QualityCheck));
+    }
+
+    [Fact]
+    public void Quality_gate_fails_when_the_harmonic_mean_is_too_low()
+    {
+        var input = Healthy() with
+        {
+            QualityMeasured = true,
+            QualityScores = new QualityScores(91.0, 90.0, 85.0, 42.0, 0.97)
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, QualityGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, QualityCheck));
+    }
+
+    [Fact]
+    public void Quality_gate_fails_closed_when_quality_could_not_be_measured()
+    {
+        var input = Healthy() with
+        {
+            QualityMeasured = false,
+            QualityError = "libvmaf not available"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, QualityGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, QualityCheck));
+    }
 }

@@ -85,6 +85,9 @@ export type Settings = {
   verificationRequireAudioRetained: boolean
   verificationRequireSubtitlesRetained: boolean
   verificationRequireSizeReduction: boolean
+  verificationQualityGateEnabled: boolean
+  verificationMinimumVmafHarmonicMean: number
+  verificationMinimumVmafMin: number
   replacementAllowCrossFilesystem: boolean
   replacementQuarantineRetentionDays: number
 }

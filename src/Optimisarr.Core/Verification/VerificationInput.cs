@@ -20,4 +20,7 @@ public sealed record VerificationInput(
     int OriginalAudioTrackCount,
     int OutputAudioTrackCount,
     int OriginalSubtitleTrackCount,
-    int OutputSubtitleTrackCount);
+    int OutputSubtitleTrackCount,
+    bool QualityMeasured = false,
+    string? QualityError = null,
+    QualityScores? QualityScores = null);

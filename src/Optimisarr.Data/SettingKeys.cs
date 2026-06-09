@@ -39,6 +39,15 @@ public static class SettingKeys
     /// <summary>Whether verification requires the output to be smaller than the original.</summary>
     public const string VerificationRequireSizeReduction = "verification.requireSizeReduction";
 
+    /// <summary>Whether the opt-in perceptual-quality (VMAF) gate is enforced.</summary>
+    public const string VerificationQualityGateEnabled = "verification.qualityGateEnabled";
+
+    /// <summary>Minimum harmonic-mean VMAF an output must reach when the quality gate is on.</summary>
+    public const string VerificationMinimumVmafHarmonicMean = "verification.minimumVmafHarmonicMean";
+
+    /// <summary>Minimum single-frame VMAF an output must reach when the quality gate is on.</summary>
+    public const string VerificationMinimumVmafMin = "verification.minimumVmafMin";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

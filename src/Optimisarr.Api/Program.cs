@@ -21,6 +21,7 @@ builder.Services.AddSingleton<HardwareCapabilityService>();
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddSingleton<DecodeHealthCheck>();
+builder.Services.AddSingleton<QualityScoreService>();
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
@@ -113,6 +114,12 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "Verification duration tolerance cannot be negative." });
     }
 
+    if (request.VerificationMinimumVmafHarmonicMean is < 0 or > 100
+        || request.VerificationMinimumVmafMin is < 0 or > 100)
+    {
+        return Results.BadRequest(new { error = "VMAF thresholds must be between 0 and 100." });
+    }
+
     if (request.ReplacementQuarantineRetentionDays < 0)
     {
         return Results.BadRequest(new { error = "Quarantine retention days cannot be negative." });
@@ -145,7 +152,10 @@ app.MapPut("/api/settings", async (
             request.VerificationDurationTolerancePercent,
             request.VerificationRequireAudioRetained,
             request.VerificationRequireSubtitlesRetained,
-            request.VerificationRequireSizeReduction),
+            request.VerificationRequireSizeReduction,
+            request.VerificationQualityGateEnabled,
+            request.VerificationMinimumVmafHarmonicMean,
+            request.VerificationMinimumVmafMin),
         request.ReplacementAllowCrossFilesystem,
         request.ReplacementQuarantineRetentionDays), cancellationToken);
 
@@ -959,6 +969,9 @@ internal sealed record SettingsDto(
     bool VerificationRequireAudioRetained,
     bool VerificationRequireSubtitlesRetained,
     bool VerificationRequireSizeReduction,
+    bool VerificationQualityGateEnabled,
+    double VerificationMinimumVmafHarmonicMean,
+    double VerificationMinimumVmafMin,
     bool ReplacementAllowCrossFilesystem,
     int ReplacementQuarantineRetentionDays)
 {
@@ -974,6 +987,9 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.RequireAudioRetained,
         settings.VerificationPolicy.RequireSubtitlesRetained,
         settings.VerificationPolicy.RequireSizeReduction,
+        settings.VerificationPolicy.QualityGateEnabled,
+        settings.VerificationPolicy.MinimumVmafHarmonicMean,
+        settings.VerificationPolicy.MinimumVmafMin,
         settings.ReplacementAllowCrossFilesystem,
         settings.ReplacementQuarantineRetentionDays);
 

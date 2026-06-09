@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Perceptual quality gate (VMAF)
+
+- Verification can now measure the output's **perceptual quality against the
+  original with FFmpeg's libvmaf** (VMAF, plus PSNR/SSIM when the build reports
+  them) and gate replacement on it. It is **opt-in** — measuring VMAF needs an
+  ffmpeg built with libvmaf and roughly doubles verification time — and configured
+  on Settings with two floors: a **harmonic-mean** VMAF (penalises bad frames) and
+  a **per-frame minimum** (catches short artifact bursts a healthy average hides),
+  defaulting to 93 and 80.
+- The libvmaf JSON parsing (`QualityScoreParser`) and the gate decision
+  (`VerificationEvaluator`) are pure and unit tested against captured output; the
+  measured numbers are shown in the verification report. The gate **fails closed**:
+  if quality cannot be measured (e.g. an ffmpeg without libvmaf) the check fails so
+  an unproven output is never allowed to replace an original. The distorted stream
+  is scaled to the reference (`scale2ref`) so a downscaled encode is still compared
+  like-for-like. Note: Debian's stock ffmpeg lacks libvmaf, so the gate needs a
+  libvmaf-enabled ffmpeg in the image (tracked as a Phase 9 infra follow-up).
+
 ### Don't fight Sonarr/Radarr imports
 
 - Connect **Sonarr** and **Radarr** (base URL + API key, key write-only) on the
