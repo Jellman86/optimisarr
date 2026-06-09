@@ -18,7 +18,9 @@ internal readonly record struct ParsedLibrary(
     int? QualityCrf,
     string? EncoderPreset,
     bool MoveOnComplete,
-    string? TargetFolder);
+    string? TargetFolder,
+    double? MinVmafHarmonicMean,
+    double? MinVmafMin);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -88,6 +90,12 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (request.MinVmafHarmonicMean is < 0 or > 100 || request.MinVmafMin is < 0 or > 100)
+        {
+            error = "VMAF overrides must be between 0 and 100.";
+            return false;
+        }
+
         var moveOnComplete = request.MoveOnComplete ?? false;
         var targetFolder = Trim(request.TargetFolder);
         if (moveOnComplete)
@@ -121,7 +129,9 @@ internal static class LibraryRequestParser
             request.QualityCrf,
             Trim(request.EncoderPreset),
             moveOnComplete,
-            targetFolder);
+            targetFolder,
+            request.MinVmafHarmonicMean,
+            request.MinVmafMin);
         error = null;
         return true;
     }

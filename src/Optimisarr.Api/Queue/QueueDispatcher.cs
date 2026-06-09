@@ -254,7 +254,9 @@ public sealed class QueueDispatcher(
         double? DurationSeconds,
         bool MoveOnComplete,
         string? TargetFolder,
-        OriginalSnapshot Original)
+        OriginalSnapshot Original,
+        double? MinVmafHarmonicMean,
+        double? MinVmafMin)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -318,7 +320,9 @@ public sealed class QueueDispatcher(
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
-            original);
+            original,
+            library?.MinVmafHarmonicMean,
+            library?.MinVmafMin);
     }
 
     private sealed record FfmpegRun(int ExitCode, string? Error);
@@ -460,8 +464,10 @@ public sealed class QueueDispatcher(
         await NotifyAsync();
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
+        var policy = VerificationPolicyResolver.Resolve(
+            settings.VerificationPolicy, work.MinVmafHarmonicMean, work.MinVmafMin);
         var outcome = await verification.VerifyAsync(
-            work.Original, outputPath, settings.VerificationPolicy, cancellationToken);
+            work.Original, outputPath, policy, cancellationToken);
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>

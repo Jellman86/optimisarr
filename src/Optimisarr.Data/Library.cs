@@ -52,6 +52,15 @@ public sealed class Library
     public string? EncoderPreset { get; set; }
 
     /// <summary>
+    /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an
+    /// "archive" library demand near-lossless quality while a "space-saver" accepts
+    /// more. Null uses the global threshold; only applied when the gate is enabled.
+    /// </summary>
+    public double? MinVmafHarmonicMean { get; set; }
+
+    public double? MinVmafMin { get; set; }
+
+    /// <summary>
     /// When true, a completed output is moved into <see cref="TargetFolder"/> (mirroring
     /// the library's relative layout) and the job is marked Completed. The original is
     /// never touched — handy for testing without consuming the source.

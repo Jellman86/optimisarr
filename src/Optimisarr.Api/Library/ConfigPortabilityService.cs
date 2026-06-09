@@ -116,6 +116,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.EncoderPreset = snapshot.EncoderPreset;
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
+            library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
+            library.MinVmafMin = snapshot.MinVmafMin;
         }
 
         return (created, updated);
@@ -232,7 +234,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.QualityCrf,
         library.EncoderPreset,
         library.MoveOnComplete,
-        library.TargetFolder);
+        library.TargetFolder,
+        library.MinVmafHarmonicMean,
+        library.MinVmafMin);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

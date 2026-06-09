@@ -79,6 +79,8 @@
       encoderPreset: null,
       moveOnComplete: false,
       targetFolder: null,
+      minVmafHarmonicMean: null,
+      minVmafMin: null,
     }
   }
 
@@ -117,6 +119,8 @@
       encoderPreset: library.encoderPreset,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
+      minVmafHarmonicMean: library.minVmafHarmonicMean,
+      minVmafMin: library.minVmafMin,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     editingId = library.id
@@ -144,7 +148,15 @@
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
+      minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
+      minVmafMin: toNullableNumber(form.minVmafMin),
     }
+  }
+
+  function toNullableNumber(value: number | null): number | null {
+    if (value === null || (value as unknown) === '') return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
   }
 
   async function save() {
@@ -332,6 +344,18 @@
         <p class="text-xs text-slate-400">Using the encoder's default quality.</p>
       {/if}
     </div>
+    <div>
+      <label class="label" for="lib-vmaf-harmonic">VMAF gate override — harmonic mean</label>
+      <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" placeholder="Global default" bind:value={form.minVmafHarmonicMean} />
+    </div>
+    <div>
+      <label class="label" for="lib-vmaf-min">VMAF gate override — worst frame</label>
+      <input id="lib-vmaf-min" class="input" type="number" min="0" max="100" step="0.5" placeholder="Global default" bind:value={form.minVmafMin} />
+    </div>
+    <p class="text-xs text-slate-400 sm:col-span-2">
+      Only used when the perceptual-quality gate is enabled in Settings. Leave blank to use the global thresholds —
+      raise these for an archive library that should demand near-lossless quality.
+    </p>
   </div>
 
   <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Eligibility &amp; queue</h3>

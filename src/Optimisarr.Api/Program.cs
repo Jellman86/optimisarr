@@ -676,7 +676,9 @@ app.MapPost("/api/libraries", async (
         QualityCrf = parsed.QualityCrf,
         EncoderPreset = parsed.EncoderPreset,
         MoveOnComplete = parsed.MoveOnComplete,
-        TargetFolder = parsed.TargetFolder
+        TargetFolder = parsed.TargetFolder,
+        MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
+        MinVmafMin = parsed.MinVmafMin
     };
     db.Libraries.Add(library);
     await db.SaveChangesAsync(cancellationToken);
@@ -723,6 +725,8 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.EncoderPreset = parsed.EncoderPreset;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
+    library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
+    library.MinVmafMin = parsed.MinVmafMin;
     library.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 
@@ -1063,7 +1067,9 @@ internal sealed record SaveLibraryRequest(
     int? QualityCrf,
     string? EncoderPreset,
     bool? MoveOnComplete,
-    string? TargetFolder);
+    string? TargetFolder,
+    double? MinVmafHarmonicMean,
+    double? MinVmafMin);
 
 internal sealed record LibraryDto(
     int Id,
@@ -1083,6 +1089,8 @@ internal sealed record LibraryDto(
     string? EncoderPreset,
     bool MoveOnComplete,
     string? TargetFolder,
+    double? MinVmafHarmonicMean,
+    double? MinVmafMin,
     int FileCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -1105,6 +1113,8 @@ internal sealed record LibraryDto(
         library.EncoderPreset,
         library.MoveOnComplete,
         library.TargetFolder,
+        library.MinVmafHarmonicMean,
+        library.MinVmafMin,
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);

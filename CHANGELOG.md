@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Per-library VMAF thresholds
+
+- A library can now override the perceptual-quality (VMAF) gate's harmonic-mean and
+  worst-frame thresholds, so an archive library can demand near-lossless quality
+  while a space-saver accepts more — resolved per job by a pure, unit-tested
+  `VerificationPolicyResolver` that falls back to the global thresholds when no
+  override is set (and only when the gate is enabled). Editable on each library and
+  carried in config export/import.
+
 ### Colour metadata and A/V sync integrity
 
 - Verification now compares the output's **colour primaries, transfer, and matrix**

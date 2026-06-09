@@ -42,6 +42,8 @@ export type LibraryRules = {
   encoderPreset: string | null
   moveOnComplete: boolean
   targetFolder: string | null
+  minVmafHarmonicMean: number | null
+  minVmafMin: number | null
 }
 
 export type Library = LibraryRules & {

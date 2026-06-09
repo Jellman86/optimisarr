@@ -360,9 +360,9 @@ preserves HDR must keep its HDR signal (HDR10/HDR10+/HLG/Dolby Vision) or the jo
 fails, while an intentional tone-map to SDR passes — reusing existing probe data for
 no extra cost. Remaining: bundling a libvmaf-enabled ffmpeg in the image (Debian's
 stock build lacks it), wiring PSNR/SSIM as corroborating signals into the scoring
-command, and per-rule-profile thresholds. Decode-integrity counts, audio fidelity
-(channel/sample-rate retention + EBU R128 loudness), and colour-metadata/A-V-sync
-integrity are done.
+command, Decode-integrity counts, audio fidelity (channel/sample-rate retention + EBU R128
+loudness), colour-metadata/A-V-sync integrity, and per-library VMAF threshold
+overrides are done.
 
 Deliverables:
 
@@ -388,7 +388,8 @@ Deliverables:
   done** (pure unit-tested parsers/evaluators); clipping detection still to come.
 - **Per-rule-profile thresholds** so an "archive" profile can demand near-lossless
   scores while a "space-saver" profile accepts more, all surfaced in the
-  `VerificationReport` with the measured numbers, not just pass/fail.
+  `VerificationReport` with the measured numbers, not just pass/fail. **Done** via
+  per-library VMAF threshold overrides resolved by a pure `VerificationPolicyResolver`.
 
 Exit criteria:
 

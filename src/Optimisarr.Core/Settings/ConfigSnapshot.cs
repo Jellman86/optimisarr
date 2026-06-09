@@ -37,7 +37,9 @@ public sealed record LibrarySnapshot(
     int? QualityCrf,
     string? EncoderPreset,
     bool MoveOnComplete,
-    string? TargetFolder);
+    string? TargetFolder,
+    double? MinVmafHarmonicMean = null,
+    double? MinVmafMin = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported. No token.</summary>
 public sealed record ActivityWatcherSnapshot(
