@@ -286,8 +286,10 @@ best-effort re-scan on connected Plex/Jellyfin/Emby servers, reusing the Phase 6
 activity-pause connections (per-watcher "refresh after replacements" toggle, pure
 unit-tested `LibraryRefreshRequestBuilder`). Token acquisition is now interactive
 too: **Plex OAuth/PIN** and **Jellyfin Quick Connect** sign-in flows fill in the
-token instead of the user pasting a raw one (Emby keeps a manual API key). Still
-to come: Sonarr/Radarr exclusions, notifications, and import/export.
+token instead of the user pasting a raw one (Emby keeps a manual API key).
+**Notifications** are done: webhook/ntfy/Apprise targets fire best-effort on
+replacement and failure, with pure unit-tested message/request builders. Still to
+come: Sonarr/Radarr exclusions and import/export.
 
 Deliverables:
 
@@ -323,10 +325,7 @@ Deliverables:
   rollback), best-effort and never blocking or undoing the replacement if the
   server is unreachable.
 - Optional Sonarr/Radarr path-aware exclusions.
-- Optional notifications:
-  - Apprise
-  - ntfy
-  - webhook
+- Optional notifications (Apprise, ntfy, webhook). **Done.**
 - Import/export settings.
 
 Exit criteria:

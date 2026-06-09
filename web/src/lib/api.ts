@@ -171,6 +171,31 @@ export type SaveActivityWatcher = {
   refreshOnReplace: boolean
 }
 
+export type NotificationType = 'Webhook' | 'Ntfy' | 'Apprise'
+
+export type NotificationTarget = {
+  id: number
+  name: string
+  type: NotificationType
+  url: string
+  hasToken: boolean
+  enabled: boolean
+  notifyOnReplacement: boolean
+  notifyOnFailure: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type SaveNotificationTarget = {
+  name: string
+  type: NotificationType
+  url: string
+  token: string
+  enabled: boolean
+  notifyOnReplacement: boolean
+  notifyOnFailure: boolean
+}
+
 export type PlexConnectStart = { id: number; code: string; authUrl: string }
 export type JellyfinConnectStart = { code: string; secret: string }
 export type ConnectResult = { authorized: boolean; token: string | null }
@@ -274,6 +299,14 @@ export const api = {
     request<ActivityWatcher>(`/api/activity-watchers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteActivityWatcher: (id: number) =>
     request<void>(`/api/activity-watchers/${id}`, { method: 'DELETE' }),
+
+  notificationTargets: () => request<NotificationTarget[]>('/api/notification-targets'),
+  createNotificationTarget: (body: SaveNotificationTarget) =>
+    request<NotificationTarget>('/api/notification-targets', { method: 'POST', body: JSON.stringify(body) }),
+  updateNotificationTarget: (id: number, body: SaveNotificationTarget) =>
+    request<NotificationTarget>(`/api/notification-targets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteNotificationTarget: (id: number) =>
+    request<void>(`/api/notification-targets/${id}`, { method: 'DELETE' }),
 
   plexConnectStart: () => request<PlexConnectStart>('/api/connect/plex/start', { method: 'POST' }),
   plexConnectPoll: (id: number) => request<ConnectResult>(`/api/connect/plex/poll?id=${id}`),

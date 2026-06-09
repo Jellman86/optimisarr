@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Notifications on replacement and failure
+
+- Optimisarr can now POST to a **webhook**, an **ntfy** topic, or an **Apprise**
+  endpoint when a file is replaced or a job fails. Targets are managed on the
+  Settings page, each with its own URL, optional bearer token (write-only — stored
+  but never returned), and per-event toggles so you can be alerted on failures only,
+  replacements only, or both.
+- Message rendering (`NotificationMessages`) and per-type request shaping
+  (`NotificationRequestBuilder` — JSON for webhook/Apprise, plain text with a Title
+  header for ntfy) are pure and unit tested. Delivery is **best-effort**: it runs
+  after the replacement is committed or the job is already marked failed, with a 10s
+  timeout, so a target that is offline or rejects the POST is logged and never
+  affects processing.
+
 ### Sign in to Plex and Jellyfin instead of pasting a token
 
 - Adding a Plex or Jellyfin watcher no longer requires hunting down a raw token.

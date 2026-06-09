@@ -48,6 +48,7 @@ public sealed class ReplacementService
     private readonly string _trashRoot;
     private readonly Func<string, string, bool> _canMoveAtomically;
     private readonly LibraryRefreshService? _refresh;
+    private readonly NotificationService? _notifications;
 
     public ReplacementService(
         OptimisarrDbContext db,
@@ -55,13 +56,14 @@ public sealed class ReplacementService
         SettingsStore settings,
         IHostEnvironment environment,
         LibraryRefreshService refresh,
+        NotificationService notifications,
         ILogger<ReplacementService> logger)
-        : this(db, inventory, settings, ResolveTrashRoot(environment), logger, refresh: refresh)
+        : this(db, inventory, settings, ResolveTrashRoot(environment), logger, refresh: refresh, notifications: notifications)
     {
     }
 
     // Test seam: lets the suite point the trash root at a temp directory. The library
-    // refresh is optional so tests need not stand up an HTTP stack.
+    // refresh and notifications are optional so tests need not stand up an HTTP stack.
     internal ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
@@ -69,7 +71,8 @@ public sealed class ReplacementService
         string trashRoot,
         ILogger<ReplacementService> logger,
         Func<string, string, bool>? canMoveAtomically = null,
-        LibraryRefreshService? refresh = null)
+        LibraryRefreshService? refresh = null,
+        NotificationService? notifications = null)
     {
         _db = db;
         _inventory = inventory;
@@ -78,6 +81,7 @@ public sealed class ReplacementService
         _logger = logger;
         _canMoveAtomically = canMoveAtomically ?? FileMover.CanMoveAtomically;
         _refresh = refresh;
+        _notifications = notifications;
     }
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
@@ -187,6 +191,19 @@ public sealed class ReplacementService
 
         // Best effort: tell connected media servers to re-scan the new file.
         await TryRefreshLibrariesAsync(media.Path, cancellationToken);
+
+        // Best effort: notify configured targets of the replacement.
+        if (_notifications is not null)
+        {
+            try
+            {
+                await _notifications.NotifyReplacementAsync(media.Path, originalSize, outputSize, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Replacement notification for {Path} failed", media.Path);
+            }
+        }
 
         return ReplacementActionResult.Ok(replacement);
     }

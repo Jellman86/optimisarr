@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
+using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Activity;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
@@ -220,7 +221,9 @@ public sealed class QueueDispatcher(
             else
             {
                 DeleteWorkOutput(spec.OutputPath);
-                await CompleteAsync(jobId, JobStatus.Failed, error: run.Error ?? $"ffmpeg exited with code {run.ExitCode}");
+                var error = run.Error ?? $"ffmpeg exited with code {run.ExitCode}";
+                await CompleteAsync(jobId, JobStatus.Failed, error: error);
+                await NotifyJobFailedAsync(jobId, error);
             }
         }
         catch (OperationCanceledException)
@@ -231,6 +234,7 @@ public sealed class QueueDispatcher(
         {
             logger.LogError(ex, "Job {JobId} failed", jobId);
             await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message);
+            await NotifyJobFailedAsync(jobId, ex.Message);
         }
         finally
         {
@@ -470,6 +474,7 @@ public sealed class QueueDispatcher(
             var failed = outcome.Report.Checks.Where(check => check.Outcome == CheckOutcome.Failed);
             var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
             await CompleteAsync(jobId, JobStatus.Failed, error: summary);
+            await NotifyJobFailedAsync(jobId, summary);
             return;
         }
 
@@ -611,6 +616,32 @@ public sealed class QueueDispatcher(
     }
 
     private Task NotifyAsync() => hub.Clients.All.SendAsync("jobsChanged");
+
+    // Best effort: tell configured notification targets a job failed. Resolves the
+    // file path in its own scope and never lets a notification error escape.
+    private async Task NotifyJobFailedAsync(int jobId, string error)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var path = await db.Jobs
+                .Where(job => job.Id == jobId && job.MediaFile != null)
+                .Select(job => job.MediaFile!.Path)
+                .FirstOrDefaultAsync();
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
+            await notifications.NotifyFailureAsync(path, error, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failure notification for job {JobId} failed", jobId);
+        }
+    }
 
     // Live transcode telemetry. Sent as a lightweight payload (not persisted beyond
     // job.Progress) so the UI can move the bar and show speed/ETA without re-fetching.

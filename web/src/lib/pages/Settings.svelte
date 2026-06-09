@@ -1,7 +1,77 @@
 <script lang="ts">
-  import { api, type Settings, type ActivityWatcher, type ActivityWatcherType, type SaveActivityWatcher } from '../api'
+  import {
+    api,
+    type Settings,
+    type ActivityWatcher,
+    type ActivityWatcherType,
+    type SaveActivityWatcher,
+    type NotificationTarget,
+    type NotificationType,
+    type SaveNotificationTarget,
+  } from '../api'
   import { formatSize } from '../format'
   import Toggle from '../components/Toggle.svelte'
+
+  const notificationTypes: NotificationType[] = ['Webhook', 'Ntfy', 'Apprise']
+  const emptyTarget = (): SaveNotificationTarget => ({
+    name: '', type: 'Webhook', url: '', token: '', enabled: true, notifyOnReplacement: true, notifyOnFailure: true,
+  })
+
+  let targets = $state<NotificationTarget[]>([])
+  let targetError = $state<string | null>(null)
+  let editingTargetId = $state<number | null>(null)
+  let targetDraft = $state<SaveNotificationTarget>(emptyTarget())
+  let savingTarget = $state(false)
+
+  async function loadTargets() {
+    try {
+      targets = await api.notificationTargets()
+      targetError = null
+    } catch (err) {
+      targetError = err instanceof Error ? err.message : 'Unable to load notification targets'
+    }
+  }
+
+  function startAddTarget() {
+    editingTargetId = null
+    targetDraft = emptyTarget()
+  }
+
+  function startEditTarget(t: NotificationTarget) {
+    editingTargetId = t.id
+    targetDraft = {
+      name: t.name, type: t.type, url: t.url, token: '',
+      enabled: t.enabled, notifyOnReplacement: t.notifyOnReplacement, notifyOnFailure: t.notifyOnFailure,
+    }
+  }
+
+  async function saveTarget() {
+    savingTarget = true
+    targetError = null
+    try {
+      if (editingTargetId === null) await api.createNotificationTarget(targetDraft)
+      else await api.updateNotificationTarget(editingTargetId, targetDraft)
+      targetDraft = emptyTarget()
+      editingTargetId = null
+      await loadTargets()
+    } catch (err) {
+      targetError = err instanceof Error ? err.message : 'Unable to save notification target'
+    } finally {
+      savingTarget = false
+    }
+  }
+
+  async function deleteTarget(t: NotificationTarget) {
+    if (!confirm(`Remove the notification target "${t.name}"?`)) return
+    targetError = null
+    try {
+      await api.deleteNotificationTarget(t.id)
+      if (editingTargetId === t.id) startAddTarget()
+      await loadTargets()
+    } catch (err) {
+      targetError = err instanceof Error ? err.message : 'Unable to remove target'
+    }
+  }
 
   const watcherTypes: ActivityWatcherType[] = ['Plex', 'Jellyfin', 'Emby']
   const emptyWatcher = (): SaveActivityWatcher => ({ name: '', type: 'Plex', baseUrl: '', apiToken: '', enabled: true, refreshOnReplace: true })
@@ -171,6 +241,7 @@
   $effect(() => {
     void load()
     void loadWatchers()
+    void loadTargets()
   })
 
   async function load() {
@@ -447,6 +518,84 @@
         </button>
         {#if editingId !== null}
           <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>Cancel</button>
+        {/if}
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-5 max-w-2xl p-5">
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Notifications</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      POST to a webhook, ntfy topic, or Apprise endpoint when a file is replaced or a job fails.
+      Delivery is best-effort and never affects processing.
+    </p>
+
+    {#if targetError}
+      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{targetError}</div>
+    {/if}
+
+    {#if targets.length > 0}
+      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        {#each targets as t (t.id)}
+          <li class="flex items-center gap-3 py-2">
+            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t.type}</span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{t.name}</div>
+              <div class="truncate font-mono text-[11px] text-slate-400" title={t.url}>{t.url}</div>
+            </div>
+            {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+            {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">replaced</span>{/if}
+            {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">failed</span>{/if}
+            <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>Edit</button>
+            <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>Remove</button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="mb-4 text-sm text-slate-400">No notification targets yet.</p>
+    {/if}
+
+    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {editingTargetId === null ? 'Add a target' : 'Edit target'}
+      </h3>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label" for="target-name">Name</label>
+          <input id="target-name" class="input" placeholder="ntfy alerts" bind:value={targetDraft.name} />
+        </div>
+        <div>
+          <label class="label" for="target-type">Type</label>
+          <select id="target-type" class="input" bind:value={targetDraft.type}>
+            {#each notificationTypes as t}<option value={t}>{t}</option>{/each}
+          </select>
+        </div>
+        <div>
+          <label class="label" for="target-url">URL</label>
+          <input id="target-url" class="input" placeholder="https://ntfy.sh/my-topic" bind:value={targetDraft.url} />
+        </div>
+        <div>
+          <label class="label" for="target-token">Token <span class="text-slate-400">(optional)</span></label>
+          <input
+            id="target-token"
+            class="input"
+            type="password"
+            placeholder={editingTargetId === null ? '' : 'Leave blank to keep current'}
+            bind:value={targetDraft.token}
+          />
+        </div>
+      </div>
+      <div class="mt-3 grid gap-3">
+        <Toggle bind:checked={targetDraft.enabled} label="Enabled" />
+        <Toggle bind:checked={targetDraft.notifyOnReplacement} label="Notify when a file is replaced" />
+        <Toggle bind:checked={targetDraft.notifyOnFailure} label="Notify when a job fails" />
+      </div>
+      <div class="mt-4 flex items-center gap-2">
+        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveTarget} disabled={savingTarget}>
+          {savingTarget ? 'Saving…' : editingTargetId === null ? 'Add target' : 'Save changes'}
+        </button>
+        {#if editingTargetId !== null}
+          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddTarget} disabled={savingTarget}>Cancel</button>
         {/if}
       </div>
     </div>

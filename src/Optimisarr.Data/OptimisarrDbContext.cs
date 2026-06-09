@@ -16,6 +16,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<ActivityWatcher> ActivityWatchers => Set<ActivityWatcher>();
 
+    public DbSet<NotificationTarget> NotificationTargets => Set<NotificationTarget>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -102,6 +104,15 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(watcher => watcher.Type).HasConversion<string>().HasMaxLength(32);
             entity.Property(watcher => watcher.BaseUrl).IsRequired().HasMaxLength(1024);
             entity.Property(watcher => watcher.ApiToken).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<NotificationTarget>(entity =>
+        {
+            entity.HasKey(target => target.Id);
+            entity.Property(target => target.Name).IsRequired().HasMaxLength(160);
+            entity.Property(target => target.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(target => target.Url).IsRequired().HasMaxLength(1024);
+            entity.Property(target => target.Token).HasMaxLength(512);
         });
     }
 }

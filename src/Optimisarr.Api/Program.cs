@@ -26,6 +26,7 @@ builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<LibraryRefreshService>();
+builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
 builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<QuarantinePurgeService>();
@@ -247,6 +248,97 @@ app.MapDelete("/api/activity-watchers/{id:int}", async (
     return Results.NoContent();
 })
 .WithName("DeleteActivityWatcher");
+
+// Notification targets: where Optimisarr POSTs on noteworthy events. Tokens are
+// write-only — they are never returned.
+app.MapGet("/api/notification-targets", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var targets = await db.NotificationTargets
+        .AsNoTracking()
+        .OrderBy(target => target.Name)
+        .ToListAsync(cancellationToken);
+    return Results.Ok(targets.Select(NotificationTargetDto.From));
+})
+.WithName("ListNotificationTargets");
+
+app.MapPost("/api/notification-targets", async (
+    SaveNotificationTargetRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (!NotificationTargetRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    var target = new NotificationTarget
+    {
+        Name = parsed.Name,
+        Type = parsed.Type,
+        Url = parsed.Url,
+        Token = parsed.Token,
+        Enabled = parsed.Enabled,
+        NotifyOnReplacement = parsed.NotifyOnReplacement,
+        NotifyOnFailure = parsed.NotifyOnFailure
+    };
+    db.NotificationTargets.Add(target);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Created($"/api/notification-targets/{target.Id}", NotificationTargetDto.From(target));
+})
+.WithName("CreateNotificationTarget");
+
+app.MapPut("/api/notification-targets/{id:int}", async (
+    int id,
+    SaveNotificationTargetRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var target = await db.NotificationTargets.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+    if (target is null)
+    {
+        return Results.NotFound(new { error = $"No notification target with id {id}." });
+    }
+
+    if (!NotificationTargetRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    target.Name = parsed.Name;
+    target.Type = parsed.Type;
+    target.Url = parsed.Url;
+    // A blank token on update keeps the stored secret rather than wiping it.
+    if (parsed.Token is not null)
+    {
+        target.Token = parsed.Token;
+    }
+    target.Enabled = parsed.Enabled;
+    target.NotifyOnReplacement = parsed.NotifyOnReplacement;
+    target.NotifyOnFailure = parsed.NotifyOnFailure;
+    target.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(NotificationTargetDto.From(target));
+})
+.WithName("UpdateNotificationTarget");
+
+app.MapDelete("/api/notification-targets/{id:int}", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var target = await db.NotificationTargets.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+    if (target is null)
+    {
+        return Results.NotFound(new { error = $"No notification target with id {id}." });
+    }
+
+    db.NotificationTargets.Remove(target);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+})
+.WithName("DeleteNotificationTarget");
 
 // Interactive sign-in: acquire a provider token without the user pasting a raw one.
 // Each flow is start-then-poll; the client opens the auth URL / shows the code, then
