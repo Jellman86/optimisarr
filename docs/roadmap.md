@@ -351,18 +351,17 @@ defensible, evidence-backed guarantee that the converted file is as good as it
 needs to be — so replacing an original is a decision the user can fully trust.
 This deepens Phase 4 rather than replacing it; every existing gate stays.
 
-Status: in progress. **Perceptual quality scoring (VMAF) is done** — an opt-in,
-fail-closed gate measures the output against the original with `libvmaf` and blocks
-replacement unless it clears both a harmonic-mean floor and a per-frame minimum
-floor (pure unit-tested `QualityScoreParser` and gate logic; measured numbers shown
-in the report). An always-on **HDR preservation** gate is done too: an HDR original whose library
-preserves HDR must keep its HDR signal (HDR10/HDR10+/HLG/Dolby Vision) or the job
-fails, while an intentional tone-map to SDR passes — reusing existing probe data for
-no extra cost. Remaining: bundling a libvmaf-enabled ffmpeg in the image (Debian's
-stock build lacks it), wiring PSNR/SSIM as corroborating signals into the scoring
-command, Decode-integrity counts, audio fidelity (channel/sample-rate retention + EBU R128
-loudness), colour-metadata/A-V-sync integrity, and per-library VMAF threshold
-overrides are done.
+Status: largely done. The output is scored against the original with `libvmaf`
+(opt-in, fail-closed VMAF gate with harmonic-mean and per-frame-minimum floors, plus
+PSNR/SSIM as corroborating signals), and the image bundles a libvmaf-enabled ffmpeg
+(jellyfin-ffmpeg) so the gate can run without disturbing the transcode path. Always-on
+gates cover **HDR preservation** (an HDR original whose library preserves HDR must keep
+its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR passes),
+**colour primaries/transfer/matrix** preservation, **A/V sync**, **audio
+channel/sample-rate retention**, and full-file **decode-error counting**; an opt-in
+**EBU R128 loudness** gate and **per-library VMAF threshold overrides** round it out.
+All gate logic is pure and unit tested. Remaining stretch items: true-peak/clipping
+detection and monotonic-timestamp/truncated-GOP checks.
 
 Deliverables:
 

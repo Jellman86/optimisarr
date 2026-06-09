@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### libvmaf-enabled ffmpeg and PSNR/SSIM
+
+- The image now bundles **jellyfin-ffmpeg** (a Debian-packaged ffmpeg with libvmaf and
+  its models, plus hardware encoders) and points the quality/loudness measurement at
+  it via `OPTIMISARR_FFMPEG_VMAF`, so the VMAF and EBU R128 gates actually run. The
+  proven Debian ffmpeg still drives transcoding and probing, so enabling the gates
+  never disturbs the existing encode path.
+- The VMAF pass now also computes **PSNR and SSIM** in the same run, surfaced in the
+  verification report alongside VMAF as corroborating quality signals.
+
 ### Per-library VMAF thresholds
 
 - A library can now override the perceptual-quality (VMAF) gate's harmonic-mean and

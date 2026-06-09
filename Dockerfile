@@ -26,19 +26,29 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# NOTE: Debian's ffmpeg is not built with libvmaf, so the opt-in perceptual
-# quality (VMAF) gate cannot run on this stock binary — it fails closed with a
-# clear message until a libvmaf-enabled ffmpeg is provided. Swapping in such a
-# build (e.g. a BtbN static build) is a deliberate, separately tested change so
-# it does not regress the hardware-encode paths; see roadmap Phase 9.
+# Debian's ffmpeg drives transcoding and probing. It is not built with libvmaf, so
+# the opt-in perceptual-quality (VMAF) and loudness gates instead use jellyfin-ffmpeg
+# — a Debian-packaged ffmpeg that bundles libvmaf (with models) and hardware encoders.
+# Keeping the two separate means enabling the quality gate never disturbs the proven
+# transcode path; OPTIMISARR_FFMPEG_VMAF points the measurement at jellyfin-ffmpeg.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         ffmpeg \
+        gnupg \
         gosu \
         passwd \
         tzdata \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg \
+    && . /etc/os-release \
+    && printf 'Types: deb\nURIs: https://repo.jellyfin.org/%s\nSuites: %s\nComponents: main\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/jellyfin.gpg\n' \
+        "$ID" "$VERSION_CODENAME" "$(dpkg --print-architecture)" \
+        > /etc/apt/sources.list.d/jellyfin.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends jellyfin-ffmpeg7 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
@@ -46,6 +56,7 @@ COPY --from=api-build /app/publish/ /app/
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_CONFIG_DIR=/config \
+    OPTIMISARR_FFMPEG_VMAF=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     PUID=1000 \
     PGID=1000 \
     UMASK=002

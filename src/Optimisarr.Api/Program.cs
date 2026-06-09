@@ -21,8 +21,12 @@ builder.Services.AddSingleton<HardwareCapabilityService>();
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddSingleton<DecodeHealthCheck>();
-builder.Services.AddSingleton<QualityScoreService>();
-builder.Services.AddSingleton<LoudnessService>();
+// VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
+// different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
+// OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH.
+var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
+builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg));
+builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();

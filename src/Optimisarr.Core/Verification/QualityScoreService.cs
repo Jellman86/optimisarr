@@ -19,9 +19,11 @@ public sealed record QualityResult(bool Measured, QualityScores? Scores, string?
 /// align from the first frame. FFmpeg is invoked through an explicit argument list,
 /// never a shell string.
 /// </summary>
-public sealed class QualityScoreService
+public sealed class QualityScoreService(string? ffmpegCommand = null)
 {
-    private const string FfmpegCommand = "ffmpeg";
+    // VMAF needs an ffmpeg built with libvmaf, which may differ from the transcoding
+    // binary; the composition layer can point this at one (e.g. jellyfin-ffmpeg).
+    private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
 
     public async Task<QualityResult> MeasureAsync(
         string referencePath,
@@ -39,11 +41,14 @@ public sealed class QualityScoreService
 
         // A unique log path with no special characters keeps the filtergraph valid.
         var logPath = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
+        // Compute VMAF plus PSNR and SSIM as corroborating signals in one pass. The
+        // "\|" escapes the feature separator so the filtergraph parser keeps both
+        // features in libvmaf's "feature" option rather than splitting the filter.
         var filter =
             "[0:v]setpts=PTS-STARTPTS[dist];" +
             "[1:v]setpts=PTS-STARTPTS[ref];" +
             "[dist][ref]scale2ref[dists][refs];" +
-            $"[dists][refs]libvmaf=log_fmt=json:log_path={logPath}";
+            $"[dists][refs]libvmaf=feature=name=psnr\\|name=float_ssim:log_fmt=json:log_path={logPath}";
 
         try
         {
@@ -55,7 +60,7 @@ public sealed class QualityScoreService
                 using var process = new Process();
                 process.StartInfo = new ProcessStartInfo
                 {
-                    FileName = FfmpegCommand,
+                    FileName = _ffmpeg,
                     ArgumentList =
                     {
                         "-nostdin",

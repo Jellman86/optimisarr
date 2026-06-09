@@ -17,9 +17,9 @@ public sealed record LoudnessResult(bool Measured, double? IntegratedLufs, strin
 /// run at <c>-v info</c> with stats suppressed. FFmpeg is invoked through an
 /// explicit argument list, never a shell string.
 /// </summary>
-public sealed class LoudnessService
+public sealed class LoudnessService(string? ffmpegCommand = null)
 {
-    private const string FfmpegCommand = "ffmpeg";
+    private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
 
     public async Task<LoudnessResult> MeasureAsync(string path, CancellationToken cancellationToken)
     {
@@ -36,7 +36,7 @@ public sealed class LoudnessService
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
-                FileName = FfmpegCommand,
+                FileName = _ffmpeg,
                 ArgumentList =
                 {
                     "-nostdin",
