@@ -8,6 +8,9 @@
     type NotificationTarget,
     type NotificationType,
     type SaveNotificationTarget,
+    type ArrConnection,
+    type ArrConnectionType,
+    type SaveArrConnection,
   } from '../api'
   import { formatSize } from '../format'
   import Toggle from '../components/Toggle.svelte'
@@ -70,6 +73,62 @@
       await loadTargets()
     } catch (err) {
       targetError = err instanceof Error ? err.message : 'Unable to remove target'
+    }
+  }
+
+  const arrTypes: ArrConnectionType[] = ['Sonarr', 'Radarr']
+  const emptyArr = (): SaveArrConnection => ({ name: '', type: 'Sonarr', baseUrl: '', apiKey: '', enabled: true })
+
+  let arrs = $state<ArrConnection[]>([])
+  let arrError = $state<string | null>(null)
+  let editingArrId = $state<number | null>(null)
+  let arrDraft = $state<SaveArrConnection>(emptyArr())
+  let savingArr = $state(false)
+
+  async function loadArrs() {
+    try {
+      arrs = await api.arrConnections()
+      arrError = null
+    } catch (err) {
+      arrError = err instanceof Error ? err.message : 'Unable to load Sonarr/Radarr connections'
+    }
+  }
+
+  function startAddArr() {
+    editingArrId = null
+    arrDraft = emptyArr()
+  }
+
+  function startEditArr(c: ArrConnection) {
+    editingArrId = c.id
+    arrDraft = { name: c.name, type: c.type, baseUrl: c.baseUrl, apiKey: '', enabled: c.enabled }
+  }
+
+  async function saveArr() {
+    savingArr = true
+    arrError = null
+    try {
+      if (editingArrId === null) await api.createArrConnection(arrDraft)
+      else await api.updateArrConnection(editingArrId, arrDraft)
+      arrDraft = emptyArr()
+      editingArrId = null
+      await loadArrs()
+    } catch (err) {
+      arrError = err instanceof Error ? err.message : 'Unable to save connection'
+    } finally {
+      savingArr = false
+    }
+  }
+
+  async function deleteArr(c: ArrConnection) {
+    if (!confirm(`Remove the ${c.type} connection "${c.name}"?`)) return
+    arrError = null
+    try {
+      await api.deleteArrConnection(c.id)
+      if (editingArrId === c.id) startAddArr()
+      await loadArrs()
+    } catch (err) {
+      arrError = err instanceof Error ? err.message : 'Unable to remove connection'
     }
   }
 
@@ -242,6 +301,7 @@
     void load()
     void loadWatchers()
     void loadTargets()
+    void loadArrs()
   })
 
   async function load() {
@@ -646,6 +706,82 @@
         </button>
         {#if editingTargetId !== null}
           <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddTarget} disabled={savingTarget}>Cancel</button>
+        {/if}
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-5 max-w-2xl p-5">
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Sonarr / Radarr</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      While a connected manager is importing into a title's folder, files in that folder are held back from
+      queueing so a transcode never fights an import. They become eligible again on the next enqueue once the
+      import settles. An unreachable manager never blocks the queue.
+    </p>
+
+    {#if arrError}
+      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{arrError}</div>
+    {/if}
+
+    {#if arrs.length > 0}
+      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        {#each arrs as c (c.id)}
+          <li class="flex items-center gap-3 py-2">
+            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</div>
+              <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
+            </div>
+            {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+            {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No API key set — Optimisarr cannot query this manager.">no key</span>{/if}
+            <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>Edit</button>
+            <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>Remove</button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="mb-4 text-sm text-slate-400">No connections yet. Add Sonarr or Radarr to avoid optimising files mid-import.</p>
+    {/if}
+
+    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {editingArrId === null ? 'Add a connection' : 'Edit connection'}
+      </h3>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label" for="arr-name">Name</label>
+          <input id="arr-name" class="input" placeholder="Sonarr" bind:value={arrDraft.name} />
+        </div>
+        <div>
+          <label class="label" for="arr-type">Type</label>
+          <select id="arr-type" class="input" bind:value={arrDraft.type}>
+            {#each arrTypes as t}<option value={t}>{t}</option>{/each}
+          </select>
+        </div>
+        <div>
+          <label class="label" for="arr-url">Base URL</label>
+          <input id="arr-url" class="input" placeholder="http://192.168.1.10:8989" bind:value={arrDraft.baseUrl} />
+        </div>
+        <div>
+          <label class="label" for="arr-key">API key</label>
+          <input
+            id="arr-key"
+            class="input"
+            type="password"
+            placeholder={editingArrId === null ? '' : 'Leave blank to keep current'}
+            bind:value={arrDraft.apiKey}
+          />
+        </div>
+      </div>
+      <div class="mt-3 grid gap-3">
+        <Toggle bind:checked={arrDraft.enabled} label="Enabled" hint="Query this manager for in-progress imports before queueing." />
+      </div>
+      <div class="mt-4 flex items-center gap-2">
+        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveArr} disabled={savingArr}>
+          {savingArr ? 'Saving…' : editingArrId === null ? 'Add connection' : 'Save changes'}
+        </button>
+        {#if editingArrId !== null}
+          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddArr} disabled={savingArr}>Cancel</button>
         {/if}
       </div>
     </div>

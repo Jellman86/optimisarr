@@ -18,6 +18,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<NotificationTarget> NotificationTargets => Set<NotificationTarget>();
 
+    public DbSet<ArrConnection> ArrConnections => Set<ArrConnection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -113,6 +115,15 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(target => target.Type).HasConversion<string>().HasMaxLength(32);
             entity.Property(target => target.Url).IsRequired().HasMaxLength(1024);
             entity.Property(target => target.Token).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<ArrConnection>(entity =>
+        {
+            entity.HasKey(connection => connection.Id);
+            entity.Property(connection => connection.Name).IsRequired().HasMaxLength(160);
+            entity.Property(connection => connection.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(connection => connection.BaseUrl).IsRequired().HasMaxLength(1024);
+            entity.Property(connection => connection.ApiKey).HasMaxLength(512);
         });
     }
 }

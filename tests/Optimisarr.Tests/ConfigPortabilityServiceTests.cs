@@ -62,7 +62,8 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
             [new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
                 null, null, null, null, null, null, null, null, false, null)],
             [new ActivityWatcherSnapshot("Plex", "Plex", "http://plex:32400", true, true)],
-            [new NotificationTargetSnapshot("ntfy", "Ntfy", "https://ntfy.sh/x", true, true, true)]);
+            [new NotificationTargetSnapshot("ntfy", "Ntfy", "https://ntfy.sh/x", true, true, true)],
+            [new ArrConnectionSnapshot("Radarr", "Radarr", "http://radarr:7878", true)]);
 
         var result = await ImportAsync(snapshot);
 
@@ -70,6 +71,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(1, result.LibrariesCreated);
         Assert.Equal(1, result.WatchersCreated);
         Assert.Equal(1, result.TargetsCreated);
+        Assert.Equal(1, result.ArrConnectionsCreated);
         Assert.Equal(1, result.SettingsApplied);
 
         await using var db = CreateDb();
@@ -198,6 +200,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         ConfigSnapshot.CurrentVersion,
         DateTimeOffset.UnixEpoch,
         new Dictionary<string, string>(),
+        [],
         [],
         [],
         []);

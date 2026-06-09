@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Don't fight Sonarr/Radarr imports
+
+- Connect **Sonarr** and **Radarr** (base URL + API key, key write-only) on the
+  Settings page. Before queueing a library, Optimisarr asks each connected manager
+  which titles it is currently importing (via `/api/v3/queue` with the title
+  embedded) and **holds back any file whose folder an import is landing in**, so a
+  transcode never competes with — or is overwritten by — an import. Held-back files
+  become eligible again on the next enqueue once the import settles, and the enqueue
+  summary reports how many were held back.
+- The queue parsing (`ArrQueueParser`) and the segment-aware path match
+  (`ArrImportExclusionEvaluator`) are pure and unit tested. Querying is best-effort
+  and self-isolating: a manager that is offline, rejects the key, or returns junk
+  contributes no exclusions and never wedges the queue, exactly like the streaming
+  activity-pause gate. Connections are included in config export/import (without the
+  key).
+
 ### Export and import your configuration
 
 - A new **Backup & restore** section on Settings exports your settings, libraries,

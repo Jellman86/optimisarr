@@ -290,9 +290,13 @@ token instead of the user pasting a raw one (Emby keeps a manual API key).
 **Notifications** are done: webhook/ntfy/Apprise targets fire best-effort on
 replacement and failure, with pure unit-tested message/request builders.
 **Import/export** is done too: a secret-free config snapshot (settings, libraries,
-watchers, notification targets) exports to JSON and imports back as a validated,
-non-destructive merge (pure unit-tested `ConfigSnapshotValidator`). Still to come:
-Sonarr/Radarr exclusions.
+watchers, notification targets, Sonarr/Radarr connections) exports to JSON and
+imports back as a validated, non-destructive merge (pure unit-tested
+`ConfigSnapshotValidator`). **Sonarr/Radarr import-aware exclusions** are done as
+well: connected managers are polled for in-progress imports and any file whose
+folder an import is landing in is held back from queueing (pure unit-tested
+`ArrQueueParser` and `ArrImportExclusionEvaluator`), so Optimisarr never fights an
+import. Phase 8 is now feature-complete.
 
 Deliverables:
 
@@ -327,7 +331,7 @@ Deliverables:
 - **Trigger a targeted refresh after each successful replacement** (and on
   rollback), best-effort and never blocking or undoing the replacement if the
   server is unreachable.
-- Optional Sonarr/Radarr path-aware exclusions.
+- Optional Sonarr/Radarr path-aware exclusions. **Done.**
 - Optional notifications (Apprise, ntfy, webhook). **Done.**
 - Import/export settings. **Done.**
 

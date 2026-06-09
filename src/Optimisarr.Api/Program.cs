@@ -26,6 +26,7 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
+builder.Services.AddScoped<ArrActivityService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
@@ -364,6 +365,93 @@ app.MapDelete("/api/notification-targets/{id:int}", async (
     return Results.NoContent();
 })
 .WithName("DeleteNotificationTarget");
+
+// Sonarr/Radarr connections: managers Optimisarr asks about in-progress imports so a
+// file isn't optimised while an import is landing in its folder. Keys are write-only.
+app.MapGet("/api/arr-connections", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var connections = await db.ArrConnections
+        .AsNoTracking()
+        .OrderBy(connection => connection.Name)
+        .ToListAsync(cancellationToken);
+    return Results.Ok(connections.Select(ArrConnectionDto.From));
+})
+.WithName("ListArrConnections");
+
+app.MapPost("/api/arr-connections", async (
+    SaveArrConnectionRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (!ArrConnectionRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    var connection = new ArrConnection
+    {
+        Name = parsed.Name,
+        Type = parsed.Type,
+        BaseUrl = parsed.BaseUrl,
+        ApiKey = parsed.ApiKey,
+        Enabled = parsed.Enabled
+    };
+    db.ArrConnections.Add(connection);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Created($"/api/arr-connections/{connection.Id}", ArrConnectionDto.From(connection));
+})
+.WithName("CreateArrConnection");
+
+app.MapPut("/api/arr-connections/{id:int}", async (
+    int id,
+    SaveArrConnectionRequest request,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+    if (connection is null)
+    {
+        return Results.NotFound(new { error = $"No arr connection with id {id}." });
+    }
+
+    if (!ArrConnectionRequestParser.TryParse(request, out var parsed, out var error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    connection.Name = parsed.Name;
+    connection.Type = parsed.Type;
+    connection.BaseUrl = parsed.BaseUrl;
+    // A blank key on update keeps the stored secret rather than wiping it.
+    if (parsed.ApiKey is not null)
+    {
+        connection.ApiKey = parsed.ApiKey;
+    }
+    connection.Enabled = parsed.Enabled;
+    connection.UpdatedAt = DateTimeOffset.UtcNow;
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(ArrConnectionDto.From(connection));
+})
+.WithName("UpdateArrConnection");
+
+app.MapDelete("/api/arr-connections/{id:int}", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+    if (connection is null)
+    {
+        return Results.NotFound(new { error = $"No arr connection with id {id}." });
+    }
+
+    db.ArrConnections.Remove(connection);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+})
+.WithName("DeleteArrConnection");
 
 // Interactive sign-in: acquire a provider token without the user pasting a raw one.
 // Each flow is start-then-poll; the client opens the auth URL / shows the code, then

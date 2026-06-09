@@ -151,6 +151,7 @@ export type EnqueueResult = {
   enqueued: number
   alreadyQueued: number
   ineligible: number
+  importing: number
 }
 
 export type Replacement = {
@@ -215,6 +216,27 @@ export type SaveNotificationTarget = {
   enabled: boolean
   notifyOnReplacement: boolean
   notifyOnFailure: boolean
+}
+
+export type ArrConnectionType = 'Sonarr' | 'Radarr'
+
+export type ArrConnection = {
+  id: number
+  name: string
+  type: ArrConnectionType
+  baseUrl: string
+  hasApiKey: boolean
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type SaveArrConnection = {
+  name: string
+  type: ArrConnectionType
+  baseUrl: string
+  apiKey: string
+  enabled: boolean
 }
 
 export type PlexConnectStart = { id: number; code: string; authUrl: string }
@@ -331,6 +353,14 @@ export const api = {
     request<NotificationTarget>(`/api/notification-targets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteNotificationTarget: (id: number) =>
     request<void>(`/api/notification-targets/${id}`, { method: 'DELETE' }),
+
+  arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
+  createArrConnection: (body: SaveArrConnection) =>
+    request<ArrConnection>('/api/arr-connections', { method: 'POST', body: JSON.stringify(body) }),
+  updateArrConnection: (id: number, body: SaveArrConnection) =>
+    request<ArrConnection>(`/api/arr-connections/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteArrConnection: (id: number) =>
+    request<void>(`/api/arr-connections/${id}`, { method: 'DELETE' }),
 
   plexConnectStart: () => request<PlexConnectStart>('/api/connect/plex/start', { method: 'POST' }),
   plexConnectPoll: (id: number) => request<ConnectResult>(`/api/connect/plex/poll?id=${id}`),

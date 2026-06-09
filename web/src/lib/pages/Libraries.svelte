@@ -186,7 +186,9 @@
     message = null
     try {
       const result = await api.enqueueLibrary(library.id)
-      message = `"${library.name}": queued ${result.enqueued} job(s) (${result.alreadyQueued} already queued, ${result.ineligible} not eligible).`
+      message = `"${library.name}": queued ${result.enqueued} job(s) (${result.alreadyQueued} already queued, ${result.ineligible} not eligible`
+      if (result.importing > 0) message += `, ${result.importing} held back while Sonarr/Radarr imports`
+      message += ').'
       if (result.enqueued > 0) message += ' See the Queue page.'
     } catch (err) {
       error = err instanceof Error ? err.message : 'Enqueue failed'

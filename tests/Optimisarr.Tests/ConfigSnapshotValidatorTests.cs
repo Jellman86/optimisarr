@@ -109,5 +109,6 @@ public sealed class ConfigSnapshotValidatorTests
         new Dictionary<string, string>(),
         [],
         [],
+        [],
         []);
 }

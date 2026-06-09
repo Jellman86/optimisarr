@@ -13,7 +13,8 @@ public sealed record ConfigSnapshot(
     IReadOnlyDictionary<string, string> Settings,
     IReadOnlyList<LibrarySnapshot> Libraries,
     IReadOnlyList<ActivityWatcherSnapshot> ActivityWatchers,
-    IReadOnlyList<NotificationTargetSnapshot> NotificationTargets)
+    IReadOnlyList<NotificationTargetSnapshot> NotificationTargets,
+    IReadOnlyList<ArrConnectionSnapshot> ArrConnections)
 {
     /// <summary>The current snapshot schema version. Bump when the shape changes incompatibly.</summary>
     public const int CurrentVersion = 1;
@@ -54,3 +55,10 @@ public sealed record NotificationTargetSnapshot(
     bool Enabled,
     bool NotifyOnReplacement,
     bool NotifyOnFailure);
+
+/// <summary>A Sonarr/Radarr connection definition, matched on its <see cref="Name"/> when imported. No API key.</summary>
+public sealed record ArrConnectionSnapshot(
+    string Name,
+    string Type,
+    string BaseUrl,
+    bool Enabled);

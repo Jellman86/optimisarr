@@ -1,5 +1,7 @@
+using System.Net;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Optimisarr.Api.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Data;
@@ -52,6 +54,32 @@ public sealed class JobEnqueueServiceTests : IDisposable
         Assert.Single(db.Jobs);
     }
 
+    [Fact]
+    public async Task Holds_back_a_file_a_connected_arr_is_importing_into()
+    {
+        var libraryId = await SeedLibraryWithFilesAsync();
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            db.ArrConnections.Add(new ArrConnection
+            {
+                Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878", ApiKey = "k"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // Radarr reports it is importing into the folder holding the eligible file.
+        var queueJson = """
+        { "records": [ { "movie": { "path": "/data/films" } } ] }
+        """;
+        var result = await EnqueueAsync(libraryId, new StubHandler(queueJson));
+
+        Assert.Equal(0, result.Enqueued);
+        Assert.Equal(1, result.Importing);
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        Assert.Empty(readDb.Jobs);
+    }
+
     private async Task<int> SeedLibraryWithFilesAsync()
     {
         await using var db = new OptimisarrDbContext(_options);
@@ -71,11 +99,15 @@ public sealed class JobEnqueueServiceTests : IDisposable
         return library.Id;
     }
 
-    private async Task<EnqueueResult> EnqueueAsync(int libraryId)
+    private async Task<EnqueueResult> EnqueueAsync(int libraryId, HttpMessageHandler? handler = null)
     {
         await using var db = new OptimisarrDbContext(_options);
         var library = await db.Libraries.SingleAsync(l => l.Id == libraryId);
-        var service = new JobEnqueueService(db, new CandidateService(db));
+        var arr = new ArrActivityService(
+            db,
+            new StubHttpClientFactory(handler ?? new StubHandler("""{ "records": [] }""")),
+            NullLogger<ArrActivityService>.Instance);
+        var service = new JobEnqueueService(db, new CandidateService(db), arr);
         return await service.EnqueueEligibleAsync(library, CancellationToken.None);
     }
 
@@ -92,6 +124,20 @@ public sealed class JobEnqueueServiceTests : IDisposable
         Height = 1080,
         ProbedAt = DateTimeOffset.UtcNow
     };
+
+    private sealed class StubHandler(string json) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json)
+            });
+    }
+
+    private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
 
     public void Dispose() => _connection.Dispose();
 }

@@ -19,6 +19,8 @@ public sealed record ConfigImportResult(
     int WatchersUpdated,
     int TargetsCreated,
     int TargetsUpdated,
+    int ArrConnectionsCreated,
+    int ArrConnectionsUpdated,
     int SettingsApplied);
 
 /// <summary>
@@ -40,6 +42,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             .OrderBy(watcher => watcher.Name).ToListAsync(cancellationToken);
         var targets = await db.NotificationTargets.AsNoTracking()
             .OrderBy(target => target.Name).ToListAsync(cancellationToken);
+        var arrConnections = await db.ArrConnections.AsNoTracking()
+            .OrderBy(connection => connection.Name).ToListAsync(cancellationToken);
 
         return new ConfigSnapshot(
             ConfigSnapshot.CurrentVersion,
@@ -47,7 +51,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             settingsMap,
             libraries.Select(ToSnapshot).ToList(),
             watchers.Select(ToSnapshot).ToList(),
-            targets.Select(ToSnapshot).ToList());
+            targets.Select(ToSnapshot).ToList(),
+            arrConnections.Select(ToSnapshot).ToList());
     }
 
     public async Task<ConfigImportResult> ImportAsync(ConfigSnapshot snapshot, CancellationToken cancellationToken)
@@ -55,12 +60,13 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         var validation = ConfigSnapshotValidator.Validate(snapshot, SettingsStore.PortableSettingKeys);
         if (!validation.IsValid)
         {
-            return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0);
+            return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
         var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(snapshot.Libraries, cancellationToken);
         var (watchersCreated, watchersUpdated) = await ImportWatchersAsync(snapshot.ActivityWatchers, cancellationToken);
         var (targetsCreated, targetsUpdated) = await ImportTargetsAsync(snapshot.NotificationTargets, cancellationToken);
+        var (arrCreated, arrUpdated) = await ImportArrConnectionsAsync(snapshot.ArrConnections, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         var settingsApplied = await settings.ImportSettingsAsync(snapshot.Settings, cancellationToken);
@@ -70,6 +76,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             librariesCreated, librariesUpdated,
             watchersCreated, watchersUpdated,
             targetsCreated, targetsUpdated,
+            arrCreated, arrUpdated,
             settingsApplied);
     }
 
@@ -178,6 +185,37 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         return (created, updated);
     }
 
+    private async Task<(int Created, int Updated)> ImportArrConnectionsAsync(
+        IReadOnlyList<ArrConnectionSnapshot> snapshots, CancellationToken cancellationToken)
+    {
+        var created = 0;
+        var updated = 0;
+        foreach (var snapshot in snapshots)
+        {
+            var name = snapshot.Name.Trim();
+            var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Name == name, cancellationToken);
+            if (connection is null)
+            {
+                connection = new ArrConnection { Name = name };
+                db.ArrConnections.Add(connection);
+                created++;
+            }
+            else
+            {
+                connection.UpdatedAt = clock.GetUtcNow();
+                updated++;
+            }
+
+            // The API key is never carried in a snapshot, so an existing connection
+            // keeps its stored secret.
+            connection.Type = ParseEnum<ArrConnectionType>(snapshot.Type);
+            connection.BaseUrl = snapshot.BaseUrl.Trim();
+            connection.Enabled = snapshot.Enabled;
+        }
+
+        return (created, updated);
+    }
+
     private static LibrarySnapshot ToSnapshot(LibraryEntity library) => new(
         library.Name,
         library.Path,
@@ -210,6 +248,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         target.Enabled,
         target.NotifyOnReplacement,
         target.NotifyOnFailure);
+
+    private static ArrConnectionSnapshot ToSnapshot(ArrConnection connection) => new(
+        connection.Name,
+        connection.Type.ToString(),
+        connection.BaseUrl,
+        connection.Enabled);
 
     // Snapshots are validated before import, so these parses cannot fail here.
     private static T ParseEnum<T>(string value) where T : struct, Enum =>

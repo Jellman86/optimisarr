@@ -73,6 +73,15 @@ public static class ConfigSnapshotValidator
             RequireEnum<NotificationType>(target.Type, $"{where} type", errors);
         }
 
+        for (var i = 0; i < snapshot.ArrConnections.Count; i++)
+        {
+            var connection = snapshot.ArrConnections[i];
+            var where = $"Sonarr/Radarr connection #{i + 1}";
+            RequireText(connection.Name, $"{where} name", errors);
+            RequireText(connection.BaseUrl, $"{where} base URL", errors);
+            RequireEnum<ArrConnectionType>(connection.Type, $"{where} type", errors);
+        }
+
         return errors.Count == 0 ? ConfigValidationResult.Valid : new ConfigValidationResult(false, errors);
     }
 
