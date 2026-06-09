@@ -2,18 +2,21 @@ using System.Diagnostics;
 
 namespace Optimisarr.Core.Verification;
 
-public sealed record DecodeHealthResult(bool Healthy, string? Error)
+public sealed record DecodeHealthResult(bool Healthy, string? Error, int ErrorCount = 0)
 {
-    public static DecodeHealthResult Ok { get; } = new(true, null);
+    public static DecodeHealthResult Ok { get; } = new(true, null, 0);
 
-    public static DecodeHealthResult Unhealthy(string error) => new(false, error);
+    public static DecodeHealthResult Unhealthy(string error, int errorCount = 1) => new(false, error, errorCount);
 }
 
 /// <summary>
-/// Runs a full software decode of a file and reports whether FFmpeg hit any
-/// error. <c>-xerror</c> makes FFmpeg exit non-zero on the first decode error,
-/// and <c>-f null -</c> decodes every frame without writing an output. FFmpeg is
-/// invoked through an explicit argument list, never a shell string.
+/// Runs a full software decode of a file and reports how many decode errors FFmpeg
+/// hit. <c>-f null -</c> decodes every frame without writing an output, and at
+/// <c>-v error</c> FFmpeg prints one line per corrupt frame or packet read error;
+/// the pure <see cref="DecodeIntegrityParser"/> tallies them so a clean file scores
+/// zero and a damaged one reports the true count across the whole file (rather than
+/// stopping at the first error). FFmpeg is invoked through an explicit argument
+/// list, never a shell string.
 /// </summary>
 public sealed class DecodeHealthCheck
 {
@@ -37,8 +40,8 @@ public sealed class DecodeHealthCheck
                 FileName = FfmpegCommand,
                 ArgumentList =
                 {
+                    "-nostdin",
                     "-v", "error",
-                    "-xerror",
                     "-i", path,
                     "-f", "null",
                     "-"
@@ -73,15 +76,17 @@ public sealed class DecodeHealthCheck
             return DecodeHealthResult.Unhealthy(ex.Message);
         }
 
-        // With "-v error", any line on stderr is a real decode problem; combined
-        // with the non-zero exit from -xerror this is an unambiguous failure.
-        if (exitCode != 0 || !string.IsNullOrWhiteSpace(stderr))
+        // A non-zero exit is a hard decode failure; otherwise the stderr lines (at
+        // -v error, one per corrupt frame/packet) are the decode-error tally.
+        var integrity = DecodeIntegrityParser.Parse(stderr);
+        if (exitCode != 0 && integrity.ErrorCount == 0)
         {
-            var message = FirstLine(stderr) ?? $"ffmpeg decode exited with code {exitCode}";
-            return DecodeHealthResult.Unhealthy(message);
+            return DecodeHealthResult.Unhealthy($"ffmpeg decode exited with code {exitCode}");
         }
 
-        return DecodeHealthResult.Ok;
+        return integrity.ErrorCount == 0
+            ? DecodeHealthResult.Ok
+            : DecodeHealthResult.Unhealthy(integrity.FirstError!, integrity.ErrorCount);
     }
 
     private static void KillQuietly(Process process)
@@ -98,8 +103,4 @@ public sealed class DecodeHealthCheck
             // Best effort; the process is exiting anyway.
         }
     }
-
-    private static string? FirstLine(string value) =>
-        value.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault();
 }

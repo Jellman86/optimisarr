@@ -43,6 +43,7 @@ public sealed class VerificationService(MediaProbeService probe, DecodeHealthChe
         var input = new VerificationInput(
             DecodeSucceeded: decodeResult.Healthy,
             DecodeError: decodeResult.Error,
+            DecodeErrorCount: decodeResult.ErrorCount,
             OutputProbeSucceeded: outputProbe.Success,
             OutputProbeError: outputProbe.Error,
             OutputVideoCodec: outputProbe.VideoCodec,

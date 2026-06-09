@@ -10,6 +10,7 @@ namespace Optimisarr.Core.Verification;
 public sealed record VerificationInput(
     bool DecodeSucceeded,
     string? DecodeError,
+    int DecodeErrorCount,
     bool OutputProbeSucceeded,
     string? OutputProbeError,
     string? OutputVideoCodec,

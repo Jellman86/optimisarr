@@ -9,6 +9,7 @@ public sealed class VerificationEvaluatorTests
     private static VerificationInput Healthy() => new(
         DecodeSucceeded: true,
         DecodeError: null,
+        DecodeErrorCount: 0,
         OutputProbeSucceeded: true,
         OutputProbeError: null,
         OutputVideoCodec: "hevc",

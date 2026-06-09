@@ -102,7 +102,7 @@ public static class VerificationEvaluator
     private static VerificationCheck DecodeHealth(VerificationInput input) =>
         input.DecodeSucceeded
             ? Pass("Decode health", "Output decoded fully with no FFmpeg errors.")
-            : Fail("Decode health", $"FFmpeg reported decode errors: {Describe(input.DecodeError)}");
+            : Fail("Decode health", $"FFmpeg reported {input.DecodeErrorCount} decode error(s): {Describe(input.DecodeError)}");
 
     private static VerificationCheck OutputReadable(VerificationInput input) =>
         input.OutputProbeSucceeded
