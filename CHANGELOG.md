@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Export and import your configuration
+
+- A new **Backup & restore** section on Settings exports your settings, libraries,
+  activity watchers, and notification targets to a JSON file, and imports one back.
+  For safety, **provider tokens are never exported** — the file carries no
+  credentials, so it is safe to store or share, and tokens are re-entered after
+  importing.
+- Import is **validated in full before anything is written** (schema version,
+  recognised setting keys, valid enums and required fields) by a pure, unit-tested
+  `ConfigSnapshotValidator`, so a malformed or newer-than-supported file is rejected
+  whole. It then applies as a **non-destructive merge**: libraries are matched on
+  path, watchers and targets on name, so importing never deletes existing
+  configuration and never overwrites a stored token with a blank.
+
 ### Notifications on replacement and failure
 
 - Optimisarr can now POST to a **webhook**, an **ntfy** topic, or an **Apprise**

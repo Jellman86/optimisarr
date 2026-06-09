@@ -29,6 +29,28 @@ public sealed class SettingsStore(OptimisarrDbContext db)
     public const long DefaultMinFreeDiskBytes = 10L * 1024 * 1024 * 1024;
 
     /// <summary>
+    /// The setting keys that may be exported and imported. Deliberately excludes
+    /// secrets and machine-local identifiers (e.g. the Plex client identifier) so an
+    /// exported config file carries no credentials and is safe to store or share.
+    /// </summary>
+    public static readonly IReadOnlySet<string> PortableSettingKeys = new HashSet<string>
+    {
+        SettingKeys.MaxConcurrentJobs,
+        SettingKeys.ScheduleEnabled,
+        SettingKeys.ScheduleWindowStart,
+        SettingKeys.ScheduleWindowEnd,
+        SettingKeys.MinFreeDiskBytes,
+        SettingKeys.CpuThreadLimit,
+        SettingKeys.EncoderMode,
+        SettingKeys.VerificationDurationTolerancePercent,
+        SettingKeys.VerificationRequireAudioRetained,
+        SettingKeys.VerificationRequireSubtitlesRetained,
+        SettingKeys.VerificationRequireSizeReduction,
+        SettingKeys.ReplacementAllowCrossFilesystem,
+        SettingKeys.ReplacementQuarantineRetentionDays
+    };
+
+    /// <summary>
     /// The legacy single library root, if one was configured before the
     /// multi-library model existed. Used once by the seeder to migrate it.
     /// </summary>
@@ -147,6 +169,38 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.ReplacementQuarantineRetentionDays] =
                 Math.Max(0, settings.ReplacementQuarantineRetentionDays).ToString(CultureInfo.InvariantCulture)
         }, cancellationToken);
+    }
+
+    /// <summary>Reads the exportable settings as raw key/value pairs. Secrets are never included.</summary>
+    public async Task<IReadOnlyDictionary<string, string>> ExportSettingsAsync(CancellationToken cancellationToken)
+    {
+        var keys = PortableSettingKeys;
+        return await db.AppSettings
+            .AsNoTracking()
+            .Where(setting => keys.Contains(setting.Key))
+            .OrderBy(setting => setting.Key)
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
+    }
+
+    /// <summary>
+    /// Upserts imported settings, ignoring any key that is not exportable. Values are
+    /// stored verbatim; an out-of-range value falls back to its default when read, so a
+    /// bad import can never produce unsafe behaviour.
+    /// </summary>
+    public async Task<int> ImportSettingsAsync(
+        IReadOnlyDictionary<string, string> values,
+        CancellationToken cancellationToken)
+    {
+        var portable = values
+            .Where(pair => PortableSettingKeys.Contains(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+        if (portable.Count == 0)
+        {
+            return 0;
+        }
+
+        await UpsertManyAsync(portable, cancellationToken);
+        return portable.Count;
     }
 
     private async Task UpsertAsync(string key, string value, CancellationToken cancellationToken)

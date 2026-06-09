@@ -89,6 +89,27 @@ export type Settings = {
   replacementQuarantineRetentionDays: number
 }
 
+export type ConfigSnapshot = {
+  version: number
+  exportedAt: string
+  settings: Record<string, string>
+  libraries: unknown[]
+  activityWatchers: unknown[]
+  notificationTargets: unknown[]
+}
+
+export type ConfigImportResult = {
+  applied: boolean
+  errors: string[]
+  librariesCreated: number
+  librariesUpdated: number
+  watchersCreated: number
+  watchersUpdated: number
+  targetsCreated: number
+  targetsUpdated: number
+  settingsApplied: number
+}
+
 export type QueueStatus = Settings & {
   canStart: boolean
   blockedReason: string | null
@@ -291,6 +312,9 @@ export const api = {
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
   queueStatus: () => request<QueueStatus>('/api/queue/status'),
+  exportSettings: () => request<ConfigSnapshot>('/api/settings/export'),
+  importSettings: (snapshot: ConfigSnapshot) =>
+    request<ConfigImportResult>('/api/settings/import', { method: 'POST', body: JSON.stringify(snapshot) }),
 
   activityWatchers: () => request<ActivityWatcher[]>('/api/activity-watchers'),
   createActivityWatcher: (body: SaveActivityWatcher) =>

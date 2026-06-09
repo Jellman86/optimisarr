@@ -287,6 +287,56 @@
   function bytesToGiB(value: number) {
     return (value / 1024 / 1024 / 1024).toString()
   }
+
+  // Backup & restore: export a secret-free config snapshot, or import one.
+  let importing = $state(false)
+  let backupError = $state<string | null>(null)
+  let backupMessage = $state<string | null>(null)
+  let fileInput = $state<HTMLInputElement>()
+
+  async function exportConfig() {
+    backupError = null
+    backupMessage = null
+    try {
+      const snapshot = await api.exportSettings()
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `optimisarr-config-${new Date().toISOString().slice(0, 10)}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+      backupMessage = 'Config exported. Tokens are not included — re-enter them after importing.'
+    } catch (err) {
+      backupError = err instanceof Error ? err.message : 'Unable to export config'
+    }
+  }
+
+  async function importConfig(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    const file = input.files?.[0]
+    input.value = '' // let the same file be re-selected later
+    if (!file) return
+    backupError = null
+    backupMessage = null
+    importing = true
+    try {
+      const snapshot = JSON.parse(await file.text())
+      const result = await api.importSettings(snapshot)
+      backupMessage =
+        `Imported ${result.librariesCreated + result.librariesUpdated} libraries, ` +
+        `${result.watchersCreated + result.watchersUpdated} watchers, ` +
+        `${result.targetsCreated + result.targetsUpdated} targets, and ` +
+        `${result.settingsApplied} settings. Re-enter any provider tokens.`
+      await load()
+      await loadWatchers()
+      await loadTargets()
+    } catch (err) {
+      backupError = err instanceof Error ? err.message : 'Unable to import config'
+    } finally {
+      importing = false
+    }
+  }
 </script>
 
 <header class="mb-6">
@@ -598,6 +648,30 @@
           <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddTarget} disabled={savingTarget}>Cancel</button>
         {/if}
       </div>
+    </div>
+  </div>
+
+  <div class="card mt-5 max-w-2xl p-5">
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Backup &amp; restore</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      Export your settings, libraries, watchers, and notification targets to a JSON file, or import one.
+      For your security, provider tokens are never exported — re-enter them after importing. Importing merges
+      into your current config (matching libraries by path and watchers/targets by name) and never deletes anything.
+    </p>
+
+    {#if backupError}
+      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{backupError}</div>
+    {/if}
+    {#if backupMessage}
+      <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{backupMessage}</div>
+    {/if}
+
+    <div class="flex items-center gap-3">
+      <button class="btn" onclick={exportConfig}>Export config</button>
+      <button class="btn" onclick={() => fileInput?.click()} disabled={importing}>
+        {importing ? 'Importing…' : 'Import config'}
+      </button>
+      <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
     </div>
   </div>
 {/if}

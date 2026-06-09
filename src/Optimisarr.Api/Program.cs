@@ -7,6 +7,7 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
@@ -22,6 +23,7 @@ builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddSingleton<DecodeHealthCheck>();
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
+builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<JobEnqueueService>();
@@ -150,6 +152,29 @@ app.MapPut("/api/settings", async (
     return Results.Ok(SettingsDto.From(queue));
 })
 .WithName("UpdateSettings");
+
+// Settings backup: a secret-free snapshot of settings, libraries, watchers, and
+// notification targets. Tokens are never exported — they are re-entered after import.
+app.MapGet("/api/settings/export", async (
+    ConfigPortabilityService portability,
+    CancellationToken cancellationToken) =>
+{
+    var snapshot = await portability.ExportAsync(cancellationToken);
+    return Results.Ok(snapshot);
+})
+.WithName("ExportSettings");
+
+app.MapPost("/api/settings/import", async (
+    ConfigSnapshot snapshot,
+    ConfigPortabilityService portability,
+    CancellationToken cancellationToken) =>
+{
+    var result = await portability.ImportAsync(snapshot, cancellationToken);
+    return result.Applied
+        ? Results.Ok(result)
+        : Results.BadRequest(new { error = "The config file is invalid.", details = result.Errors });
+})
+.WithName("ImportSettings");
 
 app.MapGet("/api/queue/status", async (
     QueueDispatcher dispatcher,

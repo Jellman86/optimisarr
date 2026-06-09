@@ -1,0 +1,217 @@
+using Microsoft.EntityFrameworkCore;
+using Optimisarr.Core.Domain;
+using Optimisarr.Core.Settings;
+using Optimisarr.Data;
+
+// This namespace's leaf segment shadows the Library entity type, so refer to it
+// through this alias throughout the file.
+using LibraryEntity = Optimisarr.Data.Library;
+
+namespace Optimisarr.Api.Library;
+
+/// <summary>What an import changed. <see cref="Applied"/> is false when validation rejected the file.</summary>
+public sealed record ConfigImportResult(
+    bool Applied,
+    IReadOnlyList<string> Errors,
+    int LibrariesCreated,
+    int LibrariesUpdated,
+    int WatchersCreated,
+    int WatchersUpdated,
+    int TargetsCreated,
+    int TargetsUpdated,
+    int SettingsApplied);
+
+/// <summary>
+/// Exports and imports Optimisarr's configuration as a secret-free
+/// <see cref="ConfigSnapshot"/>. Import is validated in full first (nothing is
+/// written if any part is invalid), then applied as a non-destructive merge:
+/// libraries are matched on path, watchers and targets on name, so importing never
+/// deletes existing configuration and never overwrites a stored token with a blank.
+/// </summary>
+public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsStore settings, TimeProvider clock)
+{
+    public async Task<ConfigSnapshot> ExportAsync(CancellationToken cancellationToken)
+    {
+        var settingsMap = await settings.ExportSettingsAsync(cancellationToken);
+
+        var libraries = await db.Libraries.AsNoTracking()
+            .OrderBy(library => library.Name).ToListAsync(cancellationToken);
+        var watchers = await db.ActivityWatchers.AsNoTracking()
+            .OrderBy(watcher => watcher.Name).ToListAsync(cancellationToken);
+        var targets = await db.NotificationTargets.AsNoTracking()
+            .OrderBy(target => target.Name).ToListAsync(cancellationToken);
+
+        return new ConfigSnapshot(
+            ConfigSnapshot.CurrentVersion,
+            clock.GetUtcNow(),
+            settingsMap,
+            libraries.Select(ToSnapshot).ToList(),
+            watchers.Select(ToSnapshot).ToList(),
+            targets.Select(ToSnapshot).ToList());
+    }
+
+    public async Task<ConfigImportResult> ImportAsync(ConfigSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        var validation = ConfigSnapshotValidator.Validate(snapshot, SettingsStore.PortableSettingKeys);
+        if (!validation.IsValid)
+        {
+            return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0);
+        }
+
+        var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(snapshot.Libraries, cancellationToken);
+        var (watchersCreated, watchersUpdated) = await ImportWatchersAsync(snapshot.ActivityWatchers, cancellationToken);
+        var (targetsCreated, targetsUpdated) = await ImportTargetsAsync(snapshot.NotificationTargets, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+
+        var settingsApplied = await settings.ImportSettingsAsync(snapshot.Settings, cancellationToken);
+
+        return new ConfigImportResult(
+            true, [],
+            librariesCreated, librariesUpdated,
+            watchersCreated, watchersUpdated,
+            targetsCreated, targetsUpdated,
+            settingsApplied);
+    }
+
+    private async Task<(int Created, int Updated)> ImportLibrariesAsync(
+        IReadOnlyList<LibrarySnapshot> snapshots, CancellationToken cancellationToken)
+    {
+        var created = 0;
+        var updated = 0;
+        foreach (var snapshot in snapshots)
+        {
+            var path = snapshot.Path.Trim();
+            var library = await db.Libraries.FirstOrDefaultAsync(l => l.Path == path, cancellationToken);
+            if (library is null)
+            {
+                library = new LibraryEntity { Path = path };
+                db.Libraries.Add(library);
+                created++;
+            }
+            else
+            {
+                library.UpdatedAt = clock.GetUtcNow();
+                updated++;
+            }
+
+            library.Name = snapshot.Name.Trim();
+            library.MediaType = ParseEnum<MediaType>(snapshot.MediaType);
+            library.RuleProfile = ParseEnum<RuleProfile>(snapshot.RuleProfile);
+            library.Enabled = snapshot.Enabled;
+            library.Priority = snapshot.Priority;
+            library.MinFileSizeBytes = snapshot.MinFileSizeBytes;
+            library.MaxHeight = snapshot.MaxHeight;
+            library.TargetVideoCodec = snapshot.TargetVideoCodec;
+            library.TargetContainer = snapshot.TargetContainer;
+            library.HdrHandling = snapshot.HdrHandling is null ? null : ParseEnum<HdrHandling>(snapshot.HdrHandling);
+            library.ExcludePaths = snapshot.ExcludePaths;
+            library.QualityCrf = snapshot.QualityCrf;
+            library.EncoderPreset = snapshot.EncoderPreset;
+            library.MoveOnComplete = snapshot.MoveOnComplete;
+            library.TargetFolder = snapshot.TargetFolder;
+        }
+
+        return (created, updated);
+    }
+
+    private async Task<(int Created, int Updated)> ImportWatchersAsync(
+        IReadOnlyList<ActivityWatcherSnapshot> snapshots, CancellationToken cancellationToken)
+    {
+        var created = 0;
+        var updated = 0;
+        foreach (var snapshot in snapshots)
+        {
+            var name = snapshot.Name.Trim();
+            var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Name == name, cancellationToken);
+            if (watcher is null)
+            {
+                watcher = new ActivityWatcher { Name = name };
+                db.ActivityWatchers.Add(watcher);
+                created++;
+            }
+            else
+            {
+                watcher.UpdatedAt = clock.GetUtcNow();
+                updated++;
+            }
+
+            // The token is intentionally absent from a snapshot, so an existing
+            // watcher keeps its stored secret rather than having it wiped.
+            watcher.Type = ParseEnum<ActivityWatcherType>(snapshot.Type);
+            watcher.BaseUrl = snapshot.BaseUrl.Trim();
+            watcher.Enabled = snapshot.Enabled;
+            watcher.RefreshOnReplace = snapshot.RefreshOnReplace;
+        }
+
+        return (created, updated);
+    }
+
+    private async Task<(int Created, int Updated)> ImportTargetsAsync(
+        IReadOnlyList<NotificationTargetSnapshot> snapshots, CancellationToken cancellationToken)
+    {
+        var created = 0;
+        var updated = 0;
+        foreach (var snapshot in snapshots)
+        {
+            var name = snapshot.Name.Trim();
+            var target = await db.NotificationTargets.FirstOrDefaultAsync(t => t.Name == name, cancellationToken);
+            if (target is null)
+            {
+                target = new NotificationTarget { Name = name };
+                db.NotificationTargets.Add(target);
+                created++;
+            }
+            else
+            {
+                target.UpdatedAt = clock.GetUtcNow();
+                updated++;
+            }
+
+            // As with watchers, the token is never carried in a snapshot.
+            target.Type = ParseEnum<NotificationType>(snapshot.Type);
+            target.Url = snapshot.Url.Trim();
+            target.Enabled = snapshot.Enabled;
+            target.NotifyOnReplacement = snapshot.NotifyOnReplacement;
+            target.NotifyOnFailure = snapshot.NotifyOnFailure;
+        }
+
+        return (created, updated);
+    }
+
+    private static LibrarySnapshot ToSnapshot(LibraryEntity library) => new(
+        library.Name,
+        library.Path,
+        library.MediaType.ToString(),
+        library.RuleProfile.ToString(),
+        library.Enabled,
+        library.Priority,
+        library.MinFileSizeBytes,
+        library.MaxHeight,
+        library.TargetVideoCodec,
+        library.TargetContainer,
+        library.HdrHandling?.ToString(),
+        library.ExcludePaths,
+        library.QualityCrf,
+        library.EncoderPreset,
+        library.MoveOnComplete,
+        library.TargetFolder);
+
+    private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
+        watcher.Name,
+        watcher.Type.ToString(),
+        watcher.BaseUrl,
+        watcher.Enabled,
+        watcher.RefreshOnReplace);
+
+    private static NotificationTargetSnapshot ToSnapshot(NotificationTarget target) => new(
+        target.Name,
+        target.Type.ToString(),
+        target.Url,
+        target.Enabled,
+        target.NotifyOnReplacement,
+        target.NotifyOnFailure);
+
+    // Snapshots are validated before import, so these parses cannot fail here.
+    private static T ParseEnum<T>(string value) where T : struct, Enum =>
+        Enum.Parse<T>(value, ignoreCase: true);
+}

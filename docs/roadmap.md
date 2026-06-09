@@ -288,8 +288,11 @@ unit-tested `LibraryRefreshRequestBuilder`). Token acquisition is now interactiv
 too: **Plex OAuth/PIN** and **Jellyfin Quick Connect** sign-in flows fill in the
 token instead of the user pasting a raw one (Emby keeps a manual API key).
 **Notifications** are done: webhook/ntfy/Apprise targets fire best-effort on
-replacement and failure, with pure unit-tested message/request builders. Still to
-come: Sonarr/Radarr exclusions and import/export.
+replacement and failure, with pure unit-tested message/request builders.
+**Import/export** is done too: a secret-free config snapshot (settings, libraries,
+watchers, notification targets) exports to JSON and imports back as a validated,
+non-destructive merge (pure unit-tested `ConfigSnapshotValidator`). Still to come:
+Sonarr/Radarr exclusions.
 
 Deliverables:
 
@@ -326,7 +329,7 @@ Deliverables:
   server is unreachable.
 - Optional Sonarr/Radarr path-aware exclusions.
 - Optional notifications (Apprise, ntfy, webhook). **Done.**
-- Import/export settings.
+- Import/export settings. **Done.**
 
 Exit criteria:
 
