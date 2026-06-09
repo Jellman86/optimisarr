@@ -20,7 +20,9 @@ public sealed record VerificationPolicy(
     bool RequireSizeReduction,
     bool QualityGateEnabled,
     double MinimumVmafHarmonicMean,
-    double MinimumVmafMin)
+    double MinimumVmafMin,
+    bool AudioLoudnessGateEnabled,
+    double MaxLoudnessDriftLufs)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -29,5 +31,7 @@ public sealed record VerificationPolicy(
         RequireSizeReduction: true,
         QualityGateEnabled: false,
         MinimumVmafHarmonicMean: 93.0,
-        MinimumVmafMin: 80.0);
+        MinimumVmafMin: 80.0,
+        AudioLoudnessGateEnabled: false,
+        MaxLoudnessDriftLufs: 1.0);
 }

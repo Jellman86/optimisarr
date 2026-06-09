@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Audio fidelity checks
+
+- Verification now guards audio. An always-on **channel/sample-rate retention** gate
+  (when audio retention is required) fails a job that silently downmixes — e.g. 5.1 to
+  stereo — or drops the sample rate, reusing a quick re-probe of the original for no
+  decode cost. An opt-in **EBU R128 loudness** gate measures the integrated loudness of
+  the original and output with FFmpeg's `ebur128` filter and fails the job if they
+  drift beyond a configurable tolerance (default 1 LU); it adds a decode pass per file
+  so it is off by default and fails closed if loudness can't be measured. The loudness
+  parsing and both gate decisions are pure and unit tested.
+
 ### Never silently strip HDR
 
 - Verification now includes an always-on **HDR preservation** gate: if the original

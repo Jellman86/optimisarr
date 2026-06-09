@@ -88,6 +88,8 @@ export type Settings = {
   verificationQualityGateEnabled: boolean
   verificationMinimumVmafHarmonicMean: number
   verificationMinimumVmafMin: number
+  verificationAudioLoudnessGateEnabled: boolean
+  verificationMaxLoudnessDriftLufs: number
   replacementAllowCrossFilesystem: boolean
   replacementQuarantineRetentionDays: number
 }

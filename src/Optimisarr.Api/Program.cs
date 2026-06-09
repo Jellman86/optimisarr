@@ -22,6 +22,7 @@ builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddSingleton<DecodeHealthCheck>();
 builder.Services.AddSingleton<QualityScoreService>();
+builder.Services.AddSingleton<LoudnessService>();
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
@@ -120,6 +121,11 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "VMAF thresholds must be between 0 and 100." });
     }
 
+    if (request.VerificationMaxLoudnessDriftLufs < 0)
+    {
+        return Results.BadRequest(new { error = "Loudness drift tolerance cannot be negative." });
+    }
+
     if (request.ReplacementQuarantineRetentionDays < 0)
     {
         return Results.BadRequest(new { error = "Quarantine retention days cannot be negative." });
@@ -155,7 +161,9 @@ app.MapPut("/api/settings", async (
             request.VerificationRequireSizeReduction,
             request.VerificationQualityGateEnabled,
             request.VerificationMinimumVmafHarmonicMean,
-            request.VerificationMinimumVmafMin),
+            request.VerificationMinimumVmafMin,
+            request.VerificationAudioLoudnessGateEnabled,
+            request.VerificationMaxLoudnessDriftLufs),
         request.ReplacementAllowCrossFilesystem,
         request.ReplacementQuarantineRetentionDays), cancellationToken);
 
@@ -972,6 +980,8 @@ internal sealed record SettingsDto(
     bool VerificationQualityGateEnabled,
     double VerificationMinimumVmafHarmonicMean,
     double VerificationMinimumVmafMin,
+    bool VerificationAudioLoudnessGateEnabled,
+    double VerificationMaxLoudnessDriftLufs,
     bool ReplacementAllowCrossFilesystem,
     int ReplacementQuarantineRetentionDays)
 {
@@ -990,6 +1000,8 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.QualityGateEnabled,
         settings.VerificationPolicy.MinimumVmafHarmonicMean,
         settings.VerificationPolicy.MinimumVmafMin,
+        settings.VerificationPolicy.AudioLoudnessGateEnabled,
+        settings.VerificationPolicy.MaxLoudnessDriftLufs,
         settings.ReplacementAllowCrossFilesystem,
         settings.ReplacementQuarantineRetentionDays);
 

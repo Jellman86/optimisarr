@@ -291,6 +291,8 @@
     verificationQualityGateEnabled: false,
     verificationMinimumVmafHarmonicMean: 93,
     verificationMinimumVmafMin: 80,
+    verificationAudioLoudnessGateEnabled: false,
+    verificationMaxLoudnessDriftLufs: 1,
     replacementAllowCrossFilesystem: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -332,6 +334,7 @@
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
         verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
         verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
+        verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
@@ -548,6 +551,30 @@
           />
           <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Catches short artifact bursts a healthy average would hide. If quality can't be measured, the gate fails closed.</p>
         </div>
+      </div>
+    </div>
+
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.verificationAudioLoudnessGateEnabled}
+        label="Check audio loudness drift (EBU R128)"
+        hint="Measures integrated loudness of the original and output with FFmpeg's ebur128 filter and fails the job if they differ too much. Adds a decode pass per file, so it is off by default; most useful when a profile re-encodes audio."
+      />
+      <div class="mt-4 max-w-xs" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
+        <label class="label" for="loudness-drift">Maximum loudness drift</label>
+        <div class="flex items-center gap-2">
+          <input
+            id="loudness-drift"
+            class="input"
+            type="number"
+            min="0"
+            step="0.1"
+            bind:value={settings.verificationMaxLoudnessDriftLufs}
+            disabled={!settings.verificationAudioLoudnessGateEnabled}
+          />
+          <span class="text-sm text-slate-500 dark:text-slate-400">LU</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">If loudness can't be measured, the gate fails closed.</p>
       </div>
     </div>
   </div>

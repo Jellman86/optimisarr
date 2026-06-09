@@ -25,6 +25,14 @@ public sealed record VerificationInput(
     bool OriginalIsHdr = false,
     bool OutputIsHdr = false,
     bool HdrConvertedToSdr = false,
+    int OriginalMaxAudioChannels = 0,
+    int OutputMaxAudioChannels = 0,
+    int OriginalMaxAudioSampleRate = 0,
+    int OutputMaxAudioSampleRate = 0,
     bool QualityMeasured = false,
     string? QualityError = null,
-    QualityScores? QualityScores = null);
+    QualityScores? QualityScores = null,
+    bool LoudnessMeasured = false,
+    string? LoudnessError = null,
+    double? OriginalLoudnessLufs = null,
+    double? OutputLoudnessLufs = null);

@@ -40,6 +40,8 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(settings.VerificationPolicy.QualityGateEnabled);
         Assert.Equal(93.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
         Assert.Equal(80.0, settings.VerificationPolicy.MinimumVmafMin);
+        Assert.False(settings.VerificationPolicy.AudioLoudnessGateEnabled);
+        Assert.Equal(1.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
     }
@@ -64,7 +66,9 @@ public sealed class SettingsStoreTests : IDisposable
                     RequireSizeReduction: false,
                     QualityGateEnabled: true,
                     MinimumVmafHarmonicMean: 92.0,
-                    MinimumVmafMin: 75.0),
+                    MinimumVmafMin: 75.0,
+                    AudioLoudnessGateEnabled: true,
+                    MaxLoudnessDriftLufs: 2.0),
                 ReplacementAllowCrossFilesystem: true,
                 ReplacementQuarantineRetentionDays: 30), CancellationToken.None);
         }
@@ -86,6 +90,8 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.QualityGateEnabled);
         Assert.Equal(92.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
         Assert.Equal(75.0, settings.VerificationPolicy.MinimumVmafMin);
+        Assert.True(settings.VerificationPolicy.AudioLoudnessGateEnabled);
+        Assert.Equal(2.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
         Assert.True(settings.ReplacementAllowCrossFilesystem);
         Assert.Equal(30, settings.ReplacementQuarantineRetentionDays);
     }

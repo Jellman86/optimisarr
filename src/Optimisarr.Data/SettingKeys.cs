@@ -48,6 +48,12 @@ public static class SettingKeys
     /// <summary>Minimum single-frame VMAF an output must reach when the quality gate is on.</summary>
     public const string VerificationMinimumVmafMin = "verification.minimumVmafMin";
 
+    /// <summary>Whether the opt-in EBU R128 audio-loudness drift gate is enforced.</summary>
+    public const string VerificationAudioLoudnessGateEnabled = "verification.audioLoudnessGateEnabled";
+
+    /// <summary>Maximum allowed integrated-loudness drift in LU when the loudness gate is on.</summary>
+    public const string VerificationMaxLoudnessDriftLufs = "verification.maxLoudnessDriftLufs";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

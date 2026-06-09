@@ -49,6 +49,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationQualityGateEnabled,
         SettingKeys.VerificationMinimumVmafHarmonicMean,
         SettingKeys.VerificationMinimumVmafMin,
+        SettingKeys.VerificationAudioLoudnessGateEnabled,
+        SettingKeys.VerificationMaxLoudnessDriftLufs,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
@@ -95,6 +97,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationQualityGateEnabled
                 || setting.Key == SettingKeys.VerificationMinimumVmafHarmonicMean
                 || setting.Key == SettingKeys.VerificationMinimumVmafMin
+                || setting.Key == SettingKeys.VerificationAudioLoudnessGateEnabled
+                || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
@@ -131,6 +135,13 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
                     VerificationPolicy.Default.MinimumVmafMin,
+                    min: 0),
+                ParseBool(
+                    settings.GetValueOrDefault(SettingKeys.VerificationAudioLoudnessGateEnabled),
+                    VerificationPolicy.Default.AudioLoudnessGateEnabled),
+                ParseDouble(
+                    settings.GetValueOrDefault(SettingKeys.VerificationMaxLoudnessDriftLufs),
+                    VerificationPolicy.Default.MaxLoudnessDriftLufs,
                     min: 0)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
@@ -187,6 +198,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 Math.Max(0, settings.VerificationPolicy.MinimumVmafHarmonicMean).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMinimumVmafMin] =
                 Math.Max(0, settings.VerificationPolicy.MinimumVmafMin).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationAudioLoudnessGateEnabled] =
+                settings.VerificationPolicy.AudioLoudnessGateEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationMaxLoudnessDriftLufs] =
+                Math.Max(0, settings.VerificationPolicy.MaxLoudnessDriftLufs).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementQuarantineRetentionDays] =

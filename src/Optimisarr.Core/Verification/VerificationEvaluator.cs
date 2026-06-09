@@ -29,6 +29,13 @@ public static class VerificationEvaluator
             checks.Add(HdrPreserved(input));
         }
 
+        // Audio fidelity (no silent downmix or sample-rate drop) is checked when audio
+        // retention is required and the original's audio shape is known.
+        if (policy.RequireAudioRetained && input.OriginalMaxAudioChannels > 0)
+        {
+            checks.Add(AudioFidelity(input));
+        }
+
         // The perceptual-quality gate only contributes when the user has opted in;
         // otherwise the report and its cost are unchanged.
         if (policy.QualityGateEnabled)
@@ -36,7 +43,51 @@ public static class VerificationEvaluator
             checks.Add(PerceptualQuality(input, policy));
         }
 
+        if (policy.AudioLoudnessGateEnabled)
+        {
+            checks.Add(LoudnessPreserved(input, policy));
+        }
+
         return new VerificationReport(checks);
+    }
+
+    private static VerificationCheck LoudnessPreserved(VerificationInput input, VerificationPolicy policy)
+    {
+        // Fail closed: an enabled gate that could not measure loudness blocks replacement.
+        if (!input.LoudnessMeasured || input.OriginalLoudnessLufs is not { } original || input.OutputLoudnessLufs is not { } output)
+        {
+            return Fail("Audio loudness (EBU R128)", $"Loudness could not be measured: {Describe(input.LoudnessError)}");
+        }
+
+        var drift = Math.Abs(original - output);
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "Original {0:0.#} LUFS, output {1:0.#} LUFS ({2:0.##} LU drift, tolerance {3:0.##} LU).",
+            original, output, drift, policy.MaxLoudnessDriftLufs);
+
+        return drift <= policy.MaxLoudnessDriftLufs
+            ? Pass("Audio loudness (EBU R128)", detail)
+            : Fail("Audio loudness (EBU R128)", detail);
+    }
+
+    private static VerificationCheck AudioFidelity(VerificationInput input)
+    {
+        if (input.OutputMaxAudioChannels < input.OriginalMaxAudioChannels)
+        {
+            return Fail("Audio fidelity",
+                $"Audio was downmixed from {input.OriginalMaxAudioChannels} to {input.OutputMaxAudioChannels} channels.");
+        }
+
+        if (input.OriginalMaxAudioSampleRate > 0
+            && input.OutputMaxAudioSampleRate > 0
+            && input.OutputMaxAudioSampleRate < input.OriginalMaxAudioSampleRate)
+        {
+            return Fail("Audio fidelity",
+                $"Audio sample rate dropped from {input.OriginalMaxAudioSampleRate} to {input.OutputMaxAudioSampleRate} Hz.");
+        }
+
+        return Pass("Audio fidelity",
+            $"Channel layout ({input.OutputMaxAudioChannels} ch) and sample rate retained.");
     }
 
     private static VerificationCheck HdrPreserved(VerificationInput input)

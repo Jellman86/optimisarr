@@ -15,10 +15,12 @@ public sealed record MediaProbeResult(
     int AudioTrackCount,
     int SubtitleTrackCount,
     bool IsHdr,
+    int MaxAudioChannels,
+    int MaxAudioSampleRate,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, error);
+        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0, error);
 }
 
 /// <summary>
@@ -120,6 +122,8 @@ public sealed class MediaProbeService
         var isHdr = false;
         var audioCodecs = new List<string>();
         var subtitleCount = 0;
+        var maxAudioChannels = 0;
+        var maxAudioSampleRate = 0;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -148,6 +152,16 @@ public sealed class MediaProbeService
                         break;
                     case "audio":
                         audioCodecs.Add(codecName ?? "unknown");
+                        if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var channels))
+                        {
+                            maxAudioChannels = Math.Max(maxAudioChannels, channels);
+                        }
+                        if (stream.TryGetProperty("sample_rate", out var sr)
+                            && sr.ValueKind == JsonValueKind.String
+                            && int.TryParse(sr.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var sampleRate))
+                        {
+                            maxAudioSampleRate = Math.Max(maxAudioSampleRate, sampleRate);
+                        }
                         break;
                     case "subtitle":
                         subtitleCount++;
@@ -167,6 +181,8 @@ public sealed class MediaProbeService
             audioCodecs.Count,
             subtitleCount,
             isHdr,
+            maxAudioChannels,
+            maxAudioSampleRate,
             null);
     }
 

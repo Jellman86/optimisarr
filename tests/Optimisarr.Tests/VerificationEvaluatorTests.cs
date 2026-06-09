@@ -165,6 +165,66 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Size saving"));
     }
 
+    private const string AudioFidelityCheck = "Audio fidelity";
+
+    [Fact]
+    public void Audio_fidelity_is_absent_when_the_original_audio_shape_is_unknown()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == AudioFidelityCheck);
+    }
+
+    [Fact]
+    public void Retained_channels_and_sample_rate_pass_audio_fidelity()
+    {
+        var input = Healthy() with
+        {
+            OriginalMaxAudioChannels = 6, OutputMaxAudioChannels = 6,
+            OriginalMaxAudioSampleRate = 48000, OutputMaxAudioSampleRate = 48000
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, AudioFidelityCheck));
+    }
+
+    [Fact]
+    public void A_silent_downmix_fails_audio_fidelity()
+    {
+        var input = Healthy() with { OriginalMaxAudioChannels = 6, OutputMaxAudioChannels = 2 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, AudioFidelityCheck));
+    }
+
+    [Fact]
+    public void A_sample_rate_drop_fails_audio_fidelity()
+    {
+        var input = Healthy() with
+        {
+            OriginalMaxAudioChannels = 2, OutputMaxAudioChannels = 2,
+            OriginalMaxAudioSampleRate = 48000, OutputMaxAudioSampleRate = 44100
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, AudioFidelityCheck));
+    }
+
+    [Fact]
+    public void Audio_fidelity_is_skipped_when_retention_is_not_required()
+    {
+        var input = Healthy() with { OriginalMaxAudioChannels = 6, OutputMaxAudioChannels = 2 };
+        var policy = VerificationPolicy.Default with { RequireAudioRetained = false };
+
+        var report = VerificationEvaluator.Evaluate(input, policy);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == AudioFidelityCheck);
+    }
+
     private const string HdrCheck = "HDR signal";
 
     [Fact]
@@ -276,5 +336,55 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, QualityGate);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, QualityCheck));
+    }
+
+    private static readonly VerificationPolicy LoudnessGate =
+        VerificationPolicy.Default with { AudioLoudnessGateEnabled = true, MaxLoudnessDriftLufs = 1.0 };
+
+    private const string LoudnessCheck = "Audio loudness (EBU R128)";
+
+    [Fact]
+    public void Loudness_gate_is_absent_unless_enabled()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == LoudnessCheck);
+    }
+
+    [Fact]
+    public void Loudness_within_tolerance_passes()
+    {
+        var input = Healthy() with
+        {
+            LoudnessMeasured = true, OriginalLoudnessLufs = -23.0, OutputLoudnessLufs = -23.4
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, LoudnessGate);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, LoudnessCheck));
+    }
+
+    [Fact]
+    public void Loudness_drift_beyond_tolerance_fails()
+    {
+        var input = Healthy() with
+        {
+            LoudnessMeasured = true, OriginalLoudnessLufs = -23.0, OutputLoudnessLufs = -19.0
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, LoudnessGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, LoudnessCheck));
+    }
+
+    [Fact]
+    public void Loudness_gate_fails_closed_when_not_measured()
+    {
+        var input = Healthy() with { LoudnessMeasured = false, LoudnessError = "no audio" };
+
+        var report = VerificationEvaluator.Evaluate(input, LoudnessGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, LoudnessCheck));
     }
 }
