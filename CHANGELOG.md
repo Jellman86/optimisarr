@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Simpler library configuration
+
+- The per-library form now leads with just the essentials — name, path, media type, and a
+  preset with a plain-language summary of what it does — so adding a library is a few
+  clicks. Every technical knob (target codec/container, HDR handling, encoder preset,
+  quality, VMAF thresholds, resolution/size limits, exclude paths, and move-on-complete)
+  is tucked behind a single **Advanced options** disclosure, which opens automatically when
+  you edit a library that already uses one of them.
+- Numeric settings are now **sliders** instead of raw fields: queue priority is a
+  Lowest–Highest slider with a live label, quality (CRF) shows a Smaller↔Sharper scale, and
+  the VMAF gate override is a toggle that reveals Average/Worst-frame sliders. Booleans are
+  toggles throughout. No behaviour or saved values change — only how they're presented.
+
 ### Per-library automatic optimisation
 
 - A library can now **scan and enqueue itself automatically** on a daily schedule, turning

@@ -2,6 +2,7 @@
   import { api, type Library, type LibraryOptions, type SaveLibrary } from '../api'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
+  import Icon from '../components/Icon.svelte'
 
   let libraries = $state<Library[]>([])
   let options = $state<LibraryOptions>({
@@ -32,9 +33,48 @@
   ]
 
   const DEFAULT_CRF = 23
+  const DEFAULT_VMAF_HARMONIC = 93
+  const DEFAULT_VMAF_MIN = 80
+
+  // Plain-language summary of each preset, shown under the picker so a first-time
+  // user can choose without knowing codecs.
+  const presetSummaries: Record<string, string> = {
+    ConservativeHevc: 'Space-saving HEVC (H.265). Safe, widely compatible — a good default.',
+    CompatibilityH264: 'Targets H.264 for maximum device compatibility. Larger files, plays everywhere.',
+    ExperimentalAv1: 'Smallest files using AV1 where hardware allows. Slower to encode.',
+    RemuxCleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
+  }
 
   function toggleCustomQuality(on: boolean) {
     form.qualityCrf = on ? (form.qualityCrf ?? DEFAULT_CRF) : null
+  }
+
+  function toggleVmafOverride(on: boolean) {
+    form.minVmafHarmonicMean = on ? (form.minVmafHarmonicMean ?? DEFAULT_VMAF_HARMONIC) : null
+    form.minVmafMin = on ? (form.minVmafMin ?? DEFAULT_VMAF_MIN) : null
+  }
+
+  function priorityLabel(value: number): string {
+    return priorityLevels.find((level) => level.value === value)?.label ?? 'Normal'
+  }
+
+  // Whether a library uses any setting beyond the basics, so editing it can open
+  // the advanced panel already expanded instead of hiding the user's own choices.
+  function usesAdvanced(library: Library): boolean {
+    return (
+      library.priority !== 0 ||
+      library.maxHeight != null ||
+      library.minFileSizeBytes != null ||
+      !!library.targetVideoCodec ||
+      !!library.targetContainer ||
+      !!library.hdrHandling ||
+      !!library.encoderPreset ||
+      library.qualityCrf != null ||
+      library.minVmafHarmonicMean != null ||
+      library.minVmafMin != null ||
+      !!library.excludePaths ||
+      library.moveOnComplete
+    )
   }
 
   function hdrLabel(hdr: string): string {
@@ -52,6 +92,9 @@
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
   let form = $state<SaveLibrary>(blankForm())
+  // Advanced (encoding/eligibility) settings are collapsed by default to keep the
+  // common case simple; opened automatically when editing a library that uses them.
+  let showAdvanced = $state(false)
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
 
@@ -101,6 +144,7 @@
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     minSizeMb = ''
+    showAdvanced = false
     editingId = 0
   }
 
@@ -129,6 +173,7 @@
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
+    showAdvanced = usesAdvanced(library)
     editingId = library.id
   }
 
@@ -237,7 +282,7 @@
   <div>
     <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Libraries</h1>
     <p class="text-sm text-slate-500 dark:text-slate-400">
-      One library per content type. Expand a card to define how it's optimised — target format, HDR handling, size and resolution limits, and priority.
+      One library per content type. Pick a preset and you're done — or open Advanced options to fine-tune the codec, quality, and limits.
     </p>
   </div>
   {#if editingId !== 0}
@@ -300,135 +345,183 @@
     </div>
   </div>
 
-  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">
-    Target output <span class="font-normal normal-case">— "Profile default" uses the preset above</span>
-  </h3>
-  <div class="grid gap-4 sm:grid-cols-2">
-    <div>
-      <label class="label" for="lib-codec">Target video codec</label>
-      <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
-        <option value={null}>Profile default</option>
-        {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
-      </select>
-    </div>
-    <div>
-      <label class="label" for="lib-container">Target container</label>
-      <select id="lib-container" class="input" bind:value={form.targetContainer}>
-        <option value={null}>Profile default</option>
-        {#each options.containers as container}<option value={container}>.{container}</option>{/each}
-      </select>
-    </div>
-    <div>
-      <label class="label" for="lib-hdr">HDR / Dolby Vision</label>
-      <select id="lib-hdr" class="input" bind:value={form.hdrHandling}>
-        <option value={null}>Profile default</option>
-        {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
-      </select>
-    </div>
-    <div>
-      <label class="label" for="lib-preset">Encoder preset</label>
-      <select id="lib-preset" class="input" bind:value={form.encoderPreset}>
-        <option value={null}>Encoder default</option>
-        {#each options.encoderPresets as preset}<option value={preset}>{preset}</option>{/each}
-      </select>
-    </div>
-    <div class="sm:col-span-2">
-      <div class="mb-1 flex items-center justify-between">
-        <label class="label mb-0" for="lib-crf">Quality (CRF)</label>
-        <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
-          <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
-          Set custom quality
-        </label>
-      </div>
-      {#if form.qualityCrf != null}
-        <div class="flex items-center gap-3">
-          <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
-          <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
+  <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{presetSummaries[form.ruleProfile] ?? 'Custom preset.'}</p>
+
+  <!-- Simple, always-visible switches. The technical encoding knobs live under
+       "Advanced options" so the common case stays uncluttered. -->
+  <div class="mt-5 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
+    <Toggle bind:checked={form.enabled} label="Library enabled" hint="Included in scans and eligible for the queue." />
+
+    <Toggle
+      bind:checked={form.autoEnqueueEnabled}
+      label="Optimise automatically"
+      hint="Scan and queue this library once a day, inside the window below. Jobs still only run during the global processing window, and the global concurrency limit always applies — this only fills the queue."
+    />
+    {#if form.autoEnqueueEnabled}
+      <div class="flex flex-wrap items-end gap-4 pl-1">
+        <div>
+          <label class="label" for="lib-auto-start">Window start</label>
+          <input id="lib-auto-start" class="input w-32" type="time" bind:value={form.autoEnqueueWindowStart} />
         </div>
-        <p class="mt-1 text-xs text-slate-400">Lower = higher quality and larger files. 18–24 is a good range.</p>
-      {:else}
-        <p class="text-xs text-slate-400">Using the encoder's default quality.</p>
-      {/if}
-    </div>
-    <div>
-      <label class="label" for="lib-vmaf-harmonic">VMAF gate override — harmonic mean</label>
-      <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" placeholder="Global default" bind:value={form.minVmafHarmonicMean} />
-    </div>
-    <div>
-      <label class="label" for="lib-vmaf-min">VMAF gate override — worst frame</label>
-      <input id="lib-vmaf-min" class="input" type="number" min="0" max="100" step="0.5" placeholder="Global default" bind:value={form.minVmafMin} />
-    </div>
-    <p class="text-xs text-slate-400 sm:col-span-2">
-      Only used when the perceptual-quality gate is enabled in Settings. Leave blank to use the global thresholds —
-      raise these for an archive library that should demand near-lossless quality.
-    </p>
+        <div>
+          <label class="label" for="lib-auto-end">Window end</label>
+          <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
+        </div>
+        <p class="max-w-xs text-xs text-slate-500 dark:text-slate-400">
+          Equal times = once a day. A window like 01:00–06:00 runs one nightly pass when it opens.
+        </p>
+      </div>
+    {/if}
   </div>
 
-  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Eligibility &amp; queue</h3>
-  <div class="grid gap-4 sm:grid-cols-2">
-    <div>
-      <label class="label" for="lib-priority">Queue priority</label>
-      <select id="lib-priority" class="input" bind:value={form.priority}>
-        {#each priorityLevels as level}<option value={level.value}>{level.label}</option>{/each}
-      </select>
-    </div>
-    <div>
-      <label class="label" for="lib-maxheight">Max resolution (skip above)</label>
-      <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
-        {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
-      </select>
-    </div>
-    <div>
-      <label class="label" for="lib-minsize">Minimum file size (MB)</label>
-      <input id="lib-minsize" class="input" type="number" min="0" placeholder="profile default" bind:value={minSizeMb} />
-    </div>
-    <div class="sm:col-span-2">
-      <label class="label" for="lib-exclude">Exclude paths (one per line)</label>
-      <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
-    </div>
-  </div>
+  <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. -->
+  <button
+    type="button"
+    class="mt-5 flex w-full items-center gap-2 border-t border-slate-200 pt-4 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+    onclick={() => (showAdvanced = !showAdvanced)}
+    aria-expanded={showAdvanced}
+  >
+    <Icon name="sliders" class="h-4 w-4 text-slate-400" />
+    <span>Advanced options</span>
+    <span class="text-xs font-normal text-slate-400">codec, quality, limits</span>
+    <Icon name="chevron" class="ml-auto h-4 w-4 text-slate-400 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
+  </button>
 
-  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Completed output</h3>
-  <Toggle
-    bind:checked={form.moveOnComplete}
-    label="Move output to a target folder when complete"
-    hint="Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — your originals are never touched. Useful for testing without re-copying source files."
-  />
-  {#if form.moveOnComplete}
-    <div class="mt-3 max-w-xl">
-      <label class="label" for="lib-target">Target folder</label>
-      <div class="flex gap-2">
-        <input id="lib-target" class="input" readonly placeholder="Choose a folder…" value={form.targetFolder ?? ''} />
-        <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>Browse</button>
+  {#if showAdvanced}
+    <div class="mt-4 space-y-6">
+      <!-- Encoding -->
+      <div>
+        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Encoding <span class="font-normal normal-case">— leave on "Profile default" to follow the preset</span>
+        </h3>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-codec">Target video codec</label>
+            <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
+              <option value={null}>Profile default</option>
+              {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-container">Target container</label>
+            <select id="lib-container" class="input" bind:value={form.targetContainer}>
+              <option value={null}>Profile default</option>
+              {#each options.containers as container}<option value={container}>.{container}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-hdr">HDR / Dolby Vision</label>
+            <select id="lib-hdr" class="input" bind:value={form.hdrHandling}>
+              <option value={null}>Profile default</option>
+              {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-preset">Encoder preset</label>
+            <select id="lib-preset" class="input" bind:value={form.encoderPreset}>
+              <option value={null}>Encoder default</option>
+              {#each options.encoderPresets as preset}<option value={preset}>{preset}</option>{/each}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <div class="mb-1 flex items-center justify-between">
+            <label class="label mb-0" for="lib-crf">Quality (CRF)</label>
+            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+              <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
+              Customise
+            </label>
+          </div>
+          {#if form.qualityCrf != null}
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-400">Smaller</span>
+              <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <span class="text-xs text-slate-400">Sharper</span>
+              <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
+            </div>
+            <p class="mt-1 text-xs text-slate-400">Lower CRF = higher quality and larger files. 18–24 is a good range.</p>
+          {:else}
+            <p class="text-xs text-slate-400">Using the preset's quality.</p>
+          {/if}
+        </div>
+
+        <div class="mt-4">
+          <div class="mb-1 flex items-center justify-between">
+            <span class="label mb-0">Quality-gate thresholds (VMAF)</span>
+            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+              <input type="checkbox" class="checkbox" checked={form.minVmafHarmonicMean != null || form.minVmafMin != null} onchange={(e) => toggleVmafOverride(e.currentTarget.checked)} />
+              Override
+            </label>
+          </div>
+          {#if form.minVmafHarmonicMean != null || form.minVmafMin != null}
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="flex items-center gap-3">
+                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">Average</span>
+                <input class="flex-1 accent-cyan-600" type="range" min="0" max="100" step="0.5" bind:value={form.minVmafHarmonicMean} />
+                <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafHarmonicMean}</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">Worst frame</span>
+                <input class="flex-1 accent-cyan-600" type="range" min="0" max="100" step="0.5" bind:value={form.minVmafMin} />
+                <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafMin}</span>
+              </div>
+            </div>
+            <p class="mt-1 text-xs text-slate-400">Only used when the perceptual-quality gate is enabled in Settings. Higher = stricter (near-lossless).</p>
+          {:else}
+            <p class="text-xs text-slate-400">Using the global thresholds from Settings.</p>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Eligibility & queue -->
+      <div>
+        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Eligibility &amp; queue</h3>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <div class="mb-1 flex items-center justify-between">
+              <label class="label mb-0" for="lib-priority">Queue priority</label>
+              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{priorityLabel(form.priority)}</span>
+            </div>
+            <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
+          </div>
+          <div>
+            <label class="label" for="lib-maxheight">Skip files above</label>
+            <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
+              {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-minsize">Minimum file size (MB)</label>
+            <input id="lib-minsize" class="input" type="number" min="0" placeholder="Profile default" bind:value={minSizeMb} />
+          </div>
+        </div>
+        <div class="mt-4">
+          <label class="label" for="lib-exclude">Exclude paths (one per line)</label>
+          <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
+        </div>
+      </div>
+
+      <!-- Completed output -->
+      <div>
+        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Completed output</h3>
+        <Toggle
+          bind:checked={form.moveOnComplete}
+          label="Move output to a target folder instead of replacing"
+          hint="Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — your originals are never touched. Useful for testing without re-copying source files."
+        />
+        {#if form.moveOnComplete}
+          <div class="mt-3 max-w-xl">
+            <label class="label" for="lib-target">Target folder</label>
+            <div class="flex gap-2">
+              <input id="lib-target" class="input" readonly placeholder="Choose a folder…" value={form.targetFolder ?? ''} />
+              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>Browse</button>
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
-
-  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Automatic optimisation</h3>
-  <Toggle
-    bind:checked={form.autoEnqueueEnabled}
-    label="Scan and enqueue automatically on a schedule"
-    hint="When on, this library is scanned and its eligible files are queued once per day, within the window below. Jobs still only run inside the global processing window (Settings), and the global concurrency limit always applies — auto-enqueue never starts jobs itself, it only fills the queue."
-  />
-  {#if form.autoEnqueueEnabled}
-    <div class="mt-3 flex flex-wrap items-end gap-4">
-      <div>
-        <label class="label" for="lib-auto-start">Window start</label>
-        <input id="lib-auto-start" class="input w-32" type="time" bind:value={form.autoEnqueueWindowStart} />
-      </div>
-      <div>
-        <label class="label" for="lib-auto-end">Window end</label>
-        <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
-      </div>
-      <p class="max-w-md text-xs text-slate-500 dark:text-slate-400">
-        Equal start and end means all day (enqueue once each day). A window like 01:00–06:00 runs a single nightly scan-and-enqueue when it opens.
-      </p>
-    </div>
-  {/if}
-
-  <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
-    <Toggle bind:checked={form.enabled} label="Enabled" hint="Included in scans and eligible for the queue." />
-  </div>
   <div class="mt-5 flex gap-2">
     <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path}>Save</button>
     <button class="btn" onclick={cancelEdit}>Cancel</button>

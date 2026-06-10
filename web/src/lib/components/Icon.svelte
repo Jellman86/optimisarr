@@ -19,6 +19,8 @@
     rotate: 'M4 4v6h6M5.5 9a7 7 0 0111.9-2.6L20 9',
     trash: 'M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v12a2 2 0 002 2h4a2 2 0 002-2V7',
     info: 'M12 8h.01M11 12h1v4h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    chevron: 'M6 9l6 6 6-6',
+    sliders: 'M4 6h11M4 12h7M4 18h13M17 4v4M11 10v4M19 16v4',
   }
 </script>
 
