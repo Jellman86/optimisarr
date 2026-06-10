@@ -286,14 +286,23 @@
     </p>
   </div>
   {#if editingId !== 0}
-    <button class="btn btn-primary" onclick={startAdd}>Add library</button>
+    <button class="btn btn-primary" onclick={startAdd}>
+      <Icon name="plus" class="h-4 w-4" />
+      Add library
+    </button>
   {/if}
 </header>
 
 {#if error}
-  <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+  <div class="card mb-4 flex items-start gap-2 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">
+    <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0" />
+    <span>{error}</span>
+  </div>
 {:else if message}
-  <div class="card mb-4 border-emerald-300 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{message}</div>
+  <div class="card mb-4 flex items-start gap-2 border-emerald-300 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">
+    <Icon name="check" class="mt-0.5 h-4 w-4 flex-shrink-0" />
+    <span>{message}</span>
+  </div>
 {/if}
 
 {#if pickerOpen}
@@ -523,8 +532,14 @@
     </div>
   {/if}
   <div class="mt-5 flex gap-2">
-    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path}>Save</button>
-    <button class="btn" onclick={cancelEdit}>Cancel</button>
+    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path}>
+      <Icon name="check" class="h-4 w-4" />
+      Save
+    </button>
+    <button class="btn" onclick={cancelEdit}>
+      <Icon name="x" class="h-4 w-4" />
+      Cancel
+    </button>
   </div>
 {/snippet}
 
@@ -567,15 +582,21 @@
           </div>
           <div class="flex flex-shrink-0 gap-2">
             <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
+              <Icon name={busyId === library.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === library.id ? 'animate-spin' : ''}" />
               {busyId === library.id ? 'Working' : 'Scan'}
             </button>
             <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title="Queue this library's eligible files">
+              <Icon name="plus" class="h-4 w-4" />
               Enqueue
             </button>
             <button class="btn" onclick={() => (editingId === library.id ? cancelEdit() : startEdit(library))} disabled={busyId === library.id}>
+              <Icon name={editingId === library.id ? 'x' : 'sliders'} class="h-4 w-4" />
               {editingId === library.id ? 'Close' : 'Configure'}
             </button>
-            <button class="btn btn-danger" onclick={() => remove(library)} disabled={busyId === library.id}>Delete</button>
+            <button class="btn btn-danger" onclick={() => remove(library)} disabled={busyId === library.id}>
+              <Icon name="trash" class="h-4 w-4" />
+              Delete
+            </button>
           </div>
         </div>
 
@@ -588,7 +609,15 @@
     {/each}
   </div>
 {:else if editingId !== 0}
-  <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
-    No libraries yet. Add one to start discovering media.
+  <div class="card flex flex-col items-center gap-3 p-10 text-center">
+    <Icon name="folder" class="h-10 w-10 text-slate-300 dark:text-slate-600" />
+    <div>
+      <p class="font-medium text-slate-600 dark:text-slate-300">No libraries yet</p>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Add one to start discovering media.</p>
+    </div>
+    <button class="btn btn-primary" onclick={startAdd}>
+      <Icon name="plus" class="h-4 w-4" />
+      Add library
+    </button>
   </div>
 {/if}

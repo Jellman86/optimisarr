@@ -12,6 +12,19 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Paint the document background (not just an inner element) so iOS Safari's
+   safe-area insets and rubber-band overscroll never reveal a white strip at the
+   top or bottom. color-scheme also gives native form controls and scrollbars the
+   right look in each theme. */
+html {
+  background-color: #f8fafc; /* slate-50 */
+  color-scheme: light;
+}
+html.dark {
+  background-color: #020617; /* slate-950 */
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
 }

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### UI polish and iOS Safari fix
+
+- Fixed the white strips that appeared at the top and bottom of the app in iOS Safari:
+  the document background is now painted in the theme colour (so safe-area insets and
+  rubber-band overscroll no longer reveal white), the shell uses the dynamic viewport
+  height (`100dvh`) and honours the notch/home-indicator safe areas (`viewport-fit=cover`),
+  and `theme-color`/`color-scheme` follow light and dark.
+- Buttons, banners, and empty states across the Libraries page now carry consistent icons
+  (add, scan, enqueue, configure, delete, save/cancel, success/error), with a friendlier
+  empty state and a spinning indicator while a scan runs.
+
 ### Simpler library configuration
 
 - The per-library form now leads with just the essentials — name, path, media type, and a

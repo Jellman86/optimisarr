@@ -28,9 +28,17 @@
   <title>Optimisarr</title>
 </svelte:head>
 
-<div class="flex h-screen bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200">
+<!-- h-dvh tracks iOS Safari's dynamic toolbar; the safe-area insets keep the bar
+     and content clear of the notch and home indicator. -->
+<div
+  class="flex h-dvh bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200"
+  style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+>
   <Sidebar />
-  <main class="flex-1 overflow-y-auto p-6 lg:p-8">
+  <main
+    class="flex-1 overflow-y-auto p-6 lg:p-8"
+    style="padding-right: max(1.5rem, env(safe-area-inset-right));"
+  >
     <div class="mx-auto max-w-6xl">
       {#key router.path}
         {@const Page = page}
