@@ -14,7 +14,10 @@
   failed".
 - Failed and cancelled jobs can be **retried** from the queue (`POST /api/jobs/{id}/retry`),
   which re-queues the file as a fresh attempt — the deliberate way to re-run a file the
-  history guard is holding back.
+  history guard is holding back. The Queue page surfaces this with a **Retry** action on
+  failed/cancelled rows, status **filter chips** (All / Active / Completed / Failed with
+  live counts), an inline failure reason instead of a bare "error" label, and a shared
+  inline-SVG `Icon` set on the row actions.
 
 ### libvmaf-enabled ffmpeg and PSNR/SSIM
 

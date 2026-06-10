@@ -3,6 +3,7 @@
   import { formatSize, formatDuration } from '../format'
   import { createJobsConnection, type JobProgress } from '../realtime'
   import { router } from '../stores/ui.svelte'
+  import Icon from '../components/Icon.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
@@ -12,7 +13,9 @@
   let loading = $state(true)
   let cancellingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
+  let retryingId = $state<number | null>(null)
   let expandedId = $state<number | null>(null)
+  let filter = $state<'all' | 'active' | 'completed' | 'failed'>('all')
 
   // Updates arrive over SignalR (jobsChanged + jobProgress). A slow poll is kept
   // only as a safety net and to refresh queue status (free disk, running counts),
@@ -87,6 +90,35 @@
   function isActive(status: string) {
     return ACTIVE.includes(status)
   }
+
+  async function retry(job: Job) {
+    retryingId = job.id
+    try {
+      await api.retryJob(job.id)
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Retry failed'
+    } finally {
+      retryingId = null
+    }
+  }
+
+  function matchesFilter(status: string): boolean {
+    switch (filter) {
+      case 'active': return isActive(status)
+      case 'completed': return status === 'Completed'
+      case 'failed': return status === 'Failed'
+      default: return true
+    }
+  }
+
+  let counts = $derived({
+    all: jobs.length,
+    active: jobs.filter((j) => isActive(j.status)).length,
+    completed: jobs.filter((j) => j.status === 'Completed').length,
+    failed: jobs.filter((j) => j.status === 'Failed').length,
+  })
+  let visibleJobs = $derived(jobs.filter((j) => matchesFilter(j.status)))
 
   function badgeClass(status: string): string {
     switch (status) {
@@ -163,9 +195,25 @@
   </div>
 {/if}
 
+{#if !loading && jobs.length > 0}
+  <div class="mb-4 flex flex-wrap gap-2">
+    {#each [['all', 'All'], ['active', 'Active'], ['completed', 'Completed'], ['failed', 'Failed']] as [key, label]}
+      <button
+        class="badge cursor-pointer border {filter === key
+          ? 'border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+          : 'border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}
+          {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-red-600 dark:!text-red-400' : ''}"
+        onclick={() => (filter = key as typeof filter)}
+      >
+        {label} · {counts[key as keyof typeof counts]}
+      </button>
+    {/each}
+  </div>
+{/if}
+
 {#if loading}
   <div class="card p-8 text-center text-slate-400">Loading…</div>
-{:else if jobs.length > 0}
+{:else if visibleJobs.length > 0}
   <div class="card overflow-x-auto">
     <table class="w-full text-sm">
       <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -179,7 +227,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-        {#each jobs as job (job.id)}
+        {#each visibleJobs as job (job.id)}
           {@const checks = parseReport(job)}
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{job.status}</span></td>
@@ -204,8 +252,11 @@
                 </div>
               {:else if job.status === 'Queued'}
                 <span class="text-xs text-slate-400">waiting…</span>
-              {:else if job.status === 'Failed' && job.errorMessage}
-                <span class="text-xs text-red-600" title={job.errorMessage}>error</span>
+              {:else if job.status === 'Failed'}
+                <div class="flex items-start gap-1 text-xs text-red-600 dark:text-red-400" title={job.errorMessage ?? ''}>
+                  <Icon name="warning" class="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                  <span class="line-clamp-2">{job.errorMessage ?? 'Job failed'}</span>
+                </div>
               {:else}
                 <span class="text-xs text-slate-400">—</span>
               {/if}
@@ -226,16 +277,26 @@
             </td>
             <td class="px-4 py-2 text-xs">{job.priority}</td>
             <td class="px-4 py-2 text-right">
-              {#if job.status === 'ReadyToReplace' && job.verificationPassed}
-                <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => replace(job)} disabled={replacingId === job.id}>
-                  {replacingId === job.id ? 'Replacing' : 'Replace'}
-                </button>
-              {/if}
-              {#if isActive(job.status)}
-                <button class="btn btn-danger ml-1 px-3 py-1 text-xs" onclick={() => cancel(job)} disabled={cancellingId === job.id}>
-                  {cancellingId === job.id ? 'Cancelling' : 'Cancel'}
-                </button>
-              {/if}
+              <div class="flex justify-end gap-1">
+                {#if job.status === 'ReadyToReplace' && job.verificationPassed}
+                  <button class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={() => replace(job)} disabled={replacingId === job.id}>
+                    <Icon name="replace" class="h-3.5 w-3.5" />
+                    {replacingId === job.id ? 'Replacing' : 'Replace'}
+                  </button>
+                {/if}
+                {#if job.status === 'Failed' || job.status === 'Cancelled'}
+                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={() => retry(job)} disabled={retryingId === job.id} title="Re-queue this file as a fresh attempt">
+                    <Icon name="retry" class="h-3.5 w-3.5" />
+                    {retryingId === job.id ? 'Retrying' : 'Retry'}
+                  </button>
+                {/if}
+                {#if isActive(job.status)}
+                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={() => cancel(job)} disabled={cancellingId === job.id}>
+                    <Icon name="x" class="h-3.5 w-3.5" />
+                    {cancellingId === job.id ? 'Cancelling' : 'Cancel'}
+                  </button>
+                {/if}
+              </div>
             </td>
           </tr>
           {#if expandedId === job.id && checks}
