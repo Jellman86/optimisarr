@@ -70,6 +70,22 @@ public sealed class Library
     /// <summary>Destination root for completed outputs when <see cref="MoveOnComplete"/> is on.</summary>
     public string? TargetFolder { get; set; }
 
+    // --- Automatic scan-and-enqueue. When enabled, a background worker scans the
+    // library and enqueues its eligible candidates once per occurrence of the daily
+    // window below. Jobs still only *run* inside the global processing window. ---
+
+    /// <summary>When true, the library is scanned and enqueued automatically on a schedule.</summary>
+    public bool AutoEnqueueEnabled { get; set; }
+
+    /// <summary>Local time the daily auto-enqueue window opens. Start == End means all day.</summary>
+    public TimeOnly AutoEnqueueWindowStart { get; set; }
+
+    /// <summary>Local time the daily auto-enqueue window closes.</summary>
+    public TimeOnly AutoEnqueueWindowEnd { get; set; }
+
+    /// <summary>When the library was last auto-enqueued; null means never.</summary>
+    public DateTimeOffset? LastAutoEnqueueAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -153,7 +153,10 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
             db.Libraries.Add(new Library
             {
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
-                RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080
+                RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080,
+                AutoEnqueueEnabled = true,
+                AutoEnqueueWindowStart = new TimeOnly(1, 0),
+                AutoEnqueueWindowEnd = new TimeOnly(6, 30)
             });
             await db.SaveChangesAsync();
         }
@@ -171,6 +174,9 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(MediaType.Tv, library.MediaType);
         Assert.Equal(RuleProfile.CompatibilityH264, library.RuleProfile);
         Assert.Equal(1080, library.MaxHeight);
+        Assert.True(library.AutoEnqueueEnabled);
+        Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
+        Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);
         Assert.Equal(EncoderMode.NvidiaNvenc, (await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).EncoderMode);
     }
 

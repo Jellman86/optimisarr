@@ -44,6 +44,9 @@ export type LibraryRules = {
   targetFolder: string | null
   minVmafHarmonicMean: number | null
   minVmafMin: number | null
+  autoEnqueueEnabled: boolean
+  autoEnqueueWindowStart: string
+  autoEnqueueWindowEnd: string
 }
 
 export type Library = LibraryRules & {
@@ -53,6 +56,7 @@ export type Library = LibraryRules & {
   mediaType: string
   ruleProfile: string
   enabled: boolean
+  lastAutoEnqueueAt: string | null
   fileCount: number
   createdAt: string
   updatedAt: string

@@ -39,7 +39,10 @@ public sealed record LibrarySnapshot(
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean = null,
-    double? MinVmafMin = null);
+    double? MinVmafMin = null,
+    bool AutoEnqueueEnabled = false,
+    string AutoEnqueueWindowStart = "00:00",
+    string AutoEnqueueWindowEnd = "00:00");
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported. No token.</summary>
 public sealed record ActivityWatcherSnapshot(

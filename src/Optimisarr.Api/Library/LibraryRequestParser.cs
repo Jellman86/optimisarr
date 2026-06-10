@@ -20,7 +20,10 @@ internal readonly record struct ParsedLibrary(
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
-    double? MinVmafMin);
+    double? MinVmafMin,
+    bool AutoEnqueueEnabled,
+    TimeOnly AutoEnqueueWindowStart,
+    TimeOnly AutoEnqueueWindowEnd);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -96,6 +99,18 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (!TryParseWindowTime(request.AutoEnqueueWindowStart, out var autoStart))
+        {
+            error = "Auto-enqueue window start must use HH:mm format.";
+            return false;
+        }
+
+        if (!TryParseWindowTime(request.AutoEnqueueWindowEnd, out var autoEnd))
+        {
+            error = "Auto-enqueue window end must use HH:mm format.";
+            return false;
+        }
+
         var moveOnComplete = request.MoveOnComplete ?? false;
         var targetFolder = Trim(request.TargetFolder);
         if (moveOnComplete)
@@ -131,7 +146,10 @@ internal static class LibraryRequestParser
             moveOnComplete,
             targetFolder,
             request.MinVmafHarmonicMean,
-            request.MinVmafMin);
+            request.MinVmafMin,
+            request.AutoEnqueueEnabled ?? false,
+            autoStart,
+            autoEnd);
         error = null;
         return true;
     }
@@ -140,5 +158,20 @@ internal static class LibraryRequestParser
     {
         var trimmed = value?.Trim();
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
+    // An omitted window time defaults to 00:00; start == end means the window is open
+    // all day (resolved by AutoEnqueueScheduleEvaluator), i.e. "auto-enqueue once a day".
+    private static bool TryParseWindowTime(string? value, out TimeOnly time)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            time = default;
+            return true;
+        }
+
+        return TimeOnly.TryParseExact(
+            value.Trim(), "HH:mm", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out time);
     }
 }

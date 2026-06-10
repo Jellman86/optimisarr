@@ -81,6 +81,9 @@
       targetFolder: null,
       minVmafHarmonicMean: null,
       minVmafMin: null,
+      autoEnqueueEnabled: false,
+      autoEnqueueWindowStart: '00:00',
+      autoEnqueueWindowEnd: '00:00',
     }
   }
 
@@ -121,6 +124,9 @@
       targetFolder: library.targetFolder,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
       minVmafMin: library.minVmafMin,
+      autoEnqueueEnabled: library.autoEnqueueEnabled,
+      autoEnqueueWindowStart: library.autoEnqueueWindowStart,
+      autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     editingId = library.id
@@ -398,6 +404,28 @@
     </div>
   {/if}
 
+  <h3 class="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Automatic optimisation</h3>
+  <Toggle
+    bind:checked={form.autoEnqueueEnabled}
+    label="Scan and enqueue automatically on a schedule"
+    hint="When on, this library is scanned and its eligible files are queued once per day, within the window below. Jobs still only run inside the global processing window (Settings), and the global concurrency limit always applies — auto-enqueue never starts jobs itself, it only fills the queue."
+  />
+  {#if form.autoEnqueueEnabled}
+    <div class="mt-3 flex flex-wrap items-end gap-4">
+      <div>
+        <label class="label" for="lib-auto-start">Window start</label>
+        <input id="lib-auto-start" class="input w-32" type="time" bind:value={form.autoEnqueueWindowStart} />
+      </div>
+      <div>
+        <label class="label" for="lib-auto-end">Window end</label>
+        <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
+      </div>
+      <p class="max-w-md text-xs text-slate-500 dark:text-slate-400">
+        Equal start and end means all day (enqueue once each day). A window like 01:00–06:00 runs a single nightly scan-and-enqueue when it opens.
+      </p>
+    </div>
+  {/if}
+
   <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
     <Toggle bind:checked={form.enabled} label="Enabled" hint="Included in scans and eligible for the queue." />
   </div>
@@ -430,9 +458,19 @@
               {#if !library.enabled}
                 <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">disabled</span>
               {/if}
+              {#if library.autoEnqueueEnabled}
+                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title="Scanned and enqueued automatically">
+                  auto {library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? 'daily' : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`}
+                </span>
+              {/if}
             </div>
             <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{library.path}</div>
-            <div class="mt-1 text-xs text-slate-400">{library.fileCount.toLocaleString()} files discovered</div>
+            <div class="mt-1 text-xs text-slate-400">
+              {library.fileCount.toLocaleString()} files discovered
+              {#if library.autoEnqueueEnabled && library.lastAutoEnqueueAt}
+                · last auto-run {new Date(library.lastAutoEnqueueAt).toLocaleString()}
+              {/if}
+            </div>
           </div>
           <div class="flex flex-shrink-0 gap-2">
             <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>

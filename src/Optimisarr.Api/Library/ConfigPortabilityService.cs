@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Settings;
@@ -118,10 +119,18 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.TargetFolder = snapshot.TargetFolder;
             library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
             library.MinVmafMin = snapshot.MinVmafMin;
+            library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
+            library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
+            library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
         }
 
         return (created, updated);
     }
+
+    private static TimeOnly ParseWindowTime(string? value) =>
+        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
+            ? time
+            : default;
 
     private async Task<(int Created, int Updated)> ImportWatchersAsync(
         IReadOnlyList<ActivityWatcherSnapshot> snapshots, CancellationToken cancellationToken)
@@ -236,7 +245,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,
-        library.MinVmafMin);
+        library.MinVmafMin,
+        library.AutoEnqueueEnabled,
+        library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
+        library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture));
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Per-library automatic optimisation
+
+- A library can now **scan and enqueue itself automatically** on a daily schedule, turning
+  Optimisarr into a set-and-forget optimiser. Each library has an opt-in auto-enqueue
+  toggle and a **daily time window**; a pure, unit-tested `AutoEnqueueScheduleEvaluator`
+  fires it **once per window occurrence** (equal start/end means all day, i.e. once daily;
+  a 01:00–06:00 window runs a single nightly scan-and-enqueue when it opens, including
+  windows that cross midnight). A new `AutoEnqueueWorker` background service does the
+  scan → enqueue and stamps `LastAutoEnqueueAt`, surfaced on each library card.
+- Automation changes **nothing about safety or limits**: the worker only *creates queued
+  jobs*, never starts them. Execution stays with the single-writer `QueueDispatcher`, so
+  several libraries enqueuing at once still honour the **global concurrency limit** and the
+  **global processing window**, and the existing idempotent enqueue + history guard mean a
+  repeated run never duplicates a job or re-optimises a file. The schedule is editable per
+  library and carried in config export/import.
+
 ### Sidebar brand, build version, and cyan palette
 
 - The sidebar now leads with a **large, centred application mark** that scales

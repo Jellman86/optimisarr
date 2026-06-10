@@ -69,7 +69,11 @@ the replacement workflow is trustworthy.
   once it expires. Optional **service-activity pauses** are done too: configurable
   Plex/Jellyfin/Emby watchers hold new jobs while a server is streaming, decided by
   a pure, unit-tested evaluator that ignores unreachable servers so one offline
-  server never wedges the queue. Phase 6 is now feature-complete.
+  server never wedges the queue. Phase 6 is now feature-complete. **Per-library
+  automatic optimisation** extends this: a library can scan-and-enqueue itself once
+  per day within its own time window (pure `AutoEnqueueScheduleEvaluator` +
+  `AutoEnqueueWorker`), while execution still obeys the global processing window and
+  concurrency limit — the worker only fills the queue, never starts jobs.
 
 ## Guiding principles
 

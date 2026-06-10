@@ -45,6 +45,7 @@ builder.Services.AddSingleton<ActivityMonitor>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
+builder.Services.AddHostedService<AutoEnqueueWorker>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
@@ -689,7 +690,10 @@ app.MapPost("/api/libraries", async (
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
-        MinVmafMin = parsed.MinVmafMin
+        MinVmafMin = parsed.MinVmafMin,
+        AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
+        AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
+        AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd
     };
     db.Libraries.Add(library);
     await db.SaveChangesAsync(cancellationToken);
@@ -738,6 +742,9 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.TargetFolder = parsed.TargetFolder;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
     library.MinVmafMin = parsed.MinVmafMin;
+    library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
+    library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
+    library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;
     library.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 
@@ -1122,7 +1129,10 @@ internal sealed record SaveLibraryRequest(
     bool? MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
-    double? MinVmafMin);
+    double? MinVmafMin,
+    bool? AutoEnqueueEnabled,
+    string? AutoEnqueueWindowStart,
+    string? AutoEnqueueWindowEnd);
 
 internal sealed record LibraryDto(
     int Id,
@@ -1144,6 +1154,10 @@ internal sealed record LibraryDto(
     string? TargetFolder,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
+    bool AutoEnqueueEnabled,
+    string AutoEnqueueWindowStart,
+    string AutoEnqueueWindowEnd,
+    DateTimeOffset? LastAutoEnqueueAt,
     int FileCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -1168,6 +1182,10 @@ internal sealed record LibraryDto(
         library.TargetFolder,
         library.MinVmafHarmonicMean,
         library.MinVmafMin,
+        library.AutoEnqueueEnabled,
+        library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
+        library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture),
+        library.LastAutoEnqueueAt,
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);
