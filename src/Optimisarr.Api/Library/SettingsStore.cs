@@ -51,6 +51,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationMinimumVmafMin,
         SettingKeys.VerificationAudioLoudnessGateEnabled,
         SettingKeys.VerificationMaxLoudnessDriftLufs,
+        SettingKeys.VerificationAudioClippingGateEnabled,
+        SettingKeys.VerificationMaxTruePeakDbtp,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
@@ -99,6 +101,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationMinimumVmafMin
                 || setting.Key == SettingKeys.VerificationAudioLoudnessGateEnabled
                 || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
+                || setting.Key == SettingKeys.VerificationAudioClippingGateEnabled
+                || setting.Key == SettingKeys.VerificationMaxTruePeakDbtp
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
@@ -142,7 +146,13 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationMaxLoudnessDriftLufs),
                     VerificationPolicy.Default.MaxLoudnessDriftLufs,
-                    min: 0)),
+                    min: 0),
+                ParseBool(
+                    settings.GetValueOrDefault(SettingKeys.VerificationAudioClippingGateEnabled),
+                    VerificationPolicy.Default.AudioClippingGateEnabled),
+                ParseDouble(
+                    settings.GetValueOrDefault(SettingKeys.VerificationMaxTruePeakDbtp),
+                    VerificationPolicy.Default.MaxTruePeakDbtp)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
     }
@@ -202,6 +212,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.AudioLoudnessGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMaxLoudnessDriftLufs] =
                 Math.Max(0, settings.VerificationPolicy.MaxLoudnessDriftLufs).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationAudioClippingGateEnabled] =
+                settings.VerificationPolicy.AudioClippingGateEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationMaxTruePeakDbtp] =
+                settings.VerificationPolicy.MaxTruePeakDbtp.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementQuarantineRetentionDays] =
@@ -292,6 +306,12 @@ public sealed class SettingsStore(OptimisarrDbContext db)
 
     private static double ParseDouble(string? value, double fallback, double min) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= min
+            ? parsed
+            : fallback;
+
+    // The true-peak ceiling is legitimately negative (e.g. -1 dBTP), so it has no floor.
+    private static double ParseDouble(string? value, double fallback) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && double.IsFinite(parsed)
             ? parsed
             : fallback;
 

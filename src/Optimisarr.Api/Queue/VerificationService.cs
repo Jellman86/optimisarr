@@ -48,11 +48,11 @@ public sealed class VerificationService(
             ? await quality.MeasureAsync(original.Path, outputPath, cancellationToken)
             : null;
 
-        // Loudness drift only matters when audio is re-encoded; it is opt-in because
-        // it adds a decode pass over each file.
+        // The loudness and clipping gates share one ebur128 decode of each file, so the
+        // measurement runs when either is enabled; both are opt-in for the extra passes.
         LoudnessResult? originalLoudness = null;
         LoudnessResult? outputLoudness = null;
-        if (policy.AudioLoudnessGateEnabled)
+        if (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled)
         {
             originalLoudness = await loudness.MeasureAsync(original.Path, cancellationToken);
             outputLoudness = await loudness.MeasureAsync(outputPath, cancellationToken);
@@ -60,6 +60,13 @@ public sealed class VerificationService(
 
         var loudnessMeasured = originalLoudness is { Measured: true } && outputLoudness is { Measured: true };
         var loudnessError = originalLoudness?.Error ?? outputLoudness?.Error;
+
+        var truePeakMeasured = loudnessMeasured
+            && originalLoudness?.TruePeakDbtp is not null
+            && outputLoudness?.TruePeakDbtp is not null;
+        var truePeakError = loudnessMeasured
+            ? "ebur128 produced no true-peak reading."
+            : loudnessError;
 
         var input = new VerificationInput(
             DecodeSucceeded: decodeResult.Healthy,
@@ -90,6 +97,10 @@ public sealed class VerificationService(
             LoudnessError: loudnessError,
             OriginalLoudnessLufs: originalLoudness?.IntegratedLufs,
             OutputLoudnessLufs: outputLoudness?.IntegratedLufs,
+            TruePeakMeasured: truePeakMeasured,
+            TruePeakError: truePeakError,
+            OriginalTruePeakDbtp: originalLoudness?.TruePeakDbtp,
+            OutputTruePeakDbtp: outputLoudness?.TruePeakDbtp,
             OriginalColorPrimaries: originalProbe.ColorPrimaries,
             OutputColorPrimaries: outputProbe.ColorPrimaries,
             OriginalColorTransfer: originalProbe.ColorTransfer,

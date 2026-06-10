@@ -38,6 +38,18 @@
   override is set (and only when the gate is enabled). Editable on each library and
   carried in config export/import.
 
+### True-peak clipping detection
+
+- An opt-in **true-peak clipping** gate now catches a re-encode that introduces clipping.
+  The `ebur128` measurement runs with `peak=true`, so the output's true peak comes from
+  the same decode the loudness gate already does — no extra pass. A pure, unit-tested
+  parser reads the dBTP value and the evaluator fails the job only when the output rises
+  above a configurable ceiling (default 0 dBTP) *and* is hotter than the original, so a
+  source that was already clipping is never blamed on the re-encode. The gate fails closed
+  if the true peak can't be measured, is configurable from Settings (with a negative
+  ceiling like −1 dBTP allowed for a stricter margin), and is carried in config
+  export/import.
+
 ### Colour metadata and A/V sync integrity
 
 - Verification now compares the output's **colour primaries, transfer, and matrix**

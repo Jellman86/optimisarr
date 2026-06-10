@@ -62,7 +62,37 @@ public static class VerificationEvaluator
             checks.Add(LoudnessPreserved(input, policy));
         }
 
+        if (policy.AudioClippingGateEnabled)
+        {
+            checks.Add(NoClippingIntroduced(input, policy));
+        }
+
         return new VerificationReport(checks);
+    }
+
+    private static VerificationCheck NoClippingIntroduced(VerificationInput input, VerificationPolicy policy)
+    {
+        // Fail closed: an enabled gate that could not measure the true peak blocks replacement.
+        if (!input.TruePeakMeasured || input.OriginalTruePeakDbtp is not { } original || input.OutputTruePeakDbtp is not { } output)
+        {
+            return Fail("Audio clipping (true peak)", $"True peak could not be measured: {Describe(input.TruePeakError)}");
+        }
+
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "Original {0:0.#} dBTP, output {1:0.#} dBTP (ceiling {2:0.#} dBTP).",
+            original, output, policy.MaxTruePeakDbtp);
+
+        // Clipping is only "introduced" when the output rises above the ceiling while the
+        // original stayed at or below it — an already-hot source isn't the re-encode's fault.
+        // A small margin absorbs measurement noise so an unchanged level never trips the gate.
+        const double measurementMarginDb = 0.1;
+        var introducedClipping = output > policy.MaxTruePeakDbtp
+            && output > original + measurementMarginDb;
+
+        return introducedClipping
+            ? Fail("Audio clipping (true peak)", $"{detail} The re-encode pushed the true peak above the ceiling.")
+            : Pass("Audio clipping (true peak)", detail);
     }
 
     private static VerificationCheck LoudnessPreserved(VerificationInput input, VerificationPolicy policy)

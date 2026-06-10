@@ -54,6 +54,12 @@ public static class SettingKeys
     /// <summary>Maximum allowed integrated-loudness drift in LU when the loudness gate is on.</summary>
     public const string VerificationMaxLoudnessDriftLufs = "verification.maxLoudnessDriftLufs";
 
+    /// <summary>Whether the opt-in true-peak clipping gate is enforced.</summary>
+    public const string VerificationAudioClippingGateEnabled = "verification.audioClippingGateEnabled";
+
+    /// <summary>True-peak ceiling in dBTP above which the output is treated as clipping.</summary>
+    public const string VerificationMaxTruePeakDbtp = "verification.maxTruePeakDbtp";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

@@ -362,9 +362,10 @@ gates cover **HDR preservation** (an HDR original whose library preserves HDR mu
 its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR passes),
 **colour primaries/transfer/matrix** preservation, **A/V sync**, **audio
 channel/sample-rate retention**, and full-file **decode-error counting**; an opt-in
-**EBU R128 loudness** gate and **per-library VMAF threshold overrides** round it out.
-All gate logic is pure and unit tested. Remaining stretch items: true-peak/clipping
-detection and monotonic-timestamp/truncated-GOP checks.
+**EBU R128 loudness** gate, an opt-in **true-peak clipping** gate (sharing the loudness
+decode pass), and **per-library VMAF threshold overrides** round it out. All gate logic
+is pure and unit tested. Remaining stretch items: monotonic-timestamp/truncated-GOP
+checks.
 
 Deliverables:
 
@@ -386,8 +387,8 @@ Deliverables:
   done.** Monotonic-timestamp and truncated-GOP checks still to come.
 - **Audio fidelity checks** appropriate to the operation: channel layout and
   sample-rate retention, loudness (EBU R128) drift within tolerance, and no
-  clipping introduced. **Channel/sample-rate retention and EBU R128 loudness drift
-  done** (pure unit-tested parsers/evaluators); clipping detection still to come.
+  clipping introduced. **Channel/sample-rate retention, EBU R128 loudness drift, and
+  true-peak clipping detection done** (pure unit-tested parsers/evaluators).
 - **Per-rule-profile thresholds** so an "archive" profile can demand near-lossless
   scores while a "space-saver" profile accepts more, all surfaced in the
   `VerificationReport` with the measured numbers, not just pass/fail. **Done** via

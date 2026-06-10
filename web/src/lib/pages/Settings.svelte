@@ -293,6 +293,8 @@
     verificationMinimumVmafMin: 80,
     verificationAudioLoudnessGateEnabled: false,
     verificationMaxLoudnessDriftLufs: 1,
+    verificationAudioClippingGateEnabled: false,
+    verificationMaxTruePeakDbtp: 0,
     replacementAllowCrossFilesystem: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -335,6 +337,7 @@
         verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
         verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
+        verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
@@ -575,6 +578,29 @@
           <span class="text-sm text-slate-500 dark:text-slate-400">LU</span>
         </div>
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">If loudness can't be measured, the gate fails closed.</p>
+      </div>
+    </div>
+
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.verificationAudioClippingGateEnabled}
+        label="Check for introduced audio clipping (true peak)"
+        hint="Reads the output's true peak from the same ebur128 pass and fails the job only when the re-encode pushes the peak above the ceiling while the original sat below it — a source that was already hot is not blamed on the re-encode."
+      />
+      <div class="mt-4 max-w-xs" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
+        <label class="label" for="true-peak-ceiling">True-peak ceiling</label>
+        <div class="flex items-center gap-2">
+          <input
+            id="true-peak-ceiling"
+            class="input"
+            type="number"
+            step="0.1"
+            bind:value={settings.verificationMaxTruePeakDbtp}
+            disabled={!settings.verificationAudioClippingGateEnabled}
+          />
+          <span class="text-sm text-slate-500 dark:text-slate-400">dBTP</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0 dBTP is full scale; set a margin like −1 to be stricter. If the true peak can't be measured, the gate fails closed.</p>
       </div>
     </div>
   </div>

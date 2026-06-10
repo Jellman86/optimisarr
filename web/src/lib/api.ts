@@ -92,6 +92,8 @@ export type Settings = {
   verificationMinimumVmafMin: number
   verificationAudioLoudnessGateEnabled: boolean
   verificationMaxLoudnessDriftLufs: number
+  verificationAudioClippingGateEnabled: boolean
+  verificationMaxTruePeakDbtp: number
   replacementAllowCrossFilesystem: boolean
   replacementQuarantineRetentionDays: number
 }

@@ -454,4 +454,67 @@ public sealed class VerificationEvaluatorTests
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, LoudnessCheck));
     }
+
+    private static readonly VerificationPolicy ClippingGate =
+        VerificationPolicy.Default with { AudioClippingGateEnabled = true, MaxTruePeakDbtp = 0.0 };
+
+    private const string ClippingCheck = "Audio clipping (true peak)";
+
+    [Fact]
+    public void Clipping_gate_is_absent_unless_enabled()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == ClippingCheck);
+    }
+
+    [Fact]
+    public void True_peak_below_the_ceiling_passes()
+    {
+        var input = Healthy() with
+        {
+            TruePeakMeasured = true, OriginalTruePeakDbtp = -3.0, OutputTruePeakDbtp = -1.5
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ClippingGate);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ClippingCheck));
+    }
+
+    [Fact]
+    public void Introduced_clipping_above_the_ceiling_fails()
+    {
+        var input = Healthy() with
+        {
+            TruePeakMeasured = true, OriginalTruePeakDbtp = -2.0, OutputTruePeakDbtp = 0.7
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ClippingGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ClippingCheck));
+    }
+
+    [Fact]
+    public void Pre_existing_clipping_is_not_blamed_on_the_re_encode()
+    {
+        var input = Healthy() with
+        {
+            TruePeakMeasured = true, OriginalTruePeakDbtp = 1.0, OutputTruePeakDbtp = 0.9
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ClippingGate);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ClippingCheck));
+    }
+
+    [Fact]
+    public void Clipping_gate_fails_closed_when_not_measured()
+    {
+        var input = Healthy() with { TruePeakMeasured = false, TruePeakError = "no peak reading" };
+
+        var report = VerificationEvaluator.Evaluate(input, ClippingGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ClippingCheck));
+    }
 }

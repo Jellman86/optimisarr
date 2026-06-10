@@ -26,7 +26,32 @@ public static partial class LoudnessParser
                 : null;
     }
 
+    /// <summary>
+    /// Extracts the true-peak level (dBFS, equivalent to dBTP for this purpose) from
+    /// the <c>True peak</c> section the <c>ebur128</c> filter prints when run with
+    /// <c>peak=true</c> ("Peak:  -1.5 dBFS"). Returns null when no peak line is present
+    /// so the caller can distinguish "not measured" from a real value.
+    /// </summary>
+    public static double? ParseTruePeakDbtp(string? stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stderr))
+        {
+            return null;
+        }
+
+        var match = TruePeak().Match(stderr);
+        return match.Success
+            && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var dbtp)
+            && double.IsFinite(dbtp)
+                ? dbtp
+                : null;
+    }
+
     // Matches the integrated-loudness line, e.g. "    I:         -23.0 LUFS".
     [GeneratedRegex(@"\bI:\s*(-?\d+(?:\.\d+)?)\s*LUFS", RegexOptions.IgnoreCase)]
     private static partial Regex IntegratedLoudness();
+
+    // Matches the true-peak line under the "True peak" section, e.g. "    Peak:  -1.5 dBFS".
+    [GeneratedRegex(@"\bPeak:\s*(-?\d+(?:\.\d+)?)\s*dBFS", RegexOptions.IgnoreCase)]
+    private static partial Regex TruePeak();
 }

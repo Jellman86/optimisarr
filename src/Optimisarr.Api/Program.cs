@@ -130,6 +130,11 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "Loudness drift tolerance cannot be negative." });
     }
 
+    if (!double.IsFinite(request.VerificationMaxTruePeakDbtp))
+    {
+        return Results.BadRequest(new { error = "True-peak ceiling must be a finite dBTP value." });
+    }
+
     if (request.ReplacementQuarantineRetentionDays < 0)
     {
         return Results.BadRequest(new { error = "Quarantine retention days cannot be negative." });
@@ -167,7 +172,9 @@ app.MapPut("/api/settings", async (
             request.VerificationMinimumVmafHarmonicMean,
             request.VerificationMinimumVmafMin,
             request.VerificationAudioLoudnessGateEnabled,
-            request.VerificationMaxLoudnessDriftLufs),
+            request.VerificationMaxLoudnessDriftLufs,
+            request.VerificationAudioClippingGateEnabled,
+            request.VerificationMaxTruePeakDbtp),
         request.ReplacementAllowCrossFilesystem,
         request.ReplacementQuarantineRetentionDays), cancellationToken);
 
@@ -1028,6 +1035,8 @@ internal sealed record SettingsDto(
     double VerificationMinimumVmafMin,
     bool VerificationAudioLoudnessGateEnabled,
     double VerificationMaxLoudnessDriftLufs,
+    bool VerificationAudioClippingGateEnabled,
+    double VerificationMaxTruePeakDbtp,
     bool ReplacementAllowCrossFilesystem,
     int ReplacementQuarantineRetentionDays)
 {
@@ -1048,6 +1057,8 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.MinimumVmafMin,
         settings.VerificationPolicy.AudioLoudnessGateEnabled,
         settings.VerificationPolicy.MaxLoudnessDriftLufs,
+        settings.VerificationPolicy.AudioClippingGateEnabled,
+        settings.VerificationPolicy.MaxTruePeakDbtp,
         settings.ReplacementAllowCrossFilesystem,
         settings.ReplacementQuarantineRetentionDays);
 

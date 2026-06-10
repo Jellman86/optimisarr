@@ -2,12 +2,16 @@ using System.Diagnostics;
 
 namespace Optimisarr.Core.Verification;
 
-/// <summary>The outcome of an EBU R128 loudness measurement.</summary>
-public sealed record LoudnessResult(bool Measured, double? IntegratedLufs, string? Error)
+/// <summary>
+/// The outcome of an EBU R128 loudness measurement. The same decode also yields the
+/// true-peak level (dBTP) when the filter is run with <c>peak=true</c>; it is null
+/// when the build did not emit a peak line.
+/// </summary>
+public sealed record LoudnessResult(bool Measured, double? IntegratedLufs, double? TruePeakDbtp, string? Error)
 {
-    public static LoudnessResult Ok(double lufs) => new(true, lufs, null);
+    public static LoudnessResult Ok(double lufs, double? truePeakDbtp) => new(true, lufs, truePeakDbtp, null);
 
-    public static LoudnessResult Failed(string error) => new(false, null, error);
+    public static LoudnessResult Failed(string error) => new(false, null, null, error);
 }
 
 /// <summary>
@@ -44,7 +48,7 @@ public sealed class LoudnessService(string? ffmpegCommand = null)
                     "-nostats",
                     "-v", "info",
                     "-i", path,
-                    "-af", "ebur128",
+                    "-af", "ebur128=peak=true",
                     "-f", "null",
                     "-"
                 },
@@ -86,7 +90,7 @@ public sealed class LoudnessService(string? ffmpegCommand = null)
         var lufs = LoudnessParser.ParseIntegratedLufs(stderr);
         return lufs is null
             ? LoudnessResult.Failed("ebur128 produced no integrated-loudness summary.")
-            : LoudnessResult.Ok(lufs.Value);
+            : LoudnessResult.Ok(lufs.Value, LoudnessParser.ParseTruePeakDbtp(stderr));
     }
 
     private static void KillQuietly(Process process)

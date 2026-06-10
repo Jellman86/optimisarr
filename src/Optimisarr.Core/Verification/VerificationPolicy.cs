@@ -12,6 +12,11 @@ namespace Optimisarr.Core.Verification;
 /// default. When enabled, the output must clear both a harmonic-mean VMAF floor
 /// (which penalises bad frames) and a per-frame minimum floor (which catches short
 /// artifact bursts a healthy average would hide).
+///
+/// The audio loudness and clipping gates are opt-in too and share one
+/// <c>ebur128</c> decode pass: the loudness gate bounds EBU R128 drift, and the
+/// clipping gate fails an output whose true peak rises above the ceiling when the
+/// original sat below it — i.e. the re-encode introduced clipping.
 /// </summary>
 public sealed record VerificationPolicy(
     double DurationTolerancePercent,
@@ -22,7 +27,9 @@ public sealed record VerificationPolicy(
     double MinimumVmafHarmonicMean,
     double MinimumVmafMin,
     bool AudioLoudnessGateEnabled,
-    double MaxLoudnessDriftLufs)
+    double MaxLoudnessDriftLufs,
+    bool AudioClippingGateEnabled,
+    double MaxTruePeakDbtp)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -33,5 +40,7 @@ public sealed record VerificationPolicy(
         MinimumVmafHarmonicMean: 93.0,
         MinimumVmafMin: 80.0,
         AudioLoudnessGateEnabled: false,
-        MaxLoudnessDriftLufs: 1.0);
+        MaxLoudnessDriftLufs: 1.0,
+        AudioClippingGateEnabled: false,
+        MaxTruePeakDbtp: 0.0);
 }
