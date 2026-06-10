@@ -200,7 +200,7 @@
     {#each [['all', 'All'], ['active', 'Active'], ['completed', 'Completed'], ['failed', 'Failed']] as [key, label]}
       <button
         class="badge cursor-pointer border {filter === key
-          ? 'border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+          ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
           : 'border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}
           {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-red-600 dark:!text-red-400' : ''}"
         onclick={() => (filter = key as typeof filter)}

@@ -714,7 +714,7 @@
             <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{connectMessage}</p>
           {/if}
           {#if jellyfinCode}
-            <p class="mt-1 font-mono text-lg tracking-widest text-emerald-600 dark:text-emerald-400">{jellyfinCode}</p>
+            <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
           {/if}
         </div>
       </div>

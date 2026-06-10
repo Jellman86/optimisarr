@@ -67,7 +67,7 @@
     {#each stages as stage, index}
       <li
         class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm {index < 2
-          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+          ? 'border-cyan-300 bg-cyan-50 text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-300'
           : 'border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400'}"
       >
         <span class="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-semibold dark:bg-slate-800">{index + 1}</span>

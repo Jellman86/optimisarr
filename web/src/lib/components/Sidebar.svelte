@@ -1,5 +1,9 @@
 <script lang="ts">
   import { theme, layout, router } from '../stores/ui.svelte'
+  import BrandMark from './BrandMark.svelte'
+
+  const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
+  const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : gitHash
 
   type NavItem = { path: string; label: string; icon: string; enabled: boolean }
 
@@ -29,15 +33,18 @@
     ? 'w-16'
     : 'w-60'}"
 >
-  <!-- Brand -->
+  <!-- Brand: large centered mark that scales between collapsed and expanded. -->
   <button
-    class="flex items-center gap-3 border-b border-slate-200 p-4 dark:border-slate-700"
+    class="flex flex-col items-center gap-3 border-b border-slate-200 p-4 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700"
     onclick={() => router.go('/')}
   >
-    <img src="/favicon-192.png" alt="Optimisarr" class="h-9 w-9 flex-shrink-0" />
+    <BrandMark
+      sizes={collapsed ? '40px' : '64px'}
+      class="flex-shrink-0 drop-shadow-[0_0_12px_rgba(34,211,238,0.25)] transition-all duration-200 {collapsed ? 'h-10 w-10' : 'h-16 w-16'}"
+    />
     {#if !collapsed}
-      <div class="text-left leading-tight">
-        <div class="font-bold text-slate-800 dark:text-slate-100">Optimisarr</div>
+      <div class="leading-tight">
+        <div class="font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</div>
         <div class="text-xs text-slate-500 dark:text-slate-400">Safe library optimiser</div>
       </div>
     {/if}
@@ -67,6 +74,17 @@
       </button>
     {/each}
   </nav>
+
+  <!-- Build version (git hash) -->
+  <a
+    href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="border-t border-slate-200 px-2 py-1.5 text-center font-mono text-[10px] text-slate-400 transition-colors hover:text-cyan-600 dark:border-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
+    title="Build {appVersion}"
+  >
+    {collapsed ? gitHash.slice(0, 4) : `build ${gitHash}`}
+  </a>
 
   <!-- Footer: theme + collapse -->
   <div class="flex items-center gap-1 border-t border-slate-200 p-2 dark:border-slate-700 {collapsed ? 'flex-col' : 'justify-between'}">

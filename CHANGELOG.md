@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Sidebar brand, build version, and cyan palette
+
+- The sidebar now leads with a **large, centred application mark** that scales
+  gracefully — a bigger logo when expanded, a compact badge when collapsed — served
+  from a responsive `BrandMark` whose `srcset` lets the browser pick the sharpest icon
+  for the rendered size and the display's pixel density.
+- The current **build version (git short hash)** is shown at the bottom of the sidebar,
+  linking to the matching commit, with the full `version+hash` on hover. It is injected
+  at build time by Vite (`__GIT_HASH__`/`__APP_VERSION__`); the Docker web stage has no
+  `.git`, so the hash is passed in as a `GIT_HASH` build arg (wired through CI from
+  `github.sha`) and falls back to `unknown` when unavailable.
+- The accent palette is retuned from emerald to **cyan** to match the application icon's
+  glowing cube — active navigation, primary buttons, focus rings, toggles, sliders, and
+  progress fills now read cyan, while green/red are reserved for pass/fail and other
+  status, so success and "selected" are no longer the same colour.
+
 ### Don't optimise the same file twice
 
 - A file that has already been optimised — or that already failed — for its current

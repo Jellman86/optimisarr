@@ -336,8 +336,8 @@
       </div>
       {#if form.qualityCrf != null}
         <div class="flex items-center gap-3">
-          <input id="lib-crf" class="flex-1 accent-emerald-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
-          <span class="badge w-10 justify-center bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{form.qualityCrf}</span>
+          <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+          <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
         </div>
         <p class="mt-1 text-xs text-slate-400">Lower = higher quality and larger files. 18–24 is a good range.</p>
       {:else}
