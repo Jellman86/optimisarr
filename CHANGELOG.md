@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Media-kind detection (Phase 10 groundwork)
+
+- Every probed file is now classified as **video, audio, or image** (or unknown) by a pure,
+  unit-tested `MediaKindClassifier`, and the kind is stored on the file and shown as a new
+  **Kind** column in the Inventory. This is the first step toward optimising audio and
+  images through the same safe pipeline as video.
+- Detection is robust about **embedded cover art**: an audio file's album art is an
+  attached-picture stream, not real video, so such files are correctly classified as audio
+  (and the cover no longer leaks in as the file's "video codec"). Still images are
+  recognised by extension since they probe as a one-frame video stream. New nullable-safe
+  `MediaFile.MediaKind` column (additive migration defaulting existing rows to `Unknown`
+  until re-probed; re-running it is a no-op).
+
 ### Settings is tabbed, and Tools lives inside it
 
 - The Settings page is now organised into tabs — **General** (the core queue, verification,

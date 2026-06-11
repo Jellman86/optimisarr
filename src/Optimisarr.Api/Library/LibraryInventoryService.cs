@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Data;
 
@@ -76,6 +77,7 @@ public sealed class LibraryInventoryService(
                 file.SizeBytes = scanned.SizeBytes;
                 file.ModifiedAt = scanned.ModifiedAt;
                 file.Status = MediaFileStatus.Discovered;
+                file.MediaKind = MediaKind.Unknown;
                 file.Container = null;
                 file.DurationSeconds = null;
                 file.VideoCodec = null;
@@ -118,6 +120,7 @@ public sealed class LibraryInventoryService(
         if (result.Success)
         {
             file.Status = MediaFileStatus.Probed;
+            file.MediaKind = result.MediaKind;
             file.Container = result.Container;
             file.DurationSeconds = result.DurationSeconds;
             file.VideoCodec = result.VideoCodec;

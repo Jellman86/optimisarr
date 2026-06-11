@@ -262,6 +262,7 @@ export type MediaFile = {
   relativePath: string
   sizeBytes: number
   status: string
+  mediaKind: string
   container: string | null
   videoCodec: string | null
   width: number | null

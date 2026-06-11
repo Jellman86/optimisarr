@@ -1,3 +1,4 @@
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 
 namespace Optimisarr.Tests;
@@ -51,6 +52,61 @@ public sealed class MediaProbeParseTests
         var result = MediaProbeService.Parse(SampleJson);
 
         Assert.False(result.IsHdr);
+    }
+
+    [Fact]
+    public void Parse_classifies_a_video_file_as_video()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "width": 1920, "height": 1080 },
+            { "codec_type": "audio", "codec_name": "eac3" }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(MediaKind.Video, result.MediaKind);
+        Assert.Equal("hevc", result.VideoCodec);
+    }
+
+    [Fact]
+    public void Parse_treats_cover_art_audio_as_audio_not_video()
+    {
+        // An MP3 with embedded album art reports a video stream marked attached_pic; it must
+        // classify as audio, and the cover must not become the file's video codec.
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "audio", "codec_name": "mp3" },
+            { "codec_type": "video", "codec_name": "mjpeg", "disposition": { "attached_pic": 1 } }
+          ],
+          "format": { "format_name": "mp3" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp3");
+
+        Assert.Equal(MediaKind.Audio, result.MediaKind);
+        Assert.Null(result.VideoCodec);
+    }
+
+    [Fact]
+    public void Parse_classifies_a_still_image_as_image()
+    {
+        const string json = """
+        {
+          "streams": [{ "codec_type": "video", "codec_name": "png", "width": 800, "height": 600 }],
+          "format": { "format_name": "png_pipe" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".png");
+
+        Assert.Equal(MediaKind.Image, result.MediaKind);
     }
 
     [Fact]

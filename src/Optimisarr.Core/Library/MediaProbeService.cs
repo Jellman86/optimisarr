@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Optimisarr.Core;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Core.Library;
 
@@ -24,11 +25,12 @@ public sealed record MediaProbeResult(
     double? VideoStartSeconds,
     double? AudioStartSeconds,
     string? OptimisedMarker,
+    MediaKind MediaKind,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0,
-            null, null, null, null, null, null, error);
+            null, null, null, null, null, null, MediaKind.Unknown, error);
 }
 
 /// <summary>
@@ -93,7 +95,7 @@ public sealed class MediaProbeService
 
         try
         {
-            return Parse(stdout);
+            return Parse(stdout, Path.GetExtension(path));
         }
         catch (JsonException ex)
         {
@@ -101,7 +103,7 @@ public sealed class MediaProbeService
         }
     }
 
-    internal static MediaProbeResult Parse(string json)
+    internal static MediaProbeResult Parse(string json, string? extension = null)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -131,6 +133,7 @@ public sealed class MediaProbeService
         int? width = null;
         int? height = null;
         var isHdr = false;
+        var hasRealVideoStream = false;
         var audioCodecs = new List<string>();
         var subtitleCount = 0;
         var maxAudioChannels = 0;
@@ -154,7 +157,17 @@ public sealed class MediaProbeService
 
                 switch (codecType)
                 {
-                    case "video" when videoCodec is null:
+                    // Embedded cover art (an attached picture, e.g. album art on an MP3) is a
+                    // video stream but not real video; skip it so audio files aren't mistaken
+                    // for movies and the captured video codec is the actual picture track.
+                    case "video" when IsAttachedPicture(stream):
+                        break;
+                    case "video":
+                        hasRealVideoStream = true;
+                        if (videoCodec is not null)
+                        {
+                            break;
+                        }
                         videoCodec = codecName;
                         if (stream.TryGetProperty("width", out var w) && w.TryGetInt32(out var widthValue))
                         {
@@ -210,8 +223,18 @@ public sealed class MediaProbeService
             videoStart,
             audioStart,
             optimisedMarker,
+            MediaKindClassifier.Classify(extension, hasRealVideoStream, audioCodecs.Count > 0),
             null);
     }
+
+    // A cover-art / attached-picture stream is flagged by its disposition; it is a still
+    // image carried alongside audio, not a real video track.
+    private static bool IsAttachedPicture(JsonElement stream) =>
+        stream.TryGetProperty("disposition", out var disposition)
+        && disposition.ValueKind == JsonValueKind.Object
+        && disposition.TryGetProperty("attached_pic", out var attachedPic)
+        && attachedPic.TryGetInt32(out var flag)
+        && flag == 1;
 
     // The optimisation fingerprint is a container-level tag (format.tags). ffprobe may
     // report the key in any case, so the match is case-insensitive; an empty value counts

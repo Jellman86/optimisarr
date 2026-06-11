@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Data;
 
 public enum MediaFileStatus
@@ -37,6 +39,9 @@ public sealed class MediaFile
     public MediaFileStatus Status { get; set; } = MediaFileStatus.Discovered;
 
     // --- Probe results (populated once the file has been probed) ---
+
+    /// <summary>What the file actually is — video, audio, or image — detected on probe.</summary>
+    public MediaKind MediaKind { get; set; } = MediaKind.Unknown;
 
     public string? Container { get; set; }
 
