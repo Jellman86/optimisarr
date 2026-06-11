@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Rules;
 
 /// <summary>
@@ -13,4 +15,5 @@ public sealed record MediaProperties(
     long SizeBytes,
     bool IsHdr,
     string RelativePath,
-    string? OptimisedMarker = null);
+    string? OptimisedMarker = null,
+    MediaKind Kind = MediaKind.Video);

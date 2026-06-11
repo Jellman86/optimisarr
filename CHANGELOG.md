@@ -14,6 +14,9 @@
   recognised by extension since they probe as a one-frame video stream. New nullable-safe
   `MediaFile.MediaKind` column (additive migration defaulting existing rows to `Unknown`
   until re-probed; re-running it is a no-op).
+- Candidate evaluation is now **media-kind aware**: audio and image files report an honest
+  "not available yet" skip reason instead of looking like a probe failure, and the dispatch
+  is structured so the upcoming audio/image rules slot straight in. Video is unchanged.
 
 ### Settings is tabbed, and Tools lives inside it
 

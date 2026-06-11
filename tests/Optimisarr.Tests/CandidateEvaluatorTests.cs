@@ -15,8 +15,27 @@ public sealed class CandidateEvaluatorTests
         long sizeBytes = 4L * 1024 * 1024 * 1024,
         bool isHdr = false,
         string relativePath = "Movies/Example (2020)/Example.mkv",
-        string? optimisedMarker = null) =>
-        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker);
+        string? optimisedMarker = null,
+        MediaKind kind = MediaKind.Video) =>
+        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind);
+
+    [Fact]
+    public void An_audio_file_is_skipped_with_a_clear_not_yet_supported_reason()
+    {
+        var decision = CandidateEvaluator.Evaluate(File(videoCodec: null, kind: MediaKind.Audio), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Audio", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void An_image_file_is_skipped_with_a_clear_not_yet_supported_reason()
+    {
+        var decision = CandidateEvaluator.Evaluate(File(videoCodec: null, kind: MediaKind.Image), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Image", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public void A_file_tagged_by_optimisarr_is_skipped_even_when_otherwise_eligible()
