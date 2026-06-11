@@ -4,6 +4,7 @@
   import { createJobsConnection, type JobProgress } from '../realtime'
   import { router } from '../stores/ui.svelte'
   import Icon from '../components/Icon.svelte'
+  import Banner from '../components/Banner.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
@@ -181,7 +182,7 @@
 </header>
 
 {#if error}
-  <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+  <Banner kind="error" class="mb-4">{error}</Banner>
 {/if}
 
 {#if queueStatus && !queueStatus.canStart}

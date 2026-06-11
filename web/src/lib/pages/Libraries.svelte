@@ -3,6 +3,8 @@
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
   import Icon from '../components/Icon.svelte'
+  import Banner from '../components/Banner.svelte'
+  import EmptyState from '../components/EmptyState.svelte'
 
   let libraries = $state<Library[]>([])
   let options = $state<LibraryOptions>({
@@ -294,15 +296,9 @@
 </header>
 
 {#if error}
-  <div class="card mb-4 flex items-start gap-2 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">
-    <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0" />
-    <span>{error}</span>
-  </div>
+  <Banner kind="error" class="mb-4">{error}</Banner>
 {:else if message}
-  <div class="card mb-4 flex items-start gap-2 border-emerald-300 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">
-    <Icon name="check" class="mt-0.5 h-4 w-4 flex-shrink-0" />
-    <span>{message}</span>
-  </div>
+  <Banner kind="success" class="mb-4">{message}</Banner>
 {/if}
 
 {#if pickerOpen}
@@ -609,15 +605,10 @@
     {/each}
   </div>
 {:else if editingId !== 0}
-  <div class="card flex flex-col items-center gap-3 p-10 text-center">
-    <Icon name="folder" class="h-10 w-10 text-slate-300 dark:text-slate-600" />
-    <div>
-      <p class="font-medium text-slate-600 dark:text-slate-300">No libraries yet</p>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Add one to start discovering media.</p>
-    </div>
+  <EmptyState icon="folder" title="No libraries yet" hint="Add one to start discovering media.">
     <button class="btn btn-primary" onclick={startAdd}>
       <Icon name="plus" class="h-4 w-4" />
       Add library
     </button>
-  </div>
+  </EmptyState>
 {/if}

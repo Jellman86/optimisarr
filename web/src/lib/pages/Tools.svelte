@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type EncoderCapability, type HardwareCapability, type ToolCheck } from '../api'
+  import Banner from '../components/Banner.svelte'
 
   let tools = $state<ToolCheck[]>([])
   let hardware = $state<HardwareCapability | null>(null)
@@ -44,7 +45,7 @@
 </header>
 
 {#if error}
-  <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+  <Banner kind="error" class="mb-4">{error}</Banner>
 {/if}
 
 <div class="grid gap-4 sm:grid-cols-2">

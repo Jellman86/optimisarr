@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Health, type ToolCheck, type Library } from '../api'
   import { router } from '../stores/ui.svelte'
+  import Banner from '../components/Banner.svelte'
 
   let health = $state<Health | null>(null)
   let tools = $state<ToolCheck[]>([])
@@ -32,7 +33,7 @@
 </header>
 
 {#if error}
-  <div class="card mb-6 border-red-300 p-4 text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+  <Banner kind="error" class="mb-6">{error}</Banner>
 {/if}
 
 <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

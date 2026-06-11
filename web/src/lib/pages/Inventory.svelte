@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Library, type MediaFile } from '../api'
   import { formatSize, formatDuration } from '../format'
+  import Banner from '../components/Banner.svelte'
 
   let libraries = $state<Library[]>([])
   let files = $state<MediaFile[]>([])
@@ -71,7 +72,7 @@
 </header>
 
 {#if error}
-  <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+  <Banner kind="error" class="mb-4">{error}</Banner>
 {/if}
 
 {#if loading}

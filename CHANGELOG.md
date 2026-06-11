@@ -12,6 +12,12 @@
 - Buttons, banners, and empty states across the Libraries page now carry consistent icons
   (add, scan, enqueue, configure, delete, save/cancel, success/error), with a friendlier
   empty state and a spinning indicator while a scan runs.
+- Status messages and empty states are now shared `Banner` (error/success/info, with a
+  leading icon) and `EmptyState` components, replacing the per-page inline markup so every
+  page's error/success banner looks and behaves the same.
+- The sidebar application mark is now much larger when expanded (and a touch larger when
+  collapsed), with the responsive `srcset`/`sizes` hints updated so the bigger logo still
+  renders crisply on hi-DPI displays.
 
 ### Simpler library configuration
 

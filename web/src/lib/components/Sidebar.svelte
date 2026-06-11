@@ -39,8 +39,8 @@
     onclick={() => router.go('/')}
   >
     <BrandMark
-      sizes={collapsed ? '40px' : '64px'}
-      class="flex-shrink-0 drop-shadow-[0_0_12px_rgba(34,211,238,0.25)] transition-all duration-200 {collapsed ? 'h-10 w-10' : 'h-16 w-16'}"
+      sizes={collapsed ? '48px' : '112px'}
+      class="flex-shrink-0 drop-shadow-[0_0_16px_rgba(34,211,238,0.3)] transition-all duration-200 {collapsed ? 'h-12 w-12' : 'h-28 w-28'}"
     />
     {#if !collapsed}
       <div class="leading-tight">

@@ -14,6 +14,7 @@
   } from '../api'
   import { formatSize } from '../format'
   import Toggle from '../components/Toggle.svelte'
+  import Banner from '../components/Banner.svelte'
 
   const notificationTypes: NotificationType[] = ['Webhook', 'Ntfy', 'Apprise']
   const emptyTarget = (): SaveNotificationTarget => ({
@@ -420,7 +421,7 @@
 </header>
 
 {#if error}
-  <div class="card mb-4 border-red-300 p-3 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{error}</div>
+  <Banner kind="error" class="mb-4">{error}</Banner>
 {/if}
 
 {#if loading}
