@@ -18,7 +18,9 @@ public static class RuleResolver
             TargetVideoCodec = Normalise(overrides.TargetVideoCodec) ?? settings.TargetVideoCodec,
             TargetContainer = Normalise(overrides.TargetContainer) ?? settings.TargetContainer,
             Hdr = overrides.Hdr ?? settings.Hdr,
-            ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments
+            ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+            TargetAudioCodec = Normalise(overrides.TargetAudioCodec) ?? settings.TargetAudioCodec,
+            AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps
         };
     }
 

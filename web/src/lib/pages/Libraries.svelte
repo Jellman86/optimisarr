@@ -72,6 +72,8 @@
       !!library.hdrHandling ||
       !!library.encoderPreset ||
       library.qualityCrf != null ||
+      !!library.audioTargetCodec ||
+      library.audioBitrateKbps != null ||
       library.minVmafHarmonicMean != null ||
       library.minVmafMin != null ||
       !!library.excludePaths ||
@@ -122,6 +124,8 @@
       excludePaths: null,
       qualityCrf: null,
       encoderPreset: null,
+      audioTargetCodec: null,
+      audioBitrateKbps: null,
       moveOnComplete: false,
       targetFolder: null,
       minVmafHarmonicMean: null,
@@ -166,6 +170,8 @@
       excludePaths: library.excludePaths,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
+      audioTargetCodec: library.audioTargetCodec,
+      audioBitrateKbps: library.audioBitrateKbps,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
@@ -200,6 +206,8 @@
       excludePaths: emptyToNull(form.excludePaths),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
+      audioTargetCodec: emptyToNull(form.audioTargetCodec),
+      audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
       minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
       minVmafMin: toNullableNumber(form.minVmafMin),
@@ -449,6 +457,30 @@
           {:else}
             <p class="text-xs text-slate-400">Using the preset's quality.</p>
           {/if}
+        </div>
+
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-audio-codec">Audio target codec</label>
+            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
+              <option value={null}>Default (Opus)</option>
+              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
+            </select>
+            <p class="mt-1 text-xs text-slate-400">Lossless audio is re-encoded to this codec.</p>
+          </div>
+          <div>
+            <label class="label" for="lib-audio-bitrate">Audio bitrate (kbps)</label>
+            <input
+              id="lib-audio-bitrate"
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder="Default (128)"
+              bind:value={form.audioBitrateKbps}
+            />
+            <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
+          </div>
         </div>
 
         <div class="mt-4">

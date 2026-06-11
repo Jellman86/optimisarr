@@ -40,6 +40,8 @@ export type LibraryRules = {
   excludePaths: string | null
   qualityCrf: number | null
   encoderPreset: string | null
+  audioTargetCodec: string | null
+  audioBitrateKbps: number | null
   moveOnComplete: boolean
   targetFolder: string | null
   minVmafHarmonicMean: number | null

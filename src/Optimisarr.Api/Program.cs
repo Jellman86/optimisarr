@@ -688,6 +688,8 @@ app.MapPost("/api/libraries", async (
         ExcludePaths = parsed.ExcludePaths,
         QualityCrf = parsed.QualityCrf,
         EncoderPreset = parsed.EncoderPreset,
+        AudioTargetCodec = parsed.AudioTargetCodec,
+        AudioBitrateKbps = parsed.AudioBitrateKbps,
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
@@ -739,6 +741,8 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.ExcludePaths = parsed.ExcludePaths;
     library.QualityCrf = parsed.QualityCrf;
     library.EncoderPreset = parsed.EncoderPreset;
+    library.AudioTargetCodec = parsed.AudioTargetCodec;
+    library.AudioBitrateKbps = parsed.AudioBitrateKbps;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
@@ -1164,6 +1168,8 @@ internal sealed record SaveLibraryRequest(
     string? ExcludePaths,
     int? QualityCrf,
     string? EncoderPreset,
+    string? AudioTargetCodec,
+    int? AudioBitrateKbps,
     bool? MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1188,6 +1194,8 @@ internal sealed record LibraryDto(
     string? ExcludePaths,
     int? QualityCrf,
     string? EncoderPreset,
+    string? AudioTargetCodec,
+    int? AudioBitrateKbps,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1216,6 +1224,8 @@ internal sealed record LibraryDto(
         library.ExcludePaths,
         library.QualityCrf,
         library.EncoderPreset,
+        library.AudioTargetCodec,
+        library.AudioBitrateKbps,
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,

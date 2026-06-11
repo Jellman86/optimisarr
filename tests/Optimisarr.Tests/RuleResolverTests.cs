@@ -15,6 +15,21 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
+    public void Audio_target_defaults_to_opus_and_can_be_overridden()
+    {
+        var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+        Assert.Equal("opus", defaults.TargetAudioCodec);
+        Assert.Equal(128, defaults.AudioBitrateKbps);
+
+        var overridden = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { TargetAudioCodec = "aac", AudioBitrateKbps = 192 });
+
+        Assert.Equal("aac", overridden.TargetAudioCodec);
+        Assert.Equal(192, overridden.AudioBitrateKbps);
+    }
+
+    [Fact]
     public void Overrides_replace_only_the_values_that_are_set()
     {
         var overrides = new RuleOverrides { MaxHeight = 1080, Hdr = HdrHandling.TonemapToSdr };

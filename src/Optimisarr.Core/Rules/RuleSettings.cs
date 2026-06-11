@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Rules;
 
@@ -34,4 +35,10 @@ public sealed record RuleSettings
 
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
+
+    /// <summary>The codec a lossless audio file is re-encoded to (ffprobe name, e.g. "opus").</summary>
+    public string TargetAudioCodec { get; init; } = AudioTarget.DefaultCodec;
+
+    /// <summary>The bitrate (kbps) for the audio re-encode.</summary>
+    public int AudioBitrateKbps { get; init; } = AudioTarget.DefaultBitrateKbps;
 }

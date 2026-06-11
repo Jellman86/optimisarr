@@ -25,13 +25,13 @@ public static class CandidateEvaluator
         // Image optimisation is still to come; video and audio each have their own rules.
         return media.Kind switch
         {
-            MediaKind.Audio => EvaluateAudio(media),
+            MediaKind.Audio => EvaluateAudio(media, rules),
             MediaKind.Image => CandidateDecision.Skipped("Image file — image optimisation is not available yet"),
             _ => EvaluateVideo(media, rules)
         };
     }
 
-    private static CandidateDecision EvaluateAudio(MediaProperties media)
+    private static CandidateDecision EvaluateAudio(MediaProperties media, RuleSettings rules)
     {
         if (string.IsNullOrEmpty(media.AudioCodec))
         {
@@ -43,9 +43,9 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Below minimum size ({FormatSize(AudioTarget.MinFileSizeBytes)})");
         }
 
-        if (string.Equals(media.AudioCodec, AudioTarget.Codec, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(media.AudioCodec, rules.TargetAudioCodec, StringComparison.OrdinalIgnoreCase))
         {
-            return CandidateDecision.Skipped($"Already {AudioTarget.Codec} (no expected saving)");
+            return CandidateDecision.Skipped($"Already {rules.TargetAudioCodec} (no expected saving)");
         }
 
         // Only lossless sources are re-encoded; re-encoding already-lossy audio would lose
@@ -55,7 +55,7 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"{media.AudioCodec} is already a space-efficient (lossy) codec — left untouched");
         }
 
-        return CandidateDecision.Eligible($"{media.AudioCodec} → {AudioTarget.Codec}");
+        return CandidateDecision.Eligible($"{media.AudioCodec} → {rules.TargetAudioCodec}");
     }
 
     private static CandidateDecision EvaluateVideo(MediaProperties media, RuleSettings rules)

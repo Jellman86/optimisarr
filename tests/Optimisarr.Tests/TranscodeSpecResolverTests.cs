@@ -36,6 +36,20 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void An_audio_target_override_picks_the_right_encoder_container_and_bitrate()
+    {
+        var rules = Hevc with { TargetAudioCodec = "aac", AudioBitrateKbps = 192 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/music/Album/Track.flac", relativePath: "Album/Track.flac",
+            workRoot: "/work", sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Audio);
+
+        Assert.Equal("/work/Album/Track.m4a", spec.OutputPath);
+        Assert.Equal("aac", spec.AudioEncoder);
+        Assert.Equal(192, spec.AudioBitrateKbps);
+    }
+
+    [Fact]
     public void Carries_the_target_codec_crf_and_preset()
     {
         var spec = TranscodeSpecResolver.Resolve(

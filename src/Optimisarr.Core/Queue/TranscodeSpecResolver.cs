@@ -22,16 +22,17 @@ public static class TranscodeSpecResolver
     {
         if (kind == MediaKind.Audio)
         {
+            var audio = AudioTarget.Resolve(rules.TargetAudioCodec);
             return new TranscodeSpec(
                 inputPath,
-                BuildOutputPath(workRoot, relativePath, AudioTarget.Container),
+                BuildOutputPath(workRoot, relativePath, audio.Container),
                 VideoCodec: null,
                 Crf: null,
                 Preset: null,
                 TonemapToSdr: false,
                 Kind: MediaKind.Audio,
-                AudioEncoder: AudioTarget.Encoder,
-                AudioBitrateKbps: AudioTarget.BitrateKbps);
+                AudioEncoder: audio.Encoder,
+                AudioBitrateKbps: rules.AudioBitrateKbps);
         }
 
         var outputPath = BuildOutputPath(workRoot, relativePath, rules.TargetContainer);

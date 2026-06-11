@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Per-library audio rules
+
+- Each library can now **override the audio target codec (Opus, AAC, or MP3) and bitrate**
+  in Advanced options, layered on the profile defaults exactly like the video overrides; the
+  resolver maps each codec to its encoder and container (`.opus`/`.m4a`/`.mp3`). Unset
+  libraries keep the conservative Opus 128 kbps default. The settings are validated on save
+  and carried in config export/import. New nullable `Library.AudioTargetCodec`/
+  `AudioBitrateKbps` columns (additive migration; re-running it is a no-op).
+- Fixed the optimisation marker not surviving in `.m4a`/`.m4b` (AAC) outputs — they now get
+  the same MP4 metadata flag as `.mp4`, so an AAC-target audio file is recognised and never
+  re-optimised.
+
 ### Audio optimisation (Phase 10)
 
 - **Lossless audio files can now be optimised** through the same safe pipeline as video.

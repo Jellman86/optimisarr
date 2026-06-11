@@ -413,14 +413,15 @@ Goal: extend the same safe pipeline — candidate rules, transcode, gold-standar
 verification, quarantine/rollback — from video to **audio-only files and
 images**, so a library of music or photos benefits from the same guarantees.
 
-Status: in progress. **Media-kind detection and audio optimisation are done.** A pure,
-unit-tested `MediaKindClassifier` classifies every probed file as video, audio, or image
-(cover-art-aware, so an album-art picture never makes an audio file look like video),
-stored on `MediaFile.MediaKind` and surfaced as a Kind column in the Inventory. Lossless
-audio is re-encoded to Opus through the full pipeline — candidate rules, transcode (cover
-art + metadata + marker preserved), kind-aware verification, and the usual reversible
-replacement — with a conservative fixed target for now. Image optimisation and per-library
-audio rules are next.
+Status: in progress. **Media-kind detection, audio optimisation, and per-library audio
+rules are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
+video, audio, or image (cover-art-aware, so an album-art picture never makes an audio file
+look like video), stored on `MediaFile.MediaKind` and surfaced as a Kind column in the
+Inventory. Lossless audio is re-encoded through the full pipeline — candidate rules,
+transcode (cover art + metadata + the same optimisation marker as video, so audio files are
+never re-optimised either), kind-aware verification, and the usual reversible replacement.
+Each library can override the audio target codec (Opus/AAC/MP3) and bitrate. Image
+optimisation is next.
 
 Deliverables:
 
@@ -429,12 +430,24 @@ Deliverables:
 - **Audio optimisation**: target codec/bitrate/sample-rate rules (e.g. lossless →
   efficient lossy or re-pack), with verification on loudness, channel layout,
   duration, and decode health. Tag/metadata and embedded-art preservation. **Done**
-  (lossless → Opus 128 kbps with a fixed default target; per-library audio rules to come).
+  (lossless → configurable codec/bitrate, default Opus 128 kbps; outputs carry the
+  optimisation marker like video).
+- **Transcode from any audio source, not just lossless.** Today only lossless sources are
+  eligible (re-encoding already-lossy audio risks generational loss). Extend candidacy so a
+  library can opt to re-encode *any* source whose codec/bitrate differs from the configured
+  target when it would genuinely save space (e.g. a 320 kbps MP3 → Opus 128), while keeping
+  the conservative lossless-only default. **Planned.**
+- **Stereo downmix (channel reduction) across the audio *and* video pipelines.** A
+  per-library option to downmix multichannel audio (e.g. 5.1 → 2.0 stereo) on re-encode,
+  applied both to audio-only jobs and to the audio tracks of a video transcode, with the
+  verification audio-fidelity gate taught that this downmix is intentional (not a silent
+  channel loss). Saves space where surround is not needed. **Planned.**
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
   as verification gates; configurable max-dimension downscaling.
 - **Per-kind rule profiles and encoder settings**, reusing the existing
-  per-library override model.
+  per-library override model. **Audio target codec/bitrate done**; downmix and image rules
+  to follow.
 - Pure, unit-tested resolvers/evaluators per kind; the worker dispatches by media
   kind to the right command builder and verifier.
 

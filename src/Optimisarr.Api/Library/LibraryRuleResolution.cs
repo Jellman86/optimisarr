@@ -30,7 +30,9 @@ internal static class LibraryRuleResolution
             TargetVideoCodec = library.TargetVideoCodec,
             TargetContainer = library.TargetContainer,
             Hdr = library.HdrHandling,
-            ExcludePathSegments = ParseExcludePaths(library.ExcludePaths)
+            ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
+            TargetAudioCodec = library.AudioTargetCodec,
+            AudioBitrateKbps = library.AudioBitrateKbps
         };
     }
 

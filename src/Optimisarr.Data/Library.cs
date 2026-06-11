@@ -51,6 +51,12 @@ public sealed class Library
     /// <summary>Encoder speed/quality preset (e.g. "medium", "slow"). Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 
+    /// <summary>Overrides the codec lossless audio is re-encoded to (e.g. "opus", "aac", "mp3"). Null uses the default.</summary>
+    public string? AudioTargetCodec { get; set; }
+
+    /// <summary>Overrides the audio re-encode bitrate in kbps. Null uses the default.</summary>
+    public int? AudioBitrateKbps { get; set; }
+
     /// <summary>
     /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an
     /// "archive" library demand near-lossless quality while a "space-saver" accepts

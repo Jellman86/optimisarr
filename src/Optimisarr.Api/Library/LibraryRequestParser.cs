@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Api.Library;
 
@@ -17,6 +18,8 @@ internal readonly record struct ParsedLibrary(
     string? ExcludePaths,
     int? QualityCrf,
     string? EncoderPreset,
+    string? AudioTargetCodec,
+    int? AudioBitrateKbps,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -99,6 +102,19 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var audioTargetCodec = Trim(request.AudioTargetCodec);
+        if (audioTargetCodec is not null && !AudioTarget.IsSupportedTarget(audioTargetCodec))
+        {
+            error = $"Unknown audio codec: {audioTargetCodec}. Expected one of {string.Join(", ", AudioTarget.SupportedCodecs)}.";
+            return false;
+        }
+
+        if (request.AudioBitrateKbps is < 32 or > 512)
+        {
+            error = "Audio bitrate must be between 32 and 512 kbps.";
+            return false;
+        }
+
         if (!TryParseWindowTime(request.AutoEnqueueWindowStart, out var autoStart))
         {
             error = "Auto-enqueue window start must use HH:mm format.";
@@ -143,6 +159,8 @@ internal static class LibraryRequestParser
             Trim(request.ExcludePaths),
             request.QualityCrf,
             Trim(request.EncoderPreset),
+            audioTargetCodec is null ? null : audioTargetCodec.ToLowerInvariant(),
+            request.AudioBitrateKbps,
             moveOnComplete,
             targetFolder,
             request.MinVmafHarmonicMean,

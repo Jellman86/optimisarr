@@ -135,7 +135,7 @@ public static class FfmpegCommandBuilder
         args.Add("-map");
         args.Add("0:a");
         args.Add("-c:a");
-        args.Add(spec.AudioEncoder ?? AudioTarget.Encoder);
+        args.Add(spec.AudioEncoder ?? AudioTarget.Resolve(AudioTarget.DefaultCodec).Encoder);
 
         if (spec.AudioBitrateKbps is { } bitrate)
         {
@@ -151,7 +151,9 @@ public static class FfmpegCommandBuilder
     }
 
     private static bool IsMp4Family(string outputPath) =>
-        Path.GetExtension(outputPath).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov";
+        // .m4a/.m4b are the MP4 audio containers (AAC target); they need the same flag for
+        // the custom optimisation tag to survive.
+        Path.GetExtension(outputPath).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov" or ".m4a" or ".m4b";
 
     private static string EncoderFor(string videoCodec) => videoCodec.Trim().ToLowerInvariant() switch
     {

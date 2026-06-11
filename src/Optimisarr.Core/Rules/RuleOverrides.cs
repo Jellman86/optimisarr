@@ -15,6 +15,8 @@ public sealed record RuleOverrides
     public string? TargetContainer { get; init; }
     public HdrHandling? Hdr { get; init; }
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
+    public string? TargetAudioCodec { get; init; }
+    public int? AudioBitrateKbps { get; init; }
 
     public static readonly RuleOverrides None = new();
 }
