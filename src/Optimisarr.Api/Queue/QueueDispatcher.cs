@@ -299,7 +299,8 @@ public sealed class QueueDispatcher(
             _workRoot,
             media.IsHdr,
             library?.QualityCrf,
-            library?.EncoderPreset);
+            library?.EncoderPreset,
+            media.MediaKind);
 
         var original = new OriginalSnapshot(
             media.Path,
@@ -311,18 +312,26 @@ public sealed class QueueDispatcher(
             rules.Hdr == HdrHandling.TonemapToSdr,
             media.MediaKind);
 
-        var videoEncoder = await ResolveVideoEncoderAsync(
-            rules.TargetVideoCodec,
-            queueSettings.EncoderMode,
-            cancellationToken);
-        if (videoEncoder is { Succeeded: false })
+        // Audio jobs use the built-in libopus encoder from the spec; only a video re-encode
+        // needs a hardware/software encoder resolved (and may fail if it is unavailable).
+        string? videoEncoderName = null;
+        if (media.MediaKind != MediaKind.Audio)
         {
-            throw new InvalidOperationException(videoEncoder.Error);
+            var videoEncoder = await ResolveVideoEncoderAsync(
+                rules.TargetVideoCodec,
+                queueSettings.EncoderMode,
+                cancellationToken);
+            if (videoEncoder is { Succeeded: false })
+            {
+                throw new InvalidOperationException(videoEncoder.Error);
+            }
+
+            videoEncoderName = videoEncoder.EncoderName;
         }
 
         return new JobWork(
             spec,
-            FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoder.EncoderName, OptimisedMarkerValue),
+            FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue),
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,

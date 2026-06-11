@@ -16,16 +16,49 @@ public sealed class CandidateEvaluatorTests
         bool isHdr = false,
         string relativePath = "Movies/Example (2020)/Example.mkv",
         string? optimisedMarker = null,
-        MediaKind kind = MediaKind.Video) =>
-        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind);
+        MediaKind kind = MediaKind.Video,
+        string? audioCodec = null) =>
+        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind, audioCodec);
+
+    private static MediaProperties AudioFile(string audioCodec, long sizeBytes = 40L * 1024 * 1024) =>
+        File(videoCodec: null, sizeBytes: sizeBytes, relativePath: "Music/Album/Track.flac",
+            kind: MediaKind.Audio, audioCodec: audioCodec);
 
     [Fact]
-    public void An_audio_file_is_skipped_with_a_clear_not_yet_supported_reason()
+    public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
     {
-        var decision = CandidateEvaluator.Evaluate(File(videoCodec: null, kind: MediaKind.Audio), Hevc);
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac"), Hevc);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("flac", decision.Reason);
+        Assert.Contains("opus", decision.Reason);
+    }
+
+    [Fact]
+    public void A_lossy_audio_file_is_left_untouched()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("mp3"), Hevc);
 
         Assert.False(decision.IsEligible);
-        Assert.Contains("Audio", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lossy", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void An_audio_file_already_in_opus_is_skipped()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("opus"), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Already", decision.Reason);
+    }
+
+    [Fact]
+    public void A_tiny_audio_file_is_below_the_minimum_size()
+    {
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", sizeBytes: 1024 * 1024), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("minimum size", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

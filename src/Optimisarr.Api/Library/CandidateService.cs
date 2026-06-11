@@ -60,7 +60,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.IsHdr,
                 file.RelativePath,
                 file.OptimisedMarker,
-                file.MediaKind);
+                file.MediaKind,
+                PrimaryAudioCodec(file.AudioCodecs));
 
             // The rule decision says whether the file is worth optimising; the history
             // overlay then stops a file we've already optimised (or that failed) for its
@@ -86,6 +87,11 @@ public sealed class CandidateService(OptimisarrDbContext db)
 
         return candidates;
     }
+
+    // AudioCodecs is a comma-separated summary (e.g. "flac" or "eac3, aac"); the first entry
+    // is the file's primary audio codec, which drives audio eligibility.
+    private static string? PrimaryAudioCodec(string? audioCodecs) =>
+        string.IsNullOrWhiteSpace(audioCodecs) ? null : audioCodecs.Split(',')[0].Trim();
 
     /// <summary>
     /// The most recent successful and failed job finish times per media file, used to

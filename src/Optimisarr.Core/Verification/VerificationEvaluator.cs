@@ -231,7 +231,11 @@ public static class VerificationEvaluator
                 $"Audio was downmixed from {input.OriginalMaxAudioChannels} to {input.OutputMaxAudioChannels} channels.");
         }
 
-        if (input.OriginalMaxAudioSampleRate > 0
+        // An audio re-encode intentionally normalises the sample rate (e.g. Opus is always
+        // 48 kHz), so a sample-rate change is expected and not a fidelity loss; only a video
+        // job, where audio is copied, must keep the original rate.
+        if (input.Kind != MediaKind.Audio
+            && input.OriginalMaxAudioSampleRate > 0
             && input.OutputMaxAudioSampleRate > 0
             && input.OutputMaxAudioSampleRate < input.OriginalMaxAudioSampleRate)
         {
@@ -240,7 +244,7 @@ public static class VerificationEvaluator
         }
 
         return Pass("Audio fidelity",
-            $"Channel layout ({input.OutputMaxAudioChannels} ch) and sample rate retained.");
+            $"Channel layout ({input.OutputMaxAudioChannels} ch) retained.");
     }
 
     private static VerificationCheck HdrPreserved(VerificationInput input)

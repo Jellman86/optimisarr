@@ -16,4 +16,5 @@ public sealed record MediaProperties(
     bool IsHdr,
     string RelativePath,
     string? OptimisedMarker = null,
-    MediaKind Kind = MediaKind.Video);
+    MediaKind Kind = MediaKind.Video,
+    string? AudioCodec = null);

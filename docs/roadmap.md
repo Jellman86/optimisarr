@@ -413,11 +413,14 @@ Goal: extend the same safe pipeline — candidate rules, transcode, gold-standar
 verification, quarantine/rollback — from video to **audio-only files and
 images**, so a library of music or photos benefits from the same guarantees.
 
-Status: started. **Media-kind detection is done** — a pure, unit-tested
-`MediaKindClassifier` classifies every probed file as video, audio, or image
+Status: in progress. **Media-kind detection and audio optimisation are done.** A pure,
+unit-tested `MediaKindClassifier` classifies every probed file as video, audio, or image
 (cover-art-aware, so an album-art picture never makes an audio file look like video),
-stored on `MediaFile.MediaKind` and surfaced as a Kind column in the Inventory. Audio and
-image optimisation pipelines are next.
+stored on `MediaFile.MediaKind` and surfaced as a Kind column in the Inventory. Lossless
+audio is re-encoded to Opus through the full pipeline — candidate rules, transcode (cover
+art + metadata + marker preserved), kind-aware verification, and the usual reversible
+replacement — with a conservative fixed target for now. Image optimisation and per-library
+audio rules are next.
 
 Deliverables:
 
@@ -425,7 +428,8 @@ Deliverables:
   audio, or image, with kind-specific inventory columns. **Done.**
 - **Audio optimisation**: target codec/bitrate/sample-rate rules (e.g. lossless →
   efficient lossy or re-pack), with verification on loudness, channel layout,
-  duration, and decode health. Tag/metadata and embedded-art preservation.
+  duration, and decode health. Tag/metadata and embedded-art preservation. **Done**
+  (lossless → Opus 128 kbps with a fixed default target; per-library audio rules to come).
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
   as verification gates; configurable max-dimension downscaling.

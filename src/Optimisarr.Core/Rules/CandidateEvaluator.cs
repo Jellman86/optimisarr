@@ -1,5 +1,6 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Rules;
 
@@ -21,14 +22,40 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("Already optimised by Optimisarr (file is tagged)");
         }
 
-        // Only video is optimised today; audio and image pipelines are coming (Phase 10).
-        // Report the kind honestly rather than letting an audio file look like a probe failure.
+        // Image optimisation is still to come; video and audio each have their own rules.
         return media.Kind switch
         {
-            MediaKind.Audio => CandidateDecision.Skipped("Audio file — audio optimisation is not available yet"),
+            MediaKind.Audio => EvaluateAudio(media),
             MediaKind.Image => CandidateDecision.Skipped("Image file — image optimisation is not available yet"),
             _ => EvaluateVideo(media, rules)
         };
+    }
+
+    private static CandidateDecision EvaluateAudio(MediaProperties media)
+    {
+        if (string.IsNullOrEmpty(media.AudioCodec))
+        {
+            return CandidateDecision.Skipped("No audio stream detected");
+        }
+
+        if (media.SizeBytes < AudioTarget.MinFileSizeBytes)
+        {
+            return CandidateDecision.Skipped($"Below minimum size ({FormatSize(AudioTarget.MinFileSizeBytes)})");
+        }
+
+        if (string.Equals(media.AudioCodec, AudioTarget.Codec, StringComparison.OrdinalIgnoreCase))
+        {
+            return CandidateDecision.Skipped($"Already {AudioTarget.Codec} (no expected saving)");
+        }
+
+        // Only lossless sources are re-encoded; re-encoding already-lossy audio would lose
+        // quality for little gain, so it is left untouched.
+        if (!AudioTarget.IsLossless(media.AudioCodec))
+        {
+            return CandidateDecision.Skipped($"{media.AudioCodec} is already a space-efficient (lossy) codec — left untouched");
+        }
+
+        return CandidateDecision.Eligible($"{media.AudioCodec} → {AudioTarget.Codec}");
     }
 
     private static CandidateDecision EvaluateVideo(MediaProperties media, RuleSettings rules)

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Audio optimisation (Phase 10)
+
+- **Lossless audio files can now be optimised** through the same safe pipeline as video.
+  A lossless source (FLAC, ALAC, PCM/WAV, APE, WavPack, TrueHD, …) is offered as a candidate
+  to re-encode to **Opus 128 kbps**; already-lossy audio (MP3, AAC, …) is left untouched to
+  avoid generational quality loss, and audio already in Opus or below a small size threshold
+  is skipped with a clear reason.
+- The whole pipeline is honoured: the transcode copies embedded cover art and all metadata
+  and stamps the optimisation marker; verification runs the audio-appropriate gates (decode
+  health, duration, audio-track retention, channel-layout fidelity, size, and the opt-in
+  loudness/clipping gates) while skipping video-only ones; the verified output only replaces
+  the original on the usual explicit, reversible Replace action. The audio re-encode is
+  allowed to normalise the sample rate (Opus is always 48 kHz) without tripping the fidelity
+  gate. The target is a conservative fixed default for now; per-library audio rules come next.
+
 ### Media-kind detection (Phase 10 groundwork)
 
 - Every probed file is now classified as **video, audio, or image** (or unknown) by a pure,

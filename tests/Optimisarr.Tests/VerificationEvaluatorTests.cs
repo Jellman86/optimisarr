@@ -45,6 +45,40 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void An_audio_reencode_may_normalise_the_sample_rate_without_failing_fidelity()
+    {
+        // Opus always outputs 48 kHz; a 96 kHz lossless source dropping to 48 kHz is expected
+        // for an audio re-encode and must not fail the fidelity gate.
+        var input = HealthyAudio() with
+        {
+            OriginalMaxAudioChannels = 2,
+            OutputMaxAudioChannels = 2,
+            OriginalMaxAudioSampleRate = 96000,
+            OutputMaxAudioSampleRate = 48000
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio fidelity"));
+    }
+
+    [Fact]
+    public void A_video_job_still_fails_fidelity_on_a_dropped_sample_rate()
+    {
+        var input = Healthy() with
+        {
+            OriginalMaxAudioChannels = 6,
+            OutputMaxAudioChannels = 6,
+            OriginalMaxAudioSampleRate = 48000,
+            OutputMaxAudioSampleRate = 44100
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio fidelity"));
+    }
+
+    [Fact]
     public void An_audio_output_that_loses_its_audio_tracks_fails()
     {
         var input = HealthyAudio() with { OutputAudioTrackCount = 0 };
