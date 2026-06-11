@@ -13,8 +13,25 @@
     type SaveArrConnection,
   } from '../api'
   import { formatSize } from '../format'
+  import { router } from '../stores/ui.svelte'
   import Toggle from '../components/Toggle.svelte'
   import Banner from '../components/Banner.svelte'
+  import ToolsPanel from '../components/ToolsPanel.svelte'
+
+  // Settings is split into tabs so each concern is found quickly and Tools lives here
+  // rather than in its own sidebar entry. The General tab holds the core settings the
+  // single "Save settings" button persists together; the rest manage their own records.
+  type TabKey = 'general' | 'activity' | 'notifications' | 'connections' | 'tools' | 'backup'
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'general', label: 'General' },
+    { key: 'activity', label: 'Activity' },
+    { key: 'notifications', label: 'Notifications' },
+    { key: 'connections', label: 'Connections' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'backup', label: 'Backup' },
+  ]
+  // A visit to the old /tools route lands on Settings with the Tools tab open.
+  let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
 
   const notificationTypes: NotificationType[] = ['Webhook', 'Ntfy', 'Apprise']
   const emptyTarget = (): SaveNotificationTarget => ({
@@ -427,6 +444,20 @@
 {#if loading}
   <div class="card p-8 text-center text-slate-400">Loading…</div>
 {:else}
+  <div class="mb-5 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-700">
+    {#each tabs as tab}
+      <button
+        class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
+          ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+          : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+        onclick={() => (activeTab = tab.key)}
+      >
+        {tab.label}
+      </button>
+    {/each}
+  </div>
+
+  {#if activeTab === 'general'}
   <div class="card max-w-2xl p-5">
     <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">Queue</h2>
     <div class="grid gap-5 sm:grid-cols-2">
@@ -637,8 +668,10 @@
     <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
   </div>
+  {/if}
 
-  <div class="card mt-5 max-w-2xl p-5">
+  {#if activeTab === 'activity'}
+  <div class="card max-w-2xl p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Service activity</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       While any enabled media server is streaming, new jobs pause so transcodes never compete with playback.
@@ -734,7 +767,10 @@
     </div>
   </div>
 
-  <div class="card mt-5 max-w-2xl p-5">
+  {/if}
+
+  {#if activeTab === 'notifications'}
+  <div class="card max-w-2xl p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Notifications</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       POST to a webhook, ntfy topic, or Apprise endpoint when a file is replaced or a job fails.
@@ -812,7 +848,10 @@
     </div>
   </div>
 
-  <div class="card mt-5 max-w-2xl p-5">
+  {/if}
+
+  {#if activeTab === 'connections'}
+  <div class="card max-w-2xl p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Sonarr / Radarr</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       While a connected manager is importing into a title's folder, files in that folder are held back from
@@ -888,7 +927,14 @@
     </div>
   </div>
 
-  <div class="card mt-5 max-w-2xl p-5">
+  {/if}
+
+  {#if activeTab === 'tools'}
+    <ToolsPanel />
+  {/if}
+
+  {#if activeTab === 'backup'}
+  <div class="card max-w-2xl p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Backup &amp; restore</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       Export your settings, libraries, watchers, and notification targets to a JSON file, or import one.
@@ -911,4 +957,5 @@
       <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
     </div>
   </div>
+  {/if}
 {/if}

@@ -1,6 +1,9 @@
 <script lang="ts">
+  // The hardware & tools panel: FFmpeg/ffprobe availability, hardware acceleration, and
+  // detected encoders. Loads its own data so it can be dropped into the Settings "Tools"
+  // tab (or anywhere) without the host wiring anything up.
   import { api, type EncoderCapability, type HardwareCapability, type ToolCheck } from '../api'
-  import Banner from '../components/Banner.svelte'
+  import Banner from './Banner.svelte'
 
   let tools = $state<ToolCheck[]>([])
   let hardware = $state<HardwareCapability | null>(null)
@@ -36,13 +39,12 @@
   }
 </script>
 
-<header class="mb-6 flex items-start justify-between">
-  <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Tools</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">FFmpeg and ffprobe must be available before probing and transcoding can run.</p>
-  </div>
-  <button class="btn" onclick={load} disabled={loading}>{loading ? 'Checking' : 'Refresh'}</button>
-</header>
+<div class="mb-4 flex items-start justify-between gap-4">
+  <p class="text-sm text-slate-500 dark:text-slate-400">
+    FFmpeg and ffprobe must be available before probing and transcoding can run.
+  </p>
+  <button class="btn flex-shrink-0" onclick={load} disabled={loading}>{loading ? 'Checking' : 'Refresh'}</button>
+</div>
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>

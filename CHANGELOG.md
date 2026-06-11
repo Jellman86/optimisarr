@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Settings is tabbed, and Tools lives inside it
+
+- The Settings page is now organised into tabs — **General** (the core queue, verification,
+  and replacement options the single Save button persists together), **Activity**,
+  **Notifications**, **Connections** (Sonarr/Radarr), **Tools**, and **Backup** — so each
+  concern is one click away instead of a long scroll.
+- **Tools (FFmpeg/ffprobe status, hardware acceleration, encoders) has moved out of its own
+  sidebar entry into a Settings tab.** The hardware panel is now a reusable `ToolsPanel`
+  component. The old `/tools` link still works — it lands on Settings with the Tools tab
+  open — so nothing breaks.
+
 ### Clear finished jobs from the Queue
 
 - The Queue page has a **Clear finished** button that removes completed, failed, and
