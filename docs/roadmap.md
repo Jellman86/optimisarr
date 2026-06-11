@@ -437,11 +437,26 @@ Deliverables:
   library can opt to re-encode *any* source whose codec/bitrate differs from the configured
   target when it would genuinely save space (e.g. a 320 kbps MP3 → Opus 128), while keeping
   the conservative lossless-only default. **Planned.**
+- **Audio codec selection for video transcodes.** Today a video re-encode copies its audio
+  tracks untouched (`-c:a copy`). Add a per-library option to also transcode the audio of a
+  video to a chosen codec/bitrate (e.g. AAC for MP4 compatibility, or Opus/AC-3 for MKV),
+  reusing the audio-target resolver so the audio rules are shared between audio-only jobs and
+  video jobs. Default stays "copy" so nothing changes unless the operator opts in; the
+  audio-fidelity gate already understands an intentional re-encode. **Planned.**
 - **Stereo downmix (channel reduction) across the audio *and* video pipelines.** A
   per-library option to downmix multichannel audio (e.g. 5.1 → 2.0 stereo) on re-encode,
-  applied both to audio-only jobs and to the audio tracks of a video transcode, with the
-  verification audio-fidelity gate taught that this downmix is intentional (not a silent
-  channel loss). Saves space where surround is not needed. **Planned.**
+  applied both to audio-only jobs and to the audio tracks of a video transcode (so it pairs
+  with the audio-codec selection above), with the verification audio-fidelity gate taught
+  that this downmix is intentional (not a silent channel loss). Saves space where surround is
+  not needed. **Planned.**
+- **Well-researched, sane default profiles per container/use-case.** Ship opinionated,
+  documented defaults that pair a container with matched video + audio codecs and quality
+  settings, rather than leaving every knob to the operator — for example **MP4 → H.265 (HEVC)
+  video + AAC audio** for broad device/player compatibility, **MKV → H.265 (or AV1) video +
+  Opus audio** for maximum efficiency, and a compatibility **H.264 + AAC** profile for older
+  clients. Defaults should cite the reasoning (transparent bitrate ranges, hardware-decode
+  support, container/codec compatibility) so a user can pick a profile and trust it without
+  tuning. Per-library overrides still layer on top. **Planned.**
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
   as verification gates; configurable max-dimension downscaling.
