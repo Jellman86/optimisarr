@@ -463,6 +463,14 @@ Deliverables:
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate done**; downmix and image rules
   to follow.
+- **Scope the library Advanced-options UI to the library's media type.** The form currently
+  shows every override for every library, so a Film/TV library displays the audio target
+  codec/bitrate (only relevant to audio files) and a Music library would show video codec,
+  CRF, encoder preset, max resolution, HDR handling, and VMAF (all irrelevant to audio). The
+  Advanced options should show only the controls that apply to the library's `MediaType` —
+  video settings for Film/TV, audio settings for Music — with sensible handling of mixed
+  ("Other") libraries that may hold more than one kind. Purely a UI refinement; the
+  underlying per-library overrides are unchanged. **Planned.**
 - Pure, unit-tested resolvers/evaluators per kind; the worker dispatches by media
   kind to the right command builder and verifier.
 
