@@ -50,6 +50,13 @@ public static class VerificationEvaluator
             checks.Add(AvSync(input));
         }
 
+        // Timestamp monotonicity is checked whenever we managed to read the output's
+        // packet timestamps; an unreadable packet stream simply omits the line.
+        if (input.TimestampsMeasured)
+        {
+            checks.Add(MonotonicTimestamps(input));
+        }
+
         // The perceptual-quality gate only contributes when the user has opted in;
         // otherwise the report and its cost are unchanged.
         if (policy.QualityGateEnabled)
@@ -136,6 +143,22 @@ public static class VerificationEvaluator
         {
             mismatches.Add($"{label} {original} → {output}");
         }
+    }
+
+    private static VerificationCheck MonotonicTimestamps(VerificationInput input)
+    {
+        // Decode timestamps that step backward mean the output's packets are out of
+        // order — the file may decode yet stall or desync on playback, so it is not a
+        // safe replacement.
+        if (input.NonMonotonicTimestampCount > 0)
+        {
+            var detail = input.TimestampRegressionDetail is { } first
+                ? $"{input.NonMonotonicTimestampCount} non-monotonic decode timestamp(s); first: {first}."
+                : $"{input.NonMonotonicTimestampCount} non-monotonic decode timestamp(s).";
+            return Fail("Timestamp integrity", detail);
+        }
+
+        return Pass("Timestamp integrity", "Decode timestamps increase monotonically across the output.");
     }
 
     private static VerificationCheck AvSync(VerificationInput input)

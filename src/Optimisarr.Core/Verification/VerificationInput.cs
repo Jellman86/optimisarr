@@ -47,4 +47,7 @@ public sealed record VerificationInput(
     string? OriginalColorSpace = null,
     string? OutputColorSpace = null,
     double? OutputVideoStartSeconds = null,
-    double? OutputAudioStartSeconds = null);
+    double? OutputAudioStartSeconds = null,
+    bool TimestampsMeasured = false,
+    int NonMonotonicTimestampCount = 0,
+    string? TimestampRegressionDetail = null);

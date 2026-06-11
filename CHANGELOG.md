@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Verification: decode-timestamp monotonicity gate
+
+- Verification now checks the converted output's **video decode timestamps are
+  monotonic**. A new pure, unit-tested `PacketTimestampParser` reads ffprobe's
+  per-packet `dts_time` stream and tallies any timestamp that steps backward; a
+  `TimestampIntegrityCheck` gathers it with a cheap metadata-only probe (no decode).
+  Out-of-order packets can stall or desync playback even on a file that otherwise
+  decodes, so any regression fails verification and blocks replacement. The gate is
+  always on when the output's packet timestamps are readable and simply abstains when
+  they are not, never blocking on missing evidence. Closes one of the two remaining
+  Phase 9 container-integrity items (truncated-GOP detection is still to come).
+
 ### UI polish and iOS Safari fix
 
 - Fixed the white strips that appeared at the top and bottom of the app in iOS Safari:

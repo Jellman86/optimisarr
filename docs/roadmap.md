@@ -364,12 +364,12 @@ PSNR/SSIM as corroborating signals), and the image bundles a libvmaf-enabled ffm
 (jellyfin-ffmpeg) so the gate can run without disturbing the transcode path. Always-on
 gates cover **HDR preservation** (an HDR original whose library preserves HDR must keep
 its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR passes),
-**colour primaries/transfer/matrix** preservation, **A/V sync**, **audio
-channel/sample-rate retention**, and full-file **decode-error counting**; an opt-in
-**EBU R128 loudness** gate, an opt-in **true-peak clipping** gate (sharing the loudness
-decode pass), and **per-library VMAF threshold overrides** round it out. All gate logic
-is pure and unit tested. Remaining stretch items: monotonic-timestamp/truncated-GOP
-checks.
+**colour primaries/transfer/matrix** preservation, **A/V sync**, **monotonic decode
+timestamps**, **audio channel/sample-rate retention**, and full-file **decode-error
+counting**; an opt-in **EBU R128 loudness** gate, an opt-in **true-peak clipping** gate
+(sharing the loudness decode pass), and **per-library VMAF threshold overrides** round it
+out. All gate logic is pure and unit tested. Remaining stretch item: truncated-GOP
+detection.
 
 Deliverables:
 
@@ -387,8 +387,8 @@ Deliverables:
   timestamps, no truncated/partial last GOP, correct frame count within
   tolerance, and color metadata (primaries/transfer/matrix, HDR10/HDR10+/Dolby
   Vision side data) preserved or intentionally transformed. **HDR signal
-  preservation, colour primaries/transfer/matrix preservation, and A/V-sync checks
-  done.** Monotonic-timestamp and truncated-GOP checks still to come.
+  preservation, colour primaries/transfer/matrix preservation, A/V-sync, and
+  monotonic decode-timestamp checks done.** Truncated-GOP detection still to come.
 - **Audio fidelity checks** appropriate to the operation: channel layout and
   sample-rate retention, loudness (EBU R128) drift within tolerance, and no
   clipping introduced. **Channel/sample-rate retention, EBU R128 loudness drift, and

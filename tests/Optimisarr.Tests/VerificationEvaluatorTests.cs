@@ -67,6 +67,41 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Timestamp_check_is_omitted_when_packets_were_not_read()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Timestamp integrity");
+    }
+
+    [Fact]
+    public void Monotonic_timestamps_pass_when_measured()
+    {
+        var input = Healthy() with { TimestampsMeasured = true, NonMonotonicTimestampCount = 0 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Timestamp integrity"));
+    }
+
+    [Fact]
+    public void Non_monotonic_timestamps_fail_verification()
+    {
+        var input = Healthy() with
+        {
+            TimestampsMeasured = true,
+            NonMonotonicTimestampCount = 3,
+            TimestampRegressionDetail = "decode timestamp went from 0.083417s back to 0.041708s"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Timestamp integrity"));
+    }
+
+    [Fact]
     public void Duration_drift_within_tolerance_passes()
     {
         // 18s of 3600s is 0.5%, under the 1% default tolerance.

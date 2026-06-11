@@ -25,6 +25,7 @@ public sealed record VerificationOutcome(VerificationReport Report, long OutputS
 public sealed class VerificationService(
     MediaProbeService probe,
     DecodeHealthCheck decode,
+    TimestampIntegrityCheck timestamps,
     QualityScoreService quality,
     LoudnessService loudness)
 {
@@ -35,6 +36,7 @@ public sealed class VerificationService(
         CancellationToken cancellationToken)
     {
         var decodeResult = await decode.CheckAsync(outputPath, cancellationToken);
+        var timestampResult = await timestamps.CheckAsync(outputPath, cancellationToken);
         var outputProbe = await probe.ProbeAsync(outputPath, cancellationToken);
         var outputSize = TryGetSize(outputPath);
 
@@ -108,7 +110,10 @@ public sealed class VerificationService(
             OriginalColorSpace: originalProbe.ColorSpace,
             OutputColorSpace: outputProbe.ColorSpace,
             OutputVideoStartSeconds: outputProbe.VideoStartSeconds,
-            OutputAudioStartSeconds: outputProbe.AudioStartSeconds);
+            OutputAudioStartSeconds: outputProbe.AudioStartSeconds,
+            TimestampsMeasured: timestampResult.Measured,
+            NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
+            TimestampRegressionDetail: timestampResult.FirstRegressionDetail);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }
