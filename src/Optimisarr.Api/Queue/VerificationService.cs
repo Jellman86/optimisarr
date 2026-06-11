@@ -1,3 +1,4 @@
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
 
@@ -11,7 +12,8 @@ public sealed record OriginalSnapshot(
     int AudioTrackCount,
     int SubtitleTrackCount,
     bool IsHdr,
-    bool HdrConvertedToSdr);
+    bool HdrConvertedToSdr,
+    MediaKind Kind = MediaKind.Video);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -36,7 +38,10 @@ public sealed class VerificationService(
         CancellationToken cancellationToken)
     {
         var decodeResult = await decode.CheckAsync(outputPath, cancellationToken);
-        var timestampResult = await timestamps.CheckAsync(outputPath, cancellationToken);
+        // Packet-timestamp integrity is a video concern; skip it for an audio output.
+        var timestampResult = original.Kind == MediaKind.Audio
+            ? TimestampCheckResult.NotMeasured
+            : await timestamps.CheckAsync(outputPath, cancellationToken);
         var outputProbe = await probe.ProbeAsync(outputPath, cancellationToken);
         var outputSize = TryGetSize(outputPath);
 
@@ -114,7 +119,8 @@ public sealed class VerificationService(
             TimestampsMeasured: timestampResult.Measured,
             NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
             TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
-            OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds);
+            OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
+            Kind: original.Kind);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

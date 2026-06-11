@@ -1,9 +1,59 @@
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
 
 public sealed class VerificationEvaluatorTests
 {
+    // An audio output: decodes, keeps its audio and duration, is smaller, and has no video.
+    private static VerificationInput HealthyAudio() => Healthy() with
+    {
+        Kind = MediaKind.Audio,
+        OutputVideoCodec = null,
+        OriginalSubtitleTrackCount = 0,
+        OutputSubtitleTrackCount = 0
+    };
+
+    [Fact]
+    public void An_audio_output_passes_without_a_video_stream_check()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyAudio(), VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Video stream");
+    }
+
+    [Fact]
+    public void An_audio_output_skips_the_video_only_integrity_gates()
+    {
+        // These fields would add video gates for a video job; for audio they must be ignored.
+        var input = HealthyAudio() with
+        {
+            OriginalIsHdr = true,
+            OutputVideoStartSeconds = 0,
+            OutputAudioStartSeconds = 0,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 10
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        foreach (var name in new[] { "HDR signal", "A/V sync", "Timestamp integrity", "Tail integrity" })
+        {
+            Assert.DoesNotContain(report.Checks, check => check.Name == name);
+        }
+    }
+
+    [Fact]
+    public void An_audio_output_that_loses_its_audio_tracks_fails()
+    {
+        var input = HealthyAudio() with { OutputAudioTrackCount = 0 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
+        Assert.False(report.Passed);
+    }
     // A converted output that passes every default gate: decodes cleanly, probes,
     // keeps duration and audio, and is meaningfully smaller than the original.
     private static VerificationInput Healthy() => new(

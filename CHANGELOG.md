@@ -20,7 +20,12 @@
 - Groundwork for the audio pipeline: a pure, unit-tested audio branch in the ffmpeg command
   builder and transcode-spec resolver re-encodes audio to an efficient default (Opus 128 kbps)
   while copying embedded cover art and metadata untouched and carrying the optimisation
-  marker. Not yet enabled end to end (audio verification is next), so no audio job runs yet.
+  marker.
+- Verification is now **media-kind aware**: an audio job runs the decode, duration,
+  audio-retention, size, and (opt-in) loudness/clipping gates, and skips the video-only ones
+  (video-stream-present, HDR, colour, A/V sync, timestamp/tail integrity, VMAF). Audio is
+  still gated at the candidate layer, so no audio job runs yet — the safety gates are in
+  place for when it is switched on.
 
 ### Settings is tabbed, and Tools lives inside it
 

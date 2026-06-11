@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Verification;
 
 /// <summary>
@@ -51,4 +53,5 @@ public sealed record VerificationInput(
     bool TimestampsMeasured = false,
     int NonMonotonicTimestampCount = 0,
     string? TimestampRegressionDetail = null,
-    double? OutputLastPresentationSeconds = null);
+    double? OutputLastPresentationSeconds = null,
+    MediaKind Kind = MediaKind.Video);

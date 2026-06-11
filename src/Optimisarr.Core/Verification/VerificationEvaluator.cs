@@ -1,4 +1,5 @@
 using System.Globalization;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Core.Verification;
 
@@ -15,16 +16,24 @@ public static class VerificationEvaluator
         {
             DecodeHealth(input),
             OutputReadable(input),
-            VideoStreamPresent(input),
             DurationWithinTolerance(input, policy),
             AudioRetained(input, policy),
             SubtitlesRetained(input, policy),
             SizeReduced(input, policy)
         };
 
+        // Video-stream and picture-integrity gates only apply to a video job; an audio job
+        // has no video to check (any embedded cover art is incidental).
+        var isVideo = input.Kind != MediaKind.Audio;
+
+        if (isVideo)
+        {
+            checks.Add(VideoStreamPresent(input));
+        }
+
         // HDR preservation only matters when the original carries an HDR signal, so
         // SDR sources don't get a noisy not-applicable line.
-        if (input.OriginalIsHdr)
+        if (isVideo && input.OriginalIsHdr)
         {
             checks.Add(HdrPreserved(input));
         }
@@ -37,22 +46,23 @@ public static class VerificationEvaluator
         }
 
         // Colour metadata is only worth comparing when the original declared some.
-        if (input.OriginalColorPrimaries is not null
-            || input.OriginalColorTransfer is not null
-            || input.OriginalColorSpace is not null)
+        if (isVideo
+            && (input.OriginalColorPrimaries is not null
+                || input.OriginalColorTransfer is not null
+                || input.OriginalColorSpace is not null))
         {
             checks.Add(ColorMetadataPreserved(input));
         }
 
         // A/V sync is only meaningful when both stream start times are known.
-        if (input.OutputVideoStartSeconds is not null && input.OutputAudioStartSeconds is not null)
+        if (isVideo && input.OutputVideoStartSeconds is not null && input.OutputAudioStartSeconds is not null)
         {
             checks.Add(AvSync(input));
         }
 
         // Timestamp monotonicity is checked whenever we managed to read the output's
         // packet timestamps; an unreadable packet stream simply omits the line.
-        if (input.TimestampsMeasured)
+        if (isVideo && input.TimestampsMeasured)
         {
             checks.Add(MonotonicTimestamps(input));
         }
@@ -60,16 +70,17 @@ public static class VerificationEvaluator
         // A truncated/partial last GOP shows up as the output's video ending well before
         // the source runtime. It needs the source duration and the output's real last
         // presentation time, so it is checked only when both are known.
-        if (input.TimestampsMeasured
+        if (isVideo
+            && input.TimestampsMeasured
             && input.OutputLastPresentationSeconds is not null
             && input.OriginalDurationSeconds is > 0)
         {
             checks.Add(TailComplete(input));
         }
 
-        // The perceptual-quality gate only contributes when the user has opted in;
-        // otherwise the report and its cost are unchanged.
-        if (policy.QualityGateEnabled)
+        // The perceptual-quality (VMAF) gate is a video measure, and only contributes when
+        // the user has opted in; otherwise the report and its cost are unchanged.
+        if (isVideo && policy.QualityGateEnabled)
         {
             checks.Add(PerceptualQuality(input, policy));
         }

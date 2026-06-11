@@ -308,7 +308,8 @@ public sealed class QueueDispatcher(
             media.AudioTrackCount ?? 0,
             media.SubtitleTrackCount ?? 0,
             media.IsHdr,
-            rules.Hdr == HdrHandling.TonemapToSdr);
+            rules.Hdr == HdrHandling.TonemapToSdr,
+            media.MediaKind);
 
         var videoEncoder = await ResolveVideoEncoderAsync(
             rules.TargetVideoCodec,
