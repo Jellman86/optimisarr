@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Clear finished jobs from the Queue
+
+- The Queue page has a **Clear finished** button that removes completed, failed, and
+  cancelled jobs so the list doesn't grow without bound. Re-optimisation of the cleared
+  files stays blocked by the embedded optimisation marker, so losing the history rows is
+  safe.
+- **A job whose original is still in quarantine is never cleared** — it is the live
+  rollback path, and the safety standard requires keeping it. Such a job becomes clearable
+  only once its replacement has been rolled back or purged; the pure, unit-tested
+  `JobClearing` rule enforces this, backed by the restrict foreign key.
+
 ### Files carry proof they were optimised (durable re-optimisation guard)
 
 - Every optimised output is now **stamped with an `optimisarr` tag in its container

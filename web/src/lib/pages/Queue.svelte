@@ -15,6 +15,7 @@
   let cancellingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let retryingId = $state<number | null>(null)
+  let clearing = $state(false)
   let expandedId = $state<number | null>(null)
   let filter = $state<'all' | 'active' | 'completed' | 'failed'>('all')
 
@@ -104,6 +105,18 @@
     }
   }
 
+  async function clearFinished() {
+    clearing = true
+    try {
+      await api.clearJobs()
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Clear failed'
+    } finally {
+      clearing = false
+    }
+  }
+
   function matchesFilter(status: string): boolean {
     switch (filter) {
       case 'active': return isActive(status)
@@ -171,6 +184,9 @@
   }
 
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
+  let finishedCount = $derived(
+    jobs.filter((j) => ['Completed', 'Failed', 'Cancelled'].includes(j.status)).length,
+  )
 </script>
 
 <header class="mb-6">
@@ -197,7 +213,7 @@
 {/if}
 
 {#if !loading && jobs.length > 0}
-  <div class="mb-4 flex flex-wrap gap-2">
+  <div class="mb-4 flex flex-wrap items-center gap-2">
     {#each [['all', 'All'], ['active', 'Active'], ['completed', 'Completed'], ['failed', 'Failed']] as [key, label]}
       <button
         class="badge cursor-pointer border {filter === key
@@ -209,6 +225,17 @@
         {label} · {counts[key as keyof typeof counts]}
       </button>
     {/each}
+    {#if finishedCount > 0}
+      <button
+        class="btn btn-ghost ml-auto inline-flex items-center gap-1 px-3 py-1 text-xs"
+        onclick={clearFinished}
+        disabled={clearing}
+        title="Remove finished jobs (completed, failed, cancelled). Files stay tagged so they are never re-optimised; any job still holding a rollback is kept."
+      >
+        <Icon name="trash" class="h-4 w-4" />
+        {clearing ? 'Clearing…' : 'Clear finished'}
+      </button>
+    {/if}
   </div>
 {/if}
 

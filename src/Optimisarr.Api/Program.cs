@@ -906,6 +906,41 @@ app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancell
     Results.Ok(await JobQueries.ListAsync(db, cancellationToken)))
 .WithName("ListJobs");
 
+// Remove finished jobs (completed, failed, cancelled) to declutter the queue. A job whose
+// original is still in quarantine is the live rollback path and is kept; clearing it would
+// destroy a recorded rollback, which the safety standard forbids. Re-optimisation of the
+// cleared files is still prevented by the embedded optimisation marker, so losing the
+// history rows is safe.
+app.MapPost("/api/jobs/clear", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var liveRollbackJobIds = (await db.Replacements
+            .Where(r => r.Status == ReplacementStatus.Replaced)
+            .Select(r => r.JobId)
+            .ToListAsync(cancellationToken))
+        .ToHashSet();
+
+    var terminal = await db.Jobs
+        .Where(j => j.Status == JobStatus.Completed
+            || j.Status == JobStatus.Failed
+            || j.Status == JobStatus.Cancelled)
+        .ToListAsync(cancellationToken);
+
+    var clearable = terminal.Where(j => JobClearing.IsClearable(j, liveRollbackJobIds)).ToList();
+    var clearableIds = clearable.Select(j => j.Id).ToList();
+
+    // The Job→Replacement FK is Restrict, so spent rollback records (rolled back or purged)
+    // for these jobs must be removed before their parent job.
+    var spentReplacements = await db.Replacements
+        .Where(r => clearableIds.Contains(r.JobId))
+        .ToListAsync(cancellationToken);
+    db.Replacements.RemoveRange(spentReplacements);
+    db.Jobs.RemoveRange(clearable);
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new { cleared = clearable.Count });
+})
+.WithName("ClearJobs");
+
 app.MapPost("/api/jobs/{id:int}/cancel", async (
     int id,
     OptimisarrDbContext db,
