@@ -58,6 +58,13 @@ public sealed class MediaFile
     /// <summary>True when the video stream is HDR10/HLG or carries Dolby Vision side data.</summary>
     public bool IsHdr { get; set; }
 
+    /// <summary>
+    /// The Optimisarr fingerprint read from the file's container metadata, if present. A
+    /// non-null value means this exact file was produced by Optimisarr, so it is never
+    /// optimised again — even on a fresh install or after the queue history is cleared.
+    /// </summary>
+    public string? OptimisedMarker { get; set; }
+
     public DateTimeOffset? ProbedAt { get; set; }
 
     public string? ProbeError { get; set; }

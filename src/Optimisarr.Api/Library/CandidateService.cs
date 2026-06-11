@@ -58,7 +58,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.Height,
                 file.SizeBytes,
                 file.IsHdr,
-                file.RelativePath);
+                file.RelativePath,
+                file.OptimisedMarker);
 
             // The rule decision says whether the file is worth optimising; the history
             // overlay then stops a file we've already optimised (or that failed) for its

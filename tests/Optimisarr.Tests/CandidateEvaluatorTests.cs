@@ -14,8 +14,19 @@ public sealed class CandidateEvaluatorTests
         int? height = 1080,
         long sizeBytes = 4L * 1024 * 1024 * 1024,
         bool isHdr = false,
-        string relativePath = "Movies/Example (2020)/Example.mkv") =>
-        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath);
+        string relativePath = "Movies/Example (2020)/Example.mkv",
+        string? optimisedMarker = null) =>
+        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker);
+
+    [Fact]
+    public void A_file_tagged_by_optimisarr_is_skipped_even_when_otherwise_eligible()
+    {
+        // h264 into an HEVC library would normally be eligible; the embedded mark wins.
+        var decision = CandidateEvaluator.Evaluate(File(videoCodec: "h264", optimisedMarker: "0.4.2"), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Already optimised", decision.Reason);
+    }
 
     [Fact]
     public void Reencode_to_target_codec_is_eligible()

@@ -54,6 +54,36 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_reads_the_optimisarr_marker_from_format_tags()
+    {
+        const string json = """
+        {
+          "streams": [{ "codec_type": "video", "codec_name": "hevc" }],
+          "format": { "format_name": "matroska,webm", "tags": { "OPTIMISARR": "0.4.2" } }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.Equal("0.4.2", result.OptimisedMarker);
+    }
+
+    [Fact]
+    public void Parse_leaves_the_marker_null_when_the_tag_is_absent()
+    {
+        const string json = """
+        {
+          "streams": [{ "codec_type": "video", "codec_name": "hevc" }],
+          "format": { "format_name": "matroska,webm", "tags": { "title": "Example" } }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.Null(result.OptimisedMarker);
+    }
+
+    [Fact]
     public void Parse_detects_hdr10_from_pq_color_transfer()
     {
         const string json = """

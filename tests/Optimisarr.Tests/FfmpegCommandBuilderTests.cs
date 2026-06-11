@@ -129,4 +129,53 @@ public sealed class FfmpegCommandBuilderTests
 
         Assert.DoesNotContain("-vf", args);
     }
+
+    [Fact]
+    public void Stamps_the_optimisation_marker_into_the_output_metadata()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(), optimisedMarker: "0.4.2");
+
+        var metaIndex = IndexOf(args, "-metadata");
+        Assert.True(metaIndex >= 0);
+        Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
+        // The marker is an output option, before the output path.
+        Assert.True(metaIndex < args.Count - 1);
+    }
+
+    [Fact]
+    public void Stamps_the_marker_on_a_remux_too()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null), optimisedMarker: "0.4.2");
+
+        var metaIndex = IndexOf(args, "-metadata");
+        Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
+    }
+
+    [Fact]
+    public void Adds_the_mp4_flag_so_custom_tags_round_trip_for_mp4_outputs()
+    {
+        var spec = Reencode() with { OutputPath = "/work/Movie.opt.mp4" };
+
+        var args = FfmpegCommandBuilder.Build(spec, optimisedMarker: "0.4.2");
+
+        var flagsIndex = IndexOf(args, "-movflags");
+        Assert.True(flagsIndex >= 0);
+        Assert.Equal("use_metadata_tags", args[flagsIndex + 1]);
+    }
+
+    [Fact]
+    public void Does_not_add_the_mp4_flag_for_a_matroska_output()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(), optimisedMarker: "0.4.2");
+
+        Assert.DoesNotContain("-movflags", args);
+    }
+
+    [Fact]
+    public void Omits_the_marker_when_none_is_given()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.DoesNotContain("-metadata", args);
+    }
 }

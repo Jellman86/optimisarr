@@ -1,3 +1,5 @@
+using Optimisarr.Core;
+
 namespace Optimisarr.Core.Queue;
 
 /// <summary>
@@ -29,7 +31,14 @@ public static class FfmpegCommandBuilder
     /// CPU thread cap for encoding; <c>0</c> (or less) lets ffmpeg decide. Surfaced
     /// as a global option so it applies to a remux copy as well as a re-encode.
     /// </param>
-    public static IReadOnlyList<string> Build(TranscodeSpec spec, int threads = 0, string? videoEncoder = null)
+    /// <param name="optimisedMarker">
+    /// When set, written into the output's container metadata under
+    /// <see cref="OptimisationMarker.MetadataKey"/> so the file proves it was optimised even
+    /// if it is moved to another machine or the queue history is cleared. Applies to a remux
+    /// copy as well as a re-encode.
+    /// </param>
+    public static IReadOnlyList<string> Build(
+        TranscodeSpec spec, int threads = 0, string? videoEncoder = null, string? optimisedMarker = null)
     {
         var args = new List<string> { "-y" };
 
@@ -80,9 +89,26 @@ public static class FfmpegCommandBuilder
             args.Add("copy");
         }
 
+        if (!string.IsNullOrWhiteSpace(optimisedMarker))
+        {
+            args.Add("-metadata");
+            args.Add($"{OptimisationMarker.MetadataKey}={optimisedMarker}");
+
+            // The MP4/MOV muxer drops unrecognised metadata keys unless told to keep them;
+            // Matroska and others preserve custom tags by default.
+            if (IsMp4Family(spec.OutputPath))
+            {
+                args.Add("-movflags");
+                args.Add("use_metadata_tags");
+            }
+        }
+
         args.Add(spec.OutputPath);
         return args;
     }
+
+    private static bool IsMp4Family(string outputPath) =>
+        Path.GetExtension(outputPath).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov";
 
     private static string EncoderFor(string videoCodec) => videoCodec.Trim().ToLowerInvariant() switch
     {

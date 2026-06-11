@@ -13,6 +13,14 @@ public static class CandidateEvaluator
 {
     public static CandidateDecision Evaluate(MediaProperties media, RuleSettings rules)
     {
+        // A file Optimisarr has already produced carries its fingerprint in the container
+        // metadata. Honour it first and unconditionally: the mark travels with the file, so
+        // this holds even on another machine or after the queue history has been cleared.
+        if (!string.IsNullOrWhiteSpace(media.OptimisedMarker))
+        {
+            return CandidateDecision.Skipped("Already optimised by Optimisarr (file is tagged)");
+        }
+
         if (string.IsNullOrEmpty(media.VideoCodec))
         {
             return CandidateDecision.Skipped("No video stream detected (not probed, or audio-only)");

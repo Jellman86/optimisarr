@@ -12,4 +12,5 @@ public sealed record MediaProperties(
     int? Height,
     long SizeBytes,
     bool IsHdr,
-    string RelativePath);
+    string RelativePath,
+    string? OptimisedMarker = null);

@@ -85,6 +85,7 @@ public sealed class LibraryInventoryService(
                 file.AudioTrackCount = null;
                 file.SubtitleTrackCount = null;
                 file.IsHdr = false;
+                file.OptimisedMarker = null;
                 file.ProbedAt = null;
                 file.ProbeError = null;
             }
@@ -126,6 +127,7 @@ public sealed class LibraryInventoryService(
             file.AudioTrackCount = result.AudioTrackCount;
             file.SubtitleTrackCount = result.SubtitleTrackCount;
             file.IsHdr = result.IsHdr;
+            file.OptimisedMarker = result.OptimisedMarker;
             file.ProbeError = null;
         }
         else

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Optimisarr.Core;
 
 namespace Optimisarr.Core.Library;
 
@@ -22,11 +23,12 @@ public sealed record MediaProbeResult(
     string? ColorSpace,
     double? VideoStartSeconds,
     double? AudioStartSeconds,
+    string? OptimisedMarker,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0,
-            null, null, null, null, null, error);
+            null, null, null, null, null, null, error);
 }
 
 /// <summary>
@@ -106,6 +108,7 @@ public sealed class MediaProbeService
 
         string? container = null;
         double? duration = null;
+        string? optimisedMarker = null;
 
         if (root.TryGetProperty("format", out var format))
         {
@@ -120,6 +123,8 @@ public sealed class MediaProbeService
             {
                 duration = parsed;
             }
+
+            optimisedMarker = ReadOptimisedMarker(format);
         }
 
         string? videoCodec = null;
@@ -204,7 +209,31 @@ public sealed class MediaProbeService
             colorSpace,
             videoStart,
             audioStart,
+            optimisedMarker,
             null);
+    }
+
+    // The optimisation fingerprint is a container-level tag (format.tags). ffprobe may
+    // report the key in any case, so the match is case-insensitive; an empty value counts
+    // as absent.
+    private static string? ReadOptimisedMarker(JsonElement format)
+    {
+        if (!format.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var tag in tags.EnumerateObject())
+        {
+            if (string.Equals(tag.Name, OptimisationMarker.MetadataKey, StringComparison.OrdinalIgnoreCase)
+                && tag.Value.ValueKind == JsonValueKind.String)
+            {
+                var value = tag.Value.GetString();
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+        }
+
+        return null;
     }
 
     // HDR10/HDR10+ and HLG are signalled by the transfer characteristics; Dolby

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Files carry proof they were optimised (durable re-optimisation guard)
+
+- Every optimised output is now **stamped with an `optimisarr` tag in its container
+  metadata** (a re-encode and a remux alike). The probe reads that tag back into the
+  inventory, and the candidate evaluator skips any file that carries it — first and
+  unconditionally, ahead of every other rule.
+- Unlike the database job-history guard (which is local and can be cleared), the mark
+  **travels with the file**: move the media to another machine, reinstall Optimisarr, or
+  clear the queue, and the file is still recognised and never transcoded a second time.
+  The two guards are complementary — history catches files this instance handled; the
+  embedded mark catches everything, everywhere.
+- MP4/MOV outputs get the muxer flag needed for custom tags to round-trip; Matroska and
+  others preserve them by default. New nullable `MediaFile.OptimisedMarker` column (additive
+  migration; re-running it is a no-op). Marker key and all gate logic are pure and unit
+  tested.
+
 ### Verification: decode-timestamp monotonicity and truncated-tail gates
 
 - Verification now checks the converted output's **video decode timestamps are

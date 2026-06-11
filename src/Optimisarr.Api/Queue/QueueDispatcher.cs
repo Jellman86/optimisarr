@@ -35,6 +35,11 @@ public sealed class QueueDispatcher(
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private const int MaxAttempts = 3;
 
+    // Stamped into every output's container metadata so the file proves it was optimised
+    // independently of the database; see OptimisationMarker.
+    private static readonly string OptimisedMarkerValue =
+        typeof(QueueDispatcher).Assembly.GetName().Version?.ToString() ?? "unknown";
+
     private static readonly JsonSerializerOptions ReportJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -316,7 +321,7 @@ public sealed class QueueDispatcher(
 
         return new JobWork(
             spec,
-            FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoder.EncoderName),
+            FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoder.EncoderName, OptimisedMarkerValue),
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
