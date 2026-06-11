@@ -50,4 +50,5 @@ public sealed record VerificationInput(
     double? OutputAudioStartSeconds = null,
     bool TimestampsMeasured = false,
     int NonMonotonicTimestampCount = 0,
-    string? TimestampRegressionDetail = null);
+    string? TimestampRegressionDetail = null,
+    double? OutputLastPresentationSeconds = null);

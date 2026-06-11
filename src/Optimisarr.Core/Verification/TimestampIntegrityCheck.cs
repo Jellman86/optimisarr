@@ -2,22 +2,29 @@ using System.Diagnostics;
 
 namespace Optimisarr.Core.Verification;
 
-/// <summary>The outcome of reading a file's video decode timestamps.</summary>
+/// <summary>The outcome of reading a file's video packet timestamps.</summary>
 /// <param name="Measured">True when ffprobe returned a packet timestamp stream to judge.</param>
 /// <param name="NonMonotonicCount">How many packets stepped backward in decode order.</param>
 /// <param name="FirstRegressionDetail">A description of the first backward step, or null.</param>
-public sealed record TimestampCheckResult(bool Measured, int NonMonotonicCount, string? FirstRegressionDetail)
+/// <param name="LastPresentationSeconds">The latest presentation time, i.e. where the video ends, or null.</param>
+public sealed record TimestampCheckResult(
+    bool Measured,
+    int NonMonotonicCount,
+    string? FirstRegressionDetail,
+    double? LastPresentationSeconds)
 {
-    public static TimestampCheckResult NotMeasured { get; } = new(false, 0, null);
+    public static TimestampCheckResult NotMeasured { get; } = new(false, 0, null, null);
 }
 
 /// <summary>
-/// Reads the output's video decode timestamps with ffprobe and tallies any that step
-/// backward, using the pure <see cref="PacketTimestampParser"/>. This is a metadata-only
-/// read (<c>-show_entries packet=dts_time</c>), not a decode, so it is cheap relative to
-/// the full-decode health check. ffprobe is invoked through an explicit argument list,
-/// never a shell string, and a probe that yields no timestamps is reported as
-/// not-measured so the gate simply abstains rather than blocking on missing evidence.
+/// Reads the output's video packet timestamps with ffprobe and, via the pure
+/// <see cref="PacketTimestampParser"/>, tallies any decode timestamp that steps backward
+/// and tracks the latest presentation time (where the video actually ends). This is a
+/// metadata-only read (<c>-show_entries packet=pts_time,dts_time</c>), not a decode, so
+/// it is cheap relative to the full-decode health check, and one pass feeds both the
+/// monotonicity and truncated-tail gates. ffprobe is invoked through an explicit argument
+/// list, never a shell string, and a probe that yields no timestamps is reported as
+/// not-measured so the gates simply abstain rather than blocking on missing evidence.
 /// </summary>
 public sealed class TimestampIntegrityCheck
 {
@@ -43,7 +50,7 @@ public sealed class TimestampIntegrityCheck
                 {
                     "-v", "error",
                     "-select_streams", "v:0",
-                    "-show_entries", "packet=dts_time",
+                    "-show_entries", "packet=pts_time,dts_time",
                     "-of", "csv=p=0",
                     path
                 },
@@ -86,7 +93,11 @@ public sealed class TimestampIntegrityCheck
             return TimestampCheckResult.NotMeasured;
         }
 
-        return new TimestampCheckResult(true, integrity.NonMonotonicCount, integrity.FirstRegressionDetail);
+        return new TimestampCheckResult(
+            true,
+            integrity.NonMonotonicCount,
+            integrity.FirstRegressionDetail,
+            integrity.LastPresentationSeconds);
     }
 
     private static void KillQuietly(Process process)

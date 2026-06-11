@@ -102,6 +102,58 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Tail_check_is_omitted_without_a_last_presentation_time()
+    {
+        var input = Healthy() with { TimestampsMeasured = true };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Tail integrity");
+    }
+
+    [Fact]
+    public void A_complete_tail_passes()
+    {
+        // Output's last frame reaches the source runtime (one frame short is normal).
+        var input = Healthy() with { TimestampsMeasured = true, OutputLastPresentationSeconds = 3599.96 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
+    }
+
+    [Fact]
+    public void A_truncated_tail_fails_even_when_the_header_duration_looks_right()
+    {
+        // The output container still claims the full 3600s (duration gate passes), but the
+        // video packets stop at 3400s — a truncated final GOP.
+        var input = Healthy() with
+        {
+            OutputDurationSeconds = 3600,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 3400
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Tail integrity"));
+        Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void A_sub_two_percent_shortfall_is_within_tolerance()
+    {
+        // 30s of 3600s is 0.83%, under the 2% tail tolerance — reorder/last-frame slack.
+        var input = Healthy() with { TimestampsMeasured = true, OutputLastPresentationSeconds = 3570 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
+    }
+
+    [Fact]
     public void Duration_drift_within_tolerance_passes()
     {
         // 18s of 3600s is 0.5%, under the 1% default tolerance.

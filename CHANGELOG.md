@@ -2,17 +2,23 @@
 
 ## Unreleased
 
-### Verification: decode-timestamp monotonicity gate
+### Verification: decode-timestamp monotonicity and truncated-tail gates
 
 - Verification now checks the converted output's **video decode timestamps are
   monotonic**. A new pure, unit-tested `PacketTimestampParser` reads ffprobe's
-  per-packet `dts_time` stream and tallies any timestamp that steps backward; a
+  per-packet timestamp stream and tallies any decode timestamp that steps backward; a
   `TimestampIntegrityCheck` gathers it with a cheap metadata-only probe (no decode).
   Out-of-order packets can stall or desync playback even on a file that otherwise
-  decodes, so any regression fails verification and blocks replacement. The gate is
-  always on when the output's packet timestamps are readable and simply abstains when
-  they are not, never blocking on missing evidence. Closes one of the two remaining
-  Phase 9 container-integrity items (truncated-GOP detection is still to come).
+  decodes, so any regression fails verification and blocks replacement.
+- The same single packet probe now also gates **tail integrity (truncated/partial last
+  GOP)**: it tracks the output's latest presentation time — where the video genuinely
+  ends — and fails the job when that falls materially short of the source runtime (over a
+  second and over 2%, tolerances chosen to absorb last-frame and B-frame reorder slack).
+  This catches the dangerous case the duration gate cannot: a truncated encode whose
+  container header still claims the full length. Both gates are always on when the
+  output's packet timestamps are readable and simply abstain when they are not, never
+  blocking on missing evidence. **This completes Phase 9's container/stream-integrity
+  checks.**
 
 ### UI polish and iOS Safari fix
 

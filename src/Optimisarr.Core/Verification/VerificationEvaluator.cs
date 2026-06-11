@@ -57,6 +57,16 @@ public static class VerificationEvaluator
             checks.Add(MonotonicTimestamps(input));
         }
 
+        // A truncated/partial last GOP shows up as the output's video ending well before
+        // the source runtime. It needs the source duration and the output's real last
+        // presentation time, so it is checked only when both are known.
+        if (input.TimestampsMeasured
+            && input.OutputLastPresentationSeconds is not null
+            && input.OriginalDurationSeconds is > 0)
+        {
+            checks.Add(TailComplete(input));
+        }
+
         // The perceptual-quality gate only contributes when the user has opted in;
         // otherwise the report and its cost are unchanged.
         if (policy.QualityGateEnabled)
@@ -159,6 +169,31 @@ public static class VerificationEvaluator
         }
 
         return Pass("Timestamp integrity", "Decode timestamps increase monotonically across the output.");
+    }
+
+    private static VerificationCheck TailComplete(VerificationInput input)
+    {
+        // The output's last video frame should reach the source runtime. A material
+        // shortfall means the encode was cut off and the final GOP is partial or missing —
+        // dangerous because the output's own container header may still claim the full
+        // length, so the duration gate (which compares headers) can pass on a truncated file.
+        // Tolerances are generous enough to absorb last-frame and B-frame reorder slack:
+        // only a shortfall that is both over a second and over 2% of the runtime fails.
+        const double absoluteFloorSeconds = 1.0;
+        const double tolerancePercent = 2.0;
+
+        var original = input.OriginalDurationSeconds!.Value;
+        var lastPresentation = input.OutputLastPresentationSeconds!.Value;
+        var shortfall = original - lastPresentation;
+        var shortfallPercent = shortfall / original * 100.0;
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "Output video ends at {0:0.###}s of the source's {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
+            lastPresentation, original, Math.Max(shortfallPercent, 0), tolerancePercent);
+
+        return shortfall > absoluteFloorSeconds && shortfallPercent > tolerancePercent
+            ? Fail("Tail integrity", $"{detail} The final GOP looks truncated.")
+            : Pass("Tail integrity", detail);
     }
 
     private static VerificationCheck AvSync(VerificationInput input)

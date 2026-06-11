@@ -113,7 +113,8 @@ public sealed class VerificationService(
             OutputAudioStartSeconds: outputProbe.AudioStartSeconds,
             TimestampsMeasured: timestampResult.Measured,
             NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
-            TimestampRegressionDetail: timestampResult.FirstRegressionDetail);
+            TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
+            OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

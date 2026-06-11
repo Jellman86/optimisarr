@@ -358,7 +358,7 @@ defensible, evidence-backed guarantee that the converted file is as good as it
 needs to be — so replacing an original is a decision the user can fully trust.
 This deepens Phase 4 rather than replacing it; every existing gate stays.
 
-Status: largely done. The output is scored against the original with `libvmaf`
+Status: feature-complete. The output is scored against the original with `libvmaf`
 (opt-in, fail-closed VMAF gate with harmonic-mean and per-frame-minimum floors, plus
 PSNR/SSIM as corroborating signals), and the image bundles a libvmaf-enabled ffmpeg
 (jellyfin-ffmpeg) so the gate can run without disturbing the transcode path. Always-on
@@ -368,8 +368,9 @@ its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR p
 timestamps**, **audio channel/sample-rate retention**, and full-file **decode-error
 counting**; an opt-in **EBU R128 loudness** gate, an opt-in **true-peak clipping** gate
 (sharing the loudness decode pass), and **per-library VMAF threshold overrides** round it
-out. All gate logic is pure and unit tested. Remaining stretch item: truncated-GOP
-detection.
+out. **Truncated/partial-last-GOP detection** (the output's latest presentation time
+falling materially short of the source runtime, sharing the monotonicity probe) closes the
+last container-integrity item. All gate logic is pure and unit tested.
 
 Deliverables:
 
@@ -387,8 +388,8 @@ Deliverables:
   timestamps, no truncated/partial last GOP, correct frame count within
   tolerance, and color metadata (primaries/transfer/matrix, HDR10/HDR10+/Dolby
   Vision side data) preserved or intentionally transformed. **HDR signal
-  preservation, colour primaries/transfer/matrix preservation, A/V-sync, and
-  monotonic decode-timestamp checks done.** Truncated-GOP detection still to come.
+  preservation, colour primaries/transfer/matrix preservation, A/V-sync,
+  monotonic decode-timestamp, and truncated/partial-last-GOP checks done.**
 - **Audio fidelity checks** appropriate to the operation: channel layout and
   sample-rate retention, loudness (EBU R128) drift within tolerance, and no
   clipping introduced. **Channel/sample-rate retention, EBU R128 loudness drift, and
