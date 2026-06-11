@@ -17,6 +17,10 @@
 - Candidate evaluation is now **media-kind aware**: audio and image files report an honest
   "not available yet" skip reason instead of looking like a probe failure, and the dispatch
   is structured so the upcoming audio/image rules slot straight in. Video is unchanged.
+- Groundwork for the audio pipeline: a pure, unit-tested audio branch in the ffmpeg command
+  builder and transcode-spec resolver re-encodes audio to an efficient default (Opus 128 kbps)
+  while copying embedded cover art and metadata untouched and carrying the optimisation
+  marker. Not yet enabled end to end (audio verification is next), so no audio job runs yet.
 
 ### Settings is tabbed, and Tools lives inside it
 

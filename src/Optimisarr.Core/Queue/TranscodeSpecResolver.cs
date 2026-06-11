@@ -17,8 +17,23 @@ public static class TranscodeSpecResolver
         string workRoot,
         bool sourceIsHdr,
         int? crf,
-        string? preset)
+        string? preset,
+        MediaKind kind = MediaKind.Video)
     {
+        if (kind == MediaKind.Audio)
+        {
+            return new TranscodeSpec(
+                inputPath,
+                BuildOutputPath(workRoot, relativePath, AudioTarget.Container),
+                VideoCodec: null,
+                Crf: null,
+                Preset: null,
+                TonemapToSdr: false,
+                Kind: MediaKind.Audio,
+                AudioEncoder: AudioTarget.Encoder,
+                AudioBitrateKbps: AudioTarget.BitrateKbps);
+        }
+
         var outputPath = BuildOutputPath(workRoot, relativePath, rules.TargetContainer);
 
         // Tone-map only when re-encoding an HDR source under a library that asks for it.

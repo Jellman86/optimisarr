@@ -20,6 +20,22 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void An_audio_kind_resolves_to_an_audio_spec_with_the_default_target()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, inputPath: "/data/music/Album/Track.flac", relativePath: "Album/Track.flac",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium", kind: MediaKind.Audio);
+
+        Assert.Equal(MediaKind.Audio, spec.Kind);
+        Assert.Equal("/work/Album/Track.opus", spec.OutputPath);
+        Assert.Equal("libopus", spec.AudioEncoder);
+        Assert.Equal(128, spec.AudioBitrateKbps);
+        // The video fields stay empty for an audio job.
+        Assert.Null(spec.VideoCodec);
+        Assert.Null(spec.Crf);
+    }
+
+    [Fact]
     public void Carries_the_target_codec_crf_and_preset()
     {
         var spec = TranscodeSpecResolver.Resolve(

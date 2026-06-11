@@ -1,10 +1,13 @@
 using Optimisarr.Core;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Core.Queue;
 
 /// <summary>
-/// A single transcode described in encoder-agnostic terms. <see cref="VideoCodec"/>
-/// is <c>null</c> for a remux/cleanup (no re-encode).
+/// A single transcode described in encoder-agnostic terms. For a video job
+/// <see cref="VideoCodec"/> is <c>null</c> for a remux/cleanup (no re-encode); for an
+/// audio job (<see cref="Kind"/> = <see cref="MediaKind.Audio"/>) the audio fields drive
+/// the re-encode and the video fields are unused.
 /// </summary>
 public sealed record TranscodeSpec(
     string InputPath,
@@ -12,7 +15,10 @@ public sealed record TranscodeSpec(
     string? VideoCodec,
     int? Crf,
     string? Preset,
-    bool TonemapToSdr);
+    bool TonemapToSdr,
+    MediaKind Kind = MediaKind.Video,
+    string? AudioEncoder = null,
+    int? AudioBitrateKbps = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -50,43 +56,14 @@ public static class FfmpegCommandBuilder
 
         args.Add("-i");
         args.Add(spec.InputPath);
-        args.Add("-map");
-        args.Add("0");
 
-        if (spec.VideoCodec is null)
+        if (spec.Kind == MediaKind.Audio)
         {
-            // Remux only: copy every stream into the new container, no re-encode.
-            args.Add("-c");
-            args.Add("copy");
+            AppendAudioArguments(args, spec);
         }
         else
         {
-            if (spec.TonemapToSdr)
-            {
-                args.Add("-vf");
-                args.Add(TonemapFilter);
-            }
-
-            args.Add("-c:v");
-            args.Add(videoEncoder ?? EncoderFor(spec.VideoCodec));
-
-            if (spec.Crf is { } crf)
-            {
-                args.Add("-crf");
-                args.Add(crf.ToString());
-            }
-
-            if (!string.IsNullOrWhiteSpace(spec.Preset))
-            {
-                args.Add("-preset");
-                args.Add(spec.Preset);
-            }
-
-            // Audio and subtitles are preserved untouched in this phase.
-            args.Add("-c:a");
-            args.Add("copy");
-            args.Add("-c:s");
-            args.Add("copy");
+            AppendVideoArguments(args, spec, videoEncoder);
         }
 
         if (!string.IsNullOrWhiteSpace(optimisedMarker))
@@ -105,6 +82,72 @@ public static class FfmpegCommandBuilder
 
         args.Add(spec.OutputPath);
         return args;
+    }
+
+    private static void AppendVideoArguments(List<string> args, TranscodeSpec spec, string? videoEncoder)
+    {
+        args.Add("-map");
+        args.Add("0");
+
+        if (spec.VideoCodec is null)
+        {
+            // Remux only: copy every stream into the new container, no re-encode.
+            args.Add("-c");
+            args.Add("copy");
+            return;
+        }
+
+        if (spec.TonemapToSdr)
+        {
+            args.Add("-vf");
+            args.Add(TonemapFilter);
+        }
+
+        args.Add("-c:v");
+        args.Add(videoEncoder ?? EncoderFor(spec.VideoCodec));
+
+        if (spec.Crf is { } crf)
+        {
+            args.Add("-crf");
+            args.Add(crf.ToString());
+        }
+
+        if (!string.IsNullOrWhiteSpace(spec.Preset))
+        {
+            args.Add("-preset");
+            args.Add(spec.Preset);
+        }
+
+        // Audio and subtitles are preserved untouched in this phase.
+        args.Add("-c:a");
+        args.Add("copy");
+        args.Add("-c:s");
+        args.Add("copy");
+    }
+
+    private static void AppendAudioArguments(List<string> args, TranscodeSpec spec)
+    {
+        // Preserve all tags/metadata and re-encode only the audio. Any embedded cover art is
+        // an attached-picture video stream, copied through untouched so album art survives.
+        args.Add("-map_metadata");
+        args.Add("0");
+
+        args.Add("-map");
+        args.Add("0:a");
+        args.Add("-c:a");
+        args.Add(spec.AudioEncoder ?? AudioTarget.Encoder);
+
+        if (spec.AudioBitrateKbps is { } bitrate)
+        {
+            args.Add("-b:a");
+            args.Add($"{bitrate}k");
+        }
+
+        // "?" makes the cover-art stream optional so audio with no embedded art still works.
+        args.Add("-map");
+        args.Add("0:v?");
+        args.Add("-c:v");
+        args.Add("copy");
     }
 
     private static bool IsMp4Family(string outputPath) =>

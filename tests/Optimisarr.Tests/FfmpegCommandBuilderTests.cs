@@ -1,9 +1,57 @@
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Tests;
 
 public sealed class FfmpegCommandBuilderTests
 {
+    private static TranscodeSpec AudioReencode() =>
+        new(
+            InputPath: "/data/music/Track.flac",
+            OutputPath: "/work/Track.opus",
+            VideoCodec: null,
+            Crf: null,
+            Preset: null,
+            TonemapToSdr: false,
+            Kind: MediaKind.Audio,
+            AudioEncoder: "libopus",
+            AudioBitrateKbps: 128);
+
+    [Fact]
+    public void An_audio_job_re_encodes_audio_to_the_target_codec_and_bitrate()
+    {
+        var args = FfmpegCommandBuilder.Build(AudioReencode());
+
+        var audioCodecIndex = IndexOf(args, "-c:a");
+        Assert.Equal("libopus", args[audioCodecIndex + 1]);
+        var bitrateIndex = IndexOf(args, "-b:a");
+        Assert.Equal("128k", args[bitrateIndex + 1]);
+        Assert.Equal("/work/Track.opus", args[^1]);
+    }
+
+    [Fact]
+    public void An_audio_job_does_not_re_encode_video_and_preserves_cover_art_and_metadata()
+    {
+        var args = FfmpegCommandBuilder.Build(AudioReencode());
+
+        // Cover art is copied, not re-encoded; metadata is carried over.
+        var videoCodecIndex = IndexOf(args, "-c:v");
+        Assert.Equal("copy", args[videoCodecIndex + 1]);
+        Assert.DoesNotContain("libx265", args);
+        Assert.DoesNotContain("-crf", args);
+        var metaMapIndex = IndexOf(args, "-map_metadata");
+        Assert.Equal("0", args[metaMapIndex + 1]);
+    }
+
+    [Fact]
+    public void An_audio_job_still_stamps_the_optimisation_marker()
+    {
+        var args = FfmpegCommandBuilder.Build(AudioReencode(), optimisedMarker: "0.4.2");
+
+        var metaIndex = IndexOf(args, "-metadata");
+        Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,
