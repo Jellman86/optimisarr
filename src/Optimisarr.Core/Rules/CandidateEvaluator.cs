@@ -39,6 +39,13 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("No image data detected");
         }
 
+        // An animated image (e.g. an animated GIF or WebP) is really a short video; the still
+        // pipeline would flatten it to a broken single-frame output, so leave it untouched.
+        if (media.FrameCount is > 1)
+        {
+            return CandidateDecision.Skipped($"Animated image ({media.FrameCount} frames) — not optimised");
+        }
+
         if (media.SizeBytes < ImageTarget.MinFileSizeBytes)
         {
             return CandidateDecision.Skipped($"Below minimum size ({FormatSize(ImageTarget.MinFileSizeBytes)})");

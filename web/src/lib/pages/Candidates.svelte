@@ -116,7 +116,9 @@
             <td class="hidden px-4 py-2 md:table-cell">
               {candidate.codec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">HDR</span>{/if}
             </td>
-            <td class="hidden px-4 py-2 text-xs lg:table-cell">{candidate.profile}</td>
+            <!-- The rule profile is a video preset; it is meaningless for audio/image files,
+                 which are governed by their own audio/image rules. -->
+            <td class="hidden px-4 py-2 text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
             <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{candidate.reason}</td>
           </tr>
         {/each}

@@ -18,4 +18,5 @@ public sealed record MediaProperties(
     string? OptimisedMarker = null,
     MediaKind Kind = MediaKind.Video,
     string? AudioCodec = null,
-    int? AudioBitrateKbps = null);
+    int? AudioBitrateKbps = null,
+    int? FrameCount = null);

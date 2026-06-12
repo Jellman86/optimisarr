@@ -65,7 +65,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.OptimisedMarker,
                 file.MediaKind,
                 audioCodec,
-                file.AudioBitrateKbps);
+                file.AudioBitrateKbps,
+                file.FrameCount);
 
             // The codec that matters depends on the kind: audio files report their audio codec,
             // while video and still-image files both carry it as the (probe's) video codec.

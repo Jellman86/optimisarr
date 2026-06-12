@@ -168,6 +168,7 @@ public sealed class LibraryInventoryService(
             file.VideoCodec = result.VideoCodec;
             file.Width = result.Width;
             file.Height = result.Height;
+            file.FrameCount = result.FrameCount;
             file.AudioCodecs = result.AudioCodecs.Count > 0 ? string.Join(", ", result.AudioCodecs) : null;
             file.AudioTrackCount = result.AudioTrackCount;
             file.AudioBitrateKbps = result.AudioBitrateKbps;

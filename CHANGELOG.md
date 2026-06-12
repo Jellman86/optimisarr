@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Image optimisation: skip animated images; Candidates profile column; KNOWN_ISSUES
+
+- **Animated images are left untouched.** An animated GIF (or animated WebP) is really a short
+  video; treating it as a still flattened it into a broken, larger single-frame output (which
+  verification correctly failed, leaving the original safe — but wastefully). The probe now records
+  the picture stream's **frame count** (`MediaFile.FrameCount`, migration `AddMediaFileFrameCount`),
+  and a multi-frame image is skipped as a candidate with a clear "Animated image (N frames)" reason.
+- **Candidates page no longer shows a video profile for audio/image rows.** The "Profile" column
+  (a video preset) now shows "—" for audio and image files, which are governed by their own
+  audio/image rules — matching the same fix already applied to the Libraries page.
+- Added **`KNOWN_ISSUES.md`** documenting the open items found during live testing: the WebP marker
+  not round-tripping (ffmpeg limitation; re-optimisation still prevented by the DB history), and the
+  output-filename collision when two sources share a stem (originals never lost; only an optimised
+  output can be overwritten in move-on-complete mode).
+
 ### Fix: discovered files are now probed automatically (queue was empty after a scan)
 
 - Scanning only records that a file *exists*; candidate evaluation needs its codec, media kind, and

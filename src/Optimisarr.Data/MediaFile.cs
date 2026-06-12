@@ -53,6 +53,9 @@ public sealed class MediaFile
 
     public int? Height { get; set; }
 
+    /// <summary>Number of frames in the picture/video stream. >1 marks an animated image.</summary>
+    public int? FrameCount { get; set; }
+
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 

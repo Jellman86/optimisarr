@@ -8,10 +8,14 @@ file has passed explicit verification gates.
 
 Early development. What works today:
 
-- Multiple **libraries**, each with its own media type (Film/TV/Music/Other) and
-  rule profile, with a folder-picker for paths.
-- Recursive, settling-aware **scanning** that builds a media inventory (idempotent).
-- **ffprobe** inspection of individual files (codec, resolution, duration, tracks).
+- Multiple **libraries**, each with its own media type (Film/TV/Music/Photo/Other)
+  and rule profile, with a folder-picker for paths. Scanning discovers the file
+  types that match the library (video, audio, or images).
+- Recursive, settling-aware **scanning** that builds a media inventory (idempotent),
+  with **automatic background probing** of newly discovered files.
+- **ffprobe** inspection (codec, resolution, duration, tracks, media kind).
+- Optimisation for **video, audio, and still images** (images → WebP), each through
+  the same candidate → transcode → verify → quarantine/rollback pipeline.
 - FFmpeg/ffprobe **tool detection** and a health endpoint.
 - Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Tools,
   Queue, Quarantine, Settings).

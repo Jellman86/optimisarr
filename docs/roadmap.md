@@ -90,11 +90,12 @@ the replacement workflow is trustworthy.
   lossless-audio optimisation with per-library audio codec/bitrate; **audio-codec selection for
   video transcodes** (AAC default); **stereo downmix** across both pipelines; **any-source
   (lossy) audio re-encoding** gated on a proven bitrate saving; and **media-type-scoped library
-  Advanced options**; and sane default per-container profiles. **Image optimisation has
-  started**: a pure, unit-tested `ImageTarget` and an image branch in `CandidateEvaluator` decide
-  image eligibility (lossless PNG/BMP/TIFF/GIF eligible; lossy JPEG opt-in) against WebP/AVIF/JXL
-  targets. Next up (see the Phase 10 section): image command building, verification, per-library
-  overrides, and UI.
+  Advanced options**; and sane default per-container profiles. **Image optimisation (WebP) works
+  end-to-end**: candidate rules, command building, kind-aware verification, per-library overrides,
+  a `Photo` media type, animated-image skipping, and the UI — verified in a container (still
+  PNG/BMP/TIFF → WebP with large savings, dimensions retained, verification passing). Next up
+  (see the Phase 10 section): per-image SSIM/EXIF-ICC verification gates, AVIF/JXL encode, and a
+  portable WebP re-optimisation marker (tracked in `KNOWN_ISSUES.md`).
 
 ## Guiding principles
 
@@ -501,13 +502,17 @@ Deliverables:
   and a re-encode-lossy toggle — three nullable `Library` columns via migration, wired through
   `RuleOverrides`/resolver/DTO/parser/config-snapshot, with an Images section in Advanced scoped to
   Other libraries; the format picker is gated to encodable formats so only WebP is offered until
-  AVIF/JXL encode lands). Per-image quality scoring (SSIM) and EXIF/ICC-retention gates still to
-  come. **Image outputs must carry the same
-  `OptimisationMarker` as video/audio so a re-optimised image is recognised and skipped** —
-  but a single-image encoder does not carry container `format.tags`, so for images the marker
-  is written into an **EXIF** field and the probe reads it back from there (not just
-  `format.tags`). This is part of the command-building + probe slice and is required for the
-  idempotency/safety model, not optional.
+  AVIF/JXL encode lands). **Animated images are skipped** (a multi-frame GIF/WebP is detected via
+  the probed frame count and left untouched rather than flattened into a broken still). Verified
+  end-to-end in a container: still PNG/BMP/TIFF optimise to WebP with large savings, dimensions
+  retained, and verification passing. Per-image quality scoring (SSIM) and EXIF/ICC-retention gates
+  still to come.
+- **Image re-optimisation marker.** The intent is for image outputs to carry the same
+  `OptimisationMarker` as video/audio. In-container testing showed ffmpeg's `libwebp` encoder
+  **silently drops `-metadata`**, so a WebP output carries no container tag — writing it needs an
+  EXIF/XMP tool (e.g. `exiftool`) ffmpeg lacks. Until then, re-optimisation is prevented by the
+  database optimisation history and the "already in the target format" check; the portable marker
+  for images is tracked in [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md).
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
   stereo downmix done**; image rules to follow.

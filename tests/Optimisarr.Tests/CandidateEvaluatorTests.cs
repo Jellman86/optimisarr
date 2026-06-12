@@ -26,9 +26,10 @@ public sealed class CandidateEvaluatorTests
             MediaKind.Audio, audioCodec, audioBitrateKbps);
 
     // An image's still-picture codec is captured as the file's VideoCodec by the probe.
-    private static MediaProperties ImageFile(string imageCodec, long sizeBytes = 4L * 1024 * 1024) =>
+    private static MediaProperties ImageFile(
+        string imageCodec, long sizeBytes = 4L * 1024 * 1024, int? frameCount = null) =>
         new("image2", imageCodec, 4000, 3000, sizeBytes, false, "Photos/2024/IMG_0001.jpg", null,
-            MediaKind.Image);
+            MediaKind.Image, FrameCount: frameCount);
 
     [Fact]
     public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
@@ -121,6 +122,24 @@ public sealed class CandidateEvaluatorTests
 
         Assert.True(decision.IsEligible);
         Assert.Contains("webp", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void An_animated_image_is_left_untouched()
+    {
+        // A multi-frame GIF is really a short video; the still pipeline would flatten it.
+        var decision = CandidateEvaluator.Evaluate(ImageFile("gif", frameCount: 36), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Animated", decision.Reason);
+    }
+
+    [Fact]
+    public void A_single_frame_image_is_still_eligible()
+    {
+        var decision = CandidateEvaluator.Evaluate(ImageFile("png", frameCount: 1), Hevc);
+
+        Assert.True(decision.IsEligible);
     }
 
     [Fact]

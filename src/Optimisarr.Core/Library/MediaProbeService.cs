@@ -13,6 +13,7 @@ public sealed record MediaProbeResult(
     string? VideoCodec,
     int? Width,
     int? Height,
+    int? FrameCount,
     IReadOnlyList<string> AudioCodecs,
     int AudioTrackCount,
     int SubtitleTrackCount,
@@ -30,7 +31,7 @@ public sealed record MediaProbeResult(
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0, null,
+        new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, error);
 }
 
@@ -136,6 +137,7 @@ public sealed class MediaProbeService
         string? videoCodec = null;
         int? width = null;
         int? height = null;
+        int? frameCount = null;
         var isHdr = false;
         var hasRealVideoStream = false;
         var audioCodecs = new List<string>();
@@ -181,6 +183,15 @@ public sealed class MediaProbeService
                         if (stream.TryGetProperty("height", out var h) && h.TryGetInt32(out var heightValue))
                         {
                             height = heightValue;
+                        }
+                        // nb_frames distinguishes a still image (1 / not reported) from an animated
+                        // one (e.g. a GIF or animated WebP), which must not be treated as a photo.
+                        // ffprobe reports it as a string and may omit it ("N/A").
+                        if (stream.TryGetProperty("nb_frames", out var nf)
+                            && nf.ValueKind == JsonValueKind.String
+                            && int.TryParse(nf.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames))
+                        {
+                            frameCount = frames;
                         }
                         isHdr = IsHdrVideoStream(stream);
                         colorPrimaries = ReadString(stream, "color_primaries");
@@ -228,6 +239,7 @@ public sealed class MediaProbeService
             videoCodec,
             width,
             height,
+            frameCount,
             audioCodecs,
             audioCodecs.Count,
             subtitleCount,
