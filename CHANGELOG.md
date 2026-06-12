@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Image optimisation: candidate rules (Phase 10)
+
+- First slice of **image optimisation**: an image file is no longer skipped as "not available
+  yet" — `CandidateEvaluator` now decides image eligibility like it does audio. A new pure,
+  unit-tested `ImageTarget` defines the supported modern target formats (**WebP** — the
+  compatible default — **AVIF**, and **JXL**), the conservative defaults (WebP, quality 80, a
+  200 KB minimum size), and which source formats are worth re-encoding.
+- **Lossless sources (PNG/BMP/TIFF/GIF) are eligible** to re-encode to the target format — a
+  large saving with no quality loss. An **already-lossy image (e.g. a JPEG) is left untouched by
+  default**; a per-library **"re-encode lossy images"** opt-in makes it eligible too. A still
+  already in the target format is skipped (mapping ffprobe's codec names — an `.avif` probes as
+  `av1`, a `.jxl` as `jpegxl` — back to the chosen format), as is anything below the minimum
+  size. New `RuleSettings` fields `TargetImageFormat`, `ImageQuality`, and `ReencodeLossyImages`
+  carry the rules; per-library overrides, command building, and verification follow in later
+  slices.
+
 ### UI polish: mobile layout and a tidier library settings form
 
 - **Mobile layout.** On small screens the sidebar is now an off-canvas drawer (opened from a

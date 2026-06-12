@@ -25,6 +25,11 @@ public sealed class CandidateEvaluatorTests
         new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
             MediaKind.Audio, audioCodec, audioBitrateKbps);
 
+    // An image's still-picture codec is captured as the file's VideoCodec by the probe.
+    private static MediaProperties ImageFile(string imageCodec, long sizeBytes = 4L * 1024 * 1024) =>
+        new("image2", imageCodec, 4000, 3000, sizeBytes, false, "Photos/2024/IMG_0001.jpg", null,
+            MediaKind.Image);
+
     [Fact]
     public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
     {
@@ -110,12 +115,51 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void An_image_file_is_skipped_with_a_clear_not_yet_supported_reason()
+    public void A_lossless_image_is_eligible_for_re_encode_to_the_target_format()
     {
-        var decision = CandidateEvaluator.Evaluate(File(videoCodec: null, kind: MediaKind.Image), Hevc);
+        var decision = CandidateEvaluator.Evaluate(ImageFile("png"), Hevc);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("webp", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_lossy_image_is_left_untouched_by_default()
+    {
+        var decision = CandidateEvaluator.Evaluate(ImageFile("mjpeg"), Hevc);
 
         Assert.False(decision.IsEligible);
-        Assert.Contains("Image", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("left untouched", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_lossy_image_is_eligible_once_the_library_opts_into_re_encoding_it()
+    {
+        var rules = Hevc with { ReencodeLossyImages = true };
+
+        var decision = CandidateEvaluator.Evaluate(ImageFile("mjpeg"), rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("webp", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void An_image_already_in_the_target_format_is_skipped()
+    {
+        // ffprobe reports a .webp still as the "webp" codec.
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Already", decision.Reason);
+    }
+
+    [Fact]
+    public void A_tiny_image_is_below_the_minimum_size()
+    {
+        var decision = CandidateEvaluator.Evaluate(ImageFile("png", sizeBytes: 16 * 1024), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("minimum size", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

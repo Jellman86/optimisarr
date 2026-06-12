@@ -22,13 +22,48 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("Already optimised by Optimisarr (file is tagged)");
         }
 
-        // Image optimisation is still to come; video and audio each have their own rules.
+        // Each media kind has its own eligibility rules.
         return media.Kind switch
         {
             MediaKind.Audio => EvaluateAudio(media, rules),
-            MediaKind.Image => CandidateDecision.Skipped("Image file — image optimisation is not available yet"),
+            MediaKind.Image => EvaluateImage(media, rules),
             _ => EvaluateVideo(media, rules)
         };
+    }
+
+    private static CandidateDecision EvaluateImage(MediaProperties media, RuleSettings rules)
+    {
+        // An image's still-picture codec is captured as the file's VideoCodec by the probe.
+        if (string.IsNullOrEmpty(media.VideoCodec))
+        {
+            return CandidateDecision.Skipped("No image data detected");
+        }
+
+        if (media.SizeBytes < ImageTarget.MinFileSizeBytes)
+        {
+            return CandidateDecision.Skipped($"Below minimum size ({FormatSize(ImageTarget.MinFileSizeBytes)})");
+        }
+
+        if (ImageTarget.IsAlreadyInFormat(media.VideoCodec, rules.TargetImageFormat))
+        {
+            return CandidateDecision.Skipped($"Already {rules.TargetImageFormat} (no expected saving)");
+        }
+
+        // Lossless sources (PNG/BMP/TIFF/GIF) are always worth re-encoding: a large saving with no
+        // quality loss.
+        if (ImageTarget.IsLossless(media.VideoCodec))
+        {
+            return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
+        }
+
+        // The source is already a lossy/efficient image (e.g. a JPEG). By default it is left
+        // untouched, since re-encoding adds generational loss for a smaller gain.
+        if (!rules.ReencodeLossyImages)
+        {
+            return CandidateDecision.Skipped($"{media.VideoCodec} is already a compressed (lossy) image — left untouched");
+        }
+
+        return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
     }
 
     private static CandidateDecision EvaluateAudio(MediaProperties media, RuleSettings rules)

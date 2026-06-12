@@ -90,8 +90,11 @@ the replacement workflow is trustworthy.
   lossless-audio optimisation with per-library audio codec/bitrate; **audio-codec selection for
   video transcodes** (AAC default); **stereo downmix** across both pipelines; **any-source
   (lossy) audio re-encoding** gated on a proven bitrate saving; and **media-type-scoped library
-  Advanced options**. Next up (see the Phase 10 section): sane default per-container profiles,
-  and image optimisation (WebP/AVIF/JXL).
+  Advanced options**; and sane default per-container profiles. **Image optimisation has
+  started**: a pure, unit-tested `ImageTarget` and an image branch in `CandidateEvaluator` decide
+  image eligibility (lossless PNG/BMP/TIFF/GIF eligible; lossy JPEG opt-in) against WebP/AVIF/JXL
+  targets. Next up (see the Phase 10 section): image command building, verification, per-library
+  overrides, and UI.
 
 ## Guiding principles
 
@@ -484,7 +487,11 @@ Deliverables:
   behind Advanced options. **Done.**
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
-  as verification gates; configurable max-dimension downscaling.
+  as verification gates; configurable max-dimension downscaling. **Candidate rules done**
+  (pure `ImageTarget` + image branch in `CandidateEvaluator`: lossless PNG/BMP/TIFF/GIF eligible,
+  lossy JPEG behind a per-library opt-in, already-target-format and too-small skipped, with
+  WebP/AVIF/JXL targets and conservative defaults). Command building, verification gates,
+  per-library overrides, and UI still to come.
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
   stereo downmix done**; image rules to follow.

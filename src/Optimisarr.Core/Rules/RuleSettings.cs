@@ -77,4 +77,17 @@ public sealed record RuleSettings
     /// generational quality loss for little gain.
     /// </summary>
     public bool ReencodeLossyAudio { get; init; }
+
+    /// <summary>The format an image is re-encoded to (e.g. "webp"). Defaults to the compatible WebP.</summary>
+    public string TargetImageFormat { get; init; } = ImageTarget.DefaultFormat;
+
+    /// <summary>The encoder quality (0–100, higher is better) for an image re-encode.</summary>
+    public int ImageQuality { get; init; } = ImageTarget.DefaultQuality;
+
+    /// <summary>
+    /// When <c>true</c>, an already-lossy image (e.g. a JPEG) is also eligible for re-encoding to
+    /// the target format. Defaults to <c>false</c>: the conservative behaviour re-encodes only
+    /// lossless sources (PNG/BMP/TIFF/GIF), since re-encoding a JPEG risks generational loss.
+    /// </summary>
+    public bool ReencodeLossyImages { get; init; }
 }
