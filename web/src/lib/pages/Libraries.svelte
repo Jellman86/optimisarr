@@ -107,6 +107,11 @@
 
   const BYTES_PER_MB = 1024 * 1024
 
+  // Advanced controls are scoped to the library's media type: video knobs for Film/TV,
+  // audio knobs for Music, and everything for a mixed "Other" library that may hold both.
+  const showVideoOptions = $derived(form.mediaType !== 'Music')
+  const showAudioOptions = $derived(form.mediaType === 'Music' || form.mediaType === 'Other')
+
   $effect(() => {
     void load()
   })
@@ -418,6 +423,7 @@
         <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
           Encoding <span class="font-normal normal-case">— leave on "Profile default" to follow the preset</span>
         </h3>
+        {#if showVideoOptions}
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-codec">Target video codec</label>
@@ -469,7 +475,9 @@
             <p class="text-xs text-slate-400">Using the preset's quality.</p>
           {/if}
         </div>
+        {/if}
 
+        {#if showAudioOptions}
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-audio-codec">Audio target codec</label>
@@ -493,7 +501,9 @@
             <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
           </div>
         </div>
+        {/if}
 
+        {#if showVideoOptions}
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-video-audio-codec">Video audio</label>
@@ -518,6 +528,7 @@
             <p class="mt-1 text-xs text-slate-400">32–512 kbps. Only applies when audio is re-encoded.</p>
           </div>
         </div>
+        {/if}
 
         <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
@@ -529,6 +540,7 @@
           </span>
         </label>
 
+        {#if showVideoOptions}
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
             <span class="label mb-0">Quality-gate thresholds (VMAF)</span>
@@ -555,6 +567,7 @@
             <p class="text-xs text-slate-400">Using the global thresholds from Settings.</p>
           {/if}
         </div>
+        {/if}
       </div>
 
       <!-- Eligibility & queue -->
@@ -568,12 +581,14 @@
             </div>
             <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
           </div>
+          {#if showVideoOptions}
           <div>
             <label class="label" for="lib-maxheight">Skip files above</label>
             <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
               {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
             </select>
           </div>
+          {/if}
           <div>
             <label class="label" for="lib-minsize">Minimum file size (MB)</label>
             <input id="lib-minsize" class="input" type="number" min="0" placeholder="Profile default" bind:value={minSizeMb} />

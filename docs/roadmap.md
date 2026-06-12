@@ -414,7 +414,8 @@ verification, quarantine/rollback — from video to **audio-only files and
 images**, so a library of music or photos benefits from the same guarantees.
 
 Status: in progress. **Media-kind detection, audio optimisation, per-library audio
-rules, audio-codec selection for video transcodes, and stereo downmix are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
+rules, audio-codec selection for video transcodes, stereo downmix, and media-type-scoped
+Advanced options are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
 video, audio, or image (cover-art-aware, so an album-art picture never makes an audio file
 look like video), stored on `MediaFile.MediaKind` and surfaced as a Kind column in the
 Inventory. Lossless audio is re-encoded through the full pipeline — candidate rules,
@@ -466,14 +467,13 @@ Deliverables:
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
   stereo downmix done**; image rules to follow.
-- **Scope the library Advanced-options UI to the library's media type.** The form currently
-  shows every override for every library, so a Film/TV library displays the audio target
-  codec/bitrate (only relevant to audio files) and a Music library would show video codec,
-  CRF, encoder preset, max resolution, HDR handling, and VMAF (all irrelevant to audio). The
-  Advanced options should show only the controls that apply to the library's `MediaType` —
-  video settings for Film/TV, audio settings for Music — with sensible handling of mixed
-  ("Other") libraries that may hold more than one kind. Purely a UI refinement; the
-  underlying per-library overrides are unchanged. **Planned.**
+- **Scope the library Advanced-options UI to the library's media type.** The form now shows
+  only the controls that apply to the library's `MediaType` — video settings (codec/container,
+  CRF, encoder preset, max resolution, HDR handling, VMAF, and the video-audio codec/bitrate)
+  for Film/TV, audio settings (audio target codec/bitrate) for Music — while a mixed "Other"
+  library still shows everything and the stereo-downmix toggle stays visible for every type
+  (it applies wherever audio is re-encoded). Purely a UI refinement; the underlying per-library
+  overrides are unchanged. **Done.**
 - Pure, unit-tested resolvers/evaluators per kind; the worker dispatches by media
   kind to the right command builder and verifier.
 

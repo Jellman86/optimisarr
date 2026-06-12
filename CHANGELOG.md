@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Library Advanced options are scoped to the media type (Phase 10)
+
+- The library Advanced-options form now shows **only the controls that apply to the library's
+  media type**: video knobs (target video codec/container, HDR handling, encoder preset, CRF,
+  resolution limit, the video-audio codec/bitrate, and the VMAF quality gate) for **Film/TV**
+  libraries, and the audio target codec/bitrate for **Music** libraries. A mixed **Other**
+  library still shows everything, since it may hold more than one kind. The stereo-downmix
+  toggle stays visible for every type because it applies wherever audio is re-encoded.
+- This removes the previous clutter where, e.g., a Music library showed video codec, CRF,
+  preset, resolution, HDR, and VMAF (all irrelevant to audio) and a Film/TV library showed the
+  audio-only "Audio target codec". Purely a UI refinement — the underlying per-library
+  overrides are unchanged and any previously stored values are preserved.
+
 ### Stereo downmix (Phase 10)
 
 - Each library can now **downmix multichannel audio to 2.0 stereo** on re-encode, in Advanced
