@@ -85,6 +85,7 @@ public sealed class LibraryInventoryService(
                 file.Height = null;
                 file.AudioCodecs = null;
                 file.AudioTrackCount = null;
+                file.AudioBitrateKbps = null;
                 file.SubtitleTrackCount = null;
                 file.IsHdr = false;
                 file.OptimisedMarker = null;
@@ -128,6 +129,7 @@ public sealed class LibraryInventoryService(
             file.Height = result.Height;
             file.AudioCodecs = result.AudioCodecs.Count > 0 ? string.Join(", ", result.AudioCodecs) : null;
             file.AudioTrackCount = result.AudioTrackCount;
+            file.AudioBitrateKbps = result.AudioBitrateKbps;
             file.SubtitleTrackCount = result.SubtitleTrackCount;
             file.IsHdr = result.IsHdr;
             file.OptimisedMarker = result.OptimisedMarker;

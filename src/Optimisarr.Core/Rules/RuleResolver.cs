@@ -23,7 +23,8 @@ public static class RuleResolver
             AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps,
             VideoAudioCodec = Normalise(overrides.VideoAudioCodec) ?? settings.VideoAudioCodec,
             VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
-            DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo
+            DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo,
+            ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio
         };
     }
 

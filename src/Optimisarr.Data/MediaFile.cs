@@ -58,6 +58,13 @@ public sealed class MediaFile
 
     public int? AudioTrackCount { get; set; }
 
+    /// <summary>
+    /// The source audio bitrate in kbps (the highest audio stream, or the container bitrate for
+    /// an audio-only file). Null when ffprobe reported none. Drives the any-source audio
+    /// eligibility check, which only re-encodes lossy audio when a saving can be proven.
+    /// </summary>
+    public int? AudioBitrateKbps { get; set; }
+
     public int? SubtitleTrackCount { get; set; }
 
     /// <summary>True when the video stream is HDR10/HLG or carries Dolby Vision side data.</summary>

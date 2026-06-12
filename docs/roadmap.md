@@ -88,9 +88,10 @@ the replacement workflow is trustworthy.
   overrides. All gate logic pure and unit tested.
 - **Phase 10 (Multi-Media Optimisation): in progress.** Done so far: media-kind detection;
   lossless-audio optimisation with per-library audio codec/bitrate; **audio-codec selection for
-  video transcodes** (AAC default); **stereo downmix** across both pipelines; and **media-type-
-  scoped library Advanced options**. Next up (see the Phase 10 section): any-source audio
-  transcode, sane default per-container profiles, and image optimisation (WebP/AVIF/JXL).
+  video transcodes** (AAC default); **stereo downmix** across both pipelines; **any-source
+  (lossy) audio re-encoding** gated on a proven bitrate saving; and **media-type-scoped library
+  Advanced options**. Next up (see the Phase 10 section): sane default per-container profiles,
+  and image optimisation (WebP/AVIF/JXL).
 
 ## Guiding principles
 
@@ -431,8 +432,8 @@ verification, quarantine/rollback — from video to **audio-only files and
 images**, so a library of music or photos benefits from the same guarantees.
 
 Status: in progress. **Media-kind detection, audio optimisation, per-library audio
-rules, audio-codec selection for video transcodes, stereo downmix, and media-type-scoped
-Advanced options are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
+rules, audio-codec selection for video transcodes, stereo downmix, any-source (lossy) audio
+re-encoding, and media-type-scoped Advanced options are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
 video, audio, or image (cover-art-aware, so an album-art picture never makes an audio file
 look like video), stored on `MediaFile.MediaKind` and surfaced as a Kind column in the
 Inventory. Lossless audio is re-encoded through the full pipeline — candidate rules,
@@ -450,11 +451,12 @@ Deliverables:
   duration, and decode health. Tag/metadata and embedded-art preservation. **Done**
   (lossless → configurable codec/bitrate, default Opus 128 kbps; outputs carry the
   optimisation marker like video).
-- **Transcode from any audio source, not just lossless.** Today only lossless sources are
-  eligible (re-encoding already-lossy audio risks generational loss). Extend candidacy so a
-  library can opt to re-encode *any* source whose codec/bitrate differs from the configured
-  target when it would genuinely save space (e.g. a 320 kbps MP3 → Opus 128), while keeping
-  the conservative lossless-only default. **Planned.**
+- **Transcode from any audio source, not just lossless.** A per-library "re-encode lossy audio"
+  opt-in now also makes already-lossy sources eligible, but only when re-encoding would
+  genuinely save space: probing records the source audio bitrate, and a lossy file is eligible
+  only when that bitrate exceeds the target by a safety margin (≥25%, `AudioTarget.LossyReencodeSaves`).
+  A file at/near the target, or one whose bitrate ffprobe could not report, is left untouched
+  with a clear reason. The conservative lossless-only behaviour stays the default. **Done.**
 - **Audio codec selection for video transcodes.** A video re-encode used to copy its audio
   tracks untouched (`-c:a copy`). A per-library option now also transcodes the audio of a
   video to a chosen codec/bitrate (AAC — the broadly compatible default — Opus, or MP3),

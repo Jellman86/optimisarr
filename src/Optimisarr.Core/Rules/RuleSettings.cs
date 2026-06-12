@@ -60,4 +60,13 @@ public sealed record RuleSettings
     /// surround is preserved unless the operator opts in.
     /// </summary>
     public bool DownmixToStereo { get; init; }
+
+    /// <summary>
+    /// When <c>true</c>, already-lossy audio (e.g. a 320 kbps MP3) is also eligible for
+    /// re-encoding to the target codec, but only when its source bitrate is known to exceed
+    /// the target enough to genuinely save space. Defaults to <c>false</c>: the conservative
+    /// behaviour re-encodes only lossless sources, since re-encoding lossy audio risks
+    /// generational quality loss for little gain.
+    /// </summary>
+    public bool ReencodeLossyAudio { get; init; }
 }

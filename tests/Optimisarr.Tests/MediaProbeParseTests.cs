@@ -47,6 +47,58 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_reads_the_audio_bitrate_from_the_stream()
+    {
+        const string json = """
+        {
+          "streams": [{ "codec_type": "audio", "codec_name": "mp3", "bit_rate": "320000" }],
+          "format": { "format_name": "mp3" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp3");
+
+        Assert.Equal(320, result.AudioBitrateKbps);
+    }
+
+    [Fact]
+    public void Parse_falls_back_to_the_format_bitrate_for_an_audio_only_file()
+    {
+        // Some sources report no per-stream bit_rate; the container bitrate stands in for an
+        // audio-only file.
+        const string json = """
+        {
+          "streams": [{ "codec_type": "audio", "codec_name": "mp3" }],
+          "format": { "format_name": "mp3", "bit_rate": "256000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp3");
+
+        Assert.Equal(256, result.AudioBitrateKbps);
+    }
+
+    [Fact]
+    public void Parse_does_not_use_the_container_bitrate_as_audio_bitrate_for_a_video_file()
+    {
+        // The container bitrate of a video file is dominated by the video track; it must not be
+        // mistaken for the audio bitrate (which has no per-stream value here).
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080 },
+            { "codec_type": "audio", "codec_name": "aac" }
+          ],
+          "format": { "format_name": "matroska,webm", "bit_rate": "8000000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Null(result.AudioBitrateKbps);
+    }
+
+    [Fact]
     public void Parse_treats_sdr_content_as_not_hdr()
     {
         var result = MediaProbeService.Parse(SampleJson);

@@ -20,9 +20,10 @@ public sealed class CandidateEvaluatorTests
         string? audioCodec = null) =>
         new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind, audioCodec);
 
-    private static MediaProperties AudioFile(string audioCodec, long sizeBytes = 40L * 1024 * 1024) =>
-        File(videoCodec: null, sizeBytes: sizeBytes, relativePath: "Music/Album/Track.flac",
-            kind: MediaKind.Audio, audioCodec: audioCodec);
+    private static MediaProperties AudioFile(
+        string audioCodec, long sizeBytes = 40L * 1024 * 1024, int? audioBitrateKbps = null) =>
+        new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
+            MediaKind.Audio, audioCodec, audioBitrateKbps);
 
     [Fact]
     public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
@@ -35,12 +36,59 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void A_lossy_audio_file_is_left_untouched()
+    public void A_lossy_audio_file_is_left_untouched_by_default()
     {
-        var decision = CandidateEvaluator.Evaluate(AudioFile("mp3"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(AudioFile("mp3", audioBitrateKbps: 320), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("lossy", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_high_bitrate_lossy_file_is_eligible_when_lossy_re_encode_is_opted_in()
+    {
+        var rules = Hevc with { ReencodeLossyAudio = true };
+
+        // 320 kbps MP3 well above the 128 kbps Opus target — re-encoding genuinely saves space.
+        var decision = CandidateEvaluator.Evaluate(AudioFile("mp3", audioBitrateKbps: 320), rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("320", decision.Reason);
+        Assert.Contains("opus", decision.Reason);
+    }
+
+    [Fact]
+    public void A_lossy_file_near_the_target_bitrate_is_left_untouched_even_when_opted_in()
+    {
+        var rules = Hevc with { ReencodeLossyAudio = true };
+
+        // 128 kbps MP3 against a 128 kbps Opus target: re-encoding would only add loss for no saving.
+        var decision = CandidateEvaluator.Evaluate(AudioFile("mp3", audioBitrateKbps: 128), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("save space", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_lossy_file_with_unknown_bitrate_is_left_untouched_even_when_opted_in()
+    {
+        var rules = Hevc with { ReencodeLossyAudio = true };
+
+        var decision = CandidateEvaluator.Evaluate(AudioFile("mp3", audioBitrateKbps: null), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("bitrate unknown", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_lossless_file_is_eligible_even_without_a_known_bitrate()
+    {
+        // Lossless eligibility never depends on the bitrate threshold, opted in or not.
+        var rules = Hevc with { ReencodeLossyAudio = true };
+
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", audioBitrateKbps: null), rules);
+
+        Assert.True(decision.IsEligible);
     }
 
     [Fact]

@@ -20,6 +20,7 @@ public sealed record RuleOverrides
     public string? VideoAudioCodec { get; init; }
     public int? VideoAudioBitrateKbps { get; init; }
     public bool? DownmixToStereo { get; init; }
+    public bool? ReencodeLossyAudio { get; init; }
 
     public static readonly RuleOverrides None = new();
 }

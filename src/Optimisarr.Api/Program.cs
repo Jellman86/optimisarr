@@ -693,6 +693,7 @@ app.MapPost("/api/libraries", async (
         VideoAudioCodec = parsed.VideoAudioCodec,
         VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
         DownmixToStereo = parsed.DownmixToStereo,
+        ReencodeLossyAudio = parsed.ReencodeLossyAudio,
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
@@ -749,6 +750,7 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.VideoAudioCodec = parsed.VideoAudioCodec;
     library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
     library.DownmixToStereo = parsed.DownmixToStereo;
+    library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
@@ -1179,6 +1181,7 @@ internal sealed record SaveLibraryRequest(
     string? VideoAudioCodec,
     int? VideoAudioBitrateKbps,
     bool? DownmixToStereo,
+    bool? ReencodeLossyAudio,
     bool? MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1208,6 +1211,7 @@ internal sealed record LibraryDto(
     string? VideoAudioCodec,
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
+    bool ReencodeLossyAudio,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1241,6 +1245,7 @@ internal sealed record LibraryDto(
         library.VideoAudioCodec,
         library.VideoAudioBitrateKbps,
         library.DownmixToStereo,
+        library.ReencodeLossyAudio,
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,

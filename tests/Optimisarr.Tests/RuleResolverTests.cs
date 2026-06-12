@@ -59,6 +59,18 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
+    public void Reencode_lossy_audio_defaults_to_off_and_can_be_overridden()
+    {
+        var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+        Assert.False(defaults.ReencodeLossyAudio);
+
+        var overridden = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc, new RuleOverrides { ReencodeLossyAudio = true });
+
+        Assert.True(overridden.ReencodeLossyAudio);
+    }
+
+    [Fact]
     public void Overrides_replace_only_the_values_that_are_set()
     {
         var overrides = new RuleOverrides { MaxHeight = 1080, Hdr = HdrHandling.TonemapToSdr };

@@ -48,14 +48,34 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetAudioCodec} (no expected saving)");
         }
 
-        // Only lossless sources are re-encoded; re-encoding already-lossy audio would lose
-        // quality for little gain, so it is left untouched.
-        if (!AudioTarget.IsLossless(media.AudioCodec))
+        // Lossless sources are always worth re-encoding: a large saving with no audible loss.
+        if (AudioTarget.IsLossless(media.AudioCodec))
+        {
+            return CandidateDecision.Eligible($"{media.AudioCodec} → {rules.TargetAudioCodec}");
+        }
+
+        // The source is already lossy. By default it is left untouched, since re-encoding lossy
+        // audio adds generational loss for little gain.
+        if (!rules.ReencodeLossyAudio)
         {
             return CandidateDecision.Skipped($"{media.AudioCodec} is already a space-efficient (lossy) codec — left untouched");
         }
 
-        return CandidateDecision.Eligible($"{media.AudioCodec} → {rules.TargetAudioCodec}");
+        // The library has opted in to re-encoding lossy audio, but only when it genuinely saves
+        // space. Without a known source bitrate we cannot prove a saving, so stay conservative.
+        if (media.AudioBitrateKbps is not { } sourceKbps)
+        {
+            return CandidateDecision.Skipped($"{media.AudioCodec} source bitrate unknown — cannot confirm a saving, left untouched");
+        }
+
+        if (!AudioTarget.LossyReencodeSaves(sourceKbps, rules.AudioBitrateKbps))
+        {
+            return CandidateDecision.Skipped(
+                $"{media.AudioCodec} at {sourceKbps} kbps is not far enough above the {rules.AudioBitrateKbps} kbps target to save space — left untouched");
+        }
+
+        return CandidateDecision.Eligible(
+            $"{media.AudioCodec} {sourceKbps} kbps → {rules.TargetAudioCodec} {rules.AudioBitrateKbps} kbps");
     }
 
     private static CandidateDecision EvaluateVideo(MediaProperties media, RuleSettings rules)

@@ -35,7 +35,8 @@ internal static class LibraryRuleResolution
             AudioBitrateKbps = library.AudioBitrateKbps,
             VideoAudioCodec = library.VideoAudioCodec,
             VideoAudioBitrateKbps = library.VideoAudioBitrateKbps,
-            DownmixToStereo = library.DownmixToStereo
+            DownmixToStereo = library.DownmixToStereo,
+            ReencodeLossyAudio = library.ReencodeLossyAudio
         };
     }
 

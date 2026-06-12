@@ -120,6 +120,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.VideoAudioCodec = snapshot.VideoAudioCodec;
             library.VideoAudioBitrateKbps = snapshot.VideoAudioBitrateKbps;
             library.DownmixToStereo = snapshot.DownmixToStereo;
+            library.ReencodeLossyAudio = snapshot.ReencodeLossyAudio;
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
             library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
@@ -258,7 +259,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.AudioBitrateKbps,
         library.VideoAudioCodec,
         library.VideoAudioBitrateKbps,
-        library.DownmixToStereo);
+        library.DownmixToStereo,
+        library.ReencodeLossyAudio);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

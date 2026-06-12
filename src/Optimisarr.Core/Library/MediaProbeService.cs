@@ -19,6 +19,7 @@ public sealed record MediaProbeResult(
     bool IsHdr,
     int MaxAudioChannels,
     int MaxAudioSampleRate,
+    int? AudioBitrateKbps,
     string? ColorPrimaries,
     string? ColorTransfer,
     string? ColorSpace,
@@ -29,7 +30,7 @@ public sealed record MediaProbeResult(
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0,
+        new(false, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, error);
 }
 
@@ -111,6 +112,7 @@ public sealed class MediaProbeService
         string? container = null;
         double? duration = null;
         string? optimisedMarker = null;
+        int? formatBitrateKbps = null;
 
         if (root.TryGetProperty("format", out var format))
         {
@@ -118,6 +120,8 @@ public sealed class MediaProbeService
             {
                 container = formatName.GetString();
             }
+
+            formatBitrateKbps = ReadBitrateKbps(format);
 
             if (format.TryGetProperty("duration", out var durationElement) &&
                 durationElement.ValueKind == JsonValueKind.String &&
@@ -138,6 +142,7 @@ public sealed class MediaProbeService
         var subtitleCount = 0;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
+        int? audioBitrateKbps = null;
         string? colorPrimaries = null;
         string? colorTransfer = null;
         string? colorSpace = null;
@@ -196,12 +201,24 @@ public sealed class MediaProbeService
                         {
                             maxAudioSampleRate = Math.Max(maxAudioSampleRate, sampleRate);
                         }
+                        if (ReadBitrateKbps(stream) is { } streamBitrate)
+                        {
+                            audioBitrateKbps = Math.Max(audioBitrateKbps ?? 0, streamBitrate);
+                        }
                         break;
                     case "subtitle":
                         subtitleCount++;
                         break;
                 }
             }
+        }
+
+        // For an audio-only file the container bitrate is effectively the audio bitrate, so use
+        // it when no per-stream bitrate was reported. A file with real video is excluded: its
+        // container bitrate is dominated by the video track and tells us nothing about the audio.
+        if (audioBitrateKbps is null && !hasRealVideoStream && audioCodecs.Count > 0)
+        {
+            audioBitrateKbps = formatBitrateKbps;
         }
 
         return new MediaProbeResult(
@@ -217,6 +234,7 @@ public sealed class MediaProbeService
             isHdr,
             maxAudioChannels,
             maxAudioSampleRate,
+            audioBitrateKbps,
             colorPrimaries,
             colorTransfer,
             colorSpace,
@@ -294,6 +312,21 @@ public sealed class MediaProbeService
             var value = element.GetString();
             // ffprobe writes "unknown"/"reserved" for unspecified color metadata; treat as absent.
             return string.IsNullOrWhiteSpace(value) || value is "unknown" or "reserved" ? null : value;
+        }
+
+        return null;
+    }
+
+    // ffprobe reports bit_rate as a string of bits per second on both streams and the format.
+    // Convert to whole kbps; a missing or non-numeric value (some VBR sources omit it) is absent.
+    private static int? ReadBitrateKbps(JsonElement element)
+    {
+        if (element.TryGetProperty("bit_rate", out var bitRate)
+            && bitRate.ValueKind == JsonValueKind.String
+            && long.TryParse(bitRate.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var bitsPerSecond)
+            && bitsPerSecond > 0)
+        {
+            return (int)(bitsPerSecond / 1000);
         }
 
         return null;

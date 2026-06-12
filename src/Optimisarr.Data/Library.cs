@@ -74,6 +74,13 @@ public sealed class Library
     public bool DownmixToStereo { get; set; }
 
     /// <summary>
+    /// When true, already-lossy audio is also eligible for re-encoding to the target codec, but
+    /// only when its source bitrate is known to exceed the target enough to save space. Defaults
+    /// to false: the conservative behaviour re-encodes only lossless sources.
+    /// </summary>
+    public bool ReencodeLossyAudio { get; set; }
+
+    /// <summary>
     /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an
     /// "archive" library demand near-lossless quality while a "space-saver" accepts
     /// more. Null uses the global threshold; only applied when the gate is enabled.

@@ -77,6 +77,7 @@
       !!library.videoAudioCodec ||
       library.videoAudioBitrateKbps != null ||
       library.downmixToStereo ||
+      library.reencodeLossyAudio ||
       library.minVmafHarmonicMean != null ||
       library.minVmafMin != null ||
       !!library.excludePaths ||
@@ -137,6 +138,7 @@
       videoAudioCodec: null,
       videoAudioBitrateKbps: null,
       downmixToStereo: false,
+      reencodeLossyAudio: false,
       moveOnComplete: false,
       targetFolder: null,
       minVmafHarmonicMean: null,
@@ -186,6 +188,7 @@
       videoAudioCodec: library.videoAudioCodec,
       videoAudioBitrateKbps: library.videoAudioBitrateKbps,
       downmixToStereo: library.downmixToStereo,
+      reencodeLossyAudio: library.reencodeLossyAudio,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
@@ -501,6 +504,16 @@
             <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
           </div>
         </div>
+
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
+          <span>
+            Re-encode lossy audio too
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              By default only lossless audio (e.g. FLAC) is re-encoded. Enable to also re-encode lossy sources (e.g. a 320 kbps MP3) — but only when their bitrate is high enough above the target to genuinely save space.
+            </span>
+          </span>
+        </label>
         {/if}
 
         {#if showVideoOptions}

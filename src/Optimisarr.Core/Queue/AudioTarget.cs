@@ -61,4 +61,19 @@ public static class AudioTarget
     /// <summary>Whether a codec is lossless (PCM variants and the known lossless families).</summary>
     public static bool IsLossless(string codec) =>
         codec.StartsWith("pcm_", StringComparison.OrdinalIgnoreCase) || LosslessCodecs.Contains(codec);
+
+    /// <summary>
+    /// How far a lossy source's bitrate must exceed the target before re-encoding it is
+    /// worthwhile. A re-encode always adds some generational loss, so a marginal saving is not
+    /// worth it; the source must be at least this fraction above the target (e.g. 0.25 = 25%).
+    /// </summary>
+    public const double LossyReencodeMinSavingRatio = 0.25;
+
+    /// <summary>
+    /// Whether re-encoding a lossy source at <paramref name="sourceKbps"/> down to
+    /// <paramref name="targetKbps"/> would genuinely save space — true only when the source is
+    /// comfortably above the target by <see cref="LossyReencodeMinSavingRatio"/>.
+    /// </summary>
+    public static bool LossyReencodeSaves(int sourceKbps, int targetKbps) =>
+        sourceKbps >= targetKbps * (1 + LossyReencodeMinSavingRatio);
 }

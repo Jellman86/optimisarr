@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Re-encode lossy audio when it genuinely saves space (Phase 10)
+
+- Audio optimisation previously only considered **lossless** sources (FLAC, ALAC, PCM, …),
+  leaving already-lossy files untouched to avoid generational quality loss. Each library can
+  now opt in to **re-encoding lossy audio too** (e.g. a 320 kbps MP3 → 128 kbps Opus) via a new
+  "Re-encode lossy audio too" toggle in the audio Advanced options. It defaults to **off**, so
+  the conservative lossless-only behaviour is unchanged unless the operator opts in.
+- The opt-in only makes a lossy file eligible when re-encoding it would **genuinely save
+  space**: the source bitrate must exceed the target by at least 25%
+  (`AudioTarget.LossyReencodeSaves`). A file already at/near the target, or one whose source
+  bitrate ffprobe could not report, is left untouched with a clear reason — so the queue never
+  churns a file for a marginal saving or a likely size *increase*. Re-encoding a file already
+  in the target codec is still skipped as before.
+- Probing now records the **source audio bitrate** (the highest audio stream's `bit_rate`, or
+  the container bitrate for an audio-only file; never the container bitrate of a video file,
+  which is dominated by video). New nullable `MediaFile.AudioBitrateKbps` and non-nullable
+  `Library.ReencodeLossyAudio` columns (one additive migration, defaulting existing rows to
+  null/false; re-running it is a no-op), carried in config export/import and surfaced as a Kind-
+  appropriate toggle. The pure `CandidateEvaluator`, `RuleResolver`, `AudioTarget`, and
+  `MediaProbeService.Parse` changes are unit tested.
+
 ### Library Advanced options are scoped to the media type (Phase 10)
 
 - The library Advanced-options form now shows **only the controls that apply to the library's

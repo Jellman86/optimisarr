@@ -61,7 +61,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.RelativePath,
                 file.OptimisedMarker,
                 file.MediaKind,
-                PrimaryAudioCodec(file.AudioCodecs));
+                PrimaryAudioCodec(file.AudioCodecs),
+                file.AudioBitrateKbps);
 
             // The rule decision says whether the file is worth optimising; the history
             // overlay then stops a file we've already optimised (or that failed) for its
