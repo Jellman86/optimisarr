@@ -444,10 +444,10 @@
 {#if loading}
   <div class="card p-8 text-center text-slate-400">Loading…</div>
 {:else}
-  <div class="mb-5 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-700">
+  <div class="no-scrollbar mb-5 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
     {#each tabs as tab}
       <button
-        class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
+        class="-mb-px flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
           ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
           : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
         onclick={() => (activeTab = tab.key)}
@@ -685,17 +685,19 @@
     {#if watchers.length > 0}
       <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
         {#each watchers as w (w.id)}
-          <li class="flex items-center gap-3 py-2">
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
             <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</div>
               <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
             </div>
-            {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-            {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title="Re-scans this server after a verified replacement.">refresh</span>{/if}
-            {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
-            <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
-            <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
+            <div class="flex flex-wrap items-center gap-2">
+              {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+              {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title="Re-scans this server after a verified replacement.">refresh</span>{/if}
+              {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
+              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
+              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
+            </div>
           </li>
         {/each}
       </ul>
@@ -784,17 +786,19 @@
     {#if targets.length > 0}
       <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
         {#each targets as t (t.id)}
-          <li class="flex items-center gap-3 py-2">
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
             <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t.type}</span>
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{t.name}</div>
               <div class="truncate font-mono text-[11px] text-slate-400" title={t.url}>{t.url}</div>
             </div>
-            {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-            {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">replaced</span>{/if}
-            {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">failed</span>{/if}
-            <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>Edit</button>
-            <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>Remove</button>
+            <div class="flex flex-wrap items-center gap-2">
+              {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+              {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">replaced</span>{/if}
+              {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">failed</span>{/if}
+              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>Edit</button>
+              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>Remove</button>
+            </div>
           </li>
         {/each}
       </ul>
@@ -866,16 +870,18 @@
     {#if arrs.length > 0}
       <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
         {#each arrs as c (c.id)}
-          <li class="flex items-center gap-3 py-2">
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
             <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
             <div class="min-w-0 flex-1">
               <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</div>
               <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
             </div>
-            {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-            {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No API key set — Optimisarr cannot query this manager.">no key</span>{/if}
-            <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>Edit</button>
-            <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>Remove</button>
+            <div class="flex flex-wrap items-center gap-2">
+              {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+              {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No API key set — Optimisarr cannot query this manager.">no key</span>{/if}
+              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>Edit</button>
+              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>Remove</button>
+            </div>
           </li>
         {/each}
       </ul>

@@ -111,3 +111,12 @@ body {
     left: 100%;
   }
 }
+
+/* Hide the scrollbar on horizontally-scrolling strips (e.g. the Settings tab bar on
+   mobile) while keeping them scrollable. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
