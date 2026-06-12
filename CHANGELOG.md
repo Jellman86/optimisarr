@@ -17,6 +17,11 @@
   changes"** indicator appears next to it; and discarding edits is guarded — cancelling, opening a
   different library, or starting a new one while there are unsaved changes prompts for
   confirmation, as does a full page reload/close.
+- **Navigation guard.** Leaving the page entirely with unsaved edits — clicking another sidebar
+  item or using the browser back/forward — now prompts the same confirmation instead of silently
+  discarding the changes. Implemented as a single leave-guard in the hash router that any page can
+  register while it has unsaved work (the library editor is the first to use it); a declined prompt
+  cancels the navigation and keeps you on the page.
 
 ### Image optimisation: per-library overrides (Phase 10)
 

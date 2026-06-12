@@ -50,15 +50,43 @@ function createLayout() {
 function createRouter() {
   const current = () => (window.location.hash.replace(/^#/, '') || '/')
   let route = $state(current())
+
+  // An optional guard a page registers while it has unsaved work. It returns true when it is
+  // safe to leave (nothing unsaved, or the user confirmed discarding). All in-app navigation
+  // funnels through the hash, so this one chokepoint covers sidebar links and back/forward alike.
+  let leaveGuard: (() => boolean) | null = null
+  let reverting = false
+
   window.addEventListener('hashchange', () => {
-    route = current()
+    if (reverting) {
+      reverting = false
+      return
+    }
+    const next = current()
+    if (next === route) return
+    if (leaveGuard && !leaveGuard()) {
+      // Blocked: restore the previous hash without advancing the active route.
+      reverting = true
+      window.location.hash = route
+      return
+    }
+    route = next
   })
+
   return {
     get path() {
       return route
     },
     go(path: string) {
       window.location.hash = path
+    },
+    // Register a guard; returns a disposer the page calls on unmount. Only one page is mounted
+    // at a time, so a single slot is enough.
+    guardLeave(fn: () => boolean) {
+      leaveGuard = fn
+      return () => {
+        if (leaveGuard === fn) leaveGuard = null
+      }
     },
   }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Library, type LibraryOptions, type SaveLibrary } from '../api'
+  import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
   import Icon from '../components/Icon.svelte'
@@ -158,14 +159,17 @@
     void load()
   })
 
-  // Warn before a full page reload/close (refresh, tab close) while edits are unsaved. SPA
-  // navigation between pages is separate; this guards the browser-level exit.
+  // Warn before a full page reload/close (refresh, tab close) while edits are unsaved.
   $effect(() => {
     if (editingId === null || !isDirty) return
     const warn = (event: BeforeUnloadEvent) => event.preventDefault()
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   })
+
+  // Guard in-app navigation away from this page (e.g. clicking another sidebar item) while the
+  // editor has unsaved changes — the same confirm as Cancel. Registered once for the page's life.
+  $effect(() => router.guardLeave(confirmDiscardIfDirty))
 
   function blankForm(): SaveLibrary {
     return {
