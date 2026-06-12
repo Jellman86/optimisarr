@@ -15,6 +15,10 @@
   second line rather than overflowing. The **Inventory, Candidates, Queue, and Quarantine**
   tables now hide secondary columns on small screens (revealing them progressively at `sm`/`md`/
   `lg`) so the essential columns and actions fit a phone without horizontal scrolling.
+- Fixed two follow-ups from the above: the mobile sidebar drawer now always shows nav **labels**
+  (the collapse-to-icons state is desktop-only, so a previously-collapsed session no longer left
+  the full-width drawer icon-only), and the library **Advanced options** panel always opens
+  collapsed instead of auto-expanding for libraries that had non-default settings.
 - **Library settings form.** The expanded per-library settings are reorganised into clearly
   titled sections — **Video**, **Audio**, **Audio channels**, **Eligibility & queue**,
   **Completed output** — each with a one-line description and separated by dividers, instead of

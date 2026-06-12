@@ -67,30 +67,6 @@
     return priorityLevels.find((level) => level.value === value)?.label ?? 'Normal'
   }
 
-  // Whether a library uses any setting beyond the basics, so editing it can open
-  // the advanced panel already expanded instead of hiding the user's own choices.
-  function usesAdvanced(library: Library): boolean {
-    return (
-      library.priority !== 0 ||
-      library.maxHeight != null ||
-      library.minFileSizeBytes != null ||
-      !!library.targetVideoCodec ||
-      !!library.targetContainer ||
-      !!library.hdrHandling ||
-      !!library.encoderPreset ||
-      library.qualityCrf != null ||
-      !!library.audioTargetCodec ||
-      library.audioBitrateKbps != null ||
-      !!library.videoAudioCodec ||
-      library.videoAudioBitrateKbps != null ||
-      library.downmixToStereo ||
-      library.reencodeLossyAudio ||
-      library.minVmafHarmonicMean != null ||
-      library.minVmafMin != null ||
-      !!library.excludePaths ||
-      library.moveOnComplete
-    )
-  }
 
   function hdrLabel(hdr: string): string {
     if (hdr === 'TonemapToSdr') return 'Tonemap to SDR'
@@ -218,7 +194,8 @@
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
-    showAdvanced = usesAdvanced(library)
+    // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
+    showAdvanced = false
     editingId = library.id
   }
 

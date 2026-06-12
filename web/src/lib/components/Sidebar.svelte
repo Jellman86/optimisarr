@@ -22,6 +22,19 @@
 
   let collapsed = $derived(layout.collapsed)
 
+  // The collapse-to-icons rail is a desktop-only affordance. On mobile the sidebar is a
+  // full-width drawer, so it must always show labels regardless of the persisted collapse
+  // state — otherwise a previously-collapsed desktop session leaves the drawer icon-only.
+  let isMobile = $state(false)
+  $effect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const update = () => (isMobile = mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  })
+  let railCollapsed = $derived(collapsed && !isMobile)
+
   function isActive(path: string) {
     return path === '/' ? router.path === '/' : router.path.startsWith(path)
   }
@@ -43,10 +56,10 @@
     }}
   >
     <BrandMark
-      sizes={collapsed ? '48px' : '144px'}
-      class="flex-shrink-0 drop-shadow-[0_0_18px_rgba(34,211,238,0.32)] transition-all duration-200 {collapsed ? 'h-12 w-12' : 'h-36 w-36'}"
+      sizes={railCollapsed ? '48px' : '144px'}
+      class="flex-shrink-0 drop-shadow-[0_0_18px_rgba(34,211,238,0.32)] transition-all duration-200 {railCollapsed ? 'h-12 w-12' : 'h-36 w-36'}"
     />
-    {#if !collapsed}
+    {#if !railCollapsed}
       <div class="leading-tight">
         <div class="font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</div>
         <div class="text-xs text-slate-500 dark:text-slate-400">Safe library optimiser</div>
@@ -63,7 +76,7 @@
         class:nav-button-inactive={item.enabled && !isActive(item.path)}
         class:nav-button-disabled={!item.enabled}
         disabled={!item.enabled}
-        title={!item.enabled ? `${item.label} — coming soon` : collapsed ? item.label : ''}
+        title={!item.enabled ? `${item.label} — coming soon` : railCollapsed ? item.label : ''}
         onclick={() => {
           if (!item.enabled) return
           router.go(item.path)
@@ -73,7 +86,7 @@
         <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d={item.icon} />
         </svg>
-        {#if !collapsed}
+        {#if !railCollapsed}
           <span class="flex-1">{item.label}</span>
           {#if !item.enabled}
             <span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">soon</span>
@@ -91,11 +104,11 @@
     class="border-t border-slate-200 px-2 py-1.5 text-center font-mono text-[10px] text-slate-400 transition-colors hover:text-cyan-600 dark:border-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
     title="Build {appVersion}"
   >
-    {collapsed ? gitHash.slice(0, 4) : `build ${gitHash}`}
+    {railCollapsed ? gitHash.slice(0, 4) : `build ${gitHash}`}
   </a>
 
   <!-- Footer: theme + collapse -->
-  <div class="flex items-center gap-1 border-t border-slate-200 p-2 dark:border-slate-700 {collapsed ? 'flex-col' : 'justify-between'}">
+  <div class="flex items-center gap-1 border-t border-slate-200 p-2 dark:border-slate-700 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title="Toggle theme" aria-label="Toggle theme">
       {#if theme.isDark}
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
