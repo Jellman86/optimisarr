@@ -474,23 +474,25 @@
   </button>
 
   {#if showAdvanced}
-    <div class="mt-4 space-y-6">
-      <!-- Encoding -->
-      <div>
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Encoding <span class="font-normal normal-case">— leave on "Profile default" to follow the preset</span>
-        </h3>
-        {#if showVideoOptions}
+    <!-- divide-y draws a separator between whichever sections are shown for this media type. -->
+    <div class="mt-4 divide-y divide-slate-200 dark:divide-slate-700">
+
+      {#if showVideoOptions}
+      <!-- VIDEO — scoped to Film/TV/Other libraries. -->
+      <section class="py-6 first:pt-0">
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Video</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">How video files are re-encoded. Leave a control on “Profile default” to follow the preset.</p>
+
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-codec">Target video codec</label>
+            <label class="label" for="lib-codec">Target codec</label>
             <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
               <option value={null}>Profile default</option>
               {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-container">Target container</label>
+            <label class="label" for="lib-container">Container</label>
             <select id="lib-container" class="input" bind:value={form.targetContainer}>
               <option value={null}>Profile default</option>
               {#each options.containers as container}<option value={container}>.{container}</option>{/each}
@@ -532,48 +534,10 @@
             <p class="text-xs text-slate-400">Using the preset's quality.</p>
           {/if}
         </div>
-        {/if}
 
-        {#if showAudioOptions}
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-audio-codec">Audio target codec</label>
-            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>Default (Opus)</option>
-              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
-            </select>
-            <p class="mt-1 text-xs text-slate-400">Lossless audio is re-encoded to this codec.</p>
-          </div>
-          <div>
-            <label class="label" for="lib-audio-bitrate">Audio bitrate (kbps)</label>
-            <input
-              id="lib-audio-bitrate"
-              class="input"
-              type="number"
-              min="32"
-              max="512"
-              placeholder="Default (128)"
-              bind:value={form.audioBitrateKbps}
-            />
-            <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
-          </div>
-        </div>
-
-        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
-          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
-          <span>
-            Re-encode lossy audio too
-            <span class="mt-0.5 block text-xs font-normal text-slate-400">
-              By default only lossless audio (e.g. FLAC) is re-encoded. Enable to also re-encode lossy sources (e.g. a 320 kbps MP3) — but only when their bitrate is high enough above the target to genuinely save space.
-            </span>
-          </span>
-        </label>
-        {/if}
-
-        {#if showVideoOptions}
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="label" for="lib-video-audio-codec">Video audio</label>
+            <label class="label" for="lib-video-audio-codec">Audio track</label>
             <select id="lib-video-audio-codec" class="input" bind:value={form.videoAudioCodec}>
               <option value={null}>Copy (leave audio untouched)</option>
               {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>Re-encode to {codec}</option>{/each}
@@ -581,7 +545,7 @@
             <p class="mt-1 text-xs text-slate-400">When re-encoding video, also transcode its audio. AAC is the most compatible.</p>
           </div>
           <div>
-            <label class="label" for="lib-video-audio-bitrate">Video audio bitrate (kbps)</label>
+            <label class="label" for="lib-video-audio-bitrate">Audio bitrate (kbps)</label>
             <input
               id="lib-video-audio-bitrate"
               class="input"
@@ -592,22 +556,10 @@
               disabled={!form.videoAudioCodec}
               bind:value={form.videoAudioBitrateKbps}
             />
-            <p class="mt-1 text-xs text-slate-400">32–512 kbps. Only applies when audio is re-encoded.</p>
+            <p class="mt-1 text-xs text-slate-400">32–512 kbps. Only applies when the audio track is re-encoded.</p>
           </div>
         </div>
-        {/if}
 
-        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
-          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
-          <span>
-            Downmix surround to stereo (2.0)
-            <span class="mt-0.5 block text-xs font-normal text-slate-400">
-              Reduces multichannel audio to stereo when re-encoding. Only applies where audio is re-encoded; copied tracks keep their layout.
-            </span>
-          </span>
-        </label>
-
-        {#if showVideoOptions}
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
             <span class="label mb-0">Quality-gate thresholds (VMAF)</span>
@@ -634,12 +586,70 @@
             <p class="text-xs text-slate-400">Using the global thresholds from Settings.</p>
           {/if}
         </div>
-        {/if}
-      </div>
+      </section>
+      {/if}
 
-      <!-- Eligibility & queue -->
-      <div>
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Eligibility &amp; queue</h3>
+      {#if showAudioOptions}
+      <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
+      <section class="py-6 first:pt-0">
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Audio</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">How audio-only files (music) are re-encoded.</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-audio-codec">Target codec</label>
+            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
+              <option value={null}>Default (Opus)</option>
+              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
+            </select>
+            <p class="mt-1 text-xs text-slate-400">Lossless audio is re-encoded to this codec.</p>
+          </div>
+          <div>
+            <label class="label" for="lib-audio-bitrate">Bitrate (kbps)</label>
+            <input
+              id="lib-audio-bitrate"
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder="Default (128)"
+              bind:value={form.audioBitrateKbps}
+            />
+            <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
+          </div>
+        </div>
+
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
+          <span>
+            Re-encode lossy audio too
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              By default only lossless audio (e.g. FLAC) is re-encoded. Enable to also re-encode lossy sources (e.g. a 320 kbps MP3) — but only when their bitrate is high enough above the target to genuinely save space.
+            </span>
+          </span>
+        </label>
+      </section>
+      {/if}
+
+      <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs). -->
+      <section class="py-6 first:pt-0">
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Audio channels</h3>
+        <p class="mt-0.5 mb-3 text-xs text-slate-400">Applies wherever audio is re-encoded; copied tracks keep their layout.</p>
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
+          <span>
+            Downmix surround to stereo (2.0)
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              Reduces multichannel audio (e.g. 5.1) to stereo, saving space where surround isn't needed.
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <!-- ELIGIBILITY & QUEUE -->
+      <section class="py-6 first:pt-0">
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Eligibility &amp; queue</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">Which files this library picks up, and how its jobs are prioritised.</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <div class="mb-1 flex items-center justify-between">
@@ -665,15 +675,16 @@
           <label class="label" for="lib-exclude">Exclude paths (one per line)</label>
           <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
         </div>
-      </div>
+      </section>
 
-      <!-- Completed output -->
-      <div>
-        <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Completed output</h3>
+      <!-- COMPLETED OUTPUT -->
+      <section class="py-6 first:pt-0">
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Completed output</h3>
+        <p class="mt-0.5 mb-3 text-xs text-slate-400">What happens to a finished file. Your originals are never touched either way.</p>
         <Toggle
           bind:checked={form.moveOnComplete}
           label="Move output to a target folder instead of replacing"
-          hint="Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — your originals are never touched. Useful for testing without re-copying source files."
+          hint="Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — useful for testing without re-copying source files."
         />
         {#if form.moveOnComplete}
           <div class="mt-3 max-w-xl">
@@ -684,7 +695,7 @@
             </div>
           </div>
         {/if}
-      </div>
+      </section>
     </div>
   {/if}
   <div class="mt-5 flex gap-2">

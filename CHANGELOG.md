@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### UI polish: mobile layout and a tidier library settings form
+
+- **Mobile layout.** On small screens the sidebar is now an off-canvas drawer (opened from a
+  hamburger in a new mobile top bar, dismissed by tapping the backdrop) and returns to the
+  static, collapsible rail at `md+`. Fixed the **horizontal overflow** where page content ran
+  off-screen to the right on phones — the main content column was sizing to its widest child;
+  it now has `min-w-0` so wide tables/grids stay within the viewport (and scroll within their
+  own card). Library card actions wrap instead of overflowing, and page padding tightens on
+  mobile.
+- **Library settings form.** The expanded per-library settings are reorganised into clearly
+  titled sections — **Video**, **Audio**, **Audio channels**, **Eligibility & queue**,
+  **Completed output** — each with a one-line description and separated by dividers, instead of
+  one long interleaved list. Sections are **scoped to the library's media type** (Video only for
+  Film/TV, Audio only for Music, both for Other), so an operator only sees the controls that
+  apply. All settings remain behind the collapsed **Advanced options** panel; the simple choice
+  (name, path, type, and the compatibility↔efficiency preset) stays up front.
+
 ### Optimisation preset is a simple compatibility↔efficiency slider (Phase 10)
 
 - The per-library encode preset is now a single **compatibility → efficiency slider**
