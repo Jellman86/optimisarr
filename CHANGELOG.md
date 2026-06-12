@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Library form: surface preset overrides, and unsaved-changes tracking
+
+- **Preset override visibility.** When a library sets its **Target codec** or **Container**
+  manually in Advanced, the compatibility↔efficiency preset slider can imply a codec that isn't
+  actually used. The slider now stays editable (it still sets the baseline the non-overridden
+  values follow) but shows an **"Overridden"** badge and a short note saying which setting was
+  taken over (e.g. "codec (AV1) and container (.mkv)"), with a **"Reset to preset"** action that
+  clears those two overrides. Chosen over disabling the slider so the operator is never trapped
+  and the state is honest. Only the codec/container overrides trigger this — unrelated Advanced
+  settings (audio, eligibility, etc.) don't.
+- **Unsaved-changes (dirty) tracking.** The library editor now tracks whether the form differs
+  from when it was opened: **Save** is disabled until something actually changes; an **"Unsaved
+  changes"** indicator appears next to it; and discarding edits is guarded — cancelling, opening a
+  different library, or starting a new one while there are unsaved changes prompts for
+  confirmation, as does a full page reload/close.
+
 ### Image optimisation: per-library overrides (Phase 10)
 
 - A library can now **override the image rules**, the same way it overrides audio/video: a **target

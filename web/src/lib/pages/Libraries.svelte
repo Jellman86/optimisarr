@@ -95,6 +95,24 @@
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
 
+  // Dirty tracking: a JSON snapshot of the form as it was opened. The live form compared against
+  // it tells us whether there are unsaved edits, so we can warn before discarding them and only
+  // enable Save when something actually changed.
+  let pristine = $state('')
+  function formSnapshot(): string {
+    return JSON.stringify({ ...form, minSizeMb })
+  }
+  function markPristine() {
+    pristine = formSnapshot()
+  }
+  const isDirty = $derived(formSnapshot() !== pristine)
+
+  // Returns true if it is safe to leave the current form (nothing open, no edits, or the user
+  // confirmed losing them). Called before opening a different form or closing the editor.
+  function confirmDiscardIfDirty(): boolean {
+    return editingId === null || !isDirty || confirm('You have unsaved changes. Discard them?')
+  }
+
   const BYTES_PER_MB = 1024 * 1024
 
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV,
@@ -118,8 +136,35 @@
     form.ruleProfile = checked ? 'RemuxCleanup' : 'ConservativeHevc'
   }
 
+  // The slider only picks a baseline profile; an explicit codec/container override in Advanced
+  // takes precedence, so the slider can imply a codec that isn't actually used. Surface that
+  // divergence instead of hiding it — the slider stays editable (it still sets the baseline the
+  // non-overridden values follow).
+  const presetOverridden = $derived(!isRemuxProfile && (form.targetVideoCodec != null || form.targetContainer != null))
+
+  function overrideSummary(): string {
+    const parts: string[] = []
+    if (form.targetVideoCodec) parts.push(`codec (${form.targetVideoCodec.toUpperCase()})`)
+    if (form.targetContainer) parts.push(`container (.${form.targetContainer})`)
+    return parts.join(' and ')
+  }
+
+  function resetToPreset() {
+    form.targetVideoCodec = null
+    form.targetContainer = null
+  }
+
   $effect(() => {
     void load()
+  })
+
+  // Warn before a full page reload/close (refresh, tab close) while edits are unsaved. SPA
+  // navigation between pages is separate; this guards the browser-level exit.
+  $effect(() => {
+    if (editingId === null || !isDirty) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
   })
 
   function blankForm(): SaveLibrary {
@@ -167,15 +212,18 @@
   }
 
   function startAdd() {
+    if (!confirmDiscardIfDirty()) return
     form = blankForm()
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     minSizeMb = ''
     showAdvanced = false
     editingId = 0
+    markPristine()
   }
 
   function startEdit(library: Library) {
+    if (!confirmDiscardIfDirty()) return
     form = {
       name: library.name,
       path: library.path,
@@ -212,9 +260,11 @@
     // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
     showAdvanced = false
     editingId = library.id
+    markPristine()
   }
 
   function cancelEdit() {
+    if (!confirmDiscardIfDirty()) return
     editingId = null
   }
 
@@ -264,6 +314,8 @@
         await api.updateLibrary(editingId, payload())
         message = `Updated library "${form.name}".`
       }
+      // The saved values are now the baseline, so the form is no longer dirty.
+      markPristine()
       editingId = null
       await load()
     } catch (err) {
@@ -390,7 +442,12 @@
        Music (audio-only) library shows its audio default instead. Exact codec/container/CRF/audio
        knobs live under Advanced options. -->
   <div class="mt-4">
-    <span class="label">Optimisation preset</span>
+    <div class="flex items-center gap-2">
+      <span class="label mb-0">Optimisation preset</span>
+      {#if showVideoOptions && presetOverridden}
+        <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="Codec/container set manually in Advanced options">Overridden</span>
+      {/if}
+    </div>
 
     {#if showVideoOptions}
       <label class="flex cursor-pointer items-start gap-2 text-sm">
@@ -428,6 +485,13 @@
       </div>
 
       <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{presetSummaries[form.ruleProfile] ?? 'Custom preset.'}</p>
+
+      {#if presetOverridden}
+        <div class="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          <span>The {overrideSummary()} {form.targetVideoCodec && form.targetContainer ? 'are' : 'is'} set manually in Advanced options, so the slider here only sets the baseline.</span>
+          <button type="button" class="ml-1 font-medium underline" onclick={resetToPreset}>Reset to preset</button>
+        </div>
+      {/if}
     {:else}
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Music library — the compatibility/efficiency video preset doesn't apply. Lossless audio is
@@ -750,8 +814,8 @@
       </section>
     </div>
   {/if}
-  <div class="mt-5 flex gap-2">
-    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path}>
+  <div class="mt-5 flex items-center gap-2">
+    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty}>
       <Icon name="check" class="h-4 w-4" />
       Save
     </button>
@@ -759,6 +823,9 @@
       <Icon name="x" class="h-4 w-4" />
       Cancel
     </button>
+    {#if isDirty}
+      <span class="ml-1 text-xs text-amber-600 dark:text-amber-400">Unsaved changes</span>
+    {/if}
   </div>
 {/snippet}
 
