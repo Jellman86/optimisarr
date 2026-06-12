@@ -491,7 +491,12 @@ Deliverables:
   (pure `ImageTarget` + image branch in `CandidateEvaluator`: lossless PNG/BMP/TIFF/GIF eligible,
   lossy JPEG behind a per-library opt-in, already-target-format and too-small skipped, with
   WebP/AVIF/JXL targets and conservative defaults). Command building, verification gates,
-  per-library overrides, and UI still to come.
+  per-library overrides, and UI still to come. **Image outputs must carry the same
+  `OptimisationMarker` as video/audio so a re-optimised image is recognised and skipped** —
+  but a single-image encoder does not carry container `format.tags`, so for images the marker
+  is written into an **EXIF** field and the probe reads it back from there (not just
+  `format.tags`). This is part of the command-building + probe slice and is required for the
+  idempotency/safety model, not optional.
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
   stereo downmix done**; image rules to follow.
