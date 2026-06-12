@@ -550,7 +550,68 @@ Exit criteria:
   read the size/quality deltas, and decide — with the original guaranteed
   untouched and the preview artifact cleaned up.
 
-## Phase 12: Release Hardening
+## Phase 12: Unified Library & Candidates Workspace
+
+Goal: stop treating a library's *configuration* and the *files that configuration
+selects* as two separate screens. Today the **Libraries** page edits a library's
+rules and the **Candidates** page (filtered by a library dropdown) shows the
+resulting eligible/skipped decisions — but they are the two halves of one mental
+loop: *change a rule → see what it now selects → enqueue it*. Splitting that loop
+across two pages means the operator tunes a setting on one screen, navigates to
+another, re-selects the same library, and reads the effect with no memory of what
+changed. Bringing them together makes the cause-and-effect immediate and is the
+natural home for the Phase 11 settings preview.
+
+This is a UX consolidation, not new domain logic; it can land independently of the
+phase numbering and reuses the existing `/api/libraries` and `/api/candidates`
+endpoints. It must be done *thoughtfully* — combining the views badly (one giant
+scrolling page, or burying the candidate list behind the rule form) would be worse
+than leaving them apart.
+
+Deliverables:
+
+- **A per-library workspace** (a library opens into its own view) that shows, in
+  one place: the library's identity and simple choice (name/path/type + the
+  compatibility↔efficiency preset) up top, its **Advanced options** still gated and
+  collapsed, and — alongside, not buried beneath — the **candidate list for that
+  library** with the same eligible/skipped reasons and enqueue actions the
+  Candidates page has now.
+- **Live cause-and-effect**: editing a rule re-resolves the candidate decisions for
+  that library (eligible/skipped counts and reasons update) so the operator sees
+  what a change selects *before* committing it. Decisions come from the existing
+  pure `CandidateEvaluator`, so this is a re-fetch/re-render, not new logic.
+- **A summary still reachable across libraries**: keep a way to see candidates (or
+  at least eligible counts) for *all* libraries at once, so the per-library focus
+  does not lose the fleet-wide view — e.g. the Libraries list shows each library's
+  eligible/skipped tally, and the all-libraries Candidates view stays available
+  (or folds into the Dashboard) rather than being deleted outright.
+- **Honest, unchanged safety semantics**: enqueue still only queues; nothing here
+  replaces or deletes. The workspace must not imply a rule change retroactively
+  un-optimises already-processed files.
+- A clear migration for the navigation: the sidebar's separate "Libraries" and
+  "Candidates" entries are reconsidered together (one "Libraries" workspace, with
+  candidates as a tab/panel within it) rather than left as two peers that overlap.
+
+Open questions to resolve during design (not pre-decided here):
+
+- Whether the candidate list lives as a **tab** within the library view, a **side
+  panel**, or an expandable section under each library card.
+- How live the re-resolve should be: on **save** (simplest, honest) vs. an
+  optimistic **preview** of unsaved edits (more powerful, closer to Phase 11, but
+  must never be mistaken for the persisted state).
+- Where the **all-libraries** candidate overview ultimately belongs (its own page,
+  the Dashboard, or a roll-up on the Libraries list).
+
+Exit criteria:
+
+- An operator can open one library, adjust its rules, and see the eligible/skipped
+  candidate list for that library update in the same place, then enqueue — without
+  hopping between two screens and re-selecting the library.
+- The fleet-wide candidate/eligibility overview is still reachable.
+- No change weakens or misrepresents the safety model; enqueue remains the only
+  action and it only queues.
+
+## Phase 13: Release Hardening
 
 Goal: make the first public image safe for real libraries.
 
