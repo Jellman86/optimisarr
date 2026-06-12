@@ -293,6 +293,8 @@ export type Candidate = {
   videoCodec: string | null
   height: number | null
   isHdr: boolean
+  mediaKind: string
+  codec: string | null
   profile: string
   eligible: boolean
   reason: string

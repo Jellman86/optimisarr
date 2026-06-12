@@ -21,6 +21,10 @@ A sweep of places that assumed every library is video:
   labelled e.g. "ConservativeHevc" — a meaningless video preset. The profile badge on the library
   card, the preset slider, and the preset summary are all video-only now; Music and Photo show a
   type-appropriate note (audio → Opus, images → WebP) instead of a video preset.
+- **Candidates page is kind-aware.** Its "Video" column (which only ever showed the video codec)
+  is now a **Codec** column showing the codec that matters for each file — audio codec for music,
+  image codec for stills — and audio/image rows carry a small **Kind** badge. The candidate API
+  gained `mediaKind` and a unified `codec` field to back this.
 
 ### Library form: surface preset overrides, and unsaved-changes tracking
 

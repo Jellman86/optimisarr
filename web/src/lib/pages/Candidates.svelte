@@ -92,7 +92,7 @@
           <th class="px-4 py-3">Status</th>
           <th class="px-4 py-3">File</th>
           <th class="hidden px-4 py-3 sm:table-cell">Size</th>
-          <th class="hidden px-4 py-3 md:table-cell">Video</th>
+          <th class="hidden px-4 py-3 md:table-cell">Codec</th>
           <th class="hidden px-4 py-3 lg:table-cell">Profile</th>
           <th class="px-4 py-3">Reason</th>
         </tr>
@@ -107,10 +107,14 @@
                 <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">Skipped</span>
               {/if}
             </td>
-            <td class="max-w-[50vw] truncate px-4 py-2 font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>{candidate.relativePath}</td>
+            <td class="max-w-[50vw] truncate px-4 py-2 font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
+              {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
+                <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind}</span>
+              {/if}{candidate.relativePath}
+            </td>
             <td class="hidden px-4 py-2 sm:table-cell">{formatSize(candidate.sizeBytes)}</td>
             <td class="hidden px-4 py-2 md:table-cell">
-              {candidate.videoCodec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">HDR</span>{/if}
+              {candidate.codec ?? '—'}{#if candidate.isHdr}<span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">HDR</span>{/if}
             </td>
             <td class="hidden px-4 py-2 text-xs lg:table-cell">{candidate.profile}</td>
             <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{candidate.reason}</td>

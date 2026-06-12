@@ -14,6 +14,8 @@ public sealed record Candidate(
     string? VideoCodec,
     int? Height,
     bool IsHdr,
+    string MediaKind,
+    string? Codec,
     string Profile,
     bool Eligible,
     string Reason);
@@ -51,6 +53,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
             var profile = LibraryRuleResolution.ProfileOf(library);
             var rules = LibraryRuleResolution.Resolve(library);
 
+            var audioCodec = PrimaryAudioCodec(file.AudioCodecs);
             var media = new MediaProperties(
                 file.Container,
                 file.VideoCodec,
@@ -61,8 +64,12 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.RelativePath,
                 file.OptimisedMarker,
                 file.MediaKind,
-                PrimaryAudioCodec(file.AudioCodecs),
+                audioCodec,
                 file.AudioBitrateKbps);
+
+            // The codec that matters depends on the kind: audio files report their audio codec,
+            // while video and still-image files both carry it as the (probe's) video codec.
+            var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
 
             // The rule decision says whether the file is worth optimising; the history
             // overlay then stops a file we've already optimised (or that failed) for its
@@ -81,6 +88,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 file.VideoCodec,
                 file.Height,
                 file.IsHdr,
+                file.MediaKind.ToString(),
+                codec,
                 profile.ToString(),
                 decision.IsEligible,
                 decision.Reason));
