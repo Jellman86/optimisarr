@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fix: scope the optimisation-preset slider to the library's media type
+
+- The top-of-form **compatibility↔efficiency preset slider** is a *video* decision (it picks
+  H.264/HEVC/AV1), but it was shown for every media type — so switching a library to **Music**
+  left the video slider and its video-centric summary in place, unchanged. It is now scoped like
+  the Advanced sections: Film/TV and Other show the slider (and remux toggle + preset summary),
+  while a Music library shows a short audio-appropriate note instead (lossless → Opus 128 kbps by
+  default; codec/bitrate in Advanced). No behaviour change to saved values — purely which control
+  is presented.
+
 ### Image optimisation: kind-aware verification gates (Phase 10)
 
 - Verification is now **image-aware**, so an image job can pass through to replacement instead

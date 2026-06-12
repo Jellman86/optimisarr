@@ -368,47 +368,56 @@
     </div>
   </div>
 
-  <!-- Optimisation preset: one simple choice on a compatibility→efficiency axis. Exact
-       codec/container/CRF/audio settings live under Advanced options. -->
+  <!-- Optimisation preset: the simple primary choice, scoped to the library's media type.
+       The compatibility→efficiency axis is a *video* decision (it picks H.264/HEVC/AV1), so a
+       Music (audio-only) library shows its audio default instead. Exact codec/container/CRF/audio
+       knobs live under Advanced options. -->
   <div class="mt-4">
     <span class="label">Optimisation preset</span>
 
-    <label class="flex cursor-pointer items-start gap-2 text-sm">
-      <input
-        type="checkbox"
-        class="checkbox mt-0.5"
-        checked={isRemuxProfile}
-        onchange={(e) => toggleRemux(e.currentTarget.checked)}
-      />
-      <span>
-        Just clean up containers — no re-encode
-        <span class="mt-0.5 block text-xs font-normal text-slate-400">
-          Fast and lossless: remux into a clean container without touching the video or audio.
+    {#if showVideoOptions}
+      <label class="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          class="checkbox mt-0.5"
+          checked={isRemuxProfile}
+          onchange={(e) => toggleRemux(e.currentTarget.checked)}
+        />
+        <span>
+          Just clean up containers — no re-encode
+          <span class="mt-0.5 block text-xs font-normal text-slate-400">
+            Fast and lossless: remux into a clean container without touching the video or audio.
+          </span>
         </span>
-      </span>
-    </label>
+      </label>
 
-    <div class="mt-3 {isRemuxProfile ? 'pointer-events-none opacity-40' : ''}">
-      <input
-        type="range"
-        min="0"
-        max="2"
-        step="1"
-        class="w-full"
-        aria-label="Compatibility to efficiency"
-        value={encodeStop}
-        disabled={isRemuxProfile}
-        oninput={(e) => setEncodeStop(e.currentTarget.value)}
-      />
-      <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-        {#each encodeStopLabels as stop, i}
-          <span class={!isRemuxProfile && encodeStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
-        {/each}
+      <div class="mt-3 {isRemuxProfile ? 'pointer-events-none opacity-40' : ''}">
+        <input
+          type="range"
+          min="0"
+          max="2"
+          step="1"
+          class="w-full"
+          aria-label="Compatibility to efficiency"
+          value={encodeStop}
+          disabled={isRemuxProfile}
+          oninput={(e) => setEncodeStop(e.currentTarget.value)}
+        />
+        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+          {#each encodeStopLabels as stop, i}
+            <span class={!isRemuxProfile && encodeStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+          {/each}
+        </div>
       </div>
-    </div>
-  </div>
 
-  <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{presetSummaries[form.ruleProfile] ?? 'Custom preset.'}</p>
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{presetSummaries[form.ruleProfile] ?? 'Custom preset.'}</p>
+    {:else}
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        Music library — the compatibility/efficiency video preset doesn't apply. Lossless audio is
+        re-encoded to Opus 128&nbsp;kbps by default; fine-tune the codec and bitrate in Advanced options.
+      </p>
+    {/if}
+  </div>
 
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
