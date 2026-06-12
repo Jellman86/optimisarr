@@ -116,13 +116,23 @@
 
   const BYTES_PER_MB = 1024 * 1024
 
-  // Advanced controls are scoped to the library's media type: video knobs for Film/TV,
-  // audio knobs for Music, and everything for a mixed "Other" library that may hold both.
-  const showVideoOptions = $derived(form.mediaType !== 'Music')
-  const showAudioOptions = $derived(form.mediaType === 'Music' || form.mediaType === 'Other')
-  // Images live in mixed "Other" libraries (there is no dedicated photo type), so the image
-  // knobs are scoped there. Other types use the sane defaults (WebP, quality 80).
-  const showImageOptions = $derived(form.mediaType === 'Other')
+  // Which optimisation pipelines a media type involves. Used both to scope the Advanced controls
+  // and to decide whether the (video-only) preset profile is meaningful for a library.
+  function isVideoType(type: string): boolean {
+    return type !== 'Music' && type !== 'Photo'
+  }
+  function isAudioType(type: string): boolean {
+    return type === 'Music' || type === 'Other'
+  }
+  function isImageType(type: string): boolean {
+    return type === 'Photo' || type === 'Other'
+  }
+
+  // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
+  // Music, images for Photo, and everything for a mixed "Other" library that may hold any of them.
+  const showVideoOptions = $derived(isVideoType(form.mediaType))
+  const showAudioOptions = $derived(isAudioType(form.mediaType))
+  const showImageOptions = $derived(isImageType(form.mediaType))
 
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
   // Where the current profile sits on the slider; defaults to Balanced (HEVC) for Remux/unknown.
@@ -496,6 +506,11 @@
           <button type="button" class="ml-1 font-medium underline" onclick={resetToPreset}>Reset to preset</button>
         </div>
       {/if}
+    {:else if form.mediaType === 'Photo'}
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        Photo library — the compatibility/efficiency video preset doesn't apply. Lossless images
+        (PNG/BMP/TIFF/GIF) are re-encoded to WebP by default; fine-tune the format and quality in Advanced options.
+      </p>
     {:else}
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Music library — the compatibility/efficiency video preset doesn't apply. Lossless audio is
@@ -703,7 +718,7 @@
       {/if}
 
       {#if showImageOptions}
-      <!-- IMAGES — scoped to mixed "Other" libraries (still images). -->
+      <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="py-6 first:pt-0">
         <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Images</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How still images are re-encoded. Lossless sources (PNG/BMP/TIFF/GIF) are converted to a modern format.</p>
@@ -751,7 +766,9 @@
       </section>
       {/if}
 
-      <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs). -->
+      {#if showVideoOptions || showAudioOptions}
+      <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
+           Photo library, which has no audio. -->
       <section class="py-6 first:pt-0">
         <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Audio channels</h3>
         <p class="mt-0.5 mb-3 text-xs text-slate-400">Applies wherever audio is re-encoded; copied tracks keep their layout.</p>
@@ -765,6 +782,7 @@
           </span>
         </label>
       </section>
+      {/if}
 
       <!-- ELIGIBILITY & QUEUE -->
       <section class="py-6 first:pt-0">
@@ -849,7 +867,11 @@
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
               <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{library.mediaType}</span>
-              <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{library.ruleProfile}</span>
+              <!-- The rule profile is a video preset; only show it for video libraries (it is
+                   meaningless for Music/Photo, which use their own audio/image rules). -->
+              {#if isVideoType(library.mediaType)}
+                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{library.ruleProfile}</span>
+              {/if}
               {#if library.priority !== 0}
                 <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">priority {library.priority}</span>
               {/if}

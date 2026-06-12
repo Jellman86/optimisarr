@@ -1,3 +1,4 @@
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 
 namespace Optimisarr.Tests;
@@ -32,6 +33,49 @@ public sealed class LibraryScannerTests : IDisposable
 
         Assert.Single(result.Files);
         Assert.Equal(2, result.SkippedNonMedia);
+    }
+
+    [Fact]
+    public void A_music_library_discovers_audio_and_ignores_video_and_images()
+    {
+        WriteFile("Album/Track.flac", modifiedMinutesAgo: 30);
+        WriteFile("Album/cover.jpg", modifiedMinutesAgo: 30);
+        WriteFile("Album/bonus.mkv", modifiedMinutesAgo: 30);
+
+        var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(MediaType.Music) };
+        var result = _scanner.Scan(_root, options, _now);
+
+        var file = Assert.Single(result.Files);
+        Assert.EndsWith("Track.flac", file.RelativePath);
+    }
+
+    [Fact]
+    public void A_photo_library_discovers_images_and_ignores_video_and_audio()
+    {
+        WriteFile("Photos/IMG_1.png", modifiedMinutesAgo: 30);
+        WriteFile("Photos/clip.mp4", modifiedMinutesAgo: 30);
+        WriteFile("Photos/song.mp3", modifiedMinutesAgo: 30);
+
+        var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(MediaType.Photo) };
+        var result = _scanner.Scan(_root, options, _now);
+
+        var file = Assert.Single(result.Files);
+        Assert.EndsWith("IMG_1.png", file.RelativePath);
+    }
+
+    [Fact]
+    public void An_other_library_discovers_video_audio_and_images()
+    {
+        WriteFile("Mixed/movie.mkv", modifiedMinutesAgo: 30);
+        WriteFile("Mixed/track.flac", modifiedMinutesAgo: 30);
+        WriteFile("Mixed/photo.jpg", modifiedMinutesAgo: 30);
+        WriteFile("Mixed/notes.nfo", modifiedMinutesAgo: 30);
+
+        var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(MediaType.Other) };
+        var result = _scanner.Scan(_root, options, _now);
+
+        Assert.Equal(3, result.Files.Count);
+        Assert.Equal(1, result.SkippedNonMedia);
     }
 
     [Fact]

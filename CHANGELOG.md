@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Fix: media-type handling — non-video libraries now work properly
+
+A sweep of places that assumed every library is video:
+
+- **Scans now discover the right files for the library's type.** The scanner only knew video
+  extensions, so a **Music or Photo library discovered nothing** (and a re-scan of an "Other"
+  library missed its audio/images). `LibraryScanner` now has separate video/audio/image extension
+  sets and an `ExtensionsFor(MediaType)` helper; the inventory scan picks the set matching the
+  library — audio for Music, images for Photo, video for Film/TV, all three for Other — so a Film
+  library still ignores stray poster images while a Music/Photo library finds its content. The
+  image set is shared with the kind classifier so discovery and classification can't drift.
+- **New `Photo` media type.** Still-image libraries no longer have to masquerade as "Other": a
+  `Photo` type discovers images and exposes the image rules. The Advanced sections are now scoped
+  via `isVideoType`/`isAudioType`/`isImageType` (images show for Photo *and* Other; the Audio
+  channels control is hidden for a Photo library, which has no audio).
+- **The rule-profile badge no longer shows on non-video libraries.** A Music or Photo library was
+  labelled e.g. "ConservativeHevc" — a meaningless video preset. The profile badge on the library
+  card, the preset slider, and the preset summary are all video-only now; Music and Photo show a
+  type-appropriate note (audio → Opus, images → WebP) instead of a video preset.
+
 ### Library form: surface preset overrides, and unsaved-changes tracking
 
 - **Preset override visibility.** When a library sets its **Target codec** or **Container**

@@ -40,7 +40,10 @@ public sealed class LibraryInventoryService(
 
     public async Task<ScanSummary> ScanAsync(Data.Library library, CancellationToken cancellationToken)
     {
-        var result = scanner.Scan(library.Path, new LibraryScanOptions(), DateTimeOffset.UtcNow);
+        // Discover the file types this library's media type actually holds (audio for Music,
+        // images for Photo, video for Film/TV, all for Other), not just video.
+        var options = new LibraryScanOptions { Extensions = LibraryScanner.ExtensionsFor(library.MediaType) };
+        var result = scanner.Scan(library.Path, options, DateTimeOffset.UtcNow);
 
         var existingByPath = await db.MediaFiles
             .Where(file => file.LibraryId == library.Id)

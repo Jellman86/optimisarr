@@ -21,8 +21,9 @@ public enum MediaKind
 public static class MediaKindClassifier
 {
     // Still-image containers report a video stream (mjpeg, png, …), so the extension is the
-    // most reliable signal that a file is a picture rather than a one-frame video.
-    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    // most reliable signal that a file is a picture rather than a one-frame video. Exposed so the
+    // library scanner discovers the same image files this classifier recognises.
+    public static readonly IReadOnlySet<string> ImageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff",
         ".heic", ".heif", ".avif", ".jxl"
