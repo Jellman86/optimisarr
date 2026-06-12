@@ -58,6 +58,22 @@ public sealed class Library
     public int? AudioBitrateKbps { get; set; }
 
     /// <summary>
+    /// The codec a video job re-encodes its audio tracks to (e.g. "aac", "opus", "mp3").
+    /// Null (the default) copies the audio untouched, so nothing changes unless the operator
+    /// opts in. Separate from <see cref="AudioTargetCodec"/>, which governs audio-only files.
+    /// </summary>
+    public string? VideoAudioCodec { get; set; }
+
+    /// <summary>The bitrate (kbps) for a video's audio re-encode. Null uses the default; only applied when <see cref="VideoAudioCodec"/> is set.</summary>
+    public int? VideoAudioBitrateKbps { get; set; }
+
+    /// <summary>
+    /// When true, multichannel audio is downmixed to 2.0 stereo on re-encode (audio-only jobs
+    /// and the re-encoded audio of a video transcode). Defaults to false so surround is kept.
+    /// </summary>
+    public bool DownmixToStereo { get; set; }
+
+    /// <summary>
     /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an
     /// "archive" library demand near-lossless quality while a "space-saver" accepts
     /// more. Null uses the global threshold; only applied when the gate is enabled.

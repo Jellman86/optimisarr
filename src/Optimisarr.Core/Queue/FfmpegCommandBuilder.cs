@@ -18,7 +18,8 @@ public sealed record TranscodeSpec(
     bool TonemapToSdr,
     MediaKind Kind = MediaKind.Video,
     string? AudioEncoder = null,
-    int? AudioBitrateKbps = null);
+    int? AudioBitrateKbps = null,
+    bool DownmixToStereo = false);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -94,6 +95,13 @@ public static class FfmpegCommandBuilder
             // Remux only: copy every stream into the new container, no re-encode.
             args.Add("-c");
             args.Add("copy");
+
+            // A library may still opt to shrink the audio; override the blanket copy for the
+            // audio streams only, leaving video and subtitles untouched.
+            if (spec.AudioEncoder is not null)
+            {
+                AppendAudioCodec(args, spec);
+            }
             return;
         }
 
@@ -118,11 +126,44 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
-        // Audio and subtitles are preserved untouched in this phase.
-        args.Add("-c:a");
-        args.Add("copy");
+        // Audio is copied untouched unless the library opted into re-encoding it; subtitles
+        // are always preserved.
+        if (spec.AudioEncoder is not null)
+        {
+            AppendAudioCodec(args, spec);
+        }
+        else
+        {
+            args.Add("-c:a");
+            args.Add("copy");
+        }
         args.Add("-c:s");
         args.Add("copy");
+    }
+
+    private static void AppendAudioCodec(List<string> args, TranscodeSpec spec)
+    {
+        args.Add("-c:a");
+        args.Add(spec.AudioEncoder!);
+
+        if (spec.AudioBitrateKbps is { } bitrate)
+        {
+            args.Add("-b:a");
+            args.Add($"{bitrate}k");
+        }
+
+        AppendDownmix(args, spec);
+    }
+
+    // A stereo downmix is only meaningful on a re-encode (a copied track keeps its layout),
+    // so the resolver only sets the flag when audio is actually being re-encoded.
+    private static void AppendDownmix(List<string> args, TranscodeSpec spec)
+    {
+        if (spec.DownmixToStereo)
+        {
+            args.Add("-ac");
+            args.Add("2");
+        }
     }
 
     private static void AppendAudioArguments(List<string> args, TranscodeSpec spec)
@@ -142,6 +183,8 @@ public static class FfmpegCommandBuilder
             args.Add("-b:a");
             args.Add($"{bitrate}k");
         }
+
+        AppendDownmix(args, spec);
 
         // "?" makes the cover-art stream optional so audio with no embedded art still works.
         args.Add("-map");

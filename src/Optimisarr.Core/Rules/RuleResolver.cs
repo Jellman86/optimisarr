@@ -20,7 +20,10 @@ public static class RuleResolver
             Hdr = overrides.Hdr ?? settings.Hdr,
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
             TargetAudioCodec = Normalise(overrides.TargetAudioCodec) ?? settings.TargetAudioCodec,
-            AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps
+            AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps,
+            VideoAudioCodec = Normalise(overrides.VideoAudioCodec) ?? settings.VideoAudioCodec,
+            VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
+            DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo
         };
     }
 

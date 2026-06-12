@@ -20,6 +20,9 @@ internal readonly record struct ParsedLibrary(
     string? EncoderPreset,
     string? AudioTargetCodec,
     int? AudioBitrateKbps,
+    string? VideoAudioCodec,
+    int? VideoAudioBitrateKbps,
+    bool DownmixToStereo,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -115,6 +118,19 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var videoAudioCodec = Trim(request.VideoAudioCodec);
+        if (videoAudioCodec is not null && !AudioTarget.IsSupportedTarget(videoAudioCodec))
+        {
+            error = $"Unknown video audio codec: {videoAudioCodec}. Expected one of {string.Join(", ", AudioTarget.SupportedCodecs)}.";
+            return false;
+        }
+
+        if (request.VideoAudioBitrateKbps is < 32 or > 512)
+        {
+            error = "Video audio bitrate must be between 32 and 512 kbps.";
+            return false;
+        }
+
         if (!TryParseWindowTime(request.AutoEnqueueWindowStart, out var autoStart))
         {
             error = "Auto-enqueue window start must use HH:mm format.";
@@ -161,6 +177,9 @@ internal static class LibraryRequestParser
             Trim(request.EncoderPreset),
             audioTargetCodec is null ? null : audioTargetCodec.ToLowerInvariant(),
             request.AudioBitrateKbps,
+            videoAudioCodec is null ? null : videoAudioCodec.ToLowerInvariant(),
+            request.VideoAudioBitrateKbps,
+            request.DownmixToStereo ?? false,
             moveOnComplete,
             targetFolder,
             request.MinVmafHarmonicMean,

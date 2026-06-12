@@ -226,4 +226,73 @@ public sealed class FfmpegCommandBuilderTests
 
         Assert.DoesNotContain("-metadata", args);
     }
+
+    [Fact]
+    public void Re_encodes_a_videos_audio_when_an_audio_encoder_is_set()
+    {
+        var spec = Reencode() with { AudioEncoder = "aac", AudioBitrateKbps = 160 };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        var audioIndex = IndexOf(args, "-c:a");
+        Assert.Equal("aac", args[audioIndex + 1]);
+        var bitrateIndex = IndexOf(args, "-b:a");
+        Assert.Equal("160k", args[bitrateIndex + 1]);
+        // Video is still re-encoded and subtitles copied.
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("copy", args[IndexOf(args, "-c:s") + 1]);
+    }
+
+    [Fact]
+    public void Re_encodes_the_audio_of_a_remux_only_job_when_requested()
+    {
+        var spec = Reencode(videoCodec: null) with { AudioEncoder = "aac", AudioBitrateKbps = 160 };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        // Video and subtitles still copy via the blanket "-c copy"; only audio is overridden.
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+        Assert.DoesNotContain("-c:v", args);
+        var audioIndex = IndexOf(args, "-c:a");
+        Assert.Equal("aac", args[audioIndex + 1]);
+        Assert.Equal("160k", args[IndexOf(args, "-b:a") + 1]);
+    }
+
+    [Fact]
+    public void Copies_audio_with_no_bitrate_when_no_audio_encoder_is_set()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.Equal("copy", args[IndexOf(args, "-c:a") + 1]);
+        Assert.DoesNotContain("-b:a", args);
+    }
+
+    [Fact]
+    public void Downmixes_an_audio_job_to_stereo_when_requested()
+    {
+        var spec = AudioReencode() with { DownmixToStereo = true };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        var acIndex = IndexOf(args, "-ac");
+        Assert.Equal("2", args[acIndex + 1]);
+    }
+
+    [Fact]
+    public void Downmixes_a_videos_re_encoded_audio_to_stereo_when_requested()
+    {
+        var spec = Reencode() with { AudioEncoder = "aac", AudioBitrateKbps = 160, DownmixToStereo = true };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.Equal("aac", args[IndexOf(args, "-c:a") + 1]);
+        Assert.Equal("2", args[IndexOf(args, "-ac") + 1]);
+    }
+
+    [Fact]
+    public void Does_not_downmix_when_not_requested()
+    {
+        Assert.DoesNotContain("-ac", FfmpegCommandBuilder.Build(AudioReencode()));
+        Assert.DoesNotContain("-ac", FfmpegCommandBuilder.Build(Reencode()));
+    }
 }

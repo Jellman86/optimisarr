@@ -32,7 +32,8 @@ public static class TranscodeSpecResolver
                 TonemapToSdr: false,
                 Kind: MediaKind.Audio,
                 AudioEncoder: audio.Encoder,
-                AudioBitrateKbps: rules.AudioBitrateKbps);
+                AudioBitrateKbps: rules.AudioBitrateKbps,
+                DownmixToStereo: rules.DownmixToStereo);
         }
 
         var outputPath = BuildOutputPath(workRoot, relativePath, rules.TargetContainer);
@@ -42,13 +43,23 @@ public static class TranscodeSpecResolver
             && rules.TargetVideoCodec is not null
             && rules.Hdr == HdrHandling.TonemapToSdr;
 
+        // By default a video's audio is copied untouched; a library can opt into re-encoding
+        // it to a chosen codec/bitrate, reusing the same encoder mapping as audio-only jobs.
+        var audioEncoder = rules.VideoAudioCodec is { } videoAudioCodec
+            ? AudioTarget.Resolve(videoAudioCodec).Encoder
+            : null;
+
         return new TranscodeSpec(
             inputPath,
             outputPath,
             rules.TargetVideoCodec,
             rules.TargetVideoCodec is null ? null : crf,
             rules.TargetVideoCodec is null ? null : preset,
-            tonemap);
+            tonemap,
+            AudioEncoder: audioEncoder,
+            AudioBitrateKbps: audioEncoder is null ? null : rules.VideoAudioBitrateKbps,
+            // A downmix needs an audio re-encode; a copied track keeps its layout.
+            DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo);
     }
 
     private static string BuildOutputPath(string workRoot, string relativePath, string targetContainer)

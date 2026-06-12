@@ -310,7 +310,12 @@ public sealed class QueueDispatcher(
             media.SubtitleTrackCount ?? 0,
             media.IsHdr,
             rules.Hdr == HdrHandling.TonemapToSdr,
-            media.MediaKind);
+            media.MediaKind,
+            // A video job whose audio was re-encoded (not copied) may legitimately normalise
+            // the sample rate, so the audio-fidelity gate must treat it like an audio job.
+            AudioReencoded: media.MediaKind != MediaKind.Audio && spec.AudioEncoder is not null,
+            // An operator-requested stereo downmix is an intentional channel reduction.
+            AudioDownmixed: spec.DownmixToStereo);
 
         // Audio jobs use the built-in libopus encoder from the spec; only a video re-encode
         // needs a hardware/software encoder resolved (and may fail if it is unavailable).

@@ -42,6 +42,9 @@ export type LibraryRules = {
   encoderPreset: string | null
   audioTargetCodec: string | null
   audioBitrateKbps: number | null
+  videoAudioCodec: string | null
+  videoAudioBitrateKbps: number | null
+  downmixToStereo: boolean
   moveOnComplete: boolean
   targetFolder: string | null
   minVmafHarmonicMean: number | null

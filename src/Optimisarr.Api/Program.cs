@@ -690,6 +690,9 @@ app.MapPost("/api/libraries", async (
         EncoderPreset = parsed.EncoderPreset,
         AudioTargetCodec = parsed.AudioTargetCodec,
         AudioBitrateKbps = parsed.AudioBitrateKbps,
+        VideoAudioCodec = parsed.VideoAudioCodec,
+        VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
+        DownmixToStereo = parsed.DownmixToStereo,
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
@@ -743,6 +746,9 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.EncoderPreset = parsed.EncoderPreset;
     library.AudioTargetCodec = parsed.AudioTargetCodec;
     library.AudioBitrateKbps = parsed.AudioBitrateKbps;
+    library.VideoAudioCodec = parsed.VideoAudioCodec;
+    library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
+    library.DownmixToStereo = parsed.DownmixToStereo;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
@@ -1170,6 +1176,9 @@ internal sealed record SaveLibraryRequest(
     string? EncoderPreset,
     string? AudioTargetCodec,
     int? AudioBitrateKbps,
+    string? VideoAudioCodec,
+    int? VideoAudioBitrateKbps,
+    bool? DownmixToStereo,
     bool? MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1196,6 +1205,9 @@ internal sealed record LibraryDto(
     string? EncoderPreset,
     string? AudioTargetCodec,
     int? AudioBitrateKbps,
+    string? VideoAudioCodec,
+    int? VideoAudioBitrateKbps,
+    bool DownmixToStereo,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1226,6 +1238,9 @@ internal sealed record LibraryDto(
         library.EncoderPreset,
         library.AudioTargetCodec,
         library.AudioBitrateKbps,
+        library.VideoAudioCodec,
+        library.VideoAudioBitrateKbps,
+        library.DownmixToStereo,
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,

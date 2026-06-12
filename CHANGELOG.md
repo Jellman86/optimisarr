@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Stereo downmix (Phase 10)
+
+- Each library can now **downmix multichannel audio to 2.0 stereo** on re-encode, in Advanced
+  options. It applies to audio-only jobs and to the re-encoded audio of a video transcode
+  (only where the audio is actually re-encoded — a copied track keeps its layout), emitting
+  `-ac 2`. Defaults to **off**, so surround is preserved unless the operator opts in. New
+  non-nullable `Library.DownmixToStereo` column (additive migration defaulting existing rows
+  to false; re-running it is a no-op), carried in config export/import.
+- The verification audio-fidelity gate understands the **intentional reduction**: a requested
+  downmix (e.g. 5.1 → 2.0) passes instead of being flagged as a silent channel loss, while an
+  *unrequested* downmix still fails and a downmix that dropped audio entirely still fails. The
+  pure `FfmpegCommandBuilder`, `TranscodeSpecResolver`, `RuleResolver`, and
+  `VerificationEvaluator` changes are unit tested.
+
+### Audio codec selection for video transcodes (Phase 10)
+
+- A video re-encode previously always copied its audio (`-c:a copy`). Each library can now
+  opt to **transcode the audio of a video** to a chosen codec and bitrate in Advanced options
+  — **AAC** (the broadly compatible default), **Opus**, or **MP3** — reusing the same encoder
+  mapping as audio-only jobs. The control defaults to **Copy (leave audio untouched)**, so
+  nothing changes unless the operator opts in. Works whether the video is re-encoded or just
+  remuxed; subtitles and video are still preserved. New nullable `Library.VideoAudioCodec`/
+  `VideoAudioBitrateKbps` columns (additive migration; re-running it is a no-op), validated on
+  save and carried in config export/import.
+- Verification understands the intentional re-encode: a video job that transcoded its audio
+  may **normalise the sample rate** (e.g. to 48 kHz) without tripping the audio-fidelity gate,
+  exactly like an audio-only job. A copied audio track (the default) still must keep its
+  original sample rate, and a silent channel downmix still fails for both. The pure
+  `FfmpegCommandBuilder`, `TranscodeSpecResolver`, `RuleResolver`, and `VerificationEvaluator`
+  changes are all unit tested.
+
 ### Per-library audio rules
 
 - Each library can now **override the audio target codec (Opus, AAC, or MP3) and bitrate**

@@ -41,4 +41,23 @@ public sealed record RuleSettings
 
     /// <summary>The bitrate (kbps) for the audio re-encode.</summary>
     public int AudioBitrateKbps { get; init; } = AudioTarget.DefaultBitrateKbps;
+
+    /// <summary>
+    /// The codec a *video* job re-encodes its audio tracks to (ffprobe name, e.g. "aac").
+    /// <c>null</c> (the default) copies the audio untouched, so nothing changes unless the
+    /// operator opts in. Separate from <see cref="TargetAudioCodec"/>, which governs
+    /// audio-only files.
+    /// </summary>
+    public string? VideoAudioCodec { get; init; }
+
+    /// <summary>The bitrate (kbps) for a video's audio re-encode, used only when <see cref="VideoAudioCodec"/> is set.</summary>
+    public int VideoAudioBitrateKbps { get; init; } = AudioTarget.DefaultVideoAudioBitrateKbps;
+
+    /// <summary>
+    /// When <c>true</c>, multichannel audio is downmixed to 2.0 stereo on re-encode. Applies to
+    /// audio-only jobs and to the audio tracks of a video transcode (only where the audio is
+    /// actually re-encoded — a copied track keeps its layout). Defaults to <c>false</c> so
+    /// surround is preserved unless the operator opts in.
+    /// </summary>
+    public bool DownmixToStereo { get; init; }
 }

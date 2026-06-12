@@ -154,6 +154,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
             {
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
                 RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080,
+                VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160, DownmixToStereo = true,
                 AutoEnqueueEnabled = true,
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
                 AutoEnqueueWindowEnd = new TimeOnly(6, 30)
@@ -174,6 +175,9 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(MediaType.Tv, library.MediaType);
         Assert.Equal(RuleProfile.CompatibilityH264, library.RuleProfile);
         Assert.Equal(1080, library.MaxHeight);
+        Assert.Equal("aac", library.VideoAudioCodec);
+        Assert.Equal(160, library.VideoAudioBitrateKbps);
+        Assert.True(library.DownmixToStereo);
         Assert.True(library.AutoEnqueueEnabled);
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
         Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);

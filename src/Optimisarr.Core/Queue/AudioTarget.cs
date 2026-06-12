@@ -15,6 +15,16 @@ public static class AudioTarget
     public const int DefaultBitrateKbps = 128;
 
     /// <summary>
+    /// The suggested codec when a library opts a *video* job into re-encoding its audio.
+    /// AAC is the broadly compatible choice for video containers (every common player and
+    /// hardware decoder handles it), so it is a safer default than Opus for a film/TV library.
+    /// </summary>
+    public const string DefaultVideoAudioCodec = "aac";
+
+    /// <summary>The default bitrate for a video's audio re-encode; transparent for stereo/surround AAC.</summary>
+    public const int DefaultVideoAudioBitrateKbps = 160;
+
+    /// <summary>
     /// Audio files below this are not worth optimising. Far smaller than the video default,
     /// since a single lossless track is tens of megabytes, not hundreds.
     /// </summary>

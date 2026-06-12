@@ -79,6 +79,25 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void A_video_job_that_re_encoded_its_audio_may_normalise_the_sample_rate()
+    {
+        // When a video library opts into re-encoding its audio (e.g. to AAC/Opus), a sample-rate
+        // change is intentional, exactly like an audio-only job — the fidelity gate must allow it.
+        var input = Healthy() with
+        {
+            OriginalMaxAudioChannels = 6,
+            OutputMaxAudioChannels = 6,
+            OriginalMaxAudioSampleRate = 96000,
+            OutputMaxAudioSampleRate = 48000,
+            AudioReencoded = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio fidelity"));
+    }
+
+    [Fact]
     public void An_audio_output_that_loses_its_audio_tracks_fails()
     {
         var input = HealthyAudio() with { OutputAudioTrackCount = 0 };
@@ -365,6 +384,38 @@ public sealed class VerificationEvaluatorTests
     public void A_silent_downmix_fails_audio_fidelity()
     {
         var input = Healthy() with { OriginalMaxAudioChannels = 6, OutputMaxAudioChannels = 2 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, AudioFidelityCheck));
+    }
+
+    [Fact]
+    public void An_intentional_downmix_passes_audio_fidelity()
+    {
+        // Same channel reduction as the silent-downmix case, but the operator asked for it.
+        var input = Healthy() with
+        {
+            OriginalMaxAudioChannels = 6,
+            OutputMaxAudioChannels = 2,
+            AudioDownmixed = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, AudioFidelityCheck));
+    }
+
+    [Fact]
+    public void An_intentional_downmix_that_dropped_all_audio_still_fails()
+    {
+        // "Intentional" excuses a reduction, not the total loss of audio.
+        var input = Healthy() with
+        {
+            OriginalMaxAudioChannels = 6,
+            OutputMaxAudioChannels = 0,
+            AudioDownmixed = true
+        };
 
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 

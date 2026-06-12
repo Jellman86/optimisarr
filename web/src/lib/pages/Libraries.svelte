@@ -74,6 +74,9 @@
       library.qualityCrf != null ||
       !!library.audioTargetCodec ||
       library.audioBitrateKbps != null ||
+      !!library.videoAudioCodec ||
+      library.videoAudioBitrateKbps != null ||
+      library.downmixToStereo ||
       library.minVmafHarmonicMean != null ||
       library.minVmafMin != null ||
       !!library.excludePaths ||
@@ -126,6 +129,9 @@
       encoderPreset: null,
       audioTargetCodec: null,
       audioBitrateKbps: null,
+      videoAudioCodec: null,
+      videoAudioBitrateKbps: null,
+      downmixToStereo: false,
       moveOnComplete: false,
       targetFolder: null,
       minVmafHarmonicMean: null,
@@ -172,6 +178,9 @@
       encoderPreset: library.encoderPreset,
       audioTargetCodec: library.audioTargetCodec,
       audioBitrateKbps: library.audioBitrateKbps,
+      videoAudioCodec: library.videoAudioCodec,
+      videoAudioBitrateKbps: library.videoAudioBitrateKbps,
+      downmixToStereo: library.downmixToStereo,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
@@ -208,6 +217,8 @@
       encoderPreset: emptyToNull(form.encoderPreset),
       audioTargetCodec: emptyToNull(form.audioTargetCodec),
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
+      videoAudioCodec: emptyToNull(form.videoAudioCodec),
+      videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
       minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
       minVmafMin: toNullableNumber(form.minVmafMin),
@@ -482,6 +493,41 @@
             <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
           </div>
         </div>
+
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-video-audio-codec">Video audio</label>
+            <select id="lib-video-audio-codec" class="input" bind:value={form.videoAudioCodec}>
+              <option value={null}>Copy (leave audio untouched)</option>
+              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>Re-encode to {codec}</option>{/each}
+            </select>
+            <p class="mt-1 text-xs text-slate-400">When re-encoding video, also transcode its audio. AAC is the most compatible.</p>
+          </div>
+          <div>
+            <label class="label" for="lib-video-audio-bitrate">Video audio bitrate (kbps)</label>
+            <input
+              id="lib-video-audio-bitrate"
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder="Default (160)"
+              disabled={!form.videoAudioCodec}
+              bind:value={form.videoAudioBitrateKbps}
+            />
+            <p class="mt-1 text-xs text-slate-400">32–512 kbps. Only applies when audio is re-encoded.</p>
+          </div>
+        </div>
+
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
+          <span>
+            Downmix surround to stereo (2.0)
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              Reduces multichannel audio to stereo when re-encoding. Only applies where audio is re-encoded; copied tracks keep their layout.
+            </span>
+          </span>
+        </label>
 
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">

@@ -44,7 +44,10 @@ public sealed record LibrarySnapshot(
     string AutoEnqueueWindowStart = "00:00",
     string AutoEnqueueWindowEnd = "00:00",
     string? AudioTargetCodec = null,
-    int? AudioBitrateKbps = null);
+    int? AudioBitrateKbps = null,
+    string? VideoAudioCodec = null,
+    int? VideoAudioBitrateKbps = null,
+    bool DownmixToStereo = false);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported. No token.</summary>
 public sealed record ActivityWatcherSnapshot(

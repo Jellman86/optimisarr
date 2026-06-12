@@ -61,6 +61,59 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void A_video_job_copies_audio_by_default()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+
+        Assert.Null(spec.AudioEncoder);
+        Assert.Null(spec.AudioBitrateKbps);
+    }
+
+    [Fact]
+    public void A_video_job_re_encodes_audio_when_the_library_opts_in()
+    {
+        var rules = Hevc with { VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+
+        Assert.Equal("hevc", spec.VideoCodec);
+        Assert.Equal("aac", spec.AudioEncoder);
+        Assert.Equal(160, spec.AudioBitrateKbps);
+        // The container is unchanged by an audio re-encode.
+        Assert.Equal("/work/a.mkv", spec.OutputPath);
+    }
+
+    [Fact]
+    public void An_audio_job_downmixes_to_stereo_when_the_library_opts_in()
+    {
+        var rules = Hevc with { DownmixToStereo = true };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, "/data/music/Track.flac", "Track.flac", "/work",
+            sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Audio);
+
+        Assert.True(spec.DownmixToStereo);
+    }
+
+    [Fact]
+    public void A_video_downmix_only_applies_when_its_audio_is_re_encoded()
+    {
+        // Downmix requires an audio re-encode; with audio copied (no video-audio codec) the
+        // flag is not set, so a copied track keeps its layout.
+        var copyAudio = TranscodeSpecResolver.Resolve(
+            Hevc with { DownmixToStereo = true },
+            "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+        Assert.False(copyAudio.DownmixToStereo);
+
+        var reencodeAudio = TranscodeSpecResolver.Resolve(
+            Hevc with { DownmixToStereo = true, VideoAudioCodec = "aac" },
+            "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+        Assert.True(reencodeAudio.DownmixToStereo);
+    }
+
+    [Fact]
     public void Remux_profile_produces_a_copy_spec_with_no_codec()
     {
         var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup);

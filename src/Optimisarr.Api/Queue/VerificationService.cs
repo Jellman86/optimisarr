@@ -13,7 +13,9 @@ public sealed record OriginalSnapshot(
     int SubtitleTrackCount,
     bool IsHdr,
     bool HdrConvertedToSdr,
-    MediaKind Kind = MediaKind.Video);
+    MediaKind Kind = MediaKind.Video,
+    bool AudioReencoded = false,
+    bool AudioDownmixed = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -120,7 +122,9 @@ public sealed class VerificationService(
             NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
             TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
             OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
-            Kind: original.Kind);
+            Kind: original.Kind,
+            AudioReencoded: original.AudioReencoded,
+            AudioDownmixed: original.AudioDownmixed);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

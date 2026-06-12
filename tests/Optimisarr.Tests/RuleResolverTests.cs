@@ -30,6 +30,35 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
+    public void Video_audio_defaults_to_copy_and_can_be_overridden()
+    {
+        var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+        // Null video-audio codec means "copy untouched"; the bitrate default is only used
+        // once a codec is chosen.
+        Assert.Null(defaults.VideoAudioCodec);
+        Assert.Equal(160, defaults.VideoAudioBitrateKbps);
+
+        var overridden = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { VideoAudioCodec = "aac", VideoAudioBitrateKbps = 192 });
+
+        Assert.Equal("aac", overridden.VideoAudioCodec);
+        Assert.Equal(192, overridden.VideoAudioBitrateKbps);
+    }
+
+    [Fact]
+    public void Downmix_to_stereo_defaults_to_off_and_can_be_overridden()
+    {
+        var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+        Assert.False(defaults.DownmixToStereo);
+
+        var overridden = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc, new RuleOverrides { DownmixToStereo = true });
+
+        Assert.True(overridden.DownmixToStereo);
+    }
+
+    [Fact]
     public void Overrides_replace_only_the_values_that_are_set()
     {
         var overrides = new RuleOverrides { MaxHeight = 1080, Hdr = HdrHandling.TonemapToSdr };

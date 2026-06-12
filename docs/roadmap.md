@@ -413,8 +413,8 @@ Goal: extend the same safe pipeline — candidate rules, transcode, gold-standar
 verification, quarantine/rollback — from video to **audio-only files and
 images**, so a library of music or photos benefits from the same guarantees.
 
-Status: in progress. **Media-kind detection, audio optimisation, and per-library audio
-rules are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
+Status: in progress. **Media-kind detection, audio optimisation, per-library audio
+rules, audio-codec selection for video transcodes, and stereo downmix are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
 video, audio, or image (cover-art-aware, so an album-art picture never makes an audio file
 look like video), stored on `MediaFile.MediaKind` and surfaced as a Kind column in the
 Inventory. Lossless audio is re-encoded through the full pipeline — candidate rules,
@@ -437,18 +437,21 @@ Deliverables:
   library can opt to re-encode *any* source whose codec/bitrate differs from the configured
   target when it would genuinely save space (e.g. a 320 kbps MP3 → Opus 128), while keeping
   the conservative lossless-only default. **Planned.**
-- **Audio codec selection for video transcodes.** Today a video re-encode copies its audio
-  tracks untouched (`-c:a copy`). Add a per-library option to also transcode the audio of a
-  video to a chosen codec/bitrate (e.g. AAC for MP4 compatibility, or Opus/AC-3 for MKV),
-  reusing the audio-target resolver so the audio rules are shared between audio-only jobs and
-  video jobs. Default stays "copy" so nothing changes unless the operator opts in; the
-  audio-fidelity gate already understands an intentional re-encode. **Planned.**
+- **Audio codec selection for video transcodes.** A video re-encode used to copy its audio
+  tracks untouched (`-c:a copy`). A per-library option now also transcodes the audio of a
+  video to a chosen codec/bitrate (AAC — the broadly compatible default — Opus, or MP3),
+  reusing the audio-target encoder mapping so the audio rules are shared between audio-only
+  jobs and video jobs. The default stays "copy" so nothing changes unless the operator opts
+  in; the audio-fidelity gate understands the intentional re-encode and allows sample-rate
+  normalisation while still catching a silent downmix or a dropped rate on a copied track.
+  **Done.**
 - **Stereo downmix (channel reduction) across the audio *and* video pipelines.** A
-  per-library option to downmix multichannel audio (e.g. 5.1 → 2.0 stereo) on re-encode,
-  applied both to audio-only jobs and to the audio tracks of a video transcode (so it pairs
-  with the audio-codec selection above), with the verification audio-fidelity gate taught
-  that this downmix is intentional (not a silent channel loss). Saves space where surround is
-  not needed. **Planned.**
+  per-library option now downmixes multichannel audio (e.g. 5.1 → 2.0 stereo) on re-encode,
+  applied both to audio-only jobs and to the re-encoded audio tracks of a video transcode (it
+  pairs with the audio-codec selection above; a copied track keeps its layout). The
+  verification audio-fidelity gate treats a requested downmix as intentional (not a silent
+  channel loss), while an unrequested downmix or a total loss of audio still fails. Saves space
+  where surround is not needed; defaults to off. **Done.**
 - **Well-researched, sane default profiles per container/use-case.** Ship opinionated,
   documented defaults that pair a container with matched video + audio codecs and quality
   settings, rather than leaving every knob to the operator — for example **MP4 → H.265 (HEVC)
@@ -461,8 +464,8 @@ Deliverables:
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
   as verification gates; configurable max-dimension downscaling.
 - **Per-kind rule profiles and encoder settings**, reusing the existing
-  per-library override model. **Audio target codec/bitrate done**; downmix and image rules
-  to follow.
+  per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
+  stereo downmix done**; image rules to follow.
 - **Scope the library Advanced-options UI to the library's media type.** The form currently
   shows every override for every library, so a Film/TV library displays the audio target
   codec/bitrate (only relevant to audio files) and a Music library would show video codec,

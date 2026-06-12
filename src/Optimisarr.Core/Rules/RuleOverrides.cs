@@ -17,6 +17,9 @@ public sealed record RuleOverrides
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public string? TargetAudioCodec { get; init; }
     public int? AudioBitrateKbps { get; init; }
+    public string? VideoAudioCodec { get; init; }
+    public int? VideoAudioBitrateKbps { get; init; }
+    public bool? DownmixToStereo { get; init; }
 
     public static readonly RuleOverrides None = new();
 }

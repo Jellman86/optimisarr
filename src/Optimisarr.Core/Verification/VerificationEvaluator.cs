@@ -227,14 +227,24 @@ public static class VerificationEvaluator
     {
         if (input.OutputMaxAudioChannels < input.OriginalMaxAudioChannels)
         {
+            // An operator-requested downmix (e.g. 5.1 -> 2.0) is an intentional reduction, not a
+            // silent loss, so it passes — provided the output still carries audio.
+            if (input.AudioDownmixed && input.OutputMaxAudioChannels > 0)
+            {
+                return Pass("Audio fidelity",
+                    $"Audio intentionally downmixed from {input.OriginalMaxAudioChannels} to {input.OutputMaxAudioChannels} channels.");
+            }
+
             return Fail("Audio fidelity",
                 $"Audio was downmixed from {input.OriginalMaxAudioChannels} to {input.OutputMaxAudioChannels} channels.");
         }
 
         // An audio re-encode intentionally normalises the sample rate (e.g. Opus is always
-        // 48 kHz), so a sample-rate change is expected and not a fidelity loss; only a video
-        // job, where audio is copied, must keep the original rate.
-        if (input.Kind != MediaKind.Audio
+        // 48 kHz), so a sample-rate change is expected and not a fidelity loss. This holds for
+        // an audio-only job and for a video job that opted into re-encoding its audio; only a
+        // copied audio track (the default for video) must keep the original rate.
+        var audioReencoded = input.Kind == MediaKind.Audio || input.AudioReencoded;
+        if (!audioReencoded
             && input.OriginalMaxAudioSampleRate > 0
             && input.OutputMaxAudioSampleRate > 0
             && input.OutputMaxAudioSampleRate < input.OriginalMaxAudioSampleRate)
