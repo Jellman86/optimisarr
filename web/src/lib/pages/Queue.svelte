@@ -248,9 +248,9 @@
         <tr>
           <th class="px-4 py-3">Status</th>
           <th class="px-4 py-3">File</th>
-          <th class="px-4 py-3 w-48">Progress</th>
-          <th class="px-4 py-3">Verification</th>
-          <th class="px-4 py-3">Priority</th>
+          <th class="w-32 px-4 py-3 sm:w-48">Progress</th>
+          <th class="hidden px-4 py-3 md:table-cell">Verification</th>
+          <th class="hidden px-4 py-3 lg:table-cell">Priority</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -259,7 +259,7 @@
           {@const checks = parseReport(job)}
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{job.status}</span></td>
-            <td class="max-w-xs truncate px-4 py-2 font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</td>
+            <td class="max-w-[40vw] truncate px-4 py-2 font-mono text-xs sm:max-w-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</td>
             <td class="px-4 py-2">
               {#if job.status === 'Transcoding'}
                 <div class="space-y-1">
@@ -289,7 +289,7 @@
                 <span class="text-xs text-slate-400">—</span>
               {/if}
             </td>
-            <td class="px-4 py-2">
+            <td class="hidden px-4 py-2 md:table-cell">
               {#if checks}
                 <button
                   class="text-xs font-medium hover:underline {job.verificationPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}"
@@ -303,7 +303,7 @@
                 <span class="text-xs text-slate-400">—</span>
               {/if}
             </td>
-            <td class="px-4 py-2 text-xs">{job.priority}</td>
+            <td class="hidden px-4 py-2 text-xs lg:table-cell">{job.priority}</td>
             <td class="px-4 py-2 text-right">
               <div class="flex justify-end gap-1">
                 {#if job.status === 'ReadyToReplace' && job.verificationPassed}

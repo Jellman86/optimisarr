@@ -12,7 +12,9 @@
   own card). Library card actions wrap instead of overflowing, and page padding tightens on
   mobile. On the **Settings** page the tab bar now scrolls horizontally instead of wrapping,
   and the activity/notification/connection list rows wrap their badges and actions onto a
-  second line rather than overflowing.
+  second line rather than overflowing. The **Inventory, Candidates, Queue, and Quarantine**
+  tables now hide secondary columns on small screens (revealing them progressively at `sm`/`md`/
+  `lg`) so the essential columns and actions fit a phone without horizontal scrolling.
 - **Library settings form.** The expanded per-library settings are reorganised into clearly
   titled sections — **Video**, **Audio**, **Audio channels**, **Eligibility & queue**,
   **Completed output** — each with a one-line description and separated by dividers, instead of

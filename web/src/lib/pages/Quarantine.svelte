@@ -68,8 +68,8 @@
         <tr>
           <th class="px-4 py-3">Status</th>
           <th class="px-4 py-3">Replaced file</th>
-          <th class="px-4 py-3">Saving</th>
-          <th class="px-4 py-3">Replaced</th>
+          <th class="hidden px-4 py-3 sm:table-cell">Saving</th>
+          <th class="hidden px-4 py-3 md:table-cell">Replaced</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -96,11 +96,11 @@
                 <div class="max-w-md truncate font-mono text-[11px] text-slate-400" title={r.quarantinePath}>↳ original in {r.quarantinePath}</div>
               {/if}
             </td>
-            <td class="px-4 py-2 text-xs tabular-nums">
+            <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
               {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}
               <span class="text-emerald-600 dark:text-emerald-400"> (−{savingPercent(r)}%)</span>
             </td>
-            <td class="px-4 py-2 text-xs text-slate-500">{new Date(r.replacedAt).toLocaleString()}</td>
+            <td class="hidden px-4 py-2 text-xs text-slate-500 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
             <td class="px-4 py-2 text-right">
               {#if r.status === 'Replaced'}
                 <button class="btn px-3 py-1 text-xs" onclick={() => rollback(r)} disabled={rollingBackId === r.id}>
