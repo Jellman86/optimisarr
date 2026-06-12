@@ -16,7 +16,8 @@ public sealed class TranscodeSpecResolverTests
             workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium");
 
         Assert.Equal("/data/films/Movie/Movie.avi", spec.InputPath);
-        Assert.Equal("/work/Movie/Movie.mkv", spec.OutputPath);
+        // The Conservative HEVC profile targets MP4 for broad device compatibility.
+        Assert.Equal("/work/Movie/Movie.mp4", spec.OutputPath);
     }
 
     [Fact]
@@ -81,8 +82,8 @@ public sealed class TranscodeSpecResolverTests
         Assert.Equal("hevc", spec.VideoCodec);
         Assert.Equal("aac", spec.AudioEncoder);
         Assert.Equal(160, spec.AudioBitrateKbps);
-        // The container is unchanged by an audio re-encode.
-        Assert.Equal("/work/a.mkv", spec.OutputPath);
+        // The output container follows the profile's target (MP4 for HEVC), not the audio choice.
+        Assert.Equal("/work/a.mp4", spec.OutputPath);
     }
 
     [Fact]

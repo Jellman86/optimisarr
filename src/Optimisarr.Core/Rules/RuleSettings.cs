@@ -30,6 +30,14 @@ public sealed record RuleSettings
     /// <summary>When set, files taller than this many pixels are left untouched.</summary>
     public int? MaxHeight { get; init; }
 
+    /// <summary>
+    /// The profile's default encoder quality target (CRF/CQ) for a re-encode, chosen to be
+    /// visually transparent for the profile's codec (e.g. x265 ~24). A per-library
+    /// <c>QualityCrf</c> override takes precedence; this is the sane fallback so an encode never
+    /// silently uses the encoder's arbitrary built-in default. <c>null</c> for remux-only.
+    /// </summary>
+    public int? DefaultCrf { get; init; }
+
     /// <summary>How HDR / Dolby Vision content is handled. Defaults to the safe Exclude.</summary>
     public HdrHandling Hdr { get; init; } = HdrHandling.Exclude;
 

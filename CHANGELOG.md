@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Researched, sane default profiles per container/use-case (Phase 10)
+
+- Each rule profile now ships an **opinionated, matched container + quality default** instead of
+  leaving every knob to the operator, based on current (2026) device/codec compatibility and
+  visually-transparent quality research:
+  - **Conservative HEVC** → **MP4** container (HEVC + AAC plays on virtually all phones, smart
+    TVs, and Apple devices), default **CRF 24** (visually transparent at 1080p).
+  - **Compatibility H.264** → **MP4** container (H.264 + AAC plays everywhere), default **CRF 20**.
+  - **Experimental AV1** → **MKV** container (AV1 + Opus for maximum efficiency; MP4 + Opus has
+    poor player support), default **CRF 30**.
+  - **Remux/Cleanup** → MKV, unchanged (no re-encode, no CRF).
+- **Default CRF** is new: previously a re-encode with no per-library quality override fell back
+  to the encoder's arbitrary built-in default (e.g. libx265's 28). Each re-encode profile now
+  has a researched, visually-transparent `DefaultCrf`; a per-library `QualityCrf` override still
+  takes precedence (`RuleSettings.DefaultCrf`, applied in the queue dispatcher).
+- **Audio still defaults to copy** on every profile — a video re-encode never silently downgrades
+  the original audio (including lossless surround). The profile descriptions document the
+  recommended audio codec (AAC for the compatibility profiles, Opus for AV1) to opt into in
+  Advanced options.
+- **Behaviour change for libraries using profile defaults:** the HEVC and H.264 profiles now
+  remux into **MP4** rather than MKV, and re-encodes target the researched CRF. Libraries with an
+  explicit container or `QualityCrf` override are unaffected. Pure `RuleProfileDefaults` /
+  `RuleResolver` / `TranscodeSpecResolver` changes are unit tested.
+
 ### Re-encode lossy audio when it genuinely saves space (Phase 10)
 
 - Audio optimisation previously only considered **lossless** sources (FLAC, ALAC, PCM, …),

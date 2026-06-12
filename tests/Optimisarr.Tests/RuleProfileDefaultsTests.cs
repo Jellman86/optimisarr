@@ -24,6 +24,35 @@ public sealed class RuleProfileDefaultsTests
         Assert.Null(settings.TargetVideoCodec);
     }
 
+    [Theory]
+    [InlineData(RuleProfile.ConservativeHevc, "mp4")]
+    [InlineData(RuleProfile.CompatibilityH264, "mp4")]
+    [InlineData(RuleProfile.ExperimentalAv1, "mkv")]
+    [InlineData(RuleProfile.RemuxCleanup, "mkv")]
+    public void Profiles_target_the_researched_container(RuleProfile profile, string expectedContainer)
+    {
+        var settings = RuleProfileDefaults.For(profile);
+
+        Assert.Equal(expectedContainer, settings.TargetContainer);
+    }
+
+    [Theory]
+    [InlineData(RuleProfile.ConservativeHevc, 24)]
+    [InlineData(RuleProfile.CompatibilityH264, 20)]
+    [InlineData(RuleProfile.ExperimentalAv1, 30)]
+    public void Reencode_profiles_default_to_a_transparent_crf(RuleProfile profile, int expectedCrf)
+    {
+        var settings = RuleProfileDefaults.For(profile);
+
+        Assert.Equal(expectedCrf, settings.DefaultCrf);
+    }
+
+    [Fact]
+    public void Remux_profile_has_no_default_crf()
+    {
+        Assert.Null(RuleProfileDefaults.For(RuleProfile.RemuxCleanup).DefaultCrf);
+    }
+
     [Fact]
     public void Conservative_and_compatibility_profiles_exclude_hdr_by_default()
     {

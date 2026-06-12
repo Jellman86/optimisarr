@@ -41,9 +41,9 @@
   // Plain-language summary of each preset, shown under the picker so a first-time
   // user can choose without knowing codecs.
   const presetSummaries: Record<string, string> = {
-    ConservativeHevc: 'Space-saving HEVC (H.265). Safe, widely compatible — a good default.',
-    CompatibilityH264: 'Targets H.264 for maximum device compatibility. Larger files, plays everywhere.',
-    ExperimentalAv1: 'Smallest files using AV1 where hardware allows. Slower to encode.',
+    ConservativeHevc: 'Space-saving HEVC (H.265) in MP4 — plays on virtually all phones, TVs, and Apple devices. A good default. (AAC audio recommended; audio is kept as-is unless you choose otherwise in Advanced.)',
+    CompatibilityH264: 'H.264 in MP4 — plays literally everywhere, at the cost of larger files. (AAC audio recommended.)',
+    ExperimentalAv1: 'Smallest files using AV1 in MKV, where hardware allows. Slower to encode. (Opus audio recommended.)',
     RemuxCleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
   }
 

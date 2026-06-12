@@ -298,7 +298,7 @@ public sealed class QueueDispatcher(
             media.RelativePath,
             _workRoot,
             media.IsHdr,
-            library?.QualityCrf,
+            library?.QualityCrf ?? rules.DefaultCrf,
             library?.EncoderPreset,
             media.MediaKind);
 

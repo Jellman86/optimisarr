@@ -472,14 +472,15 @@ Deliverables:
   verification audio-fidelity gate treats a requested downmix as intentional (not a silent
   channel loss), while an unrequested downmix or a total loss of audio still fails. Saves space
   where surround is not needed; defaults to off. **Done.**
-- **Well-researched, sane default profiles per container/use-case.** Ship opinionated,
-  documented defaults that pair a container with matched video + audio codecs and quality
-  settings, rather than leaving every knob to the operator — for example **MP4 → H.265 (HEVC)
-  video + AAC audio** for broad device/player compatibility, **MKV → H.265 (or AV1) video +
-  Opus audio** for maximum efficiency, and a compatibility **H.264 + AAC** profile for older
-  clients. Defaults should cite the reasoning (transparent bitrate ranges, hardware-decode
-  support, container/codec compatibility) so a user can pick a profile and trust it without
-  tuning. Per-library overrides still layer on top. **Planned.**
+- **Well-researched, sane default profiles per container/use-case.** Each profile now ships a
+  matched container + visually-transparent CRF (researched against 2026 device/codec support):
+  **Conservative HEVC → MP4 + AAC, CRF 24** for broad device/Apple/TV compatibility;
+  **Compatibility H.264 → MP4 + AAC, CRF 20** for older clients; **Experimental AV1 → MKV + Opus,
+  CRF 30** for maximum efficiency; Remux/Cleanup unchanged. A new profile-level `DefaultCrf`
+  replaces the encoder's arbitrary built-in default; per-library overrides still layer on top.
+  Audio defaults to copy (the recommended codec is documented, not forced) so a re-encode never
+  silently downgrades the original. **Done.** Still to do: a simple compatibility↔efficiency
+  presentation (e.g. a slider) so the common case is one choice with the knobs behind Advanced.
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
   as verification gates; configurable max-dimension downscaling.

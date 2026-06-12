@@ -91,7 +91,8 @@ public sealed class RuleResolverTests
 
         var resolved = RuleResolver.Resolve(RuleProfile.ConservativeHevc, overrides);
 
-        Assert.Equal("mkv", resolved.TargetContainer);
+        // The Conservative HEVC profile defaults to MP4 for broad device compatibility.
+        Assert.Equal("mp4", resolved.TargetContainer);
     }
 
     [Fact]
