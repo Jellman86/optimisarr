@@ -109,6 +109,44 @@ public sealed class LibraryInventoryService(
         return new ScanSummary(result.Files.Count, added, updated, result.SkippedUnsettled);
     }
 
+    /// <summary>
+    /// Probes files still in the <see cref="MediaFileStatus.Discovered"/> state — optionally
+    /// limited to one library — up to <paramref name="maxFiles"/>, returning how many were probed.
+    /// Scanning only records that a file exists; candidate evaluation needs its codec/kind/size,
+    /// which come from ffprobe, so this is the bridge between discovery and eligibility. A probe
+    /// failure is recorded as <see cref="MediaFileStatus.ProbeFailed"/> and not retried, so
+    /// repeated calls converge.
+    /// </summary>
+    public async Task<int> ProbePendingAsync(int? libraryId, int maxFiles, CancellationToken cancellationToken)
+    {
+        if (maxFiles <= 0)
+        {
+            return 0;
+        }
+
+        var query = db.MediaFiles.Where(file => file.Status == MediaFileStatus.Discovered);
+        if (libraryId is not null)
+        {
+            query = query.Where(file => file.LibraryId == libraryId);
+        }
+
+        var ids = await query
+            .OrderBy(file => file.Id)
+            .Take(maxFiles)
+            .Select(file => file.Id)
+            .ToListAsync(cancellationToken);
+
+        var probed = 0;
+        foreach (var id in ids)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await ProbeAsync(id, cancellationToken);
+            probed++;
+        }
+
+        return probed;
+    }
+
     public async Task<MediaFile?> ProbeAsync(int mediaFileId, CancellationToken cancellationToken)
     {
         var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == mediaFileId, cancellationToken);

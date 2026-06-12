@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fix: discovered files are now probed automatically (queue was empty after a scan)
+
+- Scanning only records that a file *exists*; candidate evaluation needs its codec, media kind, and
+  dimensions, which come from a probe — but **nothing probed discovered files automatically**.
+  Probing was a manual, per-file button on the Inventory page, so a freshly scanned library sat at
+  "Discovered", produced **zero candidates, and could never be enqueued** (for any media type —
+  it surfaced first on new Music/Photo libraries).
+- Added a **background prober** (`MediaProbeWorker`) that probes discovered files in batches
+  shortly after a scan, so a library becomes a set of candidates without hand-probing each file.
+  Probe failures are recorded as `ProbeFailed` and not retried, so the sweep converges.
+- **Auto-enqueue** now probes a library's newly discovered files between scanning and enqueuing,
+  so files found in a run can actually be queued in that same run (previously its scan-then-enqueue
+  enqueued nothing because the just-discovered files had no probe data yet). Shared via a new
+  `LibraryInventoryService.ProbePendingAsync`.
+
 ### Fix: media-type handling — non-video libraries now work properly
 
 A sweep of places that assumed every library is video:

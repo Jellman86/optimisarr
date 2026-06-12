@@ -80,6 +80,10 @@ public sealed class AutoEnqueueWorker(
             try
             {
                 await inventory.ScanAsync(library, cancellationToken);
+                // Newly discovered files have no probe data yet, and candidate evaluation needs it,
+                // so probe this library's pending files before enqueuing — otherwise the very files
+                // this scan just found could never be queued in the same run.
+                await inventory.ProbePendingAsync(library.Id, int.MaxValue, cancellationToken);
                 var result = await enqueue.EnqueueEligibleAsync(library, cancellationToken);
 
                 // Stamp only after a clean run so a transient failure retries next tick

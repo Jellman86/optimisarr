@@ -47,6 +47,7 @@ builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
+builder.Services.AddHostedService<MediaProbeWorker>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
