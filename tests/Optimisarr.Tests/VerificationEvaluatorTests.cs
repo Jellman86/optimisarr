@@ -44,6 +44,81 @@ public sealed class VerificationEvaluatorTests
         }
     }
 
+    // An image output: a smaller still that decodes, keeps its dimensions, and has no
+    // duration, audio, or subtitle tracks to compare.
+    private static VerificationInput HealthyImage() => Healthy() with
+    {
+        Kind = MediaKind.Image,
+        OutputVideoCodec = "webp",
+        OriginalDurationSeconds = null,
+        OutputDurationSeconds = null,
+        OriginalAudioTrackCount = 0,
+        OutputAudioTrackCount = 0,
+        OriginalSubtitleTrackCount = 0,
+        OutputSubtitleTrackCount = 0,
+        OriginalWidth = 4000,
+        OriginalHeight = 3000,
+        OutputWidth = 4000,
+        OutputHeight = 3000
+    };
+
+    [Fact]
+    public void An_image_output_passes_with_a_picture_and_no_time_based_gates()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Contains(report.Checks, check => check.Name == "Picture");
+        // Duration and track-retention gates do not apply to a still.
+        foreach (var name in new[] { "Duration", "Audio tracks", "Subtitle tracks", "Video stream" })
+        {
+            Assert.DoesNotContain(report.Checks, check => check.Name == name);
+        }
+    }
+
+    [Fact]
+    public void An_image_with_no_picture_stream_fails()
+    {
+        var input = HealthyImage() with { OutputVideoCodec = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Picture"));
+    }
+
+    [Fact]
+    public void An_image_shrunk_in_dimensions_fails_verification()
+    {
+        // No downscaling is performed yet, so a smaller output is a degenerate/corrupt encode.
+        var input = HealthyImage() with { OutputWidth = 1, OutputHeight = 1 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Dimensions"));
+    }
+
+    [Fact]
+    public void An_image_skips_the_video_and_audio_only_integrity_gates()
+    {
+        var input = HealthyImage() with
+        {
+            OriginalIsHdr = true,
+            OutputVideoStartSeconds = 0,
+            OutputAudioStartSeconds = 0,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 10
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        foreach (var name in new[] { "HDR signal", "A/V sync", "Timestamp integrity", "Tail integrity" })
+        {
+            Assert.DoesNotContain(report.Checks, check => check.Name == name);
+        }
+    }
+
     [Fact]
     public void An_audio_reencode_may_normalise_the_sample_rate_without_failing_fidelity()
     {

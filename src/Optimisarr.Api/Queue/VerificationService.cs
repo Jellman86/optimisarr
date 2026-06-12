@@ -124,7 +124,11 @@ public sealed class VerificationService(
             OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
             Kind: original.Kind,
             AudioReencoded: original.AudioReencoded,
-            AudioDownmixed: original.AudioDownmixed);
+            AudioDownmixed: original.AudioDownmixed,
+            OriginalWidth: originalProbe.Width,
+            OriginalHeight: originalProbe.Height,
+            OutputWidth: outputProbe.Width,
+            OutputHeight: outputProbe.Height);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

@@ -12,19 +12,35 @@ public static class VerificationEvaluator
 {
     public static VerificationReport Evaluate(VerificationInput input, VerificationPolicy policy)
     {
+        var isImage = input.Kind == MediaKind.Image;
+        // Video-stream and picture-integrity gates only apply to a video job; an audio job
+        // has no video to check (any cover art is incidental) and a still has no time axis.
+        var isVideo = input.Kind == MediaKind.Video;
+
         var checks = new List<VerificationCheck>
         {
             DecodeHealth(input),
-            OutputReadable(input),
-            DurationWithinTolerance(input, policy),
-            AudioRetained(input, policy),
-            SubtitlesRetained(input, policy),
-            SizeReduced(input, policy)
+            OutputReadable(input)
         };
 
-        // Video-stream and picture-integrity gates only apply to a video job; an audio job
-        // has no video to check (any embedded cover art is incidental).
-        var isVideo = input.Kind != MediaKind.Audio;
+        // Duration and track-retention gates apply to time-based media (video/audio); a still
+        // has no duration and no audio/subtitle tracks to compare.
+        if (!isImage)
+        {
+            checks.Add(DurationWithinTolerance(input, policy));
+            checks.Add(AudioRetained(input, policy));
+            checks.Add(SubtitlesRetained(input, policy));
+        }
+
+        checks.Add(SizeReduced(input, policy));
+
+        // A still is verified as an image: it must contain a picture and keep its dimensions.
+        // No downscaling is performed yet, so any shrink is an unintended/degenerate encode.
+        if (isImage)
+        {
+            checks.Add(PicturePresent(input));
+            checks.Add(DimensionsRetained(input));
+        }
 
         if (isVideo)
         {
@@ -85,12 +101,12 @@ public static class VerificationEvaluator
             checks.Add(PerceptualQuality(input, policy));
         }
 
-        if (policy.AudioLoudnessGateEnabled)
+        if (!isImage && policy.AudioLoudnessGateEnabled)
         {
             checks.Add(LoudnessPreserved(input, policy));
         }
 
-        if (policy.AudioClippingGateEnabled)
+        if (!isImage && policy.AudioClippingGateEnabled)
         {
             checks.Add(NoClippingIntroduced(input, policy));
         }
@@ -326,6 +342,30 @@ public static class VerificationEvaluator
         input.OutputProbeSucceeded
             ? Pass("Output readable", "ffprobe read the output container and streams.")
             : Fail("Output readable", $"ffprobe could not read the output: {Describe(input.OutputProbeError)}");
+
+    private static VerificationCheck PicturePresent(VerificationInput input) =>
+        !string.IsNullOrWhiteSpace(input.OutputVideoCodec)
+            ? Pass("Picture", $"Output has a picture stream ({input.OutputVideoCodec}).")
+            : Fail("Picture", "Output has no picture stream.");
+
+    private static VerificationCheck DimensionsRetained(VerificationInput input)
+    {
+        if (input.OriginalWidth is not { } ow || input.OriginalHeight is not { } oh)
+        {
+            return Pass("Dimensions", "Original dimensions unknown; not compared.");
+        }
+
+        if (input.OutputWidth is not { } nw || input.OutputHeight is not { } nh)
+        {
+            // The original had readable dimensions but the output does not — a real loss.
+            return Fail("Dimensions", $"Original {ow}x{oh}, output dimensions could not be read.");
+        }
+
+        var detail = $"Original {ow}x{oh}, output {nw}x{nh}.";
+        return nw >= ow && nh >= oh
+            ? Pass("Dimensions", detail)
+            : Fail("Dimensions", $"{detail} The image was downscaled.");
+    }
 
     private static VerificationCheck VideoStreamPresent(VerificationInput input) =>
         !string.IsNullOrWhiteSpace(input.OutputVideoCodec)

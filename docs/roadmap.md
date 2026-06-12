@@ -494,8 +494,11 @@ Deliverables:
   `TranscodeSpecResolver`/`FfmpegCommandBuilder` image path: `libwebp` encode, source EXIF/ICC
   preserved via `-map_metadata 0`, output stamped with the optimisation marker, and the
   dispatcher no longer resolves a video encoder for image jobs; AVIF/JXL throw a clear
-  not-implemented error until their quality mapping is validated). Verification gates, per-library
-  overrides, and UI still to come. **Image outputs must carry the same
+  not-implemented error until their quality mapping is validated). **Kind-aware verification is
+  done** (a still is judged on decode health, readability, a present picture, retained
+  dimensions, and a size reduction; the time-based/stream gates that don't apply to an image are
+  skipped rather than failed). Per-image quality scoring (SSIM) and EXIF/ICC-retention gates,
+  per-library overrides, and UI still to come. **Image outputs must carry the same
   `OptimisationMarker` as video/audio so a re-optimised image is recognised and skipped** —
   but a single-image encoder does not carry container `format.tags`, so for images the marker
   is written into an **EXIF** field and the probe reads it back from there (not just

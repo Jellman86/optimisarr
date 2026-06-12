@@ -56,4 +56,8 @@ public sealed record VerificationInput(
     double? OutputLastPresentationSeconds = null,
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
-    bool AudioDownmixed = false);
+    bool AudioDownmixed = false,
+    int? OriginalWidth = null,
+    int? OriginalHeight = null,
+    int? OutputWidth = null,
+    int? OutputHeight = null);

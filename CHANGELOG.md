@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Image optimisation: kind-aware verification gates (Phase 10)
+
+- Verification is now **image-aware**, so an image job can pass through to replacement instead
+  of falsely failing. Previously every non-audio job was treated as video, so a still — which has
+  no duration — would fail the duration gate outright. An image is now judged as a still: it must
+  **decode cleanly**, be **readable**, contain a **picture stream**, **keep its dimensions** (no
+  downscaling is performed yet, so any shrink is a degenerate/corrupt encode and fails), and be
+  **smaller** than the original. The time-based and stream gates that don't apply to a still
+  (duration, audio/subtitle retention, A/V sync, timestamps, tail, HDR, VMAF, loudness/clipping)
+  are skipped rather than evaluated.
+- `VerificationInput` gains original/output width+height (populated from the existing output and
+  original probes), feeding the new **Dimensions** gate. All new gate logic is pure and unit
+  tested. Per-kind quality scoring (SSIM) and EXIF/ICC-retention gates for images are still to
+  come.
+
 ### Image optimisation: transcode command building + marker (Phase 10)
 
 - The image pipeline now **produces an output**, not just a candidate decision. `TranscodeSpec`
