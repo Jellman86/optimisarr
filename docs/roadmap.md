@@ -497,8 +497,12 @@ Deliverables:
   not-implemented error until their quality mapping is validated). **Kind-aware verification is
   done** (a still is judged on decode health, readability, a present picture, retained
   dimensions, and a size reduction; the time-based/stream gates that don't apply to an image are
-  skipped rather than failed). Per-image quality scoring (SSIM) and EXIF/ICC-retention gates,
-  per-library overrides, and UI still to come. **Image outputs must carry the same
+  skipped rather than failed). **Per-library image overrides are done** (target format, quality,
+  and a re-encode-lossy toggle — three nullable `Library` columns via migration, wired through
+  `RuleOverrides`/resolver/DTO/parser/config-snapshot, with an Images section in Advanced scoped to
+  Other libraries; the format picker is gated to encodable formats so only WebP is offered until
+  AVIF/JXL encode lands). Per-image quality scoring (SSIM) and EXIF/ICC-retention gates still to
+  come. **Image outputs must carry the same
   `OptimisationMarker` as video/audio so a re-optimised image is recognised and skipped** —
   but a single-image encoder does not carry container `format.tags`, so for images the marker
   is written into an **EXIF** field and the probe reads it back from there (not just

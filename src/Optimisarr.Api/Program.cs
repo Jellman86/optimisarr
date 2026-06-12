@@ -636,6 +636,8 @@ app.MapGet("/api/library-options", () => Results.Ok(new
     hdrHandlings = Enum.GetNames<HdrHandling>(),
     videoCodecs = new[] { "hevc", "h264", "av1" },
     containers = new[] { "mkv", "mp4" },
+    // Image targets whose encode is wired today (WebP); AVIF/JXL follow once their encode lands.
+    imageFormats = ImageTarget.EncodableFormats,
     // x264/x265 speed presets; slower = smaller files for the same quality.
     encoderPresets = new[]
     {
@@ -694,6 +696,9 @@ app.MapPost("/api/libraries", async (
         VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
         DownmixToStereo = parsed.DownmixToStereo,
         ReencodeLossyAudio = parsed.ReencodeLossyAudio,
+        TargetImageFormat = parsed.TargetImageFormat,
+        ImageQuality = parsed.ImageQuality,
+        ReencodeLossyImages = parsed.ReencodeLossyImages,
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
@@ -751,6 +756,9 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
     library.DownmixToStereo = parsed.DownmixToStereo;
     library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
+    library.TargetImageFormat = parsed.TargetImageFormat;
+    library.ImageQuality = parsed.ImageQuality;
+    library.ReencodeLossyImages = parsed.ReencodeLossyImages;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
@@ -1182,6 +1190,9 @@ internal sealed record SaveLibraryRequest(
     int? VideoAudioBitrateKbps,
     bool? DownmixToStereo,
     bool? ReencodeLossyAudio,
+    string? TargetImageFormat,
+    int? ImageQuality,
+    bool? ReencodeLossyImages,
     bool? MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1212,6 +1223,9 @@ internal sealed record LibraryDto(
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
     bool ReencodeLossyAudio,
+    string? TargetImageFormat,
+    int? ImageQuality,
+    bool ReencodeLossyImages,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1246,6 +1260,9 @@ internal sealed record LibraryDto(
         library.VideoAudioBitrateKbps,
         library.DownmixToStereo,
         library.ReencodeLossyAudio,
+        library.TargetImageFormat,
+        library.ImageQuality,
+        library.ReencodeLossyImages,
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,

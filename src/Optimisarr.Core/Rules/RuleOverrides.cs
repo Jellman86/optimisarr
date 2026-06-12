@@ -21,6 +21,9 @@ public sealed record RuleOverrides
     public int? VideoAudioBitrateKbps { get; init; }
     public bool? DownmixToStereo { get; init; }
     public bool? ReencodeLossyAudio { get; init; }
+    public string? TargetImageFormat { get; init; }
+    public int? ImageQuality { get; init; }
+    public bool? ReencodeLossyImages { get; init; }
 
     public static readonly RuleOverrides None = new();
 }

@@ -24,6 +24,9 @@ internal readonly record struct ParsedLibrary(
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
     bool ReencodeLossyAudio,
+    string? TargetImageFormat,
+    int? ImageQuality,
+    bool ReencodeLossyImages,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -132,6 +135,19 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var targetImageFormat = Trim(request.TargetImageFormat);
+        if (targetImageFormat is not null && !ImageTarget.IsEncodable(targetImageFormat))
+        {
+            error = $"Unsupported image format: {targetImageFormat}. Expected one of {string.Join(", ", ImageTarget.EncodableFormats)}.";
+            return false;
+        }
+
+        if (request.ImageQuality is < 1 or > 100)
+        {
+            error = "Image quality must be between 1 and 100.";
+            return false;
+        }
+
         if (!TryParseWindowTime(request.AutoEnqueueWindowStart, out var autoStart))
         {
             error = "Auto-enqueue window start must use HH:mm format.";
@@ -182,6 +198,9 @@ internal static class LibraryRequestParser
             request.VideoAudioBitrateKbps,
             request.DownmixToStereo ?? false,
             request.ReencodeLossyAudio ?? false,
+            targetImageFormat is null ? null : targetImageFormat.ToLowerInvariant(),
+            request.ImageQuality,
+            request.ReencodeLossyImages ?? false,
             moveOnComplete,
             targetFolder,
             request.MinVmafHarmonicMean,

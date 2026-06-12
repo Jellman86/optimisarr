@@ -71,6 +71,23 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
+    public void Image_target_defaults_to_webp_quality_80_and_can_be_overridden()
+    {
+        var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+        Assert.Equal("webp", defaults.TargetImageFormat);
+        Assert.Equal(80, defaults.ImageQuality);
+        Assert.False(defaults.ReencodeLossyImages);
+
+        var overridden = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { TargetImageFormat = "webp", ImageQuality = 65, ReencodeLossyImages = true });
+
+        Assert.Equal("webp", overridden.TargetImageFormat);
+        Assert.Equal(65, overridden.ImageQuality);
+        Assert.True(overridden.ReencodeLossyImages);
+    }
+
+    [Fact]
     public void Overrides_replace_only_the_values_that_are_set()
     {
         var overrides = new RuleOverrides { MaxHeight = 1080, Hdr = HdrHandling.TonemapToSdr };

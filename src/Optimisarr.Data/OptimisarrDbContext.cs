@@ -43,6 +43,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
             entity.Property(library => library.EncoderPreset).HasMaxLength(32);
             entity.Property(library => library.AudioTargetCodec).HasMaxLength(32);
+            entity.Property(library => library.TargetImageFormat).HasMaxLength(32);
             entity.Property(library => library.TargetFolder).HasMaxLength(1024);
         });
 

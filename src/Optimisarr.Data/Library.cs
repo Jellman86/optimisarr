@@ -80,6 +80,19 @@ public sealed class Library
     /// </summary>
     public bool ReencodeLossyAudio { get; set; }
 
+    /// <summary>Overrides the format images are re-encoded to (e.g. "webp"). Null uses the default.</summary>
+    public string? TargetImageFormat { get; set; }
+
+    /// <summary>Overrides the image re-encode quality (0–100, higher is better). Null uses the default.</summary>
+    public int? ImageQuality { get; set; }
+
+    /// <summary>
+    /// When true, already-lossy images (e.g. a JPEG) are also eligible for re-encoding to the
+    /// target format. Defaults to false: the conservative behaviour re-encodes only lossless
+    /// sources (PNG/BMP/TIFF/GIF).
+    /// </summary>
+    public bool ReencodeLossyImages { get; set; }
+
     /// <summary>
     /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an
     /// "archive" library demand near-lossless quality while a "space-saver" accepts

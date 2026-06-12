@@ -46,6 +46,9 @@ export type LibraryRules = {
   videoAudioBitrateKbps: number | null
   downmixToStereo: boolean
   reencodeLossyAudio: boolean
+  targetImageFormat: string | null
+  imageQuality: number | null
+  reencodeLossyImages: boolean
   moveOnComplete: boolean
   targetFolder: string | null
   minVmafHarmonicMean: number | null
@@ -83,6 +86,7 @@ export type LibraryOptions = {
   videoCodecs: string[]
   containers: string[]
   encoderPresets: string[]
+  imageFormats: string[]
 }
 
 export type Settings = {

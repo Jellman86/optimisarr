@@ -36,7 +36,10 @@ internal static class LibraryRuleResolution
             VideoAudioCodec = library.VideoAudioCodec,
             VideoAudioBitrateKbps = library.VideoAudioBitrateKbps,
             DownmixToStereo = library.DownmixToStereo,
-            ReencodeLossyAudio = library.ReencodeLossyAudio
+            ReencodeLossyAudio = library.ReencodeLossyAudio,
+            TargetImageFormat = library.TargetImageFormat,
+            ImageQuality = library.ImageQuality,
+            ReencodeLossyImages = library.ReencodeLossyImages
         };
     }
 

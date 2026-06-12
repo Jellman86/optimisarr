@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Image optimisation: per-library overrides (Phase 10)
+
+- A library can now **override the image rules**, the same way it overrides audio/video: a **target
+  format**, an **image quality** (1–100), and a **"re-encode lossy images too"** toggle (which makes
+  already-compressed sources like JPEG eligible, not just lossless PNG/BMP/TIFF/GIF). Stored as three
+  new nullable `Library` columns via migration `AddLibraryImageOverrides`; `null` means "use the
+  default" (WebP, quality 80, lossless-only). Wired end to end: `RuleOverrides`/`RuleResolver`, the
+  library request parser (with validation), the library DTO and `library-options`, and the
+  secret-free config export/import snapshot.
+- The override controls appear in a new **Images** section of a library's Advanced options, scoped to
+  mixed **Other** libraries (where still images live — there is no dedicated photo type). The
+  **format picker only offers WebP** for now: `ImageTarget.EncodableFormats` gates the choice to
+  formats whose encode is actually wired, so an operator can't select AVIF/JXL and have the job fail
+  later — they appear automatically once their encode lands.
+
 ### Fix: scope the optimisation-preset slider to the library's media type
 
 - The top-of-form **compatibility↔efficiency preset slider** is a *video* decision (it picks

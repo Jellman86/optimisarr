@@ -24,7 +24,10 @@ public static class RuleResolver
             VideoAudioCodec = Normalise(overrides.VideoAudioCodec) ?? settings.VideoAudioCodec,
             VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
             DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo,
-            ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio
+            ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,
+            TargetImageFormat = Normalise(overrides.TargetImageFormat) ?? settings.TargetImageFormat,
+            ImageQuality = overrides.ImageQuality ?? settings.ImageQuality,
+            ReencodeLossyImages = overrides.ReencodeLossyImages ?? settings.ReencodeLossyImages
         };
     }
 

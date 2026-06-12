@@ -14,6 +14,7 @@
     videoCodecs: [],
     containers: [],
     encoderPresets: [],
+    imageFormats: [],
   })
 
   // Named queue-priority levels, so the card uses a dropdown instead of a raw number.
@@ -37,6 +38,7 @@
   const DEFAULT_CRF = 23
   const DEFAULT_VMAF_HARMONIC = 93
   const DEFAULT_VMAF_MIN = 80
+  const DEFAULT_IMAGE_QUALITY = 80
 
   // Plain-language summary of each preset, shown under the picker so a first-time
   // user can choose without knowing codecs.
@@ -56,6 +58,10 @@
 
   function toggleCustomQuality(on: boolean) {
     form.qualityCrf = on ? (form.qualityCrf ?? DEFAULT_CRF) : null
+  }
+
+  function toggleCustomImageQuality(on: boolean) {
+    form.imageQuality = on ? (form.imageQuality ?? DEFAULT_IMAGE_QUALITY) : null
   }
 
   function toggleVmafOverride(on: boolean) {
@@ -95,6 +101,9 @@
   // audio knobs for Music, and everything for a mixed "Other" library that may hold both.
   const showVideoOptions = $derived(form.mediaType !== 'Music')
   const showAudioOptions = $derived(form.mediaType === 'Music' || form.mediaType === 'Other')
+  // Images live in mixed "Other" libraries (there is no dedicated photo type), so the image
+  // knobs are scoped there. Other types use the sane defaults (WebP, quality 80).
+  const showImageOptions = $derived(form.mediaType === 'Other')
 
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
   // Where the current profile sits on the slider; defaults to Balanced (HEVC) for Remux/unknown.
@@ -135,6 +144,9 @@
       videoAudioBitrateKbps: null,
       downmixToStereo: false,
       reencodeLossyAudio: false,
+      targetImageFormat: null,
+      imageQuality: null,
+      reencodeLossyImages: false,
       moveOnComplete: false,
       targetFolder: null,
       minVmafHarmonicMean: null,
@@ -185,6 +197,9 @@
       videoAudioBitrateKbps: library.videoAudioBitrateKbps,
       downmixToStereo: library.downmixToStereo,
       reencodeLossyAudio: library.reencodeLossyAudio,
+      targetImageFormat: library.targetImageFormat,
+      imageQuality: library.imageQuality,
+      reencodeLossyImages: library.reencodeLossyImages,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
@@ -224,6 +239,8 @@
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
       videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
+      targetImageFormat: emptyToNull(form.targetImageFormat),
+      imageQuality: toNullableNumber(form.imageQuality),
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
       minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
       minVmafMin: toNullableNumber(form.minVmafMin),
@@ -611,6 +628,55 @@
             Re-encode lossy audio too
             <span class="mt-0.5 block text-xs font-normal text-slate-400">
               By default only lossless audio (e.g. FLAC) is re-encoded. Enable to also re-encode lossy sources (e.g. a 320 kbps MP3) — but only when their bitrate is high enough above the target to genuinely save space.
+            </span>
+          </span>
+        </label>
+      </section>
+      {/if}
+
+      {#if showImageOptions}
+      <!-- IMAGES — scoped to mixed "Other" libraries (still images). -->
+      <section class="py-6 first:pt-0">
+        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Images</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">How still images are re-encoded. Lossless sources (PNG/BMP/TIFF/GIF) are converted to a modern format.</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-image-format">Target format</label>
+            <select id="lib-image-format" class="input" bind:value={form.targetImageFormat}>
+              <option value={null}>Default (WebP)</option>
+              {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
+            </select>
+            <p class="mt-1 text-xs text-slate-400">WebP plays in every modern browser and app. AVIF/JXL to follow.</p>
+          </div>
+          <div>
+            <div class="mb-1 flex items-center justify-between">
+              <label class="label mb-0" for="lib-image-quality">Quality</label>
+              <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
+                Customise
+              </label>
+            </div>
+            {#if form.imageQuality != null}
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-slate-400">Smaller</span>
+                <input id="lib-image-quality" class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
+                <span class="text-xs text-slate-400">Sharper</span>
+                <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.imageQuality}</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-400">Higher = better quality and larger files. 80 is visually transparent.</p>
+            {:else}
+              <p class="text-xs text-slate-400">Using the default (80).</p>
+            {/if}
+          </div>
+        </div>
+
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyImages} />
+          <span>
+            Re-encode lossy images too
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              By default only lossless images (PNG/BMP/TIFF/GIF) are re-encoded. Enable to also re-encode already-compressed sources (e.g. a JPEG) — this trades a little quality for a smaller file.
             </span>
           </span>
         </label>

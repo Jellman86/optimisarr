@@ -56,4 +56,15 @@ public sealed class ImageTargetTests
         Assert.False(ImageTarget.IsSupportedTarget("png"));
         Assert.Throws<ArgumentOutOfRangeException>(() => ImageTarget.Resolve("png"));
     }
+
+    [Fact]
+    public void Only_webp_is_encodable_today_even_though_avif_and_jxl_are_selectable_targets()
+    {
+        // AVIF/JXL are recognised targets (for candidate decisions) but their encode parameters
+        // are not wired yet, so they are not offered as a choosable per-library format.
+        Assert.True(ImageTarget.IsEncodable("webp"));
+        Assert.False(ImageTarget.IsEncodable("avif"));
+        Assert.False(ImageTarget.IsEncodable("jxl"));
+        Assert.Equal(new[] { "webp" }, ImageTarget.EncodableFormats);
+    }
 }

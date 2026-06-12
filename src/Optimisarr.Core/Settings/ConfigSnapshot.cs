@@ -48,7 +48,10 @@ public sealed record LibrarySnapshot(
     string? VideoAudioCodec = null,
     int? VideoAudioBitrateKbps = null,
     bool DownmixToStereo = false,
-    bool ReencodeLossyAudio = false);
+    bool ReencodeLossyAudio = false,
+    string? TargetImageFormat = null,
+    int? ImageQuality = null,
+    bool ReencodeLossyImages = false);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported. No token.</summary>
 public sealed record ActivityWatcherSnapshot(

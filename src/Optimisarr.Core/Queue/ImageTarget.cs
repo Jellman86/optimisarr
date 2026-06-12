@@ -43,6 +43,17 @@ public static class ImageTarget
 
     public static bool IsSupportedTarget(string format) => Targets.ContainsKey(format);
 
+    // The formats whose encode parameters are actually wired in the command builder. WebP is
+    // the only one today; AVIF/JXL are recognised targets but cannot yet be produced, so they
+    // are not offered as a per-library choice (selecting one would fail at encode time).
+    private static readonly string[] EncodableFormatList = { "webp" };
+
+    /// <summary>The formats an operator may currently choose as a per-library target.</summary>
+    public static IReadOnlyList<string> EncodableFormats => EncodableFormatList;
+
+    public static bool IsEncodable(string format) =>
+        EncodableFormatList.Contains(format, StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The encoder and extension for a target format; throws if unsupported.</summary>
     public static ImageFormatSpec Resolve(string format) =>
         Targets.TryGetValue(format, out var spec)
