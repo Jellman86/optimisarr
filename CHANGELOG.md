@@ -10,7 +10,9 @@
   off-screen to the right on phones — the main content column was sizing to its widest child;
   it now has `min-w-0` so wide tables/grids stay within the viewport (and scroll within their
   own card). Library card actions wrap instead of overflowing, and page padding tightens on
-  mobile.
+  mobile. On the **Settings** page the tab bar now scrolls horizontally instead of wrapping,
+  and the activity/notification/connection list rows wrap their badges and actions onto a
+  second line rather than overflowing.
 - **Library settings form.** The expanded per-library settings are reorganised into clearly
   titled sections — **Video**, **Audio**, **Audio channels**, **Eligibility & queue**,
   **Completed output** — each with a one-line description and separated by dividers, instead of
