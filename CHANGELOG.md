@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Optimisation preset is a simple compatibility↔efficiency slider (Phase 10)
+
+- The per-library encode preset is now a single **compatibility → efficiency slider**
+  (Compatibility / Balanced / Efficiency → H.264 / HEVC / AV1) instead of a codec-named
+  dropdown, so the common case is one self-explanatory choice. A separate **"Just clean up
+  containers — no re-encode"** toggle above the slider selects the Remux/Cleanup profile (which
+  isn't on the quality axis) and disables the slider while it's on. The live preset description
+  still explains the chosen tradeoff. Purely presentation over the existing `ruleProfile` value
+  — no API change — and every exact knob (codec, container, CRF, audio codec/bitrate, downmix,
+  HDR, resolution cap) stays under **Advanced options**.
+
 ### Researched, sane default profiles per container/use-case (Phase 10)
 
 - Each rule profile now ships an **opinionated, matched container + quality default** instead of

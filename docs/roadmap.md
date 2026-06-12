@@ -479,8 +479,9 @@ Deliverables:
   CRF 30** for maximum efficiency; Remux/Cleanup unchanged. A new profile-level `DefaultCrf`
   replaces the encoder's arbitrary built-in default; per-library overrides still layer on top.
   Audio defaults to copy (the recommended codec is documented, not forced) so a re-encode never
-  silently downgrades the original. **Done.** Still to do: a simple compatibility↔efficiency
-  presentation (e.g. a slider) so the common case is one choice with the knobs behind Advanced.
+  silently downgrades the original. The preset is now picked via a simple compatibility↔efficiency
+  **slider** (with a separate "no re-encode" toggle for Remux/Cleanup), keeping every exact knob
+  behind Advanced options. **Done.**
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
   with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
   as verification gates; configurable max-dimension downscaling.

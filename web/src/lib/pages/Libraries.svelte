@@ -47,6 +47,13 @@
     RemuxCleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
   }
 
+  // The three re-encode profiles form a single compatibility→efficiency axis, shown as a
+  // slider so the common case is one simple choice. Remux/Cleanup is "don't re-encode at all",
+  // so it sits as a separate toggle above the slider rather than on the quality axis. The exact
+  // codec/container/CRF/audio knobs stay in Advanced options.
+  const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1']
+  const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency']
+
   function toggleCustomQuality(on: boolean) {
     form.qualityCrf = on ? (form.qualityCrf ?? DEFAULT_CRF) : null
   }
@@ -112,6 +119,19 @@
   // audio knobs for Music, and everything for a mixed "Other" library that may hold both.
   const showVideoOptions = $derived(form.mediaType !== 'Music')
   const showAudioOptions = $derived(form.mediaType === 'Music' || form.mediaType === 'Other')
+
+  const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
+  // Where the current profile sits on the slider; defaults to Balanced (HEVC) for Remux/unknown.
+  const encodeStop = $derived(Math.max(0, encodeProfiles.indexOf(form.ruleProfile)))
+
+  function setEncodeStop(value: string) {
+    form.ruleProfile = encodeProfiles[Number(value)] ?? 'ConservativeHevc'
+  }
+
+  function toggleRemux(checked: boolean) {
+    // Ticking Remux switches off re-encoding; unticking returns to the Balanced default.
+    form.ruleProfile = checked ? 'RemuxCleanup' : 'ConservativeHevc'
+  }
 
   $effect(() => {
     void load()
@@ -369,11 +389,45 @@
         {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
       </select>
     </div>
-    <div>
-      <label class="label" for="lib-rule">Rule profile (preset)</label>
-      <select id="lib-rule" class="input" bind:value={form.ruleProfile}>
-        {#each options.ruleProfiles as rule}<option value={rule}>{rule}</option>{/each}
-      </select>
+  </div>
+
+  <!-- Optimisation preset: one simple choice on a compatibility→efficiency axis. Exact
+       codec/container/CRF/audio settings live under Advanced options. -->
+  <div class="mt-4">
+    <span class="label">Optimisation preset</span>
+
+    <label class="flex cursor-pointer items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        class="checkbox mt-0.5"
+        checked={isRemuxProfile}
+        onchange={(e) => toggleRemux(e.currentTarget.checked)}
+      />
+      <span>
+        Just clean up containers — no re-encode
+        <span class="mt-0.5 block text-xs font-normal text-slate-400">
+          Fast and lossless: remux into a clean container without touching the video or audio.
+        </span>
+      </span>
+    </label>
+
+    <div class="mt-3 {isRemuxProfile ? 'pointer-events-none opacity-40' : ''}">
+      <input
+        type="range"
+        min="0"
+        max="2"
+        step="1"
+        class="w-full"
+        aria-label="Compatibility to efficiency"
+        value={encodeStop}
+        disabled={isRemuxProfile}
+        oninput={(e) => setEncodeStop(e.currentTarget.value)}
+      />
+      <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+        {#each encodeStopLabels as stop, i}
+          <span class={!isRemuxProfile && encodeStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+        {/each}
+      </div>
     </div>
   </div>
 
