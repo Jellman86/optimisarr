@@ -20,6 +20,21 @@ public static class TranscodeSpecResolver
         string? preset,
         MediaKind kind = MediaKind.Video)
     {
+        if (kind == MediaKind.Image)
+        {
+            var image = ImageTarget.Resolve(rules.TargetImageFormat);
+            return new TranscodeSpec(
+                inputPath,
+                BuildOutputPath(workRoot, relativePath, image.Extension),
+                VideoCodec: null,
+                Crf: null,
+                Preset: null,
+                TonemapToSdr: false,
+                Kind: MediaKind.Image,
+                ImageEncoder: image.Encoder,
+                ImageQuality: rules.ImageQuality);
+        }
+
         if (kind == MediaKind.Audio)
         {
             var audio = AudioTarget.Resolve(rules.TargetAudioCodec);

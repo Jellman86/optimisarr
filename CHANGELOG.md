@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Image optimisation: transcode command building + marker (Phase 10)
+
+- The image pipeline now **produces an output**, not just a candidate decision. `TranscodeSpec`
+  carries an image encoder + quality, `TranscodeSpecResolver` resolves an image job to a
+  `libwebp` encode with the target extension (e.g. `Photo.png` → `/work/.../Photo.webp`), and
+  `FfmpegCommandBuilder` emits the encode: `-map_metadata 0` (so the source **EXIF/ICC profile
+  is preserved** — a Phase 10 verification deliverable), the primary picture stream mapped, the
+  encoder, and `-quality <n>`.
+- **Optimisation marker on image outputs.** Like video/audio, an image output is stamped with the
+  `optimisarr` marker so a re-optimised image is recognised and skipped — closing the
+  re-optimisation loop the candidate rules opened. (The marker is written into the output
+  metadata; its persistence across the WebP container is verified against the bundled ffmpeg
+  in-container, with the candidate "already in target format" check as the active guard in the
+  meantime.)
+- The queue dispatcher no longer resolves a video hardware/software encoder for image jobs (only
+  video re-encodes need one); the image encode uses the encoder from the spec.
+- **WebP is the only reachable target today** (per-library image overrides aren't wired yet, so
+  the resolved format is always the WebP default). AVIF (`libaom-av1`) and JXL (`libjxl`) are
+  selectable in `ImageTarget` but their quality mapping is not wired: the builder **throws a clear
+  `NotSupportedException`** rather than emit a wrongly-scaled encode, until those parameters are
+  validated against the bundled encoders. Image verification gates and per-library overrides/UI
+  follow in later slices.
+
 ### Image optimisation: candidate rules (Phase 10)
 
 - First slice of **image optimisation**: an image file is no longer skipped as "not available

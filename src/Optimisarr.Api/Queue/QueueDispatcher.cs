@@ -317,10 +317,10 @@ public sealed class QueueDispatcher(
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo);
 
-        // Audio jobs use the built-in libopus encoder from the spec; only a video re-encode
-        // needs a hardware/software encoder resolved (and may fail if it is unavailable).
+        // Audio and image jobs use the encoder from the spec; only a video re-encode needs a
+        // hardware/software encoder resolved (and may fail if it is unavailable).
         string? videoEncoderName = null;
-        if (media.MediaKind != MediaKind.Audio)
+        if (media.MediaKind == MediaKind.Video)
         {
             var videoEncoder = await ResolveVideoEncoderAsync(
                 rules.TargetVideoCodec,

@@ -52,6 +52,54 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
     }
 
+    private static TranscodeSpec ImageReencode(string encoder = "libwebp", int? quality = 80) =>
+        new(
+            InputPath: "/data/photos/IMG.png",
+            OutputPath: "/work/IMG.webp",
+            VideoCodec: null,
+            Crf: null,
+            Preset: null,
+            TonemapToSdr: false,
+            Kind: MediaKind.Image,
+            ImageEncoder: encoder,
+            ImageQuality: quality);
+
+    [Fact]
+    public void An_image_job_re_encodes_to_the_target_encoder_with_quality_and_preserves_metadata()
+    {
+        var args = FfmpegCommandBuilder.Build(ImageReencode());
+
+        var codecIndex = IndexOf(args, "-c:v");
+        Assert.Equal("libwebp", args[codecIndex + 1]);
+        var qualityIndex = IndexOf(args, "-quality");
+        Assert.Equal("80", args[qualityIndex + 1]);
+        // EXIF/ICC and other metadata are carried over from the source image.
+        var metaMapIndex = IndexOf(args, "-map_metadata");
+        Assert.Equal("0", args[metaMapIndex + 1]);
+        Assert.Equal("/work/IMG.webp", args[^1]);
+        // An image job has no audio/subtitle stream handling.
+        Assert.DoesNotContain("-c:a", args);
+        Assert.DoesNotContain("-c:s", args);
+    }
+
+    [Fact]
+    public void An_image_job_stamps_the_optimisation_marker()
+    {
+        var args = FfmpegCommandBuilder.Build(ImageReencode(), optimisedMarker: "0.4.2");
+
+        var metaIndex = IndexOf(args, "-metadata");
+        Assert.Equal("optimisarr=0.4.2", args[metaIndex + 1]);
+    }
+
+    [Fact]
+    public void Image_encoding_for_an_unimplemented_encoder_throws_until_it_is_supported()
+    {
+        // AVIF/JXL are selectable targets but their encode parameters are not wired yet; fail
+        // loudly rather than emit a malformed command.
+        Assert.Throws<NotSupportedException>(() =>
+            FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1")));
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,

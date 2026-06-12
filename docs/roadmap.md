@@ -490,8 +490,12 @@ Deliverables:
   as verification gates; configurable max-dimension downscaling. **Candidate rules done**
   (pure `ImageTarget` + image branch in `CandidateEvaluator`: lossless PNG/BMP/TIFF/GIF eligible,
   lossy JPEG behind a per-library opt-in, already-target-format and too-small skipped, with
-  WebP/AVIF/JXL targets and conservative defaults). Command building, verification gates,
-  per-library overrides, and UI still to come. **Image outputs must carry the same
+  WebP/AVIF/JXL targets and conservative defaults). **WebP command building is done** (pure
+  `TranscodeSpecResolver`/`FfmpegCommandBuilder` image path: `libwebp` encode, source EXIF/ICC
+  preserved via `-map_metadata 0`, output stamped with the optimisation marker, and the
+  dispatcher no longer resolves a video encoder for image jobs; AVIF/JXL throw a clear
+  not-implemented error until their quality mapping is validated). Verification gates, per-library
+  overrides, and UI still to come. **Image outputs must carry the same
   `OptimisationMarker` as video/audio so a re-optimised image is recognised and skipped** —
   but a single-image encoder does not carry container `format.tags`, so for images the marker
   is written into an **EXIF** field and the probe reads it back from there (not just

@@ -7,7 +7,8 @@ namespace Optimisarr.Core.Queue;
 /// A single transcode described in encoder-agnostic terms. For a video job
 /// <see cref="VideoCodec"/> is <c>null</c> for a remux/cleanup (no re-encode); for an
 /// audio job (<see cref="Kind"/> = <see cref="MediaKind.Audio"/>) the audio fields drive
-/// the re-encode and the video fields are unused.
+/// the re-encode and the video fields are unused; for an image job
+/// (<see cref="Kind"/> = <see cref="MediaKind.Image"/>) the image fields drive the re-encode.
 /// </summary>
 public sealed record TranscodeSpec(
     string InputPath,
@@ -19,7 +20,9 @@ public sealed record TranscodeSpec(
     MediaKind Kind = MediaKind.Video,
     string? AudioEncoder = null,
     int? AudioBitrateKbps = null,
-    bool DownmixToStereo = false);
+    bool DownmixToStereo = false,
+    string? ImageEncoder = null,
+    int? ImageQuality = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -58,13 +61,17 @@ public static class FfmpegCommandBuilder
         args.Add("-i");
         args.Add(spec.InputPath);
 
-        if (spec.Kind == MediaKind.Audio)
+        switch (spec.Kind)
         {
-            AppendAudioArguments(args, spec);
-        }
-        else
-        {
-            AppendVideoArguments(args, spec, videoEncoder);
+            case MediaKind.Audio:
+                AppendAudioArguments(args, spec);
+                break;
+            case MediaKind.Image:
+                AppendImageArguments(args, spec);
+                break;
+            default:
+                AppendVideoArguments(args, spec, videoEncoder);
+                break;
         }
 
         if (!string.IsNullOrWhiteSpace(optimisedMarker))
@@ -192,6 +199,43 @@ public static class FfmpegCommandBuilder
         args.Add("-c:v");
         args.Add("copy");
     }
+
+    private static void AppendImageArguments(List<string> args, TranscodeSpec spec)
+    {
+        var encoder = spec.ImageEncoder ?? ImageTarget.Resolve(ImageTarget.DefaultFormat).Encoder;
+
+        // Fail loudly before emitting a command for an encoder whose quality parameters are not
+        // wired yet, rather than producing a malformed or wrongly-scaled encode.
+        var qualityArg = ImageQualityArgument(encoder);
+
+        // Carry the source image's EXIF/ICC profile and other metadata into the output.
+        args.Add("-map_metadata");
+        args.Add("0");
+
+        // Take just the primary picture stream (an animated GIF is one multi-frame stream),
+        // ignoring any embedded thumbnail.
+        args.Add("-map");
+        args.Add("0:v:0");
+
+        args.Add("-c:v");
+        args.Add(encoder);
+
+        if (spec.ImageQuality is { } quality)
+        {
+            args.Add(qualityArg);
+            args.Add(quality.ToString());
+        }
+    }
+
+    // Each still encoder names its quality control differently. Only the default WebP path is
+    // wired today; AVIF (libaom-av1) and JXL (libjxl) are selectable targets whose quality
+    // mapping still needs validating against the bundled encoders.
+    private static string ImageQualityArgument(string encoder) => encoder switch
+    {
+        "libwebp" => "-quality",
+        _ => throw new NotSupportedException(
+            $"Image encoding for encoder '{encoder}' is not implemented yet.")
+    };
 
     private static bool IsMp4Family(string outputPath) =>
         // .m4a/.m4b are the MP4 audio containers (AAC target); they need the same flag for
