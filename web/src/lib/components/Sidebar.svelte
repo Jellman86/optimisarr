@@ -27,15 +27,20 @@
   }
 </script>
 
+<!-- Off-canvas drawer below md (fixed, slides in over a backdrop); a static in-flow rail
+     at md+ that can collapse to icons. -->
 <aside
-  class="flex h-full flex-col border-r border-slate-200 bg-white/95 backdrop-blur transition-all duration-200 dark:border-slate-700 dark:bg-slate-900/95 {collapsed
-    ? 'w-16'
-    : 'w-60'}"
+  class="fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-slate-200 bg-white/95 backdrop-blur transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-700 dark:bg-slate-900/95 {layout.mobileOpen
+    ? 'translate-x-0'
+    : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
   <!-- Brand: large centered mark that scales between collapsed and expanded. -->
   <button
     class="flex flex-col items-center gap-3 border-b border-slate-200 p-4 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700"
-    onclick={() => router.go('/')}
+    onclick={() => {
+      router.go('/')
+      layout.closeMobile()
+    }}
   >
     <BrandMark
       sizes={collapsed ? '48px' : '144px'}
@@ -59,7 +64,11 @@
         class:nav-button-disabled={!item.enabled}
         disabled={!item.enabled}
         title={!item.enabled ? `${item.label} — coming soon` : collapsed ? item.label : ''}
-        onclick={() => item.enabled && router.go(item.path)}
+        onclick={() => {
+          if (!item.enabled) return
+          router.go(item.path)
+          layout.closeMobile()
+        }}
       >
         <svg class="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d={item.icon} />
@@ -94,7 +103,7 @@
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.4 15.4A9 9 0 018.6 3.6 9 9 0 1020.4 15.4z" /></svg>
       {/if}
     </button>
-    <button class="btn btn-ghost px-2" onclick={() => layout.toggle()} title="Collapse sidebar" aria-label="Collapse sidebar">
+    <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title="Collapse sidebar" aria-label="Collapse sidebar">
       <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />
       </svg>

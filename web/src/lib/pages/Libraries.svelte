@@ -736,7 +736,7 @@
               {/if}
             </div>
           </div>
-          <div class="flex flex-shrink-0 gap-2">
+          <div class="flex flex-wrap gap-2">
             <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
               <Icon name={busyId === library.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === library.id ? 'animate-spin' : ''}" />
               {busyId === library.id ? 'Working' : 'Scan'}

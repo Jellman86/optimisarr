@@ -23,7 +23,10 @@ function createTheme() {
 }
 
 function createLayout() {
+  // `collapsed` is the desktop rail toggle (persisted). `mobileOpen` is the off-canvas
+  // drawer on small screens — always starts closed and is never persisted.
   let collapsed = $state(localStorage.getItem('optimisarr.sidebar') === 'collapsed')
+  let mobileOpen = $state(false)
   return {
     get collapsed() {
       return collapsed
@@ -31,6 +34,15 @@ function createLayout() {
     toggle() {
       collapsed = !collapsed
       localStorage.setItem('optimisarr.sidebar', collapsed ? 'collapsed' : 'expanded')
+    },
+    get mobileOpen() {
+      return mobileOpen
+    },
+    toggleMobile() {
+      mobileOpen = !mobileOpen
+    },
+    closeMobile() {
+      mobileOpen = false
     },
   }
 }
