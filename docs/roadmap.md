@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Current status (2026-06-08)
+## Current status (2026-06-12)
 
 - **Phase 0 (Foundation): done.** Repo, three .NET projects + Svelte UI, Docker
   image building and publishing to GHCR via CI, health endpoint, SQLite under
@@ -74,6 +74,23 @@ the replacement workflow is trustworthy.
   per day within its own time window (pure `AutoEnqueueScheduleEvaluator` +
   `AutoEnqueueWorker`), while execution still obeys the global processing window and
   concurrency limit — the worker only fills the queue, never starts jobs.
+- **Phase 7 (GPU Support): largely done.** Encoder/hwaccel capability detection on Tools,
+  global encoder-mode selection wired into FFmpeg args, and jobs that fail fast with a clear
+  reason when a selected encoder is unavailable. See the Phase 7 section for the few remaining
+  items (hardware-specific preset notes, a tested GPU compose example).
+- **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
+  Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
+  replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/
+  Apprise); secret-free config import/export.
+- **Phase 9 (Gold-Standard Verification): feature-complete.** Opt-in VMAF gate (plus PSNR/SSIM
+  signals), always-on HDR/colour/A-V-sync/timestamp/tail integrity gates, audio channel/
+  sample-rate retention, opt-in EBU R128 loudness + true-peak clipping gates, per-library VMAF
+  overrides. All gate logic pure and unit tested.
+- **Phase 10 (Multi-Media Optimisation): in progress.** Done so far: media-kind detection;
+  lossless-audio optimisation with per-library audio codec/bitrate; **audio-codec selection for
+  video transcodes** (AAC default); **stereo downmix** across both pipelines; and **media-type-
+  scoped library Advanced options**. Next up (see the Phase 10 section): any-source audio
+  transcode, sane default per-container profiles, and image optimisation (WebP/AVIF/JXL).
 
 ## Guiding principles
 
