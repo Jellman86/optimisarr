@@ -29,7 +29,8 @@ preview (thumbnails/players) is deferred. See the Phase 11 note.
 
 **Phase 12 (Unified Library & Candidates workspace): core done.** Opening a library now shows its
 rules and the candidates those rules select as two tabs in one view, with re-resolve on save and
-per-library eligible/skipped tallies on the list; the all-libraries Candidates page is retained.
+per-library eligible/skipped tallies on the list. The all-libraries candidate list now lives on the
+unified **Inventory** page (see the Inventory & Candidates note above), not a separate Candidates page.
 See the Phase 12 section for the remaining optional polish.
 
 ## Current status (2026-06-12)
@@ -46,7 +47,8 @@ See the Phase 12 section for the remaining optional polish.
   decisions with a human-readable reason for every file (eligible or skipped):
   min size, resolution limit, HDR/Dolby Vision exclusion, path exclusions,
   codec/container matching, and already-processed detection. Surfaced via
-  `GET /api/candidates` and a Candidates page. Per-library overrides (target
+  `GET /api/candidates`, shown as the eligibility column on the Inventory page (and as a
+  per-library Candidates tab in the Libraries workspace). Per-library overrides (target
   codec/container, HDR handling, size/resolution limits, path exclusions,
   priority) are editable from expandable cards on the Libraries page and resolved
   by a pure `RuleResolver`. **Already-processed detection** now also covers prior
@@ -617,10 +619,10 @@ library, reusing the shared `CandidateTable` component. The candidate list **re-
 (and after Scan/Enqueue) so it always reflects the persisted rules, and the editor stays open after
 Save so the cause-and-effect loop happens in one place. The **Libraries list** shows each library's
 eligible/skipped **tally** (a lightweight `/api/candidates/summary` that reuses the pure
-`CandidateEvaluator`), and the all-libraries **Candidates page is retained** as the cross-library
-view. No new domain logic; enqueue remains the only action and only queues. Remaining optional
-polish: optimistic live preview of *unsaved* edits (folds into Phase 11), and folding the fleet
-overview into the Dashboard if the separate page later feels redundant.
+`CandidateEvaluator`), and the all-libraries candidate list now lives as the eligibility column on
+the unified **Inventory** page (the separate Candidates page was merged into Inventory). No new
+domain logic; enqueue remains the only action and only queues. Remaining optional polish: optimistic
+live preview of *unsaved* edits (folds into Phase 11).
 
 Goal: stop treating a library's *configuration* and the *files that configuration
 selects* as two separate screens. Today the **Libraries** page edits a library's
@@ -644,17 +646,15 @@ Deliverables:
   one place: the library's identity and simple choice (name/path/type + the
   compatibility↔efficiency preset) up top, its **Advanced options** still gated and
   collapsed, and — alongside, not buried beneath — the **candidate list for that
-  library** with the same eligible/skipped reasons and enqueue actions the
-  Candidates page has now.
+  library** with the same eligible/skipped reasons shown on the Inventory page.
 - **Live cause-and-effect**: editing a rule re-resolves the candidate decisions for
   that library (eligible/skipped counts and reasons update) so the operator sees
   what a change selects *before* committing it. Decisions come from the existing
   pure `CandidateEvaluator`, so this is a re-fetch/re-render, not new logic.
 - **A summary still reachable across libraries**: keep a way to see candidates (or
   at least eligible counts) for *all* libraries at once, so the per-library focus
-  does not lose the fleet-wide view — e.g. the Libraries list shows each library's
-  eligible/skipped tally, and the all-libraries Candidates view stays available
-  (or folds into the Dashboard) rather than being deleted outright.
+  does not lose the fleet-wide view — the Libraries list shows each library's
+  eligible/skipped tally, and the all-libraries view lives on the unified Inventory page.
 - **Richer, explicit preset sliders.** Give the per-library **video** slider more
   positions/options (e.g. a finer compatibility→efficiency axis, and surfacing more of
   the per-codec choices that currently live only in Advanced) and make every slider

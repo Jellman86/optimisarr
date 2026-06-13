@@ -202,3 +202,11 @@ the repo's package settings if anonymous `docker pull` is expected.
 - The `Dockerfile` is part of the build contract: it must reference real files
   (e.g. `Optimisarr.slnx`, not a stale `.sln`) and stay in sync with the project
   layout. A green `docker` job is required before merge.
+
+## 10. Workflow
+
+- **Develop and commit directly on `dev`.** Do not create feature branches for this
+  repo — make changes, commit, and push on `dev`. (Release tags/`main` are handled
+  separately; everyday work lives on `dev`.)
+- **No sub-agents.** Do the work inline. Do not spawn sub-agents (e.g. the Agent/Task
+  "Explore"/"Plan"/general-purpose agents) to carry out tasks in this repo.
