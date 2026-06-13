@@ -48,7 +48,7 @@ public sealed class QueueDispatcher(
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private readonly string _workRoot = ResolveWorkRoot(environment);
+    private readonly string _workRoot = WorkPaths.Resolve(environment);
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
     private readonly SemaphoreSlim _dbLock = new(1, 1);
     private readonly SemaphoreSlim _wake = new(0, 1);
@@ -558,6 +558,8 @@ public sealed class QueueDispatcher(
 
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             MoveFile(outputPath, destination);
+            // The output left the work dir; clean up its now-empty per-media scratch tree.
+            WorkPaths.PruneEmptyAncestors(_workRoot, outputPath);
 
             await WithJobAsync(jobId, job =>
             {
@@ -733,6 +735,10 @@ public sealed class QueueDispatcher(
         {
             logger.LogWarning(ex, "Could not delete work output {Path}", path);
         }
+
+        // Tidy the per-media-file scratch directory this output lived in so /work does not
+        // accumulate an empty tree for every file ever processed.
+        WorkPaths.PruneEmptyAncestors(_workRoot, path);
     }
 
     private void KillQuietly(Process process)
@@ -748,19 +754,6 @@ public sealed class QueueDispatcher(
         {
             logger.LogWarning(ex, "Could not kill ffmpeg process");
         }
-    }
-
-    private static string ResolveWorkRoot(IHostEnvironment environment)
-    {
-        var configured = Environment.GetEnvironmentVariable("OPTIMISARR_WORK_DIR");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            return configured;
-        }
-
-        return Directory.Exists("/work")
-            ? "/work"
-            : Path.Combine(environment.ContentRootPath, "work");
     }
 
     private static long? TryGetFreeDiskBytes(string path)

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Replacement;
 using Optimisarr.Data;
 using ReplacementEntity = Optimisarr.Data.Replacement;
@@ -46,6 +47,7 @@ public sealed class ReplacementService
     private readonly ILogger<ReplacementService> _logger;
     private readonly SettingsStore _settings;
     private readonly string _trashRoot;
+    private readonly string? _workRoot;
     private readonly Func<string, string, bool> _canMoveAtomically;
     private readonly LibraryRefreshService? _refresh;
     private readonly NotificationService? _notifications;
@@ -58,7 +60,8 @@ public sealed class ReplacementService
         LibraryRefreshService refresh,
         NotificationService notifications,
         ILogger<ReplacementService> logger)
-        : this(db, inventory, settings, ResolveTrashRoot(environment), logger, refresh: refresh, notifications: notifications)
+        : this(db, inventory, settings, ResolveTrashRoot(environment), logger,
+            refresh: refresh, notifications: notifications, workRoot: WorkPaths.Resolve(environment))
     {
     }
 
@@ -72,12 +75,14 @@ public sealed class ReplacementService
         ILogger<ReplacementService> logger,
         Func<string, string, bool>? canMoveAtomically = null,
         LibraryRefreshService? refresh = null,
-        NotificationService? notifications = null)
+        NotificationService? notifications = null,
+        string? workRoot = null)
     {
         _db = db;
         _inventory = inventory;
         _settings = settings;
         _trashRoot = trashRoot;
+        _workRoot = workRoot;
         _logger = logger;
         _canMoveAtomically = canMoveAtomically ?? FileMover.CanMoveAtomically;
         _refresh = refresh;
@@ -196,6 +201,13 @@ public sealed class ReplacementService
         job.Status = JobStatus.Completed;
         job.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // The verified output moved out of /work into the original's place; tidy the now-empty
+        // per-media-file scratch directory it came from.
+        if (_workRoot is not null)
+        {
+            WorkPaths.PruneEmptyAncestors(_workRoot, job.WorkOutputPath!);
+        }
 
         // Refresh the inventory from the file now living at the original's location.
         // Best effort: the replacement is already committed and must not be undone

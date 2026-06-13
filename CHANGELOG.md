@@ -33,6 +33,11 @@ recoverable; this prevents wasted/incorrect work):
   now **fails with a clear "would collide with an existing file" reason and leaves the original
   untouched** — instead of quarantining and then erroring on the move. An unchanged-container
   replacement landing back on the original's own path is still the normal case, not a collision.
+- **Work scratch directories are pruned.** Because each job's output now lives under
+  `/work/<mediaFileId>/…`, a finished job (deleted, moved to a target folder, or replaced) now
+  removes the empty per-media scratch directory it leaves behind, so `/work` no longer accumulates
+  one empty tree per file ever processed. Pruning only ever deletes *empty* directories and never
+  the work root, so it cannot touch real output (pure, unit-tested `WorkPaths.PruneEmptyAncestors`).
 
 ### Per-library move-overwrite control + explicit preset sliders
 
