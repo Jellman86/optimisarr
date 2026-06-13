@@ -4,6 +4,18 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
+## Up next (priority order, set 2026-06-13)
+
+1. **Phase 12 — Unified Library & Candidates workspace.** Promoted to the next major
+   piece of work: merge the Libraries and Candidates screens so tuning a rule and seeing
+   what it selects happen in one place.
+2. **Quarantine before/after compare-to-approve.** A side-by-side compare of the original
+   and its replacement on the Quarantine page, so an operator can visually approve (keep) or
+   reject (roll back) a replacement. See the Quarantine compare note under Phase 11.
+3. **Richer, explicit video preset sliders.** More positions/options on the per-library video
+   slider and an explicit display of the exact codec/container/CRF each position selects
+   (the "Selects: …" badges are a first step). See the Phase 7/10 slider note.
+
 ## Current status (2026-06-12)
 
 - **Phase 0 (Foundation): done.** Repo, three .NET projects + Svelte UI, Docker
@@ -561,12 +573,21 @@ Deliverables:
   preview output is discarded and the real queue run uses them.
 - Pure helpers for the comparison statistics; the temporary-job lifecycle reuses
   the existing worker with a "preview" job type that is exempt from replacement.
+- **Quarantine compare-to-approve (related, on the Quarantine page).** The same
+  side-by-side compare, but for a *replacement that has already happened*: show the
+  quarantined original against the in-place replacement (players/thumbnails plus the
+  size/quality/verification stats) so an operator can **approve** (keep, and let the
+  retention window eventually purge the original) or **reject** (roll back to the
+  original) from one screen. Reuses the existing replace/rollback service — this is a
+  review UI over actions that already exist, never a new destructive path.
 
 Exit criteria:
 
 - A user can preview settings on a file, watch original vs optimised side by side,
   read the size/quality deltas, and decide — with the original guaranteed
   untouched and the preview artifact cleaned up.
+- From the Quarantine page, a user can compare a replaced file against its quarantined
+  original and approve or roll back, with the safety model unchanged.
 
 ## Phase 12: Unified Library & Candidates Workspace
 
@@ -603,6 +624,13 @@ Deliverables:
   does not lose the fleet-wide view — e.g. the Libraries list shows each library's
   eligible/skipped tally, and the all-libraries Candidates view stays available
   (or folds into the Dashboard) rather than being deleted outright.
+- **Richer, explicit preset sliders.** Give the per-library **video** slider more
+  positions/options (e.g. a finer compatibility→efficiency axis, and surfacing more of
+  the per-codec choices that currently live only in Advanced) and make every slider
+  **explicit about what it selects** — show the exact codec/container/CRF (video) or
+  format/quality (image) each position resolves to, so the slider is never a black box.
+  The "Selects: …" badges under the video/image sliders are the first cut; extend this to
+  cover every position and keep it accurate against the backend `RuleProfileDefaults`.
 - **Honest, unchanged safety semantics**: enqueue still only queues; nothing here
   replaces or deletes. The workspace must not imply a rule change retroactively
   un-optimises already-processed files.

@@ -273,6 +273,7 @@ public sealed class QueueDispatcher(
         double? DurationSeconds,
         bool MoveOnComplete,
         string? TargetFolder,
+        bool MoveOverwrite,
         OriginalSnapshot Original,
         double? MinVmafHarmonicMean,
         double? MinVmafMin)
@@ -356,6 +357,7 @@ public sealed class QueueDispatcher(
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
+            library?.MoveOverwrite ?? false,
             original,
             library?.MinVmafHarmonicMean,
             library?.MinVmafMin);
@@ -535,6 +537,17 @@ public sealed class QueueDispatcher(
         if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
         {
             var destination = MoveTarget.Resolve(_workRoot, outputPath, targetFolder);
+
+            // Don't silently clobber an existing converted file unless the library opts into it.
+            // Failing here keeps the just-produced output in the work dir for inspection.
+            if (!work.MoveOverwrite && File.Exists(destination))
+            {
+                var error = $"A converted file already exists at the destination and overwrite is off: {destination}";
+                await CompleteAsync(jobId, JobStatus.Failed, progress: 1.0, error: error);
+                await NotifyJobFailedAsync(jobId, error);
+                return;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             MoveFile(outputPath, destination);
 

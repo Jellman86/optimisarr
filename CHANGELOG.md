@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Per-library move-overwrite control + explicit preset sliders
+
+- **Overwrite tickbox for "move output to a target folder".** When a library moves its completed
+  output into a target folder, a new per-library **Overwrite an existing converted file** option
+  controls what happens if a converted file is already there: on → replace it; **off (default) →
+  the job fails with a clear reason** and leaves the new output in the work directory, rather than
+  silently clobbering the existing file. Originals are never affected either way. Schema column
+  `Library.MoveOverwrite` via migration `AddLibraryMoveOverwrite`, wired through the request
+  parser, DTO, and config import/export. (The trash/quarantine directory is configurable via
+  `OPTIMISARR_TRASH_DIR`, and quarantine retention via Settings → Replacement.)
+- **Sliders now say exactly what they select.** The per-library video and image preset sliders show
+  a "Selects: …" badge row with the concrete codec/container/CRF (video) or format/quality (image)
+  the current position resolves to — accounting for any Advanced overrides — so the slider is no
+  longer a black box. (Richer slider options are tracked on the roadmap.)
+
 ### Image optimisation: JPEG/WebP/AVIF, downscaling, and a portable marker
 
 A big expansion of the image pipeline so it fits real media stacks rather than assuming WebP

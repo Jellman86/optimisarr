@@ -57,6 +57,24 @@
   const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1']
   const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency']
 
+  // The concrete codec/container/CRF each preset selects, surfaced as a badge so the operator
+  // sees exactly what the slider chooses (not just a vibe). Mirrors the backend RuleProfileDefaults.
+  const presetSpecs: Record<string, { codec: string; container: string; crf: number | null }> = {
+    CompatibilityH264: { codec: 'H.264', container: 'MP4', crf: 20 },
+    ConservativeHevc: { codec: 'HEVC (H.265)', container: 'MP4', crf: 24 },
+    ExperimentalAv1: { codec: 'AV1', container: 'MKV', crf: 30 },
+    RemuxCleanup: { codec: 'No re-encode', container: 'MKV', crf: null },
+  }
+  // The effective selection, accounting for any Advanced overrides the operator has set.
+  const effectiveVideoSpec = $derived.by(() => {
+    const base = presetSpecs[form.ruleProfile] ?? presetSpecs.ConservativeHevc
+    return {
+      codec: form.targetVideoCodec ? form.targetVideoCodec.toUpperCase() : base.codec,
+      container: form.targetContainer ? form.targetContainer.toUpperCase() : base.container,
+      crf: form.qualityCrf ?? base.crf,
+    }
+  })
+
   function toggleCustomQuality(on: boolean) {
     form.qualityCrf = on ? (form.qualityCrf ?? DEFAULT_CRF) : null
   }
@@ -264,6 +282,7 @@
       imageDownscaleValue: 0,
       moveOnComplete: false,
       targetFolder: null,
+      moveOverwrite: false,
       minVmafHarmonicMean: null,
       minVmafMin: null,
       autoEnqueueEnabled: false,
@@ -322,6 +341,7 @@
       imageDownscaleValue: library.imageDownscaleValue,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
+      moveOverwrite: library.moveOverwrite,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
       minVmafMin: library.minVmafMin,
       autoEnqueueEnabled: library.autoEnqueueEnabled,
@@ -559,6 +579,20 @@
 
       <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{presetSummaries[form.ruleProfile] ?? 'Custom preset.'}</p>
 
+      <!-- Explicit, concrete selection so the slider isn't a mystery. -->
+      <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+        <span class="text-slate-400">Selects:</span>
+        <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.codec}</span>
+        {#if !isRemuxProfile}
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container}</span>
+          {#if effectiveVideoSpec.crf != null}
+            <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">CRF {effectiveVideoSpec.crf}</span>
+          {/if}
+        {:else}
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container} container</span>
+        {/if}
+      </div>
+
       {#if presetOverridden}
         <div class="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
           <span>The {overrideSummary()} {form.targetVideoCodec && form.targetContainer ? 'are' : 'is'} set manually in Advanced options, so the slider here only sets the baseline.</span>
@@ -588,6 +622,11 @@
           <span>Most efficient</span>
         </div>
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{imagePresetSummaries[form.targetImageFormat ?? 'jpeg']}</p>
+        <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="text-slate-400">Selects:</span>
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{(form.targetImageFormat ?? 'jpeg').toUpperCase()} (.{(form.targetImageFormat ?? 'jpeg') === 'jpeg' ? 'jpg' : form.targetImageFormat})</span>
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Quality {form.imageQuality ?? 80}</span>
+        </div>
       </div>
     {:else}
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -943,6 +982,17 @@
               <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>Browse</button>
             </div>
           </div>
+          <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
+            <span>
+              Overwrite an existing converted file
+              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+                On: if a converted file is already in the target folder, replace it. Off (default): the
+                job fails with a clear reason instead of overwriting, leaving the new output in the work
+                directory. Your originals are never affected either way.
+              </span>
+            </span>
+          </label>
         {/if}
       </section>
     </div>

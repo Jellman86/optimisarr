@@ -132,6 +132,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.ImageDownscaleValue = snapshot.ImageDownscaleValue;
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
+            library.MoveOverwrite = snapshot.MoveOverwrite;
             library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
             library.MinVmafMin = snapshot.MinVmafMin;
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
@@ -274,7 +275,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ImageQuality,
         library.ReencodeLossyImages,
         library.ImageDownscaleMode.ToString(),
-        library.ImageDownscaleValue);
+        library.ImageDownscaleValue,
+        library.MoveOverwrite);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

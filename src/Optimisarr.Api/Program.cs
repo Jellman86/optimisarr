@@ -715,6 +715,7 @@ app.MapPost("/api/libraries", async (
         ImageDownscaleValue = parsed.ImageDownscaleValue,
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
+        MoveOverwrite = parsed.MoveOverwrite,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
         MinVmafMin = parsed.MinVmafMin,
         AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
@@ -777,6 +778,7 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.ImageDownscaleValue = parsed.ImageDownscaleValue;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
+    library.MoveOverwrite = parsed.MoveOverwrite;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
     library.MinVmafMin = parsed.MinVmafMin;
     library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
@@ -1217,6 +1219,7 @@ internal sealed record SaveLibraryRequest(
     int? ImageDownscaleValue,
     bool? MoveOnComplete,
     string? TargetFolder,
+    bool? MoveOverwrite,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
     bool? AutoEnqueueEnabled,
@@ -1252,6 +1255,7 @@ internal sealed record LibraryDto(
     int ImageDownscaleValue,
     bool MoveOnComplete,
     string? TargetFolder,
+    bool MoveOverwrite,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
     bool AutoEnqueueEnabled,
@@ -1291,6 +1295,7 @@ internal sealed record LibraryDto(
         library.ImageDownscaleValue,
         library.MoveOnComplete,
         library.TargetFolder,
+        library.MoveOverwrite,
         library.MinVmafHarmonicMean,
         library.MinVmafMin,
         library.AutoEnqueueEnabled,

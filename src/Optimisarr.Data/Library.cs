@@ -122,6 +122,13 @@ public sealed class Library
     /// <summary>Destination root for completed outputs when <see cref="MoveOnComplete"/> is on.</summary>
     public string? TargetFolder { get; set; }
 
+    /// <summary>
+    /// When true, moving a completed output into <see cref="TargetFolder"/> overwrites an existing
+    /// converted file at the destination. When false (the default), a job whose destination is
+    /// already occupied fails with a clear reason rather than silently replacing the existing file.
+    /// </summary>
+    public bool MoveOverwrite { get; set; }
+
     // --- Automatic scan-and-enqueue. When enabled, a background worker scans the
     // library and enqueues its eligible candidates once per occurrence of the daily
     // window below. Jobs still only *run* inside the global processing window. ---

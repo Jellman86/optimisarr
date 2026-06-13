@@ -53,6 +53,7 @@ export type LibraryRules = {
   imageDownscaleValue: number
   moveOnComplete: boolean
   targetFolder: string | null
+  moveOverwrite: boolean
   minVmafHarmonicMean: number | null
   minVmafMin: number | null
   autoEnqueueEnabled: boolean
