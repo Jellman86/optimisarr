@@ -5,7 +5,6 @@
   import Dashboard from './lib/pages/Dashboard.svelte'
   import Libraries from './lib/pages/Libraries.svelte'
   import Inventory from './lib/pages/Inventory.svelte'
-  import Candidates from './lib/pages/Candidates.svelte'
   import Queue from './lib/pages/Queue.svelte'
   import Quarantine from './lib/pages/Quarantine.svelte'
   import Settings from './lib/pages/Settings.svelte'
@@ -14,8 +13,8 @@
   let page = $derived.by(() => {
     const path = router.path
     if (path.startsWith('/libraries')) return Libraries
-    if (path.startsWith('/inventory')) return Inventory
-    if (path.startsWith('/candidates')) return Candidates
+    // Inventory absorbed the Candidates view; the old /candidates route still lands there.
+    if (path.startsWith('/inventory') || path.startsWith('/candidates')) return Inventory
     if (path.startsWith('/queue')) return Queue
     if (path.startsWith('/quarantine')) return Quarantine
     // Tools moved into Settings; the old route still lands there (opens the Tools tab).

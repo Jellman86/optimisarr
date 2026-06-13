@@ -10,6 +10,12 @@ the replacement workflow is trustworthy.
    backup/export, README quickstart, troubleshooting, security notes) — next major pieces once the
    editing/review loop is complete.
 
+**Inventory & Candidates unified: done.** The separate Candidates page is gone — the **Inventory**
+page now shows every file's stream detail alongside its eligibility (Eligible / Skipped / Not probed
++ reason), with an eligibility filter, so the file list and "what the rules select" are one view.
+The Libraries workspace keeps its own per-library Candidates tab (that's the per-library focus; this
+is the fleet-wide list). `#/candidates` redirects to Inventory.
+
 **Explicit video preset sliders: done.** Every position on the per-library video slider now shows
 the codec it resolves to, and the "Selects: …" detail (codec/container/CRF) plus the per-position
 codecs are driven by the backend's `RuleProfileDefaults` (served via `/api/library-options`) rather

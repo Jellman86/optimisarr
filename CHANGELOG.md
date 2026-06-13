@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Inventory and Candidates merged into one page
+
+- **One media view instead of two.** The Inventory page now shows each file's stream detail *and*
+  its eligibility — an **Optimise?** column (Eligible / Skipped / Not probed) with the reason — so
+  "what do I have?" and "will it be optimised, and why?" are answered in one place rather than across
+  two screens. An eligibility filter (All / Eligible / Skipped / Not probed) sits alongside the
+  library filter, and the Probe/Re-probe action is unchanged (a freshly probed file gets its verdict
+  immediately).
+- The standalone **Candidates page and its sidebar entry are removed**; the old `#/candidates` route
+  now lands on Inventory. (The Libraries workspace keeps its per-library Candidates tab.) Reuses the
+  existing `/api/media` and `/api/candidates` endpoints — no API or eligibility-logic changes.
+
 ### Preset slider says exactly what every position selects
 
 - **The per-library video preset slider is no longer a black box.** Each position now shows the
