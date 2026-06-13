@@ -6,12 +6,14 @@ the replacement workflow is trustworthy.
 
 ## Up next (priority order, set 2026-06-13)
 
-1. **Quarantine before/after compare-to-approve.** A side-by-side compare of the original
-   and its replacement on the Quarantine page, so an operator can visually approve (keep) or
-   reject (roll back) a replacement. See the Quarantine compare note under Phase 11.
-2. **Richer, explicit video preset sliders.** More positions/options on the per-library video
+1. **Richer, explicit video preset sliders.** More positions/options on the per-library video
    slider and an explicit display of the exact codec/container/CRF each position selects
    (the "Selects: …" badges are a first step). See the Phase 7/10 slider note.
+
+**Quarantine compare-to-approve: core done.** The Quarantine page now expands each replacement into
+a compare panel (original vs replacement size/saving + the full verification report), with
+**Approve & free space** (purge the original now) and **Reject (roll back)** actions. Visual media
+preview (thumbnails/players) is deferred. See the Phase 11 note.
 
 **Phase 12 (Unified Library & Candidates workspace): core done.** Opening a library now shows its
 rules and the candidates those rules select as two tabs in one view, with re-resolve on save and
@@ -577,13 +579,15 @@ Deliverables:
   preview output is discarded and the real queue run uses them.
 - Pure helpers for the comparison statistics; the temporary-job lifecycle reuses
   the existing worker with a "preview" job type that is exempt from replacement.
-- **Quarantine compare-to-approve (related, on the Quarantine page).** The same
-  side-by-side compare, but for a *replacement that has already happened*: show the
-  quarantined original against the in-place replacement (players/thumbnails plus the
-  size/quality/verification stats) so an operator can **approve** (keep, and let the
-  retention window eventually purge the original) or **reject** (roll back to the
-  original) from one screen. Reuses the existing replace/rollback service — this is a
-  review UI over actions that already exist, never a new destructive path.
+- **Quarantine compare-to-approve (related, on the Quarantine page). Core done.** Each replacement
+  on the Quarantine page expands into a compare panel showing the quarantined original against the
+  in-place replacement — size + saving % and the full Phase 9 verification report (the measured
+  VMAF/SSIM, duration, audio-retention, etc. gates) — so an operator can **approve** (here: delete
+  the quarantined original now to reclaim space, keeping the replacement) or **reject** (roll back to
+  the original) from one screen. Reuses the existing rollback and quarantine-purge services — a
+  review UI over actions that already exist, never a new destructive path. The **visual** half
+  (in-sync players / matched-frame thumbnails) is deferred; today's compare is stats + report only,
+  since the original's pre-replacement probe isn't persisted.
 
 Exit criteria:
 

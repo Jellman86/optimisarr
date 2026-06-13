@@ -199,6 +199,11 @@ export type Replacement = {
   purgedAt: string | null
 }
 
+export type ReplacementDetail = Replacement & {
+  verificationPassed: boolean | null
+  verificationReportJson: string | null
+}
+
 export type ActivityWatcherType = 'Plex' | 'Jellyfin' | 'Emby'
 
 export type ActivityWatcher = {
@@ -418,6 +423,9 @@ export const api = {
     request<Replacement>(`/api/jobs/${id}/replace`, { method: 'POST' }),
 
   replacements: () => request<Replacement[]>('/api/replacements'),
+  replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
   rollbackReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
+  approveReplacement: (id: number) =>
+    request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
 }

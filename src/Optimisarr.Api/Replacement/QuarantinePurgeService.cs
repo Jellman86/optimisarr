@@ -58,6 +58,38 @@ public sealed class QuarantinePurgeService(
         return expiredIds.Count;
     }
 
+    /// <summary>
+    /// Purges a single quarantined original on demand — the operator's explicit "approve this
+    /// replacement and reclaim the space now" from the Quarantine compare view, independent of the
+    /// retention window. Like the bulk purge it only ever acts on a <see cref="ReplacementStatus.Replaced"/>
+    /// row; a rolled-back or already-purged row is refused, and the original file is left untouched.
+    /// </summary>
+    public async Task<ReplacementActionResult> PurgeOneAsync(int replacementId, CancellationToken cancellationToken)
+    {
+        var replacement = await db.Replacements
+            .FirstOrDefaultAsync(r => r.Id == replacementId, cancellationToken);
+
+        if (replacement is null)
+        {
+            return ReplacementActionResult.NotFound($"No replacement with id {replacementId}.");
+        }
+
+        if (replacement.Status != ReplacementStatus.Replaced)
+        {
+            return ReplacementActionResult.Invalid(
+                $"Replacement {replacementId} is {replacement.Status}; only a quarantined (Replaced) original can be purged.");
+        }
+
+        DeleteQuarantinedOriginal(replacement.QuarantinePath);
+        replacement.Status = ReplacementStatus.Purged;
+        replacement.PurgedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Purged quarantined original for replacement {ReplacementId} on operator approval", replacementId);
+        return ReplacementActionResult.Ok(replacement);
+    }
+
     // Best effort: the retention decision is already committed in the status change,
     // so a file we cannot delete (already gone, permissions) must not abort the purge.
     // The original's per-timestamp quarantine folder holds only this file, so remove

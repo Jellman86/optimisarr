@@ -97,6 +97,53 @@ public sealed class QuarantinePurgeServiceTests : IDisposable
         Assert.Equal(ReplacementStatus.Purged, await StatusOfAsync(id));
     }
 
+    [Fact]
+    public async Task Purge_one_deletes_the_original_now_regardless_of_the_retention_window()
+    {
+        await SetRetentionDaysAsync(0); // indefinite retention — an on-demand approve still purges
+        var (id, quarantinePath) = await SeedQuarantinedAsync(replacedAt: DateTimeOffset.UtcNow);
+        var stampDir = Path.GetDirectoryName(quarantinePath)!;
+
+        var result = await PurgeOneAsync(id);
+
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.False(File.Exists(quarantinePath));
+        Assert.False(Directory.Exists(stampDir));
+        Assert.Equal(ReplacementStatus.Purged, await StatusOfAsync(id));
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.NotNull((await db.Replacements.SingleAsync(r => r.Id == id)).PurgedAt);
+    }
+
+    [Fact]
+    public async Task Purge_one_refuses_a_replacement_that_is_not_in_quarantine()
+    {
+        var (id, quarantinePath) = await SeedQuarantinedAsync(
+            replacedAt: DateTimeOffset.UtcNow, status: ReplacementStatus.RolledBack);
+
+        var result = await PurgeOneAsync(id);
+
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.True(File.Exists(quarantinePath));                       // nothing deleted
+        Assert.Equal(ReplacementStatus.RolledBack, await StatusOfAsync(id));
+    }
+
+    [Fact]
+    public async Task Purge_one_reports_not_found_for_an_unknown_id()
+    {
+        var result = await PurgeOneAsync(9999);
+
+        Assert.Equal(ReplacementResultKind.NotFound, result.Kind);
+    }
+
+    private async Task<ReplacementActionResult> PurgeOneAsync(int replacementId)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new QuarantinePurgeService(
+            db, new SettingsStore(db), NullLogger<QuarantinePurgeService>.Instance);
+        return await service.PurgeOneAsync(replacementId, CancellationToken.None);
+    }
+
     private async Task<int> PurgeAsync()
     {
         await using var db = new OptimisarrDbContext(_options);

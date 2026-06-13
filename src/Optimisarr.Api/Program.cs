@@ -1078,6 +1078,17 @@ app.MapGet("/api/replacements", async (OptimisarrDbContext db, CancellationToken
     Results.Ok(await ReplacementQueries.ListAsync(db, cancellationToken)))
 .WithName("ListReplacements");
 
+// One replacement with its job's verification report, for the Quarantine compare-to-approve view.
+app.MapGet("/api/replacements/{id:int}", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var detail = await ReplacementQueries.GetAsync(db, id, cancellationToken);
+    return detail is null ? Results.NotFound(new { error = $"No replacement with id {id}." }) : Results.Ok(detail);
+})
+.WithName("GetReplacement");
+
 app.MapPost("/api/replacements/{id:int}/rollback", async (
     int id,
     ReplacementService replacement,
@@ -1087,6 +1098,18 @@ app.MapPost("/api/replacements/{id:int}/rollback", async (
     return ReplacementResults.ToHttp(result);
 })
 .WithName("RollbackReplacement");
+
+// Approve a replacement: delete the quarantined original now (reclaim space) instead of waiting
+// for the retention window. The replacement is kept; this only discards the rollback path.
+app.MapPost("/api/replacements/{id:int}/approve", async (
+    int id,
+    QuarantinePurgeService purge,
+    CancellationToken cancellationToken) =>
+{
+    var result = await purge.PurgeOneAsync(id, cancellationToken);
+    return ReplacementResults.ToHttp(result);
+})
+.WithName("ApproveReplacement");
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

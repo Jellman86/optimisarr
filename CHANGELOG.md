@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Quarantine compare-to-approve
+
+- **Review a replacement before deciding.** Each replacement on the Quarantine page now expands into
+  a compare panel showing the quarantined original vs the in-place replacement — size and saving %,
+  plus the full verification report (the measured VMAF/SSIM, duration, audio-retention and other
+  gates, the same ✓/✗ list the Queue shows) — so the decision isn't made on a size number alone.
+- **Approve or reject from one screen.** **Approve & free space** deletes the quarantined original
+  now (reclaiming space immediately instead of waiting for the retention window; the replacement is
+  kept and can no longer be rolled back), and **Reject (roll back)** restores the original. Both
+  reuse the existing purge and rollback services — no new destructive path, safety model unchanged.
+- New `GET /api/replacements/{id}` (replacement + its job's verification report) and
+  `POST /api/replacements/{id}/approve` (on-demand single purge). The report renders through a shared
+  `VerificationChecks` component now used by both the Queue and Quarantine pages. Visual media
+  preview (players/thumbnails) is deferred.
+
 ### Unified Library & Candidates workspace (Phase 12)
 
 - **Tune a library's rules and see what they select in one place.** Opening a library is now a
