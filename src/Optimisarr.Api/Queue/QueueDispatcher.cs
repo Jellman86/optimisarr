@@ -274,6 +274,7 @@ public sealed class QueueDispatcher(
         bool MoveOnComplete,
         string? TargetFolder,
         bool MoveOverwrite,
+        int MediaFileId,
         OriginalSnapshot Original,
         double? MinVmafHarmonicMean,
         double? MinVmafMin)
@@ -307,11 +308,14 @@ public sealed class QueueDispatcher(
         var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
         var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
 
+        // Each file's output lives under a per-media-file work root so two sources that share a
+        // stem but differ by extension can never resolve to the same work path and clobber each
+        // other's verified output before it is moved or replaced.
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.Path,
             media.RelativePath,
-            _workRoot,
+            WorkOutputRoot.ForMediaFile(_workRoot, media.Id),
             media.IsHdr,
             library?.QualityCrf ?? rules.DefaultCrf,
             library?.EncoderPreset,
@@ -358,6 +362,7 @@ public sealed class QueueDispatcher(
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
             library?.MoveOverwrite ?? false,
+            media.Id,
             original,
             library?.MinVmafHarmonicMean,
             library?.MinVmafMin);
@@ -536,7 +541,10 @@ public sealed class QueueDispatcher(
     {
         if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
         {
-            var destination = MoveTarget.Resolve(_workRoot, outputPath, targetFolder);
+            // Resolve against this file's own work root so the per-media-file id segment is not
+            // mirrored into the target folder — the destination keeps the library's structure.
+            var mediaWorkRoot = WorkOutputRoot.ForMediaFile(_workRoot, work.MediaFileId);
+            var destination = MoveTarget.Resolve(mediaWorkRoot, outputPath, targetFolder);
 
             // Don't silently clobber an existing converted file unless the library opts into it.
             // Failing here keeps the just-produced output in the work dir for inspection.

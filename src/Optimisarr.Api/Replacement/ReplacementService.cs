@@ -117,6 +117,19 @@ public sealed class ReplacementService
         }
 
         var plan = ReplacementPlanner.Plan(media.Path, job.WorkOutputPath, _trashRoot, DateTimeOffset.UtcNow);
+
+        // A transcode that changes the container lands at a new path (e.g. photo.bmp -> photo.webp).
+        // If a *different* file already occupies that path — typically another source that optimised
+        // to the same name — replacing would overwrite it. Fail safely before quarantining anything,
+        // so the original is left untouched. (An unchanged-container replacement lands back on the
+        // original's own path, which is expected and not a collision.)
+        if (!string.Equals(plan.FinalPath, media.Path, StringComparison.Ordinal) && File.Exists(plan.FinalPath))
+        {
+            return ReplacementActionResult.Failed(
+                $"Replacement would collide with an existing file at {plan.FinalPath}. " +
+                "Another optimised file already occupies that path, so the original was left untouched.");
+        }
+
         var settings = await _settings.GetQueueSettingsAsync(cancellationToken);
         if (!settings.ReplacementAllowCrossFilesystem)
         {

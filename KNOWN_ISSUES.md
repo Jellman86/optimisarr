@@ -10,21 +10,7 @@ CHANGELOG, not kept here.
 
 ## Open
 
-### 1. Output filename collision when two sources share a stem (move/replace)
-
-- **Impact:** The output name is `{stem}.{targetExtension}`, so two source files that differ only
-  by extension (e.g. `photo.bmp` and `photo.tif`, both → `photo.webp`) resolve to the **same
-  output path**. In move-on-complete mode the second output **overwrites the first**
-  (`File.Move(..., overwrite: true)`); in replace mode two files genuinely cannot both occupy
-  `photo.webp` in one directory.
-- **Mitigation (in place):** Originals are never lost — in replace mode they are quarantined first
-  and are recoverable. Only an *optimised output* can be overwritten (wasted work, not source
-  loss). Most relevant to libraries that convert many files to one target format (images).
-- **Intended fix:** make the work/output path unique per source file, and fail a job safely (with
-  a clear "would collide with an existing optimised file" reason) rather than overwrite a
-  different file at the final destination.
-
-### 2. Animated images — partially addressed
+### 1. Animated images — partially addressed
 
 - **Status:** Animated GIF/WebP files are now **skipped as candidates** (detected via the probed
   frame count), so they are no longer flattened into a broken single-frame output. Previously such
@@ -38,6 +24,10 @@ CHANGELOG, not kept here.
 
 These were found during live testing and fixed (see CHANGELOG for details):
 
+- Output filename collision when two sources shared a stem (e.g. `photo.bmp` and `photo.tif`, both
+  → `photo.webp`). The work output is now namespaced per media file (`/work/<id>/…`) so jobs never
+  clobber each other's output, and a replacement whose destination is already occupied by a
+  different file now fails safely with a clear reason, leaving the original untouched.
 - The image optimisation marker did not round-trip (ffmpeg's still encoders drop `-metadata`). It is
   now written and read with exiftool in the EXIF/XMP `Software` field, so the marker is portable for
   JPEG/WebP/AVIF — surviving a database wipe or a move to another machine.

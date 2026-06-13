@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Output filename collision fixed (work path + replacement)
+
+Two source files that differ only by extension (e.g. `photo.bmp` and `photo.tif`, both targeting
+`photo.webp`) used to resolve to the **same** output path, so the second job could clobber the
+first's output. Closed on both layers, with no change to the safety model (originals were already
+recoverable; this prevents wasted/incorrect work):
+
+- **Unique work output per source.** Each file's transcode now lands under a per-media-file work
+  root (`/work/<mediaFileId>/…`), so two sources sharing a stem can never write to the same work
+  path and overwrite each other's verified output before it is moved or replaced. Pure, unit-tested
+  `WorkOutputRoot`; the move-to-target destination still mirrors the library's natural structure
+  (the id segment never leaks into the target folder).
+- **Safe-fail on replacement collision.** If a verified output's final destination is already
+  occupied by a *different* file (another source that optimised to the same name), the replacement
+  now **fails with a clear "would collide with an existing file" reason and leaves the original
+  untouched** — instead of quarantining and then erroring on the move. An unchanged-container
+  replacement landing back on the original's own path is still the normal case, not a collision.
+
 ### Per-library move-overwrite control + explicit preset sliders
 
 - **Overwrite tickbox for "move output to a target folder".** When a library moves its completed

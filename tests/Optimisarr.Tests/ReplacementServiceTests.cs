@@ -77,6 +77,28 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_fails_safely_when_a_different_file_already_occupies_the_destination()
+    {
+        // photo.tif optimises to photo.webp, but a photo.webp (from another source, e.g.
+        // photo.bmp) already sits there. Replacing must not overwrite that different file.
+        var (originalPath, outputPath) = WriteFiles("photo.tif", "photo.webp", "ORIGINAL-TIF", "NEW-FROM-TIF");
+        var occupied = Path.Combine(_dataDir, "photo.webp");
+        File.WriteAllText(occupied, "ALREADY-OPTIMISED-BMP");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var result = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Contains("collide", result.Message);
+        // The original is untouched (never quarantined) and the occupant is intact.
+        Assert.True(File.Exists(originalPath));
+        Assert.Equal("ORIGINAL-TIF", File.ReadAllText(originalPath));
+        Assert.Equal("ALREADY-OPTIMISED-BMP", File.ReadAllText(occupied));
+        Assert.Equal("NEW-FROM-TIF", File.ReadAllText(outputPath));   // verified output retained
+        Assert.Empty(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    [Fact]
     public async Task Replace_refuses_a_job_that_has_not_passed_verification()
     {
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
