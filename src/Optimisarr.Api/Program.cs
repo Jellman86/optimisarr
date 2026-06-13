@@ -7,6 +7,7 @@ using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
@@ -647,6 +648,20 @@ app.MapGet("/api/library-options", () => Results.Ok(new
 {
     mediaTypes = Enum.GetNames<MediaType>(),
     ruleProfiles = Enum.GetNames<RuleProfile>(),
+    // The concrete codec/container/CRF each profile resolves to, straight from RuleProfileDefaults,
+    // so the preset slider can show exactly what every position selects without the UI hard-coding
+    // (and drifting from) the backend's choices.
+    ruleProfileSpecs = Enum.GetValues<RuleProfile>().Select(profile =>
+    {
+        var rules = RuleProfileDefaults.For(profile);
+        return new
+        {
+            profile = profile.ToString(),
+            codec = rules.TargetVideoCodec,
+            container = rules.TargetContainer,
+            crf = rules.DefaultCrf
+        };
+    }),
     hdrHandlings = Enum.GetNames<HdrHandling>(),
     videoCodecs = new[] { "hevc", "h264", "av1" },
     containers = new[] { "mkv", "mp4" },

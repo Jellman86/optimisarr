@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Preset slider says exactly what every position selects
+
+- **The per-library video preset slider is no longer a black box.** Each position now shows the
+  codec it resolves to (Compatibility → H.264, Balanced → HEVC, Efficiency → AV1), with the active
+  position's full codec/container/CRF still spelled out in the "Selects: …" row.
+- **Accurate by construction.** Those specs are now served from the backend's `RuleProfileDefaults`
+  via `/api/library-options` (new `ruleProfileSpecs`) instead of a hard-coded UI table, so the
+  slider can never drift from what the server actually does when an option changes.
+
 ### Quarantine compare-to-approve
 
 - **Review a replacement before deciding.** Each replacement on the Quarantine page now expands into

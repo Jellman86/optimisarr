@@ -82,9 +82,17 @@ export type SaveLibrary = LibraryRules & {
   enabled: boolean
 }
 
+export type RuleProfileSpec = {
+  profile: string
+  codec: string | null
+  container: string | null
+  crf: number | null
+}
+
 export type LibraryOptions = {
   mediaTypes: string[]
   ruleProfiles: string[]
+  ruleProfileSpecs: RuleProfileSpec[]
   hdrHandlings: string[]
   videoCodecs: string[]
   containers: string[]

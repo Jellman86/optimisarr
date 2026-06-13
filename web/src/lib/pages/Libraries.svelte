@@ -12,6 +12,7 @@
   let options = $state<LibraryOptions>({
     mediaTypes: [],
     ruleProfiles: [],
+    ruleProfileSpecs: [],
     hdrHandlings: [],
     videoCodecs: [],
     containers: [],
@@ -58,17 +59,35 @@
   const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1']
   const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency']
 
-  // The concrete codec/container/CRF each preset selects, surfaced as a badge so the operator
-  // sees exactly what the slider chooses (not just a vibe). Mirrors the backend RuleProfileDefaults.
-  const presetSpecs: Record<string, { codec: string; container: string; crf: number | null }> = {
-    CompatibilityH264: { codec: 'H.264', container: 'MP4', crf: 20 },
-    ConservativeHevc: { codec: 'HEVC (H.265)', container: 'MP4', crf: 24 },
-    ExperimentalAv1: { codec: 'AV1', container: 'MKV', crf: 30 },
-    RemuxCleanup: { codec: 'No re-encode', container: 'MKV', crf: null },
+  // Friendly display names for raw codec ids so a badge reads "HEVC (H.265)", not "hevc".
+  const codecLabels: Record<string, string> = { h264: 'H.264', hevc: 'HEVC (H.265)', av1: 'AV1' }
+  function prettyCodec(codec: string | null): string {
+    if (!codec) return 'No re-encode'
+    return codecLabels[codec.toLowerCase()] ?? codec.toUpperCase()
+  }
+  type PresetSpec = { codec: string; container: string; crf: number | null }
+  const FALLBACK_SPEC: PresetSpec = { codec: 'HEVC (H.265)', container: 'MP4', crf: 24 }
+
+  // The concrete codec/container/CRF each preset selects, sourced from the backend's
+  // RuleProfileDefaults via /api/library-options so the slider can never drift from what the
+  // server actually does. Keyed by RuleProfile name.
+  const presetSpecs = $derived.by(() => {
+    const map: Record<string, PresetSpec> = {}
+    for (const spec of options.ruleProfileSpecs) {
+      map[spec.profile] = {
+        codec: prettyCodec(spec.codec),
+        container: (spec.container ?? '').toUpperCase(),
+        crf: spec.crf,
+      }
+    }
+    return map
+  })
+  function specFor(profile: string): PresetSpec {
+    return presetSpecs[profile] ?? presetSpecs.ConservativeHevc ?? FALLBACK_SPEC
   }
   // The effective selection, accounting for any Advanced overrides the operator has set.
   const effectiveVideoSpec = $derived.by(() => {
-    const base = presetSpecs[form.ruleProfile] ?? presetSpecs.ConservativeHevc
+    const base = specFor(form.ruleProfile)
     return {
       codec: form.targetVideoCodec ? form.targetVideoCodec.toUpperCase() : base.codec,
       container: form.targetContainer ? form.targetContainer.toUpperCase() : base.container,
@@ -617,9 +636,15 @@
           disabled={isRemuxProfile}
           oninput={(e) => setEncodeStop(e.currentTarget.value)}
         />
-        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+        <!-- Every position is explicit: each stop shows the codec it resolves to, with the active
+             stop highlighted and its full container/CRF spelled out in the "Selects:" row below. -->
+        <div class="mt-1 flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
           {#each encodeStopLabels as stop, i}
-            <span class={!isRemuxProfile && encodeStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+            {@const active = !isRemuxProfile && encodeStop === i}
+            <span class="flex flex-col {i === 0 ? 'items-start' : i === encodeStopLabels.length - 1 ? 'items-end text-right' : 'items-center text-center'}">
+              <span class={active ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+              <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{specFor(encodeProfiles[i]).codec}</span>
+            </span>
           {/each}
         </div>
       </div>

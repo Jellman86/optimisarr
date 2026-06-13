@@ -6,9 +6,15 @@ the replacement workflow is trustworthy.
 
 ## Up next (priority order, set 2026-06-13)
 
-1. **Richer, explicit video preset sliders.** More positions/options on the per-library video
-   slider and an explicit display of the exact codec/container/CRF each position selects
-   (the "Selects: …" badges are a first step). See the Phase 7/10 slider note.
+1. **Phase 11 settings preview**, or **Phase 13 release hardening** (dry-run, SQLite config
+   backup/export, README quickstart, troubleshooting, security notes) — next major pieces once the
+   editing/review loop is complete.
+
+**Explicit video preset sliders: done.** Every position on the per-library video slider now shows
+the codec it resolves to, and the "Selects: …" detail (codec/container/CRF) plus the per-position
+codecs are driven by the backend's `RuleProfileDefaults` (served via `/api/library-options`) rather
+than a hard-coded UI map, so the slider can never drift from what the server actually does. Adding
+*more* preset positions (new `RuleProfile`s) remains optional future work.
 
 **Quarantine compare-to-approve: core done.** The Quarantine page now expands each replacement into
 a compare panel (original vs replacement size/saving + the full verification report), with
