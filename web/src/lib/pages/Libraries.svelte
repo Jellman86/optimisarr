@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { api, type Library, type LibraryOptions, type SaveLibrary } from '../api'
+  import { api, type Candidate, type Library, type LibraryOptions, type SaveLibrary } from '../api'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
   import Icon from '../components/Icon.svelte'
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
+  import CandidateTable from '../components/CandidateTable.svelte'
 
   let libraries = $state<Library[]>([])
   let options = $state<LibraryOptions>({
@@ -107,6 +108,16 @@
 
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
+  // Within an open library, switch between tuning its Rules and seeing the Candidates they select.
+  let activeTab = $state<'rules' | 'candidates'>('rules')
+  // The candidate decisions for the library currently open in the editor. Re-fetched when a
+  // library is opened and after each Save/Scan/Enqueue, so the list always reflects saved rules.
+  let editorCandidates = $state<Candidate[]>([])
+  let editorCandidatesLoading = $state(false)
+  let editorCandidatesError = $state<string | null>(null)
+  const editorEligibleCount = $derived(editorCandidates.filter((c) => c.eligible).length)
+  // Per-library eligible/skipped tallies for the list cards (counts only — see /api/candidates/summary).
+  let summaries = $state<Record<number, { eligible: number; skipped: number }>>({})
   let form = $state<SaveLibrary>(blankForm())
   // Advanced (encoding/eligibility) settings are collapsed by default to keep the
   // common case simple; opened automatically when editing a library that uses them.
@@ -298,6 +309,30 @@
     } catch (err) {
       error = err instanceof Error ? err.message : 'Unable to load libraries'
     }
+    // Tallies are a best-effort enhancement of the list; a failure here must not blank the page.
+    void loadSummaries()
+  }
+
+  async function loadSummaries() {
+    try {
+      const rows = await api.candidateSummary()
+      summaries = Object.fromEntries(rows.map((r) => [r.libraryId, { eligible: r.eligible, skipped: r.skipped }]))
+    } catch {
+      // Leave whatever tallies we had; the cards simply omit a count.
+    }
+  }
+
+  // Re-resolve the open library's candidates from its *saved* rules.
+  async function loadEditorCandidates(libraryId: number) {
+    editorCandidatesLoading = true
+    editorCandidatesError = null
+    try {
+      editorCandidates = await api.candidates(libraryId)
+    } catch (err) {
+      editorCandidatesError = err instanceof Error ? err.message : 'Unable to load candidates'
+    } finally {
+      editorCandidatesLoading = false
+    }
   }
 
   function startAdd() {
@@ -307,6 +342,8 @@
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     minSizeMb = ''
     showAdvanced = false
+    activeTab = 'rules'
+    editorCandidates = []
     editingId = 0
     markPristine()
   }
@@ -351,8 +388,11 @@
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
     showAdvanced = false
+    activeTab = 'rules'
     editingId = library.id
     markPristine()
+    editorCandidates = []
+    void loadEditorCandidates(library.id)
   }
 
   function cancelEdit() {
@@ -401,7 +441,9 @@
     message = null
     try {
       if (editingId === 0) {
-        await api.createLibrary(payload())
+        // Keep the workspace open on the just-created library so its Candidates tab is reachable.
+        const created = await api.createLibrary(payload())
+        editingId = created.id
         message = `Added library "${form.name}".`
       } else if (editingId) {
         await api.updateLibrary(editingId, payload())
@@ -409,8 +451,9 @@
       }
       // The saved values are now the baseline, so the form is no longer dirty.
       markPristine()
-      editingId = null
       await load()
+      // Re-resolve what the now-saved rules select, so the Candidates tab reflects this Save.
+      if (editingId) await loadEditorCandidates(editingId)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Unable to save library'
     }
@@ -424,6 +467,8 @@
       const summary = await api.scanLibrary(library.id)
       message = `"${library.name}": ${summary.discovered} found, ${summary.added} new, ${summary.updated} updated, ${summary.skippedUnsettled} settling.`
       await load()
+      // A scan changes what's probed, so refresh the open library's candidate list too.
+      if (editingId === library.id) await loadEditorCandidates(library.id)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Scan failed'
     } finally {
@@ -441,6 +486,8 @@
       if (result.importing > 0) message += `, ${result.importing} held back while Sonarr/Radarr imports`
       message += ').'
       if (result.enqueued > 0) message += ' See the Queue page.'
+      // Enqueued files are no longer offered, so refresh the open library's candidate list.
+      if (editingId === library.id) await loadEditorCandidates(library.id)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Enqueue failed'
     } finally {
@@ -1048,6 +1095,10 @@
             <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{library.path}</div>
             <div class="mt-1 text-xs text-slate-400">
               {library.fileCount.toLocaleString()} files discovered
+              {#if summaries[library.id]}
+                · <span class="text-emerald-600 dark:text-emerald-400">{summaries[library.id].eligible.toLocaleString()} eligible</span>
+                · {summaries[library.id].skipped.toLocaleString()} skipped
+              {/if}
               {#if library.autoEnqueueEnabled && library.lastAutoEnqueueAt}
                 · last auto-run {new Date(library.lastAutoEnqueueAt).toLocaleString()}
               {/if}
@@ -1075,7 +1126,42 @@
 
         {#if editingId === library.id}
           <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
-            {@render configForm()}
+            <!-- Rules | Candidates: tune the rules and see what they select without leaving the library. -->
+            <div class="mb-5 flex gap-1 border-b border-slate-200 dark:border-slate-700">
+              <button
+                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'rules'
+                  ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+                onclick={() => (activeTab = 'rules')}
+              >
+                Rules
+                {#if isDirty}<span class="ml-1 text-amber-500" title="Unsaved changes">●</span>{/if}
+              </button>
+              <button
+                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'candidates'
+                  ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+                onclick={() => (activeTab = 'candidates')}
+              >
+                Candidates{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}
+              </button>
+            </div>
+
+            {#if activeTab === 'rules'}
+              {@render configForm()}
+            {:else}
+              {#if editorCandidatesError}
+                <Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>
+              {/if}
+              <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                What this library's <strong>saved</strong> rules select right now — it updates after you Save on the Rules tab. Enqueue these from the Enqueue button above; nothing here changes a file.
+              </p>
+              {#if editorCandidatesLoading}
+                <div class="card p-8 text-center text-slate-400">Loading…</div>
+              {:else}
+                <CandidateTable candidates={editorCandidates} scoped />
+              {/if}
+            {/if}
           </div>
         {/if}
       </div>

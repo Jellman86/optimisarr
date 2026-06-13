@@ -306,6 +306,12 @@ export type Candidate = {
   reason: string
 }
 
+export type CandidateSummary = {
+  libraryId: number
+  eligible: number
+  skipped: number
+}
+
 export type ScanSummary = {
   discovered: number
   added: number
@@ -361,6 +367,7 @@ export const api = {
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
+  candidateSummary: () => request<CandidateSummary[]>('/api/candidates/summary'),
 
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (body: Settings) =>

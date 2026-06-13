@@ -5,6 +5,9 @@ using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
+/// <summary>Per-library tally of how many probed files its rules would optimise vs skip.</summary>
+public sealed record CandidateSummary(int LibraryId, int Eligible, int Skipped);
+
 /// <summary>One probed file evaluated against its library's rule profile.</summary>
 public sealed record Candidate(
     int MediaFileId,
@@ -97,6 +100,25 @@ public sealed class CandidateService(OptimisarrDbContext db)
         }
 
         return candidates;
+    }
+
+    /// <summary>
+    /// Per-library eligible/skipped counts, so the Libraries list can show each library's tally
+    /// without the caller fetching every probed file row. Reuses the same evaluation as
+    /// <see cref="EvaluateAsync"/>; only files belonging to a library are counted.
+    /// </summary>
+    public async Task<IReadOnlyList<CandidateSummary>> SummariseAsync(CancellationToken cancellationToken)
+    {
+        var candidates = await EvaluateAsync(libraryId: null, cancellationToken);
+
+        return candidates
+            .Where(candidate => candidate.LibraryId is not null)
+            .GroupBy(candidate => candidate.LibraryId!.Value)
+            .Select(group => new CandidateSummary(
+                group.Key,
+                group.Count(candidate => candidate.Eligible),
+                group.Count(candidate => !candidate.Eligible)))
+            .ToList();
     }
 
     // AudioCodecs is a comma-separated summary (e.g. "flac" or "eac3, aac"); the first entry

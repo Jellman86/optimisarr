@@ -6,15 +6,17 @@ the replacement workflow is trustworthy.
 
 ## Up next (priority order, set 2026-06-13)
 
-1. **Phase 12 — Unified Library & Candidates workspace.** Promoted to the next major
-   piece of work: merge the Libraries and Candidates screens so tuning a rule and seeing
-   what it selects happen in one place.
-2. **Quarantine before/after compare-to-approve.** A side-by-side compare of the original
+1. **Quarantine before/after compare-to-approve.** A side-by-side compare of the original
    and its replacement on the Quarantine page, so an operator can visually approve (keep) or
    reject (roll back) a replacement. See the Quarantine compare note under Phase 11.
-3. **Richer, explicit video preset sliders.** More positions/options on the per-library video
+2. **Richer, explicit video preset sliders.** More positions/options on the per-library video
    slider and an explicit display of the exact codec/container/CRF each position selects
    (the "Selects: …" badges are a first step). See the Phase 7/10 slider note.
+
+**Phase 12 (Unified Library & Candidates workspace): core done.** Opening a library now shows its
+rules and the candidates those rules select as two tabs in one view, with re-resolve on save and
+per-library eligible/skipped tallies on the list; the all-libraries Candidates page is retained.
+See the Phase 12 section for the remaining optional polish.
 
 ## Current status (2026-06-12)
 
@@ -592,6 +594,17 @@ Exit criteria:
   original and approve or roll back, with the safety model unchanged.
 
 ## Phase 12: Unified Library & Candidates Workspace
+
+Status: core done. Opening a library is now a tabbed workspace — a **Rules** tab (the existing
+preset + Advanced form) and a **Candidates** tab showing the eligible/skipped decisions for *that*
+library, reusing the shared `CandidateTable` component. The candidate list **re-resolves on Save**
+(and after Scan/Enqueue) so it always reflects the persisted rules, and the editor stays open after
+Save so the cause-and-effect loop happens in one place. The **Libraries list** shows each library's
+eligible/skipped **tally** (a lightweight `/api/candidates/summary` that reuses the pure
+`CandidateEvaluator`), and the all-libraries **Candidates page is retained** as the cross-library
+view. No new domain logic; enqueue remains the only action and only queues. Remaining optional
+polish: optimistic live preview of *unsaved* edits (folds into Phase 11), and folding the fleet
+overview into the Dashboard if the separate page later feels redundant.
 
 Goal: stop treating a library's *configuration* and the *files that configuration
 selects* as two separate screens. Today the **Libraries** page edits a library's

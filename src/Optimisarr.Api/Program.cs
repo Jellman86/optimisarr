@@ -921,6 +921,17 @@ app.MapGet("/api/candidates", async (
 })
 .WithName("ListCandidates");
 
+// Per-library eligible/skipped tallies for the Libraries workspace, so the list can show each
+// library's candidate counts without fetching every probed file row.
+app.MapGet("/api/candidates/summary", async (
+    CandidateService candidates,
+    CancellationToken cancellationToken) =>
+{
+    var summary = await candidates.SummariseAsync(cancellationToken);
+    return Results.Ok(summary);
+})
+.WithName("CandidateSummary");
+
 // Phase 3: enqueue a library's eligible candidates as transcode jobs.
 app.MapPost("/api/libraries/{id:int}/enqueue", async (
     int id,

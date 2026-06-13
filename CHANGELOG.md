@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Unified Library & Candidates workspace (Phase 12)
+
+- **Tune a library's rules and see what they select in one place.** Opening a library is now a
+  tabbed workspace: a **Rules** tab (the existing preset + Advanced form) and a **Candidates** tab
+  listing the eligible/skipped decisions for *that* library, with the same reasons the Candidates
+  page shows. No more hopping to a separate screen and re-selecting the library to see a change's
+  effect.
+- **Re-resolve on Save.** The Candidates tab reflects the library's *saved* rules; after you Save
+  (and after Scan/Enqueue) it re-fetches, and the workspace stays open so the change → effect loop
+  is immediate. The tab shows the live eligible count.
+- **Eligible/skipped tallies on the Libraries list.** Each library card now shows its candidate
+  tally, backed by a lightweight `GET /api/candidates/summary` that reuses the pure
+  `CandidateEvaluator` (counts only — the list never fetches every probed file row).
+- The standalone all-libraries **Candidates page is kept** for the cross-library view; both it and
+  the new tab share one `CandidateTable` component. **No domain logic changed** and the safety
+  model is unchanged — enqueue still only queues; nothing here replaces or deletes.
+
 ### Opt-in image EXIF/ICC-retention verification gate
 
 - **New verification gate for photo/image jobs.** When enabled (Settings → Verification → "Preserve

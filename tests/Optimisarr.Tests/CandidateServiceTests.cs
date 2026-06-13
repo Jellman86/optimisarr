@@ -189,6 +189,49 @@ public sealed class CandidateServiceTests : IDisposable
         Assert.Empty(results);
     }
 
+    [Fact]
+    public async Task Summary_counts_eligible_and_skipped_per_library()
+    {
+        int filmsId, musicId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var films = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            var music = new Library { Name = "Music", Path = "/data/music", MediaType = MediaType.Music };
+            db.Libraries.AddRange(films, music);
+            await db.SaveChangesAsync();
+            filmsId = films.Id;
+            musicId = music.Id;
+
+            db.MediaFiles.Add(Probed(films.Id, "a.mkv", videoCodec: "h264"));   // eligible
+            db.MediaFiles.Add(Probed(films.Id, "b.mkv", videoCodec: "h264"));   // eligible
+            db.MediaFiles.Add(Probed(films.Id, "c.mkv", videoCodec: "hevc"));   // skipped: already hevc
+            // A music library with one lossless (eligible) audio file.
+            db.MediaFiles.Add(new MediaFile
+            {
+                LibraryId = music.Id,
+                Path = "/data/music/Album/Track.flac",
+                RelativePath = "Album/Track.flac",
+                SizeBytes = 40L * 1024 * 1024,
+                Status = MediaFileStatus.Probed,
+                MediaKind = MediaKind.Audio,
+                AudioCodecs = "flac",
+                ProbedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var summary = await new CandidateService(readDb).SummariseAsync(CancellationToken.None);
+
+        var films2 = summary.Single(s => s.LibraryId == filmsId);
+        Assert.Equal(2, films2.Eligible);
+        Assert.Equal(1, films2.Skipped);
+
+        var music2 = summary.Single(s => s.LibraryId == musicId);
+        Assert.Equal(1, music2.Eligible);
+        Assert.Equal(0, music2.Skipped);
+    }
+
     private async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId)
     {
         await using var db = new OptimisarrDbContext(_options);
