@@ -90,4 +90,15 @@ public sealed record RuleSettings
     /// lossless sources (PNG/BMP/TIFF/GIF), since re-encoding a JPEG risks generational loss.
     /// </summary>
     public bool ReencodeLossyImages { get; init; }
+
+    /// <summary>How an image is downscaled on re-encode. Defaults to no resize.</summary>
+    public ImageDownscaleMode ImageDownscaleMode { get; init; } = ImageDownscaleMode.None;
+
+    /// <summary>
+    /// The downscale magnitude: a maximum long-edge in pixels for
+    /// <see cref="Queue.ImageDownscaleMode.MaxLongEdge"/>, or a percentage (1–99) for
+    /// <see cref="Queue.ImageDownscaleMode.Percent"/>. Ignored when the mode is
+    /// <see cref="Queue.ImageDownscaleMode.None"/>.
+    /// </summary>
+    public int ImageDownscaleValue { get; init; }
 }

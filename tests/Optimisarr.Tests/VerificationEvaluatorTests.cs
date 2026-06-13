@@ -100,6 +100,63 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void A_requested_image_downscale_passes_the_dimensions_gate()
+    {
+        // 4000x3000 capped to a 1920 long edge → 1920x1440, same 4:3 aspect.
+        var input = HealthyImage() with
+        {
+            ImageDownscaleRequested = true,
+            OutputWidth = 1920,
+            OutputHeight = 1440
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Dimensions"));
+    }
+
+    [Fact]
+    public void A_requested_downscale_that_changes_aspect_ratio_fails()
+    {
+        var input = HealthyImage() with
+        {
+            ImageDownscaleRequested = true,
+            OutputWidth = 1920,
+            OutputHeight = 1920 // 1:1 instead of the original 4:3 — stretched/cropped.
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Dimensions"));
+    }
+
+    [Fact]
+    public void A_requested_downscale_must_not_enlarge_the_image()
+    {
+        var input = HealthyImage() with
+        {
+            ImageDownscaleRequested = true,
+            OutputWidth = 8000,
+            OutputHeight = 6000
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Dimensions"));
+    }
+
+    [Fact]
+    public void An_unrequested_shrink_still_fails_even_with_a_preserved_aspect_ratio()
+    {
+        // No downscale requested, so any shrink is a degenerate encode — even at the right aspect.
+        var input = HealthyImage() with { OutputWidth = 2000, OutputHeight = 1500 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Dimensions"));
+    }
+
+    [Fact]
     public void An_image_skips_the_video_and_audio_only_integrity_gates()
     {
         var input = HealthyImage() with
@@ -117,6 +174,63 @@ public sealed class VerificationEvaluatorTests
         {
             Assert.DoesNotContain(report.Checks, check => check.Name == name);
         }
+    }
+
+    private static readonly VerificationPolicy ImageQualityGate =
+        VerificationPolicy.Default with { ImageQualityGateEnabled = true, MinimumImageSsim = 0.95 };
+
+    private const string ImageQualityCheck = "Image quality (SSIM)";
+
+    [Fact]
+    public void Image_quality_gate_is_absent_unless_enabled()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == ImageQualityCheck);
+    }
+
+    [Fact]
+    public void Image_quality_gate_is_a_still_only_gate()
+    {
+        // Even with the gate enabled, a video/audio job must not grow an image SSIM check.
+        var report = VerificationEvaluator.Evaluate(Healthy(), ImageQualityGate);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == ImageQualityCheck);
+    }
+
+    [Fact]
+    public void Image_quality_gate_passes_when_ssim_clears_the_floor()
+    {
+        var input = HealthyImage() with { ImageQualityMeasured = true, ImageSsim = 0.992 };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageQualityGate);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ImageQualityCheck));
+    }
+
+    [Fact]
+    public void Image_quality_gate_fails_when_ssim_is_below_the_floor()
+    {
+        var input = HealthyImage() with { ImageQualityMeasured = true, ImageSsim = 0.90 };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageQualityGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageQualityCheck));
+    }
+
+    [Fact]
+    public void Image_quality_gate_fails_closed_when_ssim_could_not_be_measured()
+    {
+        var input = HealthyImage() with
+        {
+            ImageQualityMeasured = false,
+            ImageQualityError = "ssim filter unavailable"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageQualityGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageQualityCheck));
     }
 
     [Fact]

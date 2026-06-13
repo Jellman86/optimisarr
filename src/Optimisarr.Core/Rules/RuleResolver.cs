@@ -27,7 +27,9 @@ public static class RuleResolver
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,
             TargetImageFormat = Normalise(overrides.TargetImageFormat) ?? settings.TargetImageFormat,
             ImageQuality = overrides.ImageQuality ?? settings.ImageQuality,
-            ReencodeLossyImages = overrides.ReencodeLossyImages ?? settings.ReencodeLossyImages
+            ReencodeLossyImages = overrides.ReencodeLossyImages ?? settings.ReencodeLossyImages,
+            ImageDownscaleMode = overrides.ImageDownscaleMode ?? settings.ImageDownscaleMode,
+            ImageDownscaleValue = overrides.ImageDownscaleValue ?? settings.ImageDownscaleValue
         };
     }
 

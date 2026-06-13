@@ -42,6 +42,7 @@ RUN apt-get update \
         ffmpeg \
         gnupg \
         gosu \
+        libimage-exiftool-perl \
         passwd \
         tzdata \
     && mkdir -p /etc/apt/keyrings \

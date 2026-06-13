@@ -213,7 +213,7 @@ public sealed class ReplacementServiceTests : IDisposable
         OptimisarrDbContext db,
         Func<string, string, bool>? canMoveAtomically = null)
     {
-        var inventory = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService());
+        var inventory = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService(), new ImageMarkerService());
         return new ReplacementService(
             db,
             inventory,

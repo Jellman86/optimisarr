@@ -37,19 +37,38 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
-    public void An_image_kind_resolves_to_a_webp_spec_with_the_default_encoder_and_quality()
+    public void An_image_kind_resolves_to_a_jpeg_spec_with_the_default_encoder_and_quality()
     {
         var spec = TranscodeSpecResolver.Resolve(
             Hevc, inputPath: "/data/photos/2024/IMG_1.png", relativePath: "2024/IMG_1.png",
             workRoot: "/work", sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Image);
 
         Assert.Equal(MediaKind.Image, spec.Kind);
-        Assert.Equal("/work/2024/IMG_1.webp", spec.OutputPath);
-        Assert.Equal("libwebp", spec.ImageEncoder);
+        Assert.Equal("/work/2024/IMG_1.jpg", spec.OutputPath);
+        Assert.Equal("mjpeg", spec.ImageEncoder);
         Assert.Equal(80, spec.ImageQuality);
+        // No downscale by default.
+        Assert.Null(spec.ImageScaleFilter);
         // The video and audio fields stay empty for an image job.
         Assert.Null(spec.VideoCodec);
         Assert.Null(spec.AudioEncoder);
+    }
+
+    [Fact]
+    public void An_image_downscale_override_resolves_a_scale_filter_into_the_spec()
+    {
+        var rules = Hevc with
+        {
+            ImageDownscaleMode = ImageDownscaleMode.MaxLongEdge,
+            ImageDownscaleValue = 1920
+        };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/photos/IMG.png", relativePath: "IMG.png",
+            workRoot: "/work", sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Image);
+
+        Assert.NotNull(spec.ImageScaleFilter);
+        Assert.Contains("min(iw,1920)", spec.ImageScaleFilter);
     }
 
     [Fact]

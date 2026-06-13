@@ -49,6 +49,8 @@ export type LibraryRules = {
   targetImageFormat: string | null
   imageQuality: number | null
   reencodeLossyImages: boolean
+  imageDownscaleMode: string
+  imageDownscaleValue: number
   moveOnComplete: boolean
   targetFolder: string | null
   minVmafHarmonicMean: number | null
@@ -108,6 +110,8 @@ export type Settings = {
   verificationMaxLoudnessDriftLufs: number
   verificationAudioClippingGateEnabled: boolean
   verificationMaxTruePeakDbtp: number
+  verificationImageQualityGateEnabled: boolean
+  verificationMinimumImageSsim: number
   replacementAllowCrossFilesystem: boolean
   replacementQuarantineRetentionDays: number
 }

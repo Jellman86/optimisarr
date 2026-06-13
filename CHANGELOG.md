@@ -2,6 +2,57 @@
 
 ## Unreleased
 
+### Image optimisation: JPEG/WebP/AVIF, downscaling, and a portable marker
+
+A big expansion of the image pipeline so it fits real media stacks rather than assuming WebP
+everywhere.
+
+- **Three output formats on a compatibility→efficiency slider.** WebP-only was the wrong default —
+  **Plex does not display WebP photos**, and AVIF support is newer-clients-only. Photo libraries now
+  get their own one-choice slider (the image counterpart of the video preset): **JPEG** (max
+  compatibility — every server/client incl. Plex), **WebP** (smaller; Jellyfin/modern), **AVIF**
+  (smallest; newer clients only). All three are genuinely wired in the command builder — JPEG via
+  `mjpeg -q:v`, AVIF via `libaom-av1` constant-quality CRF with `-still-picture` — with a single
+  0–100 quality mapped onto each encoder's native scale. JXL is detected as a *source* but is no
+  longer an encode target (no media server displays it).
+- **New default for Photo libraries is JPEG**, not WebP — safety/compatibility beats savings, and a
+  fresh photo library now displays on every server out of the box. (Existing libraries keep whatever
+  they had.)
+- **Downscaling.** A per-library option fits images within a named cap (**4K** / **1080p**), a
+  **custom max long-edge**, or a **percentage** of the original — always keeping aspect ratio and
+  **never upscaling** (pure `ImageScale` filter builder, unit tested). The verification "Dimensions"
+  gate is now downscale-aware: an operator-requested downscale passes (judged for no-enlarge and a
+  preserved aspect ratio), while an *unrequested* shrink still fails as a corrupt encode — mirroring
+  how an intentional audio downmix is handled.
+- **Portable optimisation marker for every image format (resolves `KNOWN_ISSUES.md` #1).** ffmpeg's
+  still encoders silently drop `-metadata`, so an image's "already optimised" fingerprint is now
+  written and read with **exiftool** in the standard EXIF/XMP `Software` field
+  (`optimisarr/<version>`) — a new `exiftool` dependency added to the image. The marker now travels
+  *with the file* for JPEG/WebP/AVIF, surviving a database wipe or a move to another machine, exactly
+  like the container marker on video/audio. Writing is best-effort: if exiftool is unavailable,
+  re-optimisation is still prevented by the database history and the "already in the target format"
+  check.
+- Schema: two new `Library` columns (`ImageDownscaleMode`, `ImageDownscaleValue`) via migration
+  `AddLibraryImageDownscale`; wired through the request parser/validation, library DTO, rule
+  resolver, and config import/export.
+
+### Image quality (SSIM) verification gate
+
+- **Opt-in image structural-quality gate.** Image jobs can now be held to a perceptual
+  bar, the still-image counterpart of the VMAF gate for video. When enabled, the output
+  still is scored against the original with FFmpeg's `ssim` filter (the distorted picture
+  `scale2ref`-scaled to the reference so dimensions match), and replacement is blocked when
+  the all-channel SSIM falls below a configurable floor (conservative default 0.95). Like the
+  other quality gates it **fails closed**: if SSIM can't be measured, the job fails rather than
+  replacing on unproven quality. All gate logic is pure and unit tested
+  (`ImageSsimParser`, `VerificationEvaluator`), with the measurement isolated in
+  `ImageQualityService` (no live FFmpeg in tests). Off by default; configured from Settings →
+  Verification, persisted via two new settings keys and round-tripped by config import/export.
+  This satisfies the Phase 10 exit criterion that image verification can block replacement on
+  quality loss. (EXIF/ICC-profile retention remains deferred — it is coupled to the
+  exiftool metadata-writing work tracked in `KNOWN_ISSUES.md` #1, since `libwebp` drops
+  metadata today.)
+
 ### Image optimisation: skip animated images; Candidates profile column; KNOWN_ISSUES
 
 - **Animated images are left untouched.** An animated GIF (or animated WebP) is really a short

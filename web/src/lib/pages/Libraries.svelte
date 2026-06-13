@@ -165,6 +165,60 @@
     form.targetContainer = null
   }
 
+  // A photo library gets its own compatibility→efficiency slider — the image counterpart of the
+  // video preset — mapping a single choice onto JPEG / WebP / AVIF. It is shown only for Photo
+  // libraries (a mixed "Other" library keeps the video slider and sets the format in Advanced).
+  const imageFormats = ['jpeg', 'webp', 'avif'] as const
+  const showImagePreset = $derived(isImageType(form.mediaType) && !isVideoType(form.mediaType))
+  const imageStop = $derived(Math.max(0, imageFormats.indexOf((form.targetImageFormat ?? 'jpeg') as (typeof imageFormats)[number])))
+  function setImageStop(value: string) {
+    form.targetImageFormat = imageFormats[Number(value)] ?? 'jpeg'
+  }
+  const imagePresetSummaries: Record<string, string> = {
+    jpeg: 'JPEG — maximum compatibility. Displays on every media server and client, including Plex. The safe default; the smallest savings.',
+    webp: 'WebP — a good balance. Smaller than JPEG with broad support (Jellyfin, modern browsers and apps), but Plex does not display WebP photos.',
+    avif: 'AVIF — maximum efficiency. The smallest files, but only newer clients (e.g. recent Jellyfin) render it; not supported by Plex.',
+  }
+
+  // Downscale UI: a friendly mode picker maps onto the stored (mode, value) pair. The named caps
+  // are MaxLongEdge with a fixed pixel value; "custom" exposes the raw long-edge field.
+  type DownscaleChoice = 'none' | '4k' | '1080p' | 'longedge' | 'percent'
+  const downscaleChoice = $derived<DownscaleChoice>(
+    form.imageDownscaleMode === 'Percent'
+      ? 'percent'
+      : form.imageDownscaleMode === 'MaxLongEdge'
+        ? form.imageDownscaleValue === 3840
+          ? '4k'
+          : form.imageDownscaleValue === 1920
+            ? '1080p'
+            : 'longedge'
+        : 'none',
+  )
+  function setDownscaleChoice(choice: DownscaleChoice) {
+    switch (choice) {
+      case 'none':
+        form.imageDownscaleMode = 'None'
+        form.imageDownscaleValue = 0
+        break
+      case '4k':
+        form.imageDownscaleMode = 'MaxLongEdge'
+        form.imageDownscaleValue = 3840
+        break
+      case '1080p':
+        form.imageDownscaleMode = 'MaxLongEdge'
+        form.imageDownscaleValue = 1920
+        break
+      case 'longedge':
+        form.imageDownscaleMode = 'MaxLongEdge'
+        if (form.imageDownscaleValue < 16) form.imageDownscaleValue = 2560
+        break
+      case 'percent':
+        form.imageDownscaleMode = 'Percent'
+        if (form.imageDownscaleValue < 1 || form.imageDownscaleValue > 99) form.imageDownscaleValue = 50
+        break
+    }
+  }
+
   $effect(() => {
     void load()
   })
@@ -206,6 +260,8 @@
       targetImageFormat: null,
       imageQuality: null,
       reencodeLossyImages: false,
+      imageDownscaleMode: 'None',
+      imageDownscaleValue: 0,
       moveOnComplete: false,
       targetFolder: null,
       minVmafHarmonicMean: null,
@@ -262,6 +318,8 @@
       targetImageFormat: library.targetImageFormat,
       imageQuality: library.imageQuality,
       reencodeLossyImages: library.reencodeLossyImages,
+      imageDownscaleMode: library.imageDownscaleMode,
+      imageDownscaleValue: library.imageDownscaleValue,
       moveOnComplete: library.moveOnComplete,
       targetFolder: library.targetFolder,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
@@ -305,6 +363,7 @@
       videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
       targetImageFormat: emptyToNull(form.targetImageFormat),
       imageQuality: toNullableNumber(form.imageQuality),
+      imageDownscaleValue: Number(form.imageDownscaleValue) || 0,
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
       minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
       minVmafMin: toNullableNumber(form.minVmafMin),
@@ -506,11 +565,30 @@
           <button type="button" class="ml-1 font-medium underline" onclick={resetToPreset}>Reset to preset</button>
         </div>
       {/if}
-    {:else if form.mediaType === 'Photo'}
-      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Photo library — the compatibility/efficiency video preset doesn't apply. Lossless images
-        (PNG/BMP/TIFF/GIF) are re-encoded to WebP by default; fine-tune the format and quality in Advanced options.
-      </p>
+    {:else if showImagePreset}
+      <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP → AVIF. -->
+      <div class="mt-1">
+        <input
+          class="w-full accent-cyan-600"
+          type="range"
+          min="0"
+          max={imageFormats.length - 1}
+          step="1"
+          value={imageStop}
+          oninput={(e) => setImageStop(e.currentTarget.value)}
+          aria-label="Image compatibility to efficiency"
+        />
+        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+          {#each ['JPEG', 'WebP', 'AVIF'] as stop, i}
+            <span class={imageStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+          {/each}
+        </div>
+        <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-slate-400">
+          <span>Most compatible</span>
+          <span>Most efficient</span>
+        </div>
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{imagePresetSummaries[form.targetImageFormat ?? 'jpeg']}</p>
+      </div>
     {:else}
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Music library — the compatibility/efficiency video preset doesn't apply. Lossless audio is
@@ -724,14 +802,16 @@
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How still images are re-encoded. Lossless sources (PNG/BMP/TIFF/GIF) are converted to a modern format.</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
+          {#if !showImagePreset}
           <div>
             <label class="label" for="lib-image-format">Target format</label>
             <select id="lib-image-format" class="input" bind:value={form.targetImageFormat}>
-              <option value={null}>Default (WebP)</option>
+              <option value={null}>Default (JPEG)</option>
               {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
             </select>
-            <p class="mt-1 text-xs text-slate-400">WebP plays in every modern browser and app. AVIF/JXL to follow.</p>
+            <p class="mt-1 text-xs text-slate-400">JPEG plays everywhere (incl. Plex); WebP is smaller (Jellyfin/modern); AVIF is smallest (newer clients only).</p>
           </div>
+          {/if}
           <div>
             <div class="mb-1 flex items-center justify-between">
               <label class="label mb-0" for="lib-image-quality">Quality</label>
@@ -763,6 +843,37 @@
             </span>
           </span>
         </label>
+
+        <!-- Downscale: optional dimension reduction. Aspect ratio is always kept and images are
+             never enlarged; an intentional downscale is allowed past verification. -->
+        <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label" for="lib-image-downscale">Downscale</label>
+              <select id="lib-image-downscale" class="input" value={downscaleChoice} onchange={(e) => setDownscaleChoice(e.currentTarget.value as DownscaleChoice)}>
+                <option value="none">None (keep original size)</option>
+                <option value="4k">Fit within 4K (3840 px long edge)</option>
+                <option value="1080p">Fit within 1080p (1920 px long edge)</option>
+                <option value="longedge">Custom max long edge…</option>
+                <option value="percent">Percentage of original…</option>
+              </select>
+              <p class="mt-1 text-xs text-slate-400">Aspect ratio is kept and images are never enlarged.</p>
+            </div>
+            {#if downscaleChoice === 'longedge'}
+              <div>
+                <label class="label" for="lib-image-longedge">Max long edge (px)</label>
+                <input id="lib-image-longedge" class="input" type="number" min="16" max="100000" step="1" bind:value={form.imageDownscaleValue} />
+                <p class="mt-1 text-xs text-slate-400">The longer side is capped to this; the shorter side scales to match.</p>
+              </div>
+            {:else if downscaleChoice === 'percent'}
+              <div>
+                <label class="label" for="lib-image-percent">Scale to (%)</label>
+                <input id="lib-image-percent" class="input" type="number" min="1" max="99" step="1" bind:value={form.imageDownscaleValue} />
+                <p class="mt-1 text-xs text-slate-400">Both dimensions scale to this percentage of the original.</p>
+              </div>
+            {/if}
+          </div>
+        </div>
       </section>
       {/if}
 

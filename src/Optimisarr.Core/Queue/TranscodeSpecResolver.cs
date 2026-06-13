@@ -32,7 +32,8 @@ public static class TranscodeSpecResolver
                 TonemapToSdr: false,
                 Kind: MediaKind.Image,
                 ImageEncoder: image.Encoder,
-                ImageQuality: rules.ImageQuality);
+                ImageQuality: rules.ImageQuality,
+                ImageScaleFilter: ImageScale.BuildFilter(rules.ImageDownscaleMode, rules.ImageDownscaleValue));
         }
 
         if (kind == MediaKind.Audio)

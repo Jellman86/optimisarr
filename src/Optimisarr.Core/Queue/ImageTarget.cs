@@ -11,10 +11,12 @@ public sealed record ImageFormatSpec(string Encoder, string Extension);
 public static class ImageTarget
 {
     /// <summary>
-    /// The default target format. WebP is the broadly compatible modern choice — every current
-    /// browser, phone, and most media servers display it — and is a big saving over PNG/JPEG.
+    /// The default target format. JPEG is the maximally compatible choice — every media server
+    /// (including Plex, which does not display WebP) and every client renders it — so a photo
+    /// library is safe out of the box. Operators on Jellyfin can move the preset toward WebP or
+    /// AVIF for greater savings.
     /// </summary>
-    public const string DefaultFormat = "webp";
+    public const string DefaultFormat = "jpeg";
 
     /// <summary>
     /// The default encoder quality (0–100; higher is better). 80 is visually transparent for
@@ -28,11 +30,14 @@ public static class ImageTarget
     /// </summary>
     public const long MinFileSizeBytes = 200L * 1024;
 
-    // The supported target formats and how to produce each. WebP is the compatible default;
-    // AVIF and JXL are offered for greater efficiency where the operator's viewers support them.
+    // The supported target formats and how to produce each. They form a compatibility→efficiency
+    // axis: JPEG plays everywhere (incl. Plex), WebP is the modern middle ground (Jellyfin/web),
+    // and AVIF is the most efficient where viewers support it. JXL is recognised for detection of
+    // already-JXL sources but is not an encode target (no media server displays it).
     private static readonly IReadOnlyDictionary<string, ImageFormatSpec> Targets =
         new Dictionary<string, ImageFormatSpec>(StringComparer.OrdinalIgnoreCase)
         {
+            ["jpeg"] = new("mjpeg", "jpg"),
             ["webp"] = new("libwebp", "webp"),
             ["avif"] = new("libaom-av1", "avif"),
             ["jxl"] = new("libjxl", "jxl")
@@ -43,10 +48,10 @@ public static class ImageTarget
 
     public static bool IsSupportedTarget(string format) => Targets.ContainsKey(format);
 
-    // The formats whose encode parameters are actually wired in the command builder. WebP is
-    // the only one today; AVIF/JXL are recognised targets but cannot yet be produced, so they
-    // are not offered as a per-library choice (selecting one would fail at encode time).
-    private static readonly string[] EncodableFormatList = { "webp" };
+    // The formats whose encode parameters are wired in the command builder and offered as a
+    // per-library choice. JXL is intentionally absent: it is detected as a source format but no
+    // media server displays it, so producing one would be a dead end.
+    private static readonly string[] EncodableFormatList = { "jpeg", "webp", "avif" };
 
     /// <summary>The formats an operator may currently choose as a per-library target.</summary>
     public static IReadOnlyList<string> EncodableFormats => EncodableFormatList;
@@ -76,6 +81,7 @@ public static class ImageTarget
     private static readonly IReadOnlyDictionary<string, HashSet<string>> TargetSourceCodecs =
         new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
         {
+            ["jpeg"] = new(StringComparer.OrdinalIgnoreCase) { "mjpeg", "jpeg" },
             ["webp"] = new(StringComparer.OrdinalIgnoreCase) { "webp" },
             ["avif"] = new(StringComparer.OrdinalIgnoreCase) { "av1" },
             ["jxl"] = new(StringComparer.OrdinalIgnoreCase) { "jpegxl", "jxl" }

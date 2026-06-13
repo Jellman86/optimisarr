@@ -60,4 +60,8 @@ public sealed record VerificationInput(
     int? OriginalWidth = null,
     int? OriginalHeight = null,
     int? OutputWidth = null,
-    int? OutputHeight = null);
+    int? OutputHeight = null,
+    bool ImageQualityMeasured = false,
+    string? ImageQualityError = null,
+    double? ImageSsim = null,
+    bool ImageDownscaleRequested = false);

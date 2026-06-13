@@ -10,22 +10,7 @@ CHANGELOG, not kept here.
 
 ## Open
 
-### 1. WebP optimisation marker does not round-trip (images)
-
-- **Impact:** Optimisarr stamps every output with an `optimisarr` container tag so a re-optimised
-  file is recognised even without the database. ffmpeg's `libwebp` encoder **silently drops
-  `-metadata`**, so a WebP output carries no marker (verified in-container: empty `format.tags`
-  and `stream.tags`). Audio (m4a) and video markers are unaffected.
-- **Mitigation (in place):** Re-optimisation is still prevented by (a) the database optimisation
-  history, which holds back a file already optimised for its current version, and (b) the
-  "already in the target format" candidate check (a WebP targeting WebP is skipped). The only lost
-  guarantee is *portability* of the marker for images — surviving a database wipe or moving the
-  file to another machine.
-- **Intended fix:** write the marker into an EXIF/XMP field with a tool ffmpeg lacks (e.g.
-  `exiftool`) as a post-encode step, and have the probe read it back from there. This adds a
-  dependency to the image, so it is a deliberate decision rather than a silent change.
-
-### 2. Output filename collision when two sources share a stem (move/replace)
+### 1. Output filename collision when two sources share a stem (move/replace)
 
 - **Impact:** The output name is `{stem}.{targetExtension}`, so two source files that differ only
   by extension (e.g. `photo.bmp` and `photo.tif`, both → `photo.webp`) resolve to the **same
@@ -39,7 +24,7 @@ CHANGELOG, not kept here.
   a clear "would collide with an existing optimised file" reason) rather than overwrite a
   different file at the final destination.
 
-### 3. Animated images — partially addressed
+### 2. Animated images — partially addressed
 
 - **Status:** Animated GIF/WebP files are now **skipped as candidates** (detected via the probed
   frame count), so they are no longer flattened into a broken single-frame output. Previously such
@@ -53,6 +38,9 @@ CHANGELOG, not kept here.
 
 These were found during live testing and fixed (see CHANGELOG for details):
 
+- The image optimisation marker did not round-trip (ffmpeg's still encoders drop `-metadata`). It is
+  now written and read with exiftool in the EXIF/XMP `Software` field, so the marker is portable for
+  JPEG/WebP/AVIF — surviving a database wipe or a move to another machine.
 - Non-video libraries discovered no files (scanner was video-only).
 - Discovered files were never probed automatically, so a scanned library produced no candidates
   and could not be enqueued.

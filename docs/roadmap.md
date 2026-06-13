@@ -93,9 +93,15 @@ the replacement workflow is trustworthy.
   Advanced options**; and sane default per-container profiles. **Image optimisation (WebP) works
   end-to-end**: candidate rules, command building, kind-aware verification, per-library overrides,
   a `Photo` media type, animated-image skipping, and the UI — verified in a container (still
-  PNG/BMP/TIFF → WebP with large savings, dimensions retained, verification passing). Next up
-  (see the Phase 10 section): per-image SSIM/EXIF-ICC verification gates, AVIF/JXL encode, and a
-  portable WebP re-optimisation marker (tracked in `KNOWN_ISSUES.md`).
+  PNG/BMP/TIFF → WebP with large savings, dimensions retained, verification passing). **Image
+  optimisation is now broadly complete:** three output formats on a compatibility→efficiency slider
+  (**JPEG** default for max compatibility incl. Plex, **WebP**, **AVIF** — all wired in the command
+  builder), per-library **downscaling** (named 4K/1080p caps, custom max long-edge, or percentage —
+  aspect-preserving, never upscaling, with a downscale-aware Dimensions gate), an opt-in **image
+  SSIM quality gate**, and a **portable optimisation marker** for every image format via exiftool
+  (EXIF/XMP `Software`), closing the marker round-trip gap. Still to come: per-image **EXIF/ICC
+  retention** gate, in-container validation of the AVIF quality mapping, and the output-filename
+  collision fix (tracked in `KNOWN_ISSUES.md`).
 
 ## Guiding principles
 

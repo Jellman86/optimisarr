@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
 using Optimisarr.Data;
 
@@ -124,6 +125,11 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.TargetImageFormat = snapshot.TargetImageFormat;
             library.ImageQuality = snapshot.ImageQuality;
             library.ReencodeLossyImages = snapshot.ReencodeLossyImages;
+            library.ImageDownscaleMode = Enum.TryParse<ImageDownscaleMode>(
+                snapshot.ImageDownscaleMode, ignoreCase: true, out var downscaleMode)
+                ? downscaleMode
+                : ImageDownscaleMode.None;
+            library.ImageDownscaleValue = snapshot.ImageDownscaleValue;
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
             library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
@@ -266,7 +272,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ReencodeLossyAudio,
         library.TargetImageFormat,
         library.ImageQuality,
-        library.ReencodeLossyImages);
+        library.ReencodeLossyImages,
+        library.ImageDownscaleMode.ToString(),
+        library.ImageDownscaleValue);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

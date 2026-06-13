@@ -24,6 +24,8 @@ public sealed record RuleOverrides
     public string? TargetImageFormat { get; init; }
     public int? ImageQuality { get; init; }
     public bool? ReencodeLossyImages { get; init; }
+    public Queue.ImageDownscaleMode? ImageDownscaleMode { get; init; }
+    public int? ImageDownscaleValue { get; init; }
 
     public static readonly RuleOverrides None = new();
 }

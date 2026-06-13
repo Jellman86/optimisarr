@@ -39,7 +39,9 @@ internal static class LibraryRuleResolution
             ReencodeLossyAudio = library.ReencodeLossyAudio,
             TargetImageFormat = library.TargetImageFormat,
             ImageQuality = library.ImageQuality,
-            ReencodeLossyImages = library.ReencodeLossyImages
+            ReencodeLossyImages = library.ReencodeLossyImages,
+            ImageDownscaleMode = library.ImageDownscaleMode,
+            ImageDownscaleValue = library.ImageDownscaleValue
         };
     }
 

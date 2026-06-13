@@ -60,6 +60,12 @@ public static class SettingKeys
     /// <summary>True-peak ceiling in dBTP above which the output is treated as clipping.</summary>
     public const string VerificationMaxTruePeakDbtp = "verification.maxTruePeakDbtp";
 
+    /// <summary>Whether the opt-in image structural-quality (SSIM) gate is enabled.</summary>
+    public const string VerificationImageQualityGateEnabled = "verification.imageQualityGateEnabled";
+
+    /// <summary>Minimum all-channel SSIM (0–1) a re-encoded still must reach to pass.</summary>
+    public const string VerificationMinimumImageSsim = "verification.minimumImageSsim";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

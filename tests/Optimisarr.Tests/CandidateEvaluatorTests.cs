@@ -121,7 +121,8 @@ public sealed class CandidateEvaluatorTests
         var decision = CandidateEvaluator.Evaluate(ImageFile("png"), Hevc);
 
         Assert.True(decision.IsEligible);
-        Assert.Contains("webp", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        // The default image target is JPEG (max compatibility).
+        Assert.Contains("jpeg", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -145,7 +146,9 @@ public sealed class CandidateEvaluatorTests
     [Fact]
     public void A_lossy_image_is_left_untouched_by_default()
     {
-        var decision = CandidateEvaluator.Evaluate(ImageFile("mjpeg"), Hevc);
+        // A WebP source is lossy and not the (JPEG) target, so re-encoding it risks generational
+        // loss; the conservative default leaves it alone.
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("left untouched", decision.Reason, StringComparison.OrdinalIgnoreCase);
@@ -156,17 +159,17 @@ public sealed class CandidateEvaluatorTests
     {
         var rules = Hevc with { ReencodeLossyImages = true };
 
-        var decision = CandidateEvaluator.Evaluate(ImageFile("mjpeg"), rules);
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), rules);
 
         Assert.True(decision.IsEligible);
-        Assert.Contains("webp", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("jpeg", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void An_image_already_in_the_target_format_is_skipped()
     {
-        // ffprobe reports a .webp still as the "webp" codec.
-        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), Hevc);
+        // ffprobe reports a .jpg still as the "mjpeg" codec; the default target is JPEG.
+        var decision = CandidateEvaluator.Evaluate(ImageFile("mjpeg"), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("Already", decision.Reason);

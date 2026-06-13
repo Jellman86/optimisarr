@@ -37,6 +37,16 @@ public sealed class ImageTargetTests
     }
 
     [Theory]
+    [InlineData("mjpeg", "jpeg", true)]
+    [InlineData("jpeg", "jpeg", true)]
+    [InlineData("png", "jpeg", false)]
+    public void IsAlreadyInFormat_recognises_a_jpeg_source(string sourceCodec, string targetFormat, bool expected)
+    {
+        Assert.Equal(expected, ImageTarget.IsAlreadyInFormat(sourceCodec, targetFormat));
+    }
+
+    [Theory]
+    [InlineData("jpeg")]
     [InlineData("webp")]
     [InlineData("avif")]
     [InlineData("jxl")]
@@ -58,13 +68,22 @@ public sealed class ImageTargetTests
     }
 
     [Fact]
-    public void Only_webp_is_encodable_today_even_though_avif_and_jxl_are_selectable_targets()
+    public void Jpeg_webp_and_avif_are_encodable_targets_but_jxl_is_detect_only()
     {
-        // AVIF/JXL are recognised targets (for candidate decisions) but their encode parameters
-        // are not wired yet, so they are not offered as a choosable per-library format.
+        // JPEG/WebP/AVIF form the compatibility→efficiency axis offered to operators. JXL is
+        // recognised as a *source* (so an already-JXL file is detected) but never an encode target,
+        // because no media server displays it.
+        Assert.True(ImageTarget.IsEncodable("jpeg"));
         Assert.True(ImageTarget.IsEncodable("webp"));
-        Assert.False(ImageTarget.IsEncodable("avif"));
+        Assert.True(ImageTarget.IsEncodable("avif"));
         Assert.False(ImageTarget.IsEncodable("jxl"));
-        Assert.Equal(new[] { "webp" }, ImageTarget.EncodableFormats);
+        Assert.Equal(new[] { "jpeg", "webp", "avif" }, ImageTarget.EncodableFormats);
+    }
+
+    [Fact]
+    public void The_default_format_is_jpeg_for_maximum_compatibility()
+    {
+        Assert.Equal("jpeg", ImageTarget.DefaultFormat);
+        Assert.True(ImageTarget.IsEncodable(ImageTarget.DefaultFormat));
     }
 }

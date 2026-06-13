@@ -22,7 +22,8 @@ public sealed record TranscodeSpec(
     int? AudioBitrateKbps = null,
     bool DownmixToStereo = false,
     string? ImageEncoder = null,
-    int? ImageQuality = null);
+    int? ImageQuality = null,
+    string? ImageScaleFilter = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -204,11 +205,13 @@ public static class FfmpegCommandBuilder
     {
         var encoder = spec.ImageEncoder ?? ImageTarget.Resolve(ImageTarget.DefaultFormat).Encoder;
 
-        // Fail loudly before emitting a command for an encoder whose quality parameters are not
-        // wired yet, rather than producing a malformed or wrongly-scaled encode.
-        var qualityArg = ImageQualityArgument(encoder);
+        // Fail loudly before emitting a command for an unknown encoder, rather than producing a
+        // malformed encode. Resolving the quality args up front validates the encoder is wired.
+        var quality = spec.ImageQuality ?? ImageTarget.DefaultQuality;
+        var qualityArgs = ImageQualityArguments(encoder, quality);
 
-        // Carry the source image's EXIF/ICC profile and other metadata into the output.
+        // Carry the source image's EXIF/ICC profile and other metadata into the output. (Some
+        // encoders, e.g. libwebp, drop it anyway; the portable marker is re-applied post-encode.)
         args.Add("-map_metadata");
         args.Add("0");
 
@@ -217,25 +220,50 @@ public static class FfmpegCommandBuilder
         args.Add("-map");
         args.Add("0:v:0");
 
+        // An optional downscale runs before the encoder; the resolver builds the scale expression.
+        if (!string.IsNullOrWhiteSpace(spec.ImageScaleFilter))
+        {
+            args.Add("-vf");
+            args.Add(spec.ImageScaleFilter);
+        }
+
         args.Add("-c:v");
         args.Add(encoder);
 
-        if (spec.ImageQuality is { } quality)
+        // A still is a single frame; tell the AV1 encoder so, and give it a 4:2:0 pixel format.
+        if (encoder == "libaom-av1")
         {
-            args.Add(qualityArg);
-            args.Add(quality.ToString());
+            args.Add("-still-picture");
+            args.Add("1");
+            args.Add("-pix_fmt");
+            args.Add("yuv420p");
         }
+
+        args.AddRange(qualityArgs);
     }
 
-    // Each still encoder names its quality control differently. Only the default WebP path is
-    // wired today; AVIF (libaom-av1) and JXL (libjxl) are selectable targets whose quality
-    // mapping still needs validating against the bundled encoders.
-    private static string ImageQualityArgument(string encoder) => encoder switch
+    // Each still encoder names and scales its quality control differently. Optimisarr exposes a
+    // single 0–100 quality (higher = better) per library; map it onto each encoder's native scale.
+    private static IReadOnlyList<string> ImageQualityArguments(string encoder, int quality)
     {
-        "libwebp" => "-quality",
-        _ => throw new NotSupportedException(
-            $"Image encoding for encoder '{encoder}' is not implemented yet.")
-    };
+        var q = Math.Clamp(quality, 0, 100);
+        return encoder switch
+        {
+            // libwebp takes 0–100 directly (higher is better).
+            "libwebp" => new[] { "-quality", q.ToString() },
+            // mjpeg uses -q:v 2 (best) … 31 (worst); invert and scale our 0–100 onto that range.
+            "mjpeg" => new[] { "-q:v", MapToRange(q, bestAt100: 2, worstAt0: 31).ToString() },
+            // libaom-av1 still image uses constant-quality CRF 0 (best) … 63 (worst) with -b:v 0.
+            "libaom-av1" => new[] { "-crf", MapToRange(q, bestAt100: 0, worstAt0: 63).ToString(), "-b:v", "0" },
+            _ => throw new NotSupportedException(
+                $"Image encoding for encoder '{encoder}' is not implemented yet.")
+        };
+    }
+
+    // Linearly map a 0–100 quality (higher = better) onto an encoder scale where a lower number is
+    // better: quality 100 → bestAt100, quality 0 → worstAt0.
+    private static int MapToRange(int quality, int bestAt100, int worstAt0) =>
+        (int)Math.Round(worstAt0 + (bestAt100 - worstAt0) * (quality / 100.0));
 
     private static bool IsMp4Family(string outputPath) =>
         // .m4a/.m4b are the MP4 audio containers (AAC target); they need the same flag for

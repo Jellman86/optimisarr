@@ -38,6 +38,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.MediaType).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.RuleProfile).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.ImageDownscaleMode).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
             entity.Property(library => library.TargetContainer).HasMaxLength(32);
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);

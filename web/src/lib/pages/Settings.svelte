@@ -313,6 +313,8 @@
     verificationMaxLoudnessDriftLufs: 1,
     verificationAudioClippingGateEnabled: false,
     verificationMaxTruePeakDbtp: 0,
+    verificationImageQualityGateEnabled: false,
+    verificationMinimumImageSsim: 0.95,
     replacementAllowCrossFilesystem: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -356,6 +358,7 @@
         verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
+        verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
@@ -633,6 +636,28 @@
           <span class="text-sm text-slate-500 dark:text-slate-400">dBTP</span>
         </div>
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0 dBTP is full scale; set a margin like −1 to be stricter. If the true peak can't be measured, the gate fails closed.</p>
+      </div>
+    </div>
+
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.verificationImageQualityGateEnabled}
+        label="Check image structural quality (SSIM)"
+        hint="For photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails the job when structural similarity drops below the floor. Runs an extra pass, so it is off by default."
+      />
+      <div class="mt-4 max-w-xs" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
+        <label class="label" for="image-ssim-floor">Minimum SSIM</label>
+        <input
+          id="image-ssim-floor"
+          class="input"
+          type="number"
+          step="0.01"
+          min="0"
+          max="1"
+          bind:value={settings.verificationMinimumImageSsim}
+          disabled={!settings.verificationImageQualityGateEnabled}
+        />
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0–1, where 1 is identical. 0.95 is a conservative default. If SSIM can't be measured, the gate fails closed.</p>
       </div>
     </div>
   </div>

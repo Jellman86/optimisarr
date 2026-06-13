@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Data;
 
@@ -92,6 +93,15 @@ public sealed class Library
     /// sources (PNG/BMP/TIFF/GIF).
     /// </summary>
     public bool ReencodeLossyImages { get; set; }
+
+    /// <summary>How images in this library are downscaled on re-encode. Defaults to None (no resize).</summary>
+    public ImageDownscaleMode ImageDownscaleMode { get; set; } = ImageDownscaleMode.None;
+
+    /// <summary>
+    /// The downscale magnitude: a maximum long-edge in pixels for MaxLongEdge, or a percentage
+    /// (1–99) for Percent. Ignored when the mode is None.
+    /// </summary>
+    public int ImageDownscaleValue { get; set; }
 
     /// <summary>
     /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an

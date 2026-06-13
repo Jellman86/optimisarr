@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 
 namespace Optimisarr.Tests;
@@ -71,20 +72,30 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
-    public void Image_target_defaults_to_webp_quality_80_and_can_be_overridden()
+    public void Image_target_defaults_to_jpeg_quality_80_and_can_be_overridden()
     {
         var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
-        Assert.Equal("webp", defaults.TargetImageFormat);
+        Assert.Equal("jpeg", defaults.TargetImageFormat);
         Assert.Equal(80, defaults.ImageQuality);
         Assert.False(defaults.ReencodeLossyImages);
+        Assert.Equal(ImageDownscaleMode.None, defaults.ImageDownscaleMode);
 
         var overridden = RuleResolver.Resolve(
             RuleProfile.ConservativeHevc,
-            new RuleOverrides { TargetImageFormat = "webp", ImageQuality = 65, ReencodeLossyImages = true });
+            new RuleOverrides
+            {
+                TargetImageFormat = "avif",
+                ImageQuality = 65,
+                ReencodeLossyImages = true,
+                ImageDownscaleMode = ImageDownscaleMode.MaxLongEdge,
+                ImageDownscaleValue = 1920
+            });
 
-        Assert.Equal("webp", overridden.TargetImageFormat);
+        Assert.Equal("avif", overridden.TargetImageFormat);
         Assert.Equal(65, overridden.ImageQuality);
         Assert.True(overridden.ReencodeLossyImages);
+        Assert.Equal(ImageDownscaleMode.MaxLongEdge, overridden.ImageDownscaleMode);
+        Assert.Equal(1920, overridden.ImageDownscaleValue);
     }
 
     [Fact]

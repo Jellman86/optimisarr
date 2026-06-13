@@ -15,7 +15,8 @@ public sealed record ScanSummary(int Discovered, int Added, int Updated, int Ski
 public sealed class LibraryInventoryService(
     OptimisarrDbContext db,
     LibraryScanner scanner,
-    MediaProbeService probe)
+    MediaProbeService probe,
+    ImageMarkerService imageMarker)
 {
     /// <summary>Scans every enabled library and returns the combined summary.</summary>
     public async Task<ScanSummary> ScanEnabledAsync(CancellationToken cancellationToken)
@@ -174,7 +175,12 @@ public sealed class LibraryInventoryService(
             file.AudioBitrateKbps = result.AudioBitrateKbps;
             file.SubtitleTrackCount = result.SubtitleTrackCount;
             file.IsHdr = result.IsHdr;
-            file.OptimisedMarker = result.OptimisedMarker;
+            // Images carry their marker in EXIF/XMP (ffprobe doesn't surface it), so read it back
+            // with exiftool when the container probe found none.
+            file.OptimisedMarker = result.OptimisedMarker
+                ?? (result.MediaKind == MediaKind.Image
+                    ? await imageMarker.ReadAsync(file.Path, cancellationToken)
+                    : null);
             file.ProbeError = null;
         }
         else

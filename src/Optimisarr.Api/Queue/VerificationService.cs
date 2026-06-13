@@ -15,7 +15,8 @@ public sealed record OriginalSnapshot(
     bool HdrConvertedToSdr,
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
-    bool AudioDownmixed = false);
+    bool AudioDownmixed = false,
+    bool ImageDownscaleRequested = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -31,7 +32,8 @@ public sealed class VerificationService(
     DecodeHealthCheck decode,
     TimestampIntegrityCheck timestamps,
     QualityScoreService quality,
-    LoudnessService loudness)
+    LoudnessService loudness,
+    ImageQualityService imageQuality)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -55,6 +57,12 @@ public sealed class VerificationService(
         // when the user has opted into the quality gate.
         var qualityResult = policy.QualityGateEnabled
             ? await quality.MeasureAsync(original.Path, outputPath, cancellationToken)
+            : null;
+
+        // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
+        // image job and only when the user opted in, since it runs an extra ffmpeg pass.
+        var imageQualityResult = policy.ImageQualityGateEnabled && original.Kind == MediaKind.Image
+            ? await imageQuality.MeasureAsync(original.Path, outputPath, cancellationToken)
             : null;
 
         // The loudness and clipping gates share one ebur128 decode of each file, so the
@@ -128,7 +136,11 @@ public sealed class VerificationService(
             OriginalWidth: originalProbe.Width,
             OriginalHeight: originalProbe.Height,
             OutputWidth: outputProbe.Width,
-            OutputHeight: outputProbe.Height);
+            OutputHeight: outputProbe.Height,
+            ImageQualityMeasured: imageQualityResult?.Measured ?? false,
+            ImageQualityError: imageQualityResult?.Error,
+            ImageSsim: imageQualityResult?.Ssim,
+            ImageDownscaleRequested: original.ImageDownscaleRequested);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

@@ -17,6 +17,13 @@ namespace Optimisarr.Core.Verification;
 /// <c>ebur128</c> decode pass: the loudness gate bounds EBU R128 drift, and the
 /// clipping gate fails an output whose true peak rises above the ceiling when the
 /// original sat below it — i.e. the re-encode introduced clipping.
+///
+/// The image-quality gate is the still-image counterpart of VMAF: it is opt-in
+/// (measuring it runs ffmpeg's <c>ssim</c> filter over the original and output
+/// pictures) and, when enabled, blocks replacement when the structural similarity
+/// of the re-encoded still falls below a floor. SSIM (not VMAF) is the image metric
+/// because VMAF is tuned for moving video, while SSIM is a well-understood
+/// structural measure for a single frame.
 /// </summary>
 public sealed record VerificationPolicy(
     double DurationTolerancePercent,
@@ -29,7 +36,9 @@ public sealed record VerificationPolicy(
     bool AudioLoudnessGateEnabled,
     double MaxLoudnessDriftLufs,
     bool AudioClippingGateEnabled,
-    double MaxTruePeakDbtp)
+    double MaxTruePeakDbtp,
+    bool ImageQualityGateEnabled,
+    double MinimumImageSsim)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -42,5 +51,7 @@ public sealed record VerificationPolicy(
         AudioLoudnessGateEnabled: false,
         MaxLoudnessDriftLufs: 1.0,
         AudioClippingGateEnabled: false,
-        MaxTruePeakDbtp: 0.0);
+        MaxTruePeakDbtp: 0.0,
+        ImageQualityGateEnabled: false,
+        MinimumImageSsim: 0.95);
 }

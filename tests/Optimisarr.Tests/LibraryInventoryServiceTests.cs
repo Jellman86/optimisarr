@@ -85,7 +85,7 @@ public sealed class LibraryInventoryServiceTests : IDisposable
     private async Task<ScanSummary> ScanAsync(Library library)
     {
         await using var db = new OptimisarrDbContext(_options);
-        var service = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService());
+        var service = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService(), new ImageMarkerService());
         return await service.ScanAsync(library, CancellationToken.None);
     }
 

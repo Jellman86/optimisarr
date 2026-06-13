@@ -8,6 +8,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Activity;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
@@ -30,6 +31,7 @@ public sealed class QueueDispatcher(
     VerificationService verification,
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
+    ImageMarkerService imageMarker,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -222,6 +224,18 @@ public sealed class QueueDispatcher(
 
             if (run.ExitCode == 0)
             {
+                // Stamp the portable marker on an image *before* verification, so the file that is
+                // verified and replaced is the final, marked file. ffmpeg drops -metadata for
+                // stills, so this is done out-of-band with exiftool; a failure only loses marker
+                // portability (the DB history still prevents re-optimisation), so it never blocks.
+                if (spec.Kind == MediaKind.Image
+                    && !await imageMarker.WriteAsync(spec.OutputPath, OptimisedMarkerValue, cancellationToken))
+                {
+                    logger.LogWarning(
+                        "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
+                        "re-optimisation is still prevented by the database.", jobId);
+                }
+
                 await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
             }
             else
@@ -315,7 +329,9 @@ public sealed class QueueDispatcher(
             // the sample rate, so the audio-fidelity gate must treat it like an audio job.
             AudioReencoded: media.MediaKind != MediaKind.Audio && spec.AudioEncoder is not null,
             // An operator-requested stereo downmix is an intentional channel reduction.
-            AudioDownmixed: spec.DownmixToStereo);
+            AudioDownmixed: spec.DownmixToStereo,
+            // A requested image downscale is an intentional dimension reduction, not corruption.
+            ImageDownscaleRequested: spec.ImageScaleFilter is not null);
 
         // Audio and image jobs use the encoder from the spec; only a video re-encode needs a
         // hardware/software encoder resolved (and may fail if it is unavailable).

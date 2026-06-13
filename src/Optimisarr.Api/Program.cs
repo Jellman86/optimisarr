@@ -28,6 +28,10 @@ builder.Services.AddSingleton<TimestampIntegrityCheck>();
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
+builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
+// The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
+// -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
+builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
@@ -138,6 +142,11 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "True-peak ceiling must be a finite dBTP value." });
     }
 
+    if (request.VerificationMinimumImageSsim is < 0 or > 1)
+    {
+        return Results.BadRequest(new { error = "Image SSIM threshold must be between 0 and 1." });
+    }
+
     if (request.ReplacementQuarantineRetentionDays < 0)
     {
         return Results.BadRequest(new { error = "Quarantine retention days cannot be negative." });
@@ -177,7 +186,9 @@ app.MapPut("/api/settings", async (
             request.VerificationAudioLoudnessGateEnabled,
             request.VerificationMaxLoudnessDriftLufs,
             request.VerificationAudioClippingGateEnabled,
-            request.VerificationMaxTruePeakDbtp),
+            request.VerificationMaxTruePeakDbtp,
+            request.VerificationImageQualityGateEnabled,
+            request.VerificationMinimumImageSsim),
         request.ReplacementAllowCrossFilesystem,
         request.ReplacementQuarantineRetentionDays), cancellationToken);
 
@@ -700,6 +711,8 @@ app.MapPost("/api/libraries", async (
         TargetImageFormat = parsed.TargetImageFormat,
         ImageQuality = parsed.ImageQuality,
         ReencodeLossyImages = parsed.ReencodeLossyImages,
+        ImageDownscaleMode = parsed.ImageDownscaleMode,
+        ImageDownscaleValue = parsed.ImageDownscaleValue,
         MoveOnComplete = parsed.MoveOnComplete,
         TargetFolder = parsed.TargetFolder,
         MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
@@ -760,6 +773,8 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.TargetImageFormat = parsed.TargetImageFormat;
     library.ImageQuality = parsed.ImageQuality;
     library.ReencodeLossyImages = parsed.ReencodeLossyImages;
+    library.ImageDownscaleMode = parsed.ImageDownscaleMode;
+    library.ImageDownscaleValue = parsed.ImageDownscaleValue;
     library.MoveOnComplete = parsed.MoveOnComplete;
     library.TargetFolder = parsed.TargetFolder;
     library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
@@ -1103,6 +1118,8 @@ internal sealed record SettingsDto(
     double VerificationMaxLoudnessDriftLufs,
     bool VerificationAudioClippingGateEnabled,
     double VerificationMaxTruePeakDbtp,
+    bool VerificationImageQualityGateEnabled,
+    double VerificationMinimumImageSsim,
     bool ReplacementAllowCrossFilesystem,
     int ReplacementQuarantineRetentionDays)
 {
@@ -1125,6 +1142,8 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.MaxLoudnessDriftLufs,
         settings.VerificationPolicy.AudioClippingGateEnabled,
         settings.VerificationPolicy.MaxTruePeakDbtp,
+        settings.VerificationPolicy.ImageQualityGateEnabled,
+        settings.VerificationPolicy.MinimumImageSsim,
         settings.ReplacementAllowCrossFilesystem,
         settings.ReplacementQuarantineRetentionDays);
 
@@ -1194,6 +1213,8 @@ internal sealed record SaveLibraryRequest(
     string? TargetImageFormat,
     int? ImageQuality,
     bool? ReencodeLossyImages,
+    string? ImageDownscaleMode,
+    int? ImageDownscaleValue,
     bool? MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1227,6 +1248,8 @@ internal sealed record LibraryDto(
     string? TargetImageFormat,
     int? ImageQuality,
     bool ReencodeLossyImages,
+    string ImageDownscaleMode,
+    int ImageDownscaleValue,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -1264,6 +1287,8 @@ internal sealed record LibraryDto(
         library.TargetImageFormat,
         library.ImageQuality,
         library.ReencodeLossyImages,
+        library.ImageDownscaleMode.ToString(),
+        library.ImageDownscaleValue,
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,

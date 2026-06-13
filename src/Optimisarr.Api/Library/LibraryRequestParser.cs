@@ -27,6 +27,8 @@ internal readonly record struct ParsedLibrary(
     string? TargetImageFormat,
     int? ImageQuality,
     bool ReencodeLossyImages,
+    ImageDownscaleMode ImageDownscaleMode,
+    int ImageDownscaleValue,
     bool MoveOnComplete,
     string? TargetFolder,
     double? MinVmafHarmonicMean,
@@ -148,6 +150,26 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var downscaleMode = ImageDownscaleMode.None;
+        if (!string.IsNullOrWhiteSpace(request.ImageDownscaleMode)
+            && !Enum.TryParse(request.ImageDownscaleMode, ignoreCase: true, out downscaleMode))
+        {
+            error = "Image downscale mode must be one of None, MaxLongEdge, or Percent.";
+            return false;
+        }
+
+        var downscaleValue = request.ImageDownscaleValue ?? 0;
+        if (downscaleMode == ImageDownscaleMode.MaxLongEdge && downscaleValue is < 16 or > 100_000)
+        {
+            error = "Image max long-edge must be between 16 and 100000 pixels.";
+            return false;
+        }
+        if (downscaleMode == ImageDownscaleMode.Percent && downscaleValue is < 1 or > 99)
+        {
+            error = "Image downscale percentage must be between 1 and 99.";
+            return false;
+        }
+
         if (!TryParseWindowTime(request.AutoEnqueueWindowStart, out var autoStart))
         {
             error = "Auto-enqueue window start must use HH:mm format.";
@@ -201,6 +223,8 @@ internal static class LibraryRequestParser
             targetImageFormat is null ? null : targetImageFormat.ToLowerInvariant(),
             request.ImageQuality,
             request.ReencodeLossyImages ?? false,
+            downscaleMode,
+            downscaleMode == ImageDownscaleMode.None ? 0 : downscaleValue,
             moveOnComplete,
             targetFolder,
             request.MinVmafHarmonicMean,

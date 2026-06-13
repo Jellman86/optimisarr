@@ -40,6 +40,13 @@ public static class VerificationEvaluator
         {
             checks.Add(PicturePresent(input));
             checks.Add(DimensionsRetained(input));
+
+            // The structural-quality (SSIM) gate is the still-image counterpart of VMAF and
+            // only contributes when the user has opted in; otherwise the report is unchanged.
+            if (policy.ImageQualityGateEnabled)
+            {
+                checks.Add(ImageQuality(input, policy));
+            }
         }
 
         if (isVideo)
@@ -306,6 +313,25 @@ public static class VerificationEvaluator
             : Fail("Perceptual quality (VMAF)", $"{detail} Below the quality gate.");
     }
 
+    private static VerificationCheck ImageQuality(VerificationInput input, VerificationPolicy policy)
+    {
+        // Fail closed: if the gate is on but SSIM could not be measured, we cannot prove the
+        // re-encoded still is faithful, so replacement must not proceed.
+        if (!input.ImageQualityMeasured || input.ImageSsim is not { } ssim)
+        {
+            return Fail("Image quality (SSIM)", $"SSIM could not be measured: {Describe(input.ImageQualityError)}");
+        }
+
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "SSIM {0:0.#####} (gate {1:0.#####}).",
+            ssim, policy.MinimumImageSsim);
+
+        return ssim >= policy.MinimumImageSsim
+            ? Pass("Image quality (SSIM)", detail)
+            : Fail("Image quality (SSIM)", $"{detail} Below the quality gate.");
+    }
+
     private static string DescribeScores(QualityScores scores, VerificationPolicy policy)
     {
         var parts = new List<string>
@@ -362,9 +388,32 @@ public static class VerificationEvaluator
         }
 
         var detail = $"Original {ow}x{oh}, output {nw}x{nh}.";
+
+        // An operator-requested downscale is an intentional reduction, not corruption. It must
+        // still shrink rather than enlarge, and keep the aspect ratio (so the picture isn't
+        // stretched), but a smaller output is the expected, passing outcome — mirroring how an
+        // intentional audio downmix is treated.
+        if (input.ImageDownscaleRequested)
+        {
+            if (nw > ow || nh > oh)
+            {
+                return Fail("Dimensions", $"{detail} A downscale must not enlarge the image.");
+            }
+
+            // Compare aspect ratios with a small tolerance to absorb even-pixel rounding.
+            var originalAspect = ow / (double)oh;
+            var outputAspect = nw / (double)nh;
+            const double aspectTolerance = 0.02;
+            return Math.Abs(originalAspect - outputAspect) <= originalAspect * aspectTolerance
+                ? Pass("Dimensions", $"{detail} Intentionally downscaled.")
+                : Fail("Dimensions", $"{detail} The aspect ratio changed during downscale.");
+        }
+
+        // No downscale requested: the picture must keep (at least) its dimensions; any shrink is
+        // a degenerate/corrupt encode.
         return nw >= ow && nh >= oh
             ? Pass("Dimensions", detail)
-            : Fail("Dimensions", $"{detail} The image was downscaled.");
+            : Fail("Dimensions", $"{detail} The image was unexpectedly downscaled.");
     }
 
     private static VerificationCheck VideoStreamPresent(VerificationInput input) =>

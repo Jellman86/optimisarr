@@ -92,12 +92,50 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void Image_encoding_for_an_unimplemented_encoder_throws_until_it_is_supported()
+    public void A_jpeg_image_job_maps_quality_onto_mjpeg_qv_scale()
     {
-        // AVIF/JXL are selectable targets but their encode parameters are not wired yet; fail
-        // loudly rather than emit a malformed command.
+        // mjpeg uses -q:v 2 (best) … 31 (worst); our 0–100 quality (higher better) inverts onto it.
+        var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "mjpeg", quality: 100));
+
+        Assert.Equal("mjpeg", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("2", args[IndexOf(args, "-q:v") + 1]);
+        Assert.DoesNotContain("-quality", args);
+    }
+
+    [Fact]
+    public void An_avif_image_job_uses_constant_quality_crf_and_still_picture()
+    {
+        var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1", quality: 100));
+
+        Assert.Equal("libaom-av1", args[IndexOf(args, "-c:v") + 1]);
+        // Best quality (100) maps to CRF 0 with a zero target bitrate (constant-quality mode).
+        Assert.Equal("0", args[IndexOf(args, "-crf") + 1]);
+        Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
+        Assert.Equal("1", args[IndexOf(args, "-still-picture") + 1]);
+        Assert.Equal("yuv420p", args[IndexOf(args, "-pix_fmt") + 1]);
+    }
+
+    [Fact]
+    public void Image_encoding_for_an_unknown_encoder_still_throws()
+    {
         Assert.Throws<NotSupportedException>(() =>
-            FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1")));
+            FfmpegCommandBuilder.Build(ImageReencode(encoder: "libjxl")));
+    }
+
+    [Fact]
+    public void An_image_job_applies_a_downscale_filter_before_the_encoder()
+    {
+        var spec = ImageReencode() with
+        {
+            ImageScaleFilter = "scale=w='if(gt(iw,ih),min(iw,1920),-2)':h='if(gt(iw,ih),-2,min(ih,1920))':flags=lanczos"
+        };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        var vfIndex = IndexOf(args, "-vf");
+        Assert.Contains("scale=", args[vfIndex + 1]);
+        // The filter must precede the codec selection.
+        Assert.True(vfIndex < IndexOf(args, "-c:v"));
     }
 
     private static TranscodeSpec Reencode(

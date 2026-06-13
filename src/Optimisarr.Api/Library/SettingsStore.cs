@@ -53,6 +53,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationMaxLoudnessDriftLufs,
         SettingKeys.VerificationAudioClippingGateEnabled,
         SettingKeys.VerificationMaxTruePeakDbtp,
+        SettingKeys.VerificationImageQualityGateEnabled,
+        SettingKeys.VerificationMinimumImageSsim,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
@@ -103,6 +105,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
                 || setting.Key == SettingKeys.VerificationAudioClippingGateEnabled
                 || setting.Key == SettingKeys.VerificationMaxTruePeakDbtp
+                || setting.Key == SettingKeys.VerificationImageQualityGateEnabled
+                || setting.Key == SettingKeys.VerificationMinimumImageSsim
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
@@ -152,7 +156,14 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                     VerificationPolicy.Default.AudioClippingGateEnabled),
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationMaxTruePeakDbtp),
-                    VerificationPolicy.Default.MaxTruePeakDbtp)),
+                    VerificationPolicy.Default.MaxTruePeakDbtp),
+                ParseBool(
+                    settings.GetValueOrDefault(SettingKeys.VerificationImageQualityGateEnabled),
+                    VerificationPolicy.Default.ImageQualityGateEnabled),
+                ParseDouble(
+                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumImageSsim),
+                    VerificationPolicy.Default.MinimumImageSsim,
+                    min: 0)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
     }
@@ -216,6 +227,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.AudioClippingGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMaxTruePeakDbtp] =
                 settings.VerificationPolicy.MaxTruePeakDbtp.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationImageQualityGateEnabled] =
+                settings.VerificationPolicy.ImageQualityGateEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationMinimumImageSsim] =
+                Math.Max(0, settings.VerificationPolicy.MinimumImageSsim).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementQuarantineRetentionDays] =

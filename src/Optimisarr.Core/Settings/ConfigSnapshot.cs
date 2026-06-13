@@ -51,7 +51,9 @@ public sealed record LibrarySnapshot(
     bool ReencodeLossyAudio = false,
     string? TargetImageFormat = null,
     int? ImageQuality = null,
-    bool ReencodeLossyImages = false);
+    bool ReencodeLossyImages = false,
+    string ImageDownscaleMode = "None",
+    int ImageDownscaleValue = 0);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported. No token.</summary>
 public sealed record ActivityWatcherSnapshot(
