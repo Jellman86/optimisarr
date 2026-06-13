@@ -47,6 +47,13 @@ public static class VerificationEvaluator
             {
                 checks.Add(ImageQuality(input, policy));
             }
+
+            // The metadata gate fails an image whose re-encode silently dropped the source's
+            // ICC colour profile or EXIF; opt-in, and only flags loss (never a gain).
+            if (policy.ImageMetadataGateEnabled)
+            {
+                checks.Add(ImageMetadataPreserved(input));
+            }
         }
 
         if (isVideo)
@@ -330,6 +337,47 @@ public static class VerificationEvaluator
         return ssim >= policy.MinimumImageSsim
             ? Pass("Image quality (SSIM)", detail)
             : Fail("Image quality (SSIM)", $"{detail} Below the quality gate.");
+    }
+
+    private static VerificationCheck ImageMetadataPreserved(VerificationInput input)
+    {
+        const string name = "Image metadata (EXIF/ICC)";
+
+        // Fail closed: an enabled gate that could not read the metadata cannot prove retention.
+        if (!input.ImageMetadataMeasured)
+        {
+            return Fail(name, $"Image metadata could not be read: {Describe(input.ImageMetadataError)}");
+        }
+
+        var lost = new List<string>();
+        if (input.OriginalHasIccProfile && !input.OutputHasIccProfile)
+        {
+            lost.Add("ICC colour profile");
+        }
+        if (input.OriginalHasExif && !input.OutputHasExif)
+        {
+            lost.Add("EXIF metadata");
+        }
+
+        if (lost.Count > 0)
+        {
+            return Fail(name, $"The re-encode dropped the original's {string.Join(" and ", lost)}.");
+        }
+
+        var present = new List<string>();
+        if (input.OriginalHasIccProfile)
+        {
+            present.Add("ICC profile");
+        }
+        if (input.OriginalHasExif)
+        {
+            present.Add("EXIF");
+        }
+
+        var detail = present.Count > 0
+            ? $"Retained the original's {string.Join(" and ", present)}."
+            : "The original carried no ICC profile or EXIF to preserve.";
+        return Pass(name, detail);
     }
 
     private static string DescribeScores(QualityScores scores, VerificationPolicy policy)

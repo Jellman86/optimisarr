@@ -315,6 +315,7 @@
     verificationMaxTruePeakDbtp: 0,
     verificationImageQualityGateEnabled: false,
     verificationMinimumImageSsim: 0.95,
+    verificationImageMetadataGateEnabled: false,
     replacementAllowCrossFilesystem: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -659,6 +660,14 @@
         />
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0–1, where 1 is identical. 0.95 is a conservative default. If SSIM can't be measured, the gate fails closed.</p>
       </div>
+    </div>
+
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.verificationImageMetadataGateEnabled}
+        label="Preserve image EXIF/ICC metadata"
+        hint="For photo/image jobs only: fails the job when the re-encode drops the original's embedded ICC colour profile or EXIF metadata (reads both with exiftool). Only flags loss — an output may gain metadata. If it can't be read, the gate fails closed."
+      />
     </div>
   </div>
 

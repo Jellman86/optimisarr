@@ -181,6 +181,113 @@ public sealed class VerificationEvaluatorTests
 
     private const string ImageQualityCheck = "Image quality (SSIM)";
 
+    private static readonly VerificationPolicy ImageMetadataGate =
+        VerificationPolicy.Default with { ImageMetadataGateEnabled = true };
+
+    private const string ImageMetadataCheck = "Image metadata (EXIF/ICC)";
+
+    [Fact]
+    public void Image_metadata_gate_is_absent_unless_enabled()
+    {
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == ImageMetadataCheck);
+    }
+
+    [Fact]
+    public void Image_metadata_gate_is_a_still_only_gate()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), ImageMetadataGate);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == ImageMetadataCheck);
+    }
+
+    [Fact]
+    public void Image_metadata_gate_fails_closed_when_it_could_not_be_measured()
+    {
+        // The gate is enabled but exiftool produced nothing; fail rather than assume retention.
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), ImageMetadataGate);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageMetadataCheck));
+    }
+
+    [Fact]
+    public void Image_metadata_gate_passes_when_the_icc_profile_and_exif_are_retained()
+    {
+        var input = HealthyImage() with
+        {
+            ImageMetadataMeasured = true,
+            OriginalHasIccProfile = true,
+            OutputHasIccProfile = true,
+            OriginalHasExif = true,
+            OutputHasExif = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageMetadataGate);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ImageMetadataCheck));
+    }
+
+    [Fact]
+    public void Image_metadata_gate_passes_when_the_original_carried_no_metadata()
+    {
+        // Nothing to preserve, so dropping nothing is fine.
+        var input = HealthyImage() with { ImageMetadataMeasured = true };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageMetadataGate);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ImageMetadataCheck));
+    }
+
+    [Fact]
+    public void Image_metadata_gate_fails_when_the_icc_profile_is_dropped()
+    {
+        var input = HealthyImage() with
+        {
+            ImageMetadataMeasured = true,
+            OriginalHasIccProfile = true,
+            OutputHasIccProfile = false
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageMetadataGate);
+
+        Assert.False(report.Passed);
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageMetadataCheck));
+    }
+
+    [Fact]
+    public void Image_metadata_gate_fails_when_exif_is_dropped()
+    {
+        var input = HealthyImage() with
+        {
+            ImageMetadataMeasured = true,
+            OriginalHasExif = true,
+            OutputHasExif = false
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageMetadataGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageMetadataCheck));
+    }
+
+    [Fact]
+    public void Image_metadata_gate_allows_metadata_the_output_gained()
+    {
+        // Optimisarr stamps its own Software marker, so the output can carry EXIF the source lacked.
+        var input = HealthyImage() with
+        {
+            ImageMetadataMeasured = true,
+            OriginalHasExif = false,
+            OutputHasExif = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, ImageMetadataGate);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ImageMetadataCheck));
+    }
+
     [Fact]
     public void Image_quality_gate_is_absent_unless_enabled()
     {

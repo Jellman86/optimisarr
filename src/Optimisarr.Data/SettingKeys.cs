@@ -66,6 +66,9 @@ public static class SettingKeys
     /// <summary>Minimum all-channel SSIM (0–1) a re-encoded still must reach to pass.</summary>
     public const string VerificationMinimumImageSsim = "verification.minimumImageSsim";
 
+    /// <summary>Whether the opt-in image EXIF/ICC-retention gate is enabled.</summary>
+    public const string VerificationImageMetadataGateEnabled = "verification.imageMetadataGateEnabled";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

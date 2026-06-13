@@ -64,4 +64,10 @@ public sealed record VerificationInput(
     bool ImageQualityMeasured = false,
     string? ImageQualityError = null,
     double? ImageSsim = null,
-    bool ImageDownscaleRequested = false);
+    bool ImageDownscaleRequested = false,
+    bool ImageMetadataMeasured = false,
+    string? ImageMetadataError = null,
+    bool OriginalHasIccProfile = false,
+    bool OutputHasIccProfile = false,
+    bool OriginalHasExif = false,
+    bool OutputHasExif = false);

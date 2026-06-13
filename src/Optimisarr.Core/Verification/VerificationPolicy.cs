@@ -24,6 +24,13 @@ namespace Optimisarr.Core.Verification;
 /// of the re-encoded still falls below a floor. SSIM (not VMAF) is the image metric
 /// because VMAF is tuned for moving video, while SSIM is a well-understood
 /// structural measure for a single frame.
+///
+/// The image-metadata gate is also opt-in: when enabled it fails an image whose
+/// re-encode silently dropped the source's embedded ICC colour profile or its EXIF
+/// metadata. Some encoders/containers discard these by default, which can shift
+/// colours or lose capture data, so a colour-sensitive library can demand they
+/// survive. The gate only flags *loss* — an output may gain metadata (Optimisarr
+/// stamps its own marker) without failing.
 /// </summary>
 public sealed record VerificationPolicy(
     double DurationTolerancePercent,
@@ -38,7 +45,8 @@ public sealed record VerificationPolicy(
     bool AudioClippingGateEnabled,
     double MaxTruePeakDbtp,
     bool ImageQualityGateEnabled,
-    double MinimumImageSsim)
+    double MinimumImageSsim,
+    bool ImageMetadataGateEnabled = false)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -53,5 +61,6 @@ public sealed record VerificationPolicy(
         AudioClippingGateEnabled: false,
         MaxTruePeakDbtp: 0.0,
         ImageQualityGateEnabled: false,
-        MinimumImageSsim: 0.95);
+        MinimumImageSsim: 0.95,
+        ImageMetadataGateEnabled: false);
 }

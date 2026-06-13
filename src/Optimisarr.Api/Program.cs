@@ -32,6 +32,7 @@ builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
+builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
@@ -188,7 +189,8 @@ app.MapPut("/api/settings", async (
             request.VerificationAudioClippingGateEnabled,
             request.VerificationMaxTruePeakDbtp,
             request.VerificationImageQualityGateEnabled,
-            request.VerificationMinimumImageSsim),
+            request.VerificationMinimumImageSsim,
+            request.VerificationImageMetadataGateEnabled),
         request.ReplacementAllowCrossFilesystem,
         request.ReplacementQuarantineRetentionDays), cancellationToken);
 
@@ -1122,6 +1124,7 @@ internal sealed record SettingsDto(
     double VerificationMaxTruePeakDbtp,
     bool VerificationImageQualityGateEnabled,
     double VerificationMinimumImageSsim,
+    bool VerificationImageMetadataGateEnabled,
     bool ReplacementAllowCrossFilesystem,
     int ReplacementQuarantineRetentionDays)
 {
@@ -1146,6 +1149,7 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.MaxTruePeakDbtp,
         settings.VerificationPolicy.ImageQualityGateEnabled,
         settings.VerificationPolicy.MinimumImageSsim,
+        settings.VerificationPolicy.ImageMetadataGateEnabled,
         settings.ReplacementAllowCrossFilesystem,
         settings.ReplacementQuarantineRetentionDays);
 

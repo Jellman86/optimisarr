@@ -113,6 +113,7 @@ export type Settings = {
   verificationMaxTruePeakDbtp: number
   verificationImageQualityGateEnabled: boolean
   verificationMinimumImageSsim: number
+  verificationImageMetadataGateEnabled: boolean
   replacementAllowCrossFilesystem: boolean
   replacementQuarantineRetentionDays: number
 }

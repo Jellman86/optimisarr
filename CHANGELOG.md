@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Opt-in image EXIF/ICC-retention verification gate
+
+- **New verification gate for photo/image jobs.** When enabled (Settings → Verification → "Preserve
+  image EXIF/ICC metadata"), an image whose re-encode silently **drops the original's embedded ICC
+  colour profile or EXIF metadata** fails verification, so the original is never replaced by a copy
+  that lost its colour profile or capture data. Some encoders/containers discard these by default,
+  which can shift colours, so a colour-sensitive library can now demand they survive. The gate only
+  flags **loss** — an output may *gain* metadata (Optimisarr stamps its own `Software` marker)
+  without failing — and **fails closed**: if the metadata can't be read it blocks rather than
+  assumes retention. Off by default. Metadata is read with `exiftool` (pure, unit-tested
+  `ImageMetadataParser`; `ImageMetadataService` runs the process), since ffprobe does not surface
+  ICC/EXIF reliably across the still formats. Wired through the verification policy, settings
+  persistence, and the API like the existing SSIM gate.
+
 ### Output filename collision fixed (work path + replacement)
 
 Two source files that differ only by extension (e.g. `photo.bmp` and `photo.tif`, both targeting

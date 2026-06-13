@@ -33,7 +33,8 @@ public sealed class VerificationService(
     TimestampIntegrityCheck timestamps,
     QualityScoreService quality,
     LoudnessService loudness,
-    ImageQualityService imageQuality)
+    ImageQualityService imageQuality,
+    ImageMetadataService imageMetadata)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
@@ -64,6 +65,18 @@ public sealed class VerificationService(
         var imageQualityResult = policy.ImageQualityGateEnabled && original.Kind == MediaKind.Image
             ? await imageQuality.MeasureAsync(original.Path, outputPath, cancellationToken)
             : null;
+
+        // The EXIF/ICC-retention gate reads both files' metadata with exiftool; image-only and
+        // opt-in, since it spawns two extra processes.
+        ImageMetadataResult? originalMetadata = null;
+        ImageMetadataResult? outputMetadata = null;
+        if (policy.ImageMetadataGateEnabled && original.Kind == MediaKind.Image)
+        {
+            originalMetadata = await imageMetadata.ReadAsync(original.Path, cancellationToken);
+            outputMetadata = await imageMetadata.ReadAsync(outputPath, cancellationToken);
+        }
+
+        var imageMetadataMeasured = originalMetadata is { Measured: true } && outputMetadata is { Measured: true };
 
         // The loudness and clipping gates share one ebur128 decode of each file, so the
         // measurement runs when either is enabled; both are opt-in for the extra passes.
@@ -140,7 +153,13 @@ public sealed class VerificationService(
             ImageQualityMeasured: imageQualityResult?.Measured ?? false,
             ImageQualityError: imageQualityResult?.Error,
             ImageSsim: imageQualityResult?.Ssim,
-            ImageDownscaleRequested: original.ImageDownscaleRequested);
+            ImageDownscaleRequested: original.ImageDownscaleRequested,
+            ImageMetadataMeasured: imageMetadataMeasured,
+            ImageMetadataError: originalMetadata?.Error ?? outputMetadata?.Error,
+            OriginalHasIccProfile: originalMetadata?.Metadata.HasIccProfile ?? false,
+            OutputHasIccProfile: outputMetadata?.Metadata.HasIccProfile ?? false,
+            OriginalHasExif: originalMetadata?.Metadata.HasExif ?? false,
+            OutputHasExif: outputMetadata?.Metadata.HasExif ?? false);
 
         return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
     }

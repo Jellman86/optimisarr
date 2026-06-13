@@ -55,6 +55,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationMaxTruePeakDbtp,
         SettingKeys.VerificationImageQualityGateEnabled,
         SettingKeys.VerificationMinimumImageSsim,
+        SettingKeys.VerificationImageMetadataGateEnabled,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
@@ -107,6 +108,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationMaxTruePeakDbtp
                 || setting.Key == SettingKeys.VerificationImageQualityGateEnabled
                 || setting.Key == SettingKeys.VerificationMinimumImageSsim
+                || setting.Key == SettingKeys.VerificationImageMetadataGateEnabled
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
@@ -163,7 +165,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationMinimumImageSsim),
                     VerificationPolicy.Default.MinimumImageSsim,
-                    min: 0)),
+                    min: 0),
+                ParseBool(
+                    settings.GetValueOrDefault(SettingKeys.VerificationImageMetadataGateEnabled),
+                    VerificationPolicy.Default.ImageMetadataGateEnabled)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
     }
@@ -231,6 +236,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.ImageQualityGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMinimumImageSsim] =
                 Math.Max(0, settings.VerificationPolicy.MinimumImageSsim).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationImageMetadataGateEnabled] =
+                settings.VerificationPolicy.ImageMetadataGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementQuarantineRetentionDays] =

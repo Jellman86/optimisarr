@@ -44,6 +44,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(1.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
         Assert.False(settings.VerificationPolicy.ImageQualityGateEnabled);
         Assert.Equal(0.95, settings.VerificationPolicy.MinimumImageSsim);
+        Assert.False(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
     }
@@ -74,7 +75,8 @@ public sealed class SettingsStoreTests : IDisposable
                     AudioClippingGateEnabled: true,
                     MaxTruePeakDbtp: -1.0,
                     ImageQualityGateEnabled: true,
-                    MinimumImageSsim: 0.97),
+                    MinimumImageSsim: 0.97,
+                    ImageMetadataGateEnabled: true),
                 ReplacementAllowCrossFilesystem: true,
                 ReplacementQuarantineRetentionDays: 30), CancellationToken.None);
         }
@@ -102,6 +104,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(-1.0, settings.VerificationPolicy.MaxTruePeakDbtp);
         Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
         Assert.Equal(0.97, settings.VerificationPolicy.MinimumImageSsim);
+        Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.True(settings.ReplacementAllowCrossFilesystem);
         Assert.Equal(30, settings.ReplacementQuarantineRetentionDays);
     }

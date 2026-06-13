@@ -111,9 +111,11 @@ the replacement workflow is trustworthy.
   builder), per-library **downscaling** (named 4K/1080p caps, custom max long-edge, or percentage —
   aspect-preserving, never upscaling, with a downscale-aware Dimensions gate), an opt-in **image
   SSIM quality gate**, and a **portable optimisation marker** for every image format via exiftool
-  (EXIF/XMP `Software`), closing the marker round-trip gap. Still to come: per-image **EXIF/ICC
-  retention** gate, in-container validation of the AVIF quality mapping, and the output-filename
-  collision fix (tracked in `KNOWN_ISSUES.md`).
+  (EXIF/XMP `Software`), closing the marker round-trip gap, an opt-in **EXIF/ICC-retention gate**
+  (an image that drops the original's ICC colour profile or EXIF on re-encode fails verification;
+  reads both with exiftool, fails closed, flags loss only), and the **output-filename collision fix**
+  (work output is namespaced per media file, and a replacement whose destination is already occupied
+  fails safely). Still to come: in-container validation of the AVIF quality mapping.
 
 ## Guiding principles
 
@@ -523,8 +525,8 @@ Deliverables:
   AVIF/JXL encode lands). **Animated images are skipped** (a multi-frame GIF/WebP is detected via
   the probed frame count and left untouched rather than flattened into a broken still). Verified
   end-to-end in a container: still PNG/BMP/TIFF optimise to WebP with large savings, dimensions
-  retained, and verification passing. Per-image quality scoring (SSIM) and EXIF/ICC-retention gates
-  still to come.
+  retained, and verification passing. **Per-image SSIM quality scoring and the opt-in EXIF/ICC-retention
+  gate are now done** (the latter fails an image that drops the original's ICC profile or EXIF).
 - **Image re-optimisation marker.** The intent is for image outputs to carry the same
   `OptimisationMarker` as video/audio. In-container testing showed ffmpeg's `libwebp` encoder
   **silently drops `-metadata`**, so a WebP output carries no container tag — writing it needs an
