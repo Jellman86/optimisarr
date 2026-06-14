@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fix: GPU encoding silently fell back to CPU
+
+- **A video re-encode now always uses the selected hardware encoder.** The worker resolved a
+  GPU/CPU encoder only when a file's detected `MediaKind` was exactly `Video`, but the FFmpeg
+  command builder treats anything that isn't audio/image as a video re-encode. A video file
+  classified `Unknown` (e.g. a row probed before media-kind detection existed) therefore skipped
+  encoder selection and silently transcoded on the CPU library encoder even when NVENC/QSV/VAAPI
+  was available and selected. Encoder resolution is now gated on the transcode spec actually
+  re-encoding video (a non-null target video codec), so the worker and the command builder always
+  agree. The chosen encoder is logged per job so CPU-vs-GPU is visible.
+
 ### Inventory and Candidates merged into one page
 
 - **One media view instead of two.** The Inventory page now shows each file's stream detail *and*

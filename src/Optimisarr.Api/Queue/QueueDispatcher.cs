@@ -338,13 +338,16 @@ public sealed class QueueDispatcher(
             // A requested image downscale is an intentional dimension reduction, not corruption.
             ImageDownscaleRequested: spec.ImageScaleFilter is not null);
 
-        // Audio and image jobs use the encoder from the spec; only a video re-encode needs a
-        // hardware/software encoder resolved (and may fail if it is unavailable).
+        // Only a video re-encode needs a hardware/software encoder resolved. A non-null
+        // VideoCodec is exactly the case the command builder re-encodes video for (audio,
+        // image, and remux specs all leave it null) — gate on that rather than the file's
+        // MediaKind, so a video classified Unknown still gets the selected GPU encoder
+        // instead of silently falling back to the CPU library encoder.
         string? videoEncoderName = null;
-        if (media.MediaKind == MediaKind.Video)
+        if (spec.VideoCodec is not null)
         {
             var videoEncoder = await ResolveVideoEncoderAsync(
-                rules.TargetVideoCodec,
+                spec.VideoCodec,
                 queueSettings.EncoderMode,
                 cancellationToken);
             if (videoEncoder is { Succeeded: false })
@@ -353,6 +356,9 @@ public sealed class QueueDispatcher(
             }
 
             videoEncoderName = videoEncoder.EncoderName;
+            logger.LogInformation(
+                "Job {JobId} will encode video with '{Encoder}' (mode {Mode})",
+                jobId, videoEncoderName, queueSettings.EncoderMode);
         }
 
         return new JobWork(

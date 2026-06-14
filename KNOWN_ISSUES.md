@@ -10,7 +10,34 @@ CHANGELOG, not kept here.
 
 ## Open
 
-### 1. Animated images — partially addressed
+### 1. GPU transcode not engaging / incomplete multi-vendor hardware support
+
+- **Reported:** On the live `optimisarr:dev` container (WSL2 + RTX 4070), transcodes appear to
+  run on CPU rather than the GPU.
+- **Confirmed during investigation:**
+  - The GPU is genuinely available to the container. `nvidia-smi` works inside the container
+    (WSL2 exposes the GPU via `/dev/dxg`, *not* `/dev/nvidia*` or `/dev/dri`, so those missing
+    nodes are a red herring), and a direct `hevc_nvenc` test encode ran on the GPU at ~3.9x.
+  - The app's own detection (`GET /api/system/hardware`) correctly reports
+    `nvidiaRuntimeAvailable: true` with all `h264/hevc/av1_nvenc` encoders `available: true`.
+    So **NVENC detection is working** — the not-using-GPU symptom is *not* an NVENC detection
+    failure. Root cause for the CPU fallback is still unconfirmed; prime suspects are the
+    configured encoder mode (`queue.encoderMode` / per-library setting resolving to CPU) or the
+    FFmpeg command builder not applying the selected hardware encoder. **Needs follow-up.**
+- **Multi-vendor gap (relevant to "support all GPUs: NVIDIA, Intel, AMD incl. iGPU"):**
+  `HardwareCapabilityService` gates Intel QSV and VAAPI (AMD/Intel iGPU) availability solely on
+  `Directory.Exists("/dev/dri")` (`HardwareCapabilityParser.HardwarePresent`). On this WSL2 host
+  `driDeviceAvailable: false`, so **every QSV and VAAPI encoder is reported unavailable** even
+  though the hardware may be usable. The detection model is also NVIDIA-centric: it has no probe
+  for AMD (AMF/VAAPI via `/dev/dri/renderD*`) or a real QSV/VAAPI capability check beyond the
+  presence of `/dev/dri`. Proper support means (a) detecting render nodes per vendor rather than a
+  single directory check, (b) actually probing each hardware encoder (e.g. a tiny `-f null` test
+  encode) instead of inferring from device-node presence, and (c) surfacing the chosen encoder in
+  job logs so CPU-vs-GPU is visible.
+- **Safety:** no impact on the safety model — worst case is slower CPU transcodes; originals are
+  never touched except via the verified replace flow.
+
+### 2. Animated images — partially addressed
 
 - **Status:** Animated GIF/WebP files are now **skipped as candidates** (detected via the probed
   frame count), so they are no longer flattened into a broken single-frame output. Previously such
