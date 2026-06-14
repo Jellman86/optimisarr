@@ -59,6 +59,16 @@ public static class FfmpegCommandBuilder
             args.Add(threads.ToString());
         }
 
+        // Resolve the video encoder up front: a hardware encoder may need its device
+        // initialised *before* the input (FFmpeg requires -vaapi_device / -init_hw_device
+        // pre-input). Only a video re-encode (a non-null target codec) needs one.
+        var isVideoReencode = spec.Kind is not (MediaKind.Audio or MediaKind.Image)
+            && spec.VideoCodec is not null;
+        var encoder = isVideoReencode ? (videoEncoder ?? EncoderFor(spec.VideoCodec!)) : null;
+        var family = encoder is null ? EncoderFamily.Cpu : FamilyOf(encoder);
+
+        AppendHardwareDeviceInit(args, family);
+
         args.Add("-i");
         args.Add(spec.InputPath);
 
@@ -71,7 +81,7 @@ public static class FfmpegCommandBuilder
                 AppendImageArguments(args, spec);
                 break;
             default:
-                AppendVideoArguments(args, spec, videoEncoder);
+                AppendVideoArguments(args, spec, encoder, family);
                 break;
         }
 
@@ -93,7 +103,8 @@ public static class FfmpegCommandBuilder
         return args;
     }
 
-    private static void AppendVideoArguments(List<string> args, TranscodeSpec spec, string? videoEncoder)
+    private static void AppendVideoArguments(
+        List<string> args, TranscodeSpec spec, string? encoder, EncoderFamily family)
     {
         args.Add("-map");
         args.Add("0");
@@ -113,22 +124,35 @@ public static class FfmpegCommandBuilder
             return;
         }
 
+        // One filter chain: optional HDR->SDR tone-map (in software), then any upload the
+        // hardware encoder needs so it receives GPU surfaces.
+        var filters = new List<string>();
         if (spec.TonemapToSdr)
         {
+            filters.Add(TonemapFilter);
+        }
+        switch (family)
+        {
+            case EncoderFamily.Vaapi:
+                filters.Add("format=nv12,hwupload");
+                break;
+            case EncoderFamily.Qsv:
+                filters.Add("hwupload=extra_hw_frames=64,format=qsv");
+                break;
+        }
+        if (filters.Count > 0)
+        {
             args.Add("-vf");
-            args.Add(TonemapFilter);
+            args.Add(string.Join(',', filters));
         }
 
         args.Add("-c:v");
-        args.Add(videoEncoder ?? EncoderFor(spec.VideoCodec));
+        args.Add(encoder!);
 
-        if (spec.Crf is { } crf)
-        {
-            args.Add("-crf");
-            args.Add(crf.ToString());
-        }
+        AppendQualityArguments(args, family, spec.Crf);
 
-        if (!string.IsNullOrWhiteSpace(spec.Preset))
+        // VAAPI encoders have no x264-style -preset; the others accept one when configured.
+        if (family != EncoderFamily.Vaapi && !string.IsNullOrWhiteSpace(spec.Preset))
         {
             args.Add("-preset");
             args.Add(spec.Preset);
@@ -269,6 +293,65 @@ public static class FfmpegCommandBuilder
         // .m4a/.m4b are the MP4 audio containers (AAC target); they need the same flag for
         // the custom optimisation tag to survive.
         Path.GetExtension(outputPath).ToLowerInvariant() is ".mp4" or ".m4v" or ".mov" or ".m4a" or ".m4b";
+
+    // The hardware family is inferred from the resolved encoder name, so quality and device
+    // arguments stay correct whatever codec was selected (e.g. h264_vaapi vs hevc_vaapi).
+    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi }
+
+    private static EncoderFamily FamilyOf(string encoder) =>
+        encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Nvenc
+        : encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Qsv
+        : encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Vaapi
+        : EncoderFamily.Cpu;
+
+    // VAAPI/QSV need a hardware device declared before the input. The render node is the
+    // conventional default; CPU and NVENC (which encodes from software-decoded frames) need none.
+    private const string DefaultRenderDevice = "/dev/dri/renderD128";
+
+    private static void AppendHardwareDeviceInit(List<string> args, EncoderFamily family)
+    {
+        switch (family)
+        {
+            case EncoderFamily.Vaapi:
+                args.Add("-vaapi_device");
+                args.Add(DefaultRenderDevice);
+                break;
+            case EncoderFamily.Qsv:
+                args.Add("-init_hw_device");
+                args.Add("qsv=hw");
+                args.Add("-filter_hw_device");
+                args.Add("hw");
+                break;
+        }
+    }
+
+    // A single 0-51-ish quality knob per encoder family. Software x264/x265/SVT-AV1 take -crf;
+    // the hardware encoders each name constant quality differently and reject -crf.
+    private static void AppendQualityArguments(List<string> args, EncoderFamily family, int? crf)
+    {
+        if (crf is not { } quality)
+        {
+            return;
+        }
+
+        var q = quality.ToString();
+        switch (family)
+        {
+            case EncoderFamily.Nvenc:
+                // Constant-quality VBR with no target bitrate cap.
+                args.AddRange(["-rc", "vbr", "-cq", q, "-b:v", "0"]);
+                break;
+            case EncoderFamily.Qsv:
+                args.AddRange(["-global_quality", q]);
+                break;
+            case EncoderFamily.Vaapi:
+                args.AddRange(["-rc_mode", "CQP", "-qp", q]);
+                break;
+            default:
+                args.AddRange(["-crf", q]);
+                break;
+        }
+    }
 
     private static string EncoderFor(string videoCodec) => videoCodec.Trim().ToLowerInvariant() switch
     {

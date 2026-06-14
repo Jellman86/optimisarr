@@ -214,6 +214,69 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Nvenc_uses_constant_quality_cq_not_crf()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: "hevc_nvenc");
+
+        // NVENC ignores -crf; it takes -cq for constant quality with a zero target bitrate.
+        Assert.DoesNotContain("-crf", args);
+        Assert.Equal("24", args[IndexOf(args, "-cq") + 1]);
+        Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
+        Assert.Equal("vbr", args[IndexOf(args, "-rc") + 1]);
+        // NVENC encodes from software-decoded frames; no hardware device init needed.
+        Assert.DoesNotContain("-vaapi_device", args);
+        Assert.DoesNotContain("-init_hw_device", args);
+    }
+
+    [Fact]
+    public void Vaapi_inits_the_device_before_input_and_uses_qp_and_hwupload()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24, preset: "slow"), videoEncoder: "hevc_vaapi");
+
+        // The VAAPI device must be declared before -i.
+        var deviceIndex = IndexOf(args, "-vaapi_device");
+        Assert.Equal("/dev/dri/renderD128", args[deviceIndex + 1]);
+        Assert.True(deviceIndex < IndexOf(args, "-i"));
+
+        // Frames are uploaded to the GPU before the encoder.
+        var vfIndex = IndexOf(args, "-vf");
+        Assert.Contains("format=nv12,hwupload", args[vfIndex + 1]);
+
+        // VAAPI uses CQP/-qp, never -crf, and has no -preset.
+        Assert.DoesNotContain("-crf", args);
+        Assert.Equal("CQP", args[IndexOf(args, "-rc_mode") + 1]);
+        Assert.Equal("24", args[IndexOf(args, "-qp") + 1]);
+        Assert.DoesNotContain("-preset", args);
+    }
+
+    [Fact]
+    public void Vaapi_combines_tonemap_then_hwupload_in_one_filter_chain()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true), videoEncoder: "hevc_vaapi");
+
+        var chain = args[IndexOf(args, "-vf") + 1];
+        // Tone-map to SDR happens in software, then the result is uploaded to the GPU.
+        Assert.True(chain.IndexOf("tonemap", StringComparison.Ordinal)
+            < chain.IndexOf("hwupload", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Qsv_inits_the_device_and_uses_global_quality()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(crf: 24), videoEncoder: "hevc_qsv");
+
+        var initIndex = IndexOf(args, "-init_hw_device");
+        Assert.Equal("qsv=hw", args[initIndex + 1]);
+        Assert.True(initIndex < IndexOf(args, "-i"));
+
+        var vfIndex = IndexOf(args, "-vf");
+        Assert.Contains("format=qsv", args[vfIndex + 1]);
+
+        Assert.DoesNotContain("-crf", args);
+        Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
+    }
+
+    [Fact]
     public void Applies_crf_and_preset_when_re_encoding()
     {
         var args = FfmpegCommandBuilder.Build(Reencode(crf: 28, preset: "slow"));

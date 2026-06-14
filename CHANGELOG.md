@@ -12,6 +12,15 @@
   was available and selected. Encoder resolution is now gated on the transcode spec actually
   re-encoding video (a non-null target video codec), so the worker and the command builder always
   agree. The chosen encoder is logged per job so CPU-vs-GPU is visible.
+- **Correct per-encoder rate control and hardware device setup.** The command builder previously
+  emitted `-crf` and an x264-style `-preset` for *every* video re-encode, which NVENC ignores
+  (so it ran at default quality, not the configured CRF) and which QSV/VAAPI reject outright. The
+  builder now branches on the resolved encoder: software x264/x265/SVT-AV1 keep `-crf`; **NVENC**
+  uses constant-quality `-cq` (VBR, no bitrate cap); **QSV** uses `-global_quality` with
+  `-init_hw_device qsv=hw`; **VAAPI** uses `-rc_mode CQP -qp` with `-vaapi_device` declared before
+  the input and a `format=nv12,hwupload` step appended after any tone-map. (NVENC is validated on
+  an RTX 4070; QSV/VAAPI argument shape is unit-tested and pending on-hardware validation — see
+  KNOWN_ISSUES.)
 
 ### Inventory and Candidates merged into one page
 
