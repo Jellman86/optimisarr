@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
@@ -48,6 +49,7 @@ builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
 builder.Services.AddScoped<ArrActivityService>();
 builder.Services.AddScoped<JobEnqueueService>();
+builder.Services.AddScoped<PreviewService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
@@ -981,6 +983,69 @@ app.MapPost("/api/libraries/{id:int}/enqueue", async (
 })
 .WithName("EnqueueLibrary");
 
+// Phase 11: settings preview. Queue a throwaway transcode of one file with its library's
+// resolved settings so the operator can compare original vs encoded before committing.
+app.MapPost("/api/media/{id:int}/preview", async (
+    int id,
+    PreviewService preview,
+    CancellationToken cancellationToken) =>
+{
+    var jobId = await preview.CreateAsync(id, cancellationToken);
+    return jobId is null
+        ? Results.NotFound(new { error = $"No media file with id {id} (or it has no library)." })
+        : Results.Ok(new { jobId });
+})
+.WithName("CreatePreview");
+
+app.MapGet("/api/preview/{jobId:int}", async (
+    int jobId,
+    PreviewService preview,
+    CancellationToken cancellationToken) =>
+{
+    var comparison = await preview.GetAsync(jobId, cancellationToken);
+    return comparison is null ? Results.NotFound() : Results.Ok(comparison);
+})
+.WithName("GetPreview");
+
+app.MapDelete("/api/preview/{jobId:int}", async (
+    int jobId,
+    PreviewService preview,
+    CancellationToken cancellationToken) =>
+{
+    var deleted = await preview.DeleteAsync(jobId, cancellationToken);
+    return deleted ? Results.NoContent() : Results.NotFound();
+})
+.WithName("DeletePreview");
+
+// Streams the original media file for side-by-side comparison (range-enabled so the browser
+// can seek video/audio). Paths come from the database, never from the request.
+app.MapGet("/api/media/{id:int}/content", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var path = await db.MediaFiles
+        .Where(file => file.Id == id)
+        .Select(file => file.Path)
+        .FirstOrDefaultAsync(cancellationToken);
+    return ServeFile(path);
+})
+.WithName("GetMediaContent");
+
+// Streams a preview job's encoded output for the comparison view.
+app.MapGet("/api/preview/{jobId:int}/content", async (
+    int jobId,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var path = await db.Jobs
+        .Where(job => job.Id == jobId && job.Type == JobType.Preview)
+        .Select(job => job.WorkOutputPath)
+        .FirstOrDefaultAsync(cancellationToken);
+    return ServeFile(path);
+})
+.WithName("GetPreviewContent");
+
 app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await JobQueries.ListAsync(db, cancellationToken)))
 .WithName("ListJobs");
@@ -1142,6 +1207,21 @@ app.MapHub<JobsHub>("/hubs/jobs");
 app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
+
+// Serves a media file from an absolute, database-sourced path with range support so the browser
+// can seek video/audio. Returns 404 when the path is missing or the file no longer exists.
+static IResult ServeFile(string? path)
+{
+    if (string.IsNullOrEmpty(path) || !File.Exists(path))
+    {
+        return Results.NotFound();
+    }
+
+    var contentType = new FileExtensionContentTypeProvider().TryGetContentType(path, out var resolved)
+        ? resolved
+        : "application/octet-stream";
+    return Results.File(path, contentType, enableRangeProcessing: true);
+}
 
 static string ResolveConfigDirectory(IHostEnvironment environment)
 {
