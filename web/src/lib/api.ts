@@ -175,6 +175,7 @@ export type Job = {
   progress: number
   errorMessage: string | null
   ffmpegArguments: string | null
+  videoEncoder: string | null
   outputSizeBytes: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null

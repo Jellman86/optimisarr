@@ -135,6 +135,12 @@
   })
   let visibleJobs = $derived(jobs.filter((j) => matchesFilter(j.status)))
 
+  // A hardware encoder is named <codec>_<vendor> (e.g. hevc_nvenc, hevc_qsv, h264_vaapi);
+  // anything else (libx265, …) is a CPU/software encoder.
+  function isGpuEncoder(encoder: string): boolean {
+    return /_(nvenc|qsv|vaapi|amf|videotoolbox)$/.test(encoder)
+  }
+
   function badgeClass(status: string): string {
     switch (status) {
       case 'Transcoding':
@@ -260,7 +266,16 @@
           {@const checks = parseReport(job)}
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{job.status}</span></td>
-            <td class="max-w-[40vw] truncate px-4 py-2 font-mono text-xs sm:max-w-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</td>
+            <td class="max-w-[40vw] px-4 py-2 sm:max-w-xs">
+              <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</div>
+              {#if job.videoEncoder}
+                {@const gpu = isGpuEncoder(job.videoEncoder)}
+                <span
+                  class="badge mt-1 {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}"
+                  title="Video encoder for this job"
+                >{gpu ? 'GPU' : 'CPU'} · {job.videoEncoder}</span>
+              {/if}
+            </td>
             <td class="px-4 py-2">
               {#if job.status === 'Transcoding'}
                 <div class="space-y-1">

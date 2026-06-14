@@ -218,7 +218,7 @@ public sealed class QueueDispatcher(
 
             var (spec, arguments) = work.Value;
             Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
-            await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, cancellationToken);
+            await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
             await NotifyAsync();
 
             var run = await RunFfmpegAsync(jobId, arguments, work.Value.DurationSeconds, cancellationToken);
@@ -271,6 +271,7 @@ public sealed class QueueDispatcher(
     private readonly record struct JobWork(
         TranscodeSpec Spec,
         IReadOnlyList<string> Arguments,
+        string? VideoEncoder,
         double? DurationSeconds,
         bool MoveOnComplete,
         string? TargetFolder,
@@ -365,6 +366,7 @@ public sealed class QueueDispatcher(
         return new JobWork(
             spec,
             FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue),
+            videoEncoderName,
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
@@ -466,12 +468,14 @@ public sealed class QueueDispatcher(
         return tail.Count > 0 ? string.Join('\n', tail) : null;
     }
 
-    private async Task BeginTranscodeAsync(int jobId, string outputPath, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task BeginTranscodeAsync(
+        int jobId, string outputPath, IReadOnlyList<string> arguments, string? videoEncoder, CancellationToken cancellationToken)
     {
         await WithJobAsync(jobId, job =>
         {
             job.WorkOutputPath = outputPath;
             job.FfmpegArguments = string.Join(' ', arguments);
+            job.VideoEncoder = videoEncoder;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
     }

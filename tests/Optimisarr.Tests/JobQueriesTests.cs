@@ -50,6 +50,28 @@ public sealed class JobQueriesTests : IDisposable
         Assert.Equal(new[] { 3, 2, 1 }, jobs.Select(j => j.Id));
     }
 
+    [Fact]
+    public async Task ListAsync_surfaces_the_resolved_video_encoder()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+            var job = Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            job.VideoEncoder = "hevc_nvenc";
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
+
+        Assert.Equal("hevc_nvenc", Assert.Single(jobs).VideoEncoder);
+    }
+
     private static MediaFile MediaFile(int libraryId, int id) => new()
     {
         Id = id,

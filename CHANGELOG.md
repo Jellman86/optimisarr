@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### The Queue shows which encoder each job used (GPU vs CPU)
+
+- **Hardware-vs-software encoding is now visible at a glance.** Each video job records its resolved
+  encoder (e.g. `hevc_nvenc`, `hevc_qsv`, `libx265`) and the Queue shows a **GPU**/**CPU** badge with
+  the encoder name under the file. No more reading the ffmpeg command line to tell whether a transcode
+  ran on the GPU — useful when bringing up a new GPU (e.g. an Intel N100). New nullable `Job.VideoEncoder`
+  column (additive migration) surfaced through `/api/jobs`.
+
 ### Hardware encoders are confirmed by a real test encode
 
 - **Encoder availability is now proven, not inferred.** Detection previously reported a hardware

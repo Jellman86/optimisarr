@@ -46,6 +46,12 @@ public sealed class Job
     /// <summary>The exact ffmpeg argument list used, joined for display on the job detail page.</summary>
     public string? FfmpegArguments { get; set; }
 
+    /// <summary>
+    /// The resolved video encoder for this job (e.g. <c>hevc_nvenc</c>, <c>libx265</c>), so the UI
+    /// can show whether it ran on the GPU or CPU. Null for a remux/audio/image job.
+    /// </summary>
+    public string? VideoEncoder { get; set; }
+
     /// <summary>Transcode progress in the range 0..1, parsed from ffmpeg.</summary>
     public double Progress { get; set; }
 
