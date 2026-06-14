@@ -14,11 +14,13 @@
     void load()
   })
 
-  async function load() {
+  // Initial load uses the cached detection (fast); the Refresh button forces a fresh probe,
+  // re-running the per-encoder test encodes (e.g. after adding a GPU or fixing a driver).
+  async function load(refresh = false) {
     loading = true
     error = null
     try {
-      const [nextTools, nextHardware] = await Promise.all([api.tools(), api.hardware()])
+      const [nextTools, nextHardware] = await Promise.all([api.tools(), api.hardware(refresh)])
       tools = nextTools
       hardware = nextHardware
     } catch (err) {
@@ -43,7 +45,7 @@
   <p class="text-sm text-slate-500 dark:text-slate-400">
     FFmpeg and ffprobe must be available before probing and transcoding can run.
   </p>
-  <button class="btn flex-shrink-0" onclick={load} disabled={loading}>{loading ? 'Checking' : 'Refresh'}</button>
+  <button class="btn flex-shrink-0" onclick={() => load(true)} disabled={loading}>{loading ? 'Checking' : 'Refresh'}</button>
 </div>
 
 {#if error}

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Hardware encoders are confirmed by a real test encode
+
+- **Encoder availability is now proven, not inferred.** Detection previously reported a hardware
+  encoder available whenever ffmpeg listed it and a device node existed (`/dev/dri` for QSV/VAAPI,
+  a working `nvidia-smi` for NVENC). That cheap check still runs as a pre-filter, but any hardware
+  encoder that clears it is then **confirmed with a tiny throwaway encode** (a few 320x240 frames to
+  the null muxer, using the same device-init/upload arguments a real transcode would). A
+  present-but-broken driver, or a codec the GPU does not actually support (e.g. `av1_qsv` on older
+  Intel), is now reported unavailable instead of being assumed to work — and selection won't pick an
+  encoder that would fail at job start. CPU encoders are trusted from the listing.
+- **Detection is cached** (hardware doesn't change while the process runs), so the per-job encoder
+  resolution no longer re-spawns ffmpeg every time. The Tools page **Refresh** button forces a fresh
+  probe (`GET /api/system/hardware?refresh=true`) for when a GPU is added or a driver is fixed.
+
 ### Fix: GPU encoding silently fell back to CPU
 
 - **A video re-encode now always uses the selected hardware encoder.** The worker resolved a

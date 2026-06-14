@@ -27,11 +27,13 @@ CHANGELOG, not kept here.
   The QSV/VAAPI command shape (`-init_hw_device qsv=hw` / `-vaapi_device` + `format=nv12,hwupload`)
   is unit-tested but has **not been run on a real Intel iGPU or AMD GPU yet** — validate on the N100
   when available, in particular the QSV device-init/upload filter and the VAAPI render-node path.
-- **Detection caveat (unchanged):** QSV/VAAPI availability is still gated on `Directory.Exists("/dev/dri")`.
-  That is correct on a real N100/AMD host that maps the render node, but means QSV/VAAPI always read
-  unavailable on this WSL2 dev host (the GPU is exposed via `/dev/dxg`, not `/dev/dri`). A true
-  per-encoder probe (a tiny `-f null` test encode) instead of inferring from device-node presence is
-  future work.
+- **Detection now confirms each encoder with a real test encode.** A hardware encoder is reported
+  available only after a tiny throwaway encode (a few frames to the null muxer) actually succeeds,
+  not merely because ffmpeg lists it and a device node exists — so a present-but-broken driver or a
+  codec the GPU lacks reads as unavailable. The cheap pre-filter remains: QSV/VAAPI still require
+  `/dev/dri` (correct on a real N100/AMD host, so they read unavailable on this WSL2 dev host where
+  the GPU is `/dev/dxg`), and NVENC still requires a working `nvidia-smi`. Validated on the RTX 4070:
+  the NVENC probe passes and the VAAPI probe correctly fails on WSL2.
 - **Safety:** no impact on the safety model — worst case is a hardware job that fails fast or falls
   back to CPU; originals are never touched except via the verified replace flow.
 

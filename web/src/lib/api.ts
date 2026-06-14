@@ -357,7 +357,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<Health>('/api/health'),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
-  hardware: () => request<{ hardware: HardwareCapability }>('/api/system/hardware').then((r) => r.hardware),
+  hardware: (refresh = false) =>
+    request<{ hardware: HardwareCapability }>(`/api/system/hardware${refresh ? '?refresh=true' : ''}`).then(
+      (r) => r.hardware
+    ),
 
   libraryOptions: () => request<LibraryOptions>('/api/library-options'),
   libraries: () => request<Library[]>('/api/libraries'),

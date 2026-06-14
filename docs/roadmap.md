@@ -113,8 +113,9 @@ See the Phase 12 section for the remaining optional polish.
   for all). Transcoding runs through **jellyfin-ffmpeg** (bundles the Intel iHD driver + oneVPL and
   NVENC), and the compose example documents `/dev/dri` + the render group, so **Intel QSV/VA-API
   (e.g. an N100) and AMD VA-API** are wired — pending on-hardware validation (see KNOWN_ISSUES).
-  Remaining: hardware-specific preset notes, on-N100 QSV/VAAPI validation, and a true per-encoder
-  capability probe.
+  Encoder availability is now **confirmed by a real test encode** per encoder (cached, with a Tools
+  Refresh to re-probe) rather than inferred from device-node presence, so the capability list reflects
+  what actually works. Remaining: hardware-specific preset notes and on-N100 QSV/VAAPI validation.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/

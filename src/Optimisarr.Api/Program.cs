@@ -604,9 +604,10 @@ app.MapGet("/api/system/tools", async (
 
 app.MapGet("/api/system/hardware", async (
     HardwareCapabilityService hardware,
+    bool? refresh,
     CancellationToken cancellationToken) =>
 {
-    var result = await hardware.DetectAsync(cancellationToken);
+    var result = await hardware.DetectAsync(cancellationToken, forceRefresh: refresh ?? false);
     return Results.Ok(new
     {
         checkedAt = DateTimeOffset.UtcNow,
