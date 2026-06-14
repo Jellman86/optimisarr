@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Settings preview — compare original vs encoded before committing (Phase 11)
+
+- **Try a library's settings on a real file and see the result.** A **Preview** action on each
+  eligible candidate (Inventory and the Libraries workspace) runs a throwaway transcode of that one
+  file with the library's resolved settings, then shows the **original next to the encoded result**:
+  a per-media-type viewer (image ↔ image, video ↔ video, audio ↔ audio, streamed with range support
+  so you can seek), a size/codec/container/resolution/audio stats table with the **% size saving**,
+  and the full verification report (VMAF/SSIM and the other gates).
+- **Safe by construction.** A preview is a dedicated job type that runs the real
+  probe→transcode→verify pipeline but **never moves or replaces** anything, writes to its own
+  `/work/preview/<id>` scratch area, is hidden from the queue, is deleted when you close the panel,
+  and never survives a restart (purged on startup). The original is guaranteed untouched.
+- Deferred for now: in-browser playback of some encoded codecs (HEVC/AV1) depends on the browser;
+  the stats and verification still apply. Clip-mode (preview a short segment) is future work, since a
+  meaningful VMAF needs the comparison segment aligned with the original.
+
 ### The Queue shows which encoder each job used (GPU vs CPU)
 
 - **Hardware-vs-software encoding is now visible at a glance.** Each video job records its resolved

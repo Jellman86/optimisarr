@@ -580,6 +580,16 @@ Exit criteria:
 
 ## Phase 11: Settings Preview and Compare
 
+Status: core done. A **Preview** action on each eligible candidate (Inventory and the Libraries
+workspace) queues a throwaway `Preview` job — the real probe→transcode→verify pipeline on one file
+with the library's resolved settings — that never moves or replaces anything, writes to its own
+`/work/preview/<id>` scratch, is hidden from the queue, is deleted on close, and never survives a
+restart. The compare panel shows the original next to the encoded result with a per-media-type
+viewer (image/video/audio, range-streamed), a size/codec/resolution/audio stats table with the %
+size saving, and the full Phase 9 verification report. Deferred: clip mode (needs segment-aligned
+VMAF) and apply-from-preview (settings are already saved, so previewing then enqueuing already
+works). The Quarantine compare-to-approve half was delivered earlier.
+
 Goal: let a user *try* a library's configured settings on a real file and see the
 result before committing — a temporary, throwaway optimisation shown side by side
 with the original, with hard numbers, so tuning settings is empirical instead of

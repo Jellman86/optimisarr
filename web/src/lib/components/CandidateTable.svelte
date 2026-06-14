@@ -4,8 +4,12 @@
   // badges, and responsive columns. Read-only: enqueue stays a library-level action.
   import type { Candidate } from '../api'
   import { formatSize } from '../format'
+  import PreviewCompare from './PreviewCompare.svelte'
 
   let { candidates, scoped = false }: { candidates: Candidate[]; scoped?: boolean } = $props()
+
+  // The file currently open in the original-vs-encoded preview, if any.
+  let previewing = $state<Candidate | null>(null)
 
   let show = $state<'all' | 'eligible' | 'skipped'>('all')
 
@@ -44,6 +48,7 @@
           <!-- The rule profile is constant within one library, so the column is redundant when scoped. -->
           {#if !scoped}<th class="hidden px-4 py-3 lg:table-cell">Profile</th>{/if}
           <th class="px-4 py-3">Reason</th>
+          <th class="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -71,11 +76,25 @@
               <td class="hidden px-4 py-2 text-xs lg:table-cell">{candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image' ? '—' : candidate.profile}</td>
             {/if}
             <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{candidate.reason}</td>
+            <td class="px-4 py-2 text-right">
+              {#if candidate.eligible}
+                <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = candidate)}>Preview</button>
+              {/if}
+            </td>
           </tr>
         {/each}
       </tbody>
     </table>
   </div>
+
+  {#if previewing}
+    <PreviewCompare
+      mediaFileId={previewing.mediaFileId}
+      mediaKind={previewing.mediaKind}
+      relativePath={previewing.relativePath}
+      onClose={() => (previewing = null)}
+    />
+  {/if}
   <p class="mt-2 text-xs text-slate-400">{visible.length.toLocaleString()} of {candidates.length.toLocaleString()} probed files</p>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">

@@ -165,6 +165,32 @@ export type VerificationReport = {
   checks: VerificationCheck[]
 }
 
+export type MediaSideStats = {
+  sizeBytes: number | null
+  container: string | null
+  videoCodec: string | null
+  width: number | null
+  height: number | null
+  durationSeconds: number | null
+  audioChannels: number | null
+  audioCodec: string | null
+  audioBitrateKbps: number | null
+}
+
+export type PreviewComparison = {
+  jobId: number
+  mediaFileId: number
+  mediaKind: string
+  status: string
+  progress: number
+  errorMessage: string | null
+  original: MediaSideStats | null
+  encoded: MediaSideStats | null
+  savingPercent: number | null
+  verificationPassed: boolean | null
+  verificationReportJson: string | null
+}
+
 export type Job = {
   id: number
   mediaFileId: number
@@ -381,6 +407,14 @@ export const api = {
   media: (libraryId?: number) =>
     request<MediaFile[]>(`/api/media${libraryId ? `?libraryId=${libraryId}` : ''}`),
   probe: (id: number) => request<MediaFile>(`/api/media/${id}/probe`, { method: 'POST' }),
+
+  // Settings preview: a throwaway transcode for original-vs-encoded comparison.
+  createPreview: (mediaFileId: number) =>
+    request<{ jobId: number }>(`/api/media/${mediaFileId}/preview`, { method: 'POST' }),
+  getPreview: (jobId: number) => request<PreviewComparison>(`/api/preview/${jobId}`),
+  deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
+  mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
+  previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
