@@ -38,6 +38,10 @@ public sealed class QueueDispatcher(
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private const int MaxAttempts = 3;
 
+    // A video preview encodes only this many seconds — enough to judge quality/size without
+    // paying for a full transcode of a long file.
+    private const int PreviewClipSeconds = 60;
+
     // Stamped into every output's container metadata so the file proves it was optimised
     // independently of the database; see OptimisationMarker.
     private static readonly string OptimisedMarkerValue =
@@ -250,7 +254,12 @@ public sealed class QueueDispatcher(
             await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
             await NotifyAsync();
 
-            var run = await RunFfmpegAsync(jobId, arguments, work.Value.DurationSeconds, cancellationToken);
+            // A clipped preview only encodes the clip window, so progress is measured against that,
+            // not the full runtime (otherwise the bar would barely move then jump to done).
+            var progressDuration = spec.ClipSeconds is { } clip && (work.Value.DurationSeconds is not { } d || clip < d)
+                ? clip
+                : work.Value.DurationSeconds;
+            var run = await RunFfmpegAsync(jobId, arguments, progressDuration, cancellationToken);
 
             if (run.ExitCode == 0)
             {
@@ -266,7 +275,16 @@ public sealed class QueueDispatcher(
                         "re-optimisation is still prevented by the database.", jobId);
                 }
 
-                await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
+                // A preview is judged by the side-by-side comparison, not the verification gates;
+                // skipping them keeps it fast (especially the full-file decode/VMAF on video).
+                if (work.Value.IsPreview)
+                {
+                    await CompleteAsync(jobId, JobStatus.Completed, progress: 1.0);
+                }
+                else
+                {
+                    await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
+                }
             }
             else
             {
@@ -357,6 +375,21 @@ public sealed class QueueDispatcher(
             library?.QualityCrf ?? rules.DefaultCrf,
             library?.EncoderPreset,
             media.MediaKind);
+
+        // A video preview only needs a short sample: encoding the whole file would be as slow as a
+        // real transcode. Take it from the middle, where the content is representative rather than an
+        // intro/black frames. Audio/image previews are already fast, so they run in full.
+        if (isPreview && spec.Kind == MediaKind.Video && spec.VideoCodec is not null)
+        {
+            var start = media.DurationSeconds is { } duration && duration > PreviewClipSeconds
+                ? (int)(duration / 2 - PreviewClipSeconds / 2.0)
+                : 0;
+            spec = spec with
+            {
+                ClipSeconds = PreviewClipSeconds,
+                ClipStartSeconds = start > 0 ? start : null
+            };
+        }
 
         var original = new OriginalSnapshot(
             media.Path,
@@ -568,14 +601,6 @@ public sealed class QueueDispatcher(
             job.VerifiedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
-
-        // A preview is for comparison only: keep the output and the full report whether or not it
-        // passed (the operator is judging the settings), and never move or replace anything.
-        if (work.IsPreview)
-        {
-            await CompleteAsync(jobId, JobStatus.Completed, progress: 1.0);
-            return;
-        }
 
         if (!outcome.Report.Passed)
         {

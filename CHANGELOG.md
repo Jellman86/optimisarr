@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Previews are fast now (no more sitting on "Verifying")
+
+- **Video previews encode a short sample, not the whole file.** A preview used to run a full
+  transcode *and* the full verification (decode-health + VMAF over the entire file), so a long video
+  sat on "Verifying" for ages. A video preview now encodes a **60-second sample taken from the middle
+  of the file** (representative content, not the intro) and **skips the gating verification** — the
+  side-by-side comparison is the quality check. Audio/image previews already finished quickly and run
+  in full. The size saving for a sampled video is shown bitrate-based (`≈`) with a note that it is a
+  sample; a full optimise still encodes and verifies the whole file.
+
 ### Settings preview — compare original vs encoded before committing (Phase 11)
 
 - **Try a library's settings on a real file and see the result.** A **Preview** action on each

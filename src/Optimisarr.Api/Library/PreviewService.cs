@@ -29,6 +29,7 @@ public sealed record PreviewComparison(
     MediaSideStats? Original,
     MediaSideStats? Encoded,
     double? SavingPercent,
+    bool Clipped,
     bool? VerificationPassed,
     string? VerificationReportJson);
 
@@ -98,6 +99,7 @@ public sealed class PreviewService(
         MediaSideStats? original = null;
         MediaSideStats? encoded = null;
         double? saving = null;
+        var clipped = false;
 
         // Probe both sides only once the preview has finished, so polling while it runs stays cheap.
         if (job.Status is JobStatus.Completed or JobStatus.Failed)
@@ -108,7 +110,14 @@ public sealed class PreviewService(
                 encoded = await ProbeSideAsync(output, cancellationToken);
             }
 
-            saving = PreviewStats.SavingPercent(original?.SizeBytes, encoded?.SizeBytes);
+            // A video preview only encodes a sample, so its output is materially shorter than the
+            // source. Compare by bitrate in that case so the saving figure is representative.
+            clipped = original?.DurationSeconds is { } od and > 0
+                && encoded?.DurationSeconds is { } ed
+                && ed < od - 1.0;
+            saving = clipped
+                ? PreviewStats.SavingPercentByRate(original?.SizeBytes, original?.DurationSeconds, encoded?.SizeBytes, encoded?.DurationSeconds)
+                : PreviewStats.SavingPercent(original?.SizeBytes, encoded?.SizeBytes);
         }
 
         return new PreviewComparison(
@@ -121,6 +130,7 @@ public sealed class PreviewService(
             original,
             encoded,
             saving,
+            clipped,
             job.VerificationPassed,
             job.VerificationReportJson);
     }

@@ -187,6 +187,7 @@ export type PreviewComparison = {
   original: MediaSideStats | null
   encoded: MediaSideStats | null
   savingPercent: number | null
+  clipped: boolean
   verificationPassed: boolean | null
   verificationReportJson: string | null
 }

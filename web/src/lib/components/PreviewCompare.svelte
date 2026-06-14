@@ -134,8 +134,13 @@
           <MediaCompare
             {mediaKind}
             left={{ label: 'Original', url: api.mediaContentUrl(mediaFileId), sizeBytes: preview.original?.sizeBytes }}
-            right={{ label: 'Encoded', url: api.previewContentUrl(preview.jobId), sizeBytes: preview.encoded?.sizeBytes }}
+            right={{ label: preview.clipped ? 'Encoded (sample)' : 'Encoded', url: api.previewContentUrl(preview.jobId), sizeBytes: preview.encoded?.sizeBytes }}
           />
+          {#if preview.clipped}
+            <p class="mt-2 text-xs text-slate-400">
+              The encoded side is a {Math.round(preview.encoded?.durationSeconds ?? 0)}s sample from the middle of the file, so the saving is estimated from its bitrate. A full optimise encodes the whole file.
+            </p>
+          {/if}
         </div>
       {/if}
 
@@ -153,7 +158,7 @@
                 {preview.encoded?.sizeBytes != null ? formatSize(preview.encoded.sizeBytes) : '—'}
                 {#if preview.savingPercent != null}
                   <span class="badge ml-1 {preview.savingPercent >= 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'}">
-                    {preview.savingPercent >= 0 ? '−' : '+'}{Math.abs(preview.savingPercent)}%
+                    {preview.clipped ? '≈' : ''}{preview.savingPercent >= 0 ? '−' : '+'}{Math.abs(preview.savingPercent)}%
                   </span>
                 {/if}
               </td>

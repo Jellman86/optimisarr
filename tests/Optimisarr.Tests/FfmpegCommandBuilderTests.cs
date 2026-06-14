@@ -277,6 +277,35 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Limits_output_to_the_clip_window_when_set()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { ClipSeconds = 60 });
+
+        // -t is an output option, before the output path.
+        var clipIndex = IndexOf(args, "-t");
+        Assert.Equal("60", args[clipIndex + 1]);
+        Assert.True(clipIndex < args.Count - 1);
+    }
+
+    [Fact]
+    public void Omits_the_clip_window_by_default()
+    {
+        Assert.DoesNotContain("-t", FfmpegCommandBuilder.Build(Reencode()));
+        Assert.DoesNotContain("-ss", FfmpegCommandBuilder.Build(Reencode()));
+    }
+
+    [Fact]
+    public void Seeks_to_the_clip_start_before_the_input()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { ClipSeconds = 60, ClipStartSeconds = 1800 });
+
+        // -ss is an input option: it must precede -i so the seek applies to the source.
+        var seekIndex = IndexOf(args, "-ss");
+        Assert.Equal("1800", args[seekIndex + 1]);
+        Assert.True(seekIndex < IndexOf(args, "-i"));
+    }
+
+    [Fact]
     public void Applies_crf_and_preset_when_re_encoding()
     {
         var args = FfmpegCommandBuilder.Build(Reencode(crf: 28, preset: "slow"));

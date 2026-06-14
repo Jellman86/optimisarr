@@ -23,7 +23,9 @@ public sealed record TranscodeSpec(
     bool DownmixToStereo = false,
     string? ImageEncoder = null,
     int? ImageQuality = null,
-    string? ImageScaleFilter = null);
+    string? ImageScaleFilter = null,
+    int? ClipSeconds = null,
+    int? ClipStartSeconds = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -69,6 +71,14 @@ public static class FfmpegCommandBuilder
 
         AppendHardwareDeviceInit(args, family);
 
+        // A preview clip seeks to its start before the input (fast keyframe seek) so the sample can
+        // be taken from the middle of the file, where content is representative, not the intro.
+        if (spec.ClipStartSeconds is { } start and > 0)
+        {
+            args.Add("-ss");
+            args.Add(start.ToString());
+        }
+
         args.Add("-i");
         args.Add(spec.InputPath);
 
@@ -83,6 +93,14 @@ public static class FfmpegCommandBuilder
             default:
                 AppendVideoArguments(args, spec, encoder, family);
                 break;
+        }
+
+        // A preview clip limits the output to the first N seconds so a sample is fast to produce;
+        // it is an output option, before the output path. Not used for full (replace-bound) jobs.
+        if (spec.ClipSeconds is { } clip and > 0)
+        {
+            args.Add("-t");
+            args.Add(clip.ToString());
         }
 
         if (!string.IsNullOrWhiteSpace(optimisedMarker))
