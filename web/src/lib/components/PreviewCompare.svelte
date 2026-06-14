@@ -7,6 +7,7 @@
   import { api, type PreviewComparison, type MediaSideStats, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, formatDuration } from '../format'
   import VerificationChecks from './VerificationChecks.svelte'
+  import MediaCompare from './MediaCompare.svelte'
 
   let { mediaFileId, mediaKind, relativePath, onClose }: {
     mediaFileId: number
@@ -127,28 +128,15 @@
         </div>
       {/if}
 
-      <!-- Side-by-side viewers per media type -->
-      <div class="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {#each [{ label: 'Original', url: api.mediaContentUrl(mediaFileId), stats: preview.original }, { label: 'Encoded', url: api.previewContentUrl(preview.jobId), stats: preview.encoded }] as side (side.label)}
-          <div>
-            <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-              <span>{side.label}</span>
-              <span>{side.stats?.sizeBytes != null ? formatSize(side.stats.sizeBytes) : '—'}</span>
-            </div>
-            {#if side.label === 'Encoded' && preview.status === 'Failed'}
-              <div class="flex h-40 items-center justify-center rounded bg-slate-100 text-xs text-slate-400 dark:bg-slate-800">no output</div>
-            {:else if mediaKind === 'Image'}
-              <img src={side.url} alt={side.label} class="max-h-72 w-full rounded bg-slate-100 object-contain dark:bg-slate-800" />
-            {:else if mediaKind === 'Audio'}
-              <audio src={side.url} controls preload="metadata" class="w-full"></audio>
-            {:else}
-              <video src={side.url} controls preload="metadata" class="max-h-72 w-full rounded bg-black"><track kind="captions" /></video>
-            {/if}
-          </div>
-        {/each}
-      </div>
-      {#if mediaKind !== 'Image' && mediaKind !== 'Audio'}
-        <p class="-mt-3 mb-4 text-xs text-slate-400">Some encoded codecs (HEVC, AV1) may not play in every browser; the stats and verification below still apply.</p>
+      <!-- Side-by-side viewers per media type (only when an encoded output exists) -->
+      {#if preview.status !== 'Failed'}
+        <div class="mb-5">
+          <MediaCompare
+            {mediaKind}
+            left={{ label: 'Original', url: api.mediaContentUrl(mediaFileId), sizeBytes: preview.original?.sizeBytes }}
+            right={{ label: 'Encoded', url: api.previewContentUrl(preview.jobId), sizeBytes: preview.encoded?.sizeBytes }}
+          />
+        </div>
       {/if}
 
       <!-- Stats comparison -->

@@ -2,6 +2,7 @@
   import { api, type Candidate, type Library, type MediaFile } from '../api'
   import { formatSize, formatDuration } from '../format'
   import Banner from '../components/Banner.svelte'
+  import PreviewCompare from '../components/PreviewCompare.svelte'
 
   let libraries = $state<Library[]>([])
   let files = $state<MediaFile[]>([])
@@ -9,6 +10,8 @@
   let verdicts = $state<Record<number, Candidate>>({})
   let selectedLibrary = $state<number | 'all'>('all')
   let show = $state<'all' | 'eligible' | 'skipped' | 'unprobed'>('all')
+  // The file open in the original-vs-encoded preview, if any.
+  let previewing = $state<MediaFile | null>(null)
   let error = $state<string | null>(null)
   let probingId = $state<number | null>(null)
   let loading = $state(true)
@@ -181,6 +184,9 @@
                 <button class="btn px-3 py-1 text-xs" onclick={() => probe(file)} disabled={probingId === file.id}>
                   {probingId === file.id ? 'Probing' : file.status === 'Discovered' ? 'Probe' : 'Re-probe'}
                 </button>
+                {#if verdict?.eligible}
+                  <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = file)}>Preview</button>
+                {/if}
                 {#if file.probeError}
                   <span class="text-xs text-red-600" title={file.probeError}>failed</span>
                 {/if}
@@ -192,6 +198,15 @@
     </table>
   </div>
   <p class="mt-2 text-xs text-slate-400">{visible.length.toLocaleString()} of {files.length.toLocaleString()} files</p>
+
+  {#if previewing}
+    <PreviewCompare
+      mediaFileId={previewing.id}
+      mediaKind={previewing.mediaKind ?? 'Video'}
+      relativePath={previewing.relativePath}
+      onClose={() => (previewing = null)}
+    />
+  {/if}
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
     No media here yet. Add a library and scan it from the Libraries page.

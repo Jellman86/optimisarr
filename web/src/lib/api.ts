@@ -235,6 +235,7 @@ export type Replacement = {
 }
 
 export type ReplacementDetail = Replacement & {
+  mediaKind: string
   verificationPassed: boolean | null
   verificationReportJson: string | null
 }
@@ -470,6 +471,8 @@ export const api = {
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
+  replacementOriginalContentUrl: (id: number) => `/api/replacements/${id}/original/content`,
+  replacementReplacementContentUrl: (id: number) => `/api/replacements/${id}/replacement/content`,
   rollbackReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
   approveReplacement: (id: number) =>

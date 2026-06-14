@@ -1180,6 +1180,34 @@ app.MapGet("/api/replacements/{id:int}", async (
 })
 .WithName("GetReplacement");
 
+// Streams the two sides of a replacement for the Quarantine visual compare: the quarantined
+// original (under /trash) and the in-place replacement (the encoded file now at the media path).
+app.MapGet("/api/replacements/{id:int}/original/content", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var path = await db.Replacements
+        .Where(r => r.Id == id)
+        .Select(r => r.QuarantinePath)
+        .FirstOrDefaultAsync(cancellationToken);
+    return ServeFile(path);
+})
+.WithName("GetReplacementOriginalContent");
+
+app.MapGet("/api/replacements/{id:int}/replacement/content", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var path = await db.Replacements
+        .Where(r => r.Id == id)
+        .Select(r => r.FinalPath)
+        .FirstOrDefaultAsync(cancellationToken);
+    return ServeFile(path);
+})
+.WithName("GetReplacementReplacementContent");
+
 app.MapPost("/api/replacements/{id:int}/rollback", async (
     int id,
     ReplacementService replacement,

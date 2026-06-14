@@ -54,6 +54,7 @@ public sealed record ReplacementDetailDto(
     DateTimeOffset ReplacedAt,
     DateTimeOffset? RolledBackAt,
     DateTimeOffset? PurgedAt,
+    string MediaKind,
     bool? VerificationPassed,
     string? VerificationReportJson);
 
@@ -77,6 +78,13 @@ public static class ReplacementQueries
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == replacement.JobId, cancellationToken);
 
+        // The media kind decides which compare viewer (image/video/audio) the Quarantine UI shows.
+        var mediaKind = await db.MediaFiles
+            .AsNoTracking()
+            .Where(file => file.Id == replacement.MediaFileId)
+            .Select(file => file.MediaKind)
+            .FirstOrDefaultAsync(cancellationToken);
+
         return new ReplacementDetailDto(
             replacement.Id,
             replacement.JobId,
@@ -91,6 +99,7 @@ public static class ReplacementQueries
             replacement.ReplacedAt,
             replacement.RolledBackAt,
             replacement.PurgedAt,
+            mediaKind.ToString(),
             job?.VerificationPassed,
             job?.VerificationReportJson);
     }

@@ -14,6 +14,11 @@
   probe→transcode→verify pipeline but **never moves or replaces** anything, writes to its own
   `/work/preview/<id>` scratch area, is hidden from the queue, is deleted when you close the panel,
   and never survives a restart (purged on startup). The original is guaranteed untouched.
+- **The same visual compare now lives in Quarantine too.** The compare-to-approve panel adds the
+  side-by-side viewers (the quarantined original vs the in-place replacement, both streamed from
+  disk) alongside the existing size/saving and verification report — so you can see/hear the
+  difference before approving or rolling back, not just read the numbers. The shared viewer
+  (`MediaCompare`) is used by both the preview and the quarantine panels.
 - Deferred for now: in-browser playback of some encoded codecs (HEVC/AV1) depends on the browser;
   the stats and verification still apply. Clip-mode (preview a short segment) is future work, since a
   meaningful VMAF needs the comparison segment aligned with the original.

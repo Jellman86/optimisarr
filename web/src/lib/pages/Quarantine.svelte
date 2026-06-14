@@ -4,6 +4,7 @@
   import Banner from '../components/Banner.svelte'
   import Icon from '../components/Icon.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
+  import MediaCompare from '../components/MediaCompare.svelte'
 
   let replacements = $state<Replacement[]>([])
   let error = $state<string | null>(null)
@@ -197,6 +198,18 @@
                       <div class="mt-1 break-all font-mono text-[11px] text-slate-400" title={r.finalPath}>{r.finalPath}</div>
                     </div>
                   </div>
+
+                  <!-- Visual original-vs-replacement: both files exist on disk (quarantined original
+                       + in-place replacement), so the operator can see/hear the difference. -->
+                  {#if detail}
+                    <div class="mt-4">
+                      <MediaCompare
+                        mediaKind={detail.mediaKind}
+                        left={{ label: 'Original (quarantined)', url: api.replacementOriginalContentUrl(r.id), sizeBytes: r.originalSizeBytes }}
+                        right={{ label: 'Replacement (in place)', url: api.replacementReplacementContentUrl(r.id), sizeBytes: r.newSizeBytes }}
+                      />
+                    </div>
+                  {/if}
 
                   <div class="mt-4">
                     <div class="mb-1.5 flex items-center gap-2">
