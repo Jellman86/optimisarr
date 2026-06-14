@@ -21,6 +21,15 @@
   the input and a `format=nv12,hwupload` step appended after any tone-map. (NVENC is validated on
   an RTX 4070; QSV/VAAPI argument shape is unit-tested and pending on-hardware validation — see
   KNOWN_ISSUES.)
+- **Intel iGPU (N100) and AMD GPU transcoding via jellyfin-ffmpeg.** Transcoding and hardware
+  detection now run through jellyfin-ffmpeg (already bundled for VMAF), which ships the Intel iHD
+  driver + oneVPL (libvpl) runtime and NVENC support — so one binary covers NVIDIA, Intel QSV/VA-API,
+  and AMD VA-API without chasing distro driver packages. The transcode/detection binary is
+  configurable via the new `OPTIMISARR_FFMPEG` env (defaults to jellyfin-ffmpeg in the image,
+  `ffmpeg` on PATH otherwise); detection and transcode share it so the reported encoder list always
+  matches what runs. The compose example now documents mapping `/dev/dri` **and** adding the
+  container user to the host `render` group (required to open the device) for Intel/AMD, alongside
+  the existing NVIDIA reservation.
 
 ### Inventory and Candidates merged into one page
 

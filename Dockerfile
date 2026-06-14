@@ -30,11 +30,12 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Debian's ffmpeg drives transcoding and probing. It is not built with libvmaf, so
-# the opt-in perceptual-quality (VMAF) and loudness gates instead use jellyfin-ffmpeg
-# — a Debian-packaged ffmpeg that bundles libvmaf (with models) and hardware encoders.
-# Keeping the two separate means enabling the quality gate never disturbs the proven
-# transcode path; OPTIMISARR_FFMPEG_VMAF points the measurement at jellyfin-ffmpeg.
+# jellyfin-ffmpeg drives transcoding, VMAF/loudness measurement, and hardware detection. It
+# bundles libvmaf (with models) plus the full hardware stack — NVENC, and crucially the Intel
+# iHD driver + oneVPL (libvpl) runtime for QSV/VA-API on iGPUs like the N100 — so a single,
+# well-maintained binary covers every GPU vendor without chasing distro driver packages.
+# The system ffmpeg is kept only for probing/health fallback. OPTIMISARR_FFMPEG (transcode +
+# detection) and OPTIMISARR_FFMPEG_VMAF both point at jellyfin-ffmpeg below.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -61,6 +62,7 @@ COPY --from=api-build /app/publish/ /app/
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_CONFIG_DIR=/config \
+    OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     OPTIMISARR_FFMPEG_VMAF=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     PUID=1000 \
     PGID=1000 \

@@ -32,6 +32,7 @@ public sealed class QueueDispatcher(
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
     ImageMarkerService imageMarker,
+    TranscodeOptions transcodeOptions,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -385,7 +386,7 @@ public sealed class QueueDispatcher(
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
-            FileName = "ffmpeg",
+            FileName = transcodeOptions.Ffmpeg,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -785,6 +786,9 @@ public sealed class QueueDispatcher(
         }
     }
 }
+
+/// <summary>The ffmpeg binary used for transcoding (see OPTIMISARR_FFMPEG).</summary>
+public sealed record TranscodeOptions(string Ffmpeg);
 
 public sealed record QueueDispatchStatus(
     bool CanStart,

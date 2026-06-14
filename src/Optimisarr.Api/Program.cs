@@ -18,7 +18,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ToolDetectionService>();
-builder.Services.AddSingleton<HardwareCapabilityService>();
+// The transcoding/detection ffmpeg. Defaults to "ffmpeg" on PATH, but can be pointed at a
+// hardware-capable build (e.g. jellyfin-ffmpeg, which bundles Intel iHD + oneVPL and NVENC)
+// via OPTIMISARR_FFMPEG. Detection and transcode share it so the encoder list never lies
+// about what the encoder actually is.
+var transcodeFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG");
+builder.Services.AddSingleton(new TranscodeOptions(
+    string.IsNullOrWhiteSpace(transcodeFfmpeg) ? "ffmpeg" : transcodeFfmpeg));
+builder.Services.AddSingleton(new HardwareCapabilityService(transcodeFfmpeg));
 builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton<MediaProbeService>();
 builder.Services.AddSingleton<DecodeHealthCheck>();

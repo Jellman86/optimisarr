@@ -21,12 +21,21 @@ services:
       # the same filesystem as /data so replacement uses an atomic move; on a
       # different mount Optimisarr falls back to a verified copy-plus-delete.
       - /path/to/trash:/trash
+    # --- Intel iGPU (e.g. N100) / AMD GPU: VA-API + Intel QSV ---
+    # Map the render node and add the container user to the host's "render" group so it
+    # can open it. Find the GID with:  getent group render | cut -d: -f3
+    # (commonly 104 or 993 — set the real value below). Remove this block and the
+    # group_add line if the host has no /dev/dri. Transcoding uses the bundled
+    # jellyfin-ffmpeg, which ships the Intel iHD driver + oneVPL, so no host driver
+    # packages are needed — only the device and group access.
     devices:
-      # Intel/AMD VAAPI/QSV. Remove this block if the host has no /dev/dri.
       - /dev/dri:/dev/dri
+    group_add:
+      - "104"
 
-  # NVIDIA users can add this block to the optimisarr service when the NVIDIA
-  # Container Toolkit is installed on the Docker host.
+  # --- NVIDIA GPU (NVENC) ---
+  # Install the NVIDIA Container Toolkit on the host, then add this block to the
+  # optimisarr service. No /dev/dri or group_add is needed for NVENC.
   #
   # deploy:
   #   resources:

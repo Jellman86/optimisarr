@@ -2,12 +2,16 @@ using System.Diagnostics;
 
 namespace Optimisarr.Core.Tools;
 
-public sealed class HardwareCapabilityService
+public sealed class HardwareCapabilityService(string? ffmpegCommand = null)
 {
+    // Detection must use the same ffmpeg as the transcode path, or the reported encoder list
+    // can differ from what actually runs (see OPTIMISARR_FFMPEG in Program.cs).
+    private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
+
     public async Task<HardwareCapabilityResult> DetectAsync(CancellationToken cancellationToken)
     {
-        var hwaccels = await RunAsync("ffmpeg", ["-hide_banner", "-hwaccels"], cancellationToken);
-        var encoders = await RunAsync("ffmpeg", ["-hide_banner", "-encoders"], cancellationToken);
+        var hwaccels = await RunAsync(_ffmpeg, ["-hide_banner", "-hwaccels"], cancellationToken);
+        var encoders = await RunAsync(_ffmpeg, ["-hide_banner", "-encoders"], cancellationToken);
 
         var errors = new List<string>();
         if (hwaccels.ExitCode != 0)
