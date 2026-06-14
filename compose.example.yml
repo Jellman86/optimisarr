@@ -34,13 +34,23 @@ services:
       - "104"
 
   # --- NVIDIA GPU (NVENC) ---
-  # Install the NVIDIA Container Toolkit on the host, then add this block to the
-  # optimisarr service. No /dev/dri or group_add is needed for NVENC.
+  # Install the NVIDIA Container Toolkit on the host, then add the reservation below AND
+  # the two NVIDIA_* environment variables to the optimisarr service above. No /dev/dri or
+  # group_add is needed for NVENC.
   #
-  # deploy:
-  #   resources:
-  #     reservations:
-  #       devices:
-  #         - driver: nvidia
-  #           count: 1
-  #           capabilities: [gpu]
+  # IMPORTANT: NVIDIA_DRIVER_CAPABILITIES must include "video" — without it the NVENC
+  # library (libnvidia-encode.so) is not injected and hardware encoding fails with
+  # "Cannot load libnvidia-encode.so.1" even though nvidia-smi works. The plain `--gpus all`
+  # default only grants "compute,utility".
+  #
+  #   environment:
+  #     NVIDIA_VISIBLE_DEVICES: "all"
+  #     NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
+  #
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]

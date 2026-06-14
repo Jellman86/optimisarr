@@ -29,7 +29,12 @@
   `ffmpeg` on PATH otherwise); detection and transcode share it so the reported encoder list always
   matches what runs. The compose example now documents mapping `/dev/dri` **and** adding the
   container user to the host `render` group (required to open the device) for Intel/AMD, alongside
-  the existing NVIDIA reservation.
+  the existing NVIDIA reservation. The NVIDIA block now also documents the required
+  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` — without the `video` capability the NVENC
+  library is not injected and hardware encoding fails with "Cannot load libnvidia-encode.so.1"
+  even though `nvidia-smi` works (the plain `--gpus all` default grants only `compute,utility`).
+  NVENC was validated end-to-end on an RTX 4070 with this configuration (encoder utilisation
+  52–81% during a real transcode).
 - **Re-classify legacy `Unknown` media.** Files probed before media-kind detection existed were left
   as `Unknown` and the idempotent scan never revisited them, so an actual video/audio/image stayed
   misclassified (and an audio/image file would have been sent down the video pipeline). A one-time
