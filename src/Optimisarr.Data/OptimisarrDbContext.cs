@@ -72,6 +72,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
         {
             entity.HasKey(job => job.Id);
             entity.Property(job => job.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(job => job.Type).HasConversion<string>().HasMaxLength(16);
             entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
 

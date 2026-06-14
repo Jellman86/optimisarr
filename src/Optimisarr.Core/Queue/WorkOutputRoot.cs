@@ -12,4 +12,12 @@ public static class WorkOutputRoot
 {
     public static string ForMediaFile(string workRoot, int mediaFileId) =>
         $"{workRoot.TrimEnd('/', '\\')}/{mediaFileId}";
+
+    /// <summary>
+    /// The work root for a throwaway preview job's output. Kept under a dedicated <c>preview/</c>
+    /// subtree, keyed by job id, so previews never collide with replace-bound outputs and are
+    /// trivial to purge (the whole subtree, or one job's folder) without touching real output.
+    /// </summary>
+    public static string ForPreview(string workRoot, int jobId) =>
+        $"{workRoot.TrimEnd('/', '\\')}/preview/{jobId}";
 }

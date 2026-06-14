@@ -72,6 +72,32 @@ public sealed class JobQueriesTests : IDisposable
         Assert.Equal("hevc_nvenc", Assert.Single(jobs).VideoEncoder);
     }
 
+    [Fact]
+    public async Task ListAsync_excludes_preview_jobs()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            db.MediaFiles.Add(MediaFile(library.Id, id: 2));
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow));
+            var preview = Job(id: 2, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            preview.Type = JobType.Preview;
+            db.Jobs.Add(preview);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
+
+        // The preview job is hidden from the normal queue list.
+        Assert.Equal(1, Assert.Single(jobs).Id);
+    }
+
     private static MediaFile MediaFile(int libraryId, int id) => new()
     {
         Id = id,

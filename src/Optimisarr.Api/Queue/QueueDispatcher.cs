@@ -72,6 +72,7 @@ public sealed class QueueDispatcher(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await PurgePreviewsAsync(stoppingToken);
         await RecoverInterruptedJobsAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -91,6 +92,34 @@ public sealed class QueueDispatcher(
 
             try { await _wake.WaitAsync(PollInterval, stoppingToken); }
             catch (OperationCanceledException) { break; }
+        }
+    }
+
+    // Previews are throwaway and must not survive a restart: drop every preview job row and wipe
+    // the whole preview scratch subtree so disk never accumulates abandoned comparison outputs.
+    private async Task PurgePreviewsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+
+        var previews = await db.Jobs.Where(job => job.Type == JobType.Preview).ToListAsync(cancellationToken);
+        if (previews.Count > 0)
+        {
+            db.Jobs.RemoveRange(previews);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var previewRoot = $"{_workRoot.TrimEnd('/', '\\')}/preview";
+        try
+        {
+            if (Directory.Exists(previewRoot))
+            {
+                Directory.Delete(previewRoot, recursive: true);
+            }
+        }
+        catch (IOException ex)
+        {
+            logger.LogWarning(ex, "Could not purge preview work directory {Path}", previewRoot);
         }
     }
 
@@ -272,6 +301,7 @@ public sealed class QueueDispatcher(
         TranscodeSpec Spec,
         IReadOnlyList<string> Arguments,
         string? VideoEncoder,
+        bool IsPreview,
         double? DurationSeconds,
         bool MoveOnComplete,
         string? TargetFolder,
@@ -310,14 +340,19 @@ public sealed class QueueDispatcher(
         var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
         var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
 
+        var isPreview = job.Type == JobType.Preview;
+
         // Each file's output lives under a per-media-file work root so two sources that share a
         // stem but differ by extension can never resolve to the same work path and clobber each
-        // other's verified output before it is moved or replaced.
+        // other's verified output before it is moved or replaced. A preview writes under its own
+        // throwaway tree keyed by job id, kept apart from replace-bound output.
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.Path,
             media.RelativePath,
-            WorkOutputRoot.ForMediaFile(_workRoot, media.Id),
+            isPreview
+                ? WorkOutputRoot.ForPreview(_workRoot, job.Id)
+                : WorkOutputRoot.ForMediaFile(_workRoot, media.Id),
             media.IsHdr,
             library?.QualityCrf ?? rules.DefaultCrf,
             library?.EncoderPreset,
@@ -367,6 +402,7 @@ public sealed class QueueDispatcher(
             spec,
             FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue),
             videoEncoderName,
+            isPreview,
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
@@ -532,6 +568,14 @@ public sealed class QueueDispatcher(
             job.VerifiedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
+
+        // A preview is for comparison only: keep the output and the full report whether or not it
+        // passed (the operator is judging the settings), and never move or replace anything.
+        if (work.IsPreview)
+        {
+            await CompleteAsync(jobId, JobStatus.Completed, progress: 1.0);
+            return;
+        }
 
         if (!outcome.Report.Passed)
         {

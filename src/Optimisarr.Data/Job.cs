@@ -18,6 +18,17 @@ public enum JobStatus
 }
 
 /// <summary>
+/// Why a job exists. A <see cref="Normal"/> job can replace its original after verification;
+/// a <see cref="Preview"/> job is a throwaway run of a library's settings on one file — it
+/// transcodes and verifies for comparison but never replaces, moves, or survives a restart.
+/// </summary>
+public enum JobType
+{
+    Normal = 0,
+    Preview = 1
+}
+
+/// <summary>
 /// One unit of optimisation work for a single media file. A job never deletes or
 /// overwrites the original; it only produces an output under <c>/work</c>.
 /// </summary>
@@ -26,6 +37,9 @@ public sealed class Job
     public int Id { get; set; }
 
     public int MediaFileId { get; set; }
+
+    /// <summary>Normal (replaceable) work, or a throwaway settings preview. See <see cref="JobType"/>.</summary>
+    public JobType Type { get; set; } = JobType.Normal;
 
     public MediaFile? MediaFile { get; set; }
 

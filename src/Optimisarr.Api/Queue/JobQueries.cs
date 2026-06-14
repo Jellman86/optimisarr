@@ -36,6 +36,8 @@ public static class JobQueries
     {
         var jobs = await db.Jobs
             .AsNoTracking()
+            // Previews are throwaway settings comparisons, surfaced in their own UI, not the queue.
+            .Where(job => job.Type == JobType.Normal)
             .Select(job => new JobDto(
                 job.Id,
                 job.MediaFileId,
