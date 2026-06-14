@@ -106,8 +106,15 @@ See the Phase 12 section for the remaining optional polish.
   concurrency limit — the worker only fills the queue, never starts jobs.
 - **Phase 7 (GPU Support): largely done.** Encoder/hwaccel capability detection on Tools,
   global encoder-mode selection wired into FFmpeg args, and jobs that fail fast with a clear
-  reason when a selected encoder is unavailable. See the Phase 7 section for the few remaining
-  items (hardware-specific preset notes, a tested GPU compose example).
+  reason when a selected encoder is unavailable. **NVENC is now confirmed working end-to-end**
+  (an earlier bug silently ran video re-encodes on CPU when a file was classified `Unknown`; the
+  encoder is now resolved whenever the spec re-encodes video, and the command builder emits
+  per-encoder rate control — NVENC `-cq`, QSV `-global_quality`, VAAPI `-qp` — instead of `-crf`
+  for all). Transcoding runs through **jellyfin-ffmpeg** (bundles the Intel iHD driver + oneVPL and
+  NVENC), and the compose example documents `/dev/dri` + the render group, so **Intel QSV/VA-API
+  (e.g. an N100) and AMD VA-API** are wired — pending on-hardware validation (see KNOWN_ISSUES).
+  Remaining: hardware-specific preset notes, on-N100 QSV/VAAPI validation, and a true per-encoder
+  capability probe.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/

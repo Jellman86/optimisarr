@@ -10,32 +10,30 @@ CHANGELOG, not kept here.
 
 ## Open
 
-### 1. GPU transcode not engaging / incomplete multi-vendor hardware support
+### 1. Hardware encoding: NVENC fixed; QSV/VAAPI pending on-hardware validation
 
-- **Reported:** On the live `optimisarr:dev` container (WSL2 + RTX 4070), transcodes appear to
-  run on CPU rather than the GPU.
-- **Confirmed during investigation:**
-  - The GPU is genuinely available to the container. `nvidia-smi` works inside the container
-    (WSL2 exposes the GPU via `/dev/dxg`, *not* `/dev/nvidia*` or `/dev/dri`, so those missing
-    nodes are a red herring), and a direct `hevc_nvenc` test encode ran on the GPU at ~3.9x.
-  - The app's own detection (`GET /api/system/hardware`) correctly reports
-    `nvidiaRuntimeAvailable: true` with all `h264/hevc/av1_nvenc` encoders `available: true`.
-    So **NVENC detection is working** — the not-using-GPU symptom is *not* an NVENC detection
-    failure. Root cause for the CPU fallback is still unconfirmed; prime suspects are the
-    configured encoder mode (`queue.encoderMode` / per-library setting resolving to CPU) or the
-    FFmpeg command builder not applying the selected hardware encoder. **Needs follow-up.**
-- **Multi-vendor gap (relevant to "support all GPUs: NVIDIA, Intel, AMD incl. iGPU"):**
-  `HardwareCapabilityService` gates Intel QSV and VAAPI (AMD/Intel iGPU) availability solely on
-  `Directory.Exists("/dev/dri")` (`HardwareCapabilityParser.HardwarePresent`). On this WSL2 host
-  `driDeviceAvailable: false`, so **every QSV and VAAPI encoder is reported unavailable** even
-  though the hardware may be usable. The detection model is also NVIDIA-centric: it has no probe
-  for AMD (AMF/VAAPI via `/dev/dri/renderD*`) or a real QSV/VAAPI capability check beyond the
-  presence of `/dev/dri`. Proper support means (a) detecting render nodes per vendor rather than a
-  single directory check, (b) actually probing each hardware encoder (e.g. a tiny `-f null` test
-  encode) instead of inferring from device-node presence, and (c) surfacing the chosen encoder in
-  job logs so CPU-vs-GPU is visible.
-- **Safety:** no impact on the safety model — worst case is slower CPU transcodes; originals are
-  never touched except via the verified replace flow.
+- **Root cause found and fixed (NVENC).** Transcodes ran on CPU because the worker resolved a
+  hardware encoder only when a file's `MediaKind` was exactly `Video`, while the command builder
+  treats any non-audio/image spec as a video re-encode. A video classified `Unknown` (a row probed
+  before media-kind detection existed) skipped encoder selection and silently used the CPU library
+  encoder. Encoder resolution is now gated on the spec actually re-encoding video, the chosen
+  encoder is logged per job, and the command builder emits per-encoder rate control (NVENC `-cq`,
+  QSV `-global_quality`, VAAPI `-rc_mode CQP -qp`) instead of `-crf` for everything. Verified live
+  on WSL2 + RTX 4070: a Conservative-HEVC job now runs `hevc_nvenc` on the GPU. A one-time backfill
+  re-probes legacy `Unknown` files so they classify correctly.
+- **Intel (N100) / AMD — implemented, not yet validated on hardware.** Transcoding and detection now
+  run through jellyfin-ffmpeg, which bundles the Intel iHD driver + oneVPL (libvpl) and NVENC, so no
+  host driver packages are needed; the compose example documents `/dev/dri` + the `render` group.
+  The QSV/VAAPI command shape (`-init_hw_device qsv=hw` / `-vaapi_device` + `format=nv12,hwupload`)
+  is unit-tested but has **not been run on a real Intel iGPU or AMD GPU yet** — validate on the N100
+  when available, in particular the QSV device-init/upload filter and the VAAPI render-node path.
+- **Detection caveat (unchanged):** QSV/VAAPI availability is still gated on `Directory.Exists("/dev/dri")`.
+  That is correct on a real N100/AMD host that maps the render node, but means QSV/VAAPI always read
+  unavailable on this WSL2 dev host (the GPU is exposed via `/dev/dxg`, not `/dev/dri`). A true
+  per-encoder probe (a tiny `-f null` test encode) instead of inferring from device-node presence is
+  future work.
+- **Safety:** no impact on the safety model — worst case is a hardware job that fails fast or falls
+  back to CPU; originals are never touched except via the verified replace flow.
 
 ### 2. Animated images — partially addressed
 
