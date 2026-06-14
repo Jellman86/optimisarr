@@ -6,9 +6,15 @@ the replacement workflow is trustworthy.
 
 ## Up next (priority order, set 2026-06-13)
 
-1. **Phase 11 settings preview**, or **Phase 13 release hardening** (dry-run, SQLite config
-   backup/export, README quickstart, troubleshooting, security notes) — next major pieces once the
-   editing/review loop is complete.
+1. **Phase 13 release hardening** (dry-run, SQLite config backup/export, README quickstart,
+   troubleshooting, security notes) — the next major piece now that the preview/review loop is in.
+2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
+   for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
+   segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
+   needs a clip window (`-ss`/`-t`) and the compare UI must label scores as segment-only. See the
+   Phase 11 section.
+3. **Inventory master-detail refactor**: a scannable file list beside a roomy per-file info card
+   (all probe values + eligibility reason + actions), collapsing to a drawer on mobile.
 
 **Inventory & Candidates unified: done.** The separate Candidates page is gone — the **Inventory**
 page now shows every file's stream detail alongside its eligibility (Eligible / Skipped / Not probed
