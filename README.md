@@ -27,9 +27,17 @@ Early development. What works today:
 - Configurable verification gates for duration tolerance, audio/subtitle
   retention, and required size reduction.
 
-Not built yet (see the [roadmap](docs/roadmap.md)): optional service-activity
-pauses, configurable replacement/quarantine policy, hardware-specific encoder
-quality notes, and library integrations.
+- **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
+  per-encoder availability **confirmed by a real test encode** (not just inferred), and the
+  encoder used shown per job (GPU/CPU) on the Queue.
+- Optional **service-activity pauses** (Plex/Jellyfin/Emby), configurable
+  replacement/quarantine policy with a retention window, and **library integrations**
+  (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions, notifications,
+  secret-free config import/export).
+
+Not built yet (see the [roadmap](docs/roadmap.md)): a settings preview/compare, and
+release hardening (dry-run, config backup). On-hardware validation of Intel QSV/VA-API
+and AMD VA-API is still pending real Intel/AMD GPUs.
 
 ## Quick start (Docker)
 
@@ -50,8 +58,34 @@ Then open `http://localhost:8787`, add a library on the **Libraries** page, and
 scan it. See [`compose.example.yml`](compose.example.yml) for a Compose setup
 (including the optional `/dev/dri` GPU mapping).
 
-Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the future
+Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the
 replacement pipeline can use atomic moves.
+
+## Hardware acceleration (GPU)
+
+Transcoding runs through a bundled **jellyfin-ffmpeg**, which ships NVENC plus the Intel
+iHD driver and oneVPL runtime — so NVIDIA, Intel (incl. iGPUs like the N100), and AMD GPUs
+work without installing host driver packages. The encoder is picked by the global **encoder
+mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
+(availability is confirmed by a real test encode), and each Queue job shows whether it ran on
+the **GPU** or **CPU**.
+
+- **NVIDIA (NVENC):** install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+  on the host and run with `--gpus all`. You **must** also set
+  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` — without the `video` capability the NVENC
+  library isn't injected and encoding fails with `Cannot load libnvidia-encode.so.1` even though
+  `nvidia-smi` works.
+- **Intel (QSV / VA-API) and AMD (VA-API):** map the render node and add the container to the
+  host's `render` group:
+
+  ```bash
+  docker run -d --name optimisarr \
+    --device /dev/dri:/dev/dri \
+    --group-add "$(getent group render | cut -d: -f3)" \
+    ... ghcr.io/jellman86/optimisarr:dev
+  ```
+
+See [`compose.example.yml`](compose.example.yml) for the equivalent Compose blocks.
 
 ## Development
 
