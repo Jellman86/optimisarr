@@ -82,6 +82,9 @@ using (var scope = app.Services.CreateScope())
 
     var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
     await LibrarySeeder.MigrateLegacyLibraryRootAsync(db, settings, CancellationToken.None);
+
+    // One-time: re-probe files left as Unknown by databases predating media-kind classification.
+    await MediaKindBackfill.ResetUnknownProbedFilesAsync(db, CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())

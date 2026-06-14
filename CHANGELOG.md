@@ -30,6 +30,11 @@
   matches what runs. The compose example now documents mapping `/dev/dri` **and** adding the
   container user to the host `render` group (required to open the device) for Intel/AMD, alongside
   the existing NVIDIA reservation.
+- **Re-classify legacy `Unknown` media.** Files probed before media-kind detection existed were left
+  as `Unknown` and the idempotent scan never revisited them, so an actual video/audio/image stayed
+  misclassified (and an audio/image file would have been sent down the video pipeline). A one-time
+  startup backfill resets such already-probed `Unknown` files to `Discovered` so the normal probe
+  worker re-probes and re-classifies them; it is guarded by a settings flag so it runs exactly once.
 
 ### Inventory and Candidates merged into one page
 

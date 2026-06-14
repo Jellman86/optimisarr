@@ -27,6 +27,12 @@ public static class SettingKeys
     /// <summary>Preferred encoder mode for new transcode jobs.</summary>
     public const string EncoderMode = "queue.encoderMode";
 
+    /// <summary>
+    /// One-shot marker: the media-kind backfill has reset legacy Unknown-kind files for re-probe.
+    /// Present (any value) means it has run, so it never runs again.
+    /// </summary>
+    public const string MediaKindBackfillDone = "maintenance.mediaKindBackfillV1Done";
+
     /// <summary>Allowed output duration drift, as a percentage of original duration.</summary>
     public const string VerificationDurationTolerancePercent = "verification.durationTolerancePercent";
 
