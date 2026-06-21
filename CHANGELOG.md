@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fix: Intel QSV / VA-API hardware encoding not used despite GPU being present
+
+- **Hardware encoding now actually reaches the GPU.** The entrypoint used `gosu user:group`,
+  which drops all supplementary groups — including the `render` group that Docker's `group_add`
+  adds for `/dev/dri` access. The ffmpeg hardware-capability probe (and the encode itself)
+  therefore could not open `/dev/dri/renderD128`, the confirmation probe failed, and the encoder
+  fell back to CPU `libx265`. The entrypoint now detects the GID(s) of every device under
+  `/dev/dri`, adds them to the app user before switching context, and calls `gosu` with just the
+  username so supplementary groups are preserved.
+
 ### Preview playback fallback
 
 - **Side-by-side previews now offer direct downloads of both exact streams.** Browser playback
