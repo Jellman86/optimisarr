@@ -16,6 +16,20 @@
   use only existing API endpoints — no backend changes required.
 - Both routes are now **enabled** in the sidebar (previously "coming soon").
 
+### Inventory bottom-sheet: gap fix, expand/collapse, and spinner direction
+
+- **Closed the dead gap below the table.** The table container's `max-height` deduction was
+  6 rem too large, leaving a constant gap between the table and the sheet (and the viewport
+  bottom when the sheet was closed). Corrected to match the actual chrome above the table plus
+  the main element's bottom padding.
+- **Detail sheet can now collapse to a header strip.** A chevron control toggles between the
+  full detail panel and a header-only strip. Collapsing shrinks the sheet, and the existing
+  `ResizeObserver` automatically gives the table back the reclaimed height. Opening a new row
+  always starts expanded.
+- **Fixed the working spinner spinning the wrong way.** The `rotate` icon was a
+  counter-clockwise arrow paired with the clockwise `animate-spin`, so it read as reversed.
+  The icon path is now mirrored so the arrow follows the rotation direction.
+
 ### Inventory bottom-sheet: sidebar respect and table shrink
 
 - **Sheet no longer overlays the sidebar.** The bottom sheet's left edge is now offset by the

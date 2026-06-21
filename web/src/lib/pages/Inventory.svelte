@@ -13,6 +13,8 @@
   let show = $state<'all' | 'eligible' | 'skipped' | 'unprobed'>('all')
   let page = $state(1)
   let selectedId = $state<number | null>(null)
+  // Whether the detail sheet is showing its full content (true) or just the header strip (false).
+  let sheetExpanded = $state(true)
   // The file open in the original-vs-encoded preview, if any.
   let previewing = $state<MediaFile | null>(null)
   let error = $state<string | null>(null)
@@ -134,12 +136,22 @@
   }
 
   // Toggle: clicking the active row again dismisses the detail sheet.
+  // Opening a new row always starts expanded so the details are immediately visible.
   function selectRow(id: number) {
-    selectedId = selectedId === id ? null : id
+    if (selectedId === id) {
+      selectedId = null
+    } else {
+      selectedId = id
+      sheetExpanded = true
+    }
   }
 
   function dismissSheet() {
     selectedId = null
+  }
+
+  function toggleSheetExpanded() {
+    sheetExpanded = !sheetExpanded
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -262,7 +274,7 @@
   <div class="card overflow-hidden">
     <div
       class="overflow-y-auto"
-      style="max-height: calc(100dvh - 17rem - {selectedFile ? `${sheetHeight}px` : '0px'}); transition: max-height 0.3s ease-out;"
+      style="max-height: calc(100dvh - 11rem - {selectedFile ? `${sheetHeight}px` : '0px'}); transition: max-height 0.3s ease-out;"
     >
       <table class="w-full text-sm">
         <thead
@@ -349,11 +361,25 @@
       <div class="h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600"></div>
     </div>
 
-    <!-- Header: filepath + close -->
+    <!-- Header: filepath + expand/collapse + close -->
     <div class="flex items-start gap-3 px-5 pt-2 pb-3">
       <p class="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-200">
         {selectedFile?.relativePath ?? ''}
       </p>
+      <button
+        class="btn btn-ghost flex-shrink-0 px-2 py-1"
+        onclick={toggleSheetExpanded}
+        aria-label={sheetExpanded ? 'Collapse detail panel' : 'Expand detail panel'}
+        title={sheetExpanded ? 'Collapse' : 'Expand'}
+      >
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d={sheetExpanded ? 'M19 9l-7 7-7-7' : 'M5 15l7-7 7 7'}
+          />
+        </svg>
+      </button>
       <button
         class="btn btn-ghost flex-shrink-0 px-2 py-1"
         onclick={dismissSheet}
@@ -371,8 +397,9 @@
       </button>
     </div>
 
-    <!-- Content: scrollable if it ever overflows (very long verdict text etc.) -->
-    {#if selectedFile}
+    <!-- Content: only rendered when expanded; ResizeObserver picks up the size change
+         automatically so the table's max-height adjusts without extra logic. -->
+    {#if selectedFile && sheetExpanded}
       <div
         class="max-h-[38vh] overflow-y-auto border-t border-slate-100 px-5 py-4 dark:border-slate-800"
       >
