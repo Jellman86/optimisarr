@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Media-server connections: find Plex servers + test any connection
+
+- **Test connection** for every media-server connection (Plex/Jellyfin/Emby): a button confirms the
+  URL is reachable and the token is accepted, showing the server's name and version (or a clear
+  reason it failed). When editing, a blank token tests the stored one. Plex tests `GET /`;
+  Jellyfin/Emby test `GET /System/Info`.
+- **Plex server discovery:** after signing in with Plex, Optimisarr lists the servers on the account
+  (from `plex.tv/api/v2/resources`) and fills the connection in one click — preferring the **local**
+  non-relay address and using that server's own access token. No more finding a host/port or token.
+- Response parsing (Plex resources + connection preference, Plex/Jellyfin identity) is pure and
+  unit-tested. Jellyfin/Emby keep manual URL entry + Test (LAN UDP discovery is unreliable from a
+  bridge-networked container, so it is intentionally not used).
+
 ### Queue detail view, live CPU/GPU graph, and a sidebar activity indicator
 
 - **Queue rows open a detail bottom sheet** (the same slide-up pattern as Inventory, now extracted

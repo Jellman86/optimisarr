@@ -11,6 +11,8 @@
     type ArrConnection,
     type ArrConnectionType,
     type SaveArrConnection,
+    type ConnectionTestResult,
+    type PlexDiscoveredServer,
   } from '../api'
   import { formatSize } from '../format'
   import { router } from '../stores/ui.svelte'
@@ -165,6 +167,11 @@
   let jellyfinCode = $state<string | null>(null)
   let connectCancelled = false
 
+  // Discovered Plex servers (after sign-in) and the last "Test connection" result.
+  let plexServers = $state<PlexDiscoveredServer[] | null>(null)
+  let testing = $state(false)
+  let testResult = $state<ConnectionTestResult | null>(null)
+
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
   function resetConnect() {
@@ -172,6 +179,8 @@
     connecting = false
     connectMessage = null
     jellyfinCode = null
+    plexServers = null
+    testResult = null
   }
 
   async function pollForToken(check: () => Promise<{ authorized: boolean; token: string | null }>) {
@@ -203,13 +212,48 @@
       const token = await pollForToken(() => api.plexConnectPoll(start.id))
       if (token) {
         watcherDraft.apiToken = token
-        connectMessage = 'Connected to Plex — token filled in. Save the watcher to keep it.'
+        connectMessage = 'Connected to Plex — finding your servers…'
+        try {
+          plexServers = await api.plexServers(token)
+          connectMessage = plexServers.length
+            ? 'Pick your server below, or save the token as-is.'
+            : 'Connected — no servers found on this account. Enter the URL manually.'
+        } catch {
+          connectMessage = 'Connected to Plex — token filled in. Enter the server URL, then Test.'
+        }
       }
     } catch (err) {
       watcherError = err instanceof Error ? err.message : 'Plex sign-in failed'
       connectMessage = null
     } finally {
       connecting = false
+    }
+  }
+
+  // Fill the connection from a discovered Plex server (local URL preferred, its own token).
+  function selectPlexServer(server: PlexDiscoveredServer) {
+    watcherDraft.baseUrl = server.uri
+    if (server.accessToken) watcherDraft.apiToken = server.accessToken
+    if (!watcherDraft.name.trim()) watcherDraft.name = server.name
+    plexServers = null
+    testResult = null
+    connectMessage = `Selected "${server.name}". Test or save the connection.`
+  }
+
+  async function testConnection() {
+    testing = true
+    testResult = null
+    try {
+      testResult = await api.testConnection({
+        type: watcherDraft.type,
+        baseUrl: watcherDraft.baseUrl.trim(),
+        token: watcherDraft.apiToken || undefined,
+        id: editingId ?? undefined,
+      })
+    } catch (err) {
+      testResult = { ok: false, serverName: null, version: null, error: err instanceof Error ? err.message : 'Test failed' }
+    } finally {
+      testing = false
     }
   }
 
@@ -794,15 +838,52 @@
           {#if jellyfinCode}
             <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
           {/if}
+          {#if plexServers && plexServers.length}
+            <ul class="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+              {#each plexServers as server}
+                <li>
+                  <button
+                    class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    onclick={() => selectPlexServer(server)}
+                  >
+                    <span class="min-w-0">
+                      <span class="font-medium text-slate-700 dark:text-slate-200">{server.name}</span>
+                      <span class="block truncate font-mono text-[11px] text-slate-400">{server.uri}</span>
+                    </span>
+                    <span class="badge flex-shrink-0 {server.local ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
+                      {server.local ? 'local' : 'remote'}
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </div>
       </div>
       <div class="mt-3 grid gap-3">
         <Toggle bind:checked={watcherDraft.enabled} label="Enabled" hint="Watch this server for active playback to pause processing." />
         <Toggle bind:checked={watcherDraft.refreshOnReplace} label="Refresh after replacements" hint="Tell this server to re-scan the title after a verified replacement or rollback." />
       </div>
+      {#if testResult}
+        <p class="mt-3 text-sm {testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">
+          {#if testResult.ok}
+            ✓ Connected to {testResult.serverName}{testResult.version ? ` (v${testResult.version})` : ''}
+          {:else}
+            ✗ {testResult.error}
+          {/if}
+        </p>
+      {/if}
       <div class="mt-4 flex items-center gap-2">
         <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>
           {savingWatcher ? 'Saving…' : editingId === null ? 'Add watcher' : 'Save changes'}
+        </button>
+        <button
+          class="btn px-3 py-1 text-sm"
+          onclick={testConnection}
+          disabled={testing || (!watcherDraft.baseUrl.trim())}
+          title="Check the URL and token reach the server"
+        >
+          {testing ? 'Testing…' : 'Test connection'}
         </button>
         {#if editingId !== null}
           <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>Cancel</button>

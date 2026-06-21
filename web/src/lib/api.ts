@@ -316,6 +316,8 @@ export type SaveArrConnection = {
 export type PlexConnectStart = { id: number; code: string; authUrl: string }
 export type JellyfinConnectStart = { code: string; secret: string }
 export type ConnectResult = { authorized: boolean; token: string | null }
+export type ConnectionTestResult = { ok: boolean; serverName: string | null; version: string | null; error: string | null }
+export type PlexDiscoveredServer = { name: string; uri: string; local: boolean; accessToken: string | null }
 
 export type MediaFile = {
   id: number
@@ -463,6 +465,10 @@ export const api = {
     request<JellyfinConnectStart>('/api/connect/jellyfin/start', { method: 'POST', body: JSON.stringify({ baseUrl }) }),
   jellyfinConnectPoll: (baseUrl: string, secret: string) =>
     request<ConnectResult>('/api/connect/jellyfin/poll', { method: 'POST', body: JSON.stringify({ baseUrl, secret }) }),
+  plexServers: (token: string) =>
+    request<PlexDiscoveredServer[]>('/api/connect/plex/servers', { method: 'POST', body: JSON.stringify({ token }) }),
+  testConnection: (body: { type: ActivityWatcherType; baseUrl: string; token?: string; id?: number }) =>
+    request<ConnectionTestResult>('/api/connect/test', { method: 'POST', body: JSON.stringify(body) }),
 
   jobs: () => request<Job[]>('/api/jobs'),
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),

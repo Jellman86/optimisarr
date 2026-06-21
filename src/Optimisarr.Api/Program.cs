@@ -595,6 +595,55 @@ app.MapPost("/api/connect/jellyfin/poll", async (
 })
 .WithName("PollJellyfinConnect");
 
+// Discover the Plex servers on the signed-in account so the user picks one instead of typing a URL.
+app.MapPost("/api/connect/plex/servers", async (
+    PlexServersRequest request,
+    ProviderConnectService connect,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Token))
+    {
+        return Results.BadRequest(new { error = "Sign in with Plex first to discover servers." });
+    }
+
+    try
+    {
+        var servers = await connect.ListPlexServersAsync(request.Token, cancellationToken);
+        return Results.Ok(servers);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Results.Problem($"Could not list Plex servers: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+})
+.WithName("ListPlexServers");
+
+// Test a connection's URL + token. When editing, the token may be blank to mean "use the stored one".
+app.MapPost("/api/connect/test", async (
+    ConnectionTestRequest request,
+    ProviderConnectService connect,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (!Enum.TryParse<ActivityWatcherType>(request.Type, ignoreCase: true, out var type))
+    {
+        return Results.BadRequest(new { error = "Type must be one of Plex, Jellyfin, or Emby." });
+    }
+
+    var token = request.Token;
+    if (string.IsNullOrWhiteSpace(token) && request.Id is { } id)
+    {
+        token = await db.ActivityWatchers
+            .Where(watcher => watcher.Id == id)
+            .Select(watcher => watcher.ApiToken)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    var result = await connect.TestAsync(type, request.BaseUrl ?? "", token ?? "", cancellationToken);
+    return Results.Ok(result);
+})
+.WithName("TestConnection");
+
 app.MapGet("/api/system/tools", async (
     ToolDetectionService tools,
     CancellationToken cancellationToken) =>
@@ -1366,6 +1415,10 @@ internal sealed record QueueStatusDto(
 internal sealed record JellyfinConnectRequest(string? BaseUrl);
 
 internal sealed record JellyfinPollRequest(string? BaseUrl, string? Secret);
+
+internal sealed record PlexServersRequest(string? Token);
+
+internal sealed record ConnectionTestRequest(string? Type, string? BaseUrl, string? Token, int? Id);
 
 internal sealed record DirectoryEntry(string Name, string Path);
 

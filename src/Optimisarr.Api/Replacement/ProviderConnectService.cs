@@ -1,6 +1,7 @@
 using System.Text;
 using Optimisarr.Api.Library;
 using Optimisarr.Core.Activity;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Api.Replacement;
 
@@ -12,6 +13,12 @@ public sealed record JellyfinConnectStart(string Code, string Secret);
 
 /// <summary>The result of polling a connect flow: authorised yet, and the token once it is.</summary>
 public sealed record ConnectResult(bool Authorized, string? Token);
+
+/// <summary>The outcome of a "Test connection": whether it worked, and the server it reached.</summary>
+public sealed record ConnectionTestResult(bool Ok, string? ServerName, string? Version, string? Error);
+
+/// <summary>A Plex server found on the account, ready to fill a connection in one click.</summary>
+public sealed record PlexDiscoveredServer(string Name, string Uri, bool Local, string? AccessToken);
 
 /// <summary>
 /// Drives the interactive sign-in flows so a user never has to find and paste a raw
@@ -99,6 +106,107 @@ public sealed class ProviderConnectService(
 
         var token = JellyfinQuickConnectParser.ParseAccessToken(authJson);
         return new ConnectResult(token is not null, token);
+    }
+
+    /// <summary>
+    /// Lists the servers on the signed-in Plex account (from the OAuth token), each with its
+    /// preferred address (local first) and its own access token, so the user can pick one instead
+    /// of finding a host/port.
+    /// </summary>
+    public async Task<IReadOnlyList<PlexDiscoveredServer>> ListPlexServersAsync(string token, CancellationToken cancellationToken)
+    {
+        var clientId = await settings.GetOrCreatePlexClientIdentifierAsync(cancellationToken);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get, $"{PlexApi}/resources?includeHttps=1&includeRelay=1");
+        AddPlexHeaders(request, clientId);
+        request.Headers.TryAddWithoutValidation("X-Plex-Token", token);
+        var json = await SendAsync(request, cancellationToken);
+
+        var discovered = new List<PlexDiscoveredServer>();
+        foreach (var server in PlexResourcesParser.ParseServers(json))
+        {
+            var best = server.BestConnection();
+            if (best is null)
+            {
+                continue;
+            }
+
+            // Use the server's own access token where present (correct for shared servers); fall
+            // back to the account token for an owned server that omits it.
+            discovered.Add(new PlexDiscoveredServer(server.Name, best.Uri, best.Local, server.AccessToken ?? token));
+        }
+
+        return discovered;
+    }
+
+    /// <summary>
+    /// Tests a media-server connection: confirms the URL is reachable and the token is accepted,
+    /// returning the server's name/version on success or a short reason on failure. Never throws —
+    /// a failure is reported in the result so the UI can show it inline.
+    /// </summary>
+    public async Task<ConnectionTestResult> TestAsync(
+        ActivityWatcherType type, string baseUrl, string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return new ConnectionTestResult(false, null, null, "Enter the server's base URL first.");
+        }
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return new ConnectionTestResult(false, null, null, "No token to test — sign in or paste a token first.");
+        }
+
+        var root = baseUrl.TrimEnd('/');
+        try
+        {
+            var client = httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(10);
+
+            if (type == ActivityWatcherType.Plex)
+            {
+                var clientId = await settings.GetOrCreatePlexClientIdentifierAsync(cancellationToken);
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"{root}/");
+                AddPlexHeaders(request, clientId);
+                request.Headers.TryAddWithoutValidation("X-Plex-Token", token);
+                using var response = await client.SendAsync(request, cancellationToken);
+                if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+                {
+                    return new ConnectionTestResult(false, null, null, "The server rejected the token.");
+                }
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new ConnectionTestResult(false, null, null, $"Server returned {(int)response.StatusCode}.");
+                }
+
+                var info = MediaServerInfoParser.ParsePlex(await response.Content.ReadAsStringAsync(cancellationToken));
+                return info is null
+                    ? new ConnectionTestResult(false, null, null, "Reached the URL but it does not look like a Plex server.")
+                    : new ConnectionTestResult(true, info.Name, info.Version, null);
+            }
+
+            using var jfRequest = new HttpRequestMessage(HttpMethod.Get, $"{root}/System/Info");
+            AddJellyfinHeaders(jfRequest, await settings.GetOrCreatePlexClientIdentifierAsync(cancellationToken), token);
+            jfRequest.Headers.TryAddWithoutValidation("X-Emby-Token", token);
+            using var jfResponse = await client.SendAsync(jfRequest, cancellationToken);
+            if (jfResponse.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+            {
+                return new ConnectionTestResult(false, null, null, "The server rejected the API key.");
+            }
+            if (!jfResponse.IsSuccessStatusCode)
+            {
+                return new ConnectionTestResult(false, null, null, $"Server returned {(int)jfResponse.StatusCode}.");
+            }
+
+            var jfInfo = MediaServerInfoParser.ParseJellyfin(await jfResponse.Content.ReadAsStringAsync(cancellationToken));
+            return jfInfo is null
+                ? new ConnectionTestResult(false, null, null, $"Reached the URL but it does not look like a {type} server.")
+                : new ConnectionTestResult(true, jfInfo.Name, jfInfo.Version, null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new ConnectionTestResult(false, null, null, $"Could not reach the server: {ex.Message}");
+        }
     }
 
     private static void AddPlexHeaders(HttpRequestMessage request, string clientId)
