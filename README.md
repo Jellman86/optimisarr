@@ -17,8 +17,8 @@ Early development. What works today:
 - Optimisation for **video, audio, and still images** (images → WebP), each through
   the same candidate → transcode → verify → quarantine/rollback pipeline.
 - FFmpeg/ffprobe **tool detection** and a health endpoint.
-- Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Tools,
-  Queue, Quarantine, Settings).
+- Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Queue,
+  Verification, Quarantine, Schedule, Settings; Tools live under Settings).
 - Queue resource controls: max concurrent jobs, CPU thread limits, processing
   windows, and free work-disk safety pause.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
@@ -30,14 +30,23 @@ Early development. What works today:
 - **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
   per-encoder availability **confirmed by a real test encode** (not just inferred), and the
   encoder used shown per job (GPU/CPU) on the Queue.
+- **GPU hardware decoding** (QSV/VA-API) of the source as well as the encode, on by default,
+  with automatic CPU-decode fallback for sources the GPU can't decode — so a large 4K encode no
+  longer burns a CPU core just on software decode. Skipped for HDR→SDR tonemap jobs (the tonemap
+  runs in software).
+- A **Queue detail view**: click any job for a live progress bar, fps/speed/ETA, the resolved
+  encoder, the verification report, and inline actions — plus a **live CPU/GPU usage graph** while
+  it encodes (sampled with **unprivileged** reads only; no root or extra container capabilities).
+  The sidebar's Queue item throbs a **GPU chip** when work is hardware-accelerated or a **snail**
+  when it's on the CPU, with a running-job count.
 - Optional **service-activity pauses** (Plex/Jellyfin/Emby), configurable
   replacement/quarantine policy with a retention window, and **library integrations**
   (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions, notifications,
   secret-free config import/export).
 
-Not built yet (see the [roadmap](docs/roadmap.md)): a settings preview/compare, and
-release hardening (dry-run, config backup). On-hardware validation of Intel QSV/VA-API
-and AMD VA-API is still pending real Intel/AMD GPUs.
+Not built yet (see the [roadmap](docs/roadmap.md)): release hardening (dry-run, config
+backup). **Intel QSV is now validated on real hardware** (hardware encode *and* decode);
+**AMD VA-API** validation is still pending a real AMD GPU.
 
 ## Quick start (Docker)
 
@@ -69,6 +78,14 @@ work without installing host driver packages. The encoder is picked by the globa
 mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**.
+
+When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
+(Settings → *Hardware decoding*, on by default), so frames never round-trip through system
+memory. If the GPU can't decode a particular source, the job automatically retries with software
+decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
+runs — GPU stats are read **without any elevated privileges** (per-process DRM fdinfo for
+Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is
+needed**; hosts where no unprivileged source applies simply show "GPU stats unavailable".
 
 - **NVIDIA (NVENC):** install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
   on the host and run with `--gpus all`. You **must** also set

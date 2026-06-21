@@ -71,7 +71,13 @@ See the Phase 12 section for the remaining optional polish.
   transcoding (parsed by a pure, unit-tested `FfmpegProgressParser`) and an
   indeterminate sweep for the probing/verifying phases. Enqueue from a library's
   eligible candidates; manage from the Queue page. Outputs land in `/work` as
-  `ReadyToReplace` — originals are never touched.
+  `ReadyToReplace` — originals are never touched. **Queue detail view:** clicking a
+  job opens a slide-up sheet (the shared `BottomSheet`, also used by Inventory) with a
+  large progress bar, fps/speed/ETA, the resolved encoder (GPU/CPU), output size, the
+  verification report, and inline replace/retry/cancel — plus a **live CPU/GPU usage
+  graph** while it encodes (see Phase 7). The **sidebar** Queue item shows a throbbing
+  GPU chip for hardware-accelerated work or a snail for CPU work, with a running-job
+  count, driven by one app-wide SignalR connection.
 - **Phase 4 (Verification): done.** A clean ffmpeg exit no longer trusts the
   output. The worker runs a real `Verifying` step — a full-decode health check
   (`DecodeHealthCheck`), an output ffprobe, and a comparison against the original —
@@ -81,7 +87,10 @@ See the Phase 12 section for the remaining optional polish.
   job and surfaced on the Queue page. Only a passing report advances toward
   replacement; a failure marks the job `Failed` with the output retained for
   inspection and the original untouched. Thresholds are fixed conservative
-  defaults for now (`VerificationPolicy.Default`).
+  defaults for now (`VerificationPolicy.Default`). A fleet-wide **Verification page**
+  lists every job that has been through the Verifying step with aggregate stats
+  (total, pass rate, most-common failing check), All/Passed/Failed filters, and the
+  expandable per-job gate report.
 - **Phase 5 (Safe Replacement and Rollback): done.** A verified `ReadyToReplace`
   job can replace its original — the original is quarantined under `/trash` first,
   then the verified output is moved into place, with a recorded `Replacement` as
@@ -109,7 +118,11 @@ See the Phase 12 section for the remaining optional polish.
   automatic optimisation** extends this: a library can scan-and-enqueue itself once
   per day within its own time window (pure `AutoEnqueueScheduleEvaluator` +
   `AutoEnqueueWorker`), while execution still obeys the global processing window and
-  concurrency limit — the worker only fills the queue, never starts jobs.
+  concurrency limit — the worker only fills the queue, never starts jobs. A dedicated
+  **Schedule page** surfaces dispatch status (ready/paused + reason, running/limit,
+  free work-disk), the configured processing window with an in/out-of-window indicator
+  (overnight windows handled), and the per-library auto-enqueue table with each
+  library's window and last run.
 - **Phase 7 (GPU Support): largely done.** Encoder/hwaccel capability detection on Tools,
   global encoder-mode selection wired into FFmpeg args, and jobs that fail fast with a clear
   reason when a selected encoder is unavailable. **NVENC is now confirmed working end-to-end**
@@ -121,7 +134,16 @@ See the Phase 12 section for the remaining optional polish.
   (e.g. an N100) and AMD VA-API** are wired — pending on-hardware validation (see KNOWN_ISSUES).
   Encoder availability is now **confirmed by a real test encode** per encoder (cached, with a Tools
   Refresh to re-probe) rather than inferred from device-node presence, so the capability list reflects
-  what actually works. Remaining: hardware-specific preset notes and on-N100 QSV/VAAPI validation.
+  what actually works. **Intel QSV is now validated on real hardware** — hardware *encode* and
+  *decode* both confirmed on an Intel iGPU host (CPU dropped from ~142% to ~22% on a 4K encode with
+  the render/video engines busy). **GPU hardware decoding** is wired and on by default
+  (`queue.hardwareDecode`): when a hardware encoder is in use the source is decoded on the GPU
+  (`-hwaccel` + `-hwaccel_output_format`, no `hwupload`), skipped for HDR→SDR tonemap jobs, with an
+  automatic software-decode retry for sources the GPU can't decode. **Live, unprivileged CPU/GPU
+  metrics** stream to the Queue graph over SignalR — `/proc/stat` for CPU and per-process DRM fdinfo
+  (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
+  Remaining: hardware-specific preset notes; AMD VA-API on-hardware validation; optional NVIDIA
+  (`cuda`) decode acceleration.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/

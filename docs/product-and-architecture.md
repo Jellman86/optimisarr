@@ -240,6 +240,28 @@ Users should be able to pick:
 - Intel QSV h264/hevc/av1 when supported.
 - VAAPI h264/hevc/av1 when supported.
 
+#### Hardware decoding
+
+When a hardware encoder is selected, the source is also decoded on the GPU
+(`-hwaccel` + matching `-hwaccel_output_format`), keeping frames on the GPU end to
+end instead of decoding in software and uploading. This is on by default
+(`queue.hardwareDecode`) and only applies to a hardware encoder. It is skipped for
+HDR→SDR tone-map jobs, whose tone-map filter runs in software and needs frames in
+system memory. Because not every source codec/profile can be hardware-decoded, a
+decode-setup failure is retried once with the software-decode command rather than
+failing the job.
+
+#### Live resource metrics
+
+The Queue view shows a live CPU/GPU usage graph while a job encodes, pushed over
+SignalR. All sampling is **unprivileged** so it needs no extra container capability:
+CPU from `/proc/stat`; GPU from the per-process DRM fdinfo of Optimisarr's own
+ffmpeg child (vendor-neutral — Intel `i915`/`xe` and AMD `amdgpu` expose
+`drm-engine-*` busy counters), falling back to the AMD `gpu_busy_percent` sysfs node
+or an `nvidia-smi` query. `intel_gpu_top`/the i915 perf interface is deliberately
+**not** used because it requires elevation. Where no unprivileged source applies the
+UI reports the GPU as unavailable.
+
 ## Safety model
 
 ### Candidate decision

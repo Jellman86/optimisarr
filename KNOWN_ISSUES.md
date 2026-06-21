@@ -10,7 +10,7 @@ CHANGELOG, not kept here.
 
 ## Open
 
-### 1. Hardware encoding: NVENC fixed; QSV/VAAPI pending on-hardware validation
+### 1. Hardware encoding/decoding: NVENC + Intel QSV validated; AMD VA-API pending
 
 - **Root cause found and fixed (NVENC).** Transcodes ran on CPU because the worker resolved a
   hardware encoder only when a file's `MediaKind` was exactly `Video`, while the command builder
@@ -21,12 +21,16 @@ CHANGELOG, not kept here.
   QSV `-global_quality`, VAAPI `-rc_mode CQP -qp`) instead of `-crf` for everything. Verified live
   on WSL2 + RTX 4070: a Conservative-HEVC job now runs `hevc_nvenc` on the GPU. A one-time backfill
   re-probes legacy `Unknown` files so they classify correctly.
-- **Intel (N100) / AMD — implemented, not yet validated on hardware.** Transcoding and detection now
-  run through jellyfin-ffmpeg, which bundles the Intel iHD driver + oneVPL (libvpl) and NVENC, so no
-  host driver packages are needed; the compose example documents `/dev/dri` + the `render` group.
-  The QSV/VAAPI command shape (`-init_hw_device qsv=hw` / `-vaapi_device` + `format=nv12,hwupload`)
-  is unit-tested but has **not been run on a real Intel iGPU or AMD GPU yet** — validate on the N100
-  when available, in particular the QSV device-init/upload filter and the VAAPI render-node path.
+- **Intel QSV — validated on real hardware.** Transcoding and detection run through jellyfin-ffmpeg
+  (bundles the Intel iHD driver + oneVPL/libvpl and NVENC, so no host driver packages are needed; the
+  compose example documents `/dev/dri` + the `render` group). On an Intel iGPU host, `hevc_qsv` encode
+  and QSV **hardware decode** (`-hwaccel qsv -hwaccel_output_format qsv`) are both confirmed: a 4K
+  encode dropped from ~142% CPU (software decode) to ~22% with the GPU render/video engines busy, and
+  the dispatcher's generated command was verified end-to-end.
+- **AMD VA-API — implemented, not yet validated on hardware.** The VA-API command shape
+  (`-vaapi_device` + `format=nv12,hwupload`, or `-hwaccel vaapi -hwaccel_output_format vaapi` when
+  hardware-decoding) and the vendor-neutral DRM-fdinfo GPU metrics path (which reads `amdgpu`
+  `drm-engine-*` counters) are wired and unit-tested, but have **not been run on a real AMD GPU yet**.
 - **Detection now confirms each encoder with a real test encode.** A hardware encoder is reported
   available only after a tiny throwaway encode (a few frames to the null muxer) actually succeeds,
   not merely because ffmpeg lists it and a device node exists — so a present-but-broken driver or a
