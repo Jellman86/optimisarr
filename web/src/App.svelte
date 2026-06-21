@@ -7,6 +7,8 @@
   import Inventory from './lib/pages/Inventory.svelte'
   import Queue from './lib/pages/Queue.svelte'
   import Quarantine from './lib/pages/Quarantine.svelte'
+  import Schedule from './lib/pages/Schedule.svelte'
+  import Verification from './lib/pages/Verification.svelte'
   import Settings from './lib/pages/Settings.svelte'
 
   // Map the active route to its page component.
@@ -17,6 +19,8 @@
     if (path.startsWith('/inventory') || path.startsWith('/candidates')) return Inventory
     if (path.startsWith('/queue')) return Queue
     if (path.startsWith('/quarantine')) return Quarantine
+    if (path.startsWith('/schedule')) return Schedule
+    if (path.startsWith('/verification')) return Verification
     // Tools moved into Settings; the old route still lands there (opens the Tools tab).
     if (path.startsWith('/tools') || path.startsWith('/settings')) return Settings
     return Dashboard

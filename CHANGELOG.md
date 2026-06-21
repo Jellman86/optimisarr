@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Schedule and Verification pages
+
+- **Schedule page** (`/schedule`): a new dedicated page showing the current dispatch status
+  (ready / paused + reason, running job count, work-disk free space), the configured processing
+  window and whether the current time falls inside it (overnight windows handled correctly), and
+  a per-library auto-enqueue table with the configured window and the last time each library ran.
+  No settings are edited here; links point to Settings where changes are made.
+- **Verification page** (`/verification`): a fleet-wide audit of every job that has passed
+  through the Verifying step. Shows aggregate stats (total verified, pass rate, most-common
+  failing check) and a filterable table (All / Passed / Failed). Each row expands to the full
+  `VerificationChecks` gate report, reusing the same component as the Queue page. Both pages
+  use only existing API endpoints — no backend changes required.
+- Both routes are now **enabled** in the sidebar (previously "coming soon").
+
+### Inventory bottom-sheet: sidebar respect and table shrink
+
+- **Sheet no longer overlays the sidebar.** The bottom sheet's left edge is now offset by the
+  sidebar width (15 rem expanded / 4 rem collapsed) on desktop, with a smooth 200 ms transition
+  that tracks sidebar collapse. On mobile, where the sidebar is an off-canvas overlay, the sheet
+  stays full-width.
+- **Table shrinks when the sheet opens.** The table container's `max-height` is dynamically
+  reduced by the sheet's actual rendered height (measured via `ResizeObserver`), so all rows
+  above the panel remain reachable by scrolling the table, not hidden behind the sheet.
+
 ### Inventory: viewport-filling table with bottom detail sheet
 
 - **The table now fills the viewport and scrolls internally.** The page itself no longer scrolls;
