@@ -17,6 +17,7 @@
   import { formatSize } from '../format'
   import { router } from '../stores/ui.svelte'
   import Toggle from '../components/Toggle.svelte'
+  import InfoTip from '../components/InfoTip.svelte'
   import Banner from '../components/Banner.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
 
@@ -514,15 +515,12 @@
     </p>
     <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
       <div>
-        <label class="label" for="max-jobs">Max concurrent jobs</label>
+        <label class="label" for="max-jobs">Max concurrent jobs <InfoTip text="How many transcodes run at once across all libraries. Start at 1 and raise it only if your CPU/GPU and disk keep up." /></label>
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          How many transcodes run at once. Start at 1; raise it only if your CPU/GPU and disk keep up.
-        </p>
       </div>
 
       <div>
-        <label class="label" for="encoder-mode">Encoder mode</label>
+        <label class="label" for="encoder-mode">Encoder mode <InfoTip text="Auto prefers a hardware encoder when available, then falls back to CPU. The Tools tab shows what your GPU supports." /></label>
         <select id="encoder-mode" class="input" bind:value={settings.encoderMode}>
           <option value="Auto">Auto</option>
           <option value="Cpu">CPU</option>
@@ -530,28 +528,19 @@
           <option value="IntelQsv">Intel QSV</option>
           <option value="Vaapi">VAAPI</option>
         </select>
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Auto prefers a hardware encoder when available, then falls back to CPU. See the Tools tab for what your GPU supports.
-        </p>
       </div>
 
       <div>
-        <label class="label" for="cpu-threads">CPU thread limit</label>
+        <label class="label" for="cpu-threads">CPU thread limit <InfoTip text="Passed to FFmpeg as -threads for each job. 0 lets FFmpeg decide." /></label>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Passed to FFmpeg as <code>-threads</code> for each job. 0 lets FFmpeg decide.
-        </p>
       </div>
 
       <div>
-        <label class="label" for="free-disk">Minimum free work disk</label>
+        <label class="label" for="free-disk">Minimum free work disk <InfoTip text={`New jobs pause when the work disk falls below this. 0 disables the check. Currently ${formatSize(gibToBytes(minFreeDiskGiB))}.`} /></label>
         <div class="flex items-center gap-2">
           <input id="free-disk" class="input" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
           <span class="text-sm text-slate-500 dark:text-slate-400">GiB</span>
         </div>
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          New jobs pause below this free space. 0 disables it. Now: {formatSize(gibToBytes(minFreeDiskGiB))}.
-        </p>
       </div>
     </div>
 
@@ -597,12 +586,11 @@
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Always-on checks</h3>
         <div class="max-w-[16rem]">
-          <label class="label" for="duration-tolerance">Duration tolerance</label>
+          <label class="label" for="duration-tolerance">Duration tolerance <InfoTip text="How far the output's runtime may drift from the original before the job fails." /></label>
           <div class="flex items-center gap-2">
             <input id="duration-tolerance" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
             <span class="text-sm text-slate-500 dark:text-slate-400">%</span>
           </div>
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">How far the output's runtime may drift from the original.</p>
         </div>
         <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
           <Toggle bind:checked={settings.verificationRequireAudioRetained} label="Require all audio tracks to be retained" />
@@ -619,14 +607,12 @@
         />
         <div class="mt-4 grid gap-4 sm:grid-cols-2" class:opacity-50={!settings.verificationQualityGateEnabled}>
           <div>
-            <label class="label" for="vmaf-harmonic">Min VMAF (harmonic mean)</label>
+            <label class="label" for="vmaf-harmonic">Min VMAF (harmonic mean) <InfoTip text="Overall quality floor. The harmonic mean penalises bad frames more than a plain average." /></label>
             <input id="vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafHarmonicMean} disabled={!settings.verificationQualityGateEnabled} />
-            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Overall floor; penalises bad frames more than a plain average.</p>
           </div>
           <div>
-            <label class="label" for="vmaf-min">Min VMAF (worst frame)</label>
+            <label class="label" for="vmaf-min">Min VMAF (worst frame) <InfoTip text="Catches short artifact bursts a healthy average would hide." /></label>
             <input id="vmaf-min" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafMin} disabled={!settings.verificationQualityGateEnabled} />
-            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Catches short artifact bursts a healthy average would hide.</p>
           </div>
         </div>
       </div>
@@ -653,12 +639,11 @@
           hint="Reads the output's true peak from the same ebur128 pass and fails only when the re-encode pushes the peak above the ceiling while the original sat below it — a source that was already hot is not blamed on the re-encode."
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
-          <label class="label" for="true-peak-ceiling">True-peak ceiling</label>
+          <label class="label" for="true-peak-ceiling">True-peak ceiling <InfoTip text="0 dBTP is full scale; set a margin like −1 to be stricter. The job fails only if the re-encode pushes the peak above this while the original sat below it." /></label>
           <div class="flex items-center gap-2">
             <input id="true-peak-ceiling" class="input" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
             <span class="text-sm text-slate-500 dark:text-slate-400">dBTP</span>
           </div>
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0 dBTP is full scale; set a margin like −1 to be stricter.</p>
         </div>
       </div>
 
@@ -669,9 +654,8 @@
           hint="Photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails when structural similarity drops below the floor. Runs an extra pass, so it's off by default."
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
-          <label class="label" for="image-ssim-floor">Minimum SSIM</label>
+          <label class="label" for="image-ssim-floor">Minimum SSIM <InfoTip text="Structural similarity, 0–1 where 1 is identical. 0.95 is a conservative default." /></label>
           <input id="image-ssim-floor" class="input" type="number" step="0.01" min="0" max="1" bind:value={settings.verificationMinimumImageSsim} disabled={!settings.verificationImageQualityGateEnabled} />
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0–1, where 1 is identical. 0.95 is conservative.</p>
         </div>
       </div>
 
@@ -699,12 +683,11 @@
       />
     </div>
     <div class="mt-5 max-w-[16rem] border-t border-slate-200 pt-5 dark:border-slate-800">
-      <label class="label" for="quarantine-retention">Quarantine retention</label>
+      <label class="label" for="quarantine-retention">Quarantine retention <InfoTip text="How long quarantined originals are kept before they are purged to free space. 0 keeps them indefinitely (roll back any time)." /></label>
       <div class="flex items-center gap-2">
         <input id="quarantine-retention" class="input" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
         <span class="text-sm text-slate-500 dark:text-slate-400">days</span>
       </div>
-      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">How long quarantined originals are kept before purging. 0 keeps them indefinitely.</p>
     </div>
   </div>
 

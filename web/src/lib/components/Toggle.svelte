@@ -1,7 +1,10 @@
 <script lang="ts">
   // A labelled on/off switch for boolean feature settings. Backed by a real
   // checkbox so the whole row is clickable, keyboard-operable, and announced
-  // correctly; the visual switch is driven entirely by `peer` variants.
+  // correctly; the visual switch is driven entirely by `peer` variants. Any
+  // `hint` is shown as a hover/focus tooltip on an info icon, keeping the row dense.
+  import InfoTip from './InfoTip.svelte'
+
   let {
     checked = $bindable(false),
     label,
@@ -20,11 +23,9 @@
     ? 'cursor-not-allowed opacity-60'
     : 'cursor-pointer'}"
 >
-  <span class="min-w-0">
-    <span class="block text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
-    {#if hint}
-      <span class="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
-    {/if}
+  <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+    <span class="truncate">{label}</span>
+    {#if hint}<InfoTip text={hint} label={`About: ${label}`} />{/if}
   </span>
 
   <span class="relative inline-flex h-6 w-11 flex-shrink-0 items-center">

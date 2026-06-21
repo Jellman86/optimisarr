@@ -14,6 +14,10 @@
   with plain-language help and a note that gates fail closed.
 - Consistent section intros, toggle alignment, and headings throughout; the General "Save settings"
   button now notes that connections/notifications save on their own.
+- **Rollover tooltips replace the wall of help text.** A new accessible `InfoTip` (hover/focus info
+  icon) carries the per-setting explanations, and every `Toggle`'s hint now appears as a tooltip on
+  an info icon next to its label rather than a sub-paragraph — so each row is a single dense line
+  with its definition available on demand. Applied across Settings (and every toggle app-wide).
 
 ### Media-server connections: find Plex servers + test any connection
 
