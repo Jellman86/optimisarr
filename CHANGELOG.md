@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Inventory: viewport-filling table with bottom detail sheet
+
+- **The table now fills the viewport and scrolls internally.** The page itself no longer scrolls;
+  the table body scrolls within a fixed-height container so no rows are ever off-screen without
+  being reachable by scrolling the table. The `thead` is sticky so column headers stay visible.
+- **File details slide up from the bottom.** Clicking a row opens a fixed bottom sheet that slides
+  in from below the viewport edge — no more scrolling past 50 rows to reach the detail card. The
+  sheet persists while browsing; clicking a different row updates its content. Click the row again,
+  press Escape, or click ✕ to dismiss.
+- **Pagination moved above the table.** The page-counter and Previous/Next controls now live on the
+  same bar as the filter tabs, always visible, so pagination never requires scrolling to the bottom.
+
 ### Fix: Intel QSV / VA-API hardware encoding not used despite GPU being present
 
 - **Hardware encoding now actually reaches the GPU.** The entrypoint used `gosu user:group`,
