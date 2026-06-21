@@ -13,8 +13,9 @@ the replacement workflow is trustworthy.
    segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
    needs a clip window (`-ss`/`-t`) and the compare UI must label scores as segment-only. See the
    Phase 11 section.
-3. **Inventory master-detail refactor**: a scannable file list beside a roomy per-file info card
-   (all probe values + eligibility reason + actions), collapsing to a drawer on mobile.
+**Inventory master-detail refactor: done.** Inventory uses a bounded, paged file list beside a
+per-file detail card (probe values, eligibility reason, and actions); on smaller screens the card
+stacks below the list.
 
 **Inventory & Candidates unified: done.** The separate Candidates page is gone — the **Inventory**
 page now shows every file's stream detail alongside its eligibility (Eligible / Skipped / Not probed

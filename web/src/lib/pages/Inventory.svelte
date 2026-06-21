@@ -10,6 +10,8 @@
   let verdicts = $state<Record<number, Candidate>>({})
   let selectedLibrary = $state<number | 'all'>('all')
   let show = $state<'all' | 'eligible' | 'skipped' | 'unprobed'>('all')
+  let page = $state(1)
+  let selectedId = $state<number | null>(null)
   // The file open in the original-vs-encoded preview, if any.
   let previewing = $state<MediaFile | null>(null)
   let error = $state<string | null>(null)
@@ -39,6 +41,7 @@
     try {
       files = await api.media(filter === 'all' ? undefined : filter)
       await loadVerdicts(filter)
+      selectedId = files[0]?.id ?? null
     } catch (err) {
       error = err instanceof Error ? err.message : 'Unable to load media'
     } finally {
@@ -81,18 +84,43 @@
     return verdicts[file.id] !== undefined
   }
 
+  function selectLibrary(event: Event) {
+    selectedLibrary = (event.currentTarget as HTMLSelectElement).value === 'all'
+      ? 'all'
+      : Number((event.currentTarget as HTMLSelectElement).value)
+    page = 1
+    selectedId = null
+  }
+
+  function selectFilter(value: typeof show) {
+    show = value
+    page = 1
+    selectedId = null
+  }
+
+  function goToPage(nextPage: number) {
+    page = Math.max(1, Math.min(nextPage, pageCount))
+    selectedId = paged[0]?.id ?? null
+  }
+
   let eligibleCount = $derived(files.filter((f) => verdicts[f.id]?.eligible).length)
   let skippedCount = $derived(files.filter((f) => verdicts[f.id] && !verdicts[f.id].eligible).length)
   let unprobedCount = $derived(files.filter((f) => !isProbed(f)).length)
-  let visible = $derived(
+  let filtered = $derived(
     show === 'eligible'
       ? files.filter((f) => verdicts[f.id]?.eligible)
       : show === 'skipped'
         ? files.filter((f) => verdicts[f.id] && !verdicts[f.id].eligible)
         : show === 'unprobed'
           ? files.filter((f) => !isProbed(f))
-          : files,
+        : files,
   )
+  const pageSize = 50
+  let pageCount = $derived(Math.max(1, Math.ceil(filtered.length / pageSize)))
+  let pageStart = $derived((Math.min(page, pageCount) - 1) * pageSize)
+  let paged = $derived(filtered.slice(pageStart, pageStart + pageSize))
+  let selectedFile = $derived(paged.find((file) => file.id === selectedId) ?? paged[0] ?? null)
+  let selectedVerdict = $derived(selectedFile ? verdicts[selectedFile.id] : undefined)
 </script>
 
 <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -105,7 +133,7 @@
   </div>
   <div>
     <label class="label" for="lib-filter">Library</label>
-    <select id="lib-filter" class="input min-w-48" bind:value={selectedLibrary}>
+    <select id="lib-filter" class="input min-w-48" value={selectedLibrary} onchange={selectLibrary}>
       <option value="all">All libraries</option>
       {#each libraries as library}<option value={library.id}>{library.name}</option>{/each}
     </select>
@@ -120,22 +148,23 @@
   <div class="card p-8 text-center text-slate-400">Loading…</div>
 {:else if files.length > 0}
   <div class="mb-4 flex flex-wrap gap-2">
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'all'} onclick={() => (show = 'all')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'all'} onclick={() => selectFilter('all')}>
       All ({files.length})
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'eligible'} onclick={() => (show = 'eligible')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'eligible'} onclick={() => selectFilter('eligible')}>
       Eligible ({eligibleCount})
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'skipped'} onclick={() => (show = 'skipped')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'skipped'} onclick={() => selectFilter('skipped')}>
       Skipped ({skippedCount})
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'unprobed'} onclick={() => (show = 'unprobed')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'unprobed'} onclick={() => selectFilter('unprobed')}>
       Not probed ({unprobedCount})
     </button>
   </div>
 
-  <div class="card overflow-x-auto">
-    <table class="w-full text-sm">
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="card overflow-x-auto">
+      <table class="w-full text-sm">
       <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
         <tr>
           <th class="px-4 py-3">Optimise?</th>
@@ -151,10 +180,13 @@
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-        {#each visible as file (file.id)}
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          {#each paged as file (file.id)}
           {@const verdict = verdicts[file.id]}
-          <tr class="text-slate-700 dark:text-slate-300">
+          <tr
+            class={`cursor-pointer text-slate-700 dark:text-slate-300 ${selectedFile?.id === file.id ? 'bg-sky-50 dark:bg-sky-950/30' : ''}`}
+            onclick={() => (selectedId = file.id)}
+          >
             <td class="px-4 py-2">
               {#if verdict?.eligible}
                 <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Eligible</span>
@@ -179,25 +211,55 @@
             <td class="hidden px-4 py-2 md:table-cell">{file.subtitleTrackCount ?? '—'}</td>
             <td class="hidden px-4 py-2 md:table-cell">{formatDuration(file.durationSeconds)}</td>
             <td class="hidden max-w-xs truncate px-4 py-2 text-xs text-slate-500 xl:table-cell dark:text-slate-400" title={verdict?.reason ?? ''}>{verdict?.reason ?? '—'}</td>
-            <td class="px-4 py-2">
-              <div class="flex items-center gap-2">
-                <button class="btn px-3 py-1 text-xs" onclick={() => probe(file)} disabled={probingId === file.id}>
-                  {probingId === file.id ? 'Probing' : file.status === 'Discovered' ? 'Probe' : 'Re-probe'}
-                </button>
-                {#if verdict?.eligible}
-                  <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = file)}>Preview</button>
-                {/if}
-                {#if file.probeError}
-                  <span class="text-xs text-red-600" title={file.probeError}>failed</span>
-                {/if}
-              </div>
-            </td>
+            <td class="px-4 py-2 text-right text-xs text-slate-400">Details</td>
           </tr>
-        {/each}
-      </tbody>
-    </table>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+
+    {#if selectedFile}
+      <aside class="card h-fit p-5 xl:sticky xl:top-6">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Selected file</p>
+        <p class="mt-2 break-all font-mono text-xs text-slate-700 dark:text-slate-200">{selectedFile.relativePath}</p>
+        <dl class="mt-5 space-y-3 text-sm">
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Status</dt><dd>{selectedFile.status}</dd></div>
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Size</dt><dd>{formatSize(selectedFile.sizeBytes)}</dd></div>
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Container</dt><dd>{selectedFile.container ?? '—'}</dd></div>
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Video</dt><dd>{selectedFile.videoCodec ?? '—'} {resolution(selectedFile)}</dd></div>
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Audio</dt><dd class="text-right">{selectedFile.audioCodecs ?? '—'}{selectedFile.audioTrackCount ? ` · ${selectedFile.audioTrackCount} tracks` : ''}</dd></div>
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Subtitles</dt><dd>{selectedFile.subtitleTrackCount ?? '—'}</dd></div>
+          <div class="flex justify-between gap-4"><dt class="text-slate-500">Duration</dt><dd>{formatDuration(selectedFile.durationSeconds)}</dd></div>
+        </dl>
+        <div class="mt-5 border-t border-slate-100 pt-4 text-sm dark:border-slate-800">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Rule verdict</p>
+          <p class="mt-2 text-slate-600 dark:text-slate-300">{selectedVerdict?.reason ?? 'Probe this file to evaluate it against the library rules.'}</p>
+        </div>
+        {#if selectedFile.probeError}
+          <p class="mt-4 text-xs text-red-600" title={selectedFile.probeError}>Probe failed: {selectedFile.probeError}</p>
+        {/if}
+        <div class="mt-5 flex flex-wrap gap-2">
+          <button class="btn px-3 py-1 text-xs" onclick={() => probe(selectedFile)} disabled={probingId === selectedFile.id}>
+            {probingId === selectedFile.id ? 'Probing' : selectedFile.status === 'Discovered' ? 'Probe' : 'Re-probe'}
+          </button>
+          {#if selectedVerdict?.eligible}
+            <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = selectedFile)}>Preview</button>
+          {/if}
+        </div>
+      </aside>
+    {/if}
   </div>
-  <p class="mt-2 text-xs text-slate-400">{visible.length.toLocaleString()} of {files.length.toLocaleString()} files</p>
+  <div class="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+    <span>
+      {filtered.length === 0 ? 0 : (pageStart + 1).toLocaleString()}–{Math.min(pageStart + pageSize, filtered.length).toLocaleString()}
+      of {filtered.length.toLocaleString()} filtered files · {files.length.toLocaleString()} total
+    </span>
+    <div class="flex items-center gap-2">
+      <button class="btn px-3 py-1 text-xs" onclick={() => goToPage(page - 1)} disabled={page <= 1}>Previous</button>
+      <span>Page {Math.min(page, pageCount)} of {pageCount}</span>
+      <button class="btn px-3 py-1 text-xs" onclick={() => goToPage(page + 1)} disabled={page >= pageCount}>Next</button>
+    </div>
+  </div>
 
   {#if previewing}
     <PreviewCompare

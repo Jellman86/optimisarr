@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Inventory is now bounded and inspectable
+
+- **The Inventory no longer renders one unbounded file table.** It now displays 50 files at a
+  time with explicit Previous/Next controls and a clear filtered/total count. Selecting a row opens
+  a persistent detail card with its stream data, rule verdict, probe error, and the Probe/Re-probe
+  and Preview actions. This follows the planned master-detail workflow while remaining responsive on
+  smaller screens, where the detail card stacks below the file list.
+
 ### Fix: MP4 previews with SubRip subtitles
 
 - **MP4/MOV video output now transcodes text subtitles to `mov_text`.** Preview jobs mapped every
