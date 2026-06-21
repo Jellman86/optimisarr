@@ -23,15 +23,16 @@ services:
       - /path/to/trash:/trash
     # --- Intel iGPU (e.g. N100) / AMD GPU: VA-API + Intel QSV ---
     # Map the render node and add the container user to the host's "render" group so it
-    # can open it. Find the GID with:  getent group render | cut -d: -f3
-    # (commonly 104 or 993 — set the real value below). Remove this block and the
+    # can open it. Find the GID with:  stat -c '%g' /dev/dri/renderD128
+    # Set RENDER_GID to that value (107 on the documented TrueNAS SCALE setup).
+    # Remove this block and the
     # group_add line if the host has no /dev/dri. Transcoding uses the bundled
     # jellyfin-ffmpeg, which ships the Intel iHD driver + oneVPL, so no host driver
     # packages are needed — only the device and group access.
     devices:
       - /dev/dri:/dev/dri
     group_add:
-      - "104"
+      - "${RENDER_GID:-107}"
 
   # --- NVIDIA GPU (NVENC) ---
   # Install the NVIDIA Container Toolkit on the host, then add the reservation below AND
