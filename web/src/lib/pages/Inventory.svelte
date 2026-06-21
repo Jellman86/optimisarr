@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Candidate, type Library, type MediaFile } from '../api'
   import { formatSize, formatDuration } from '../format'
+  import { layout } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
 
@@ -17,6 +18,34 @@
   let error = $state<string | null>(null)
   let probingId = $state<number | null>(null)
   let loading = $state(true)
+
+  // Sheet element reference — observed so the table can subtract the exact rendered height.
+  let sheetEl = $state<HTMLElement | null>(null)
+  let sheetHeight = $state(0)
+
+  // Mirror Sidebar.svelte's mobile detection: md breakpoint is 768 px.
+  let isMobile = $state(false)
+  $effect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const update = () => (isMobile = mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  })
+
+  $effect(() => {
+    const el = sheetEl
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      sheetHeight = entry.contentRect.height
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  })
+
+  // On mobile the sidebar is a fixed overlay (not in-flow), so the sheet spans the full width.
+  // On desktop, offset by the sidebar width so the sheet stays inside the content column.
+  let sheetLeft = $derived(isMobile ? '0px' : layout.collapsed ? '4rem' : '15rem')
 
   $effect(() => {
     void loadLibraries()
@@ -227,9 +256,14 @@
   </div>
 
   <!-- Table scrolls within a fixed-height container so the page itself never needs to scroll.
-       The sticky thead keeps column headers visible as the body scrolls. -->
+       The sticky thead keeps column headers visible as the body scrolls.
+       When the detail sheet is open its measured height is subtracted so the table shrinks to
+       keep all rows reachable above the panel. -->
   <div class="card overflow-hidden">
-    <div class="overflow-y-auto" style="max-height: calc(100dvh - 17rem)">
+    <div
+      class="overflow-y-auto"
+      style="max-height: calc(100dvh - 17rem - {selectedFile ? `${sheetHeight}px` : '0px'}); transition: max-height 0.3s ease-out;"
+    >
       <table class="w-full text-sm">
         <thead
           class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
@@ -299,11 +333,13 @@
 {/if}
 
 <!-- Detail bottom sheet: always in the DOM, slides into view on row selection.
-     position:fixed means it never affects page layout and always anchors to the viewport. -->
+     `left` is offset by the sidebar width so the sheet stays within the content column and
+     never overlaps the nav rail. On mobile the sidebar is a fixed overlay so left stays 0. -->
 <div
-  class="fixed inset-x-0 bottom-0 z-30 transition-transform duration-300 ease-out"
-  style="transform: {selectedFile ? 'translateY(0)' : 'translateY(100%)'}"
+  class="fixed bottom-0 right-0 z-30"
+  style="left: {sheetLeft}; transform: {selectedFile ? 'translateY(0)' : 'translateY(100%)'}; transition: transform 0.3s ease-out, left 0.2s ease-out;"
   aria-hidden={selectedFile === null}
+  bind:this={sheetEl}
 >
   <div
     class="border-t border-slate-200 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]"
