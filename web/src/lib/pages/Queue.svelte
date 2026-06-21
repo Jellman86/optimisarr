@@ -168,6 +168,39 @@
     activity.metrics && !activity.metrics.gpuSupported ? 'GPU stats unavailable on this host' : null,
   )
 
+  // The table scrolls internally and fills the space below the page chrome; when the detail
+  // sheet is open its measured height is subtracted so rows stay reachable above it (the same
+  // behaviour as Inventory). The chrome above the table is variable (dispatch card, filters,
+  // banner), so the container's top is measured rather than assumed.
+  let tableScrollEl = $state<HTMLElement | null>(null)
+  let tableMaxHeight = $state('65vh')
+
+  $effect(() => {
+    // Re-measure whenever the layout above the table, or the sheet height, can change.
+    void sheetHeight
+    void selectedJobId
+    void filter
+    void jobs.length
+    void loading
+    void queueStatus
+    void error
+    const el = tableScrollEl
+    if (!el) return
+    const measure = () => {
+      const top = el.getBoundingClientRect().top
+      const sheetSub = selectedJob ? sheetHeight : 0
+      // Leave room for the bottom padding and the "N jobs" caption below the table.
+      const available = window.innerHeight - top - 48 - sheetSub
+      tableMaxHeight = `${Math.max(200, Math.round(available))}px`
+    }
+    const raf = requestAnimationFrame(measure)
+    window.addEventListener('resize', measure)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', measure)
+    }
+  })
+
   function badgeClass(status: string): string {
     switch (status) {
       case 'Transcoding':
@@ -276,9 +309,14 @@
 {#if loading}
   <div class="card p-8 text-center text-slate-400">Loading…</div>
 {:else if visibleJobs.length > 0}
-  <div class="card overflow-x-auto">
+  <div class="card overflow-hidden">
+    <div
+      bind:this={tableScrollEl}
+      class="overflow-auto"
+      style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;"
+    >
     <table class="w-full text-sm">
-      <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
+      <thead class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
         <tr>
           <th class="px-4 py-3">Status</th>
           <th class="px-4 py-3">File</th>
@@ -383,6 +421,7 @@
         {/each}
       </tbody>
     </table>
+    </div>
   </div>
   <p class="mt-2 text-xs text-slate-400">{jobs.length.toLocaleString()} jobs</p>
 {:else}

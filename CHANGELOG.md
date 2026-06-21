@@ -7,7 +7,9 @@
 - **Queue rows open a detail bottom sheet** (the same slide-up pattern as Inventory, now extracted
   into a shared `BottomSheet` component): a large progress bar, live fps/speed/ETA telemetry, the
   resolved encoder (GPU/CPU), output size, verification report, and the replace/retry/cancel
-  actions in one place.
+  actions in one place. The jobs table now scrolls internally with a sticky header and **shrinks
+  when the sheet opens** (its height measured live) so rows stay reachable above the panel — like
+  Inventory.
 - **Live CPU/GPU usage graph** while a job is encoding, pushed over SignalR (`systemMetrics`). All
   sampling is **unprivileged** — `/proc/stat` for CPU and, for the GPU, the per-process DRM fdinfo
   of our own ffmpeg child, falling back to the AMD `gpu_busy_percent` sysfs node or an `nvidia-smi`
