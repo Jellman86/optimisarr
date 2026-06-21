@@ -162,9 +162,8 @@
     </button>
   </div>
 
-  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-    <div class="card overflow-x-auto">
-      <table class="w-full text-sm">
+  <div class="card overflow-x-auto">
+    <table class="w-full text-sm">
       <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
         <tr>
           <th class="px-4 py-3">Optimise?</th>
@@ -173,10 +172,6 @@
           <th class="px-4 py-3">Size</th>
           <th class="hidden px-4 py-3 sm:table-cell">Video</th>
           <th class="hidden px-4 py-3 sm:table-cell">Resolution</th>
-          <th class="hidden px-4 py-3 lg:table-cell">Audio</th>
-          <th class="hidden px-4 py-3 md:table-cell">Subs</th>
-          <th class="hidden px-4 py-3 md:table-cell">Duration</th>
-          <th class="hidden px-4 py-3 xl:table-cell">Reason</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -207,22 +202,18 @@
             <td class="px-4 py-2">{formatSize(file.sizeBytes)}</td>
             <td class="hidden px-4 py-2 sm:table-cell">{file.videoCodec ?? '—'}</td>
             <td class="hidden px-4 py-2 sm:table-cell">{resolution(file)}</td>
-            <td class="hidden max-w-32 truncate px-4 py-2 lg:table-cell" title={file.audioCodecs ?? ''}>{file.audioCodecs ?? '—'}</td>
-            <td class="hidden px-4 py-2 md:table-cell">{file.subtitleTrackCount ?? '—'}</td>
-            <td class="hidden px-4 py-2 md:table-cell">{formatDuration(file.durationSeconds)}</td>
-            <td class="hidden max-w-xs truncate px-4 py-2 text-xs text-slate-500 xl:table-cell dark:text-slate-400" title={verdict?.reason ?? ''}>{verdict?.reason ?? '—'}</td>
             <td class="px-4 py-2 text-right text-xs text-slate-400">Details</td>
           </tr>
           {/each}
         </tbody>
-      </table>
-    </div>
+    </table>
+  </div>
 
-    {#if selectedFile}
-      <aside class="card h-fit p-5 xl:sticky xl:top-6">
+  {#if selectedFile}
+      <section class="card mt-4 p-5">
         <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Selected file</p>
         <p class="mt-2 break-all font-mono text-xs text-slate-700 dark:text-slate-200">{selectedFile.relativePath}</p>
-        <dl class="mt-5 space-y-3 text-sm">
+        <dl class="mt-5 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="flex justify-between gap-4"><dt class="text-slate-500">Status</dt><dd>{selectedFile.status}</dd></div>
           <div class="flex justify-between gap-4"><dt class="text-slate-500">Size</dt><dd>{formatSize(selectedFile.sizeBytes)}</dd></div>
           <div class="flex justify-between gap-4"><dt class="text-slate-500">Container</dt><dd>{selectedFile.container ?? '—'}</dd></div>
@@ -246,9 +237,8 @@
             <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = selectedFile)}>Preview</button>
           {/if}
         </div>
-      </aside>
-    {/if}
-  </div>
+      </section>
+  {/if}
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
     <span>
       {filtered.length === 0 ? 0 : (pageStart + 1).toLocaleString()}–{Math.min(pageStart + pageSize, filtered.length).toLocaleString()}

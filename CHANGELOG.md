@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Preview playback fallback
+
+- **Side-by-side previews now offer direct downloads of both exact streams.** Browser playback
+  remains native—Optimisarr never creates a second, browser-friendly re-encode that could distort
+  the quality comparison. When a browser cannot decode the source container, video, or audio codec,
+  the operator can download either the original or real encoded preview for local inspection.
+
 ### Security
 
 - **Updated the native SQLite library to 3.50.3.** EF Core 10.0.8 otherwise transitively selected
@@ -10,10 +17,9 @@
 ### Inventory is now bounded and inspectable
 
 - **The Inventory no longer renders one unbounded file table.** It now displays 50 files at a
-  time with explicit Previous/Next controls and a clear filtered/total count. Selecting a row opens
-  a persistent detail card with its stream data, rule verdict, probe error, and the Probe/Re-probe
-  and Preview actions. This follows the planned master-detail workflow while remaining responsive on
-  smaller screens, where the detail card stacks below the file list.
+  time with explicit Previous/Next controls and a clear filtered/total count. The table is limited
+  to scan-oriented fields; selecting a row opens a detail card beneath it with stream data, rule
+  verdict, probe error, and the Probe/Re-probe and Preview actions.
 
 ### Fix: MP4 previews with SubRip subtitles
 

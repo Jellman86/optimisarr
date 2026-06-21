@@ -18,7 +18,10 @@
     <div>
       <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
         <span>{side.label}</span>
-        <span>{side.sizeBytes != null ? formatSize(side.sizeBytes) : ''}</span>
+        <span class="flex items-center gap-2">
+          <span>{side.sizeBytes != null ? formatSize(side.sizeBytes) : ''}</span>
+          <a class="btn px-2 py-1 text-xs" href={side.url} download>Download</a>
+        </span>
       </div>
       {#if mediaKind === 'Image'}
         <img src={side.url} alt={side.label} class="max-h-72 w-full rounded bg-slate-100 object-contain dark:bg-slate-800" />
@@ -31,5 +34,5 @@
   {/each}
 </div>
 {#if mediaKind !== 'Image' && mediaKind !== 'Audio'}
-  <p class="mt-2 text-xs text-slate-400">Some codecs (HEVC, AV1) may not play in every browser; the stats and verification below still apply.</p>
+  <p class="mt-2 text-xs text-slate-400">Playback uses the original streams. Some browsers cannot play MKV, HEVC, AV1, or E-AC-3; use Download to inspect either exact file locally. The stats and verification below still apply.</p>
 {/if}
