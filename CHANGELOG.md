@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Security
+
+- **Updated the native SQLite library to 3.50.3.** EF Core 10.0.8 otherwise transitively selected
+  `SQLitePCLRaw.lib.e_sqlite3` 2.1.11, which carries the high-severity SQLite CVE-2025-6965 advisory.
+
 ### Inventory is now bounded and inspectable
 
 - **The Inventory no longer renders one unbounded file table.** It now displays 50 files at a
