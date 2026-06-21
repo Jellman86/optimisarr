@@ -50,8 +50,20 @@ public static class FfmpegCommandBuilder
     /// if it is moved to another machine or the queue history is cleared. Applies to a remux
     /// copy as well as a re-encode.
     /// </param>
+    /// <param name="hardwareDecode">
+    /// When <c>true</c> and a hardware (QSV/VAAPI) encoder is in use, the source is also
+    /// decoded on the GPU (<c>-hwaccel</c>) so frames never round-trip through system memory —
+    /// removing the software-decode CPU cost on large sources. Skipped when an HDR→SDR
+    /// tone-map is requested, because that filter runs in software and needs frames in system
+    /// memory. Not every source codec/profile can be hardware-decoded; the caller retries with
+    /// this off when a hardware-decode attempt fails (see <see cref="HardwareDecodeFallback"/>).
+    /// </param>
     public static IReadOnlyList<string> Build(
-        TranscodeSpec spec, int threads = 0, string? videoEncoder = null, string? optimisedMarker = null)
+        TranscodeSpec spec,
+        int threads = 0,
+        string? videoEncoder = null,
+        string? optimisedMarker = null,
+        bool hardwareDecode = false)
     {
         var args = new List<string> { "-y" };
 
@@ -69,7 +81,13 @@ public static class FfmpegCommandBuilder
         var encoder = isVideoReencode ? (videoEncoder ?? EncoderFor(spec.VideoCodec!)) : null;
         var family = encoder is null ? EncoderFamily.Cpu : FamilyOf(encoder);
 
-        AppendHardwareDeviceInit(args, family);
+        // Hardware decode only makes sense alongside a hardware encoder, and only when no
+        // software-only tone-map needs the frames in system memory.
+        var useHardwareDecode = hardwareDecode
+            && family is EncoderFamily.Qsv or EncoderFamily.Vaapi
+            && !spec.TonemapToSdr;
+
+        AppendHardwareDeviceInit(args, family, useHardwareDecode);
 
         // A preview clip seeks to its start before the input (fast keyframe seek) so the sample can
         // be taken from the middle of the file, where content is representative, not the intro.
@@ -91,7 +109,7 @@ public static class FfmpegCommandBuilder
                 AppendImageArguments(args, spec);
                 break;
             default:
-                AppendVideoArguments(args, spec, encoder, family);
+                AppendVideoArguments(args, spec, encoder, family, useHardwareDecode);
                 break;
         }
 
@@ -122,7 +140,7 @@ public static class FfmpegCommandBuilder
     }
 
     private static void AppendVideoArguments(
-        List<string> args, TranscodeSpec spec, string? encoder, EncoderFamily family)
+        List<string> args, TranscodeSpec spec, string? encoder, EncoderFamily family, bool hardwareDecode)
     {
         args.Add("-map");
         args.Add("0");
@@ -143,20 +161,24 @@ public static class FfmpegCommandBuilder
         }
 
         // One filter chain: optional HDR->SDR tone-map (in software), then any upload the
-        // hardware encoder needs so it receives GPU surfaces.
+        // hardware encoder needs so it receives GPU surfaces. When the source is also being
+        // hardware-decoded the frames are already GPU surfaces, so no upload is needed.
         var filters = new List<string>();
         if (spec.TonemapToSdr)
         {
             filters.Add(TonemapFilter);
         }
-        switch (family)
+        if (!hardwareDecode)
         {
-            case EncoderFamily.Vaapi:
-                filters.Add("format=nv12,hwupload");
-                break;
-            case EncoderFamily.Qsv:
-                filters.Add("hwupload=extra_hw_frames=64,format=qsv");
-                break;
+            switch (family)
+            {
+                case EncoderFamily.Vaapi:
+                    filters.Add("format=nv12,hwupload");
+                    break;
+                case EncoderFamily.Qsv:
+                    filters.Add("hwupload=extra_hw_frames=64,format=qsv");
+                    break;
+            }
         }
         if (filters.Count > 0)
         {
@@ -327,19 +349,36 @@ public static class FfmpegCommandBuilder
     // conventional default; CPU and NVENC (which encodes from software-decoded frames) need none.
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
-    private static void AppendHardwareDeviceInit(List<string> args, EncoderFamily family)
+    private static void AppendHardwareDeviceInit(List<string> args, EncoderFamily family, bool hardwareDecode)
     {
         switch (family)
         {
             case EncoderFamily.Vaapi:
                 args.Add("-vaapi_device");
                 args.Add(DefaultRenderDevice);
+                if (hardwareDecode)
+                {
+                    // Decode on the GPU and keep the frames there as VAAPI surfaces so the
+                    // encoder consumes them directly (no software decode, no upload).
+                    args.Add("-hwaccel");
+                    args.Add("vaapi");
+                    args.Add("-hwaccel_output_format");
+                    args.Add("vaapi");
+                }
                 break;
             case EncoderFamily.Qsv:
                 args.Add("-init_hw_device");
                 args.Add("qsv=hw");
                 args.Add("-filter_hw_device");
                 args.Add("hw");
+                if (hardwareDecode)
+                {
+                    // As above, but for QSV: decoded frames stay on the GPU as QSV surfaces.
+                    args.Add("-hwaccel");
+                    args.Add("qsv");
+                    args.Add("-hwaccel_output_format");
+                    args.Add("qsv");
+                }
                 break;
         }
     }

@@ -189,6 +189,7 @@ app.MapPut("/api/settings", async (
         request.MinFreeDiskBytes,
         request.CpuThreadLimit,
         encoderMode,
+        request.HardwareDecode,
         new VerificationPolicy(
             request.VerificationDurationTolerancePercent,
             request.VerificationRequireAudioRetained,
@@ -1279,6 +1280,7 @@ internal sealed record SettingsDto(
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     string EncoderMode,
+    bool HardwareDecode,
     double VerificationDurationTolerancePercent,
     bool VerificationRequireAudioRetained,
     bool VerificationRequireSubtitlesRetained,
@@ -1304,6 +1306,7 @@ internal sealed record SettingsDto(
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
         settings.EncoderMode.ToString(),
+        settings.HardwareDecode,
         settings.VerificationPolicy.DurationTolerancePercent,
         settings.VerificationPolicy.RequireAudioRetained,
         settings.VerificationPolicy.RequireSubtitlesRetained,

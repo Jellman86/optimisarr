@@ -33,6 +33,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
+        Assert.True(settings.HardwareDecode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
@@ -62,6 +63,7 @@ public sealed class SettingsStoreTests : IDisposable
                 MinFreeDiskBytes: 50L * 1024 * 1024 * 1024,
                 CpuThreadLimit: 2,
                 EncoderMode: EncoderMode.NvidiaNvenc,
+                HardwareDecode: false,
                 VerificationPolicy: new(
                     DurationTolerancePercent: 2.5,
                     RequireAudioRetained: false,
@@ -91,6 +93,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(50L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(2, settings.CpuThreadLimit);
         Assert.Equal(EncoderMode.NvidiaNvenc, settings.EncoderMode);
+        Assert.False(settings.HardwareDecode);
         Assert.Equal(2.5, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.False(settings.VerificationPolicy.RequireAudioRetained);
         Assert.True(settings.VerificationPolicy.RequireSubtitlesRetained);
@@ -141,6 +144,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
+        Assert.True(settings.HardwareDecode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);

@@ -261,6 +261,22 @@ public sealed class QueueDispatcher(
                 : work.Value.DurationSeconds;
             var run = await RunFfmpegAsync(jobId, arguments, progressDuration, cancellationToken);
 
+            // A hardware-decode attempt can fail on a source the GPU cannot decode (an exotic
+            // codec or profile). Retry once with the software-decode command before giving up,
+            // so the job degrades to CPU decode instead of failing outright.
+            if (run.ExitCode != 0
+                && work.Value.SoftwareDecodeArguments is { } softwareArguments
+                && HardwareDecodeFallback.ShouldRetryInSoftware(run.Error))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: hardware decode failed; retrying with software decode. ffmpeg: {Error}",
+                    jobId, run.Error);
+                DeleteWorkOutput(spec.OutputPath);
+                arguments = softwareArguments;
+                await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
+                run = await RunFfmpegAsync(jobId, arguments, progressDuration, cancellationToken);
+            }
+
             if (run.ExitCode == 0)
             {
                 // Stamp the portable marker on an image *before* verification, so the file that is
@@ -327,7 +343,11 @@ public sealed class QueueDispatcher(
         int MediaFileId,
         OriginalSnapshot Original,
         double? MinVmafHarmonicMean,
-        double? MinVmafMin)
+        double? MinVmafMin,
+        // When the primary command hardware-decodes the source, this holds the equivalent
+        // software-decode command so the dispatcher can transparently retry a source the GPU
+        // cannot decode. Null when hardware decode was not used.
+        IReadOnlyList<string>? SoftwareDecodeArguments = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -431,9 +451,19 @@ public sealed class QueueDispatcher(
                 jobId, videoEncoderName, queueSettings.EncoderMode);
         }
 
+        // The primary command honours the hardware-decode setting; the builder only applies it
+        // when a hardware encoder is in use and no software tone-map is needed. When it does
+        // apply, also build the software-decode equivalent so a source the GPU cannot decode can
+        // be retried transparently rather than failing the job.
+        var primaryArguments = FfmpegCommandBuilder.Build(
+            spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, queueSettings.HardwareDecode);
+        var softwareArguments = FfmpegCommandBuilder.Build(
+            spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, hardwareDecode: false);
+        var usedHardwareDecode = !primaryArguments.SequenceEqual(softwareArguments);
+
         return new JobWork(
             spec,
-            FfmpegCommandBuilder.Build(spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue),
+            primaryArguments,
             videoEncoderName,
             isPreview,
             media.DurationSeconds,
@@ -443,7 +473,8 @@ public sealed class QueueDispatcher(
             media.Id,
             original,
             library?.MinVmafHarmonicMean,
-            library?.MinVmafMin);
+            library?.MinVmafMin,
+            usedHardwareDecode ? softwareArguments : null);
     }
 
     private sealed record FfmpegRun(int ExitCode, string? Error);

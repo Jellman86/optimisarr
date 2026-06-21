@@ -28,6 +28,12 @@ public static class SettingKeys
     public const string EncoderMode = "queue.encoderMode";
 
     /// <summary>
+    /// Whether to hardware-decode the source when a hardware encoder is in use, falling back
+    /// to software decode automatically if the GPU cannot decode a given source.
+    /// </summary>
+    public const string HardwareDecode = "queue.hardwareDecode";
+
+    /// <summary>
     /// One-shot marker: the media-kind backfill has reset legacy Unknown-kind files for re-probe.
     /// Present (any value) means it has run, so it never runs again.
     /// </summary>

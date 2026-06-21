@@ -302,6 +302,7 @@
     minFreeDiskBytes: 10 * 1024 * 1024 * 1024,
     cpuThreadLimit: 0,
     encoderMode: 'Auto',
+    hardwareDecode: true,
     verificationDurationTolerancePercent: 1,
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
@@ -485,6 +486,13 @@
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Auto prefers hardware encoders when available, then falls back to CPU.
         </p>
+        <div class="mt-3">
+          <Toggle
+            bind:checked={settings.hardwareDecode}
+            label="Hardware decoding"
+            hint="When a hardware encoder is in use, also decode the source on the GPU to cut CPU load. Falls back to CPU decoding automatically for sources the GPU can't decode. No effect on CPU encoding."
+          />
+        </div>
       </div>
 
       <div>

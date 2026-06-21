@@ -14,6 +14,7 @@ public sealed record QueueSettings(
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     EncoderMode EncoderMode,
+    bool HardwareDecode,
     VerificationPolicy VerificationPolicy,
     bool ReplacementAllowCrossFilesystem,
     int ReplacementQuarantineRetentionDays);
@@ -42,6 +43,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.MinFreeDiskBytes,
         SettingKeys.CpuThreadLimit,
         SettingKeys.EncoderMode,
+        SettingKeys.HardwareDecode,
         SettingKeys.VerificationDurationTolerancePercent,
         SettingKeys.VerificationRequireAudioRetained,
         SettingKeys.VerificationRequireSubtitlesRetained,
@@ -95,6 +97,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.MinFreeDiskBytes
                 || setting.Key == SettingKeys.CpuThreadLimit
                 || setting.Key == SettingKeys.EncoderMode
+                || setting.Key == SettingKeys.HardwareDecode
                 || setting.Key == SettingKeys.VerificationDurationTolerancePercent
                 || setting.Key == SettingKeys.VerificationRequireAudioRetained
                 || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
@@ -121,6 +124,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             ParseLong(settings.GetValueOrDefault(SettingKeys.MinFreeDiskBytes), DefaultMinFreeDiskBytes, min: 0),
             ParseInt(settings.GetValueOrDefault(SettingKeys.CpuThreadLimit), fallback: 0, min: 0),
             ParseEnum(settings.GetValueOrDefault(SettingKeys.EncoderMode), EncoderMode.Auto),
+            // Default on: when a hardware encoder is selected, decode on the GPU too. The
+            // builder skips it where it cannot apply, and the dispatcher falls back to
+            // software decode if a given source cannot be hardware-decoded.
+            ParseBool(settings.GetValueOrDefault(SettingKeys.HardwareDecode), fallback: true),
             new VerificationPolicy(
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationDurationTolerancePercent),
@@ -210,6 +217,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.MinFreeDiskBytes] = Math.Max(0, settings.MinFreeDiskBytes).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.CpuThreadLimit] = Math.Max(0, settings.CpuThreadLimit).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.EncoderMode] = settings.EncoderMode.ToString(),
+            [SettingKeys.HardwareDecode] = settings.HardwareDecode.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationDurationTolerancePercent] =
                 Math.Max(0, settings.VerificationPolicy.DurationTolerancePercent).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationRequireAudioRetained] =

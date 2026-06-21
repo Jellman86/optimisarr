@@ -277,6 +277,76 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Qsv_hardware_decode_adds_hwaccel_before_input_and_drops_the_upload_filter()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_qsv", hardwareDecode: true);
+
+        // Decode happens on the GPU: -hwaccel qsv with qsv output frames, before -i.
+        var hwaccelIndex = IndexOf(args, "-hwaccel");
+        Assert.Equal("qsv", args[hwaccelIndex + 1]);
+        Assert.Equal("qsv", args[IndexOf(args, "-hwaccel_output_format") + 1]);
+        Assert.True(hwaccelIndex < IndexOf(args, "-i"));
+
+        // Frames already live on the GPU, so there is no upload filter at all.
+        Assert.DoesNotContain("-vf", args);
+        // The encoder is still QSV with its constant-quality knob.
+        Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
+    }
+
+    [Fact]
+    public void Vaapi_hardware_decode_adds_hwaccel_before_input_and_drops_the_upload_filter()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_vaapi", hardwareDecode: true);
+
+        var hwaccelIndex = IndexOf(args, "-hwaccel");
+        Assert.Equal("vaapi", args[hwaccelIndex + 1]);
+        Assert.Equal("vaapi", args[IndexOf(args, "-hwaccel_output_format") + 1]);
+        Assert.True(hwaccelIndex < IndexOf(args, "-i"));
+        Assert.True(IndexOf(args, "-vaapi_device") < IndexOf(args, "-i"));
+
+        Assert.DoesNotContain("-vf", args);
+        Assert.Equal("hevc_vaapi", args[IndexOf(args, "-c:v") + 1]);
+    }
+
+    [Fact]
+    public void Hardware_decode_is_skipped_when_tone_mapping_so_the_software_filter_still_gets_frames()
+    {
+        // The tone-map runs in software and needs frames in system memory, so the source must
+        // be software-decoded and re-uploaded — hardware decode cannot apply here.
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(tonemap: true), videoEncoder: "hevc_qsv", hardwareDecode: true);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        var chain = args[IndexOf(args, "-vf") + 1];
+        Assert.Contains("tonemap", chain);
+        Assert.Contains("hwupload", chain);
+    }
+
+    [Fact]
+    public void Hardware_decode_is_ignored_for_a_software_encoder()
+    {
+        // A CPU encoder has no GPU device, so the flag is a no-op even when requested.
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: "hevc"), hardwareDecode: true);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v") + 1]);
+    }
+
+    [Fact]
+    public void Hardware_decode_off_keeps_the_qsv_upload_filter()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_qsv", hardwareDecode: false);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.Contains("format=qsv", args[IndexOf(args, "-vf") + 1]);
+    }
+
+    [Fact]
     public void Limits_output_to_the_clip_window_when_set()
     {
         var args = FfmpegCommandBuilder.Build(Reencode() with { ClipSeconds = 60 });

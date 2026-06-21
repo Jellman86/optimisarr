@@ -108,6 +108,7 @@ export type Settings = {
   minFreeDiskBytes: number
   cpuThreadLimit: number
   encoderMode: string
+  hardwareDecode: boolean
   verificationDurationTolerancePercent: number
   verificationRequireAudioRetained: boolean
   verificationRequireSubtitlesRetained: boolean

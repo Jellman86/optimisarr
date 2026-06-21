@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Hardware decoding (GPU decode) with automatic CPU fallback
+
+- **The source is now decoded on the GPU when a hardware encoder is in use.** Previously a
+  QSV/VAAPI job hardware-*encoded* but software-*decoded* the input, then uploaded frames to the
+  GPU — so a large (e.g. 4K) source still pinned a CPU core or more just to decode. The ffmpeg
+  command now adds `-hwaccel` with a matching `-hwaccel_output_format` before the input and drops
+  the now-redundant `hwupload` filter, keeping frames on the GPU end to end.
+- **New setting `queue.hardwareDecode` (Settings → Encoder mode), default on.** It only takes
+  effect with a hardware encoder; CPU encoding is unaffected. An HDR→SDR tone-map job keeps
+  software decode, because that filter runs in software and needs frames in system memory.
+- **Automatic software-decode fallback.** Not every source codec/profile can be hardware-decoded;
+  if a hardware-decode attempt fails at decoder/hwaccel setup, the job is retried once with the
+  software-decode command instead of failing. The fallback is scoped to decode-setup failures, so
+  an unrelated late failure (e.g. the disk filling mid-encode) is not retried needlessly.
+
 ### Schedule and Verification pages
 
 - **Schedule page** (`/schedule`): a new dedicated page showing the current dispatch status
