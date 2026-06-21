@@ -328,6 +328,15 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Converts_subtitles_to_mov_text_for_an_mp4_video_output()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+
+        var subIndex = IndexOf(args, "-c:s");
+        Assert.Equal("mov_text", args[subIndex + 1]);
+    }
+
+    [Fact]
     public void Remux_only_copies_all_streams_and_never_re_encodes()
     {
         var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null));

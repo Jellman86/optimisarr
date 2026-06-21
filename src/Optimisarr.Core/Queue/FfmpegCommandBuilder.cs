@@ -176,8 +176,9 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
-        // Audio is copied untouched unless the library opted into re-encoding it; subtitles
-        // are always preserved.
+        // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
+        // cannot mux SubRip directly, so their text subtitles must use the native mov_text
+        // codec; containers such as Matroska can retain the source subtitle codec unchanged.
         if (spec.AudioEncoder is not null)
         {
             AppendAudioCodec(args, spec);
@@ -188,7 +189,7 @@ public static class FfmpegCommandBuilder
             args.Add("copy");
         }
         args.Add("-c:s");
-        args.Add("copy");
+        args.Add(IsMp4Family(spec.OutputPath) ? "mov_text" : "copy");
     }
 
     private static void AppendAudioCodec(List<string> args, TranscodeSpec spec)

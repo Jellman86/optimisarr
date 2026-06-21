@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fix: MP4 previews with SubRip subtitles
+
+- **MP4/MOV video output now transcodes text subtitles to `mov_text`.** Preview jobs mapped every
+  source stream and copied subtitle streams unchanged. A common Matroska SubRip subtitle therefore
+  made the MP4 muxer reject the output before any video frame was encoded. Matroska outputs continue
+  to preserve subtitle codecs by stream copy; MP4/MOV uses its native text-subtitle codec.
+
 ### Previews are fast now (no more sitting on "Verifying")
 
 - **Video previews encode a short sample, not the whole file.** A preview used to run a full
