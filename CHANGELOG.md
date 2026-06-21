@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Settings: full-width, simpler tabs, clearer copy
+
+- **Fills the page.** Every Settings tab now uses the full content width with responsive multi-column
+  layouts (previously all but Tools were a narrow `max-w-2xl` column leaving most of the page empty).
+- **Fewer, clearer tabs (6 → 5).** "Activity" and "Connections" merged into a single **Connections**
+  tab with two sections — **Media servers** (Plex/Jellyfin/Emby) and **Download managers**
+  (Sonarr/Radarr) — so all server connections live in one place. Pause-while-streaming is now a
+  per-server "Pause while streaming" toggle rather than a separate tab/concept.
+- **Verification gates** are presented as a tidy two-column grid of self-contained gate cards, each
+  with plain-language help and a note that gates fail closed.
+- Consistent section intros, toggle alignment, and headings throughout; the General "Save settings"
+  button now notes that connections/notifications save on their own.
+
 ### Media-server connections: find Plex servers + test any connection
 
 - **Test connection** for every media-server connection (Plex/Jellyfin/Emby): a button confirms the

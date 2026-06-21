@@ -23,12 +23,11 @@
   // Settings is split into tabs so each concern is found quickly and Tools lives here
   // rather than in its own sidebar entry. The General tab holds the core settings the
   // single "Save settings" button persists together; the rest manage their own records.
-  type TabKey = 'general' | 'activity' | 'notifications' | 'connections' | 'tools' | 'backup'
+  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'backup'
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'general', label: 'General' },
-    { key: 'activity', label: 'Activity' },
-    { key: 'notifications', label: 'Notifications' },
     { key: 'connections', label: 'Connections' },
+    { key: 'notifications', label: 'Notifications' },
     { key: 'tools', label: 'Tools' },
     { key: 'backup', label: 'Backup' },
   ]
@@ -507,15 +506,19 @@
   </div>
 
   {#if activeTab === 'general'}
-  <div class="card max-w-2xl p-5">
-    <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">Queue</h2>
-    <div class="grid gap-5 sm:grid-cols-2">
+  <div class="space-y-5">
+  <div class="card p-5">
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Queue</h2>
+    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+      How many jobs run, what does the encoding, and when the queue is allowed to start work.
+    </p>
+    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
       <div>
-      <label class="label" for="max-jobs">Max concurrent jobs</label>
-      <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
-      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        How many transcodes may run at once across all libraries. Start at 1 and raise it only if your CPU/GPU and disk can keep up.
-      </p>
+        <label class="label" for="max-jobs">Max concurrent jobs</label>
+        <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          How many transcodes run at once. Start at 1; raise it only if your CPU/GPU and disk keep up.
+        </p>
       </div>
 
       <div>
@@ -528,22 +531,15 @@
           <option value="Vaapi">VAAPI</option>
         </select>
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Auto prefers hardware encoders when available, then falls back to CPU.
+          Auto prefers a hardware encoder when available, then falls back to CPU. See the Tools tab for what your GPU supports.
         </p>
-        <div class="mt-3">
-          <Toggle
-            bind:checked={settings.hardwareDecode}
-            label="Hardware decoding"
-            hint="When a hardware encoder is in use, also decode the source on the GPU to cut CPU load. Falls back to CPU decoding automatically for sources the GPU can't decode. No effect on CPU encoding."
-          />
-        </div>
       </div>
 
       <div>
         <label class="label" for="cpu-threads">CPU thread limit</label>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Passed to FFmpeg as <code>-threads</code> for each job. Set 0 to let FFmpeg decide.
+          Passed to FFmpeg as <code>-threads</code> for each job. 0 lets FFmpeg decide.
         </p>
       </div>
 
@@ -554,18 +550,26 @@
           <span class="text-sm text-slate-500 dark:text-slate-400">GiB</span>
         </div>
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          New jobs pause below this free space threshold. Set 0 to disable. Current setting: {formatSize(gibToBytes(minFreeDiskGiB))}.
+          New jobs pause below this free space. 0 disables it. Now: {formatSize(gibToBytes(minFreeDiskGiB))}.
         </p>
       </div>
     </div>
 
-    <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.hardwareDecode}
+        label="Hardware decoding"
+        hint="When a hardware encoder is in use, decode the source on the GPU too, to cut CPU load. Falls back to CPU decoding automatically for sources the GPU can't decode. No effect on CPU encoding."
+      />
+    </div>
+
+    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
       <Toggle
         bind:checked={settings.scheduleEnabled}
         label="Restrict new jobs to a processing window"
         hint="Outside the window, running jobs finish but no new ones start."
       />
-      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div class="mt-4 grid max-w-md gap-4 sm:grid-cols-2">
         <div>
           <label class="label" for="window-start">Window start</label>
           <input id="window-start" class="input" type="time" bind:value={settings.scheduleWindowStart} disabled={!settings.scheduleEnabled} />
@@ -581,321 +585,362 @@
     </div>
   </div>
 
-  <div class="card mt-5 max-w-2xl p-5">
+  <div class="card p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Verification gates</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      Decode health, output readability, and a video stream are always required. These add extra gates.
+      Every job must already pass a decode-health check, be readable by ffprobe, and keep a video stream.
+      These optional gates add stricter checks before an output may replace an original. Each fails closed —
+      if a measurement can't be taken, the job fails rather than risk a bad replacement.
     </p>
-    <div class="max-w-xs">
-      <label class="label" for="duration-tolerance">Duration tolerance</label>
-      <div class="flex items-center gap-2">
-        <input
-          id="duration-tolerance"
-          class="input"
-          type="number"
-          min="0"
-          step="0.1"
-          bind:value={settings.verificationDurationTolerancePercent}
+
+    <div class="grid gap-4 lg:grid-cols-2">
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Always-on checks</h3>
+        <div class="max-w-[16rem]">
+          <label class="label" for="duration-tolerance">Duration tolerance</label>
+          <div class="flex items-center gap-2">
+            <input id="duration-tolerance" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
+            <span class="text-sm text-slate-500 dark:text-slate-400">%</span>
+          </div>
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">How far the output's runtime may drift from the original.</p>
+        </div>
+        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <Toggle bind:checked={settings.verificationRequireAudioRetained} label="Require all audio tracks to be retained" />
+          <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label="Require all subtitle tracks to be retained" />
+          <Toggle bind:checked={settings.verificationRequireSizeReduction} label="Require output to be smaller than the original" />
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.verificationQualityGateEnabled}
+          label="Perceptual quality (VMAF)"
+          hint="Compares output to original with FFmpeg's libvmaf. Needs an ffmpeg built with libvmaf and roughly doubles verification time, so it's off by default. ~95 is visually indistinguishable from the source."
         />
-        <span class="text-sm text-slate-500 dark:text-slate-400">%</span>
-      </div>
-    </div>
-
-    <div class="mt-5 grid gap-4 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle bind:checked={settings.verificationRequireAudioRetained} label="Require all audio tracks to be retained" />
-      <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label="Require all subtitle tracks to be retained" />
-      <Toggle bind:checked={settings.verificationRequireSizeReduction} label="Require output to be smaller than the original" />
-    </div>
-
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.verificationQualityGateEnabled}
-        label="Measure perceptual quality (VMAF) and gate on it"
-        hint="Compares the output to the original with FFmpeg's libvmaf. Needs an ffmpeg built with libvmaf and roughly doubles verification time, so it is off by default. A score of ~95 means visually indistinguishable from the source."
-      />
-      <div class="mt-4 grid gap-4 sm:grid-cols-2" class:opacity-50={!settings.verificationQualityGateEnabled}>
-        <div>
-          <label class="label" for="vmaf-harmonic">Minimum VMAF (harmonic mean)</label>
-          <input
-            id="vmaf-harmonic"
-            class="input"
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            bind:value={settings.verificationMinimumVmafHarmonicMean}
-            disabled={!settings.verificationQualityGateEnabled}
-          />
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Overall quality floor. The harmonic mean penalises bad frames more than a plain average.</p>
-        </div>
-        <div>
-          <label class="label" for="vmaf-min">Minimum VMAF (worst frame)</label>
-          <input
-            id="vmaf-min"
-            class="input"
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            bind:value={settings.verificationMinimumVmafMin}
-            disabled={!settings.verificationQualityGateEnabled}
-          />
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Catches short artifact bursts a healthy average would hide. If quality can't be measured, the gate fails closed.</p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2" class:opacity-50={!settings.verificationQualityGateEnabled}>
+          <div>
+            <label class="label" for="vmaf-harmonic">Min VMAF (harmonic mean)</label>
+            <input id="vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafHarmonicMean} disabled={!settings.verificationQualityGateEnabled} />
+            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Overall floor; penalises bad frames more than a plain average.</p>
+          </div>
+          <div>
+            <label class="label" for="vmaf-min">Min VMAF (worst frame)</label>
+            <input id="vmaf-min" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafMin} disabled={!settings.verificationQualityGateEnabled} />
+            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Catches short artifact bursts a healthy average would hide.</p>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.verificationAudioLoudnessGateEnabled}
-        label="Check audio loudness drift (EBU R128)"
-        hint="Measures integrated loudness of the original and output with FFmpeg's ebur128 filter and fails the job if they differ too much. Adds a decode pass per file, so it is off by default; most useful when a profile re-encodes audio."
-      />
-      <div class="mt-4 max-w-xs" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
-        <label class="label" for="loudness-drift">Maximum loudness drift</label>
-        <div class="flex items-center gap-2">
-          <input
-            id="loudness-drift"
-            class="input"
-            type="number"
-            min="0"
-            step="0.1"
-            bind:value={settings.verificationMaxLoudnessDriftLufs}
-            disabled={!settings.verificationAudioLoudnessGateEnabled}
-          />
-          <span class="text-sm text-slate-500 dark:text-slate-400">LU</span>
-        </div>
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">If loudness can't be measured, the gate fails closed.</p>
-      </div>
-    </div>
-
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.verificationAudioClippingGateEnabled}
-        label="Check for introduced audio clipping (true peak)"
-        hint="Reads the output's true peak from the same ebur128 pass and fails the job only when the re-encode pushes the peak above the ceiling while the original sat below it — a source that was already hot is not blamed on the re-encode."
-      />
-      <div class="mt-4 max-w-xs" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
-        <label class="label" for="true-peak-ceiling">True-peak ceiling</label>
-        <div class="flex items-center gap-2">
-          <input
-            id="true-peak-ceiling"
-            class="input"
-            type="number"
-            step="0.1"
-            bind:value={settings.verificationMaxTruePeakDbtp}
-            disabled={!settings.verificationAudioClippingGateEnabled}
-          />
-          <span class="text-sm text-slate-500 dark:text-slate-400">dBTP</span>
-        </div>
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0 dBTP is full scale; set a margin like −1 to be stricter. If the true peak can't be measured, the gate fails closed.</p>
-      </div>
-    </div>
-
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.verificationImageQualityGateEnabled}
-        label="Check image structural quality (SSIM)"
-        hint="For photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails the job when structural similarity drops below the floor. Runs an extra pass, so it is off by default."
-      />
-      <div class="mt-4 max-w-xs" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
-        <label class="label" for="image-ssim-floor">Minimum SSIM</label>
-        <input
-          id="image-ssim-floor"
-          class="input"
-          type="number"
-          step="0.01"
-          min="0"
-          max="1"
-          bind:value={settings.verificationMinimumImageSsim}
-          disabled={!settings.verificationImageQualityGateEnabled}
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.verificationAudioLoudnessGateEnabled}
+          label="Audio loudness drift (EBU R128)"
+          hint="Measures integrated loudness of original and output with FFmpeg's ebur128 filter and fails the job if they differ too much. Adds a decode pass, so it's off by default; most useful when a profile re-encodes audio."
         />
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0–1, where 1 is identical. 0.95 is a conservative default. If SSIM can't be measured, the gate fails closed.</p>
+        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
+          <label class="label" for="loudness-drift">Maximum loudness drift</label>
+          <div class="flex items-center gap-2">
+            <input id="loudness-drift" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
+            <span class="text-sm text-slate-500 dark:text-slate-400">LU</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.verificationImageMetadataGateEnabled}
-        label="Preserve image EXIF/ICC metadata"
-        hint="For photo/image jobs only: fails the job when the re-encode drops the original's embedded ICC colour profile or EXIF metadata (reads both with exiftool). Only flags loss — an output may gain metadata. If it can't be read, the gate fails closed."
-      />
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.verificationAudioClippingGateEnabled}
+          label="Introduced audio clipping (true peak)"
+          hint="Reads the output's true peak from the same ebur128 pass and fails only when the re-encode pushes the peak above the ceiling while the original sat below it — a source that was already hot is not blamed on the re-encode."
+        />
+        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
+          <label class="label" for="true-peak-ceiling">True-peak ceiling</label>
+          <div class="flex items-center gap-2">
+            <input id="true-peak-ceiling" class="input" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
+            <span class="text-sm text-slate-500 dark:text-slate-400">dBTP</span>
+          </div>
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0 dBTP is full scale; set a margin like −1 to be stricter.</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.verificationImageQualityGateEnabled}
+          label="Image structural quality (SSIM)"
+          hint="Photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails when structural similarity drops below the floor. Runs an extra pass, so it's off by default."
+        />
+        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
+          <label class="label" for="image-ssim-floor">Minimum SSIM</label>
+          <input id="image-ssim-floor" class="input" type="number" step="0.01" min="0" max="1" bind:value={settings.verificationMinimumImageSsim} disabled={!settings.verificationImageQualityGateEnabled} />
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">0–1, where 1 is identical. 0.95 is conservative.</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.verificationImageMetadataGateEnabled}
+          label="Preserve image EXIF/ICC metadata"
+          hint="Photo/image jobs only: fails the job when the re-encode drops the original's embedded ICC colour profile or EXIF (reads both with exiftool). Only flags loss — an output may gain metadata."
+        />
+        <p class="mt-3 text-xs text-slate-400">No threshold — it simply requires the original's colour profile and EXIF to survive.</p>
+      </div>
     </div>
   </div>
 
-  <div class="card mt-5 max-w-2xl p-5">
+  <div class="card p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Replacement</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      How verified outputs take the place of your originals.
+      How a verified output takes the place of your original, and how long the original is kept afterwards.
     </p>
-    <Toggle
-      bind:checked={settings.replacementAllowCrossFilesystem}
-      label="Allow cross-filesystem replacement"
-      hint="Falls back to copy-plus-delete instead of an atomic move. Off is safer; enable only for intentional split-mount layouts."
-    />
-    <div class="mt-5 max-w-xs border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="max-w-2xl">
+      <Toggle
+        bind:checked={settings.replacementAllowCrossFilesystem}
+        label="Allow cross-filesystem replacement"
+        hint="Falls back to copy-plus-delete instead of an atomic move. Off is safer; enable only for intentional split-mount layouts."
+      />
+    </div>
+    <div class="mt-5 max-w-[16rem] border-t border-slate-200 pt-5 dark:border-slate-800">
       <label class="label" for="quarantine-retention">Quarantine retention</label>
       <div class="flex items-center gap-2">
-        <input
-          id="quarantine-retention"
-          class="input"
-          type="number"
-          min="0"
-          step="1"
-          bind:value={settings.replacementQuarantineRetentionDays}
-        />
+        <input id="quarantine-retention" class="input" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
         <span class="text-sm text-slate-500 dark:text-slate-400">days</span>
       </div>
-      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">How long quarantined originals are kept. Set 0 to keep them indefinitely.</p>
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">How long quarantined originals are kept before purging. 0 keeps them indefinitely.</p>
     </div>
   </div>
 
-  <div class="mt-5 flex max-w-2xl items-center gap-3">
+  <div class="flex items-center gap-3">
     <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
+    <span class="text-xs text-slate-400">Saves every option on this tab. Connections and notifications save on their own.</span>
+  </div>
   </div>
   {/if}
 
-  {#if activeTab === 'activity'}
-  <div class="card max-w-2xl p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Service activity</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      While any enabled media server is streaming, new jobs pause so transcodes never compete with playback.
-      Running jobs are never interrupted. An unreachable server does not pause the queue.
-    </p>
+  {#if activeTab === 'connections'}
+  <div class="space-y-5">
+    <!-- Media servers (Plex/Jellyfin/Emby): playback-aware pause + post-replacement re-scan. -->
+    <div class="card p-5">
+      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Media servers</h2>
+      <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+        Connect Plex, Jellyfin, or Emby. While an enabled server is streaming, new jobs pause so transcodes
+        never compete with playback (running jobs are never interrupted, and an unreachable server never pauses
+        the queue). Connected servers are also asked to re-scan a title after a verified replacement.
+      </p>
 
-    {#if watcherError}
-      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{watcherError}</div>
-    {/if}
+      {#if watcherError}
+        <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{watcherError}</div>
+      {/if}
 
-    {#if watchers.length > 0}
-      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
-        {#each watchers as w (w.id)}
-          <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</div>
-              <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-              {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title="Re-scans this server after a verified replacement.">refresh</span>{/if}
-              {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
-              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
-              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
-            </div>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="mb-4 text-sm text-slate-400">No watchers yet. Add one to pause processing while you stream.</p>
-    {/if}
+      {#if watchers.length > 0}
+        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+          {#each watchers as w (w.id)}
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</div>
+                <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+                {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title="Re-scans this server after a verified replacement.">refresh</span>{/if}
+                {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
+                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
+                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mb-4 text-sm text-slate-400">No media servers yet. Add one to pause while you stream and auto-refresh after replacements.</p>
+      {/if}
 
-    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-        {editingId === null ? 'Add a watcher' : 'Edit watcher'}
-      </h3>
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label class="label" for="watcher-name">Name</label>
-          <input id="watcher-name" class="input" placeholder="Living room Plex" bind:value={watcherDraft.name} />
-        </div>
-        <div>
-          <label class="label" for="watcher-type">Type</label>
-          <select id="watcher-type" class="input" bind:value={watcherDraft.type}>
-            {#each watcherTypes as t}<option value={t}>{t}</option>{/each}
-          </select>
-        </div>
-        <div>
-          <label class="label" for="watcher-url">Base URL</label>
-          <input id="watcher-url" class="input" placeholder="http://192.168.1.10:32400" bind:value={watcherDraft.baseUrl} />
-        </div>
-        <div>
-          <label class="label" for="watcher-token">
-            {watcherDraft.type === 'Plex' ? 'Plex token' : 'API key'}
-          </label>
-          <div class="flex items-center gap-2">
-            <input
-              id="watcher-token"
-              class="input"
-              type="password"
-              placeholder={editingId === null ? '' : 'Leave blank to keep current'}
-              bind:value={watcherDraft.apiToken}
-            />
-            {#if watcherDraft.type !== 'Emby'}
-              {#if connecting}
-                <button class="btn btn-ghost whitespace-nowrap px-3 py-1 text-xs" onclick={resetConnect}>Cancel</button>
-              {:else}
-                <button class="btn whitespace-nowrap px-3 py-1 text-xs" onclick={connect}>
-                  {watcherDraft.type === 'Plex' ? 'Sign in with Plex' : 'Quick Connect'}
-                </button>
-              {/if}
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {editingId === null ? 'Add a media server' : 'Edit media server'}
+        </h3>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="label" for="watcher-name">Name</label>
+            <input id="watcher-name" class="input" placeholder="Living room Plex" bind:value={watcherDraft.name} />
+          </div>
+          <div>
+            <label class="label" for="watcher-type">Type</label>
+            <select id="watcher-type" class="input" bind:value={watcherDraft.type}>
+              {#each watcherTypes as t}<option value={t}>{t}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="watcher-url">Base URL</label>
+            <input id="watcher-url" class="input" placeholder="http://192.168.1.10:32400" bind:value={watcherDraft.baseUrl} />
+            {#if watcherDraft.type === 'Plex'}
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Or sign in and pick a server below — it fills the URL for you.</p>
             {/if}
           </div>
-          {#if connectMessage}
-            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{connectMessage}</p>
-          {/if}
-          {#if jellyfinCode}
-            <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
-          {/if}
-          {#if plexServers && plexServers.length}
-            <ul class="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
-              {#each plexServers as server}
-                <li>
-                  <button
-                    class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                    onclick={() => selectPlexServer(server)}
-                  >
-                    <span class="min-w-0">
-                      <span class="font-medium text-slate-700 dark:text-slate-200">{server.name}</span>
-                      <span class="block truncate font-mono text-[11px] text-slate-400">{server.uri}</span>
-                    </span>
-                    <span class="badge flex-shrink-0 {server.local ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
-                      {server.local ? 'local' : 'remote'}
-                    </span>
+          <div>
+            <label class="label" for="watcher-token">
+              {watcherDraft.type === 'Plex' ? 'Plex token' : 'API key'}
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                id="watcher-token"
+                class="input"
+                type="password"
+                placeholder={editingId === null ? '' : 'Leave blank to keep current'}
+                bind:value={watcherDraft.apiToken}
+              />
+              {#if watcherDraft.type !== 'Emby'}
+                {#if connecting}
+                  <button class="btn btn-ghost whitespace-nowrap px-3 py-1 text-xs" onclick={resetConnect}>Cancel</button>
+                {:else}
+                  <button class="btn whitespace-nowrap px-3 py-1 text-xs" onclick={connect}>
+                    {watcherDraft.type === 'Plex' ? 'Sign in with Plex' : 'Quick Connect'}
                   </button>
-                </li>
-              {/each}
-            </ul>
+                {/if}
+              {/if}
+            </div>
+            {#if connectMessage}
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{connectMessage}</p>
+            {/if}
+            {#if jellyfinCode}
+              <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
+            {/if}
+            {#if plexServers && plexServers.length}
+              <ul class="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+                {#each plexServers as server}
+                  <li>
+                    <button
+                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      onclick={() => selectPlexServer(server)}
+                    >
+                      <span class="min-w-0">
+                        <span class="font-medium text-slate-700 dark:text-slate-200">{server.name}</span>
+                        <span class="block truncate font-mono text-[11px] text-slate-400">{server.uri}</span>
+                      </span>
+                      <span class="badge flex-shrink-0 {server.local ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
+                        {server.local ? 'local' : 'remote'}
+                      </span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        </div>
+        <div class="mt-3 grid max-w-2xl gap-3">
+          <Toggle bind:checked={watcherDraft.enabled} label="Pause while streaming" hint="Hold new jobs while this server has active playback." />
+          <Toggle bind:checked={watcherDraft.refreshOnReplace} label="Refresh after replacements" hint="Ask this server to re-scan the title after a verified replacement or rollback." />
+        </div>
+        {#if testResult}
+          <p class="mt-3 text-sm {testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">
+            {#if testResult.ok}
+              ✓ Connected to {testResult.serverName}{testResult.version ? ` (v${testResult.version})` : ''}
+            {:else}
+              ✗ {testResult.error}
+            {/if}
+          </p>
+        {/if}
+        <div class="mt-4 flex items-center gap-2">
+          <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>
+            {savingWatcher ? 'Saving…' : editingId === null ? 'Add media server' : 'Save changes'}
+          </button>
+          <button
+            class="btn px-3 py-1 text-sm"
+            onclick={testConnection}
+            disabled={testing || (!watcherDraft.baseUrl.trim())}
+            title="Check the URL and token reach the server"
+          >
+            {testing ? 'Testing…' : 'Test connection'}
+          </button>
+          {#if editingId !== null}
+            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>Cancel</button>
           {/if}
         </div>
       </div>
-      <div class="mt-3 grid gap-3">
-        <Toggle bind:checked={watcherDraft.enabled} label="Enabled" hint="Watch this server for active playback to pause processing." />
-        <Toggle bind:checked={watcherDraft.refreshOnReplace} label="Refresh after replacements" hint="Tell this server to re-scan the title after a verified replacement or rollback." />
-      </div>
-      {#if testResult}
-        <p class="mt-3 text-sm {testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">
-          {#if testResult.ok}
-            ✓ Connected to {testResult.serverName}{testResult.version ? ` (v${testResult.version})` : ''}
-          {:else}
-            ✗ {testResult.error}
-          {/if}
-        </p>
+    </div>
+
+    <!-- Download managers (Sonarr/Radarr): hold files back while an import is in progress. -->
+    <div class="card p-5">
+      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Download managers</h2>
+      <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+        Connect Sonarr or Radarr. While one is importing into a title's folder, files there are held back from
+        queueing so a transcode never fights an import; they become eligible again on the next enqueue once the
+        import settles. An unreachable manager never blocks the queue.
+      </p>
+
+      {#if arrError}
+        <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{arrError}</div>
       {/if}
-      <div class="mt-4 flex items-center gap-2">
-        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>
-          {savingWatcher ? 'Saving…' : editingId === null ? 'Add watcher' : 'Save changes'}
-        </button>
-        <button
-          class="btn px-3 py-1 text-sm"
-          onclick={testConnection}
-          disabled={testing || (!watcherDraft.baseUrl.trim())}
-          title="Check the URL and token reach the server"
-        >
-          {testing ? 'Testing…' : 'Test connection'}
-        </button>
-        {#if editingId !== null}
-          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>Cancel</button>
-        {/if}
+
+      {#if arrs.length > 0}
+        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+          {#each arrs as c (c.id)}
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</div>
+                <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
+                {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No API key set — Optimisarr cannot query this manager.">no key</span>{/if}
+                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>Edit</button>
+                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>Remove</button>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="mb-4 text-sm text-slate-400">No download managers yet. Add Sonarr or Radarr to avoid optimising files mid-import.</p>
+      {/if}
+
+      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {editingArrId === null ? 'Add a download manager' : 'Edit download manager'}
+        </h3>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label class="label" for="arr-name">Name</label>
+            <input id="arr-name" class="input" placeholder="Sonarr" bind:value={arrDraft.name} />
+          </div>
+          <div>
+            <label class="label" for="arr-type">Type</label>
+            <select id="arr-type" class="input" bind:value={arrDraft.type}>
+              {#each arrTypes as t}<option value={t}>{t}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="arr-url">Base URL</label>
+            <input id="arr-url" class="input" placeholder="http://192.168.1.10:8989" bind:value={arrDraft.baseUrl} />
+          </div>
+          <div>
+            <label class="label" for="arr-key">API key</label>
+            <input
+              id="arr-key"
+              class="input"
+              type="password"
+              placeholder={editingArrId === null ? '' : 'Leave blank to keep current'}
+              bind:value={arrDraft.apiKey}
+            />
+          </div>
+        </div>
+        <div class="mt-3">
+          <Toggle bind:checked={arrDraft.enabled} label="Enabled" hint="Query this manager for in-progress imports before queueing." />
+        </div>
+        <div class="mt-4 flex items-center gap-2">
+          <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveArr} disabled={savingArr}>
+            {savingArr ? 'Saving…' : editingArrId === null ? 'Add download manager' : 'Save changes'}
+          </button>
+          {#if editingArrId !== null}
+            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddArr} disabled={savingArr}>Cancel</button>
+          {/if}
+        </div>
       </div>
     </div>
   </div>
-
   {/if}
 
   {#if activeTab === 'notifications'}
-  <div class="card max-w-2xl p-5">
+  <div class="card p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Notifications</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       POST to a webhook, ntfy topic, or Apprise endpoint when a file is replaced or a job fails.
@@ -933,7 +978,7 @@
       <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
         {editingTargetId === null ? 'Add a target' : 'Edit target'}
       </h3>
-      <div class="grid gap-3 sm:grid-cols-2">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label class="label" for="target-name">Name</label>
           <input id="target-name" class="input" placeholder="ntfy alerts" bind:value={targetDraft.name} />
@@ -959,7 +1004,7 @@
           />
         </div>
       </div>
-      <div class="mt-3 grid gap-3">
+      <div class="mt-3 grid max-w-2xl gap-3">
         <Toggle bind:checked={targetDraft.enabled} label="Enabled" />
         <Toggle bind:checked={targetDraft.notifyOnReplacement} label="Notify when a file is replaced" />
         <Toggle bind:checked={targetDraft.notifyOnFailure} label="Notify when a job fails" />
@@ -974,88 +1019,6 @@
       </div>
     </div>
   </div>
-
-  {/if}
-
-  {#if activeTab === 'connections'}
-  <div class="card max-w-2xl p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Sonarr / Radarr</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      While a connected manager is importing into a title's folder, files in that folder are held back from
-      queueing so a transcode never fights an import. They become eligible again on the next enqueue once the
-      import settles. An unreachable manager never blocks the queue.
-    </p>
-
-    {#if arrError}
-      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{arrError}</div>
-    {/if}
-
-    {#if arrs.length > 0}
-      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
-        {#each arrs as c (c.id)}
-          <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</div>
-              <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-              {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No API key set — Optimisarr cannot query this manager.">no key</span>{/if}
-              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>Edit</button>
-              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>Remove</button>
-            </div>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="mb-4 text-sm text-slate-400">No connections yet. Add Sonarr or Radarr to avoid optimising files mid-import.</p>
-    {/if}
-
-    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-        {editingArrId === null ? 'Add a connection' : 'Edit connection'}
-      </h3>
-      <div class="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label class="label" for="arr-name">Name</label>
-          <input id="arr-name" class="input" placeholder="Sonarr" bind:value={arrDraft.name} />
-        </div>
-        <div>
-          <label class="label" for="arr-type">Type</label>
-          <select id="arr-type" class="input" bind:value={arrDraft.type}>
-            {#each arrTypes as t}<option value={t}>{t}</option>{/each}
-          </select>
-        </div>
-        <div>
-          <label class="label" for="arr-url">Base URL</label>
-          <input id="arr-url" class="input" placeholder="http://192.168.1.10:8989" bind:value={arrDraft.baseUrl} />
-        </div>
-        <div>
-          <label class="label" for="arr-key">API key</label>
-          <input
-            id="arr-key"
-            class="input"
-            type="password"
-            placeholder={editingArrId === null ? '' : 'Leave blank to keep current'}
-            bind:value={arrDraft.apiKey}
-          />
-        </div>
-      </div>
-      <div class="mt-3 grid gap-3">
-        <Toggle bind:checked={arrDraft.enabled} label="Enabled" hint="Query this manager for in-progress imports before queueing." />
-      </div>
-      <div class="mt-4 flex items-center gap-2">
-        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveArr} disabled={savingArr}>
-          {savingArr ? 'Saving…' : editingArrId === null ? 'Add connection' : 'Save changes'}
-        </button>
-        {#if editingArrId !== null}
-          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddArr} disabled={savingArr}>Cancel</button>
-        {/if}
-      </div>
-    </div>
-  </div>
-
   {/if}
 
   {#if activeTab === 'tools'}
@@ -1063,12 +1026,13 @@
   {/if}
 
   {#if activeTab === 'backup'}
-  <div class="card max-w-2xl p-5">
+  <div class="card p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Backup &amp; restore</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      Export your settings, libraries, watchers, and notification targets to a JSON file, or import one.
-      For your security, provider tokens are never exported — re-enter them after importing. Importing merges
-      into your current config (matching libraries by path and watchers/targets by name) and never deletes anything.
+    <p class="mb-4 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
+      Export your settings, libraries, media-server and download-manager connections, and notification targets
+      to a JSON file, or import one. For your security, provider tokens are never exported — re-enter them after
+      importing. Importing merges into your current config (matching libraries by path and connections/targets
+      by name) and never deletes anything.
     </p>
 
     {#if backupError}
