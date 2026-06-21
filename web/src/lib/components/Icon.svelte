@@ -21,6 +21,10 @@
     info: 'M12 8h.01M11 12h1v4h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
     chevron: 'M6 9l6 6 6-6',
     sliders: 'M4 6h11M4 12h7M4 18h13M17 4v4M11 10v4M19 16v4',
+    // A GPU/IC chip: outline, inner core, and pins on every side.
+    gpu: 'M7 7h10v10H7z M10 10h4v4h-4z M9 4v3M15 4v3M9 17v3M15 17v3M4 9h3M4 15h3M17 9h3M17 15h3',
+    // A snail: ground line, outer shell arc, inner spiral, and two antennae.
+    snail: 'M3 17h9a5 5 0 10-5-5 3 3 0 103 3M14 9l2-3M17 8l2-2',
   }
 </script>
 

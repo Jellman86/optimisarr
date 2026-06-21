@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Queue detail view, live CPU/GPU graph, and a sidebar activity indicator
+
+- **Queue rows open a detail bottom sheet** (the same slide-up pattern as Inventory, now extracted
+  into a shared `BottomSheet` component): a large progress bar, live fps/speed/ETA telemetry, the
+  resolved encoder (GPU/CPU), output size, verification report, and the replace/retry/cancel
+  actions in one place.
+- **Live CPU/GPU usage graph** while a job is encoding, pushed over SignalR (`systemMetrics`). All
+  sampling is **unprivileged** — `/proc/stat` for CPU and, for the GPU, the per-process DRM fdinfo
+  of our own ffmpeg child, falling back to the AMD `gpu_busy_percent` sysfs node or an `nvidia-smi`
+  query. No root, CAP_PERFMON, or container privilege is required; when no source applies the graph
+  shows "GPU stats unavailable". The GPU path is vendor-neutral (Intel/AMD via DRM fdinfo, AMD via
+  sysfs, NVIDIA via nvidia-smi) — nothing is hardcoded to one vendor.
+- **Sidebar activity indicator:** the Queue nav item shows a throbbing **GPU chip** when work is
+  hardware-accelerated, or a throbbing **snail** when it's grinding on the CPU, with a running-job
+  count (a small pulsing dot when the rail is collapsed). Backed by one app-wide connection so it
+  stays live on any page; queue status now reports whether the active work is hardware-accelerated.
+
 ### Hardware decoding (GPU decode) with automatic CPU fallback
 
 - **The source is now decoded on the GPU when a hardware encoder is in use.** Previously a

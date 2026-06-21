@@ -33,6 +33,7 @@ public sealed class QueueDispatcher(
     ActivityMonitor activityMonitor,
     ImageMarkerService imageMarker,
     TranscodeOptions transcodeOptions,
+    ActiveEncodeRegistry encodes,
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -250,6 +251,7 @@ public sealed class QueueDispatcher(
             }
 
             var (spec, arguments) = work.Value;
+            var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
             Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
             await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
             await NotifyAsync();
@@ -259,7 +261,7 @@ public sealed class QueueDispatcher(
             var progressDuration = spec.ClipSeconds is { } clip && (work.Value.DurationSeconds is not { } d || clip < d)
                 ? clip
                 : work.Value.DurationSeconds;
-            var run = await RunFfmpegAsync(jobId, arguments, progressDuration, cancellationToken);
+            var run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
 
             // A hardware-decode attempt can fail on a source the GPU cannot decode (an exotic
             // codec or profile). Retry once with the software-decode command before giving up,
@@ -274,7 +276,7 @@ public sealed class QueueDispatcher(
                 DeleteWorkOutput(spec.OutputPath);
                 arguments = softwareArguments;
                 await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
-                run = await RunFfmpegAsync(jobId, arguments, progressDuration, cancellationToken);
+                run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
             }
 
             if (run.ExitCode == 0)
@@ -483,6 +485,7 @@ public sealed class QueueDispatcher(
         int jobId,
         IReadOnlyList<string> arguments,
         double? durationSeconds,
+        bool hardwareEncoder,
         CancellationToken cancellationToken)
     {
         using var process = new Process();
@@ -500,6 +503,10 @@ public sealed class QueueDispatcher(
         }
 
         process.Start();
+
+        // Make this ffmpeg visible to the metrics broadcaster so it can read the process's GPU
+        // counters, and flag whether it uses a hardware encoder for the sidebar indicator.
+        using var registration = encodes.Track(process.Id, hardwareEncoder);
 
         // Drain stdout so the pipe never blocks; progress and errors come on stderr.
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -759,6 +766,7 @@ public sealed class QueueDispatcher(
             settings.MinFreeDiskBytes,
             settings.CpuThreadLimit,
             settings.EncoderMode,
+            encodes.AnyHardware,
             freeDiskBytes,
             _workRoot);
     }
@@ -794,6 +802,14 @@ public sealed class QueueDispatcher(
         var detected = await hardware.DetectAsync(cancellationToken);
         return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders);
     }
+
+    // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc); the
+    // software libraries (libx265, libx264, libsvtav1) are not. Used to flag GPU-backed work.
+    private static bool IsHardwareEncoder(string? encoder) =>
+        encoder is not null
+        && (encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase)
+            || encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase)
+            || encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase));
 
     private Task NotifyAsync() => hub.Clients.All.SendAsync("jobsChanged");
 
@@ -905,5 +921,6 @@ public sealed record QueueDispatchStatus(
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     EncoderMode EncoderMode,
+    bool HardwareAccelerated,
     long? FreeDiskBytes,
     string WorkRoot);

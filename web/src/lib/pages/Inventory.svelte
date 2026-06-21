@@ -1,8 +1,8 @@
 <script lang="ts">
   import { api, type Candidate, type Library, type MediaFile } from '../api'
   import { formatSize, formatDuration } from '../format'
-  import { layout } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import BottomSheet from '../components/BottomSheet.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
 
   let libraries = $state<Library[]>([])
@@ -21,33 +21,8 @@
   let probingId = $state<number | null>(null)
   let loading = $state(true)
 
-  // Sheet element reference — observed so the table can subtract the exact rendered height.
-  let sheetEl = $state<HTMLElement | null>(null)
+  // The detail sheet's measured height, so the table can subtract it to stay fully scrollable.
   let sheetHeight = $state(0)
-
-  // Mirror Sidebar.svelte's mobile detection: md breakpoint is 768 px.
-  let isMobile = $state(false)
-  $effect(() => {
-    const mq = window.matchMedia('(max-width: 767px)')
-    const update = () => (isMobile = mq.matches)
-    update()
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
-  })
-
-  $effect(() => {
-    const el = sheetEl
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => {
-      sheetHeight = entry.contentRect.height
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  })
-
-  // On mobile the sidebar is a fixed overlay (not in-flow), so the sheet spans the full width.
-  // On desktop, offset by the sidebar width so the sheet stays inside the content column.
-  let sheetLeft = $derived(isMobile ? '0px' : layout.collapsed ? '4rem' : '15rem')
 
   $effect(() => {
     void loadLibraries()
@@ -148,10 +123,6 @@
 
   function dismissSheet() {
     selectedId = null
-  }
-
-  function toggleSheetExpanded() {
-    sheetExpanded = !sheetExpanded
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -344,65 +315,15 @@
   </div>
 {/if}
 
-<!-- Detail bottom sheet: always in the DOM, slides into view on row selection.
-     `left` is offset by the sidebar width so the sheet stays within the content column and
-     never overlaps the nav rail. On mobile the sidebar is a fixed overlay so left stays 0. -->
-<div
-  class="fixed bottom-0 right-0 z-30"
-  style="left: {sheetLeft}; transform: {selectedFile ? 'translateY(0)' : 'translateY(100%)'}; transition: transform 0.3s ease-out, left 0.2s ease-out;"
-  aria-hidden={selectedFile === null}
-  bind:this={sheetEl}
->
-  <div
-    class="border-t border-slate-200 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]"
-  >
-    <!-- Drag-handle affordance -->
-    <div class="flex justify-center pt-2 pb-0.5">
-      <div class="h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600"></div>
-    </div>
-
-    <!-- Header: filepath + expand/collapse + close -->
-    <div class="flex items-start gap-3 px-5 pt-2 pb-3">
-      <p class="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-200">
-        {selectedFile?.relativePath ?? ''}
-      </p>
-      <button
-        class="btn btn-ghost flex-shrink-0 px-2 py-1"
-        onclick={toggleSheetExpanded}
-        aria-label={sheetExpanded ? 'Collapse detail panel' : 'Expand detail panel'}
-        title={sheetExpanded ? 'Collapse' : 'Expand'}
-      >
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d={sheetExpanded ? 'M19 9l-7 7-7-7' : 'M5 15l7-7 7 7'}
-          />
-        </svg>
-      </button>
-      <button
-        class="btn btn-ghost flex-shrink-0 px-2 py-1"
-        onclick={dismissSheet}
-        aria-label="Close detail panel"
-      >
-        <svg
-          class="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-
-    <!-- Content: only rendered when expanded; ResizeObserver picks up the size change
-         automatically so the table's max-height adjusts without extra logic. -->
-    {#if selectedFile && sheetExpanded}
-      <div
-        class="max-h-[38vh] overflow-y-auto border-t border-slate-100 px-5 py-4 dark:border-slate-800"
-      >
+<!-- Detail bottom sheet: slides into view on row selection. -->
+<BottomSheet open={selectedFile !== null} bind:expanded={sheetExpanded} bind:height={sheetHeight} onclose={dismissSheet}>
+  {#snippet header()}
+    <p class="break-all font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+      {selectedFile?.relativePath ?? ''}
+    </p>
+  {/snippet}
+  {#snippet children()}
+    {#if selectedFile}
         <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="flex justify-between gap-4">
             <dt class="text-slate-500">Status</dt>
@@ -469,10 +390,9 @@
             </button>
           {/if}
         </div>
-      </div>
     {/if}
-  </div>
-</div>
+  {/snippet}
+</BottomSheet>
 
 {#if previewing}
   <PreviewCompare

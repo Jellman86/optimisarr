@@ -1,6 +1,8 @@
 <script lang="ts">
   import { theme, layout, router } from '../stores/ui.svelte'
+  import { activity } from '../stores/activity.svelte'
   import BrandMark from './BrandMark.svelte'
+  import Icon from './Icon.svelte'
 
   const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
   const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : gitHash
@@ -69,8 +71,9 @@
   <!-- Nav -->
   <nav class="flex-1 space-y-1 overflow-y-auto p-2">
     {#each navItems as item}
+      {@const showActivity = item.path === '/queue' && activity.activeJobs > 0}
       <button
-        class="nav-button"
+        class="nav-button relative"
         class:nav-button-active={item.enabled && isActive(item.path)}
         class:nav-button-inactive={item.enabled && !isActive(item.path)}
         class:nav-button-disabled={!item.enabled}
@@ -90,6 +93,23 @@
           {#if !item.enabled}
             <span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">soon</span>
           {/if}
+          {#if showActivity}
+            <!-- A throbbing GPU chip means the GPU is doing the work; a snail means it's grinding
+                 on the CPU. The count shows how many jobs are running. -->
+            <span
+              class="flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-cyan-500' : 'text-amber-500'}"
+              title={activity.hardwareActive ? 'Encoding on GPU' : 'Encoding on CPU'}
+            >
+              <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
+              <span class="text-xs tabular-nums">{activity.activeJobs}</span>
+            </span>
+          {/if}
+        {:else if showActivity}
+          <!-- Collapsed rail: a small throbbing dot, GPU-cyan or CPU-amber. -->
+          <span
+            class="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full {activity.hardwareActive ? 'bg-cyan-500' : 'bg-amber-500'}"
+            title={activity.hardwareActive ? 'Encoding on GPU' : 'Encoding on CPU'}
+          ></span>
         {/if}
       </button>
     {/each}

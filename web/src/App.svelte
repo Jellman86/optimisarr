@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { router, layout, theme } from './lib/stores/ui.svelte'
+  import { activity } from './lib/stores/activity.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import BrandMark from './lib/components/BrandMark.svelte'
   import Dashboard from './lib/pages/Dashboard.svelte'
@@ -25,6 +27,9 @@
     if (path.startsWith('/tools') || path.startsWith('/settings')) return Settings
     return Dashboard
   })
+
+  // One app-wide connection drives the sidebar activity indicator and the Queue usage graph.
+  onMount(() => activity.start())
 </script>
 
 <svelte:head>

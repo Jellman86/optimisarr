@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
+using Optimisarr.Api.Metrics;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
@@ -58,8 +59,10 @@ builder.Services.AddScoped<QuarantinePurgeService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ActivityMonitor>();
+builder.Services.AddSingleton<ActiveEncodeRegistry>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
+builder.Services.AddHostedService<SystemMetricsBroadcaster>();
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
@@ -1338,6 +1341,7 @@ internal sealed record QueueStatusDto(
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     string EncoderMode,
+    bool HardwareAccelerated,
     long? FreeDiskBytes,
     string WorkRoot)
 {
@@ -1352,6 +1356,7 @@ internal sealed record QueueStatusDto(
         status.MinFreeDiskBytes,
         status.CpuThreadLimit,
         status.EncoderMode.ToString(),
+        status.HardwareAccelerated,
         status.FreeDiskBytes,
         status.WorkRoot);
 

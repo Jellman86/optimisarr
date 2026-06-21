@@ -152,6 +152,8 @@ export type QueueStatus = Settings & {
   canStart: boolean
   blockedReason: string | null
   runningJobs: number
+  // True when at least one running job is using a hardware (GPU) video encoder.
+  hardwareAccelerated: boolean
   freeDiskBytes: number | null
   workRoot: string
 }

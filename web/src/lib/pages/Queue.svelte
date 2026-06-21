@@ -3,8 +3,11 @@
   import { formatSize, formatDuration } from '../format'
   import { createJobsConnection, type JobProgress } from '../realtime'
   import { router } from '../stores/ui.svelte'
+  import { activity } from '../stores/activity.svelte'
   import Icon from '../components/Icon.svelte'
   import Banner from '../components/Banner.svelte'
+  import BottomSheet from '../components/BottomSheet.svelte'
+  import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
 
   let jobs = $state<Job[]>([])
@@ -19,6 +22,11 @@
   let clearing = $state(false)
   let expandedId = $state<number | null>(null)
   let filter = $state<'all' | 'active' | 'completed' | 'failed'>('all')
+
+  // The job open in the detail bottom sheet, and whether the sheet shows full content.
+  let selectedJobId = $state<number | null>(null)
+  let sheetExpanded = $state(true)
+  let sheetHeight = $state(0)
 
   // Updates arrive over SignalR (jobsChanged + jobProgress). A slow poll is kept
   // only as a safety net and to refresh queue status (free disk, running counts),
@@ -140,6 +148,25 @@
   function isGpuEncoder(encoder: string): boolean {
     return /_(nvenc|qsv|vaapi|amf|videotoolbox)$/.test(encoder)
   }
+
+  // The job currently open in the detail sheet; resolved live so its progress/status stay
+  // fresh, and the sheet auto-closes if the job is cleared from the list.
+  let selectedJob = $derived(jobs.find((j) => j.id === selectedJobId) ?? null)
+
+  function selectRow(id: number) {
+    if (selectedJobId === id) {
+      selectedJobId = null
+    } else {
+      selectedJobId = id
+      sheetExpanded = true
+    }
+  }
+
+  // GPU graph is shown only while the selected job is actually encoding; when the host can't
+  // expose GPU stats without elevation the broadcaster reports it unsupported.
+  let gpuUnavailable = $derived(
+    activity.metrics && !activity.metrics.gpuSupported ? 'GPU stats unavailable on this host' : null,
+  )
 
   function badgeClass(status: string): string {
     switch (status) {
@@ -264,7 +291,10 @@
       <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
         {#each visibleJobs as job (job.id)}
           {@const checks = parseReport(job)}
-          <tr class="text-slate-700 dark:text-slate-300">
+          <tr
+            class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedJobId === job.id ? 'bg-slate-50 dark:bg-slate-900/40' : ''}"
+            onclick={() => selectRow(job.id)}
+          >
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{job.status}</span></td>
             <td class="max-w-[40vw] px-4 py-2 sm:max-w-xs">
               <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</div>
@@ -309,7 +339,7 @@
               {#if checks}
                 <button
                   class="text-xs font-medium hover:underline {job.verificationPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}"
-                  onclick={() => toggle(job)}
+                  onclick={(e) => { e.stopPropagation(); toggle(job) }}
                 >
                   {job.verificationPassed ? '✓ passed' : '✗ failed'}
                   {#if job.outputSizeBytes}<span class="text-slate-400"> · {formatSize(job.outputSizeBytes)}</span>{/if}
@@ -323,19 +353,19 @@
             <td class="px-4 py-2 text-right">
               <div class="flex justify-end gap-1">
                 {#if job.status === 'ReadyToReplace' && job.verificationPassed}
-                  <button class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={() => replace(job)} disabled={replacingId === job.id}>
+                  <button class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); replace(job) }} disabled={replacingId === job.id}>
                     <Icon name="replace" class="h-3.5 w-3.5" />
                     {replacingId === job.id ? 'Replacing' : 'Replace'}
                   </button>
                 {/if}
                 {#if job.status === 'Failed' || job.status === 'Cancelled'}
-                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={() => retry(job)} disabled={retryingId === job.id} title="Re-queue this file as a fresh attempt">
+                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); retry(job) }} disabled={retryingId === job.id} title="Re-queue this file as a fresh attempt">
                     <Icon name="retry" class="h-3.5 w-3.5" />
                     {retryingId === job.id ? 'Retrying' : 'Retry'}
                   </button>
                 {/if}
                 {#if isActive(job.status)}
-                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={() => cancel(job)} disabled={cancellingId === job.id}>
+                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); cancel(job) }} disabled={cancellingId === job.id}>
                     <Icon name="x" class="h-3.5 w-3.5" />
                     {cancellingId === job.id ? 'Cancelling' : 'Cancel'}
                   </button>
@@ -360,3 +390,99 @@
     The queue is empty. Enqueue a library's eligible files from the Libraries page.
   </div>
 {/if}
+
+<!-- Detail bottom sheet: slides up on row selection, with live progress, telemetry, and a
+     CPU/GPU usage graph while the job is encoding. -->
+<BottomSheet open={selectedJob !== null} bind:expanded={sheetExpanded} bind:height={sheetHeight} onclose={() => (selectedJobId = null)}>
+  {#snippet header()}
+    {#if selectedJob}
+      <div class="flex min-w-0 items-center gap-2">
+        <span class="badge flex-shrink-0 {badgeClass(selectedJob.status)}">{selectedJob.status}</span>
+        <p class="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={selectedJob.relativePath ?? ''}>
+          {selectedJob.relativePath ?? '—'}
+        </p>
+      </div>
+    {/if}
+  {/snippet}
+  {#snippet children()}
+    {#if selectedJob}
+      {@const telemetry = live[selectedJob.id]}
+      <!-- Progress / stage -->
+      <div class="mb-4">
+        {#if selectedJob.status === 'Transcoding'}
+          <div class="flex items-center gap-3">
+            <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(selectedJob.progress * 100)}%"></div></div>
+            <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(selectedJob.progress * 100)}%</span>
+          </div>
+          {#if telemetry}
+            <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-slate-400">
+              {#if telemetry.fps != null}<span>{telemetry.fps.toFixed(0)} fps</span>{/if}
+              {#if telemetry.speed != null}<span>{speedLabel(telemetry.speed)}</span>{/if}
+              {#if telemetry.etaSeconds != null}<span>{etaLabel(telemetry.etaSeconds)}</span>{/if}
+            </div>
+          {/if}
+        {:else if selectedJob.status === 'Probing' || selectedJob.status === 'Verifying'}
+          <div class="progress-track"><div class="progress-indeterminate"></div></div>
+          <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{selectedJob.status === 'Probing' ? 'Probing…' : 'Verifying…'}</p>
+        {:else if selectedJob.status === 'Failed'}
+          <p class="text-sm text-red-600 dark:text-red-400">{selectedJob.errorMessage ?? 'Job failed'}</p>
+        {:else}
+          <p class="text-sm text-slate-500 dark:text-slate-400">{selectedJob.status}</p>
+        {/if}
+      </div>
+
+      <!-- Live CPU/GPU usage while this job encodes -->
+      {#if selectedJob.status === 'Transcoding'}
+        <div class="mb-4 grid gap-3 sm:grid-cols-2">
+          <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
+          <UsageGraph
+            label="GPU"
+            data={activity.gpuHistory}
+            current={activity.metrics?.gpuPercent ?? null}
+            color="rgb(34,197,94)"
+            unavailable={gpuUnavailable}
+            detail={activity.metrics?.gpuEngine}
+          />
+        </div>
+      {/if}
+
+      <!-- Details -->
+      <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        <div class="flex justify-between gap-4">
+          <dt class="text-slate-500">Encoder</dt>
+          <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-slate-400">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
+        </div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Output size</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Priority</dt><dd>{selectedJob.priority}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Verified</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
+      </dl>
+
+      <!-- Verification report, when one exists -->
+      {#if parseReport(selectedJob)}
+        {@const checks = parseReport(selectedJob)}
+        <div class="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+          {#if checks}<VerificationChecks {checks} />{/if}
+        </div>
+      {/if}
+
+      <!-- Actions -->
+      <div class="mt-4 flex flex-wrap gap-2">
+        {#if selectedJob.status === 'ReadyToReplace' && selectedJob.verificationPassed}
+          <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => selectedJob && replace(selectedJob)} disabled={replacingId === selectedJob.id}>
+            {replacingId === selectedJob.id ? 'Replacing…' : 'Replace original'}
+          </button>
+        {/if}
+        {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
+          <button class="btn px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
+            {retryingId === selectedJob.id ? 'Retrying…' : 'Retry'}
+          </button>
+        {/if}
+        {#if isActive(selectedJob.status)}
+          <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && cancel(selectedJob)} disabled={cancellingId === selectedJob.id}>
+            {cancellingId === selectedJob.id ? 'Cancelling…' : 'Cancel'}
+          </button>
+        {/if}
+      </div>
+    {/if}
+  {/snippet}
+</BottomSheet>
