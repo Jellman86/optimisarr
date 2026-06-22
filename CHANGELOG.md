@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Queue: separate "Clear errored" and "Clear finished"
+
+- The single "Clear finished" button is now two: **Clear errored** (failed + cancelled jobs) and
+  **Clear finished** (completed jobs), each shown only when it has something to clear and labelled
+  with its count. The `/api/jobs/clear` endpoint takes an optional `scope` (`errored` / `finished` /
+  all) and keeps the existing safety check, so a job still holding a live rollback is never removed.
+
 ### Scheduling rework: separate scan / auto-optimise / auto-replace
 
 The old model welded library scanning to the once-a-night auto-enqueue window, which was

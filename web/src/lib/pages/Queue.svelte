@@ -19,7 +19,7 @@
   let cancellingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let retryingId = $state<number | null>(null)
-  let clearing = $state(false)
+  let clearingScope = $state<'errored' | 'finished' | null>(null)
   let expandedId = $state<number | null>(null)
   let filter = $state<'all' | 'active' | 'completed' | 'failed'>('all')
 
@@ -114,15 +114,15 @@
     }
   }
 
-  async function clearFinished() {
-    clearing = true
+  async function clear(scope: 'errored' | 'finished') {
+    clearingScope = scope
     try {
-      await api.clearJobs()
+      await api.clearJobs(scope)
       await load()
     } catch (err) {
       error = err instanceof Error ? err.message : 'Clear failed'
     } finally {
-      clearing = false
+      clearingScope = null
     }
   }
 
@@ -251,9 +251,9 @@
   }
 
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
-  let finishedCount = $derived(
-    jobs.filter((j) => ['Completed', 'Failed', 'Cancelled'].includes(j.status)).length,
-  )
+  // Two clear buckets: finished = completed; errored = failed or cancelled.
+  let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed').length)
+  let erroredClearable = $derived(jobs.filter((j) => j.status === 'Failed' || j.status === 'Cancelled').length)
 </script>
 
 <header class="mb-6">
@@ -292,17 +292,30 @@
         {label} · {counts[key as keyof typeof counts]}
       </button>
     {/each}
-    {#if finishedCount > 0}
-      <button
-        class="btn btn-ghost ml-auto inline-flex items-center gap-1 px-3 py-1 text-xs"
-        onclick={clearFinished}
-        disabled={clearing}
-        title="Remove finished jobs (completed, failed, cancelled). Files stay tagged so they are never re-optimised; any job still holding a rollback is kept."
-      >
-        <Icon name="trash" class="h-4 w-4" />
-        {clearing ? 'Clearing…' : 'Clear finished'}
-      </button>
-    {/if}
+    <div class="ml-auto flex items-center gap-2">
+      {#if erroredClearable > 0}
+        <button
+          class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
+          onclick={() => clear('errored')}
+          disabled={clearingScope !== null}
+          title="Remove failed and cancelled jobs from the list. Files stay tagged so they are never re-optimised; any job still holding a rollback is kept."
+        >
+          <Icon name="trash" class="h-4 w-4" />
+          {clearingScope === 'errored' ? 'Clearing…' : `Clear errored (${erroredClearable})`}
+        </button>
+      {/if}
+      {#if finishedClearable > 0}
+        <button
+          class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
+          onclick={() => clear('finished')}
+          disabled={clearingScope !== null}
+          title="Remove completed jobs from the list. Files stay tagged so they are never re-optimised; any job still holding a rollback is kept."
+        >
+          <Icon name="trash" class="h-4 w-4" />
+          {clearingScope === 'finished' ? 'Clearing…' : `Clear finished (${finishedClearable})`}
+        </button>
+      {/if}
+    </div>
   </div>
 {/if}
 

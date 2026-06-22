@@ -25,3 +25,7 @@ mounts.
 4. Queue a small test set and inspect its verification report.
 5. Replace only outputs you have reviewed. Originals remain in **Quarantine**
    until approved or retention purges them.
+
+After that manual test, optional **Auto-optimise** and **Auto-replace** settings
+can automate the same workflow per library. See [configuration and scheduling](configuration.md)
+before enabling either one.

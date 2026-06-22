@@ -1144,8 +1144,18 @@ app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancell
 // destroy a recorded rollback, which the safety standard forbids. Re-optimisation of the
 // cleared files is still prevented by the embedded optimisation marker, so losing the
 // history rows is safe.
-app.MapPost("/api/jobs/clear", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+app.MapPost("/api/jobs/clear", async (string? scope, OptimisarrDbContext db, CancellationToken cancellationToken) =>
 {
+    // scope: "finished" = completed only; "errored" = failed/cancelled; anything else (or
+    // omitted) = every terminal job. The IsClearable safety check below still protects jobs
+    // that hold a live rollback regardless of scope.
+    var statuses = (scope?.Trim().ToLowerInvariant()) switch
+    {
+        "finished" => new[] { JobStatus.Completed },
+        "errored" => new[] { JobStatus.Failed, JobStatus.Cancelled },
+        _ => new[] { JobStatus.Completed, JobStatus.Failed, JobStatus.Cancelled },
+    };
+
     var liveRollbackJobIds = (await db.Replacements
             .Where(r => r.Status == ReplacementStatus.Replaced)
             .Select(r => r.JobId)
@@ -1153,9 +1163,7 @@ app.MapPost("/api/jobs/clear", async (OptimisarrDbContext db, CancellationToken 
         .ToHashSet();
 
     var terminal = await db.Jobs
-        .Where(j => j.Status == JobStatus.Completed
-            || j.Status == JobStatus.Failed
-            || j.Status == JobStatus.Cancelled)
+        .Where(j => statuses.Contains(j.Status))
         .ToListAsync(cancellationToken);
 
     var clearable = terminal.Where(j => JobClearing.IsClearable(j, liveRollbackJobIds)).ToList();

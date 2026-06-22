@@ -25,7 +25,8 @@ Early development. What works today:
   and rule profile, with a folder-picker for paths. Scanning discovers the file
   types that match the library (video, audio, or images).
 - Recursive, settling-aware **scanning** that builds a media inventory (idempotent),
-  with **automatic background probing** of newly discovered files.
+  with **automatic background probing** of newly discovered files. Enabled libraries
+  are rescanned on a configurable global interval (one hour by default).
 - **ffprobe** inspection (codec, resolution, duration, tracks, media kind).
 - Optimisation for **video, audio, and still images** (images → WebP), each through
   the same candidate → transcode → verify → quarantine/rollback pipeline.
@@ -34,6 +35,9 @@ Early development. What works today:
   Verification, Quarantine, Schedule, Settings; Tools live under Settings).
 - Queue resource controls: max concurrent jobs, CPU thread limits, processing
   windows, and free work-disk safety pause.
+- Per-library **auto-optimise** windows continuously queue newly eligible files;
+  opt-in **auto-replace** promotes only fully verified jobs, still quarantining
+  the original first so rollback remains available.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
   NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.

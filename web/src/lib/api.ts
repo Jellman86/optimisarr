@@ -485,7 +485,8 @@ export const api = {
   jobs: () => request<Job[]>('/api/jobs'),
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   retryJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),
-  clearJobs: () => request<{ cleared: number }>('/api/jobs/clear', { method: 'POST' }),
+  clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
+    request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceFromJob: (id: number) =>
