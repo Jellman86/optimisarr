@@ -112,9 +112,6 @@ export type LibraryOptions = {
 
 export type Settings = {
   maxConcurrentJobs: number
-  scheduleEnabled: boolean
-  scheduleWindowStart: string
-  scheduleWindowEnd: string
   minFreeDiskBytes: number
   cpuThreadLimit: number
   libraryScanIntervalHours: number

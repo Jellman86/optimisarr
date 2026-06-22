@@ -47,17 +47,21 @@
     return sh * 60 + sm > eh * 60 + em
   }
 
-  let autoEnqueueLibraries = $derived(libraries.filter((l) => l.autoEnqueueEnabled))
+  let autoOptimiseLibraries = $derived(libraries.filter((l) => l.autoEnqueueEnabled))
 </script>
 
 <header class="mb-6">
   <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Schedule</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400">
-    When Optimisarr runs jobs. Edit the global window and per-library auto-enqueue in
+    When Optimisarr scans libraries and runs jobs. Set the scan interval in
     <button
       class="text-cyan-600 hover:underline dark:text-cyan-400"
       onclick={() => router.go('/settings')}
-    >Settings</button>.
+    >Settings</button>, and each library's optimise window on the
+    <button
+      class="text-cyan-600 hover:underline dark:text-cyan-400"
+      onclick={() => router.go('/libraries')}
+    >Libraries</button> page.
   </p>
 </header>
 
@@ -89,6 +93,12 @@
         </dd>
       </div>
       <div>
+        <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Scan interval</dt>
+        <dd class="mt-1 text-slate-700 dark:text-slate-200">
+          Every {queueStatus.libraryScanIntervalHours}h
+        </dd>
+      </div>
+      <div>
         <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Work disk free</dt>
         <dd class="mt-1 text-slate-700 dark:text-slate-200">
           {queueStatus.freeDiskBytes === null ? 'Unknown' : formatSize(queueStatus.freeDiskBytes)}
@@ -103,66 +113,45 @@
     </dl>
   </div>
 
-  <!-- Processing window -->
-  <div class="card mb-5 p-5">
-    <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">Processing window</h2>
-    {#if queueStatus.scheduleEnabled}
-      {@const active = inWindow(queueStatus.scheduleWindowStart, queueStatus.scheduleWindowEnd)}
-      {@const overnight = isOvernightWindow(queueStatus.scheduleWindowStart, queueStatus.scheduleWindowEnd)}
-      <div class="flex flex-wrap items-center gap-6 text-sm">
-        <div>
-          <span class="text-slate-500">Window</span>
-          <span class="ml-2 font-mono text-slate-700 dark:text-slate-200">
-            {queueStatus.scheduleWindowStart} → {queueStatus.scheduleWindowEnd}
-            {#if overnight}<span class="ml-1 text-xs text-slate-400">(overnight)</span>{/if}
-          </span>
-        </div>
-        <div>
-          {#if active}
-            <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">In window now</span>
-          {:else}
-            <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">Outside window</span>
-          {/if}
-        </div>
-      </div>
-      <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        Running jobs are never interrupted. Outside the window, new jobs wait until it reopens.
-      </p>
-    {:else}
-      <p class="text-sm text-slate-500 dark:text-slate-400">
-        No processing window is configured — jobs run at any time. Enable one in
-        <button
-          class="text-cyan-600 hover:underline dark:text-cyan-400"
-          onclick={() => router.go('/settings')}
-        >Settings</button>.
-      </p>
-    {/if}
-  </div>
-
-  <!-- Per-library auto-enqueue -->
+  <!-- Per-library auto-optimise -->
   <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Auto-enqueue</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Auto-optimise windows</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      A library can scan and enqueue itself once per day inside its own window, then let the
-      global dispatch window decide when those jobs actually run.
+      Each library with "Optimise automatically" enabled enqueues and runs its items inside its own
+      window. Jobs you queue manually from other libraries run at any time.
     </p>
 
-    {#if autoEnqueueLibraries.length > 0}
+    {#if autoOptimiseLibraries.length > 0}
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
             <tr>
               <th class="pb-2 pr-6">Library</th>
-              <th class="pb-2 pr-6">Enqueue window</th>
-              <th class="pb-2">Last ran</th>
+              <th class="pb-2 pr-6">Window</th>
+              <th class="pb-2 pr-6">Status</th>
+              <th class="pb-2 pr-6">Auto-replace</th>
+              <th class="pb-2">Last enqueued</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            {#each autoEnqueueLibraries as lib (lib.id)}
+            {#each autoOptimiseLibraries as lib (lib.id)}
+              {@const active = inWindow(lib.autoEnqueueWindowStart, lib.autoEnqueueWindowEnd)}
+              {@const overnight = isOvernightWindow(lib.autoEnqueueWindowStart, lib.autoEnqueueWindowEnd)}
               <tr class="text-slate-700 dark:text-slate-300">
                 <td class="py-2 pr-6 font-medium">{lib.name}</td>
                 <td class="py-2 pr-6 font-mono text-xs">
                   {lib.autoEnqueueWindowStart} → {lib.autoEnqueueWindowEnd}
+                  {#if overnight}<span class="ml-1 font-sans text-slate-400">(overnight)</span>{/if}
+                </td>
+                <td class="py-2 pr-6">
+                  {#if active}
+                    <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">In window</span>
+                  {:else}
+                    <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">Idle</span>
+                  {/if}
+                </td>
+                <td class="py-2 pr-6 text-xs">
+                  {lib.autoReplace ? 'When verified' : 'Off'}
                 </td>
                 <td class="py-2 text-xs text-slate-500 dark:text-slate-400">
                   {lib.lastAutoEnqueueAt
@@ -176,12 +165,12 @@
       </div>
     {:else}
       <p class="text-sm text-slate-400">
-        No libraries have auto-enqueue enabled. Open a library from the
+        No libraries are set to optimise automatically. Open a library from the
         <button
           class="text-cyan-600 hover:underline dark:text-cyan-400"
           onclick={() => router.go('/libraries')}
         >Libraries</button>
-        page and enable it under Advanced settings.
+        page and enable "Optimise automatically".
       </p>
     {/if}
   </div>

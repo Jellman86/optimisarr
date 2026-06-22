@@ -120,7 +120,9 @@ public sealed class ArtworkService(IServiceScopeFactory scopeFactory, IHttpClien
 
             if (watcher.Type == ActivityWatcherType.Plex)
             {
-                var url = $"{root}/search?query={Uri.EscapeDataString(title.Title)}&limit=8";
+                // /hubs/search returns grouped results with art; plain /search often returns only
+                // search providers (no Metadata), which is why a backdrop never resolved.
+                var url = $"{root}/hubs/search?query={Uri.EscapeDataString(title.Title)}&limit=8";
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.TryAddWithoutValidation("Accept", "application/json");
                 request.Headers.TryAddWithoutValidation("X-Plex-Token", watcher.ApiToken);

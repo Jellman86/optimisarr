@@ -8,9 +8,6 @@ namespace Optimisarr.Api.Library;
 
 public sealed record QueueSettings(
     int MaxConcurrentJobs,
-    bool ScheduleEnabled,
-    TimeOnly ScheduleWindowStart,
-    TimeOnly ScheduleWindowEnd,
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     int LibraryScanIntervalHours,
@@ -26,8 +23,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
     /// <summary>Conservative default: process one job at a time until the user opts in to more.</summary>
     public const int DefaultMaxConcurrentJobs = 1;
 
-    public static readonly TimeOnly DefaultScheduleWindowStart = new(0, 0);
-    public static readonly TimeOnly DefaultScheduleWindowEnd = new(0, 0);
     public const long DefaultMinFreeDiskBytes = 10L * 1024 * 1024 * 1024;
     public const int DefaultLibraryScanIntervalHours = 1;
 
@@ -39,9 +34,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
     public static readonly IReadOnlySet<string> PortableSettingKeys = new HashSet<string>
     {
         SettingKeys.MaxConcurrentJobs,
-        SettingKeys.ScheduleEnabled,
-        SettingKeys.ScheduleWindowStart,
-        SettingKeys.ScheduleWindowEnd,
         SettingKeys.MinFreeDiskBytes,
         SettingKeys.CpuThreadLimit,
         SettingKeys.LibraryScanIntervalHours,
@@ -94,9 +86,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         var settings = await db.AppSettings
             .AsNoTracking()
             .Where(setting => setting.Key == SettingKeys.MaxConcurrentJobs
-                || setting.Key == SettingKeys.ScheduleEnabled
-                || setting.Key == SettingKeys.ScheduleWindowStart
-                || setting.Key == SettingKeys.ScheduleWindowEnd
                 || setting.Key == SettingKeys.MinFreeDiskBytes
                 || setting.Key == SettingKeys.CpuThreadLimit
                 || setting.Key == SettingKeys.LibraryScanIntervalHours
@@ -122,9 +111,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
 
         return new QueueSettings(
             ParseInt(settings.GetValueOrDefault(SettingKeys.MaxConcurrentJobs), DefaultMaxConcurrentJobs, min: 1),
-            bool.TryParse(settings.GetValueOrDefault(SettingKeys.ScheduleEnabled), out var enabled) && enabled,
-            ParseTime(settings.GetValueOrDefault(SettingKeys.ScheduleWindowStart), DefaultScheduleWindowStart),
-            ParseTime(settings.GetValueOrDefault(SettingKeys.ScheduleWindowEnd), DefaultScheduleWindowEnd),
             ParseLong(settings.GetValueOrDefault(SettingKeys.MinFreeDiskBytes), DefaultMinFreeDiskBytes, min: 0),
             ParseInt(settings.GetValueOrDefault(SettingKeys.CpuThreadLimit), fallback: 0, min: 0),
             ParseInt(settings.GetValueOrDefault(SettingKeys.LibraryScanIntervalHours), DefaultLibraryScanIntervalHours, min: 1),
@@ -216,9 +202,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         await UpsertManyAsync(new Dictionary<string, string>
         {
             [SettingKeys.MaxConcurrentJobs] = Math.Max(1, settings.MaxConcurrentJobs).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.ScheduleEnabled] = settings.ScheduleEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.ScheduleWindowStart] = FormatTime(settings.ScheduleWindowStart),
-            [SettingKeys.ScheduleWindowEnd] = FormatTime(settings.ScheduleWindowEnd),
             [SettingKeys.MinFreeDiskBytes] = Math.Max(0, settings.MinFreeDiskBytes).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.CpuThreadLimit] = Math.Max(0, settings.CpuThreadLimit).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.LibraryScanIntervalHours] = Math.Max(1, settings.LibraryScanIntervalHours).ToString(CultureInfo.InvariantCulture),
@@ -354,14 +337,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
     private static bool ParseBool(string? value, bool fallback) =>
         bool.TryParse(value, out var parsed) ? parsed : fallback;
 
-    private static TimeOnly ParseTime(string? value, TimeOnly fallback) =>
-        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
-            ? parsed
-            : fallback;
-
     private static T ParseEnum<T>(string? value, T fallback)
         where T : struct, Enum =>
         Enum.TryParse<T>(value, ignoreCase: true, out var parsed) ? parsed : fallback;
-
-    private static string FormatTime(TimeOnly value) => value.ToString("HH:mm", CultureInfo.InvariantCulture);
 }

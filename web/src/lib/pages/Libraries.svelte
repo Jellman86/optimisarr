@@ -737,7 +737,7 @@
     <Toggle
       bind:checked={form.autoEnqueueEnabled}
       label="Optimise automatically"
-      hint="Queue this library's eligible files automatically while inside the window below. Scanning is global (Settings → Library scan interval); jobs still only run during the global processing window and obey the concurrency limit — this only fills the queue."
+      hint="Inside the window below, this library's eligible files are queued and run automatically. Scanning is global (Settings → Library scan interval); jobs still obey the concurrency limit and disk/activity gates."
     />
     {#if form.autoEnqueueEnabled}
       <div class="flex flex-wrap items-end gap-4 pl-1">
@@ -750,7 +750,7 @@
           <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
         </div>
         <p class="max-w-xs text-xs text-slate-500 dark:text-slate-400">
-          Equal times = any time. Eligible files are queued continuously while inside the window.
+          Equal times = any time. Eligible files are queued and run while inside the window.
         </p>
       </div>
     {/if}

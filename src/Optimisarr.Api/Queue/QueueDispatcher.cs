@@ -188,6 +188,7 @@ public sealed class QueueDispatcher(
         }
 
         List<QueuedJob> queued;
+        Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -196,9 +197,27 @@ public sealed class QueueDispatcher(
                 .Where(job => job.Status == JobStatus.Queued)
                 .Select(job => new QueuedJob(job.Id, job.LibraryId, job.Priority, job.EnqueuedAt))
                 .ToListAsync(stoppingToken);
+
+            // A library that auto-optimises only runs its jobs inside its window; a library with
+            // auto-optimise off has no window, so its (manually enqueued) jobs may run anytime.
+            autoWindows = await db.Libraries
+                .AsNoTracking()
+                .Where(library => library.AutoEnqueueEnabled)
+                .Select(library => new { library.Id, library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+                .ToDictionaryAsync(
+                    library => library.Id,
+                    library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd),
+                    stoppingToken);
         }
 
-        var toStart = JobScheduler.SelectJobsToStart(queued, _running.Count, maxConcurrent);
+        var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
+        var runnable = queued
+            .Where(job => job.LibraryId is not { } libraryId
+                || !autoWindows.TryGetValue(libraryId, out var window)
+                || DispatchPolicyEvaluator.WithinWindow(window.Start, window.End, nowLocal))
+            .ToList();
+
+        var toStart = JobScheduler.SelectJobsToStart(runnable, _running.Count, maxConcurrent);
         foreach (var jobId in toStart)
         {
             if (_running.ContainsKey(jobId) || !await TryClaimAsync(jobId, stoppingToken))
@@ -803,9 +822,6 @@ public sealed class QueueDispatcher(
             decision.BlockedReason,
             _running.Count,
             settings.MaxConcurrentJobs,
-            settings.ScheduleEnabled,
-            settings.ScheduleWindowStart,
-            settings.ScheduleWindowEnd,
             settings.MinFreeDiskBytes,
             settings.CpuThreadLimit,
             settings.EncoderMode,
@@ -823,10 +839,6 @@ public sealed class QueueDispatcher(
 
     private DispatchDecision EvaluateDispatchPolicy(QueueSettings settings, ActivityDecision activity) =>
         DispatchPolicyEvaluator.Evaluate(
-            settings.ScheduleEnabled,
-            settings.ScheduleWindowStart,
-            settings.ScheduleWindowEnd,
-            TimeOnly.FromDateTime(DateTime.Now),
             settings.MinFreeDiskBytes,
             TryGetFreeDiskBytes(_workRoot),
             activity.Active,
@@ -958,9 +970,6 @@ public sealed record QueueDispatchStatus(
     string? BlockedReason,
     int RunningJobs,
     int MaxConcurrentJobs,
-    bool ScheduleEnabled,
-    TimeOnly ScheduleWindowStart,
-    TimeOnly ScheduleWindowEnd,
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     EncoderMode EncoderMode,

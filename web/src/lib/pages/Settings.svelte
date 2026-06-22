@@ -340,9 +340,6 @@
 
   let settings = $state<Settings>({
     maxConcurrentJobs: 1,
-    scheduleEnabled: false,
-    scheduleWindowStart: '00:00',
-    scheduleWindowEnd: '00:00',
     minFreeDiskBytes: 10 * 1024 * 1024 * 1024,
     cpuThreadLimit: 0,
     libraryScanIntervalHours: 1,
@@ -538,7 +535,7 @@
       </div>
 
       <div>
-        <label class="label" for="scan-interval">Library scan interval <InfoTip text="How often every enabled library is rescanned for new or changed files. Scanning is cheap (it skips unchanged files); newly found files are probed automatically. Separate from when files are auto-queued (per library) or when jobs run (the processing window)." /></label>
+        <label class="label" for="scan-interval">Library scan interval <InfoTip text="How often every enabled library is rescanned for new or changed files (and they are reprobed). Scanning is cheap — it skips unchanged files. When each library's files are auto-enqueued and run is set per library (its auto-optimise window)." /></label>
         <div class="flex items-center gap-2">
           <input id="scan-interval" class="input" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
           <span class="text-sm text-slate-500 dark:text-slate-400">hours</span>
@@ -560,26 +557,8 @@
         label="Hardware decoding"
         hint="When a hardware encoder is in use, decode the source on the GPU too, to cut CPU load. Falls back to CPU decoding automatically for sources the GPU can't decode. No effect on CPU encoding."
       />
-    </div>
-
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.scheduleEnabled}
-        label="Restrict new jobs to a processing window"
-        hint="Outside the window, running jobs finish but no new ones start."
-      />
-      <div class="mt-4 grid max-w-md gap-4 sm:grid-cols-2">
-        <div>
-          <label class="label" for="window-start">Window start</label>
-          <input id="window-start" class="input" type="time" bind:value={settings.scheduleWindowStart} disabled={!settings.scheduleEnabled} />
-        </div>
-        <div>
-          <label class="label" for="window-end">Window end</label>
-          <input id="window-end" class="input" type="time" bind:value={settings.scheduleWindowEnd} disabled={!settings.scheduleEnabled} />
-        </div>
-      </div>
-      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        A start and end of 00:00 means all day. Overnight windows such as 22:00 to 06:00 are supported.
+      <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+        When jobs run is set per library, on the <button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>Libraries</button> page: enable "Optimise automatically" and choose a window.
       </p>
     </div>
   </div>

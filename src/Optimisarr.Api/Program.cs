@@ -216,21 +216,8 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi." });
     }
 
-    if (!TryParseTime(request.ScheduleWindowStart, out var start))
-    {
-        return Results.BadRequest(new { error = "Schedule window start must use HH:mm format." });
-    }
-
-    if (!TryParseTime(request.ScheduleWindowEnd, out var end))
-    {
-        return Results.BadRequest(new { error = "Schedule window end must use HH:mm format." });
-    }
-
     await settings.SetQueueSettingsAsync(new QueueSettings(
         request.MaxConcurrentJobs,
-        request.ScheduleEnabled,
-        start,
-        end,
         request.MinFreeDiskBytes,
         request.CpuThreadLimit,
         request.LibraryScanIntervalHours,
@@ -1440,18 +1427,8 @@ static string ResolveConfigDirectory(IHostEnvironment environment)
         : Path.Combine(environment.ContentRootPath, "config");
 }
 
-static bool TryParseTime(string? value, out TimeOnly time)
-{
-    time = default;
-    return value is not null &&
-        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
-}
-
 internal sealed record SettingsDto(
     int MaxConcurrentJobs,
-    bool ScheduleEnabled,
-    string? ScheduleWindowStart,
-    string? ScheduleWindowEnd,
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     int LibraryScanIntervalHours,
@@ -1476,9 +1453,6 @@ internal sealed record SettingsDto(
 {
     public static SettingsDto From(QueueSettings settings) => new(
         settings.MaxConcurrentJobs,
-        settings.ScheduleEnabled,
-        FormatTime(settings.ScheduleWindowStart),
-        FormatTime(settings.ScheduleWindowEnd),
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
         settings.LibraryScanIntervalHours,
@@ -1500,8 +1474,6 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.ImageMetadataGateEnabled,
         settings.ReplacementAllowCrossFilesystem,
         settings.ReplacementQuarantineRetentionDays);
-
-    private static string FormatTime(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
 }
 
 internal sealed record QueueStatusDto(
@@ -1509,9 +1481,6 @@ internal sealed record QueueStatusDto(
     string? BlockedReason,
     int RunningJobs,
     int MaxConcurrentJobs,
-    bool ScheduleEnabled,
-    string ScheduleWindowStart,
-    string ScheduleWindowEnd,
     long MinFreeDiskBytes,
     int CpuThreadLimit,
     string EncoderMode,
@@ -1524,17 +1493,12 @@ internal sealed record QueueStatusDto(
         status.BlockedReason,
         status.RunningJobs,
         status.MaxConcurrentJobs,
-        status.ScheduleEnabled,
-        FormatTime(status.ScheduleWindowStart),
-        FormatTime(status.ScheduleWindowEnd),
         status.MinFreeDiskBytes,
         status.CpuThreadLimit,
         status.EncoderMode.ToString(),
         status.HardwareAccelerated,
         status.FreeDiskBytes,
         status.WorkRoot);
-
-    private static string FormatTime(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
 }
 
 internal sealed record JellyfinConnectRequest(string? BaseUrl);

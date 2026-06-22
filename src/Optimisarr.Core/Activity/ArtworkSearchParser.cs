@@ -10,16 +10,17 @@ namespace Optimisarr.Core.Activity;
 public static class ArtworkSearchParser
 {
     /// <summary>
-    /// From a Plex <c>/search</c> response, the relative <c>art</c> (backdrop) path of the best
-    /// match, e.g. <c>/library/metadata/4492/art/1782109387</c>. Null when nothing has art.
+    /// From a Plex search response, the relative <c>art</c> (backdrop) path of the best match, e.g.
+    /// <c>/library/metadata/4492/art/1782109387</c>. Null when nothing has art. Handles both the
+    /// legacy <c>/search</c> shape (results directly under <c>MediaContainer.Metadata</c>) and the
+    /// <c>/hubs/search</c> shape (results grouped under <c>MediaContainer.Hub[].Metadata</c>) — many
+    /// servers' <c>/search</c> returns only providers, so we query <c>/hubs/search</c>.
     /// </summary>
     public static string? PlexArtPath(string? json, bool isTv, int? year)
     {
         var root = TryRoot(json);
         if (root is not { } element
-            || !element.TryGetProperty("MediaContainer", out var container)
-            || !container.TryGetProperty("Metadata", out var items)
-            || items.ValueKind != JsonValueKind.Array)
+            || !element.TryGetProperty("MediaContainer", out var container))
         {
             return null;
         }
@@ -27,7 +28,8 @@ public static class ArtworkSearchParser
         string? typeMatchYear = null;
         string? typeMatch = null;
         string? anyArt = null;
-        foreach (var item in items.EnumerateArray())
+
+        foreach (var item in PlexMetadataItems(container))
         {
             var art = GetString(item, "art");
             if (string.IsNullOrEmpty(art))
@@ -51,6 +53,33 @@ public static class ArtworkSearchParser
         }
 
         return typeMatchYear ?? typeMatch ?? anyArt;
+    }
+
+    // Flattens result items from both Plex search shapes: top-level Metadata (/search) and
+    // Hub[].Metadata (/hubs/search).
+    private static IEnumerable<JsonElement> PlexMetadataItems(JsonElement container)
+    {
+        if (container.TryGetProperty("Metadata", out var direct) && direct.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in direct.EnumerateArray())
+            {
+                yield return item;
+            }
+        }
+
+        if (container.TryGetProperty("Hub", out var hubs) && hubs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var hub in hubs.EnumerateArray())
+            {
+                if (hub.TryGetProperty("Metadata", out var items) && items.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in items.EnumerateArray())
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>

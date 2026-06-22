@@ -9,15 +9,6 @@ public static class SettingKeys
     /// <summary>Maximum number of transcode jobs allowed to run at once across all libraries.</summary>
     public const string MaxConcurrentJobs = "queue.maxConcurrentJobs";
 
-    /// <summary>Whether new transcode jobs may start only inside a processing window.</summary>
-    public const string ScheduleEnabled = "queue.schedule.enabled";
-
-    /// <summary>Local time at which the processing window starts, formatted HH:mm.</summary>
-    public const string ScheduleWindowStart = "queue.schedule.windowStart";
-
-    /// <summary>Local time at which the processing window ends, formatted HH:mm.</summary>
-    public const string ScheduleWindowEnd = "queue.schedule.windowEnd";
-
     /// <summary>Minimum free bytes on the work filesystem before new jobs may start.</summary>
     public const string MinFreeDiskBytes = "queue.minFreeDiskBytes";
 

@@ -34,12 +34,39 @@ public sealed class ArtworkSearchParserTests
         Assert.Equal("/show/art", ArtworkSearchParser.PlexArtPath(json, isTv: false, year: null));
     }
 
+    // Shape confirmed against a real Plex /hubs/search response: results are grouped under
+    // MediaContainer.Hub[].Metadata rather than a top-level Metadata array. (Plain /search on the
+    // same server returns only providers, so the parser must handle the hubs shape.)
+    private const string PlexHubsJson = """
+    { "MediaContainer": { "size": 2, "Hub": [
+      { "type": "tag", "Metadata": [] },
+      { "type": "movie", "Metadata": [
+        { "type": "movie", "title": "Jurassic World: Dominion", "year": 2022, "art": "/library/metadata/3117/art/1781507082" }
+      ] }
+    ] } }
+    """;
+
+    [Fact]
+    public void Plex_reads_results_from_the_hubs_search_shape()
+    {
+        Assert.Equal("/library/metadata/3117/art/1781507082",
+            ArtworkSearchParser.PlexArtPath(PlexHubsJson, isTv: false, year: 2022));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("{}")]
     [InlineData("not json")]
     public void Plex_returns_null_for_bad_payloads(string json)
     {
+        Assert.Null(ArtworkSearchParser.PlexArtPath(json, isTv: false, year: null));
+    }
+
+    [Fact]
+    public void Plex_returns_null_when_search_yields_only_providers()
+    {
+        // A /search response with no Metadata and no Hub results — must not throw, must yield null.
+        var json = """{ "MediaContainer": { "size": 4, "Provider": [ { "key": "/system/search" } ] } }""";
         Assert.Null(ArtworkSearchParser.PlexArtPath(json, isTv: false, year: null));
     }
 

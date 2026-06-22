@@ -10,6 +10,10 @@
   (`MediaTitleParser`), the server is searched (`ArtworkSearchParser`), and the resolved URL is
   cached. Fully optional and graceful: no connected server, no match, or a music/photo job simply
   shows the plain hero. All matching/parsing logic is pure and unit-tested.
+- **Fix: Plex backdrops never resolved.** Plex's plain `/search?query=` returns only search
+  *providers* (no `Metadata`) on current server versions, so the lookup always came back empty. The
+  service now queries `/hubs/search`, and `ArtworkSearchParser` reads results from both the
+  top-level `Metadata` and the `Hub[].Metadata` shapes.
 
 ### Queue hero + Verification detail sheet
 
@@ -31,18 +35,21 @@
 
 ### Scheduling rework: separate scan / auto-optimise / auto-replace
 
-The old model welded library scanning to the once-a-night auto-enqueue window, which was
-confusing and meant files dropped in mid-day weren't seen until the next window. The three concerns
-are now independent:
+The old model welded library scanning to the once-a-night auto-enqueue window and added a separate
+*global* processing window on top, which was confusing. Global settings now control **one** thing —
+how often libraries are scanned — and everything about *when work happens* lives per-library:
 
-- **Library scan = global, on an interval.** A new `LibraryScanWorker` rescans every enabled
-  library every *N* hours (Settings → General → **Library scan interval**, default 1h, configurable).
-  Scanning is idempotent and probing stays continuous, so the inventory is always current regardless
-  of any window. Scanning is **removed from auto-enqueue**.
-- **Per-library "Optimise automatically" + window = when files are queued.** The window now means
-  *when eligible files are auto-enqueued*, and they're queued **continuously while in-window** (so a
-  newly-eligible file doesn't wait a whole day). The window inputs are shown only when the toggle is
-  on. The global **processing window** still governs when jobs actually run.
+- **Library scan = global, on an interval.** A `LibraryScanWorker` rescans every enabled library
+  every *N* hours (Settings → General → **Library scan interval**, default 1h, configurable) for file
+  updates and re-probes. Scanning is idempotent and probing stays continuous, so the inventory is
+  always current. This is the **only** scheduling setting in global settings.
+- **The global processing window is removed.** Jobs you queue manually run whenever the queue can
+  start one (concurrency limit + disk/activity gates); there is no global time gate anymore.
+- **Per-library "Optimise automatically" + window = when files are enqueued *and* run.** Inside a
+  library's window its eligible files are auto-enqueued **and** dispatched continuously; outside the
+  window that library's jobs don't start (running jobs are never interrupted). Libraries without
+  auto-optimise have no window — their manually-queued jobs run any time. The window inputs are shown
+  only when the toggle is on.
 - **New per-library "Replace automatically when verified" toggle.** When on, a job that passes every
   verification gate is replaced without the manual "Replace" click. The original is still quarantined
   first and is fully rollback-able (kept for the quarantine-retention period), so the safety model is

@@ -27,9 +27,6 @@ public sealed class SettingsStoreTests : IDisposable
         var settings = await new SettingsStore(db).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(1, settings.MaxConcurrentJobs);
-        Assert.False(settings.ScheduleEnabled);
-        Assert.Equal(new TimeOnly(0, 0), settings.ScheduleWindowStart);
-        Assert.Equal(new TimeOnly(0, 0), settings.ScheduleWindowEnd);
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
         Assert.Equal(1, settings.LibraryScanIntervalHours);
@@ -58,9 +55,6 @@ public sealed class SettingsStoreTests : IDisposable
         {
             await new SettingsStore(db).SetQueueSettingsAsync(new QueueSettings(
                 MaxConcurrentJobs: 2,
-                ScheduleEnabled: true,
-                ScheduleWindowStart: new TimeOnly(22, 0),
-                ScheduleWindowEnd: new TimeOnly(6, 30),
                 MinFreeDiskBytes: 50L * 1024 * 1024 * 1024,
                 CpuThreadLimit: 2,
                 LibraryScanIntervalHours: 6,
@@ -89,9 +83,6 @@ public sealed class SettingsStoreTests : IDisposable
         var settings = await new SettingsStore(readDb).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(2, settings.MaxConcurrentJobs);
-        Assert.True(settings.ScheduleEnabled);
-        Assert.Equal(new TimeOnly(22, 0), settings.ScheduleWindowStart);
-        Assert.Equal(new TimeOnly(6, 30), settings.ScheduleWindowEnd);
         Assert.Equal(50L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(2, settings.CpuThreadLimit);
         Assert.Equal(6, settings.LibraryScanIntervalHours);
@@ -122,9 +113,6 @@ public sealed class SettingsStoreTests : IDisposable
         {
             db.AppSettings.AddRange(
                 new AppSetting { Key = SettingKeys.MaxConcurrentJobs, Value = "0" },
-                new AppSetting { Key = SettingKeys.ScheduleEnabled, Value = "not-a-bool" },
-                new AppSetting { Key = SettingKeys.ScheduleWindowStart, Value = "25:99" },
-                new AppSetting { Key = SettingKeys.ScheduleWindowEnd, Value = "6pm" },
                 new AppSetting { Key = SettingKeys.MinFreeDiskBytes, Value = "-1" },
                 new AppSetting { Key = SettingKeys.CpuThreadLimit, Value = "-2" },
                 new AppSetting { Key = SettingKeys.EncoderMode, Value = "gpu-but-not-real" },
@@ -141,9 +129,6 @@ public sealed class SettingsStoreTests : IDisposable
         var settings = await new SettingsStore(readDb).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(1, settings.MaxConcurrentJobs);
-        Assert.False(settings.ScheduleEnabled);
-        Assert.Equal(new TimeOnly(0, 0), settings.ScheduleWindowStart);
-        Assert.Equal(new TimeOnly(0, 0), settings.ScheduleWindowEnd);
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
         Assert.Equal(1, settings.LibraryScanIntervalHours);

@@ -6,31 +6,21 @@ namespace Optimisarr.Core.Scheduling;
 public sealed record DispatchDecision(bool CanStart, string? BlockedReason);
 
 /// <summary>
-/// Pure policy for whether the queue may start new work: it must be inside the
-/// configured processing window, no watched media server may be streaming, and
-/// there must be enough free disk. No clocks, no disk I/O, no HTTP — the caller
-/// passes the current local time, the measured service-activity signal, and measured
-/// free space in, so the decision is deterministic and unit tested. Running jobs are
-/// never interrupted by this gate; it only governs starting new ones.
+/// Pure global policy for whether the queue may start new work: no watched media server may be
+/// streaming, and there must be enough free disk. <em>When</em> a given library's jobs may run is a
+/// per-library concern (its auto-optimise window), applied by the dispatcher with
+/// <see cref="WithinWindow"/> — there is no global processing window. No clocks, no disk I/O, no
+/// HTTP: the caller passes the measured signals in, so the decision is deterministic and unit
+/// tested. Running jobs are never interrupted by this gate; it only governs starting new ones.
 /// </summary>
 public static class DispatchPolicyEvaluator
 {
     public static DispatchDecision Evaluate(
-        bool scheduleEnabled,
-        TimeOnly windowStart,
-        TimeOnly windowEnd,
-        TimeOnly nowLocal,
         long minFreeDiskBytes,
         long? freeDiskBytes,
         bool servicesActive = false,
         string? servicesActiveReason = null)
     {
-        if (scheduleEnabled && !WithinWindow(windowStart, windowEnd, nowLocal))
-        {
-            return new DispatchDecision(false,
-                $"Outside the processing window {windowStart:HH:mm}–{windowEnd:HH:mm}.");
-        }
-
         if (servicesActive)
         {
             return new DispatchDecision(false,
@@ -49,8 +39,8 @@ public static class DispatchPolicyEvaluator
     }
 
     // A window where start == end means "all day". A window whose end is not after
-    // its start crosses midnight (e.g. 22:00–06:00).
-    internal static bool WithinWindow(TimeOnly start, TimeOnly end, TimeOnly now)
+    // its start crosses midnight (e.g. 22:00–06:00). Used for per-library auto-optimise windows.
+    public static bool WithinWindow(TimeOnly start, TimeOnly end, TimeOnly now)
     {
         if (start == end)
         {
