@@ -30,7 +30,8 @@ Early development. What works today:
 - **ffprobe** inspection (codec, resolution, duration, tracks, media kind).
 - Optimisation for **video, audio, and still images** (images → WebP), each through
   the same candidate → transcode → verify → quarantine/rollback pipeline.
-- FFmpeg/ffprobe **tool detection** and a health endpoint.
+- FFmpeg/ffprobe **tool detection**, liveness, and readiness endpoints. Docker
+  health checks verify database access, required writable paths, and media tools.
 - Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Queue,
   Verification, Quarantine, Schedule, Settings; Tools live under Settings).
 - Queue resource controls: max concurrent jobs, CPU thread limits, processing

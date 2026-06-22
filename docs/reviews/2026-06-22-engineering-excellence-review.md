@@ -78,9 +78,9 @@ restores the original, and restart/cross-filesystem behaviour is safe.
 
 ### P1 — distinguish liveness from readiness
 
-`/api/health` returns process metadata but does not indicate migration completion,
-tool availability, critical path access, or worker readiness. The Dockerfile has
-no `HEALTHCHECK`.
+Resolved in `f52af35`: `/api/ready` now checks database connectivity, required
+writable paths, and FFmpeg/ffprobe availability; Docker health checks use it.
+Worker-specific readiness and richer startup diagnostics remain future work.
 
 **Recommendation:** add liveness and readiness endpoints, a Docker health check,
 and deployment documentation for readiness failures. Readiness should cover

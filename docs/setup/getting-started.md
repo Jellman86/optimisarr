@@ -11,7 +11,12 @@ Copy [`compose.example.yml`](../../compose.example.yml), set host paths, then:
 ```bash
 docker compose up -d
 curl http://localhost:8787/api/health
+curl http://localhost:8787/api/ready
 ```
+
+The first command confirms the web process is alive. The readiness endpoint
+additionally confirms that the database, FFmpeg/ffprobe, and required writable
+paths are available; wait for it to succeed before using the queue.
 
 Keep `/data`, `/work`, and `/trash` on one filesystem when possible so
 replacement can use atomic moves. Ensure `PUID` and `PGID` can write all four

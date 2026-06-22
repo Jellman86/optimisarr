@@ -3,9 +3,17 @@
 ## Start with health and logs
 
 ```bash
+# Liveness: the web process is responding.
 curl http://localhost:8787/api/health
+
+# Readiness: SQLite, required writable paths, FFmpeg, and ffprobe are usable.
+curl http://localhost:8787/api/ready
 docker compose logs --tail=200 optimisarr
 ```
+
+`/api/ready` returns `503` with a reason when Optimisarr cannot safely start
+work. Check the reported path ownership/mount, database, or missing tool before
+placing jobs in the queue. Docker's health check uses this readiness endpoint.
 
 Use **Settings → Tools** to verify the FFmpeg/ffprobe executable and the actual
 encoder test result. For a failed job, open Queue details and read the FFmpeg
