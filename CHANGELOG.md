@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Clearer ffmpeg failure reasons
+
+- A failed transcode now shows an explained reason for known error classes instead of the raw
+  ffmpeg tail. First case: a Blu-ray/DVD source with **image-based subtitles** (PGS/VobSub) going
+  to an **MP4** fails with mov_text being text-only — the Queue now says exactly that and suggests
+  an MKV target container, instead of "Subtitle encoding currently only possible from text to text
+  … Invalid argument". Backed by a pure, unit-tested `FfmpegErrorInterpreter` that falls back to
+  the raw output for anything unrecognised.
+
 ### Per-library access check + graceful replace on permission errors
 
 - **Replace no longer 500s on a permissions problem.** A media folder the container can't write

@@ -307,7 +307,11 @@ public sealed class QueueDispatcher(
             else
             {
                 DeleteWorkOutput(spec.OutputPath);
-                var error = run.Error ?? $"ffmpeg exited with code {run.ExitCode}";
+                // Translate known ffmpeg failures into a clear, actionable reason; fall back to the
+                // raw stderr tail for anything unrecognised.
+                var error = FfmpegErrorInterpreter.Explain(run.Error)
+                    ?? run.Error
+                    ?? $"ffmpeg exited with code {run.ExitCode}";
                 await CompleteAsync(jobId, JobStatus.Failed, error: error);
                 await NotifyJobFailedAsync(jobId, error);
             }
