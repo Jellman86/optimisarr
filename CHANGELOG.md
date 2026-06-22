@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Cover art no longer fails the encode
+
+- **Files with embedded cover art / poster thumbnails now optimise instead of failing.** A remux
+  often carries several mjpeg/png "video" streams (attached pictures). The old `-map 0 -c:v <enc>`
+  routed those tiny stills through the hardware encoder, which rejects them with `-22 (Invalid
+  argument)` and aborts the whole job ("Could not open encoder before EOF" → nothing written). The
+  builder now copies every stream by default and re-encodes only the primary video (`-c copy` +
+  `-c:v:0`/`-filter:v:0`), so cover art, attachments and data are preserved untouched. Verified
+  live against a Remux with four embedded covers.
+
+### Queue hero & dispatch tidy-up
+
+- The "now processing" hero shows the **file name as the title with the folder path as a small
+  subtitle**, instead of the whole path as the heading.
+- The steady-state "Dispatch ready · N running · work free" line is **removed** — dispatch state is
+  now surfaced only when it needs attention (paused, or a backlog waiting on a closed library
+  window).
+
 ### Discord notifications
 
 - **Discord is now a first-class notification type** in Settings → Notifications, posting a native

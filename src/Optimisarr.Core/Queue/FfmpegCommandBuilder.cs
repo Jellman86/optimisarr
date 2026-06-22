@@ -180,13 +180,23 @@ public static class FfmpegCommandBuilder
                     break;
             }
         }
+        // Copy every stream by default, then re-encode only the primary video (v:0). Embedded
+        // cover-art / poster images (extra mjpeg/png video streams with an attached-pic disposition)
+        // and any attachments/data thus stay copied: routing those tiny stills through a hardware
+        // encoder fails with "Invalid argument" and aborts the whole job. Remuxes commonly carry
+        // several such streams. Audio and subtitles below override this blanket copy as needed.
+        args.Add("-c");
+        args.Add("copy");
+
         if (filters.Count > 0)
         {
-            args.Add("-vf");
+            // Filter only the primary video; a filtered stream cannot also be stream-copied, so
+            // applying this to the cover-art streams would force them into the encoder too.
+            args.Add("-filter:v:0");
             args.Add(string.Join(',', filters));
         }
 
-        args.Add("-c:v");
+        args.Add("-c:v:0");
         args.Add(encoder!);
 
         AppendQualityArguments(args, family, spec.Crf);

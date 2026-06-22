@@ -200,7 +200,7 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: codec));
 
-        var vIndex = IndexOf(args, "-c:v");
+        var vIndex = IndexOf(args, "-c:v:0");
         Assert.Equal(encoder, args[vIndex + 1]);
     }
 
@@ -209,8 +209,23 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "hevc"), videoEncoder: "hevc_nvenc");
 
-        var vIndex = IndexOf(args, "-c:v");
+        var vIndex = IndexOf(args, "-c:v:0");
         Assert.Equal("hevc_nvenc", args[vIndex + 1]);
+    }
+
+    [Fact]
+    public void Re_encode_copies_all_streams_and_encodes_only_the_primary_video()
+    {
+        // Embedded cover art is an extra mjpeg/png video stream; encoding it through a hardware
+        // encoder fails and aborts the job. The baseline "-c copy" keeps every stream (cover art,
+        // attachments, data) and only v:0 (the real video) is re-encoded.
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: "hevc"));
+
+        var cIndex = IndexOf(args, "-c");
+        Assert.Equal("copy", args[cIndex + 1]);
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v:0") + 1]);
+        // The blanket "-c:v" (all video) is never used, which is what would catch the cover art.
+        Assert.DoesNotContain("-c:v", args);
     }
 
     [Fact]
@@ -239,7 +254,7 @@ public sealed class FfmpegCommandBuilderTests
         Assert.True(deviceIndex < IndexOf(args, "-i"));
 
         // Frames are uploaded to the GPU before the encoder.
-        var vfIndex = IndexOf(args, "-vf");
+        var vfIndex = IndexOf(args, "-filter:v:0");
         Assert.Contains("format=nv12,hwupload", args[vfIndex + 1]);
 
         // VAAPI uses CQP/-qp, never -crf, and has no -preset.
@@ -254,7 +269,7 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true), videoEncoder: "hevc_vaapi");
 
-        var chain = args[IndexOf(args, "-vf") + 1];
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
         // Tone-map to SDR happens in software, then the result is uploaded to the GPU.
         Assert.True(chain.IndexOf("tonemap", StringComparison.Ordinal)
             < chain.IndexOf("hwupload", StringComparison.Ordinal));
@@ -269,7 +284,7 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("qsv=hw", args[initIndex + 1]);
         Assert.True(initIndex < IndexOf(args, "-i"));
 
-        var vfIndex = IndexOf(args, "-vf");
+        var vfIndex = IndexOf(args, "-filter:v:0");
         Assert.Contains("format=qsv", args[vfIndex + 1]);
 
         Assert.DoesNotContain("-crf", args);
@@ -289,9 +304,9 @@ public sealed class FfmpegCommandBuilderTests
         Assert.True(hwaccelIndex < IndexOf(args, "-i"));
 
         // Frames already live on the GPU, so there is no upload filter at all.
-        Assert.DoesNotContain("-vf", args);
+        Assert.DoesNotContain("-filter:v:0", args);
         // The encoder is still QSV with its constant-quality knob.
-        Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v:0") + 1]);
         Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
     }
 
@@ -307,8 +322,8 @@ public sealed class FfmpegCommandBuilderTests
         Assert.True(hwaccelIndex < IndexOf(args, "-i"));
         Assert.True(IndexOf(args, "-vaapi_device") < IndexOf(args, "-i"));
 
-        Assert.DoesNotContain("-vf", args);
-        Assert.Equal("hevc_vaapi", args[IndexOf(args, "-c:v") + 1]);
+        Assert.DoesNotContain("-filter:v:0", args);
+        Assert.Equal("hevc_vaapi", args[IndexOf(args, "-c:v:0") + 1]);
     }
 
     [Fact]
@@ -320,7 +335,7 @@ public sealed class FfmpegCommandBuilderTests
             Reencode(tonemap: true), videoEncoder: "hevc_qsv", hardwareDecode: true);
 
         Assert.DoesNotContain("-hwaccel", args);
-        var chain = args[IndexOf(args, "-vf") + 1];
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
         Assert.Contains("tonemap", chain);
         Assert.Contains("hwupload", chain);
     }
@@ -333,7 +348,7 @@ public sealed class FfmpegCommandBuilderTests
             Reencode(videoCodec: "hevc"), hardwareDecode: true);
 
         Assert.DoesNotContain("-hwaccel", args);
-        Assert.Equal("libx265", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v:0") + 1]);
     }
 
     [Fact]
@@ -343,7 +358,7 @@ public sealed class FfmpegCommandBuilderTests
             Reencode(crf: 24), videoEncoder: "hevc_qsv", hardwareDecode: false);
 
         Assert.DoesNotContain("-hwaccel", args);
-        Assert.Contains("format=qsv", args[IndexOf(args, "-vf") + 1]);
+        Assert.Contains("format=qsv", args[IndexOf(args, "-filter:v:0") + 1]);
     }
 
     [Fact]
@@ -422,7 +437,7 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true));
 
-        var vfIndex = IndexOf(args, "-vf");
+        var vfIndex = IndexOf(args, "-filter:v:0");
         Assert.True(vfIndex >= 0);
         Assert.Contains("tonemap", args[vfIndex + 1]);
     }
@@ -432,7 +447,7 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(Reencode(tonemap: false));
 
-        Assert.DoesNotContain("-vf", args);
+        Assert.DoesNotContain("-filter:v:0", args);
     }
 
     [Fact]
@@ -496,7 +511,7 @@ public sealed class FfmpegCommandBuilderTests
         var bitrateIndex = IndexOf(args, "-b:a");
         Assert.Equal("160k", args[bitrateIndex + 1]);
         // Video is still re-encoded and subtitles copied.
-        Assert.Equal("libx265", args[IndexOf(args, "-c:v") + 1]);
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v:0") + 1]);
         Assert.Equal("copy", args[IndexOf(args, "-c:s") + 1]);
     }
 

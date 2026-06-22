@@ -185,6 +185,21 @@
     return /_(nvenc|qsv|vaapi|amf|videotoolbox)$/.test(encoder)
   }
 
+  // The hero shows the file name as its title (with the path demoted to a small subtitle), rather
+  // than the whole relative path. Scene separators become spaces for readability.
+  function heroTitle(path: string | null): string | null {
+    if (!path) return null
+    const base = path.replace(/\\/g, '/').split('/').pop() ?? path
+    return base.replace(/\.[^.]+$/, '').replace(/[._]+/g, ' ').trim() || null
+  }
+
+  function heroFolder(path: string | null): string | null {
+    if (!path) return null
+    const parts = path.replace(/\\/g, '/').split('/')
+    parts.pop()
+    return parts.join('/') || null
+  }
+
   // The job currently open in the detail sheet; resolved live so its progress/status stay
   // fresh, and the sheet auto-closes if the job is cleared from the list.
   let selectedJob = $derived(jobs.find((j) => j.id === selectedJobId) ?? null)
@@ -344,8 +359,11 @@
                   Now {job.status === 'Transcoding' ? 'encoding' : job.status === 'Probing' ? 'probing' : 'verifying'}
                 </div>
                 <div class="truncate font-medium text-slate-800 dark:text-slate-100" title={job.relativePath ?? ''}>
-                  {job.relativePath ?? `Job ${job.id}`}
+                  {heroTitle(job.relativePath) ?? `Job ${job.id}`}
                 </div>
+                {#if heroFolder(job.relativePath)}
+                  <div class="truncate text-xs text-slate-400 dark:text-slate-500">{heroFolder(job.relativePath)}</div>
+                {/if}
               </div>
               {#if job.videoEncoder}
                 <span class="badge {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
@@ -397,17 +415,15 @@
   </div>
 {/if}
 
+<!-- Only surface dispatch state when it needs attention (paused, or a backlog stalled on a
+     closed window). The healthy "ready · N running · work free" line was noise, so it's dropped. -->
 {#if queueStatus && !queueStatus.canStart}
   <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
     Queue dispatch is paused: {queueStatus.blockedReason}. Existing encodes are allowed to finish safely; this only prevents new jobs from starting.
   </div>
-{:else if queueStatus}
-  <div class="card mb-4 p-3 text-xs text-slate-500 dark:text-slate-400">
-    Dispatch ready · {queueStatus.runningJobs}/{queueStatus.maxConcurrentJobs} running · work free:
-    {queueStatus.freeDiskBytes === null ? 'unknown' : formatSize(queueStatus.freeDiskBytes)}
-    {#if queueStatus.waitingReason}
-      <span class="text-amber-700 dark:text-amber-400"> · {queueStatus.waitingReason}</span>
-    {/if}
+{:else if queueStatus?.waitingReason}
+  <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+    {queueStatus.waitingReason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.
   </div>
 {/if}
 
