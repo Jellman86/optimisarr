@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Queue hero artwork backdrop
+
+- The "now processing" hero shows a faint **backdrop image** of the title being encoded, pulled from
+  the first connected media server (Plex `art`, Jellyfin/Emby backdrop) and **proxied** server-side
+  so the browser never sees the token. The file path is parsed to a title/year
+  (`MediaTitleParser`), the server is searched (`ArtworkSearchParser`), and the resolved URL is
+  cached. Fully optional and graceful: no connected server, no match, or a music/photo job simply
+  shows the plain hero. All matching/parsing logic is pure and unit-tested.
+
 ### Queue hero + Verification detail sheet
 
 - **"Now processing" hero on the Queue page.** A card above the table shows what's being worked on

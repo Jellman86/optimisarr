@@ -190,6 +190,9 @@
     jobs.filter((j) => j.status === 'Transcoding' || j.status === 'Probing' || j.status === 'Verifying'),
   )
   let queuedCount = $derived(jobs.filter((j) => j.status === 'Queued').length)
+  // Whether the hero backdrop image resolved for a job id (from a connected media server). A 404
+  // (no server / no match) leaves it false and the hero stays plain.
+  let artworkLoaded = $state<Record<number, boolean>>({})
 
   // The table scrolls internally and fills the space below the page chrome; when the detail
   // sheet is open its measured height is subtracted so rows stay reachable above it (the same
@@ -292,12 +295,23 @@
   <Banner kind="error" class="mb-4">{error}</Banner>
 {/if}
 
-<!-- Hero: what's being processed right now, with live progress and CPU/GPU usage. Hidden only
-     when the queue is completely empty (the empty-state card covers that case). -->
-{#if !loading && (processingJobs.length > 0 || jobs.length > 0)}
-  <div class="card mb-4 p-4">
-    {#if processingJobs.length > 0}
-      <div class="space-y-4">
+<!-- Hero: what's being processed right now, with live progress, CPU/GPU usage, and a backdrop
+     pulled from a connected media server (when available). -->
+{#if !loading && processingJobs.length > 0}
+  {@const heroId = processingJobs[0].id}
+  {@const heroArt = artworkLoaded[heroId]}
+  <div class="card relative mb-4 overflow-hidden">
+    <img
+      src="/api/jobs/{heroId}/artwork"
+      alt=""
+      class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 {heroArt ? 'opacity-20 dark:opacity-30' : 'opacity-0'}"
+      onload={() => (artworkLoaded[heroId] = true)}
+      onerror={() => (artworkLoaded[heroId] = false)}
+    />
+    {#if heroArt}
+      <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/80 to-white/40 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-900/40"></div>
+    {/if}
+    <div class="relative space-y-4 p-4">
         {#each processingJobs as job (job.id)}
           {@const telemetry = live[job.id]}
           {@const gpu = job.videoEncoder ? isGpuEncoder(job.videoEncoder) : false}
@@ -348,12 +362,13 @@
           </div>
         {/each}
       </div>
-    {:else}
-      <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-        <Icon name="pause" class="h-4 w-4 text-slate-400" />
-        <span>Nothing processing right now.{#if queuedCount > 0} {queuedCount.toLocaleString()} job{queuedCount === 1 ? '' : 's'} queued and waiting to start.{/if}</span>
-      </div>
-    {/if}
+  </div>
+{:else if !loading && jobs.length > 0}
+  <div class="card mb-4 p-4">
+    <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+      <Icon name="pause" class="h-4 w-4 text-slate-400" />
+      <span>Nothing processing right now.{#if queuedCount > 0} {queuedCount.toLocaleString()} job{queuedCount === 1 ? '' : 's'} queued and waiting to start.{/if}</span>
+    </div>
   </div>
 {/if}
 

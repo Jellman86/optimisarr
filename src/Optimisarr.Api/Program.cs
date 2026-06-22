@@ -60,6 +60,8 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ActivityMonitor>();
 builder.Services.AddSingleton<ActiveEncodeRegistry>();
+// Singleton so its resolved-artwork cache survives across requests.
+builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService<SystemMetricsBroadcaster>();
@@ -1172,6 +1174,25 @@ app.MapGet("/api/preview/{jobId:int}/content", async (
 app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await JobQueries.ListAsync(db, cancellationToken)))
 .WithName("ListJobs");
+
+// Backdrop artwork for a job's title, proxied from the first connected media server. 404 when
+// there's no server, no match, or the file isn't film/TV — the hero just shows no background then.
+app.MapGet("/api/jobs/{id:int}/artwork", async (
+    int id,
+    ArtworkService artwork,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var result = await artwork.GetBackdropAsync(id, cancellationToken);
+    if (result is null)
+    {
+        return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "public, max-age=86400";
+    return Results.File(result.Value.Bytes, result.Value.ContentType);
+})
+.WithName("JobArtwork");
 
 // Remove finished jobs (completed, failed, cancelled) to declutter the queue. A job whose
 // original is still in quarantine is the live rollback path and is kept; clearing it would
