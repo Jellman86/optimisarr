@@ -22,6 +22,8 @@ Keep `/data`, `/work`, and `/trash` on one filesystem when possible so
 replacement can use atomic moves. Ensure `PUID` and `PGID` can write all four
 mounts.
 
+![Libraries page in dark mode, showing media types, preset, access status, and scan controls](../images/optimisarr-libraries-dark.png)
+
 ## First workflow
 
 1. Add a library below `/data` and select its media type and rule profile.

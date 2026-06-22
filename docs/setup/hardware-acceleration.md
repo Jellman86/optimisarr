@@ -3,6 +3,8 @@
 Use **Settings → Tools** after deployment. Optimisarr verifies each available
 encoder with a real test encode; a GPU device node alone is not sufficient.
 
+![Tools tab in dark mode, showing FFmpeg, device, and encoder availability](../images/optimisarr-tools-dark.png)
+
 ## Intel and AMD
 
 Map `/dev/dri` and set `RENDER_GID` to the host render-node group:
