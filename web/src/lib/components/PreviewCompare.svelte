@@ -8,6 +8,7 @@
   import { formatSize, formatDuration } from '../format'
   import VerificationChecks from './VerificationChecks.svelte'
   import MediaCompare from './MediaCompare.svelte'
+  import Icon from './Icon.svelte'
 
   let { mediaFileId, mediaKind, relativePath, onClose }: {
     mediaFileId: number
@@ -90,6 +91,14 @@
 
   let isRunning = $derived(preview !== null && !TERMINAL.includes(preview.status))
 
+  // The file name is the heading; the full path is a subheader. Scene separators become spaces.
+  let title = $derived(
+    ((relativePath.replace(/\\/g, '/').split('/').pop() ?? relativePath)
+      .replace(/\.[^.]+$/, '')
+      .replace(/[._]+/g, ' ')
+      .trim()) || relativePath,
+  )
+
   // Short status line for the minimised widget.
   let statusLabel = $derived(
     error
@@ -109,11 +118,15 @@
   <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
-        <div class="text-xs font-semibold text-slate-700 dark:text-slate-200">Preview · {statusLabel}</div>
-        <div class="truncate font-mono text-[11px] text-slate-400" title={relativePath}>{relativePath}</div>
+        <div class="truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={title}>{title}</div>
+        <div class="text-[11px] text-slate-400">Preview · {statusLabel}</div>
       </div>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs" onclick={() => (minimized = false)} title="Expand">Expand</button>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={close} title="Close and discard the preview">✕</button>
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={() => (minimized = false)} title="Expand" aria-label="Expand">
+        <Icon name="chevron" class="h-4 w-4 rotate-180" />
+      </button>
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-red-600 dark:text-red-400" onclick={close} title="Close and discard the preview" aria-label="Close">
+        <Icon name="x" class="h-4 w-4" />
+      </button>
     </div>
     {#if error}
       <p class="mt-2 text-[11px] text-red-600 dark:text-red-400">{error}</p>
@@ -138,14 +151,19 @@
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
   >
-    <div class="mb-4 flex items-start justify-between gap-4">
-      <div>
-        <h2 class="text-lg font-semibold">Preview optimisation</h2>
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">Preview optimisation</div>
+        <h2 class="truncate text-lg font-semibold" title={title}>{title}</h2>
         <p class="truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={relativePath}>{relativePath}</p>
       </div>
-      <div class="flex flex-shrink-0 items-center gap-2">
-        <button class="btn" onclick={() => (minimized = true)} title="Keep it running in the background">Minimise</button>
-        <button class="btn" onclick={close}>Close</button>
+      <div class="flex flex-shrink-0 items-center gap-1">
+        <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title="Minimise — keep running in the background" aria-label="Minimise">
+          <Icon name="minus" class="h-4 w-4" />
+        </button>
+        <button class="btn btn-ghost px-2" onclick={close} title="Close and discard the preview" aria-label="Close">
+          <Icon name="x" class="h-4 w-4" />
+        </button>
       </div>
     </div>
 
