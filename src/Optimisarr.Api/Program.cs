@@ -100,8 +100,26 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Content-hashed assets (Vite output under /assets) can cache forever; index.html must never be
+// cached, or a browser keeps loading the previous deploy's asset hashes and never sees new UI.
+var staticFileOptions = new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        var headers = ctx.Context.Response.Headers;
+        if (ctx.File.Name.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            headers.CacheControl = "no-cache, no-store, must-revalidate";
+        }
+        else if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+        {
+            headers.CacheControl = "public, max-age=31536000, immutable";
+        }
+    },
+};
+
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(staticFileOptions);
 
 app.MapGet("/api/health", () => Results.Ok(new
 {
@@ -1419,7 +1437,7 @@ app.MapPost("/api/replacements/{id:int}/approve", async (
 
 app.MapHub<JobsHub>("/hubs/jobs");
 
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", staticFileOptions);
 
 await app.RunAsync();
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Stale UI after a deploy fixed
+
+- **`index.html` is now served with `no-cache`, and the content-hashed assets with a one-year
+  immutable cache.** Previously the SPA entry point could be cached by the browser, so after pulling
+  a new image users kept loading the previous deploy's asset hashes and never saw the new UI without
+  a manual hard-refresh. New deploys are now picked up automatically.
+
 ### Preview can be minimised
 
 - **The optimisation preview (Inventory → Preview) can now be minimised** to a small floating widget
