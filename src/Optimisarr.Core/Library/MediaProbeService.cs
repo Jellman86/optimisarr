@@ -17,6 +17,7 @@ public sealed record MediaProbeResult(
     IReadOnlyList<string> AudioCodecs,
     int AudioTrackCount,
     int SubtitleTrackCount,
+    bool HasImageSubtitles,
     bool IsHdr,
     int MaxAudioChannels,
     int MaxAudioSampleRate,
@@ -31,7 +32,7 @@ public sealed record MediaProbeResult(
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, 0, 0, null,
+        new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, error);
 }
 
@@ -142,6 +143,7 @@ public sealed class MediaProbeService
         var hasRealVideoStream = false;
         var audioCodecs = new List<string>();
         var subtitleCount = 0;
+        var hasImageSubtitles = false;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
         int? audioBitrateKbps = null;
@@ -219,6 +221,10 @@ public sealed class MediaProbeService
                         break;
                     case "subtitle":
                         subtitleCount++;
+                        if (SubtitleClassifier.IsImageBased(codecName))
+                        {
+                            hasImageSubtitles = true;
+                        }
                         break;
                 }
             }
@@ -243,6 +249,7 @@ public sealed class MediaProbeService
             audioCodecs,
             audioCodecs.Count,
             subtitleCount,
+            hasImageSubtitles,
             isHdr,
             maxAudioChannels,
             maxAudioSampleRate,

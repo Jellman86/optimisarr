@@ -21,6 +21,29 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void Falls_back_to_mkv_when_an_mp4_target_meets_image_subtitles()
+    {
+        // MP4 can't store PGS/VobSub, so a source with image subtitles must go to MKV instead.
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            kind: MediaKind.Video, sourceHasImageSubtitles: true);
+
+        Assert.Equal("/work/Movie/Movie.mkv", spec.OutputPath);
+    }
+
+    [Fact]
+    public void Keeps_the_mp4_target_when_there_are_no_image_subtitles()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            kind: MediaKind.Video, sourceHasImageSubtitles: false);
+
+        Assert.Equal("/work/Movie/Movie.mp4", spec.OutputPath);
+    }
+
+    [Fact]
     public void An_audio_kind_resolves_to_an_audio_spec_with_the_default_target()
     {
         var spec = TranscodeSpecResolver.Resolve(

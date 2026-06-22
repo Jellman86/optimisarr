@@ -18,7 +18,8 @@ public static class TranscodeSpecResolver
         bool sourceIsHdr,
         int? crf,
         string? preset,
-        MediaKind kind = MediaKind.Video)
+        MediaKind kind = MediaKind.Video,
+        bool sourceHasImageSubtitles = false)
     {
         if (kind == MediaKind.Image)
         {
@@ -52,7 +53,13 @@ public static class TranscodeSpecResolver
                 DownmixToStereo: rules.DownmixToStereo);
         }
 
-        var outputPath = BuildOutputPath(workRoot, relativePath, rules.TargetContainer);
+        // MP4 can only carry text subtitles (mov_text). If the source has image-based subtitles
+        // (Blu-ray PGS, DVD VobSub), fall back to MKV so they're preserved by a stream copy rather
+        // than failing the encode. Any other target container already handles them.
+        var container = sourceHasImageSubtitles && IsMp4Container(rules.TargetContainer)
+            ? "mkv"
+            : rules.TargetContainer;
+        var outputPath = BuildOutputPath(workRoot, relativePath, container);
 
         // Tone-map only when re-encoding an HDR source under a library that asks for it.
         var tonemap = sourceIsHdr
@@ -77,6 +84,10 @@ public static class TranscodeSpecResolver
             // A downmix needs an audio re-encode; a copied track keeps its layout.
             DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo);
     }
+
+    /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>
+    public static bool IsMp4Container(string? container) =>
+        container?.TrimStart('.').ToLowerInvariant() is "mp4" or "m4v" or "mov";
 
     private static string BuildOutputPath(string workRoot, string relativePath, string targetContainer)
     {

@@ -386,6 +386,20 @@ public sealed class QueueDispatcher(
 
         var isPreview = job.Type == JobType.Preview;
 
+        // MP4 can't store image-based subtitles (Blu-ray PGS / DVD VobSub). When a video job
+        // targets MP4 and the file has subtitle tracks, probe the source: if any are bitmap, the
+        // resolver falls back to MKV so they're preserved instead of failing the encode. Gated so
+        // the extra ffprobe only runs when it could matter.
+        var sourceHasImageSubtitles = false;
+        if (media.MediaKind is not (MediaKind.Audio or MediaKind.Image)
+            && (media.SubtitleTrackCount ?? 0) > 0
+            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer))
+        {
+            var probe = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
+            var probeResult = await probe.ProbeAsync(media.Path, cancellationToken);
+            sourceHasImageSubtitles = probeResult.HasImageSubtitles;
+        }
+
         // Each file's output lives under a per-media-file work root so two sources that share a
         // stem but differ by extension can never resolve to the same work path and clobber each
         // other's verified output before it is moved or replaced. A preview writes under its own
@@ -400,7 +414,8 @@ public sealed class QueueDispatcher(
             media.IsHdr,
             library?.QualityCrf ?? rules.DefaultCrf,
             library?.EncoderPreset,
-            media.MediaKind);
+            media.MediaKind,
+            sourceHasImageSubtitles);
 
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an

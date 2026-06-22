@@ -2,14 +2,18 @@
 
 ## Unreleased
 
-### Clearer ffmpeg failure reasons
+### Image-based subtitles into MP4: auto-MKV + clearer errors
 
-- A failed transcode now shows an explained reason for known error classes instead of the raw
-  ffmpeg tail. First case: a Blu-ray/DVD source with **image-based subtitles** (PGS/VobSub) going
-  to an **MP4** fails with mov_text being text-only — the Queue now says exactly that and suggests
-  an MKV target container, instead of "Subtitle encoding currently only possible from text to text
-  … Invalid argument". Backed by a pure, unit-tested `FfmpegErrorInterpreter` that falls back to
-  the raw output for anything unrecognised.
+- **Sources with image-based subtitles (Blu-ray PGS / DVD VobSub) now optimise instead of
+  failing.** MP4 can only carry text subtitles (mov_text), so a remux with PGS used to fail with a
+  cryptic "Subtitle encoding currently only possible from text to text…". When a video job targets
+  MP4 and the source has bitmap subtitles, Optimisarr now muxes to **MKV** instead, preserving the
+  subtitles via a stream copy. Detection is a quick probe gated to MP4-target jobs that actually
+  have subtitle tracks; the container swap is in the pure, unit-tested `TranscodeSpecResolver`, and
+  `SubtitleClassifier` (also tested) decides which codecs are image-based.
+- **Clearer ffmpeg failure reasons generally.** A new pure, unit-tested `FfmpegErrorInterpreter`
+  translates known ffmpeg errors into actionable messages (falling back to the raw output for
+  anything unrecognised), so the Queue explains *why* a job failed and what to do.
 
 ### Per-library access check + graceful replace on permission errors
 
