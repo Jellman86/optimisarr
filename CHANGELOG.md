@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Preview can be minimised
+
+- **The optimisation preview (Inventory → Preview) can now be minimised** to a small floating widget
+  while its throwaway transcode runs, so the rest of the UI stays usable instead of being blocked by
+  the full-screen panel. The widget shows live status ("Encoding 42%", "Ready", etc.); Expand
+  restores the full comparison. Clicking away or pressing Escape now minimises rather than discards —
+  only the explicit Close stops the preview and deletes its output.
+
 ### Quarantine: shared detail sheet + clear finished
 
 - **The compare-to-approve review now opens in the shared bottom sheet** (with the table shrinking to

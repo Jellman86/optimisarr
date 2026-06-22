@@ -21,6 +21,10 @@
   let error = $state<string | null>(null)
   let closed = false
   let timer: ReturnType<typeof setTimeout> | null = null
+  // Minimised collapses the panel to a small floating widget while the transcode keeps running, so
+  // the rest of the UI stays usable. The component stays mounted (and keeps polling) either way;
+  // only an explicit Close discards the preview.
+  let minimized = $state(false)
 
   const TERMINAL = ['Completed', 'Failed']
 
@@ -85,14 +89,47 @@
   }
 
   let isRunning = $derived(preview !== null && !TERMINAL.includes(preview.status))
+
+  // Short status line for the minimised widget.
+  let statusLabel = $derived(
+    error
+      ? 'Error'
+      : !preview || preview.status === 'Queued'
+        ? 'Queuing…'
+        : preview.status === 'Transcoding'
+          ? `Encoding ${Math.round(preview.progress * 100)}%`
+          : preview.status === 'Failed'
+            ? 'Failed'
+            : 'Ready',
+  )
 </script>
 
+{#if minimized}
+  <!-- Collapsed: a small floating widget, so the rest of the UI is usable while the preview runs. -->
+  <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+    <div class="flex items-center gap-2">
+      <div class="min-w-0 flex-1">
+        <div class="text-xs font-semibold text-slate-700 dark:text-slate-200">Preview · {statusLabel}</div>
+        <div class="truncate font-mono text-[11px] text-slate-400" title={relativePath}>{relativePath}</div>
+      </div>
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs" onclick={() => (minimized = false)} title="Expand">Expand</button>
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={close} title="Close and discard the preview">✕</button>
+    </div>
+    {#if error}
+      <p class="mt-2 text-[11px] text-red-600 dark:text-red-400">{error}</p>
+    {:else if isRunning || !preview}
+      <div class="progress-track mt-2"><div class="progress-indeterminate"></div></div>
+    {:else if preview.status === 'Completed'}
+      <p class="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">✓ Ready — Expand to compare.</p>
+    {/if}
+  </div>
+{:else}
 <div
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
   role="button"
   tabindex="0"
-  onclick={close}
-  onkeydown={(e) => e.key === 'Escape' && close()}
+  onclick={() => (minimized = true)}
+  onkeydown={(e) => e.key === 'Escape' && (minimized = true)}
 >
   <div
     class="card max-h-[90vh] w-full max-w-4xl overflow-y-auto p-5"
@@ -106,7 +143,10 @@
         <h2 class="text-lg font-semibold">Preview optimisation</h2>
         <p class="truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={relativePath}>{relativePath}</p>
       </div>
-      <button class="btn flex-shrink-0" onclick={close}>Close</button>
+      <div class="flex flex-shrink-0 items-center gap-2">
+        <button class="btn" onclick={() => (minimized = true)} title="Keep it running in the background">Minimise</button>
+        <button class="btn" onclick={close}>Close</button>
+      </div>
     </div>
 
     {#if error}
@@ -187,3 +227,4 @@
     {/if}
   </div>
 </div>
+{/if}
