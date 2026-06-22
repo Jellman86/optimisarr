@@ -754,6 +754,33 @@ app.MapGet("/api/libraries", async (OptimisarrDbContext db, CancellationToken ca
 })
 .WithName("ListLibraries");
 
+// Pre-flight access check for a library's path: confirms Optimisarr can reach, read, and (most
+// importantly for safe replacement) write the folder, so a permissions problem surfaces here
+// rather than as a failed replace later.
+app.MapGet("/api/libraries/{id:int}/access", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var library = await db.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
+    if (library is null)
+    {
+        return Results.NotFound(new { error = $"No library with id {id}." });
+    }
+
+    var (exists, readable, writable) = PathAccessProbe.Probe(library.Path);
+    return Results.Ok(new
+    {
+        path = library.Path,
+        exists,
+        readable,
+        writable,
+        ok = LibraryAccessEvaluator.IsOk(exists, readable, writable),
+        message = LibraryAccessEvaluator.Describe(exists, readable, writable),
+    });
+})
+.WithName("CheckLibraryAccess");
+
 app.MapPost("/api/libraries", async (
     SaveLibraryRequest request,
     OptimisarrDbContext db,

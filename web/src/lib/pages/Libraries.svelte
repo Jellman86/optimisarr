@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Candidate, type Library, type LibraryOptions, type SaveLibrary } from '../api'
+  import { api, type Candidate, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -330,6 +330,33 @@
     }
     // Tallies are a best-effort enhancement of the list; a failure here must not blank the page.
     void loadSummaries()
+    // Proactively flag any path Optimisarr can't reach/read/write before the user hits a failure.
+    void checkAllAccess()
+  }
+
+  // Per-library filesystem access (exists / readable / writable), keyed by library id.
+  let access = $state<Record<number, LibraryAccess>>({})
+  let accessChecking = $state<number | null>(null)
+
+  async function checkAccess(id: number) {
+    accessChecking = id
+    try {
+      access[id] = await api.libraryAccess(id)
+    } catch {
+      // Best effort: the badge simply stays absent if the check itself can't run.
+    } finally {
+      accessChecking = null
+    }
+  }
+
+  async function checkAllAccess() {
+    for (const library of libraries) {
+      try {
+        access[library.id] = await api.libraryAccess(library.id)
+      } catch {
+        // ignore; per-library "Test access" can retry
+      }
+    }
   }
 
   async function loadSummaries() {
@@ -1116,6 +1143,18 @@
                   auto {library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? 'daily' : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`}
                 </span>
               {/if}
+              {#if access[library.id]}
+                {@const a = access[library.id]}
+                {#if a.ok}
+                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={a.message}>access ok</span>
+                {:else if !a.exists}
+                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={a.message}>path missing</span>
+                {:else if !a.readable}
+                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={a.message}>can't read</span>
+                {:else}
+                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={a.message}>not writable — replace will fail</span>
+                {/if}
+              {/if}
             </div>
             <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{library.path}</div>
             <div class="mt-1 text-xs text-slate-400">
@@ -1128,6 +1167,12 @@
                 · last auto-run {new Date(library.lastAutoEnqueueAt).toLocaleString()}
               {/if}
             </div>
+            {#if access[library.id] && !access[library.id].ok}
+              <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>{access[library.id].message}</span>
+              </div>
+            {/if}
           </div>
           <div class="flex flex-wrap gap-2">
             <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
@@ -1137,6 +1182,10 @@
             <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title="Queue this library's eligible files">
               <Icon name="plus" class="h-4 w-4" />
               Enqueue
+            </button>
+            <button class="btn" onclick={() => checkAccess(library.id)} disabled={accessChecking === library.id} title="Check Optimisarr can read and write this library's path">
+              <Icon name={accessChecking === library.id ? 'rotate' : 'check'} class="h-4 w-4 {accessChecking === library.id ? 'animate-spin' : ''}" />
+              Test access
             </button>
             <button class="btn" onclick={() => (editingId === library.id ? cancelEdit() : startEdit(library))} disabled={busyId === library.id}>
               <Icon name={editingId === library.id ? 'x' : 'sliders'} class="h-4 w-4" />

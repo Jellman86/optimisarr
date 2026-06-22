@@ -135,6 +135,20 @@ public sealed class ReplacementService
                 "Another optimised file already occupies that path, so the original was left untouched.");
         }
 
+        // Replacement moves the original into quarantine and the optimised file into the
+        // original's folder, so that folder must be writable by the container's user. Check up
+        // front and fail with a clear, actionable message rather than a raw 500 mid-move — the
+        // original is still untouched at this point.
+        var mediaDirectory = Path.GetDirectoryName(media.Path) ?? string.Empty;
+        if (!PathAccessProbe.CanWrite(mediaDirectory))
+        {
+            return ReplacementActionResult.Invalid(
+                $"Optimisarr can't write to the library folder '{mediaDirectory}'. Replacement needs write "
+                + "access to move the original into quarantine and the optimised file into its place. Give the "
+                + "container's user (PUID/PGID) write permission to your media path, then try again. The original "
+                + "was left untouched. (The Libraries page has a 'Test access' check that flags this in advance.)");
+        }
+
         var settings = await _settings.GetQueueSettingsAsync(cancellationToken);
         if (!settings.ReplacementAllowCrossFilesystem)
         {

@@ -26,21 +26,32 @@ public static class FileMover
             File.Move(source, destination);
             return true;
         }
-        catch (IOException)
+        // A non-writable directory throws UnauthorizedAccessException (Linux: "Permission
+        // denied"), which is not an IOException — catch it too so a permissions problem is
+        // reported as "can't move" rather than crashing the request.
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }
         finally
         {
-            if (File.Exists(source))
-            {
-                File.Delete(source);
-            }
+            TryDelete(source);
+            TryDelete(destination);
+        }
+    }
 
-            if (File.Exists(destination))
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
             {
-                File.Delete(destination);
+                File.Delete(path);
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best effort: a leftover empty probe file is harmless.
         }
     }
 

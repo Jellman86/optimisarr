@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Per-library access check + graceful replace on permission errors
+
+- **Replace no longer 500s on a permissions problem.** A media folder the container can't write
+  to made the atomic-move probe throw `UnauthorizedAccessException` (not an `IOException`, so it
+  escaped the catch) and surfaced as a raw 500. The probe now treats a permission-denied write as
+  "not movable", and `ReplaceAsync` does an up-front writability check that fails with a clear,
+  actionable message (and leaves the original untouched) instead of a 500.
+- **New per-library "Test access" check.** `GET /api/libraries/{id}/access` reports whether the
+  library path exists, is readable, and is writable; the Libraries page runs it on load and shows
+  a badge (`access ok` / `not writable — replace will fail` / `can't read` / `path missing`) plus
+  an inline fix hint, and a per-library **Test access** button re-runs it. This surfaces a
+  misconfigured mount/permission *before* a replacement fails. Verdict/message logic is a pure,
+  unit-tested `LibraryAccessEvaluator`.
+
 ### Settings: full-width, simpler tabs, clearer copy
 
 - **Fills the page.** Every Settings tab now uses the full content width with responsive multi-column

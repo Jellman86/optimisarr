@@ -61,6 +61,15 @@ export type LibraryRules = {
   autoEnqueueWindowEnd: string
 }
 
+export type LibraryAccess = {
+  path: string
+  exists: boolean
+  readable: boolean
+  writable: boolean
+  ok: boolean
+  message: string
+}
+
 export type Library = LibraryRules & {
   id: number
   name: string
@@ -398,6 +407,7 @@ export const api = {
 
   libraryOptions: () => request<LibraryOptions>('/api/library-options'),
   libraries: () => request<Library[]>('/api/libraries'),
+  libraryAccess: (id: number) => request<LibraryAccess>(`/api/libraries/${id}/access`),
   createLibrary: (body: SaveLibrary) =>
     request<Library>('/api/libraries', { method: 'POST', body: JSON.stringify(body) }),
   updateLibrary: (id: number, body: SaveLibrary) =>
