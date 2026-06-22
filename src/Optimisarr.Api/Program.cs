@@ -223,8 +223,8 @@ app.MapPut("/api/settings", async (
 })
 .WithName("UpdateSettings");
 
-// Settings backup: a secret-free snapshot of settings, libraries, watchers, and
-// notification targets. Tokens are never exported — they are re-entered after import.
+// Settings backup contains configuration and provider credentials but never media,
+// job, replacement, quarantine, or rollback data. Treat the downloaded JSON as secret material.
 app.MapGet("/api/settings/export", async (
     ConfigPortabilityService portability,
     CancellationToken cancellationToken) =>

@@ -160,6 +160,18 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
                 AutoEnqueueWindowEnd = new TimeOnly(6, 30)
             });
+            db.ActivityWatchers.Add(new ActivityWatcher
+            {
+                Name = "Plex", Type = ActivityWatcherType.Plex, BaseUrl = "http://plex:32400", ApiToken = "plex-secret"
+            });
+            db.NotificationTargets.Add(new NotificationTarget
+            {
+                Name = "ntfy", Type = NotificationType.Ntfy, Url = "https://ntfy.sh/optimisarr", Token = "notify-secret"
+            });
+            db.ArrConnections.Add(new ArrConnection
+            {
+                Name = "Radarr", Type = ArrConnectionType.Radarr, BaseUrl = "http://radarr:7878", ApiKey = "arr-secret"
+            });
             await db.SaveChangesAsync();
         }
 
@@ -184,6 +196,9 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
         Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);
         Assert.Equal(EncoderMode.NvidiaNvenc, (await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).EncoderMode);
+        Assert.Equal("plex-secret", (await db2.ActivityWatchers.SingleAsync()).ApiToken);
+        Assert.Equal("notify-secret", (await db2.NotificationTargets.SingleAsync()).Token);
+        Assert.Equal("arr-secret", (await db2.ArrConnections.SingleAsync()).ApiKey);
     }
 
     private async Task ResetDatabaseAsync()

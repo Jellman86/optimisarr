@@ -432,7 +432,7 @@
     return Math.min(100, Math.max(0, Number(value) || 0))
   }
 
-  // Backup & restore: export a secret-free config snapshot, or import one.
+  // Backup & restore: export/import configuration including provider secrets.
   let importing = $state(false)
   let backupError = $state<string | null>(null)
   let backupMessage = $state<string | null>(null)
@@ -450,7 +450,7 @@
       link.download = `optimisarr-config-${new Date().toISOString().slice(0, 10)}.json`
       link.click()
       URL.revokeObjectURL(url)
-      backupMessage = 'Config exported. Tokens are not included — re-enter them after importing.'
+      backupMessage = 'Config exported. It includes provider secrets; store the file securely and never commit or share it.'
     } catch (err) {
       backupError = err instanceof Error ? err.message : 'Unable to export config'
     }
@@ -471,7 +471,7 @@
         `Imported ${result.librariesCreated + result.librariesUpdated} libraries, ` +
         `${result.watchersCreated + result.watchersUpdated} watchers, ` +
         `${result.targetsCreated + result.targetsUpdated} targets, and ` +
-        `${result.settingsApplied} settings. Re-enter any provider tokens.`
+        `${result.settingsApplied} settings.`
       await load()
       await loadWatchers()
       await loadTargets()
@@ -1023,9 +1023,9 @@
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Backup &amp; restore</h2>
     <p class="mb-4 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
       Export your settings, libraries, media-server and download-manager connections, and notification targets
-      to a JSON file, or import one. For your security, provider tokens are never exported — re-enter them after
-      importing. Importing merges into your current config (matching libraries by path and connections/targets
-      by name) and never deletes anything.
+      to a JSON file, or import one. The file includes provider tokens and API keys, so store it securely and never
+      commit or share it. It does not include media, jobs, replacements, quarantine, or rollback history. Importing
+      merges into your current config (matching libraries by path and connections/targets by name) and never deletes anything.
     </p>
 
     {#if backupError}

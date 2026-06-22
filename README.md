@@ -59,7 +59,7 @@ Early development. What works today:
 - Optional **service-activity pauses** (Plex/Jellyfin/Emby), configurable
   replacement/quarantine policy with a retention window, and **library integrations**
   (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions, notifications,
-  secret-free config import/export).
+  config-and-secrets backup/import).
 
 Not built yet (see the [roadmap](docs/roadmap.md)): release hardening (dry-run, config
 backup). **Intel QSV is now validated on real hardware** (hardware encode *and* decode);

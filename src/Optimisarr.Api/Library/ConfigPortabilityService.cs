@@ -26,11 +26,12 @@ public sealed record ConfigImportResult(
     int SettingsApplied);
 
 /// <summary>
-/// Exports and imports Optimisarr's configuration as a secret-free
+/// Exports and imports Optimisarr's configuration as a secret-bearing
 /// <see cref="ConfigSnapshot"/>. Import is validated in full first (nothing is
 /// written if any part is invalid), then applied as a non-destructive merge:
 /// libraries are matched on path, watchers and targets on name, so importing never
-/// deletes existing configuration and never overwrites a stored token with a blank.
+/// deletes existing configuration. The exported file contains credentials and must
+/// be treated as sensitive backup material.
 /// </summary>
 public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsStore settings, TimeProvider clock)
 {
@@ -170,10 +171,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 updated++;
             }
 
-            // The token is intentionally absent from a snapshot, so an existing
-            // watcher keeps its stored secret rather than having it wiped.
             watcher.Type = ParseEnum<ActivityWatcherType>(snapshot.Type);
             watcher.BaseUrl = snapshot.BaseUrl.Trim();
+            if (snapshot.ApiToken is not null)
+            {
+                watcher.ApiToken = snapshot.ApiToken;
+            }
             watcher.Enabled = snapshot.Enabled;
             watcher.RefreshOnReplace = snapshot.RefreshOnReplace;
         }
@@ -202,9 +205,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 updated++;
             }
 
-            // As with watchers, the token is never carried in a snapshot.
             target.Type = ParseEnum<NotificationType>(snapshot.Type);
             target.Url = snapshot.Url.Trim();
+            if (snapshot.Token is not null)
+            {
+                target.Token = snapshot.Token;
+            }
             target.Enabled = snapshot.Enabled;
             target.NotifyOnReplacement = snapshot.NotifyOnReplacement;
             target.NotifyOnFailure = snapshot.NotifyOnFailure;
@@ -234,10 +240,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 updated++;
             }
 
-            // The API key is never carried in a snapshot, so an existing connection
-            // keeps its stored secret.
             connection.Type = ParseEnum<ArrConnectionType>(snapshot.Type);
             connection.BaseUrl = snapshot.BaseUrl.Trim();
+            if (snapshot.ApiKey is not null)
+            {
+                connection.ApiKey = snapshot.ApiKey;
+            }
             connection.Enabled = snapshot.Enabled;
         }
 
@@ -285,7 +293,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         watcher.Type.ToString(),
         watcher.BaseUrl,
         watcher.Enabled,
-        watcher.RefreshOnReplace);
+        watcher.RefreshOnReplace,
+        watcher.ApiToken);
 
     private static NotificationTargetSnapshot ToSnapshot(NotificationTarget target) => new(
         target.Name,
@@ -293,13 +302,15 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         target.Url,
         target.Enabled,
         target.NotifyOnReplacement,
-        target.NotifyOnFailure);
+        target.NotifyOnFailure,
+        target.Token);
 
     private static ArrConnectionSnapshot ToSnapshot(ArrConnection connection) => new(
         connection.Name,
         connection.Type.ToString(),
         connection.BaseUrl,
-        connection.Enabled);
+        connection.Enabled,
+        connection.ApiKey);
 
     // Snapshots are validated before import, so these parses cannot fail here.
     private static T ParseEnum<T>(string value) where T : struct, Enum =>
