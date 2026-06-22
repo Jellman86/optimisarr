@@ -138,6 +138,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
+            library.AutoReplace = snapshot.AutoReplace;
         }
 
         return (created, updated);
@@ -276,7 +277,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ReencodeLossyImages,
         library.ImageDownscaleMode.ToString(),
         library.ImageDownscaleValue,
-        library.MoveOverwrite);
+        library.MoveOverwrite,
+        library.AutoReplace);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

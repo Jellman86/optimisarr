@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Scheduling rework: separate scan / auto-optimise / auto-replace
+
+The old model welded library scanning to the once-a-night auto-enqueue window, which was
+confusing and meant files dropped in mid-day weren't seen until the next window. The three concerns
+are now independent:
+
+- **Library scan = global, on an interval.** A new `LibraryScanWorker` rescans every enabled
+  library every *N* hours (Settings → General → **Library scan interval**, default 1h, configurable).
+  Scanning is idempotent and probing stays continuous, so the inventory is always current regardless
+  of any window. Scanning is **removed from auto-enqueue**.
+- **Per-library "Optimise automatically" + window = when files are queued.** The window now means
+  *when eligible files are auto-enqueued*, and they're queued **continuously while in-window** (so a
+  newly-eligible file doesn't wait a whole day). The window inputs are shown only when the toggle is
+  on. The global **processing window** still governs when jobs actually run.
+- **New per-library "Replace automatically when verified" toggle.** When on, a job that passes every
+  verification gate is replaced without the manual "Replace" click. The original is still quarantined
+  first and is fully rollback-able (kept for the quarantine-retention period), so the safety model is
+  unchanged; **default off**. A failed auto-replace (e.g. an unwritable folder) leaves the job
+  ReadyToReplace for a manual retry. Round-trips through config export/import.
 ### Image-based subtitles into MP4: auto-MKV + clearer errors
 
 - **Sources with image-based subtitles (Blu-ray PGS / DVD VobSub) now optimise instead of

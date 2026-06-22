@@ -13,6 +13,7 @@ public sealed record QueueSettings(
     TimeOnly ScheduleWindowEnd,
     long MinFreeDiskBytes,
     int CpuThreadLimit,
+    int LibraryScanIntervalHours,
     EncoderMode EncoderMode,
     bool HardwareDecode,
     VerificationPolicy VerificationPolicy,
@@ -28,6 +29,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
     public static readonly TimeOnly DefaultScheduleWindowStart = new(0, 0);
     public static readonly TimeOnly DefaultScheduleWindowEnd = new(0, 0);
     public const long DefaultMinFreeDiskBytes = 10L * 1024 * 1024 * 1024;
+    public const int DefaultLibraryScanIntervalHours = 1;
 
     /// <summary>
     /// The setting keys that may be exported and imported. Deliberately excludes
@@ -42,6 +44,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.ScheduleWindowEnd,
         SettingKeys.MinFreeDiskBytes,
         SettingKeys.CpuThreadLimit,
+        SettingKeys.LibraryScanIntervalHours,
         SettingKeys.EncoderMode,
         SettingKeys.HardwareDecode,
         SettingKeys.VerificationDurationTolerancePercent,
@@ -96,6 +99,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.ScheduleWindowEnd
                 || setting.Key == SettingKeys.MinFreeDiskBytes
                 || setting.Key == SettingKeys.CpuThreadLimit
+                || setting.Key == SettingKeys.LibraryScanIntervalHours
                 || setting.Key == SettingKeys.EncoderMode
                 || setting.Key == SettingKeys.HardwareDecode
                 || setting.Key == SettingKeys.VerificationDurationTolerancePercent
@@ -123,6 +127,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             ParseTime(settings.GetValueOrDefault(SettingKeys.ScheduleWindowEnd), DefaultScheduleWindowEnd),
             ParseLong(settings.GetValueOrDefault(SettingKeys.MinFreeDiskBytes), DefaultMinFreeDiskBytes, min: 0),
             ParseInt(settings.GetValueOrDefault(SettingKeys.CpuThreadLimit), fallback: 0, min: 0),
+            ParseInt(settings.GetValueOrDefault(SettingKeys.LibraryScanIntervalHours), DefaultLibraryScanIntervalHours, min: 1),
             ParseEnum(settings.GetValueOrDefault(SettingKeys.EncoderMode), EncoderMode.Auto),
             // Default on: when a hardware encoder is selected, decode on the GPU too. The
             // builder skips it where it cannot apply, and the dispatcher falls back to
@@ -216,6 +221,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.ScheduleWindowEnd] = FormatTime(settings.ScheduleWindowEnd),
             [SettingKeys.MinFreeDiskBytes] = Math.Max(0, settings.MinFreeDiskBytes).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.CpuThreadLimit] = Math.Max(0, settings.CpuThreadLimit).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.LibraryScanIntervalHours] = Math.Max(1, settings.LibraryScanIntervalHours).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.EncoderMode] = settings.EncoderMode.ToString(),
             [SettingKeys.HardwareDecode] = settings.HardwareDecode.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationDurationTolerancePercent] =

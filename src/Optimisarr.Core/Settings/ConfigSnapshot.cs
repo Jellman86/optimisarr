@@ -54,7 +54,8 @@ public sealed record LibrarySnapshot(
     bool ReencodeLossyImages = false,
     string ImageDownscaleMode = "None",
     int ImageDownscaleValue = 0,
-    bool MoveOverwrite = false);
+    bool MoveOverwrite = false,
+    bool AutoReplace = false);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported. No token.</summary>
 public sealed record ActivityWatcherSnapshot(

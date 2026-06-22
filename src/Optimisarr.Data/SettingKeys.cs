@@ -24,6 +24,9 @@ public static class SettingKeys
     /// <summary>Maximum CPU threads ffmpeg may use per job; 0 lets ffmpeg decide.</summary>
     public const string CpuThreadLimit = "queue.cpuThreadLimit";
 
+    /// <summary>How often (hours) every enabled library is rescanned for new/changed files.</summary>
+    public const string LibraryScanIntervalHours = "library.scanIntervalHours";
+
     /// <summary>Preferred encoder mode for new transcode jobs.</summary>
     public const string EncoderMode = "queue.encoderMode";
 

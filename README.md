@@ -1,10 +1,23 @@
-# optimisarr
+<p align="center">
+  <img src="web/public/favicon-192.png" alt="Optimisarr app icon" width="96">
+</p>
+<h1 align="center">Optimisarr</h1>
+<p align="center"><strong>Safe, verified optimisation for self-hosted media libraries.</strong></p>
+<p align="center">
+  <a href="#documentation">Docs</a> •
+  <a href="#quick-start-docker">Quick Start</a> •
+  <a href="#hardware-acceleration-gpu">Hardware Acceleration</a>
+</p>
 
 Safe media library optimiser with GPU transcoding, scheduling, and verified
 replacement. Optimisarr never deletes or replaces an original until a converted
 file has passed explicit verification gates.
 
-## Status
+## Documentation
+
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), and [troubleshooting](docs/troubleshooting/diagnostics.md).
+
+## Current capabilities
 
 Early development. What works today:
 
@@ -115,9 +128,10 @@ cd web && npm run check           # frontend type/lint check
 cd web && npm run dev             # frontend dev server (proxies /api to :8787)
 ```
 
-## Planning
+## Project references
 
 - [Changelog](CHANGELOG.md)
 - [Product and architecture](docs/product-and-architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Engineering standards](CLAUDE.md)
+- [Documentation generation prompt](docs/DOCUMENTATION_PROMPT.md)

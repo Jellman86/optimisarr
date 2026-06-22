@@ -59,6 +59,7 @@ export type LibraryRules = {
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
+  autoReplace: boolean
 }
 
 export type LibraryAccess = {
@@ -116,6 +117,7 @@ export type Settings = {
   scheduleWindowEnd: string
   minFreeDiskBytes: number
   cpuThreadLimit: number
+  libraryScanIntervalHours: number
   encoderMode: string
   hardwareDecode: boolean
   verificationDurationTolerancePercent: number

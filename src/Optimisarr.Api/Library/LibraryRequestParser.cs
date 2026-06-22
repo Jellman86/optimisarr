@@ -36,7 +36,8 @@ internal readonly record struct ParsedLibrary(
     double? MinVmafMin,
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
-    TimeOnly AutoEnqueueWindowEnd);
+    TimeOnly AutoEnqueueWindowEnd,
+    bool AutoReplace);
 
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
@@ -233,7 +234,8 @@ internal static class LibraryRequestParser
             request.MinVmafMin,
             request.AutoEnqueueEnabled ?? false,
             autoStart,
-            autoEnd);
+            autoEnd,
+            request.AutoReplace ?? false);
         error = null;
         return true;
     }

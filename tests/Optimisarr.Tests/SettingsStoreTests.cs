@@ -32,6 +32,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(new TimeOnly(0, 0), settings.ScheduleWindowEnd);
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
+        Assert.Equal(1, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
         Assert.True(settings.HardwareDecode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
@@ -62,6 +63,7 @@ public sealed class SettingsStoreTests : IDisposable
                 ScheduleWindowEnd: new TimeOnly(6, 30),
                 MinFreeDiskBytes: 50L * 1024 * 1024 * 1024,
                 CpuThreadLimit: 2,
+                LibraryScanIntervalHours: 6,
                 EncoderMode: EncoderMode.NvidiaNvenc,
                 HardwareDecode: false,
                 VerificationPolicy: new(
@@ -92,6 +94,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(new TimeOnly(6, 30), settings.ScheduleWindowEnd);
         Assert.Equal(50L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(2, settings.CpuThreadLimit);
+        Assert.Equal(6, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.NvidiaNvenc, settings.EncoderMode);
         Assert.False(settings.HardwareDecode);
         Assert.Equal(2.5, settings.VerificationPolicy.DurationTolerancePercent);
@@ -143,6 +146,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(new TimeOnly(0, 0), settings.ScheduleWindowEnd);
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
+        Assert.Equal(1, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
         Assert.True(settings.HardwareDecode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);

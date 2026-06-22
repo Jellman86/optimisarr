@@ -318,6 +318,7 @@
       autoEnqueueEnabled: false,
       autoEnqueueWindowStart: '00:00',
       autoEnqueueWindowEnd: '00:00',
+      autoReplace: false,
     }
   }
 
@@ -430,6 +431,7 @@
       autoEnqueueEnabled: library.autoEnqueueEnabled,
       autoEnqueueWindowStart: library.autoEnqueueWindowStart,
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
+      autoReplace: library.autoReplace,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
@@ -743,7 +745,7 @@
     <Toggle
       bind:checked={form.autoEnqueueEnabled}
       label="Optimise automatically"
-      hint="Scan and queue this library once a day, inside the window below. Jobs still only run during the global processing window, and the global concurrency limit always applies — this only fills the queue."
+      hint="Queue this library's eligible files automatically while inside the window below. Scanning is global (Settings → Library scan interval); jobs still only run during the global processing window and obey the concurrency limit — this only fills the queue."
     />
     {#if form.autoEnqueueEnabled}
       <div class="flex flex-wrap items-end gap-4 pl-1">
@@ -756,10 +758,16 @@
           <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
         </div>
         <p class="max-w-xs text-xs text-slate-500 dark:text-slate-400">
-          Equal times = once a day. A window like 01:00–06:00 runs one nightly pass when it opens.
+          Equal times = any time. Eligible files are queued continuously while inside the window.
         </p>
       </div>
     {/if}
+
+    <Toggle
+      bind:checked={form.autoReplace}
+      label="Replace automatically when verified"
+      hint="When a job passes every verification gate, replace the original without waiting for a manual Replace. The original is still quarantined first and can be rolled back (kept for the quarantine-retention period). Off by default."
+    />
   </div>
 
   <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. -->
@@ -1139,9 +1147,12 @@
                 <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">disabled</span>
               {/if}
               {#if library.autoEnqueueEnabled}
-                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title="Scanned and enqueued automatically">
-                  auto {library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? 'daily' : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`}
+                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title="Eligible files are queued automatically while inside this window">
+                  auto-optimise {library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? 'any time' : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`}
                 </span>
+              {/if}
+              {#if library.autoReplace}
+                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" title="Verified outputs replace the original automatically">auto-replace</span>
               {/if}
               {#if access[library.id]}
                 {@const a = access[library.id]}

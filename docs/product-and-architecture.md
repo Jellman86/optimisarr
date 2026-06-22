@@ -26,7 +26,7 @@ The core promise is:
 
 - Single Docker container.
 - Svelte 5 web interface.
-- FastAPI backend API.
+- ASP.NET Core minimal-API backend.
 - SQLite state stored under `/config`.
 - FFmpeg and ffprobe based scanning, probing, transcoding, and verification.
 - Configurable library roots mounted under `/data`.

@@ -65,6 +65,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>()
 builder.Services.AddHostedService<SystemMetricsBroadcaster>();
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
+builder.Services.AddHostedService<LibraryScanWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
 
 var configDirectory = ResolveConfigDirectory(builder.Environment);
@@ -138,6 +139,11 @@ app.MapPut("/api/settings", async (
         return Results.BadRequest(new { error = "CPU thread limit cannot be negative." });
     }
 
+    if (request.LibraryScanIntervalHours < 1)
+    {
+        return Results.BadRequest(new { error = "Library scan interval must be at least 1 hour." });
+    }
+
     if (request.VerificationDurationTolerancePercent < 0)
     {
         return Results.BadRequest(new { error = "Verification duration tolerance cannot be negative." });
@@ -191,6 +197,7 @@ app.MapPut("/api/settings", async (
         end,
         request.MinFreeDiskBytes,
         request.CpuThreadLimit,
+        request.LibraryScanIntervalHours,
         encoderMode,
         request.HardwareDecode,
         new VerificationPolicy(
@@ -830,7 +837,8 @@ app.MapPost("/api/libraries", async (
         MinVmafMin = parsed.MinVmafMin,
         AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
         AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
-        AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd
+        AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd,
+        AutoReplace = parsed.AutoReplace
     };
     db.Libraries.Add(library);
     await db.SaveChangesAsync(cancellationToken);
@@ -894,6 +902,7 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
     library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
     library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;
+    library.AutoReplace = parsed.AutoReplace;
     library.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync(cancellationToken);
 
@@ -1358,6 +1367,7 @@ internal sealed record SettingsDto(
     string? ScheduleWindowEnd,
     long MinFreeDiskBytes,
     int CpuThreadLimit,
+    int LibraryScanIntervalHours,
     string EncoderMode,
     bool HardwareDecode,
     double VerificationDurationTolerancePercent,
@@ -1384,6 +1394,7 @@ internal sealed record SettingsDto(
         FormatTime(settings.ScheduleWindowEnd),
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
+        settings.LibraryScanIntervalHours,
         settings.EncoderMode.ToString(),
         settings.HardwareDecode,
         settings.VerificationPolicy.DurationTolerancePercent,
@@ -1484,7 +1495,8 @@ internal sealed record SaveLibraryRequest(
     double? MinVmafMin,
     bool? AutoEnqueueEnabled,
     string? AutoEnqueueWindowStart,
-    string? AutoEnqueueWindowEnd);
+    string? AutoEnqueueWindowEnd,
+    bool? AutoReplace);
 
 internal sealed record LibraryDto(
     int Id,
@@ -1522,6 +1534,7 @@ internal sealed record LibraryDto(
     string AutoEnqueueWindowStart,
     string AutoEnqueueWindowEnd,
     DateTimeOffset? LastAutoEnqueueAt,
+    bool AutoReplace,
     int FileCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
@@ -1562,6 +1575,7 @@ internal sealed record LibraryDto(
         library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
         library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture),
         library.LastAutoEnqueueAt,
+        library.AutoReplace,
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);

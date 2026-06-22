@@ -6,11 +6,12 @@ using Optimisarr.Data;
 namespace Optimisarr.Api.Library;
 
 /// <summary>
-/// Drives per-library automatic optimisation. On a one-minute cadence (and once at
-/// startup) it asks the pure <see cref="AutoEnqueueScheduleEvaluator"/> which enabled
-/// libraries are due — once per occurrence of each library's daily window — then scans
-/// and enqueues those, stamping <see cref="Data.Library.LastAutoEnqueueAt"/> so the run
-/// does not repeat within the same window.
+/// Drives per-library automatic optimisation. On a one-minute cadence it asks the pure
+/// <see cref="AutoEnqueueScheduleEvaluator"/> which enabled libraries are inside their window
+/// and enqueues each one's eligible candidates. Enqueuing is idempotent, so running every tick
+/// while in-window picks up newly-eligible files promptly (rather than only when the window opens).
+/// Scanning is handled separately by <see cref="LibraryScanWorker"/> and probing by
+/// <see cref="MediaProbeWorker"/>, so this worker no longer scans — it only enqueues.
 ///
 /// This worker only *creates queued jobs*; it never starts them. Execution stays with
 /// the single-writer <see cref="QueueDispatcher"/>, so jobs from several libraries
@@ -55,14 +56,13 @@ public sealed class AutoEnqueueWorker(
             .Where(library => library.Enabled && library.AutoEnqueueEnabled)
             .ToListAsync(cancellationToken);
 
-        var nowLocal = DateTime.Now;
+        var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
         var due = candidates
-            .Where(library => AutoEnqueueScheduleEvaluator.IsDue(
+            .Where(library => AutoEnqueueScheduleEvaluator.ShouldEnqueueNow(
                 library.AutoEnqueueEnabled,
                 library.AutoEnqueueWindowStart,
                 library.AutoEnqueueWindowEnd,
-                nowLocal,
-                library.LastAutoEnqueueAt?.ToLocalTime().DateTime))
+                nowLocal))
             .ToList();
 
         if (due.Count == 0)
@@ -70,7 +70,6 @@ public sealed class AutoEnqueueWorker(
             return;
         }
 
-        var inventory = scope.ServiceProvider.GetRequiredService<LibraryInventoryService>();
         var enqueue = scope.ServiceProvider.GetRequiredService<JobEnqueueService>();
         var enqueuedAny = false;
 
@@ -79,22 +78,22 @@ public sealed class AutoEnqueueWorker(
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                await inventory.ScanAsync(library, cancellationToken);
-                // Newly discovered files have no probe data yet, and candidate evaluation needs it,
-                // so probe this library's pending files before enqueuing — otherwise the very files
-                // this scan just found could never be queued in the same run.
-                await inventory.ProbePendingAsync(library.Id, int.MaxValue, cancellationToken);
+                // Scanning and probing run on their own schedules; here we only enqueue what is
+                // already eligible. Idempotent: files already queued/optimised are not re-added.
                 var result = await enqueue.EnqueueEligibleAsync(library, cancellationToken);
 
-                // Stamp only after a clean run so a transient failure retries next tick
-                // rather than being skipped until the next window.
-                library.LastAutoEnqueueAt = DateTimeOffset.UtcNow;
-                await db.SaveChangesAsync(cancellationToken);
+                // Record the last time we actually added work, for the Schedule page; only on a
+                // real enqueue so an idle in-window tick doesn't churn the timestamp.
+                if (result.Enqueued > 0)
+                {
+                    library.LastAutoEnqueueAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(cancellationToken);
+                    logger.LogInformation(
+                        "Auto-enqueue for library {LibraryId} ({Name}): {Enqueued} queued, {AlreadyQueued} already active, {Ineligible} ineligible, {Importing} held for import",
+                        library.Id, library.Name, result.Enqueued, result.AlreadyQueued, result.Ineligible, result.Importing);
+                }
 
                 enqueuedAny |= result.Enqueued > 0;
-                logger.LogInformation(
-                    "Auto-enqueue ran for library {LibraryId} ({Name}): {Enqueued} queued, {AlreadyQueued} already active, {Ineligible} ineligible, {Importing} held for import",
-                    library.Id, library.Name, result.Enqueued, result.AlreadyQueued, result.Ineligible, result.Importing);
             }
             catch (OperationCanceledException)
             {

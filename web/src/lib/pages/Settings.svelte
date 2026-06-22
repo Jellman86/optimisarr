@@ -345,6 +345,7 @@
     scheduleWindowEnd: '00:00',
     minFreeDiskBytes: 10 * 1024 * 1024 * 1024,
     cpuThreadLimit: 0,
+    libraryScanIntervalHours: 1,
     encoderMode: 'Auto',
     hardwareDecode: true,
     verificationDurationTolerancePercent: 1,
@@ -399,6 +400,7 @@
         ...settings,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
+        libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
         verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
         verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
@@ -533,6 +535,14 @@
       <div>
         <label class="label" for="cpu-threads">CPU thread limit <InfoTip text="Passed to FFmpeg as -threads for each job. 0 lets FFmpeg decide." /></label>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
+      </div>
+
+      <div>
+        <label class="label" for="scan-interval">Library scan interval <InfoTip text="How often every enabled library is rescanned for new or changed files. Scanning is cheap (it skips unchanged files); newly found files are probed automatically. Separate from when files are auto-queued (per library) or when jobs run (the processing window)." /></label>
+        <div class="flex items-center gap-2">
+          <input id="scan-interval" class="input" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
+          <span class="text-sm text-slate-500 dark:text-slate-400">hours</span>
+        </div>
       </div>
 
       <div>

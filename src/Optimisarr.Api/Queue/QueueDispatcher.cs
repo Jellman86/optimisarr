@@ -350,6 +350,7 @@ public sealed class QueueDispatcher(
         OriginalSnapshot Original,
         double? MinVmafHarmonicMean,
         double? MinVmafMin,
+        bool AutoReplace,
         // When the primary command hardware-decodes the source, this holds the equivalent
         // software-decode command so the dispatcher can transparently retry a source the GPU
         // cannot decode. Null when hardware decode was not used.
@@ -495,6 +496,7 @@ public sealed class QueueDispatcher(
             original,
             library?.MinVmafHarmonicMean,
             library?.MinVmafMin,
+            library?.AutoReplace ?? false,
             usedHardwareDecode ? softwareArguments : null);
     }
 
@@ -710,6 +712,28 @@ public sealed class QueueDispatcher(
         }
 
         await CompleteAsync(jobId, JobStatus.ReadyToReplace, progress: 1.0);
+
+        // Hands-off replacement, when the library opts in. The output already passed every
+        // verification gate; ReplaceAsync still quarantines the original first and records a
+        // rollback, so the safety model holds. A failure (e.g. an unwritable folder) leaves the
+        // job ReadyToReplace for a manual retry rather than touching the original.
+        if (work.AutoReplace)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
+            var result = await replacement.ReplaceAsync(jobId, CancellationToken.None);
+            if (result.Kind == ReplacementResultKind.Success)
+            {
+                logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace).", jobId);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Job {JobId}: auto-replace did not complete ({Kind}): {Message}. Left ReadyToReplace for manual replace.",
+                    jobId, result.Kind, result.Message);
+            }
+            await NotifyAsync();
+        }
     }
 
     // Move our own work output; never the original. Falls back to copy+delete across

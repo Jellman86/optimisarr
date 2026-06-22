@@ -145,6 +145,13 @@ public sealed class Library
     /// <summary>When the library was last auto-enqueued; null means never.</summary>
     public DateTimeOffset? LastAutoEnqueueAt { get; set; }
 
+    /// <summary>
+    /// When true, a job in this library that passes every verification gate is replaced
+    /// automatically instead of waiting for a manual "Replace". The original is still quarantined
+    /// first and is fully rollback-able, so the safety model is unchanged. Defaults to false.
+    /// </summary>
+    public bool AutoReplace { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
