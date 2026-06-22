@@ -503,4 +503,5 @@ export const api = {
     request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
   approveReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
+  clearReplacements: () => request<{ cleared: number }>('/api/replacements/clear', { method: 'POST' }),
 }

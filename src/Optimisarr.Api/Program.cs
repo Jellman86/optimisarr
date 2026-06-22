@@ -1342,6 +1342,20 @@ app.MapGet("/api/replacements", async (OptimisarrDbContext db, CancellationToken
     Results.Ok(await ReplacementQueries.ListAsync(db, cancellationToken)))
 .WithName("ListReplacements");
 
+// Remove spent quarantine entries (rolled back, or purged after retention/approval) to declutter.
+// These are terminal history with no rollback left, so clearing them never touches a live original;
+// active "Replaced" entries are always kept.
+app.MapPost("/api/replacements/clear", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var spent = await db.Replacements
+        .Where(r => r.Status == ReplacementStatus.RolledBack || r.Status == ReplacementStatus.Purged)
+        .ToListAsync(cancellationToken);
+    db.Replacements.RemoveRange(spent);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Ok(new { cleared = spent.Count });
+})
+.WithName("ClearSpentReplacements");
+
 // One replacement with its job's verification report, for the Quarantine compare-to-approve view.
 app.MapGet("/api/replacements/{id:int}", async (
     int id,

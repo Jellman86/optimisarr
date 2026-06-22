@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Quarantine: shared detail sheet + clear finished
+
+- **The compare-to-approve review now opens in the shared bottom sheet** (with the table shrinking to
+  keep rows reachable), instead of expanding a row in place — matching Inventory and the Queue.
+  Clicking a "Replaced" row opens the original-vs-replacement comparison, verification report, and
+  the approve / roll-back actions.
+- **New "Clear finished" button** removes spent quarantine entries (rolled back + purged) from the
+  list via `POST /api/replacements/clear`. These are terminal history with no rollback left, so
+  clearing them only declutters — active "Replaced" entries are always kept and never touched.
+
 ### Verification page folded into the Queue
 
 - **Removed the standalone Verification page** (and its sidebar entry). It was a filtered view of the
