@@ -337,28 +337,20 @@
 
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
   let access = $state<Record<number, LibraryAccess>>({})
-  let accessChecking = $state<number | null>(null)
-
-  async function checkAccess(id: number) {
-    accessChecking = id
-    try {
-      access[id] = await api.libraryAccess(id)
-    } catch {
-      // Best effort: the badge simply stays absent if the check itself can't run.
-    } finally {
-      accessChecking = null
-    }
-  }
-
   async function checkAllAccess() {
     for (const library of libraries) {
       try {
         access[library.id] = await api.libraryAccess(library.id)
       } catch {
-        // ignore; per-library "Test access" can retry
+        // Best effort: retain the previous result when an access probe is unavailable.
       }
     }
   }
+
+  $effect(() => {
+    const timer = setInterval(() => void checkAllAccess(), 60_000)
+    return () => clearInterval(timer)
+  })
 
   async function loadSummaries() {
     try {
@@ -1193,10 +1185,6 @@
             <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title="Queue this library's eligible files">
               <Icon name="plus" class="h-4 w-4" />
               Enqueue
-            </button>
-            <button class="btn" onclick={() => checkAccess(library.id)} disabled={accessChecking === library.id} title="Check Optimisarr can read and write this library's path">
-              <Icon name={accessChecking === library.id ? 'rotate' : 'check'} class="h-4 w-4 {accessChecking === library.id ? 'animate-spin' : ''}" />
-              Test access
             </button>
             <button class="btn" onclick={() => (editingId === library.id ? cancelEdit() : startEdit(library))} disabled={busyId === library.id}>
               <Icon name={editingId === library.id ? 'x' : 'sliders'} class="h-4 w-4" />

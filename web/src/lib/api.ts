@@ -224,6 +224,7 @@ export type Job = {
   enqueuedAt: string
   startedAt: string | null
   finishedAt: string | null
+  clearable: boolean
 }
 
 export type EnqueueResult = {

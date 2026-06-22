@@ -252,8 +252,8 @@
 
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
   // Two clear buckets: finished = completed; errored = failed or cancelled.
-  let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed').length)
-  let erroredClearable = $derived(jobs.filter((j) => j.status === 'Failed' || j.status === 'Cancelled').length)
+  let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed' && j.clearable).length)
+  let erroredClearable = $derived(jobs.filter((j) => (j.status === 'Failed' || j.status === 'Cancelled') && j.clearable).length)
 </script>
 
 <header class="mb-6">
@@ -270,7 +270,7 @@
 
 {#if queueStatus && !queueStatus.canStart}
   <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
-    Queue dispatch is paused: {queueStatus.blockedReason}
+    Queue dispatch is paused: {queueStatus.blockedReason}. Existing encodes are allowed to finish safely; this only prevents new jobs from starting.
   </div>
 {:else if queueStatus}
   <div class="card mb-4 p-3 text-xs text-slate-500 dark:text-slate-400">

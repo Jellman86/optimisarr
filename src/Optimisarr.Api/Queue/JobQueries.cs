@@ -21,7 +21,8 @@ public sealed record JobDto(
     DateTimeOffset? VerifiedAt,
     DateTimeOffset EnqueuedAt,
     DateTimeOffset? StartedAt,
-    DateTimeOffset? FinishedAt);
+    DateTimeOffset? FinishedAt,
+    bool Clearable);
 
 public static class JobQueries
 {
@@ -34,6 +35,13 @@ public static class JobQueries
         OptimisarrDbContext db,
         CancellationToken cancellationToken)
     {
+        var liveRollbackJobIds = (await db.Replacements
+                .AsNoTracking()
+                .Where(replacement => replacement.Status == ReplacementStatus.Replaced)
+                .Select(replacement => replacement.JobId)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
         var jobs = await db.Jobs
             .AsNoTracking()
             // Previews are throwaway settings comparisons, surfaced in their own UI, not the queue.
@@ -55,10 +63,17 @@ public static class JobQueries
                 job.VerifiedAt,
                 job.EnqueuedAt,
                 job.StartedAt,
-                job.FinishedAt))
+                job.FinishedAt,
+                false))
             .ToListAsync(cancellationToken);
 
         return jobs
+            .Select(job => job with
+            {
+                Clearable = JobClearing.IsClearable(
+                    new Job { Id = job.Id, Status = Enum.Parse<JobStatus>(job.Status) },
+                    liveRollbackJobIds)
+            })
             .OrderByDescending(job => job.Priority)
             .ThenBy(job => job.EnqueuedAt)
             .ToList();

@@ -49,9 +49,17 @@ jobs:
       - run: npm run check
         working-directory: web
 
+  docs:
+    name: Documentation and Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check_docs.py
+      - run: docker compose -f compose.example.yml config --quiet
+
   docker:
     name: Docker image
-    needs: [backend, frontend]
+    needs: [backend, frontend, docs]
     runs-on: ubuntu-latest
     permissions:
       contents: read
