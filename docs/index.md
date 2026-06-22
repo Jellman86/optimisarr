@@ -8,12 +8,19 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Getting started](setup/getting-started.md)
 - [Configuration and scheduling](setup/configuration.md)
 - [Hardware acceleration](setup/hardware-acceleration.md)
+- [Running behind a reverse proxy](setup/reverse-proxy.md)
 
 ## Run it safely
 
 - [Safe replacement and rollback](operations/safe-replacement.md)
 - [Media-server integrations](integrations/media-servers.md)
 - [Troubleshooting](troubleshooting/diagnostics.md)
+
+## A note on screenshots
+
+All media titles, files, and library contents shown in screenshots throughout
+this documentation are fabricated test data created solely for demonstration. No
+copyrighted material is used.
 
 ## Project information
 

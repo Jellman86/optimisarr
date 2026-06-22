@@ -16,10 +16,11 @@ schedule work, and verify output before replacing an original.
 <p align="center">
   <img src="docs/images/optimisarr-dashboard.png" alt="Optimisarr dashboard" width="100%">
 </p>
+<p align="center"><sub>All media shown in screenshots is fabricated test data created for documentation; no copyrighted material is used.</sub></p>
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), and [troubleshooting](docs/troubleshooting/diagnostics.md).
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), and [troubleshooting](docs/troubleshooting/diagnostics.md).
 
 ## Project status
 
@@ -43,8 +44,9 @@ no support SLA or promise of a release schedule.
 - Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Queue,
   Quarantine, Schedule, Settings; Tools live under Settings). Verification reports
   are available from Queue and Quarantine detail sheets.
-- Queue resource controls: max concurrent jobs, CPU thread limits, processing
-  windows, and free work-disk safety pause.
+- Queue resource controls: max concurrent jobs, CPU thread limits, and a free
+  work-disk safety pause. The only global scheduling setting is the library scan
+  interval; *when* work runs is set per library (see auto-optimise below).
 - Per-library **auto-optimise** windows continuously queue newly eligible files;
   opt-in **auto-replace** promotes only fully verified jobs, still quarantining
   the original first so rollback remains available.
@@ -158,6 +160,12 @@ dotnet test  Optimisarr.slnx      # tests
 cd web && npm run check           # frontend type/lint check
 cd web && npm run dev             # frontend dev server (proxies /api to :8787)
 ```
+
+## License
+
+Optimisarr is licensed under the [GNU General Public License v3.0](LICENSE). The
+published Docker image also bundles GPL-licensed FFmpeg (jellyfin-ffmpeg), which
+remains under its own license.
 
 ## Project references
 

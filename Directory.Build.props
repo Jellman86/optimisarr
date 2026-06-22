@@ -1,0 +1,10 @@
+<Project>
+  <!-- Shared metadata for all projects. Version drives the /api/health response and the
+       "optimisarr=<version>" marker stamped into optimised files. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Product>Optimisarr</Product>
+    <Authors>Optimisarr contributors</Authors>
+    <Copyright>Copyright (C) 2026 Optimisarr contributors</Copyright>
+  </PropertyGroup>
+</Project>

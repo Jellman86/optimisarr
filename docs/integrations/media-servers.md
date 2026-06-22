@@ -11,6 +11,7 @@ connection, then enable only the pause and refresh behaviour you need.
 
 Sonarr and Radarr connections provide import-aware exclusions so recently
 imported media is not immediately reprocessed. Notification targets support
-webhook, ntfy, and Apprise. Exported configuration includes provider secrets so it
+generic webhook, Discord, ntfy, and Apprise (a Discord webhook URL is detected
+automatically and sent as an embed). Exported configuration includes provider secrets so it
 can restore a working setup; treat the JSON file as sensitive material and never
 commit or share it.

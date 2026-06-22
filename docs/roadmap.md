@@ -120,14 +120,15 @@ See the Phase 12 section for the remaining optional polish.
   Plex/Jellyfin/Emby watchers hold new jobs while a server is streaming, decided by
   a pure, unit-tested evaluator that ignores unreachable servers so one offline
   server never wedges the queue. Phase 6 is now feature-complete. **Per-library
-  automatic optimisation** extends this: a library can scan-and-enqueue itself once
-  per day within its own time window (pure `AutoEnqueueScheduleEvaluator` +
-  `AutoEnqueueWorker`), while execution still obeys the global processing window and
-  concurrency limit — the worker only fills the queue, never starts jobs. A dedicated
+  automatic optimisation** extends this: a library has its own local-time window
+  (pure `AutoEnqueueScheduleEvaluator`), and inside that window its eligible files
+  are continuously queued **and** dispatched; outside it, that library's jobs do not
+  start. There is no longer a global processing window — global settings hold only
+  the library scan interval, and manually queued jobs run whenever the queue can
+  start one (subject to concurrency, activity-pause, and disk-safety). A dedicated
   **Schedule page** surfaces dispatch status (ready/paused + reason, running/limit,
-  free work-disk), the configured processing window with an in/out-of-window indicator
-  (overnight windows handled), and the per-library auto-enqueue table with each
-  library's window and last run.
+  free work-disk) and the per-library auto-optimise table with each library's window,
+  in/out-of-window state (overnight windows handled), auto-replace setting, and last run.
 - **Phase 7 (GPU Support): largely done.** Encoder/hwaccel capability detection on Tools,
   global encoder-mode selection wired into FFmpeg args, and jobs that fail fast with a clear
   reason when a selected encoder is unavailable. **NVENC is now confirmed working end-to-end**
@@ -343,7 +344,7 @@ Goal: make the app safe to run continuously on a home server.
 
 Deliverables:
 
-- Processing windows. **Done.**
+- Time windows. **Done** (now per-library auto-optimise windows; the global processing window was removed).
 - Max concurrent jobs, initially defaulting to 1. **Done.**
 - CPU thread limits. **Done.**
 - GPU/CPU worker mode selection. **Done.**
