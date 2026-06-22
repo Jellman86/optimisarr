@@ -14,7 +14,7 @@ running a small self-hosted setup. It can transcode with a CPU or supported GPU,
 schedule work, and verify output before replacing an original.
 
 <p align="center">
-  <img src="docs/images/optimisarr-dashboard.png" alt="Optimisarr dashboard" width="100%">
+  <img src="docs/images/optimisarr-queue-dark.png" alt="Optimisarr Queue in dark mode, showing active GPU transcoding" width="100%">
 </p>
 <p align="center"><sub>All media shown in screenshots is fabricated test data created for documentation; no copyrighted material is used.</sub></p>
 
