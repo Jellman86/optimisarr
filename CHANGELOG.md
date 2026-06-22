@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Queue hero + Verification detail sheet
+
+- **"Now processing" hero on the Queue page.** A card above the table shows what's being worked on
+  right now — file, GPU/CPU encoder, a live progress bar with fps/speed/ETA, and the live CPU/GPU
+  usage graph — with a calm idle state ("nothing processing · N queued") when the worker is between
+  jobs.
+- **Verification page normalised to the shared detail sheet.** Clicking a result now opens the same
+  slide-up `BottomSheet` (with the table shrinking to keep rows reachable) used by Inventory and
+  Queue, instead of expanding a row in place — so the gate report and per-job details are consistent
+  with the rest of the app.
+
 ### Queue: separate "Clear errored" and "Clear finished"
 
 - The single "Clear finished" button is now two: **Clear errored** (failed + cancelled jobs) and

@@ -3,13 +3,21 @@
   import { formatSize } from '../format'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
+  import BottomSheet from '../components/BottomSheet.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
 
   let jobs = $state<Job[]>([])
   let error = $state<string | null>(null)
   let loading = $state(true)
   let filter = $state<'all' | 'passed' | 'failed'>('all')
-  let expandedId = $state<number | null>(null)
+
+  // Detail bottom sheet — the same slide-up + table-shrink pattern as Inventory and Queue,
+  // replacing the old in-table row expansion.
+  let selectedId = $state<number | null>(null)
+  let sheetExpanded = $state(true)
+  let sheetHeight = $state(0)
+  let tableScrollEl = $state<HTMLElement | null>(null)
+  let tableMaxHeight = $state('65vh')
 
   $effect(() => {
     void load()
@@ -64,13 +72,44 @@
     filter === 'passed' ? passedJobs : filter === 'failed' ? failedJobs : verifiedJobs,
   )
 
-  function toggle(job: Job) {
-    expandedId = expandedId === job.id ? null : job.id
+  let selectedJob = $derived(jobs.find((j) => j.id === selectedId) ?? null)
+
+  function selectRow(id: number) {
+    if (selectedId === id) {
+      selectedId = null
+    } else {
+      selectedId = id
+      sheetExpanded = true
+    }
   }
 
   function passRate(): number {
     return verifiedJobs.length > 0 ? Math.round((passedJobs.length / verifiedJobs.length) * 100) : 0
   }
+
+  // The table fills the space below the page chrome and shrinks when the sheet opens, so rows
+  // stay reachable above the panel. The chrome above it (stats, filters) is measured, not assumed.
+  $effect(() => {
+    void sheetHeight
+    void selectedId
+    void filter
+    void visibleJobs.length
+    void loading
+    const el = tableScrollEl
+    if (!el) return
+    const measure = () => {
+      const top = el.getBoundingClientRect().top
+      const sheetSub = selectedJob ? sheetHeight : 0
+      const available = window.innerHeight - top - 48 - sheetSub
+      tableMaxHeight = `${Math.max(200, Math.round(available))}px`
+    }
+    const raf = requestAnimationFrame(measure)
+    window.addEventListener('resize', measure)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', measure)
+    }
+  })
 </script>
 
 <header class="mb-6">
@@ -143,26 +182,30 @@
     <button
       class="btn px-3 py-1 text-xs"
       class:btn-primary={filter === 'all'}
-      onclick={() => { filter = 'all'; expandedId = null }}
+      onclick={() => { filter = 'all'; selectedId = null }}
     >All ({verifiedJobs.length.toLocaleString()})</button>
     <button
       class="btn px-3 py-1 text-xs"
       class:btn-primary={filter === 'passed'}
-      onclick={() => { filter = 'passed'; expandedId = null }}
+      onclick={() => { filter = 'passed'; selectedId = null }}
     >Passed ({passedJobs.length.toLocaleString()})</button>
     <button
       class="btn px-3 py-1 text-xs"
       class:btn-primary={filter === 'failed'}
-      onclick={() => { filter = 'failed'; expandedId = null }}
+      onclick={() => { filter = 'failed'; selectedId = null }}
     >Failed ({failedJobs.length.toLocaleString()})</button>
   </div>
 
-  <!-- Results table -->
+  <!-- Results table: scrolls internally and shrinks when the detail sheet opens. -->
   <div class="card overflow-hidden">
-    <div class="overflow-x-auto">
+    <div
+      bind:this={tableScrollEl}
+      class="overflow-auto"
+      style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;"
+    >
       <table class="w-full text-sm">
         <thead
-          class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400"
+          class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
         >
           <tr>
             <th class="px-4 py-3">Result</th>
@@ -174,12 +217,9 @@
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
           {#each visibleJobs as job (job.id)}
-            {@const checks = parseChecks(job)}
             <tr
-              class="text-slate-700 dark:text-slate-300 {checks
-                ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                : ''} {expandedId === job.id ? 'bg-slate-50 dark:bg-slate-900/40' : ''}"
-              onclick={() => checks && toggle(job)}
+              class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedId === job.id ? 'bg-slate-50 dark:bg-slate-900/40' : ''}"
+              onclick={() => selectRow(job.id)}
             >
               <td class="px-4 py-2">
                 {#if job.verificationPassed}
@@ -197,11 +237,6 @@
                 <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>
                   {job.relativePath ?? '—'}
                 </div>
-                {#if checks}
-                  <span class="text-[11px] text-slate-400"
-                    >{expandedId === job.id ? '▾ hide' : '▸ details'}</span
-                  >
-                {/if}
               </td>
               <td class="hidden px-4 py-2 sm:table-cell">
                 {job.outputSizeBytes ? formatSize(job.outputSizeBytes) : '—'}
@@ -213,13 +248,6 @@
                 {job.verifiedAt ? new Date(job.verifiedAt).toLocaleString() : '—'}
               </td>
             </tr>
-            {#if expandedId === job.id && checks}
-              <tr class="bg-slate-50 dark:bg-slate-900/40">
-                <td colspan="5" class="px-4 py-3">
-                  <VerificationChecks {checks} />
-                </td>
-              </tr>
-            {/if}
           {/each}
         </tbody>
       </table>
@@ -227,3 +255,36 @@
   </div>
   <p class="mt-2 text-xs text-slate-400">{verifiedJobs.length.toLocaleString()} verified jobs</p>
 {/if}
+
+<!-- Detail bottom sheet: the full gate report for the selected job. -->
+<BottomSheet open={selectedJob !== null} bind:expanded={sheetExpanded} bind:height={sheetHeight} onclose={() => (selectedId = null)}>
+  {#snippet header()}
+    {#if selectedJob}
+      <div class="flex min-w-0 items-center gap-2">
+        {#if selectedJob.verificationPassed}
+          <span class="badge flex-shrink-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">✓ Passed</span>
+        {:else}
+          <span class="badge flex-shrink-0 bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">✗ Failed</span>
+        {/if}
+        <p class="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={selectedJob.relativePath ?? ''}>
+          {selectedJob.relativePath ?? '—'}
+        </p>
+      </div>
+    {/if}
+  {/snippet}
+  {#snippet children()}
+    {#if selectedJob}
+      {@const checks = parseChecks(selectedJob)}
+      <dl class="mb-4 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Output size</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Encoder</dt><dd class="text-right font-mono text-xs">{selectedJob.videoEncoder ?? '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">Verified</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
+      </dl>
+      {#if checks}
+        <VerificationChecks {checks} />
+      {:else}
+        <p class="text-sm text-slate-400">No detailed verification report was recorded for this job.</p>
+      {/if}
+    {/if}
+  {/snippet}
+</BottomSheet>

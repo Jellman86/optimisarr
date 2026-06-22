@@ -184,6 +184,13 @@
     activity.metrics && !activity.metrics.gpuSupported ? 'GPU stats unavailable on this host' : null,
   )
 
+  // The "now processing" hero: jobs actively doing work right now (usually one, since the
+  // default concurrency is 1). Queued count feeds the idle state.
+  let processingJobs = $derived(
+    jobs.filter((j) => j.status === 'Transcoding' || j.status === 'Probing' || j.status === 'Verifying'),
+  )
+  let queuedCount = $derived(jobs.filter((j) => j.status === 'Queued').length)
+
   // The table scrolls internally and fills the space below the page chrome; when the detail
   // sheet is open its measured height is subtracted so rows stay reachable above it (the same
   // behaviour as Inventory). The chrome above the table is variable (dispatch card, filters,
@@ -283,6 +290,71 @@
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>
+{/if}
+
+<!-- Hero: what's being processed right now, with live progress and CPU/GPU usage. Hidden only
+     when the queue is completely empty (the empty-state card covers that case). -->
+{#if !loading && (processingJobs.length > 0 || jobs.length > 0)}
+  <div class="card mb-4 p-4">
+    {#if processingJobs.length > 0}
+      <div class="space-y-4">
+        {#each processingJobs as job (job.id)}
+          {@const telemetry = live[job.id]}
+          {@const gpu = job.videoEncoder ? isGpuEncoder(job.videoEncoder) : false}
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                  Now {job.status === 'Transcoding' ? 'encoding' : job.status === 'Probing' ? 'probing' : 'verifying'}
+                </div>
+                <div class="truncate font-medium text-slate-800 dark:text-slate-100" title={job.relativePath ?? ''}>
+                  {job.relativePath ?? `Job ${job.id}`}
+                </div>
+              </div>
+              {#if job.videoEncoder}
+                <span class="badge {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
+                  {gpu ? 'GPU' : 'CPU'} · {job.videoEncoder}
+                </span>
+              {/if}
+            </div>
+
+            {#if job.status === 'Transcoding'}
+              <div class="mt-3 flex items-center gap-3">
+                <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
+                <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
+              </div>
+              {#if telemetry}
+                <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-slate-400">
+                  {#if telemetry.fps != null}<span>{telemetry.fps.toFixed(0)} fps</span>{/if}
+                  {#if telemetry.speed != null}<span>{speedLabel(telemetry.speed)}</span>{/if}
+                  {#if telemetry.etaSeconds != null}<span>{etaLabel(telemetry.etaSeconds)}</span>{/if}
+                </div>
+              {/if}
+              <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
+                <UsageGraph
+                  label="GPU"
+                  data={activity.gpuHistory}
+                  current={activity.metrics?.gpuPercent ?? null}
+                  color="rgb(34,197,94)"
+                  unavailable={gpuUnavailable}
+                  detail={activity.metrics?.gpuEngine}
+                />
+              </div>
+            {:else}
+              <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
+              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? 'Probing source…' : 'Verifying output…'}</div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+        <Icon name="pause" class="h-4 w-4 text-slate-400" />
+        <span>Nothing processing right now.{#if queuedCount > 0} {queuedCount.toLocaleString()} job{queuedCount === 1 ? '' : 's'} queued and waiting to start.{/if}</span>
+      </div>
+    {/if}
+  </div>
 {/if}
 
 {#if queueStatus && !queueStatus.canStart}
