@@ -136,8 +136,8 @@ Why not SvelteKit as the primary server:
 - SvelteKit with adapter-node is excellent for Node-hosted apps, but this product
   needs a long-running media worker and FFmpeg orchestration. ASP.NET Core should
   own the service process; Svelte can compile to static assets served by Kestrel.
-- We can still use Svelte 5 fully in the UI without running a separate Node
-  server in production.
+- Svelte 5 still works fully in the UI without a separate Node server in
+  production.
 
 ### Media tools
 

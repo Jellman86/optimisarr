@@ -9,17 +9,25 @@
   <a href="#hardware-acceleration-gpu">Hardware Acceleration</a>
 </p>
 
-Safe media library optimiser with GPU transcoding, scheduling, and verified
-replacement. Optimisarr never deletes or replaces an original until a converted
-file has passed explicit verification gates.
+Optimisarr is an independently maintained media-library optimiser for people
+running a small self-hosted setup. It can transcode with a CPU or supported GPU,
+schedule work, and verify output before replacing an original.
+
+<p align="center">
+  <img src="docs/images/optimisarr-dashboard.png" alt="Optimisarr dashboard" width="100%">
+</p>
 
 ## Documentation
 
 Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), and [troubleshooting](docs/troubleshooting/diagnostics.md).
 
-## Current capabilities
+## Project status
 
-Early development. What works today:
+Optimisarr is early-stage software. Use it on a small test set first and keep
+backups of media you cannot replace. It is maintained in spare time, so there is
+no support SLA or promise of a release schedule.
+
+## What it does
 
 - Multiple **libraries**, each with its own media type (Film/TV/Music/Photo/Other)
   and rule profile, with a folder-picker for paths. Scanning discovers the file
@@ -33,7 +41,8 @@ Early development. What works today:
 - FFmpeg/ffprobe **tool detection**, liveness, and readiness endpoints. Docker
   health checks verify database access, required writable paths, and media tools.
 - Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Queue,
-  Verification, Quarantine, Schedule, Settings; Tools live under Settings).
+  Quarantine, Schedule, Settings; Tools live under Settings). Verification reports
+  are available from Queue and Quarantine detail sheets.
 - Queue resource controls: max concurrent jobs, CPU thread limits, processing
   windows, and free work-disk safety pause.
 - Per-library **auto-optimise** windows continuously queue newly eligible files;
@@ -62,9 +71,18 @@ Early development. What works today:
   (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions, notifications,
   config-and-secrets backup/import).
 
-Not built yet (see the [roadmap](docs/roadmap.md)): release hardening (dry-run, config
-backup). **Intel QSV is now validated on real hardware** (hardware encode *and* decode);
-**AMD VA-API** validation is still pending a real AMD GPU.
+Still planned (see the [roadmap](docs/roadmap.md)): dry-run operation and
+real-hardware validation for AMD VA-API. Intel QSV has been tested on real
+hardware for both encoding and decoding.
+
+## Before you start
+
+- Docker Engine with the Compose plugin.
+- Read and write access to the media folders you mount into the container.
+- `/data`, `/work`, and `/trash` on the same filesystem if you want atomic
+  replacement moves.
+- A backup of media that matters to you. Quarantine and rollback are useful,
+  but they are not a backup strategy.
 
 ## Quick start (Docker)
 
@@ -81,9 +99,14 @@ docker run -d --name optimisarr \
   ghcr.io/jellman86/optimisarr:dev
 ```
 
-Then open `http://localhost:8787`, add a library on the **Libraries** page, and
-scan it. See [`compose.example.yml`](compose.example.yml) for a Compose setup
-(including the optional `/dev/dri` GPU mapping).
+Open `http://localhost:8787`, add a library on the **Libraries** page, then
+scan it. Compose examples are available for every supported runtime:
+
+- [CPU only](compose.cpu.example.yml)
+- [NVIDIA NVENC](compose.nvidia.example.yml)
+- [Intel QSV](compose.intel-qsv.example.yml)
+- [Intel or AMD VA-API](compose.vaapi.example.yml)
+- [combined reference file](compose.example.yml)
 
 Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the
 replacement pipeline can use atomic moves.
@@ -120,7 +143,10 @@ needed**; hosts where no unprivileged source applies simply show "GPU stats unav
     ... ghcr.io/jellman86/optimisarr:dev
   ```
 
-See [`compose.example.yml`](compose.example.yml) for the equivalent Compose blocks.
+Use the matching Compose example: [NVIDIA NVENC](compose.nvidia.example.yml),
+[Intel QSV](compose.intel-qsv.example.yml), or
+[Intel/AMD VA-API](compose.vaapi.example.yml). A
+[CPU-only file](compose.cpu.example.yml) is also provided.
 
 ## Development
 
@@ -140,5 +166,6 @@ cd web && npm run dev             # frontend dev server (proxies /api to :8787)
 - [Roadmap](docs/roadmap.md)
 - [Engineering standards](CLAUDE.md)
 - [Security policy](SECURITY.md)
+- [Support](SUPPORT.md)
 - [Contributing](CONTRIBUTING.md)
-- [Documentation generation prompt](docs/DOCUMENTATION_PROMPT.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)

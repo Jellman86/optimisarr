@@ -49,11 +49,14 @@ destructive requests are rejected.
 
 `/config/optimisarr.db` holds queue, replacement, and rollback state, but there
 is no complete backup/restore runbook or tested active-database backup flow.
-Secret-free config export is correct but is not recovery.
+The Settings export is intentionally secret-bearing configuration backup, not
+operational-state recovery; it excludes jobs, replacements, quarantine, and
+rollback history.
 
 **Required direction:** provide an atomic database backup/export and tested
 restore procedure; document backup scope for `/config` and quarantine; state
-that secrets must be re-entered. Test recovery into a fresh instance.
+that exported configuration contains plaintext credentials. Test recovery into
+a fresh instance.
 
 ### P1 — harden software supply chain
 

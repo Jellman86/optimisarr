@@ -31,3 +31,16 @@ only after validating a small manual batch for that library.
 
 Quarantine retention is not a backup policy; retain independent backups of
 irreplaceable media and `/config`.
+
+## Configuration backup and import
+
+The **Settings** page can export and import a JSON configuration snapshot. It
+includes libraries, activity watchers, notification targets, Arr connections,
+and provider credentials in plain text. Store it as sensitive material: do not
+commit, share, or leave it in an unprotected download directory.
+
+Import validates the complete file before writing, then merges configuration
+without deleting existing entries. It intentionally does not include media,
+queued jobs, replacements, quarantined originals, or rollback history. Keep a
+separate backup of `/config/optimisarr.db` and `/trash` when that operational
+state must be recoverable.

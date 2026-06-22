@@ -55,7 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/check_docs.py
-      - run: docker compose -f compose.example.yml config --quiet
+      - run: |
+          for file in compose*.example.yml; do
+            RENDER_GID=107 docker compose -f "$file" config --quiet
+          done
 
   container-smoke:
     name: Production container readiness

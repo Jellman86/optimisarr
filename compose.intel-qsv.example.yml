@@ -1,0 +1,23 @@
+services:
+  optimisarr:
+    image: ghcr.io/jellman86/optimisarr:dev
+    container_name: optimisarr
+    restart: unless-stopped
+    ports:
+      - "${OPTIMISARR_PORT:-8787}:8787"
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      UMASK: "${UMASK:-002}"
+      TZ: "${TZ:-Europe/London}"
+      ASPNETCORE_URLS: "http://0.0.0.0:8787"
+      OPTIMISARR_CONFIG_DIR: "${OPTIMISARR_CONFIG_DIR:-/config}"
+    volumes:
+      - ./config:/config
+      - /path/to/media:/data
+      - /path/to/work:/work
+      - /path/to/trash:/trash
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${RENDER_GID:?Set this to: stat -c '%g' /dev/dri/renderD128}"

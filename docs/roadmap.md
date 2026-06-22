@@ -17,10 +17,10 @@ the replacement workflow is trustworthy.
 **Inventory master-detail refactor: done.** Inventory uses a bounded, paged file list with a
 per-file detail card beneath it (probe values, eligibility reason, and actions).
 
-**Queue and Verification operational UI: done.** Queue has a top-of-page current-work hero card
-with stage, progress, encoder, speed, ETA, and live CPU/GPU telemetry. Verification uses the same
-bottom-sheet detail interaction as Inventory and Queue, shrinking its table while the selected
-report is open instead of expanding a row inline.
+**Queue operational UI: done.** Queue has a top-of-page current-work hero card
+with stage, progress, encoder, speed, ETA, and live CPU/GPU telemetry. Queue and
+Quarantine use the same bottom-sheet detail interaction as Inventory, shrinking
+their tables while the selected report is open instead of expanding a row inline.
 
 **Inventory & Candidates unified: done.** The separate Candidates page is gone — the **Inventory**
 page now shows every file's stream detail alongside its eligibility (Eligible / Skipped / Not probed
@@ -93,10 +93,9 @@ See the Phase 12 section for the remaining optional polish.
   job and surfaced on the Queue page. Only a passing report advances toward
   replacement; a failure marks the job `Failed` with the output retained for
   inspection and the original untouched. Thresholds are fixed conservative
-  defaults for now (`VerificationPolicy.Default`). A fleet-wide **Verification page**
-  lists every job that has been through the Verifying step with aggregate stats
-  (total, pass rate, most-common failing check), All/Passed/Failed filters, and the
-  expandable per-job gate report.
+  defaults for now (`VerificationPolicy.Default`). Queue filters surface all,
+  verified, and verification-failed jobs; selecting a row opens its full gate
+  report in the shared detail sheet.
 - **Phase 5 (Safe Replacement and Rollback): done.** A verified `ReadyToReplace`
   job can replace its original — the original is quarantined under `/trash` first,
   then the verified output is moved into place, with a recorded `Replacement` as
@@ -398,10 +397,12 @@ too: **Plex OAuth/PIN** and **Jellyfin Quick Connect** sign-in flows fill in the
 token instead of the user pasting a raw one (Emby keeps a manual API key).
 **Notifications** are done: webhook/ntfy/Apprise targets fire best-effort on
 replacement and failure, with pure unit-tested message/request builders.
-**Import/export** is done too: a secret-free config snapshot (settings, libraries,
+**Import/export** is done too: a secret-bearing config snapshot (settings, libraries,
 watchers, notification targets, Sonarr/Radarr connections) exports to JSON and
 imports back as a validated, non-destructive merge (pure unit-tested
-`ConfigSnapshotValidator`). **Sonarr/Radarr import-aware exclusions** are done as
+`ConfigSnapshotValidator`). The file must be stored securely; it intentionally
+does not include jobs, replacements, quarantine, or rollback history.
+**Sonarr/Radarr import-aware exclusions** are done as
 well: connected managers are polled for in-progress imports and any file whose
 folder an import is landing in is held back from queueing (pure unit-tested
 `ArrQueueParser` and `ArrImportExclusionEvaluator`), so Optimisarr never fights an
@@ -412,8 +413,8 @@ Deliverables:
 - **Authenticated media-server connections** so Optimisarr can tell the server to
   re-scan a title after a verified replacement (a replaced file keeps its path but
   changes container/codec/size, so the server should re-read it). Each provider's
-  login is different and must use the provider's own supported flow — we never ask
-  the user to paste a raw password we store:
+  login is different and must use the provider's own supported flow — Optimisarr
+  never asks the user to paste a raw password for storage:
   - **Plex — OAuth/PIN flow.** Create a PIN (`POST https://plex.tv/api/v2/pins`
     with `X-Plex-Product` and a stable `X-Plex-Client-Identifier`), send the user
     to `https://app.plex.tv/auth#?clientID=…&code=…&forwardUrl=…`, then poll
@@ -771,5 +772,5 @@ The first working slice should be deliberately small:
 5. Scan a directory and store file paths.
 6. Probe one selected file and show streams in the UI.
 
-This gives us an end-to-end app shape before we add any transcoding or
+This provides an end-to-end app shape before adding transcoding or
 replacement behaviour.
