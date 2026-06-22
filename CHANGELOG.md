@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Dashboard reworked around outcomes
+
+- **The Dashboard now leads with what Optimisarr has achieved**, replacing the stale placeholder
+  pipeline card (which wrongly claimed only Discover/Probe were active). A new `GET /api/stats`
+  endpoint aggregates the figures server-side:
+  - **Total space saved** (headline) — realised savings across every file whose optimised version is
+    in place, with original→optimised totals and the size-weighted average reduction. Rolled-back
+    replacements correctly count as zero saving.
+  - **Queue** (running / queued / failed), **Awaiting review** (in quarantine + reclaimable space),
+    **Ready to replace**, and **Libraries** (enabled + files discovered) — each a shortcut to its
+    page.
+  - A **system-health** strip (service + media tools + jobs in flight).
+  Aggregation is unit-tested; the page refreshes every 15s.
+
 ### Stale UI after a deploy fixed
 
 - **`index.html` is now served with `no-cache`, and the content-hashed assets with a one-year

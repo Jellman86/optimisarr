@@ -6,6 +6,7 @@ using Optimisarr.Api.Metrics;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
@@ -1355,6 +1356,11 @@ app.MapPost("/api/jobs/{id:int}/replace", async (
     return ReplacementResults.ToHttp(result);
 })
 .WithName("ReplaceFromJob");
+
+// Aggregate outcome/queue/library figures for the Dashboard.
+app.MapGet("/api/stats", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+    Results.Ok(await StatsQueries.GetAsync(db, cancellationToken)))
+.WithName("GetStats");
 
 app.MapGet("/api/replacements", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await ReplacementQueries.ListAsync(db, cancellationToken)))

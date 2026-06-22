@@ -169,6 +169,23 @@ export type QueueStatus = Settings & {
   waitingReason: string | null
 }
 
+export type Stats = {
+  bytesSaved: number
+  originalBytes: number
+  optimisedBytes: number
+  filesOptimised: number
+  averageSavingPercent: number
+  inQuarantine: number
+  quarantineReclaimableBytes: number
+  queued: number
+  running: number
+  readyToReplace: number
+  failed: number
+  libraries: number
+  enabledLibraries: number
+  discoveredFiles: number
+}
+
 export type VerificationCheck = {
   name: string
   outcome: 'Passed' | 'Failed'
@@ -504,4 +521,5 @@ export const api = {
   approveReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
   clearReplacements: () => request<{ cleared: number }>('/api/replacements/clear', { method: 'POST' }),
+  stats: () => request<Stats>('/api/stats'),
 }
