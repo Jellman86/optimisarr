@@ -10,6 +10,11 @@ original → /trash quarantine → verified output → library path
                                              approve purge or roll back
 ```
 
+Before the first replacement, Quarantine is empty. Replaced originals appear
+there for review and rollback.
+
+![Empty Quarantine page in dark mode](../images/optimisarr-quarantine-dark.png)
+
 A clean FFmpeg exit never replaces an original by itself. Optimisarr probes and
 verifies the output, including decode health, stream policy, duration, and the
 configured saving requirement. Failed jobs leave originals untouched.
