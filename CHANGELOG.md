@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.0 — 2026-06-22
+
+First tagged release.
+
 ### Dashboard reworked around outcomes
 
 - **The Dashboard now leads with what Optimisarr has achieved**, replacing the stale placeholder
