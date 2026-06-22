@@ -817,6 +817,12 @@ public sealed class QueueDispatcher(
         var decision = EvaluateDispatchPolicy(settings, activity);
         var freeDiskBytes = TryGetFreeDiskBytes(_workRoot);
 
+        // When dispatch is otherwise ready but nothing runs, explain whether the backlog is just
+        // waiting for closed per-library windows (the common "why isn't it running?" surprise).
+        var waitingReason = decision.CanStart && _running.Count == 0
+            ? await DescribeWindowWaitAsync(cancellationToken)
+            : null;
+
         return new QueueDispatchStatus(
             decision.CanStart,
             decision.BlockedReason,
@@ -827,7 +833,89 @@ public sealed class QueueDispatcher(
             settings.EncoderMode,
             encodes.AnyHardware,
             freeDiskBytes,
-            _workRoot);
+            _workRoot,
+            waitingReason);
+    }
+
+    private async Task<string?> DescribeWindowWaitAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+
+        var queuedByLibrary = await db.Jobs
+            .AsNoTracking()
+            .Where(job => job.Status == JobStatus.Queued)
+            .GroupBy(job => job.LibraryId)
+            .Select(group => new { LibraryId = group.Key, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+        if (queuedByLibrary.Count == 0)
+        {
+            return null;
+        }
+
+        var libraries = (await db.Libraries
+            .AsNoTracking()
+            .Select(library => new
+            {
+                library.Id,
+                library.Name,
+                library.AutoEnqueueEnabled,
+                library.AutoEnqueueWindowStart,
+                library.AutoEnqueueWindowEnd,
+            })
+            .ToListAsync(cancellationToken))
+            .ToDictionary(library => library.Id);
+
+        var queues = queuedByLibrary.Select(entry =>
+        {
+            var library = entry.LibraryId is { } id && libraries.TryGetValue(id, out var match) ? match : null;
+            var windowed = library is { AutoEnqueueEnabled: true };
+            return new QueueWaitReason.LibraryQueue(
+                library?.Name ?? "Unassigned",
+                entry.Count,
+                windowed ? library!.AutoEnqueueWindowStart : null,
+                windowed ? library!.AutoEnqueueWindowEnd : null);
+        }).ToList();
+
+        return QueueWaitReason.Describe(queues, TimeOnly.FromDateTime(DateTime.Now));
+    }
+
+    /// <summary>
+    /// Clears the pending queue to reset state (e.g. after a rules change): cancels anything in
+    /// flight, then removes all Queued and ReadyToReplace jobs and discards their /work outputs.
+    /// No original is ever touched — ReadyToReplace jobs hold only a verified, not-yet-applied
+    /// output (no replacement, no rollback), so discarding them loses recomputable work, never
+    /// data. Returns the number of jobs removed.
+    /// </summary>
+    public async Task<int> ClearPendingQueueAsync(CancellationToken cancellationToken)
+    {
+        // Stop in-flight jobs first; each running task observes cancellation, cleans up its partial
+        // output, and finalises itself to Cancelled.
+        foreach (var jobId in _running.Keys.ToList())
+        {
+            RequestCancel(jobId);
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+
+        var pending = await db.Jobs
+            .Where(job => job.Status == JobStatus.Queued || job.Status == JobStatus.ReadyToReplace)
+            .ToListAsync(cancellationToken);
+        if (pending.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var job in pending)
+        {
+            DeleteWorkOutput(job.WorkOutputPath);
+        }
+
+        db.Jobs.RemoveRange(pending);
+        await db.SaveChangesAsync(cancellationToken);
+        await NotifyAsync();
+        return pending.Count;
     }
 
     private async Task<QueueSettings> GetQueueSettingsAsync(CancellationToken cancellationToken)
@@ -975,4 +1063,7 @@ public sealed record QueueDispatchStatus(
     EncoderMode EncoderMode,
     bool HardwareAccelerated,
     long? FreeDiskBytes,
-    string WorkRoot);
+    string WorkRoot,
+    // Set when dispatch is ready but nothing starts because every queued job's library window is
+    // shut (e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)"). Null otherwise.
+    string? WaitingReason);

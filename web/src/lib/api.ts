@@ -164,6 +164,9 @@ export type QueueStatus = Settings & {
   hardwareAccelerated: boolean
   freeDiskBytes: number | null
   workRoot: string
+  // Set when dispatch is ready but nothing starts because every queued job's library auto-optimise
+  // window is shut, e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)".
+  waitingReason: string | null
 }
 
 export type VerificationCheck = {
@@ -486,6 +489,7 @@ export const api = {
   retryJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),
   clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
     request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
+  clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
   replaceFromJob: (id: number) =>

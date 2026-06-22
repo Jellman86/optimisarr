@@ -1224,6 +1224,16 @@ app.MapPost("/api/jobs/clear", async (string? scope, OptimisarrDbContext db, Can
 })
 .WithName("ClearJobs");
 
+// Reset the pending queue (e.g. after a rules change): cancel anything in flight, then remove all
+// queued and ready-to-replace jobs and discard their /work outputs. No original is touched — see
+// QueueDispatcher.ClearPendingQueueAsync.
+app.MapPost("/api/jobs/clear-pending", async (QueueDispatcher dispatcher, CancellationToken cancellationToken) =>
+{
+    var cleared = await dispatcher.ClearPendingQueueAsync(cancellationToken);
+    return Results.Ok(new { cleared });
+})
+.WithName("ClearPendingJobs");
+
 app.MapPost("/api/jobs/{id:int}/cancel", async (
     int id,
     OptimisarrDbContext db,
@@ -1486,7 +1496,8 @@ internal sealed record QueueStatusDto(
     string EncoderMode,
     bool HardwareAccelerated,
     long? FreeDiskBytes,
-    string WorkRoot)
+    string WorkRoot,
+    string? WaitingReason)
 {
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
@@ -1498,7 +1509,8 @@ internal sealed record QueueStatusDto(
         status.EncoderMode.ToString(),
         status.HardwareAccelerated,
         status.FreeDiskBytes,
-        status.WorkRoot);
+        status.WorkRoot,
+        status.WaitingReason);
 }
 
 internal sealed record JellyfinConnectRequest(string? BaseUrl);

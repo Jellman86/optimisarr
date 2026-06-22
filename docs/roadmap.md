@@ -4,10 +4,11 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, set 2026-06-13)
+## Up next (priority order, updated 2026-06-22)
 
-1. **Phase 13 release hardening** (dry-run, SQLite config backup/export, README quickstart,
-   troubleshooting, security notes) — the next major piece now that the preview/review loop is in.
+1. **Phase 13 release hardening** (dry-run, config-and-secrets backup/export, README quickstart,
+   troubleshooting, security notes) — release controls are in progress; backups intentionally omit
+   media, jobs, replacements, quarantine, and rollback history.
 2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
    for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
    segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
@@ -15,6 +16,11 @@ the replacement workflow is trustworthy.
    Phase 11 section.
 **Inventory master-detail refactor: done.** Inventory uses a bounded, paged file list with a
 per-file detail card beneath it (probe values, eligibility reason, and actions).
+
+**Queue and Verification operational UI: done.** Queue has a top-of-page current-work hero card
+with stage, progress, encoder, speed, ETA, and live CPU/GPU telemetry. Verification uses the same
+bottom-sheet detail interaction as Inventory and Queue, shrinking its table while the selected
+report is open instead of expanding a row inline.
 
 **Inventory & Candidates unified: done.** The separate Candidates page is gone — the **Inventory**
 page now shows every file's stream detail alongside its eligibility (Eligible / Skipped / Not probed
@@ -147,7 +153,7 @@ See the Phase 12 section for the remaining optional polish.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/
-  Apprise); secret-free config import/export.
+  Apprise); config-and-secrets backup/import.
 - **Phase 9 (Gold-Standard Verification): feature-complete.** Opt-in VMAF gate (plus PSNR/SSIM
   signals), always-on HDR/colour/A-V-sync/timestamp/tail integrity gates, audio channel/
   sample-rate retention, opt-in EBU R128 loudness + true-peak clipping gates, per-library VMAF

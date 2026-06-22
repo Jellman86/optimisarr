@@ -21,6 +21,7 @@
   let replacingId = $state<number | null>(null)
   let retryingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
+  let clearingPending = $state(false)
   let expandedId = $state<number | null>(null)
   let filter = $state<'all' | 'active' | 'completed' | 'failed'>('all')
 
@@ -139,6 +140,25 @@
       error = err instanceof Error ? err.message : 'Clear failed'
     } finally {
       clearingScope = null
+    }
+  }
+
+  // Reset the pending queue (e.g. after a rules change): removes all queued and ready-to-replace
+  // jobs and cancels anything in flight. No original is touched — ready-to-replace outputs are
+  // verified-but-not-applied, so only recomputable work is discarded.
+  async function clearPending() {
+    if (!confirm(
+      `Clear ${pendingCount.toLocaleString()} pending job${pendingCount === 1 ? '' : 's'} (queued + ready-to-replace) and stop anything running?\n\n` +
+      `No original files are touched. Ready-to-replace jobs lose their optimised output and will be re-encoded if enqueued again.`,
+    )) return
+    clearingPending = true
+    try {
+      await api.clearPendingJobs()
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Clear queue failed'
+    } finally {
+      clearingPending = false
     }
   }
 
@@ -281,6 +301,8 @@
   let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed' && j.clearable).length)
   let finishedProtected = $derived(jobs.filter((j) => j.status === 'Completed' && !j.clearable).length)
   let erroredClearable = $derived(jobs.filter((j) => (j.status === 'Failed' || j.status === 'Cancelled') && j.clearable).length)
+  // Pending = not-yet-applied work that a reset can safely discard (queued + verified-but-unreplaced).
+  let pendingCount = $derived(jobs.filter((j) => j.status === 'Queued' || j.status === 'ReadyToReplace').length)
 </script>
 
 <header class="mb-6">
@@ -369,6 +391,9 @@
       <Icon name="pause" class="h-4 w-4 text-slate-400" />
       <span>Nothing processing right now.{#if queuedCount > 0} {queuedCount.toLocaleString()} job{queuedCount === 1 ? '' : 's'} queued and waiting to start.{/if}</span>
     </div>
+    {#if queueStatus?.waitingReason}
+      <div class="mt-2 text-xs text-amber-700 dark:text-amber-400">{queueStatus.waitingReason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.</div>
+    {/if}
   </div>
 {/if}
 
@@ -380,6 +405,9 @@
   <div class="card mb-4 p-3 text-xs text-slate-500 dark:text-slate-400">
     Dispatch ready · {queueStatus.runningJobs}/{queueStatus.maxConcurrentJobs} running · work free:
     {queueStatus.freeDiskBytes === null ? 'unknown' : formatSize(queueStatus.freeDiskBytes)}
+    {#if queueStatus.waitingReason}
+      <span class="text-amber-700 dark:text-amber-400"> · {queueStatus.waitingReason}</span>
+    {/if}
   </div>
 {/if}
 
@@ -397,6 +425,17 @@
       </button>
     {/each}
     <div class="ml-auto flex items-center gap-2">
+      {#if pendingCount > 0}
+        <button
+          class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
+          onclick={clearPending}
+          disabled={clearingPending}
+          title="Reset the queue: remove all queued and ready-to-replace jobs and stop anything running. No original files are touched."
+        >
+          <Icon name="trash" class="h-4 w-4" />
+          {clearingPending ? 'Clearing…' : `Clear queue (${pendingCount.toLocaleString()})`}
+        </button>
+      {/if}
       {#if erroredClearable > 0}
         <button
           class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"

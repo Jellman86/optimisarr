@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Queue: reset button + "waiting for window" reason
+
+- **New "Clear queue" action** resets the pending backlog in one click — removes every Queued and
+  ReadyToReplace job and stops anything in flight (`POST /api/jobs/clear-pending`). Useful after a
+  rules change. **No original is ever touched:** ReadyToReplace jobs hold only a verified,
+  not-yet-applied output (no replacement, no rollback), so the reset discards recomputable work,
+  never data; their `/work` outputs are cleaned up to reclaim space. Distinct from "Clear errored"
+  and "Clear completed", which only remove terminal history.
+- **The Queue now explains an idle backlog.** When dispatch is ready but nothing starts because
+  every queued job's library auto-optimise window is shut, the Queue shows e.g. *"1605 job(s)
+  waiting for the TV optimise window (00:00–05:00)"* instead of appearing stuck. The new
+  `queue/status.waitingReason` is computed by a pure, unit-tested `QueueWaitReason`.
+
 ### Queue hero artwork backdrop
 
 - The "now processing" hero shows a faint **backdrop image** of the title being encoded, pulled from
