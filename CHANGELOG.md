@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Auto-replace now applies retrospectively
+
+- **Turning on a library's "Replace automatically when verified" now also applies to jobs already
+  waiting in ReadyToReplace** — not just jobs that verify afterwards. Previously auto-replace was
+  evaluated only inline at the moment a job finished verifying, so a job that became ready before the
+  toggle was enabled (or was left ready by a transient replace failure) sat there forever needing a
+  manual Replace. A periodic reconciliation pass in the dispatch loop now picks up any verified
+  ReadyToReplace job whose library auto-replaces and replaces it (bounded per cycle). The original is
+  still quarantined with a recorded rollback first, so the safety model is unchanged; a failure
+  leaves the job ready to retry next cycle. The rule is a pure, unit-tested `AutoReplacePolicy`.
+
 ### Queue: reset button + "waiting for window" reason
 
 - **New "Clear queue" action** resets the pending backlog in one click — removes every Queued and

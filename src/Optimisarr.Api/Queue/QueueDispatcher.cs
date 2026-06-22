@@ -85,6 +85,10 @@ public sealed class QueueDispatcher(
             try
             {
                 await DispatchAsync(stoppingToken);
+                // Apply "Replace automatically" retrospectively: jobs already in ReadyToReplace when
+                // the toggle was turned on (or left there by a transient replace failure) are picked
+                // up here, not just jobs that verify after the toggle.
+                await ReconcileAutoReplaceAsync(stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -168,6 +172,69 @@ public sealed class QueueDispatcher(
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Recovered {Count} interrupted job(s) after restart", interrupted.Count);
         await NotifyAsync();
+    }
+
+    // Cap per cycle so a large backlog of ready jobs is replaced gradually rather than in one burst.
+    private const int AutoReplaceReconcileBatch = 20;
+
+    // Replaces jobs already in ReadyToReplace whose library auto-replaces. This makes "Replace
+    // automatically" apply retrospectively (a job that verified before the toggle was on, or was
+    // left ready by a transient replace failure). ReplaceAsync still quarantines the original and
+    // records a rollback first, so the safety model is unchanged; a failure leaves the job ready
+    // for the next cycle to retry.
+    private async Task ReconcileAutoReplaceAsync(CancellationToken cancellationToken)
+    {
+        List<int> jobIds;
+        await using (var scope = scopeFactory.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var ready = await db.Jobs
+                .AsNoTracking()
+                .Where(job => job.Status == JobStatus.ReadyToReplace && job.LibraryId != null)
+                .Join(
+                    db.Libraries,
+                    job => job.LibraryId,
+                    library => library.Id,
+                    (job, library) => new { job.Id, job.Status, job.VerificationPassed, library.AutoReplace })
+                .ToListAsync(cancellationToken);
+
+            jobIds = ready
+                .Where(candidate => AutoReplacePolicy.ShouldReconcile(
+                    candidate.Status, candidate.VerificationPassed, candidate.AutoReplace))
+                .OrderBy(candidate => candidate.Id)
+                .Take(AutoReplaceReconcileBatch)
+                .Select(candidate => candidate.Id)
+                .ToList();
+        }
+
+        if (jobIds.Count == 0)
+        {
+            return;
+        }
+
+        var replaced = 0;
+        foreach (var jobId in jobIds)
+        {
+            await using var replaceScope = scopeFactory.CreateAsyncScope();
+            var replacement = replaceScope.ServiceProvider.GetRequiredService<ReplacementService>();
+            var result = await replacement.ReplaceAsync(jobId, cancellationToken);
+            if (result.Kind == ReplacementResultKind.Success)
+            {
+                replaced++;
+                logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace, reconciled).", jobId);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Job {JobId}: auto-replace reconcile did not complete ({Kind}): {Message}. Left ReadyToReplace.",
+                    jobId, result.Kind, result.Message);
+            }
+        }
+
+        if (replaced > 0)
+        {
+            await NotifyAsync();
+        }
     }
 
     private async Task DispatchAsync(CancellationToken stoppingToken)
