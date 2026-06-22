@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Discord notifications
+
+- **Discord is now a first-class notification type** in Settings → Notifications, posting a native
+  embed (title + description) so messages render properly. The type was supported by the backend but
+  missing from the UI dropdown, so it couldn't be selected.
+- **A "Webhook" target pointed at a Discord webhook URL now works automatically.** Discord rejects
+  the generic `{ event, title, body }` webhook body with HTTP 400; the builder now detects a Discord
+  webhook URL (discord.com / discordapp.com `/api/webhooks/`) under either the Discord or the generic
+  Webhook type and sends an embed instead — so existing misconfigured targets start working without
+  being recreated. Detection is pure and unit-tested.
+
 ### Auto-replace now applies retrospectively
 
 - **Turning on a library's "Replace automatically when verified" now also applies to jobs already

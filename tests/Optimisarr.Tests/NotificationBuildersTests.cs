@@ -103,4 +103,30 @@ public sealed class NotificationRequestBuilderTests
 
         Assert.False(request.Headers.ContainsKey("Authorization"));
     }
+
+    [Theory]
+    [InlineData("https://discord.com/api/webhooks/151833071023/abc")]
+    [InlineData("https://discordapp.com/api/webhooks/1/abc")]
+    [InlineData("https://ptb.discord.com/api/webhooks/1/abc")]
+    public void Webhook_type_pointed_at_a_discord_url_sends_an_embed_not_a_generic_body(string url)
+    {
+        // A common misconfiguration: the generic "Webhook" type with a Discord URL. A plain
+        // { event, title, body } body is rejected by Discord with 400, so we auto-detect and embed.
+        var request = NotificationRequestBuilder.Build(
+            NotificationType.Webhook, url, token: null, "replacement", Message);
+
+        Assert.Contains("\"embeds\"", request.Body);
+        Assert.DoesNotContain("\"event\"", request.Body);
+    }
+
+    [Fact]
+    public void A_non_discord_webhook_url_still_sends_the_generic_body()
+    {
+        var request = NotificationRequestBuilder.Build(
+            NotificationType.Webhook, "https://hooks.example.com/discord/api/webhooks/x", null, "replacement", Message);
+
+        // Not a Discord host, so it must not be mistaken for one even with a similar path.
+        Assert.Contains("\"event\":\"replacement\"", request.Body);
+        Assert.DoesNotContain("\"embeds\"", request.Body);
+    }
 }

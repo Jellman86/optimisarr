@@ -279,7 +279,7 @@ export type SaveActivityWatcher = {
   refreshOnReplace: boolean
 }
 
-export type NotificationType = 'Webhook' | 'Ntfy' | 'Apprise'
+export type NotificationType = 'Webhook' | 'Discord' | 'Ntfy' | 'Apprise'
 
 export type NotificationTarget = {
   id: number

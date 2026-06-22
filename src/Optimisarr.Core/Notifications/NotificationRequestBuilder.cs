@@ -29,8 +29,11 @@ public static class NotificationRequestBuilder
         string eventKey,
         NotificationMessage message)
     {
-        // Discord authenticates via the webhook URL itself, so it never takes a token.
-        if (type == NotificationType.Discord)
+        // Discord needs an embed/content payload (a generic webhook body is rejected with 400). We
+        // honour the explicit Discord type, and also auto-detect a Discord webhook URL chosen under
+        // the generic "Webhook" type, so an existing target like that keeps working. Discord
+        // authenticates via the webhook URL itself, so it never takes a token.
+        if (type == NotificationType.Discord || IsDiscordWebhookUrl(url))
         {
             return BuildJson(url, new Dictionary<string, string>(),
                 new { embeds = new[] { new { title = message.Title, description = message.Body } } });
@@ -49,6 +52,13 @@ public static class NotificationRequestBuilder
             _ => BuildJson(url, headers, new { @event = eventKey, title = message.Title, body = message.Body })
         };
     }
+
+    // Discord (and the legacy discordapp.com host) webhook endpoints live under /api/webhooks/.
+    private static bool IsDiscordWebhookUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && (uri.Host.EndsWith("discord.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith("discordapp.com", StringComparison.OrdinalIgnoreCase))
+        && uri.AbsolutePath.Contains("/api/webhooks/", StringComparison.OrdinalIgnoreCase);
 
     private static NotificationRequest BuildNtfy(
         string url, Dictionary<string, string> headers, NotificationMessage message)

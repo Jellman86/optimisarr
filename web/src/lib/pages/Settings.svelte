@@ -35,7 +35,7 @@
   // A visit to the old /tools route lands on Settings with the Tools tab open.
   let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
 
-  const notificationTypes: NotificationType[] = ['Webhook', 'Ntfy', 'Apprise']
+  const notificationTypes: NotificationType[] = ['Webhook', 'Discord', 'Ntfy', 'Apprise']
   const emptyTarget = (): SaveNotificationTarget => ({
     name: '', type: 'Webhook', url: '', token: '', enabled: true, notifyOnReplacement: true, notifyOnFailure: true,
   })
@@ -915,8 +915,8 @@
   <div class="card p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Notifications</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      POST to a webhook, ntfy topic, or Apprise endpoint when a file is replaced or a job fails.
-      Delivery is best-effort and never affects processing.
+      POST to a webhook, Discord channel, ntfy topic, or Apprise endpoint when a file is replaced or
+      a job fails. Delivery is best-effort and never affects processing.
     </p>
 
     {#if targetError}
@@ -963,7 +963,15 @@
         </div>
         <div>
           <label class="label" for="target-url">URL</label>
-          <input id="target-url" class="input" placeholder="https://ntfy.sh/my-topic" bind:value={targetDraft.url} />
+          <input
+            id="target-url"
+            class="input"
+            placeholder={targetDraft.type === 'Discord' ? 'https://discord.com/api/webhooks/…' : 'https://ntfy.sh/my-topic'}
+            bind:value={targetDraft.url}
+          />
+          {#if targetDraft.type === 'Discord'}
+            <p class="mt-1 text-[11px] text-slate-400">Discord channel → Edit → Integrations → Webhooks → Copy URL. No token needed — the URL carries the secret.</p>
+          {/if}
         </div>
         <div>
           <label class="label" for="target-token">Token <span class="text-slate-400">(optional)</span></label>
