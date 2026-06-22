@@ -23,7 +23,7 @@
   let clearingScope = $state<'errored' | 'finished' | null>(null)
   let clearingPending = $state(false)
   let expandedId = $state<number | null>(null)
-  let filter = $state<'all' | 'active' | 'completed' | 'failed'>('all')
+  let filter = $state<'all' | 'active' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
 
   // The job open in the detail bottom sheet, and whether the sheet shows full content.
   let selectedJobId = $state<number | null>(null)
@@ -162,11 +162,15 @@
     }
   }
 
-  function matchesFilter(status: string): boolean {
+  function matchesFilter(job: Job): boolean {
     switch (filter) {
-      case 'active': return isActive(status)
-      case 'completed': return status === 'Completed'
-      case 'failed': return status === 'Failed'
+      case 'active': return isActive(job.status)
+      case 'completed': return job.status === 'Completed'
+      case 'failed': return job.status === 'Failed'
+      // Verification outcome cuts across status (a ready-to-replace job has passed; a job can fail
+      // a gate without being status=Failed), so it filters on verificationPassed, not status.
+      case 'verified': return job.verificationPassed === true
+      case 'verifyFailed': return job.verificationPassed === false
       default: return true
     }
   }
@@ -176,8 +180,10 @@
     active: jobs.filter((j) => isActive(j.status)).length,
     completed: jobs.filter((j) => j.status === 'Completed').length,
     failed: jobs.filter((j) => j.status === 'Failed').length,
+    verified: jobs.filter((j) => j.verificationPassed === true).length,
+    verifyFailed: jobs.filter((j) => j.verificationPassed === false).length,
   })
-  let visibleJobs = $derived(jobs.filter((j) => matchesFilter(j.status)))
+  let visibleJobs = $derived(jobs.filter((j) => matchesFilter(j)))
 
   // A hardware encoder is named <codec>_<vendor> (e.g. hevc_nvenc, hevc_qsv, h264_vaapi);
   // anything else (libx265, …) is a CPU/software encoder.
@@ -429,7 +435,7 @@
 
 {#if !loading && jobs.length > 0}
   <div class="mb-4 flex flex-wrap items-center gap-2">
-    {#each [['all', 'All'], ['active', 'Active'], ['completed', 'Completed'], ['failed', 'Failed']] as [key, label]}
+    {#each [['all', 'All'], ['active', 'Active'], ['completed', 'Completed'], ['failed', 'Failed'], ['verified', 'Verified'], ['verifyFailed', 'Verification failed']] as [key, label]}
       <button
         class="badge cursor-pointer border {filter === key
           ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'

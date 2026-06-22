@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Verification page folded into the Queue
+
+- **Removed the standalone Verification page** (and its sidebar entry). It was a filtered view of the
+  same job data the Queue already shows, with the same detail sheet and gate report. The Queue gains
+  **"Verified" and "Verification failed" filter chips** so you can still slice by verification
+  outcome (which cuts across job status — a ready-to-replace job has passed; a job can fail a gate
+  without being a hard failure). One less page to navigate for the same information.
+
 ### Cover art no longer fails the encode
 
 - **Files with embedded cover art / poster thumbnails now optimise instead of failing.** A remux
