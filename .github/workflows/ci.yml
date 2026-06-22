@@ -57,9 +57,18 @@ jobs:
       - run: python3 scripts/check_docs.py
       - run: docker compose -f compose.example.yml config --quiet
 
+  container-smoke:
+    name: Production container readiness
+    needs: [backend, frontend, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag optimisarr:ci .
+      - run: bash scripts/ci_container_smoke.sh optimisarr:ci
+
   docker:
     name: Docker image
-    needs: [backend, frontend, docs]
+    needs: [backend, frontend, docs, container-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read

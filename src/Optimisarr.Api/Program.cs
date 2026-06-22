@@ -110,6 +110,40 @@ app.MapGet("/api/health", () => Results.Ok(new
 }))
 .WithName("GetHealth");
 
+app.MapGet("/api/ready", async (
+    OptimisarrDbContext db,
+    ToolDetectionService tools,
+    CancellationToken cancellationToken) =>
+{
+    var failures = new List<string>();
+    if (!await db.Database.CanConnectAsync(cancellationToken))
+    {
+        failures.Add("database is unavailable");
+    }
+
+    foreach (var path in new[] { configDirectory, "/work", "/trash" })
+    {
+        if (!Directory.Exists(path) || !PathAccessProbe.CanWrite(path))
+        {
+            failures.Add($"required path is not writable: {path}");
+        }
+    }
+
+    var unavailableTools = (await tools.DetectAsync(cancellationToken))
+        .Where(tool => !tool.Available)
+        .Select(tool => tool.Name)
+        .ToList();
+    if (unavailableTools.Count > 0)
+    {
+        failures.Add($"required tools unavailable: {string.Join(", ", unavailableTools)}");
+    }
+
+    return failures.Count == 0
+        ? Results.Ok(new { status = "ready" })
+        : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, detail: string.Join("; ", failures));
+})
+.WithName("GetReadiness");
+
 app.MapGet("/api/settings", async (
     SettingsStore settings,
     CancellationToken cancellationToken) =>
