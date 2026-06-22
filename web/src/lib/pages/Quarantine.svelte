@@ -10,6 +10,7 @@
   let error = $state<string | null>(null)
   let loading = $state(true)
   let busyId = $state<number | null>(null)
+  let bulkAction = $state<'approve' | 'reject' | null>(null)
 
   // Compare-to-approve: one row expands at a time into a review panel. Details (incl. the
   // verification report) are fetched lazily and cached, so the list stays lean.
@@ -90,6 +91,38 @@
     }
   }
 
+  async function approveAll() {
+    if (!confirm(`Approve all ${activeCount} quarantined replacements?\n\nThis permanently deletes every quarantined original shown as Replaced. None of these replacements can be rolled back afterward.`)) return
+    bulkAction = 'approve'
+    let failed = 0
+    for (const replacement of replacements.filter((r) => r.status === 'Replaced')) {
+      try {
+        await api.approveReplacement(replacement.id)
+      } catch {
+        failed++
+      }
+    }
+    if (failed > 0) error = `${failed} replacement${failed === 1 ? '' : 's'} could not be approved. Review the remaining rows.`
+    await load()
+    bulkAction = null
+  }
+
+  async function rejectAll() {
+    if (!confirm(`Roll back all ${activeCount} quarantined replacements?\n\nEach original will be restored and its replacement removed.`)) return
+    bulkAction = 'reject'
+    let failed = 0
+    for (const replacement of replacements.filter((r) => r.status === 'Replaced')) {
+      try {
+        await api.rollbackReplacement(replacement.id)
+      } catch {
+        failed++
+      }
+    }
+    if (failed > 0) error = `${failed} replacement${failed === 1 ? '' : 's'} could not be rolled back. Review the remaining rows.`
+    await load()
+    bulkAction = null
+  }
+
   function savingPercent(r: { originalSizeBytes: number; newSizeBytes: number }): number {
     if (r.originalSizeBytes <= 0) return 0
     return Math.round((1 - r.newSizeBytes / r.originalSizeBytes) * 100)
@@ -119,6 +152,20 @@
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>
+{/if}
+
+{#if activeCount > 0}
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    <button class="btn btn-primary px-3 py-1.5 text-sm" onclick={approveAll} disabled={bulkAction !== null}>
+      <Icon name="check" class="h-4 w-4" />
+      {bulkAction === 'approve' ? 'Approving all…' : `Approve all (${activeCount})`}
+    </button>
+    <button class="btn btn-danger px-3 py-1.5 text-sm" onclick={rejectAll} disabled={bulkAction !== null}>
+      <Icon name="rotate" class="h-4 w-4" />
+      {bulkAction === 'reject' ? 'Rolling back all…' : `Reject all (${activeCount})`}
+    </button>
+    <span class="text-xs text-slate-400">Bulk actions affect only active quarantine entries and require confirmation.</span>
+  </div>
 {/if}
 
 {#if loading}

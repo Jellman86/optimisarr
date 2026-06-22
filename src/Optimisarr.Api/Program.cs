@@ -1245,6 +1245,30 @@ app.MapPost("/api/jobs/{id:int}/cancel", async (
 })
 .WithName("CancelJob");
 
+// Removes a cancelled or failed job so an operator can reset it and enqueue it again.
+// Completed replacements are deliberately excluded: their job record protects rollback state.
+app.MapDelete("/api/jobs/{id:int}", async (
+    int id,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+    if (job is null)
+    {
+        return Results.NotFound(new { error = $"No job with id {id}." });
+    }
+
+    if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
+    {
+        return Results.BadRequest(new { error = "Stop an active job before removing it from the queue." });
+    }
+
+    db.Jobs.Remove(job);
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.NoContent();
+})
+.WithName("RemoveResettableJob");
+
 // Re-queue a failed or cancelled job so the user can deliberately try a file again
 // (e.g. after fixing an encoder setting). The history guard otherwise holds failed
 // files back, so this is the explicit way to retry one.

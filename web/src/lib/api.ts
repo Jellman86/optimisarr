@@ -485,6 +485,7 @@ export const api = {
 
   jobs: () => request<Job[]>('/api/jobs'),
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   retryJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),
   clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
     request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),

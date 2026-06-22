@@ -17,6 +17,7 @@
   let error = $state<string | null>(null)
   let loading = $state(true)
   let cancellingId = $state<number | null>(null)
+  let removingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let retryingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
@@ -94,6 +95,21 @@
       error = err instanceof Error ? err.message : 'Cancel failed'
     } finally {
       cancellingId = null
+    }
+  }
+
+  async function stopAndRemove(job: Job) {
+    if (!confirm(`Stop and remove this job from the queue?\n\n${job.relativePath ?? `Job ${job.id}`}\n\nIt can be enqueued again later. Completed replacements are not removed because their rollback record must be kept.`)) return
+    removingId = job.id
+    try {
+      if (isActive(job.status)) await api.cancelJob(job.id)
+      await api.removeJob(job.id)
+      if (selectedJobId === job.id) selectedJobId = null
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Unable to remove job'
+    } finally {
+      removingId = null
     }
   }
 
@@ -253,6 +269,7 @@
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
   // Two clear buckets: finished = completed; errored = failed or cancelled.
   let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed' && j.clearable).length)
+  let finishedProtected = $derived(jobs.filter((j) => j.status === 'Completed' && !j.clearable).length)
   let erroredClearable = $derived(jobs.filter((j) => (j.status === 'Failed' || j.status === 'Cancelled') && j.clearable).length)
 </script>
 
@@ -304,15 +321,15 @@
           {clearingScope === 'errored' ? 'Clearing…' : `Clear errored (${erroredClearable})`}
         </button>
       {/if}
-      {#if finishedClearable > 0}
+      {#if counts.completed > 0}
         <button
           class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
           onclick={() => clear('finished')}
-          disabled={clearingScope !== null}
-          title="Remove completed jobs from the list. Files stay tagged so they are never re-optimised; any job still holding a rollback is kept."
+          disabled={clearingScope !== null || finishedClearable === 0}
+          title={finishedClearable > 0 ? 'Remove completed jobs whose rollback is no longer available.' : 'Completed jobs are retained because their quarantined originals can still be rolled back.'}
         >
           <Icon name="trash" class="h-4 w-4" />
-          {clearingScope === 'finished' ? 'Clearing…' : `Clear finished (${finishedClearable})`}
+          {clearingScope === 'finished' ? 'Clearing…' : finishedClearable > 0 ? `Clear completed (${finishedClearable})` : `Completed protected (${finishedProtected})`}
         </button>
       {/if}
     </div>
@@ -414,11 +431,15 @@
                     <Icon name="retry" class="h-3.5 w-3.5" />
                     {retryingId === job.id ? 'Retrying' : 'Retry'}
                   </button>
+                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); stopAndRemove(job) }} disabled={removingId === job.id} title="Remove this attempt so the file can be enqueued again">
+                    <Icon name="trash" class="h-3.5 w-3.5" />
+                    {removingId === job.id ? 'Removing' : 'Remove'}
+                  </button>
                 {/if}
                 {#if isActive(job.status)}
-                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); cancel(job) }} disabled={cancellingId === job.id}>
+                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); stopAndRemove(job) }} disabled={removingId === job.id}>
                     <Icon name="x" class="h-3.5 w-3.5" />
-                    {cancellingId === job.id ? 'Cancelling' : 'Cancel'}
+                    {removingId === job.id ? 'Stopping…' : 'Stop & remove'}
                   </button>
                 {/if}
               </div>
@@ -528,10 +549,13 @@
           <button class="btn px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
             {retryingId === selectedJob.id ? 'Retrying…' : 'Retry'}
           </button>
+          <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
+            {removingId === selectedJob.id ? 'Removing…' : 'Remove from queue'}
+          </button>
         {/if}
         {#if isActive(selectedJob.status)}
-          <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && cancel(selectedJob)} disabled={cancellingId === selectedJob.id}>
-            {cancellingId === selectedJob.id ? 'Cancelling…' : 'Cancel'}
+          <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
+            {removingId === selectedJob.id ? 'Stopping…' : 'Stop & remove'}
           </button>
         {/if}
       </div>
