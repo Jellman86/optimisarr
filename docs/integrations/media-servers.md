@@ -2,7 +2,8 @@
 
 Optimisarr supports configured Plex, Jellyfin, and Emby activity watchers to
 pause new work while a service is active. Unreachable watchers do not wedge the
-queue. It can request a targeted library refresh after replacement or rollback.
+queue. After a replacement or rollback it asks each connected server to rescan:
+a changed-folder refresh for Jellyfin/Emby, and a section refresh for Plex.
 
 Plex supports PIN/OAuth connection flow; Jellyfin supports Quick Connect or API
 key connection; Emby uses an API key. Configure each in the UI, test the
