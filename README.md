@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/public/favicon-192.png" alt="Optimisarr app icon" width="96">
+  <img src="web/public/favicon-192.png" alt="Optimisarr app icon" width="192">
 </p>
 <h1 align="center">Optimisarr</h1>
 <p align="center"><strong>Safe, verified optimisation for self-hosted media libraries.</strong></p>
@@ -76,6 +76,10 @@ no support SLA or promise of a release schedule.
 Still planned (see the [roadmap](docs/roadmap.md)): dry-run operation and
 real-hardware validation for AMD VA-API. Intel QSV has been tested on real
 hardware for both encoding and decoding.
+
+## But why?
+
+Truth is, I wasn't happy with the current options on the market for media-library optimisation. I've used Unmanic and Tdarr in the past and they either were too complex or did no post-transcode verification (often leaving broken files after a transcode). I wanted something simple, easy to understand, and that guaranteed the files that come out aren't borked. Storage is only going to get more expensive in the short to medium term, so best optimise your library.
 
 ## Before you start
 
