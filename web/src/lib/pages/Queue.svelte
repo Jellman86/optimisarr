@@ -415,9 +415,7 @@
       <Icon name="pause" class="h-4 w-4 text-slate-400" />
       <span>Nothing processing right now.{#if queuedCount > 0} {queuedCount.toLocaleString()} job{queuedCount === 1 ? '' : 's'} queued and waiting to start.{/if}</span>
     </div>
-    {#if queueStatus?.waitingReason}
-      <div class="mt-2 text-xs text-amber-700 dark:text-amber-400">{queueStatus.waitingReason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.</div>
-    {/if}
+    <!-- The waiting-window reason is shown once, by the dispatch-state card below; don't repeat it here. -->
   </div>
 {/if}
 
