@@ -56,6 +56,26 @@ public static class RuleProfileDefaults
             MinFileSizeBytes = DefaultMinReencodeSize,
             Hdr = HdrHandling.Preserve
         },
+        // "Scott's Settings": the same conservative, broadly-compatible HEVC/MP4 base as
+        // ConservativeHevc, but a complete bundle rather than video-only — HDR is tone-mapped to
+        // SDR for maximum playback compatibility, and audio is re-encoded to AAC 96 kbps downmixed
+        // to stereo (both the audio track of a video job and an audio-only/music file). 96 kbps
+        // stereo AAC is transparent enough for typical listening while saving a lot over surround
+        // lossless. A music library set to this profile gets the same AAC 96 kbps stereo target.
+        RuleProfile.ScottsSettings => new RuleSettings
+        {
+            Profile = profile,
+            TargetVideoCodec = "hevc",
+            TargetContainer = "mp4",
+            DefaultCrf = 24,
+            MinFileSizeBytes = DefaultMinReencodeSize,
+            Hdr = HdrHandling.TonemapToSdr,
+            VideoAudioCodec = "aac",
+            VideoAudioBitrateKbps = 96,
+            DownmixToStereo = true,
+            TargetAudioCodec = "aac",
+            AudioBitrateKbps = 96
+        },
         // Lossless container cleanup only: never re-encodes, so it has no codec or CRF. MKV is the
         // most permissive container for a remux.
         RuleProfile.RemuxCleanup => new RuleSettings

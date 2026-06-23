@@ -16,5 +16,11 @@ public enum RuleProfile
     ExperimentalAv1 = 2,
 
     /// <summary>Remux/container cleanup only, no re-encode.</summary>
-    RemuxCleanup = 3
+    RemuxCleanup = 3,
+
+    /// <summary>
+    /// "Scott's Settings": conservative HEVC video that also tone-maps HDR to SDR and re-encodes
+    /// audio to AAC 96 kbps downmixed to stereo — a compatibility-first, space-saving bundle.
+    /// </summary>
+    ScottsSettings = 4
 }

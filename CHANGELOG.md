@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### "Scott's Settings" optimisation preset
+
+- **A new "Scott's Settings" preset** on the library optimisation slider (Film/TV): conservative
+  HEVC (H.265) in MP4 at CRF 24, HDR tone-mapped to SDR, and audio re-encoded to AAC 96 kbps
+  downmixed to stereo — a compatibility-first, space-saving bundle. Selecting it fills the matching
+  Advanced fields so the panel honestly shows what it does (the stereo downmix in particular is an
+  explicit per-library switch). A music library set to this profile gets the same AAC 96 kbps
+  stereo target.
+
+### Libraries settings: tidier Advanced panel
+
+- **Advanced options now sit in a subtly tinted, inset panel** so they read as distinct from the
+  simple controls, and the dense per-field helper text has been moved into hover tooltips
+  (matching the Settings page). _(Rolling out across all sections — Video done first.)_
+
+### Dashboard: durable lifetime savings + live system usage
+
+- **"Total space saved" is now a persistent lifetime total, not a figure derived from current rows.**
+  Previously the headline summed the surviving `Replacement` rows, so it silently shrank whenever
+  those rows went away — a quarantine purge, clearing queue/replacement history, or removing a
+  library — and read as zero against a fresh database. It now accrues in durable `AppSetting`
+  counters as each replacement is put in place (and is reversed when one is rolled back), so it
+  survives restarts and history changes and reflects realised lifetime savings. A **Reset** control
+  on the card (two-step confirm) zeroes it via `POST /api/stats/clear`; this only clears the headline
+  figure and touches no files, quarantine, or rollback history.
+- **The Dashboard now shows the live CPU/GPU usage graph** while a job is encoding, reusing the same
+  unprivileged SignalR telemetry as the Queue view (idle hint when nothing is encoding).
+
+### Safer replacement (hardening)
+
+- **A cross-filesystem replacement copy is now verified by SHA-256 content, not just byte length.**
+  The copy-plus-delete fallback used when an atomic rename isn't possible across mounts previously
+  accepted any same-length copy; it now confirms the destination is a bit-for-bit duplicate of the
+  source before the original is removed, so a truncated or corrupted copy can never stand in for it.
+- **A failed replacement can no longer strand the original in quarantine.** If an output move fails
+  partway and leaves a remnant at the destination — including the original's own path when the
+  container is unchanged — restore now clears that disposable remnant before moving the protected
+  original back, instead of skipping the restore because the path looked occupied.
+
 ## 0.1.0 — 2026-06-22
 
 First tagged release.

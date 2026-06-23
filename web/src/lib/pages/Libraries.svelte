@@ -4,6 +4,7 @@
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
   import Icon from '../components/Icon.svelte'
+  import InfoTip from '../components/InfoTip.svelte'
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
@@ -50,14 +51,16 @@
     CompatibilityH264: 'H.264 in MP4 — plays literally everywhere, at the cost of larger files. (AAC audio recommended.)',
     ExperimentalAv1: 'Smallest files using AV1 in MKV, where hardware allows. Slower to encode. (Opus audio recommended.)',
     RemuxCleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
+    ScottsSettings: "Scott's Settings — HEVC (H.265) in MP4 at CRF 24, HDR tone-mapped to SDR, and audio re-encoded to AAC 96 kbps downmixed to stereo. A compatibility-first, space-saving bundle (the same AAC 96 kbps stereo target applies to a music library).",
   }
 
-  // The three re-encode profiles form a single compatibility→efficiency axis, shown as a
-  // slider so the common case is one simple choice. Remux/Cleanup is "don't re-encode at all",
-  // so it sits as a separate toggle above the slider rather than on the quality axis. The exact
-  // codec/container/CRF/audio knobs stay in Advanced options.
-  const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1']
-  const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency']
+  // The re-encode profiles form a single compatibility→efficiency axis, shown as a slider so the
+  // common case is one simple choice; "Scott's Settings" rides along as a named all-in-one preset
+  // at the end. Remux/Cleanup is "don't re-encode at all", so it sits as a separate toggle above
+  // the slider rather than on the quality axis. The exact codec/container/CRF/audio knobs stay in
+  // Advanced options.
+  const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings']
+  const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency', "Scott's"]
 
   // Friendly display names for raw codec ids so a badge reads "HEVC (H.265)", not "hevc".
   const codecLabels: Record<string, string> = { h264: 'H.264', hevc: 'HEVC (H.265)', av1: 'AV1' }
@@ -187,7 +190,18 @@
   const encodeStop = $derived(Math.max(0, encodeProfiles.indexOf(form.ruleProfile)))
 
   function setEncodeStop(value: string) {
-    form.ruleProfile = encodeProfiles[Number(value)] ?? 'ConservativeHevc'
+    const profile = encodeProfiles[Number(value)] ?? 'ConservativeHevc'
+    form.ruleProfile = profile
+    // "Scott's Settings" bundles audio + HDR choices the slider can't show on its own. Fill the
+    // matching form fields so the Advanced panel honestly reflects what the preset does — the
+    // stereo downmix in particular is an explicit per-library switch, so it must be set here to
+    // actually take effect rather than only living in the profile's server-side default.
+    if (profile === 'ScottsSettings') {
+      form.videoAudioCodec = 'aac'
+      form.videoAudioBitrateKbps = 96
+      form.downmixToStereo = true
+      form.hdrHandling = 'TonemapToSdr'
+    }
   }
 
   function toggleRemux(checked: boolean) {
@@ -623,7 +637,7 @@
        knobs live under Advanced options. -->
   <div class="mt-4">
     <div class="flex items-center gap-2">
-      <span class="label mb-0">Optimisation preset</span>
+      <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient. Each stop picks a researched codec, container, and quality; Scott's Settings is an all-in-one preset that also tone-maps HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
       {#if showVideoOptions && presetOverridden}
         <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="Codec/container set manually in Advanced options">Overridden</span>
       {/if}
@@ -649,7 +663,7 @@
         <input
           type="range"
           min="0"
-          max="2"
+          max={encodeProfiles.length - 1}
           step="1"
           class="w-full"
           aria-label="Compatibility to efficiency"
@@ -776,8 +790,9 @@
   </button>
 
   {#if showAdvanced}
-    <!-- divide-y draws a separator between whichever sections are shown for this media type. -->
-    <div class="mt-4 divide-y divide-slate-200 dark:divide-slate-700">
+    <!-- A subtly tinted, inset panel sets the Advanced area apart from the simple controls above.
+         divide-y draws a separator between whichever sections are shown for this media type. -->
+    <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 divide-y divide-slate-200 dark:border-slate-700 dark:bg-slate-900/40 dark:divide-slate-800">
 
       {#if showVideoOptions}
       <!-- VIDEO — scoped to Film/TV/Other libraries. -->
@@ -787,28 +802,28 @@
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-codec">Target codec</label>
+            <label class="label" for="lib-codec">Target codec <InfoTip text="The video codec a re-encode targets. Leave on “Profile default” to follow the preset (HEVC for Balanced/Scott's, H.264 for Compatibility, AV1 for Efficiency)." /></label>
             <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
               <option value={null}>Profile default</option>
               {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-container">Container</label>
+            <label class="label" for="lib-container">Container <InfoTip text="The output container the file is muxed into. MP4 is the most compatible; MKV carries image-based subtitles (Blu-ray/DVD) that MP4 can't. Leave on “Profile default” to follow the preset." /></label>
             <select id="lib-container" class="input" bind:value={form.targetContainer}>
               <option value={null}>Profile default</option>
               {#each options.containers as container}<option value={container}>.{container}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-hdr">HDR / Dolby Vision</label>
+            <label class="label" for="lib-hdr">HDR / Dolby Vision <InfoTip text="What to do with HDR sources. Exclude skips them; Preserve keeps the HDR signal; Tonemap to SDR converts to SDR for maximum playback compatibility (the tonemap runs on CPU)." /></label>
             <select id="lib-hdr" class="input" bind:value={form.hdrHandling}>
               <option value={null}>Profile default</option>
               {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-preset">Encoder preset</label>
+            <label class="label" for="lib-preset">Encoder preset <InfoTip text="The encoder speed/quality trade-off (x264/x265 only). Slower presets produce smaller files for the same quality but take longer to encode. “Encoder default” lets the encoder choose." /></label>
             <select id="lib-preset" class="input" bind:value={form.encoderPreset}>
               <option value={null}>Encoder default</option>
               {#each options.encoderPresets as preset}<option value={preset}>{preset}</option>{/each}
@@ -818,7 +833,7 @@
 
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
-            <label class="label mb-0" for="lib-crf">Quality (CRF)</label>
+            <label class="label mb-0" for="lib-crf">Quality (CRF) <InfoTip text="Constant Rate Factor: lower = higher quality and larger files, higher = smaller files. 18–24 is a good transparent range. Leave unticked to use the preset's quality." /></label>
             <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
               <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
               Customise
@@ -831,7 +846,6 @@
               <span class="text-xs text-slate-400">Sharper</span>
               <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
             </div>
-            <p class="mt-1 text-xs text-slate-400">Lower CRF = higher quality and larger files. 18–24 is a good range.</p>
           {:else}
             <p class="text-xs text-slate-400">Using the preset's quality.</p>
           {/if}
@@ -839,15 +853,14 @@
 
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-video-audio-codec">Audio track</label>
+            <label class="label" for="lib-video-audio-codec">Audio track <InfoTip text="When re-encoding video, optionally transcode its audio too. “Copy” leaves the audio untouched; AAC is the most compatible re-encode target. Scott's Settings uses AAC here." /></label>
             <select id="lib-video-audio-codec" class="input" bind:value={form.videoAudioCodec}>
               <option value={null}>Copy (leave audio untouched)</option>
               {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>Re-encode to {codec}</option>{/each}
             </select>
-            <p class="mt-1 text-xs text-slate-400">When re-encoding video, also transcode its audio. AAC is the most compatible.</p>
           </div>
           <div>
-            <label class="label" for="lib-video-audio-bitrate">Audio bitrate (kbps)</label>
+            <label class="label" for="lib-video-audio-bitrate">Audio bitrate (kbps) <InfoTip text="Target bitrate for the audio re-encode (32–512 kbps). Only applies when the audio track is re-encoded above. 96 kbps stereo AAC is transparent for most listening." /></label>
             <input
               id="lib-video-audio-bitrate"
               class="input"
@@ -858,13 +871,12 @@
               disabled={!form.videoAudioCodec}
               bind:value={form.videoAudioBitrateKbps}
             />
-            <p class="mt-1 text-xs text-slate-400">32–512 kbps. Only applies when the audio track is re-encoded.</p>
           </div>
         </div>
 
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
-            <span class="label mb-0">Quality-gate thresholds (VMAF)</span>
+            <span class="label mb-0">Quality-gate thresholds (VMAF) <InfoTip text="Per-library override for the perceptual-quality gate. Only used when that gate is enabled in Settings. Higher = stricter (near-lossless): an output scoring below these is rejected and the original kept." /></span>
             <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
               <input type="checkbox" class="checkbox" checked={form.minVmafHarmonicMean != null || form.minVmafMin != null} onchange={(e) => toggleVmafOverride(e.currentTarget.checked)} />
               Override
@@ -883,7 +895,6 @@
                 <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafMin}</span>
               </div>
             </div>
-            <p class="mt-1 text-xs text-slate-400">Only used when the perceptual-quality gate is enabled in Settings. Higher = stricter (near-lossless).</p>
           {:else}
             <p class="text-xs text-slate-400">Using the global thresholds from Settings.</p>
           {/if}
