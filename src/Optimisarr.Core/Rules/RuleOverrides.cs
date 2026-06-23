@@ -11,6 +11,7 @@ public sealed record RuleOverrides
 {
     public long? MinFileSizeBytes { get; init; }
     public int? MaxHeight { get; init; }
+    public long? ReencodeSameCodecAboveBytes { get; init; }
     public string? TargetVideoCodec { get; init; }
     public string? TargetContainer { get; init; }
     public HdrHandling? Hdr { get; init; }

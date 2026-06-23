@@ -214,6 +214,33 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
+    public void An_oversized_same_codec_file_is_eligible_when_the_library_opts_in_by_size()
+    {
+        // Target is HEVC and the file is already HEVC, but it is a 30 GB remux and the library opted
+        // in to re-encoding same-codec files above 20 GB — so it should be picked up to shrink.
+        var rules = Hevc with { ReencodeSameCodecAboveBytes = 20L * 1024 * 1024 * 1024 };
+        var huge = File(videoCodec: "hevc", sizeBytes: 30L * 1024 * 1024 * 1024);
+
+        var decision = CandidateEvaluator.Evaluate(huge, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("re-encoding to shrink", decision.Reason);
+    }
+
+    [Fact]
+    public void A_same_codec_file_below_the_opt_in_threshold_is_still_skipped()
+    {
+        // Opted in above 20 GB, but this HEVC file is only 5 GB — left untouched.
+        var rules = Hevc with { ReencodeSameCodecAboveBytes = 20L * 1024 * 1024 * 1024 };
+        var small = File(videoCodec: "hevc", sizeBytes: 5L * 1024 * 1024 * 1024);
+
+        var decision = CandidateEvaluator.Evaluate(small, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Already", decision.Reason);
+    }
+
+    [Fact]
     public void File_without_a_video_stream_is_skipped()
     {
         var decision = CandidateEvaluator.Evaluate(File(videoCodec: null), Hevc);

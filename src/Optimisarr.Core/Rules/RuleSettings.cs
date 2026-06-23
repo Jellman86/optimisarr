@@ -31,6 +31,14 @@ public sealed record RuleSettings
     public int? MaxHeight { get; init; }
 
     /// <summary>
+    /// When set, a file already in <see cref="TargetVideoCodec"/> is still re-encoded if it is at
+    /// least this many bytes, to shrink oversized same-codec files (e.g. a large HEVC remux under an
+    /// HEVC target). <c>null</c> keeps the conservative default of skipping a same-codec file. The
+    /// size-saving verification gate still rejects an output that fails to shrink.
+    /// </summary>
+    public long? ReencodeSameCodecAboveBytes { get; init; }
+
+    /// <summary>
     /// The profile's default encoder quality target (CRF/CQ) for a re-encode, chosen to be
     /// visually transparent for the profile's codec (e.g. x265 ~24). A per-library
     /// <c>QualityCrf</c> override takes precedence; this is the sane fallback so an encode never

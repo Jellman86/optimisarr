@@ -856,6 +856,7 @@ app.MapPost("/api/libraries", async (
         Priority = parsed.Priority,
         MinFileSizeBytes = parsed.MinFileSizeBytes,
         MaxHeight = parsed.MaxHeight,
+        ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes,
         TargetVideoCodec = parsed.TargetVideoCodec,
         TargetContainer = parsed.TargetContainer,
         HdrHandling = parsed.HdrHandling,
@@ -920,6 +921,7 @@ app.MapPut("/api/libraries/{id:int}", async (
     library.Priority = parsed.Priority;
     library.MinFileSizeBytes = parsed.MinFileSizeBytes;
     library.MaxHeight = parsed.MaxHeight;
+    library.ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes;
     library.TargetVideoCodec = parsed.TargetVideoCodec;
     library.TargetContainer = parsed.TargetContainer;
     library.HdrHandling = parsed.HdrHandling;
@@ -1587,6 +1589,7 @@ internal sealed record SaveLibraryRequest(
     int? Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    long? ReencodeSameCodecAboveBytes,
     string? TargetVideoCodec,
     string? TargetContainer,
     string? HdrHandling,
@@ -1624,6 +1627,7 @@ internal sealed record LibraryDto(
     int Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    long? ReencodeSameCodecAboveBytes,
     string? TargetVideoCodec,
     string? TargetContainer,
     string? HdrHandling,
@@ -1665,6 +1669,7 @@ internal sealed record LibraryDto(
         library.Priority,
         library.MinFileSizeBytes,
         library.MaxHeight,
+        library.ReencodeSameCodecAboveBytes,
         library.TargetVideoCodec,
         library.TargetContainer,
         library.HdrHandling?.ToString(),

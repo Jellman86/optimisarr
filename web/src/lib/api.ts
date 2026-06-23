@@ -34,6 +34,7 @@ export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
   maxHeight: number | null
+  reencodeSameCodecAboveBytes: number | null
   targetVideoCodec: string | null
   targetContainer: string | null
   hdrHandling: string | null

@@ -164,6 +164,16 @@ public static class CandidateEvaluator
 
         if (string.Equals(media.VideoCodec, rules.TargetVideoCodec, StringComparison.OrdinalIgnoreCase))
         {
+            // A file already in the target codec normally has nothing to gain. But an oversized
+            // same-codec file (e.g. a huge HEVC remux under an HEVC target) can still shrink a lot
+            // when re-encoded at the profile's CRF, so a library may opt in by size. The size-saving
+            // verification gate still rejects an output that fails to shrink, so the original is safe.
+            if (rules.ReencodeSameCodecAboveBytes is { } threshold && media.SizeBytes >= threshold)
+            {
+                return CandidateDecision.Eligible(
+                    $"Already {rules.TargetVideoCodec} but {FormatSize(media.SizeBytes)} ≥ {FormatSize(threshold)} — re-encoding to shrink");
+            }
+
             return CandidateDecision.Skipped($"Already {rules.TargetVideoCodec} (no expected saving)");
         }
 

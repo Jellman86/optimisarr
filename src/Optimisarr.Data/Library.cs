@@ -34,6 +34,15 @@ public sealed class Library
     /// <summary>Files taller than this (pixels) are skipped.</summary>
     public int? MaxHeight { get; set; }
 
+    /// <summary>
+    /// When set, a file already in the target video codec is re-encoded anyway if it is at least
+    /// this many bytes — for shrinking oversized same-codec files (e.g. a huge HEVC remux when the
+    /// target is HEVC). Null (the default) keeps the conservative behaviour of skipping a file that
+    /// already matches the target codec. The verification size gate still guards against an output
+    /// that fails to shrink, so the original is never lost.
+    /// </summary>
+    public long? ReencodeSameCodecAboveBytes { get; set; }
+
     /// <summary>Overrides the profile's target video codec (ffprobe name, e.g. "hevc").</summary>
     public string? TargetVideoCodec { get; set; }
 

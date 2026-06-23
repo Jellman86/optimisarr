@@ -12,6 +12,7 @@ internal readonly record struct ParsedLibrary(
     int Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    long? ReencodeSameCodecAboveBytes,
     string? TargetVideoCodec,
     string? TargetContainer,
     HdrHandling? HdrHandling,
@@ -98,6 +99,12 @@ internal static class LibraryRequestParser
         if (request.MaxHeight is <= 0)
         {
             error = "Maximum resolution must be greater than zero.";
+            return false;
+        }
+
+        if (request.ReencodeSameCodecAboveBytes is <= 0)
+        {
+            error = "The same-codec re-encode size threshold must be greater than zero.";
             return false;
         }
 
@@ -210,6 +217,7 @@ internal static class LibraryRequestParser
             request.Priority ?? 0,
             request.MinFileSizeBytes,
             request.MaxHeight,
+            request.ReencodeSameCodecAboveBytes,
             Trim(request.TargetVideoCodec),
             Trim(request.TargetContainer),
             hdrHandling,
