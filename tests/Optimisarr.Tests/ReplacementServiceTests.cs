@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Stats;
 using Optimisarr.Core.Library;
 using Optimisarr.Data;
 
@@ -166,6 +167,53 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_accrues_the_lifetime_tally_and_rollback_reverses_it()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL-DATA", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var replaced = await ReplaceAsync(jobId);
+        var afterReplace = await ReadLifetimeAsync();
+
+        Assert.Equal(1, afterReplace.FilesOptimised);
+        Assert.Equal("ORIGINAL-DATA".Length, afterReplace.OriginalBytes);
+        Assert.Equal("NEW".Length, afterReplace.OptimisedBytes);
+
+        await RollbackAsync(replaced.Replacement!.Id);
+        var afterRollback = await ReadLifetimeAsync();
+
+        // The original is back, so the headline savings return to zero.
+        Assert.Equal(LifetimeStats.Empty, afterRollback);
+    }
+
+    [Fact]
+    public async Task Replace_restores_the_original_when_a_mid_move_failure_leaves_a_remnant_in_place()
+    {
+        // Same-container replacement (FinalPath == the original's own path). Simulate a
+        // cross-filesystem copy that fails partway, leaving a partial output sitting at that path —
+        // the exact case where a naive "restore only if the path is empty" guard would strand the
+        // original in quarantine. The original must come back and the remnant must be cleared.
+        var (originalPath, outputPath) = WriteFiles("Show.mkv", "Show.mkv", "ORIGINAL-DATA", "NEW-OUTPUT");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var result = await ReplaceAsync(jobId, moveFile: (source, destination) =>
+        {
+            if (string.Equals(source, outputPath, StringComparison.Ordinal))
+            {
+                File.WriteAllText(destination, "PARTIAL-OUTPUT");   // a failed copy left a remnant
+                throw new IOException("simulated mid-copy failure");
+            }
+            return FileMover.Move(source, destination);
+        });
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.True(File.Exists(originalPath));
+        Assert.Equal("ORIGINAL-DATA", File.ReadAllText(originalPath));   // the protected original, not the remnant
+        Assert.Empty(new OptimisarrDbContext(_options).Replacements);    // nothing recorded
+        Assert.Equal(LifetimeStats.Empty, await ReadLifetimeAsync());    // a failed replace saves nothing
+    }
+
+    [Fact]
     public async Task Rollback_refuses_an_already_rolled_back_replacement()
     {
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
@@ -217,11 +265,18 @@ public sealed class ReplacementServiceTests : IDisposable
 
     private async Task<ReplacementActionResult> ReplaceAsync(
         int jobId,
-        Func<string, string, bool>? canMoveAtomically = null)
+        Func<string, string, bool>? canMoveAtomically = null,
+        Func<string, string, FileMoveResult>? moveFile = null)
     {
         await using var db = new OptimisarrDbContext(_options);
-        var service = NewService(db, canMoveAtomically);
+        var service = NewService(db, canMoveAtomically, moveFile);
         return await service.ReplaceAsync(jobId, CancellationToken.None);
+    }
+
+    private async Task<LifetimeStats> ReadLifetimeAsync()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        return await new LifetimeStatsStore(db).GetAsync(CancellationToken.None);
     }
 
     private async Task<ReplacementActionResult> RollbackAsync(int replacementId)
@@ -233,7 +288,8 @@ public sealed class ReplacementServiceTests : IDisposable
 
     private ReplacementService NewService(
         OptimisarrDbContext db,
-        Func<string, string, bool>? canMoveAtomically = null)
+        Func<string, string, bool>? canMoveAtomically = null,
+        Func<string, string, FileMoveResult>? moveFile = null)
     {
         var inventory = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService(), new ImageMarkerService());
         return new ReplacementService(
@@ -242,7 +298,8 @@ public sealed class ReplacementServiceTests : IDisposable
             new SettingsStore(db),
             _trashDir,
             NullLogger<ReplacementService>.Instance,
-            canMoveAtomically);
+            canMoveAtomically,
+            moveFile: moveFile);
     }
 
     private async Task SetCrossFilesystemReplacementAsync(bool allowed)

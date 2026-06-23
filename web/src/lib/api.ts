@@ -522,4 +522,6 @@ export const api = {
     request<Replacement>(`/api/replacements/${id}/approve`, { method: 'POST' }),
   clearReplacements: () => request<{ cleared: number }>('/api/replacements/clear', { method: 'POST' }),
   stats: () => request<Stats>('/api/stats'),
+  // Reset the persistent lifetime "total space saved" tally; returns the freshly zeroed figures.
+  clearStats: () => request<Stats>('/api/stats/clear', { method: 'POST' }),
 }

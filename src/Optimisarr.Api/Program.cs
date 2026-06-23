@@ -56,6 +56,7 @@ builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
 builder.Services.AddScoped<ReplacementService>();
+builder.Services.AddScoped<LifetimeStatsStore>();
 builder.Services.AddScoped<QuarantinePurgeService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -1358,9 +1359,23 @@ app.MapPost("/api/jobs/{id:int}/replace", async (
 .WithName("ReplaceFromJob");
 
 // Aggregate outcome/queue/library figures for the Dashboard.
-app.MapGet("/api/stats", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
-    Results.Ok(await StatsQueries.GetAsync(db, cancellationToken)))
+app.MapGet("/api/stats", async (
+    OptimisarrDbContext db, LifetimeStatsStore lifetimeStats, CancellationToken cancellationToken) =>
+{
+    var lifetime = await lifetimeStats.GetAsync(cancellationToken);
+    return Results.Ok(await StatsQueries.GetAsync(db, lifetime, cancellationToken));
+})
 .WithName("GetStats");
+
+// Reset the persistent lifetime "total space saved" tally to zero. This only clears the headline
+// figure the operator chose to reset; it touches no files, quarantine, or rollback history.
+app.MapPost("/api/stats/clear", async (
+    OptimisarrDbContext db, LifetimeStatsStore lifetimeStats, CancellationToken cancellationToken) =>
+{
+    await lifetimeStats.ClearAsync(cancellationToken);
+    return Results.Ok(await StatsQueries.GetAsync(db, LifetimeStats.Empty, cancellationToken));
+})
+.WithName("ClearStats");
 
 app.MapGet("/api/replacements", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
     Results.Ok(await ReplacementQueries.ListAsync(db, cancellationToken)))

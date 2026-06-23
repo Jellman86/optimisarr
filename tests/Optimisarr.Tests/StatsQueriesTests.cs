@@ -28,7 +28,7 @@ public sealed class StatsQueriesTests : IDisposable
     }
 
     [Fact]
-    public async Task Rolled_back_replacements_do_not_count_as_saved_space()
+    public async Task Headline_savings_come_from_the_lifetime_tally_quarantine_from_rows()
     {
         await using (var db = CreateDb())
         {
@@ -37,18 +37,19 @@ public sealed class StatsQueriesTests : IDisposable
             await db.SaveChangesAsync();
             var fileId = await AddFileAsync(db, library.Id);
 
-            // Replaced + Purged are in place (saved); RolledBack restored the original (saved nothing).
+            // Only still-reversible (Replaced) rows feed the "awaiting review / reclaimable" figures;
+            // the headline savings are independent of which rows currently exist.
             db.Replacements.AddRange(
                 await ReplacementAsync(db, fileId, 1000, 400, ReplacementStatus.Replaced),
-                await ReplacementAsync(db, fileId, 2000, 600, ReplacementStatus.Purged),
-                await ReplacementAsync(db, fileId, 5000, 100, ReplacementStatus.RolledBack));
+                await ReplacementAsync(db, fileId, 2000, 600, ReplacementStatus.Purged));
             await db.SaveChangesAsync();
         }
 
         await using var readDb = CreateDb();
-        var stats = await StatsQueries.GetAsync(readDb, CancellationToken.None);
+        var lifetime = new LifetimeStats(FilesOptimised: 2, OriginalBytes: 3000, OptimisedBytes: 1000);
+        var stats = await StatsQueries.GetAsync(readDb, lifetime, CancellationToken.None);
 
-        // (1000-400) + (2000-600) = 2000; the rolled-back 4900 is excluded.
+        // Headline reflects the durable tally, not a sum over current rows.
         Assert.Equal(2000, stats.BytesSaved);
         Assert.Equal(2, stats.FilesOptimised);
         Assert.Equal(3000, stats.OriginalBytes);
@@ -80,7 +81,7 @@ public sealed class StatsQueriesTests : IDisposable
         }
 
         await using var readDb = CreateDb();
-        var stats = await StatsQueries.GetAsync(readDb, CancellationToken.None);
+        var stats = await StatsQueries.GetAsync(readDb, LifetimeStats.Empty, CancellationToken.None);
 
         Assert.Equal(2, stats.Queued);
         Assert.Equal(1, stats.Running);

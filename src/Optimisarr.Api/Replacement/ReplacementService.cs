@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Stats;
 using Optimisarr.Core.Replacement;
 using Optimisarr.Data;
 using ReplacementEntity = Optimisarr.Data.Replacement;
@@ -49,8 +50,10 @@ public sealed class ReplacementService
     private readonly string _trashRoot;
     private readonly string? _workRoot;
     private readonly Func<string, string, bool> _canMoveAtomically;
+    private readonly Func<string, string, FileMoveResult> _moveFile;
     private readonly LibraryRefreshService? _refresh;
     private readonly NotificationService? _notifications;
+    private readonly LifetimeStatsStore _lifetime;
 
     public ReplacementService(
         OptimisarrDbContext db,
@@ -66,7 +69,8 @@ public sealed class ReplacementService
     }
 
     // Test seam: lets the suite point the trash root at a temp directory. The library
-    // refresh and notifications are optional so tests need not stand up an HTTP stack.
+    // refresh and notifications are optional so tests need not stand up an HTTP stack;
+    // moveFile lets a test simulate a mid-move failure to exercise the restore path.
     internal ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
@@ -76,7 +80,8 @@ public sealed class ReplacementService
         Func<string, string, bool>? canMoveAtomically = null,
         LibraryRefreshService? refresh = null,
         NotificationService? notifications = null,
-        string? workRoot = null)
+        string? workRoot = null,
+        Func<string, string, FileMoveResult>? moveFile = null)
     {
         _db = db;
         _inventory = inventory;
@@ -85,8 +90,10 @@ public sealed class ReplacementService
         _workRoot = workRoot;
         _logger = logger;
         _canMoveAtomically = canMoveAtomically ?? FileMover.CanMoveAtomically;
+        _moveFile = moveFile ?? FileMover.Move;
         _refresh = refresh;
         _notifications = notifications;
+        _lifetime = new LifetimeStatsStore(db);
     }
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
@@ -170,13 +177,13 @@ public sealed class ReplacementService
 
         // Step 1: preserve the original by quarantining it. From here the original
         // is safe and every subsequent failure restores it.
-        var quarantineMove = FileMover.Move(media.Path, plan.QuarantinePath);
+        var quarantineMove = _moveFile(media.Path, plan.QuarantinePath);
 
         bool crossFilesystem;
         try
         {
             // Step 2: move the verified output into the original's place.
-            var move = FileMover.Move(job.WorkOutputPath, plan.FinalPath);
+            var move = _moveFile(job.WorkOutputPath, plan.FinalPath);
             crossFilesystem = quarantineMove.CrossFilesystem || move.CrossFilesystem;
 
             // Step 3: a final-path integrity check — the placed file must exist and
@@ -214,6 +221,10 @@ public sealed class ReplacementService
 
         job.Status = JobStatus.Completed;
         job.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Accrue the durable lifetime savings tally in the same transaction as the replacement,
+        // so the Dashboard headline reflects this file and survives later row/history changes.
+        await _lifetime.ApplyReplacementAsync(originalSize, outputSize, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         // The verified output moved out of /work into the original's place; tidy the now-empty
@@ -295,6 +306,10 @@ public sealed class ReplacementService
 
         replacement.Status = ReplacementStatus.RolledBack;
         replacement.RolledBackAt = DateTimeOffset.UtcNow;
+
+        // The original is back in place, so this replacement saved nothing: reverse its
+        // contribution to the lifetime tally in the same transaction.
+        await _lifetime.ApplyRollbackAsync(replacement.OriginalSizeBytes, replacement.NewSizeBytes, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         if (media is not null)
@@ -339,12 +354,31 @@ public sealed class ReplacementService
 
     private void RestoreFromQuarantine(ReplacementPlan plan, string originalPath)
     {
+        // The original is only safe to restore if it actually reached quarantine. If the
+        // quarantine move itself failed, the original is still at its own path — leave it be.
+        if (!File.Exists(plan.QuarantinePath))
+        {
+            return;
+        }
+
         try
         {
-            if (!File.Exists(originalPath) && File.Exists(plan.QuarantinePath))
+            // A failed output move can leave a partial or complete output behind — including at the
+            // original's own path when the container is unchanged (FinalPath == originalPath). That
+            // remnant is disposable (the output is reproducible from /work) and must never be mistaken
+            // for the protected original, so clear both possible locations before restoring. Guarding
+            // the restore on "originalPath is empty" alone would skip it when such a remnant sits there,
+            // stranding the original in quarantine.
+            if (File.Exists(originalPath))
             {
-                FileMover.Move(plan.QuarantinePath, originalPath);
+                File.Delete(originalPath);
             }
+            if (!string.Equals(plan.FinalPath, originalPath, StringComparison.Ordinal) && File.Exists(plan.FinalPath))
+            {
+                File.Delete(plan.FinalPath);
+            }
+
+            FileMover.Move(plan.QuarantinePath, originalPath);
         }
         catch (Exception ex)
         {

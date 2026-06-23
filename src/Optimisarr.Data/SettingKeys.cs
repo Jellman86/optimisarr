@@ -83,4 +83,18 @@ public static class SettingKeys
 
     /// <summary>Stable client identifier Optimisarr presents to Plex during the OAuth/PIN flow.</summary>
     public const string PlexClientIdentifier = "connect.plexClientIdentifier";
+
+    /// <summary>
+    /// Lifetime count of files whose optimised version was put in place. This is a persistent
+    /// running tally — it accrues on every successful replacement and survives quarantine purge,
+    /// queue/history clearing, and restarts, unlike a figure derived from current rows. A rollback
+    /// decrements it; the operator can reset it from the Dashboard.
+    /// </summary>
+    public const string LifetimeFilesOptimised = "stats.lifetimeFilesOptimised";
+
+    /// <summary>Lifetime sum of original sizes for files whose optimised version is/was in place.</summary>
+    public const string LifetimeOriginalBytes = "stats.lifetimeOriginalBytes";
+
+    /// <summary>Lifetime sum of optimised sizes for files whose optimised version is/was in place.</summary>
+    public const string LifetimeOptimisedBytes = "stats.lifetimeOptimisedBytes";
 }

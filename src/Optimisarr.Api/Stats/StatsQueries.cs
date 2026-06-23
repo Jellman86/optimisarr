@@ -22,17 +22,11 @@ public sealed record StatsDto(
 
 public static class StatsQueries
 {
-    public static async Task<StatsDto> GetAsync(OptimisarrDbContext db, CancellationToken cancellationToken)
+    public static async Task<StatsDto> GetAsync(
+        OptimisarrDbContext db, LifetimeStats lifetime, CancellationToken cancellationToken)
     {
-        // Realised savings only count files whose optimised version is actually in place: a
-        // replacement that was rolled back restored the original and saved nothing.
-        var inPlace = db.Replacements
-            .AsNoTracking()
-            .Where(r => r.Status == ReplacementStatus.Replaced || r.Status == ReplacementStatus.Purged);
-
-        var filesOptimised = await inPlace.CountAsync(cancellationToken);
-        var originalBytes = await inPlace.SumAsync(r => r.OriginalSizeBytes, cancellationToken);
-        var optimisedBytes = await inPlace.SumAsync(r => r.NewSizeBytes, cancellationToken);
+        // Headline savings come from the durable lifetime tally, not from current rows, so the
+        // figure survives quarantine purge, history clearing, and restarts. See LifetimeStatsStore.
 
         // Still-reversible entries; their originals are the space approving would reclaim.
         var quarantined = db.Replacements.AsNoTracking().Where(r => r.Status == ReplacementStatus.Replaced);
@@ -51,11 +45,11 @@ public static class StatsQueries
         var discoveredFiles = await db.MediaFiles.LongCountAsync(cancellationToken);
 
         return new StatsDto(
-            BytesSaved: originalBytes - optimisedBytes,
-            OriginalBytes: originalBytes,
-            OptimisedBytes: optimisedBytes,
-            FilesOptimised: filesOptimised,
-            AverageSavingPercent: SavingPercent(originalBytes, optimisedBytes),
+            BytesSaved: lifetime.BytesSaved,
+            OriginalBytes: lifetime.OriginalBytes,
+            OptimisedBytes: lifetime.OptimisedBytes,
+            FilesOptimised: (int)Math.Clamp(lifetime.FilesOptimised, 0, int.MaxValue),
+            AverageSavingPercent: lifetime.AverageSavingPercent,
             InQuarantine: inQuarantine,
             QuarantineReclaimableBytes: quarantineReclaimableBytes,
             Queued: queued,

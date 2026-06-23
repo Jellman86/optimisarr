@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace Optimisarr.Api.Replacement;
 
 public sealed record FileMoveResult(bool CrossFilesystem);
@@ -5,10 +7,12 @@ public sealed record FileMoveResult(bool CrossFilesystem);
 /// <summary>
 /// Moves a file safely between locations that may be on different mounts. An atomic
 /// rename is tried first; when the destination is on another filesystem the rename
-/// fails, so we fall back to copy-plus-verify-plus-delete: the source is only
-/// removed once the copy exists and its length matches. The destination is never
-/// overwritten — callers guarantee a free destination, so an existing file means
-/// something is wrong and we refuse rather than clobber data.
+/// fails, so we fall back to copy-plus-verify-plus-delete: the source is only removed
+/// once the copy exists and its <em>content</em> — not merely its length — matches a
+/// SHA-256 digest of the source, so a partial or corrupted cross-device copy can never
+/// stand in for the original. The destination is never overwritten — callers guarantee a
+/// free destination, so an existing file means something is wrong and we refuse rather
+/// than clobber data.
 /// </summary>
 public static class FileMover
 {
@@ -83,17 +87,49 @@ public static class FileMover
 
     private static FileMoveResult CopyVerifyDelete(string source, string destination)
     {
-        var expectedLength = new FileInfo(source).Length;
         File.Copy(source, destination, overwrite: false);
 
-        if (new FileInfo(destination).Length != expectedLength)
+        try
         {
-            File.Delete(destination);
-            throw new IOException(
-                $"Copy verification failed: {destination} size does not match the source.");
+            VerifyCopiedContent(source, destination);
+        }
+        catch
+        {
+            // The copy is unverified, so it must not be left where it could be mistaken for the
+            // original; remove it and let the caller's failure handling restore from quarantine.
+            TryDelete(destination);
+            throw;
         }
 
         File.Delete(source);
         return new FileMoveResult(CrossFilesystem: true);
+    }
+
+    /// <summary>
+    /// Confirms a copy is a faithful, complete duplicate of its source: same length, then an
+    /// identical SHA-256 digest. Length is the cheap pre-check that rejects a truncated copy
+    /// immediately; the hash catches same-length corruption a length check would miss. Throws
+    /// <see cref="IOException"/> on any mismatch.
+    /// </summary>
+    internal static void VerifyCopiedContent(string source, string destination)
+    {
+        var expectedLength = new FileInfo(source).Length;
+        if (new FileInfo(destination).Length != expectedLength)
+        {
+            throw new IOException(
+                $"Copy verification failed: {destination} size does not match the source.");
+        }
+
+        if (!Sha256(source).AsSpan().SequenceEqual(Sha256(destination)))
+        {
+            throw new IOException(
+                $"Copy verification failed: {destination} content does not match the source.");
+        }
+    }
+
+    private static byte[] Sha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return SHA256.HashData(stream);
     }
 }

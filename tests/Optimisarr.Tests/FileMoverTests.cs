@@ -48,6 +48,41 @@ public sealed class FileMoverTests : IDisposable
             () => FileMover.Move(Path.Combine(_dir, "absent.bin"), Path.Combine(_dir, "dest.bin")));
     }
 
+    [Fact]
+    public void VerifyCopiedContent_accepts_an_identical_copy()
+    {
+        var source = Path.Combine(_dir, "source.bin");
+        var destination = Path.Combine(_dir, "dest.bin");
+        File.WriteAllBytes(source, new byte[] { 1, 2, 3, 4, 5 });
+        File.Copy(source, destination);
+
+        FileMover.VerifyCopiedContent(source, destination);   // does not throw
+    }
+
+    [Fact]
+    public void VerifyCopiedContent_rejects_a_truncated_copy()
+    {
+        var source = Path.Combine(_dir, "source.bin");
+        var destination = Path.Combine(_dir, "dest.bin");
+        File.WriteAllBytes(source, new byte[] { 1, 2, 3, 4, 5 });
+        File.WriteAllBytes(destination, new byte[] { 1, 2, 3 });
+
+        var ex = Assert.Throws<IOException>(() => FileMover.VerifyCopiedContent(source, destination));
+        Assert.Contains("size", ex.Message);
+    }
+
+    [Fact]
+    public void VerifyCopiedContent_rejects_same_length_corruption_a_length_check_would_miss()
+    {
+        var source = Path.Combine(_dir, "source.bin");
+        var destination = Path.Combine(_dir, "dest.bin");
+        File.WriteAllBytes(source, new byte[] { 1, 2, 3, 4, 5 });
+        File.WriteAllBytes(destination, new byte[] { 1, 2, 9, 4, 5 });   // same length, one byte flipped
+
+        var ex = Assert.Throws<IOException>(() => FileMover.VerifyCopiedContent(source, destination));
+        Assert.Contains("content", ex.Message);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir))
