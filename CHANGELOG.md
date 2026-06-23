@@ -11,11 +11,19 @@
   explicit per-library switch). A music library set to this profile gets the same AAC 96 kbps
   stereo target.
 
+### Re-encode oversized files already in the target codec
+
+- **A new per-library option to re-encode large files that already match the target codec** (e.g. a
+  huge HEVC remux under an HEVC preset). Off by default; when enabled, same-codec files at or above a
+  configurable size (default 20 GB) become eligible so they can be shrunk, while smaller ones are
+  still left untouched. The size-saving verification gate still rejects any output that doesn't get
+  smaller, so the original is never lost.
+
 ### Libraries settings: tidier Advanced panel
 
 - **Advanced options now sit in a subtly tinted, inset panel** so they read as distinct from the
-  simple controls, and the dense per-field helper text has been moved into hover tooltips
-  (matching the Settings page). _(Rolling out across all sections — Video done first.)_
+  simple controls, and the dense per-field helper text has been moved into hover tooltips across all
+  sections (matching the Settings page) for a cleaner, easier-to-navigate form.
 
 ### Dashboard: durable lifetime savings + live system usage
 

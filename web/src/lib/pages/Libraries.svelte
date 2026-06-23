@@ -146,13 +146,16 @@
   let showAdvanced = $state(false)
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
+  // The same-codec re-encode threshold is edited in GB (these are "massive" files) and stored as bytes.
+  let sameCodecGb = $state<number | ''>('')
+  const DEFAULT_SAME_CODEC_GB = 20
 
   // Dirty tracking: a JSON snapshot of the form as it was opened. The live form compared against
   // it tells us whether there are unsaved edits, so we can warn before discarding them and only
   // enable Save when something actually changed.
   let pristine = $state('')
   function formSnapshot(): string {
-    return JSON.stringify({ ...form, minSizeMb })
+    return JSON.stringify({ ...form, minSizeMb, sameCodecGb })
   }
   function markPristine() {
     pristine = formSnapshot()
@@ -166,6 +169,13 @@
   }
 
   const BYTES_PER_MB = 1024 * 1024
+  const BYTES_PER_GB = 1024 * 1024 * 1024
+
+  // Toggle the same-codec re-encode: ticking defaults the threshold to a sensible "massive" size;
+  // unticking clears it (null = the conservative skip-if-already-target-codec behaviour).
+  function toggleSameCodec(on: boolean) {
+    sameCodecGb = on ? (sameCodecGb === '' ? DEFAULT_SAME_CODEC_GB : sameCodecGb) : ''
+  }
 
   // Which optimisation pipelines a media type involves. Used both to scope the Advanced controls
   // and to decide whether the (video-only) preset profile is meaningful for a library.
@@ -307,6 +317,7 @@
       priority: 0,
       minFileSizeBytes: null,
       maxHeight: null,
+      reencodeSameCodecAboveBytes: null,
       targetVideoCodec: null,
       targetContainer: null,
       hdrHandling: null,
@@ -394,6 +405,7 @@
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     minSizeMb = ''
+    sameCodecGb = ''
     showAdvanced = false
     activeTab = 'rules'
     editorCandidates = []
@@ -412,6 +424,7 @@
       priority: library.priority,
       minFileSizeBytes: library.minFileSizeBytes,
       maxHeight: library.maxHeight,
+      reencodeSameCodecAboveBytes: library.reencodeSameCodecAboveBytes,
       targetVideoCodec: library.targetVideoCodec,
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
@@ -440,6 +453,7 @@
       autoReplace: library.autoReplace,
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
+    sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Math.round(library.reencodeSameCodecAboveBytes / BYTES_PER_GB) : ''
     // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
     showAdvanced = false
     activeTab = 'rules'
@@ -463,6 +477,7 @@
     return {
       ...form,
       minFileSizeBytes: minSizeMb === '' ? null : Math.round(Number(minSizeMb) * BYTES_PER_MB),
+      reencodeSameCodecAboveBytes: sameCodecGb === '' ? null : Math.round(Number(sameCodecGb) * BYTES_PER_GB),
       maxHeight: form.maxHeight ? Number(form.maxHeight) : null,
       priority: Number(form.priority) || 0,
       targetVideoCodec: emptyToNull(form.targetVideoCodec),
@@ -899,6 +914,28 @@
             <p class="text-xs text-slate-400">Using the global thresholds from Settings.</p>
           {/if}
         </div>
+
+        <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
+             under an HEVC target). Off by default; the size-saving gate still protects the original. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" checked={sameCodecGb !== ''} onchange={(e) => toggleSameCodec(e.currentTarget.checked)} />
+            <span>
+              Re-encode large files already in the target codec
+              <InfoTip text="Normally a file already in the target codec (e.g. HEVC under an HEVC preset) is skipped. Enable this to re-encode the big ones anyway — useful for shrinking oversized same-codec remuxes. Verification still rejects any output that doesn't actually get smaller, so the original is never lost." />
+              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+                Targets oversized same-codec files; smaller ones are still left untouched.
+              </span>
+            </span>
+          </label>
+          {#if sameCodecGb !== ''}
+            <div class="mt-2 flex items-center gap-2 pl-6 text-sm">
+              <span class="text-slate-500 dark:text-slate-400">Re-encode when larger than</span>
+              <input class="input w-24" type="number" min="1" step="1" bind:value={sameCodecGb} />
+              <span class="text-slate-500 dark:text-slate-400">GB</span>
+            </div>
+          {/if}
+        </div>
       </section>
       {/if}
 
@@ -910,15 +947,14 @@
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-audio-codec">Target codec</label>
+            <label class="label" for="lib-audio-codec">Target codec <InfoTip text="The codec lossless audio (e.g. FLAC) is re-encoded to. Opus is the most efficient; AAC and MP3 trade some efficiency for broader player compatibility." /></label>
             <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
               <option value={null}>Default (Opus)</option>
               {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
             </select>
-            <p class="mt-1 text-xs text-slate-400">Lossless audio is re-encoded to this codec.</p>
           </div>
           <div>
-            <label class="label" for="lib-audio-bitrate">Bitrate (kbps)</label>
+            <label class="label" for="lib-audio-bitrate">Bitrate (kbps) <InfoTip text="Target bitrate for the audio re-encode (32–512 kbps). 128 is transparent for most stereo; 96 is a good space-saver." /></label>
             <input
               id="lib-audio-bitrate"
               class="input"
@@ -928,7 +964,6 @@
               placeholder="Default (128)"
               bind:value={form.audioBitrateKbps}
             />
-            <p class="mt-1 text-xs text-slate-400">32–512 kbps. 128 is transparent for most stereo.</p>
           </div>
         </div>
 
@@ -953,17 +988,16 @@
         <div class="grid gap-4 sm:grid-cols-2">
           {#if !showImagePreset}
           <div>
-            <label class="label" for="lib-image-format">Target format</label>
+            <label class="label" for="lib-image-format">Target format <InfoTip text="JPEG plays everywhere (incl. Plex); WebP is smaller and works on Jellyfin/modern clients; AVIF is smallest but needs newer clients." /></label>
             <select id="lib-image-format" class="input" bind:value={form.targetImageFormat}>
               <option value={null}>Default (JPEG)</option>
               {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
             </select>
-            <p class="mt-1 text-xs text-slate-400">JPEG plays everywhere (incl. Plex); WebP is smaller (Jellyfin/modern); AVIF is smallest (newer clients only).</p>
           </div>
           {/if}
           <div>
             <div class="mb-1 flex items-center justify-between">
-              <label class="label mb-0" for="lib-image-quality">Quality</label>
+              <label class="label mb-0" for="lib-image-quality">Quality <InfoTip text="Encoder quality 1–100: higher = better quality and larger files. 80 is visually transparent. Leave unticked to use the default (80)." /></label>
               <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
                 <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
                 Customise
@@ -976,7 +1010,6 @@
                 <span class="text-xs text-slate-400">Sharper</span>
                 <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.imageQuality}</span>
               </div>
-              <p class="mt-1 text-xs text-slate-400">Higher = better quality and larger files. 80 is visually transparent.</p>
             {:else}
               <p class="text-xs text-slate-400">Using the default (80).</p>
             {/if}
@@ -998,7 +1031,7 @@
         <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
-              <label class="label" for="lib-image-downscale">Downscale</label>
+              <label class="label" for="lib-image-downscale">Downscale <InfoTip text="Optionally shrink large images on re-encode. Aspect ratio is always kept and images are never enlarged; an intentional downscale passes verification." /></label>
               <select id="lib-image-downscale" class="input" value={downscaleChoice} onchange={(e) => setDownscaleChoice(e.currentTarget.value as DownscaleChoice)}>
                 <option value="none">None (keep original size)</option>
                 <option value="4k">Fit within 4K (3840 px long edge)</option>
@@ -1006,7 +1039,6 @@
                 <option value="longedge">Custom max long edge…</option>
                 <option value="percent">Percentage of original…</option>
               </select>
-              <p class="mt-1 text-xs text-slate-400">Aspect ratio is kept and images are never enlarged.</p>
             </div>
             {#if downscaleChoice === 'longedge'}
               <div>
@@ -1051,26 +1083,26 @@
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <div class="mb-1 flex items-center justify-between">
-              <label class="label mb-0" for="lib-priority">Queue priority</label>
+              <label class="label mb-0" for="lib-priority">Queue priority <InfoTip text="Higher-priority libraries run their jobs sooner when the queue is busy. Leave at Normal unless one library should jump ahead." /></label>
               <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{priorityLabel(form.priority)}</span>
             </div>
             <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
           </div>
           {#if showVideoOptions}
           <div>
-            <label class="label" for="lib-maxheight">Skip files above</label>
+            <label class="label" for="lib-maxheight">Skip files above <InfoTip text="Files taller than this resolution are left untouched — handy to leave 4K masters alone while optimising everything below them." /></label>
             <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
               {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
             </select>
           </div>
           {/if}
           <div>
-            <label class="label" for="lib-minsize">Minimum file size (MB)</label>
+            <label class="label" for="lib-minsize">Minimum file size (MB) <InfoTip text="Files smaller than this are skipped — they rarely save enough to be worth a re-encode. Blank uses the preset's default." /></label>
             <input id="lib-minsize" class="input" type="number" min="0" placeholder="Profile default" bind:value={minSizeMb} />
           </div>
         </div>
         <div class="mt-4">
-          <label class="label" for="lib-exclude">Exclude paths (one per line)</label>
+          <label class="label" for="lib-exclude">Exclude paths (one per line) <InfoTip text="Any file whose path contains one of these substrings is skipped — e.g. Extras, Featurettes, Samples. Case-insensitive." /></label>
           <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
         </div>
       </section>
