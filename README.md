@@ -63,6 +63,15 @@ no support SLA or promise of a release schedule.
 - Per-library **auto-optimise** windows continuously queue newly eligible files;
   opt-in **auto-replace** promotes only fully verified jobs, still quarantining
   the original first so rollback remains available.
+- **Optimisation presets** per library (Compatibility H.264 / Balanced HEVC /
+  Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR preserved and
+  AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
+  target codec** (e.g. a huge HEVC remux) above a size you set.
+- **Exclude files** so they are never optimised again — manually from a stuck Queue
+  job, or **automatically after repeated failures** — managed per library on an
+  **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.
+- A **Dashboard** leading with a persistent lifetime **space-saved** total (resettable),
+  what's in flight, and live CPU/GPU usage while a job encodes.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
   NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.
@@ -76,9 +85,10 @@ no support SLA or promise of a release schedule.
   with automatic CPU-decode fallback for sources the GPU can't decode — so a large 4K encode no
   longer burns a CPU core just on software decode. Skipped for HDR→SDR tonemap jobs (the tonemap
   runs in software).
-- A **Queue detail view**: click any job for a live progress bar, fps/speed/ETA, the resolved
-  encoder, the verification report, and inline actions — plus a **live CPU/GPU usage graph** while
-  it encodes (sampled with **unprivileged** reads only; no root or extra container capabilities).
+- A **"now encoding" hero panel** with a live progress bar, fps/speed/ETA, and a **live CPU/GPU
+  usage graph** while a job encodes (sampled with **unprivileged** reads only; no root or extra
+  container capabilities). Click any job for a **detail view** showing the resolved encoder, the
+  exact **FFmpeg command**, the verification report, and inline actions (retry, exclude, replace).
   The sidebar's Queue item throbs a **GPU chip** when work is hardware-accelerated or a **snail**
   when it's on the CPU, with a running-job count.
 - Optional **service-activity pauses** (Plex/Jellyfin/Emby), configurable

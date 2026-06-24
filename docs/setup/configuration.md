@@ -17,6 +17,25 @@ The Inventory explains why every file is eligible or skipped.
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
 
+## Rule profiles (presets)
+
+Each library picks an **optimisation preset** that sets its codec, container, and a
+researched quality target; anything can be fine-tuned under **Advanced options**.
+
+| Preset | Targets |
+|---|---|
+| Compatibility (H.264) | H.264 / MP4 — plays everywhere, larger files. |
+| Balanced (HEVC) | HEVC (H.265) / MP4 at CRF 24 — a good default. |
+| Efficiency (AV1) | AV1 / MKV — smallest files, slower to encode. |
+| **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR preserved**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; the same AAC 96 kbps stereo target applies to a music library. |
+| Remux / cleanup | No re-encode — repackage into a clean container only. |
+
+A file already in the target codec is normally skipped. Enable **"Re-encode large
+files already in the target codec"** (Advanced options) to also re-encode oversized
+same-codec files above a size you set (default 20 GB) — useful for shrinking a huge
+HEVC remux under an HEVC preset. The size-saving verification gate still rejects an
+output that does not get smaller, so the original is never lost.
+
 ## Per-library automation
 
 **Auto-optimise** uses a per-library local-time window. Inside that window the
@@ -34,6 +53,20 @@ only after validating a small manual batch for that library.
 
 Quarantine retention is not a backup policy; retain independent backups of
 irreplaceable media and `/config`.
+
+## Excluded files
+
+You can exclude individual files so they are never optimised. From a failed or
+stuck job on the **Queue** page, choose **Exclude**; the file is added to a durable
+exclusion list and its failed attempt is cleared. A file that fails three times is
+**excluded automatically**. Excluded files are skipped by scans, the candidate
+list, and auto-optimise.
+
+Each library has an **Excluded** tab listing its exclusions — automatic ones (from
+repeated failures) and manual ones are shown distinctly. Remove an exclusion there
+to make the file eligible again (which also resets its failure count). Exclusions
+are keyed by file path, so they survive clearing the queue, re-scanning, and
+re-adding the library. Originals are never touched either way.
 
 ## Configuration backup and import
 

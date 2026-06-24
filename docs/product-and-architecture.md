@@ -274,6 +274,9 @@ A file should only enter the queue when it passes all configured gates:
 - Expected saving exceeds threshold.
 - Codec/container/quality rules say optimisation is useful.
 - Library rule does not exclude path, resolution, HDR, codec, or size.
+- The file is not on the exclusion list — either added manually (e.g. from a stuck
+  job on the Queue) or automatically after repeated failures. Exclusions are
+  durable (keyed by path) and reversible from the library's **Excluded** tab.
 
 ### Output verification
 
