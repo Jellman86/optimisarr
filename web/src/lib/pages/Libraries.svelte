@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Candidate, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
+  import { api, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -61,6 +61,19 @@
   // Advanced options.
   const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings']
   const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency', "Scott's"]
+
+  // Friendly display names for raw rule-profile ids so a badge reads "Scott's Settings", not the
+  // PascalCase enum name "ScottsSettings".
+  const profileLabels: Record<string, string> = {
+    ConservativeHevc: 'Conservative HEVC',
+    CompatibilityH264: 'Compatibility H.264',
+    ExperimentalAv1: 'Experimental AV1',
+    RemuxCleanup: 'Remux / cleanup',
+    ScottsSettings: "Scott's Settings",
+  }
+  function profileLabel(profile: string): string {
+    return profileLabels[profile] ?? profile
+  }
 
   // Friendly display names for raw codec ids so a badge reads "HEVC (H.265)", not "hevc".
   const codecLabels: Record<string, string> = { h264: 'H.264', hevc: 'HEVC (H.265)', av1: 'AV1' }
@@ -131,13 +144,17 @@
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
   // Within an open library, switch between tuning its Rules and seeing the Candidates they select.
-  let activeTab = $state<'rules' | 'candidates'>('rules')
+  let activeTab = $state<'rules' | 'candidates' | 'excluded'>('rules')
   // The candidate decisions for the library currently open in the editor. Re-fetched when a
   // library is opened and after each Save/Scan/Enqueue, so the list always reflects saved rules.
   let editorCandidates = $state<Candidate[]>([])
   let editorCandidatesLoading = $state(false)
   let editorCandidatesError = $state<string | null>(null)
   const editorEligibleCount = $derived(editorCandidates.filter((c) => c.eligible).length)
+  // The library's excluded (never-optimise) files, shown on the Excluded tab.
+  let editorExclusions = $state<Exclusion[]>([])
+  let editorExclusionsLoading = $state(false)
+  let editorExclusionsError = $state<string | null>(null)
   // Per-library eligible/skipped tallies for the list cards (counts only — see /api/candidates/summary).
   let summaries = $state<Record<number, { eligible: number; skipped: number }>>({})
   let form = $state<SaveLibrary>(blankForm())
@@ -399,6 +416,31 @@
     }
   }
 
+  async function loadEditorExclusions(libraryId: number) {
+    editorExclusionsLoading = true
+    editorExclusionsError = null
+    try {
+      editorExclusions = await api.exclusions(libraryId)
+    } catch (err) {
+      editorExclusionsError = err instanceof Error ? err.message : 'Unable to load excluded files'
+    } finally {
+      editorExclusionsLoading = false
+    }
+  }
+
+  async function unexclude(id: number) {
+    try {
+      await api.removeExclusion(id)
+      if (editingId) {
+        await loadEditorExclusions(editingId)
+        // The file may now be an eligible candidate again, so refresh that list too.
+        await loadEditorCandidates(editingId)
+      }
+    } catch (err) {
+      editorExclusionsError = err instanceof Error ? err.message : 'Unable to remove exclusion'
+    }
+  }
+
   function startAdd() {
     if (!confirmDiscardIfDirty()) return
     form = blankForm()
@@ -460,7 +502,9 @@
     editingId = library.id
     markPristine()
     editorCandidates = []
+    editorExclusions = []
     void loadEditorCandidates(library.id)
+    void loadEditorExclusions(library.id)
   }
 
   function cancelEdit() {
@@ -791,28 +835,30 @@
     />
   </div>
 
-  <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. -->
-  <button
-    type="button"
-    class="mt-5 flex w-full items-center gap-2 border-t border-slate-200 pt-4 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
-    onclick={() => (showAdvanced = !showAdvanced)}
-    aria-expanded={showAdvanced}
-  >
-    <Icon name="sliders" class="h-4 w-4 text-slate-400" />
-    <span>Advanced options</span>
-    <span class="text-xs font-normal text-slate-400">codec, quality, limits</span>
-    <Icon name="chevron" class="ml-auto h-4 w-4 text-slate-400 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
-  </button>
+  <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. The header and
+       body form one tinted, bordered "drawer" so the Advanced zone is clearly set apart from the
+       simple controls above. -->
+  <div class="mt-5 overflow-hidden rounded-xl border {showAdvanced ? 'border-slate-300 dark:border-slate-600' : 'border-slate-200 dark:border-slate-700'}">
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60 {showAdvanced ? 'bg-slate-100/80 dark:bg-slate-800/70' : ''}"
+      onclick={() => (showAdvanced = !showAdvanced)}
+      aria-expanded={showAdvanced}
+    >
+      <Icon name="sliders" class="h-4 w-4 text-slate-400" />
+      <span>Advanced options</span>
+      <span class="text-xs font-normal text-slate-400">codec, quality, limits</span>
+      <Icon name="chevron" class="ml-auto h-4 w-4 text-slate-400 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
+    </button>
 
   {#if showAdvanced}
-    <!-- A subtly tinted, inset panel sets the Advanced area apart from the simple controls above.
-         divide-y draws a separator between whichever sections are shown for this media type. -->
-    <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 divide-y divide-slate-200 dark:border-slate-700 dark:bg-slate-900/40 dark:divide-slate-800">
+    <!-- divide-y draws a separator between whichever sections are shown for this media type. -->
+    <div class="border-t border-slate-200 bg-slate-50/60 px-4 divide-y divide-slate-200 dark:border-slate-700 dark:bg-slate-900/30 dark:divide-slate-800">
 
       {#if showVideoOptions}
       <!-- VIDEO — scoped to Film/TV/Other libraries. -->
       <section class="py-6 first:pt-0">
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Video</h3>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Video</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How video files are re-encoded. Leave a control on “Profile default” to follow the preset.</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
@@ -942,7 +988,7 @@
       {#if showAudioOptions}
       <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
       <section class="py-6 first:pt-0">
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Audio</h3>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Audio</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How audio-only files (music) are re-encoded.</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
@@ -982,7 +1028,7 @@
       {#if showImageOptions}
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="py-6 first:pt-0">
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Images</h3>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Images</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How still images are re-encoded. Lossless sources (PNG/BMP/TIFF/GIF) are converted to a modern format.</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
@@ -1062,7 +1108,7 @@
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="py-6 first:pt-0">
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Audio channels</h3>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Audio channels</h3>
         <p class="mt-0.5 mb-3 text-xs text-slate-400">Applies wherever audio is re-encoded; copied tracks keep their layout.</p>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
@@ -1078,7 +1124,7 @@
 
       <!-- ELIGIBILITY & QUEUE -->
       <section class="py-6 first:pt-0">
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Eligibility &amp; queue</h3>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Eligibility &amp; queue</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">Which files this library picks up, and how its jobs are prioritised.</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
@@ -1109,7 +1155,7 @@
 
       <!-- COMPLETED OUTPUT -->
       <section class="py-6 first:pt-0">
-        <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Completed output</h3>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Completed output</h3>
         <p class="mt-0.5 mb-3 text-xs text-slate-400">What happens to a finished file. Your originals are never touched either way.</p>
         <Toggle
           bind:checked={form.moveOnComplete}
@@ -1139,6 +1185,7 @@
       </section>
     </div>
   {/if}
+  </div>
   <div class="mt-5 flex items-center gap-2">
     <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty}>
       <Icon name="check" class="h-4 w-4" />
@@ -1173,7 +1220,7 @@
               <!-- The rule profile is a video preset; only show it for video libraries (it is
                    meaningless for Music/Photo, which use their own audio/image rules). -->
               {#if isVideoType(library.mediaType)}
-                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{library.ruleProfile}</span>
+                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(library.ruleProfile)}</span>
               {/if}
               {#if library.priority !== 0}
                 <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">priority {library.priority}</span>
@@ -1261,11 +1308,19 @@
               >
                 Candidates{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}
               </button>
+              <button
+                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'excluded'
+                  ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+                onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}
+              >
+                Excluded{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}
+              </button>
             </div>
 
             {#if activeTab === 'rules'}
               {@render configForm()}
-            {:else}
+            {:else if activeTab === 'candidates'}
               {#if editorCandidatesError}
                 <Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>
               {/if}
@@ -1276,6 +1331,51 @@
                 <div class="card p-8 text-center text-slate-400">Loading…</div>
               {:else}
                 <CandidateTable candidates={editorCandidates} scoped />
+              {/if}
+            {:else}
+              {#if editorExclusionsError}
+                <Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>
+              {/if}
+              <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Files you've told Optimisarr to never optimise (from here or the Queue's <strong>Exclude</strong> action). They're skipped by scans, candidates, and auto-optimise until you remove them here. Your original files are untouched.
+              </p>
+              {#if editorExclusionsLoading}
+                <div class="card p-8 text-center text-slate-400">Loading…</div>
+              {:else if editorExclusions.length === 0}
+                <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400 dark:border-slate-700">
+                  No excluded files. Use <strong>Exclude</strong> on a stuck job in the Queue to add one.
+                </div>
+              {:else}
+                <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+                  {#each editorExclusions as ex (ex.id)}
+                    {@const auto = ex.source === 'RepeatedFailures'}
+                    <div class="flex items-center justify-between gap-3 px-3 py-2">
+                      <div class="flex min-w-0 items-center gap-3">
+                        <!-- An icon badge distinguishes an automatically-excluded file (kept failing)
+                             from one the operator excluded by hand. -->
+                        <span
+                          class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full {auto
+                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400'
+                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}"
+                          title={auto ? 'Excluded automatically after repeated failures' : 'Excluded manually'}
+                        >
+                          <Icon name={auto ? 'warning' : 'ban'} class="h-4 w-4" />
+                        </span>
+                        <div class="min-w-0">
+                          <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{ex.relativePath ?? ex.path}</div>
+                          <div class="mt-0.5 text-xs text-slate-400">
+                            <span class={auto ? 'text-amber-600 dark:text-amber-400' : ''}>{auto ? 'Auto-excluded — repeated failures' : 'Manually excluded'}</span>
+                            {#if ex.reason} · {ex.reason}{/if}
+                            · {new Date(ex.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs" onclick={() => unexclude(ex.id)} title="Remove from the exclusion list — the file becomes eligible again">
+                        Remove
+                      </button>
+                    </div>
+                  {/each}
+                </div>
               {/if}
             {/if}
           </div>

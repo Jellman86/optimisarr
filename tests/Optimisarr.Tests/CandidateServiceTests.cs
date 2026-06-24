@@ -232,6 +232,39 @@ public sealed class CandidateServiceTests : IDisposable
         Assert.Equal(0, music2.Skipped);
     }
 
+    [Fact]
+    public async Task An_excluded_file_is_skipped_and_becomes_eligible_again_once_removed()
+    {
+        string path;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");   // otherwise eligible: h264 -> hevc
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+            path = file.Path;
+
+            db.Exclusions.Add(new Exclusion { Path = path, LibraryId = library.Id, RelativePath = "a.mkv" });
+            await db.SaveChangesAsync();
+        }
+
+        var excluded = Single(await EvaluateAsync(libraryId: null), "a.mkv");
+        Assert.False(excluded.Eligible);
+        Assert.Contains("Excluded", excluded.Reason);
+
+        // Removing the exclusion restores eligibility.
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            db.Exclusions.Remove(await db.Exclusions.SingleAsync(e => e.Path == path));
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True(Single(await EvaluateAsync(libraryId: null), "a.mkv").Eligible);
+    }
+
     private async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId)
     {
         await using var db = new OptimisarrDbContext(_options);

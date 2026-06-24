@@ -701,9 +701,25 @@ public sealed class QueueDispatcher(
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);
 
-    private Task CompleteAsync(int jobId, JobStatus status, double? progress = null, string? error = null) =>
-        WithJobAsync(jobId, job =>
+    /// <summary>
+    /// Number of terminal failures of a file's current version before it is auto-excluded. Surfaces
+    /// on the library's Excluded tab and is fully reversible there.
+    /// </summary>
+    private const int AutoExcludeFailureThreshold = AutoExclusionPolicy.DefaultFailureThreshold;
+
+    private async Task CompleteAsync(int jobId, JobStatus status, double? progress = null, string? error = null)
+    {
+        await _dbLock.WaitAsync(CancellationToken.None);
+        try
         {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId);
+            if (job is null)
+            {
+                return;
+            }
+
             job.Status = status;
             if (progress is { } value)
             {
@@ -715,7 +731,53 @@ public sealed class QueueDispatcher(
             }
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
-        }, CancellationToken.None);
+
+            await ApplyFailureTrackingAsync(db, job, status);
+            await db.SaveChangesAsync();
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    // Keep a durable per-file failure tally so a file that keeps failing is excluded automatically
+    // (and shown on the Excluded tab) rather than offered forever; a successful encode clears the
+    // streak. Excluding here never touches the original — it only stops the file being re-offered.
+    // Internal so the pure DB effect can be unit tested without standing up the whole dispatcher.
+    internal static async Task ApplyFailureTrackingAsync(OptimisarrDbContext db, Job job, JobStatus status)
+    {
+        var media = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == job.MediaFileId);
+        if (media is null)
+        {
+            return;
+        }
+
+        if (status == JobStatus.Failed)
+        {
+            media.FailureCount += 1;
+            media.UpdatedAt = DateTimeOffset.UtcNow;
+
+            if (AutoExclusionPolicy.ShouldExclude(media.FailureCount, AutoExcludeFailureThreshold)
+                && !await db.Exclusions.AnyAsync(e => e.Path == media.Path))
+            {
+                db.Exclusions.Add(new Exclusion
+                {
+                    Path = media.Path,
+                    LibraryId = media.LibraryId,
+                    RelativePath = media.RelativePath,
+                    Reason = $"Auto-excluded after {media.FailureCount} failed attempts",
+                    Source = ExclusionSource.RepeatedFailures
+                });
+            }
+        }
+        else if (status is JobStatus.Completed or JobStatus.ReadyToReplace && media.FailureCount != 0)
+        {
+            // The encode produced a verified output, so the failure streak is over.
+            media.FailureCount = 0;
+            media.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+    }
 
     // A clean ffmpeg exit only means the transcode ran; it does not mean the output
     // is sound. Verification is the gate to ReadyToReplace: a full-decode health

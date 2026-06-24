@@ -83,4 +83,11 @@ public sealed class MediaFile
     public DateTimeOffset? ProbedAt { get; set; }
 
     public string? ProbeError { get; set; }
+
+    /// <summary>
+    /// How many times a job for this file's current version has terminally failed. Drives the
+    /// automatic exclusion of a file that keeps failing; a successful encode resets it to zero,
+    /// and removing the resulting exclusion resets it so the file gets a fresh start.
+    /// </summary>
+    public int FailureCount { get; set; }
 }

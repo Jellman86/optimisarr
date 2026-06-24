@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Optimisarr.Data;
 
@@ -10,9 +11,11 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    partial class OptimisarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260624192306_AddExclusions")]
+    partial class AddExclusions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.8");
@@ -407,9 +410,6 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<double?>("DurationSeconds")
                         .HasColumnType("REAL");
-
-                    b.Property<int>("FailureCount")
-                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("FrameCount")
                         .HasColumnType("INTEGER");

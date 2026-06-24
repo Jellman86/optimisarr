@@ -26,6 +26,8 @@
     gpu: 'M7 7h10v10H7z M10 10h4v4h-4z M9 4v3M15 4v3M9 17v3M15 17v3M4 9h3M4 15h3M17 9h3M17 15h3',
     // A snail: ground line, outer shell arc, inner spiral, and two antennae.
     snail: 'M3 17h9a5 5 0 10-5-5 3 3 0 103 3M14 9l2-3M17 8l2-2',
+    // A no-entry sign: a circle struck through with a diagonal — "never do this".
+    ban: 'M5.64 5.64l12.72 12.72M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   }
 </script>
 

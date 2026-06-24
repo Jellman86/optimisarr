@@ -20,6 +20,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<ArrConnection> ArrConnections => Set<ArrConnection>();
 
+    public DbSet<Exclusion> Exclusions => Set<Exclusion>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -130,6 +132,19 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(connection => connection.Type).HasConversion<string>().HasMaxLength(32);
             entity.Property(connection => connection.BaseUrl).IsRequired().HasMaxLength(1024);
             entity.Property(connection => connection.ApiKey).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<Exclusion>(entity =>
+        {
+            entity.HasKey(exclusion => exclusion.Id);
+            entity.Property(exclusion => exclusion.Path).IsRequired().HasMaxLength(1024);
+            // One exclusion per file; the unique path is also what makes an exclusion durable
+            // across re-scans and library re-adds.
+            entity.HasIndex(exclusion => exclusion.Path).IsUnique();
+            entity.Property(exclusion => exclusion.RelativePath).HasMaxLength(1024);
+            entity.Property(exclusion => exclusion.Reason).HasMaxLength(512);
+            entity.Property(exclusion => exclusion.Source).HasConversion<string>().HasMaxLength(32);
+            entity.HasIndex(exclusion => exclusion.LibraryId);
         });
     }
 }

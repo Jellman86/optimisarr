@@ -49,6 +49,13 @@ public sealed class CandidateService(OptimisarrDbContext db)
 
         var history = await LoadHistoryAsync(libraryId, cancellationToken);
 
+        // Excluded files are never offered, whatever the rules say. Keyed by path so the exclusion
+        // holds across re-scans and is independent of any job history.
+        var excludedPaths = await db.Exclusions
+            .AsNoTracking()
+            .Select(exclusion => exclusion.Path)
+            .ToHashSetAsync(cancellationToken);
+
         var candidates = new List<Candidate>(files.Count);
         foreach (var file in files)
         {
@@ -83,6 +90,12 @@ public sealed class CandidateService(OptimisarrDbContext db)
                 decision,
                 history.GetValueOrDefault(file.Id, OptimisationHistory.None),
                 file.ModifiedAt);
+
+            // An explicit exclusion overrides every other verdict with a clear, durable reason.
+            if (excludedPaths.Contains(file.Path))
+            {
+                decision = CandidateDecision.Skipped("Excluded — won't be optimised");
+            }
 
             candidates.Add(new Candidate(
                 file.Id,

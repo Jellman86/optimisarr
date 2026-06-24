@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Exclude files from optimisation
+
+- **You can now exclude individual files so they are never optimised again.** From a failed/stuck
+  job in the Queue, hit **Exclude** — the file is added to a durable, path-keyed exclusion list and
+  the failed attempt is cleared. Excluded files are skipped by scans, the candidate list, and
+  auto-optimise. Each library has an **Excluded** tab listing its exclusions, where you can remove
+  one to make the file eligible again. Unlike the soft "previously failed" skip (which hangs off a
+  job row and disappears when the queue history is cleared), an exclusion survives clearing the
+  queue, re-scanning, and re-adding the library. Your original files are never touched.
+- **Files that keep failing are now excluded automatically.** After three terminal failures of a
+  file's current version it is auto-excluded, so it stops burning encode time and instead surfaces
+  on the Excluded tab for review (a successful encode resets the streak). The tab distinguishes
+  automatic exclusions (amber, "repeated failures") from manual ones with an icon, and removing one
+  resets the file's failure count so it gets a genuine fresh start.
+
+### Decode-health no longer fails on hardware-encoder timestamp noise
+
+- **A verified hardware-encoded output is no longer rejected for muxer DTS warnings.** The decode-
+  health check decodes to the null muxer, which is stricter about timestamps than any player; a
+  hardware encoder (e.g. `hevc_qsv`, NVENC) can emit equal/duplicate DTS that the muxer reports as
+  "non monotonically increasing dts to muxer" — once per packet. These were being counted as decode
+  errors (tens of thousands of them), failing verification on an otherwise-perfect encode. They are a
+  muxing remark about the throwaway decode output, not picture corruption — genuine decode-order
+  regressions are still judged by the separate timestamp-integrity gate — so they are now excluded
+  from the decode-error tally. Real decode errors (corrupt frames, packet read errors) still count.
+
 ### "Scott's Settings" optimisation preset
 
 - **A new "Scott's Settings" preset** on the library optimisation slider (Film/TV): conservative
@@ -19,11 +45,14 @@
   still left untouched. The size-saving verification gate still rejects any output that doesn't get
   smaller, so the original is never lost.
 
-### Libraries settings: tidier Advanced panel
+### Libraries settings: cleaner, more polished form
 
-- **Advanced options now sit in a subtly tinted, inset panel** so they read as distinct from the
-  simple controls, and the dense per-field helper text has been moved into hover tooltips across all
-  sections (matching the Settings page) for a cleaner, easier-to-navigate form.
+- **Advanced options are now a distinct tinted "drawer"** — a bordered, rounded card with its own
+  header band, clearly set apart from the simple controls above. Sub-section titles (Video, Audio,
+  Eligibility…) are crisp uppercase labels, and the dense per-field helper text has been moved into
+  hover tooltips across every section (matching the Settings page) for an easier-to-navigate form.
+- **Library cards show a friendly preset name** ("Scott's Settings", "Conservative HEVC") instead of
+  the raw PascalCase profile id.
 
 ### Dashboard: durable lifetime savings + live system usage
 

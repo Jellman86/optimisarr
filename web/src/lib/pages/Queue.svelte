@@ -20,6 +20,7 @@
   let removingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
   let retryingId = $state<number | null>(null)
+  let excludingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
   let clearingPending = $state(false)
   let expandedId = $state<number | null>(null)
@@ -128,6 +129,20 @@
       error = err instanceof Error ? err.message : 'Retry failed'
     } finally {
       retryingId = null
+    }
+  }
+
+  async function exclude(job: Job) {
+    if (!confirm(`Exclude this file from optimisation?\n\n${job.relativePath ?? `Job ${job.id}`}\n\nIt won't be offered or auto-enqueued again until you remove it from the library's Excluded list. This failed attempt is cleared from the queue; your original file is untouched.`)) return
+    excludingId = job.id
+    try {
+      await api.excludeFile(job.mediaFileId)
+      if (selectedJobId === job.id) selectedJobId = null
+      await load()
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Unable to exclude file'
+    } finally {
+      excludingId = null
     }
   }
 
@@ -576,6 +591,10 @@
                   <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); retry(job) }} disabled={retryingId === job.id} title="Re-queue this file as a fresh attempt">
                     <Icon name="retry" class="h-3.5 w-3.5" />
                     {retryingId === job.id ? 'Retrying' : 'Retry'}
+                  </button>
+                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); exclude(job) }} disabled={excludingId === job.id} title="Never optimise this file again (durable; manage it from the library's Excluded list)">
+                    <Icon name="ban" class="h-3.5 w-3.5" />
+                    {excludingId === job.id ? 'Excluding' : 'Exclude'}
                   </button>
                   <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); stopAndRemove(job) }} disabled={removingId === job.id} title="Remove this attempt so the file can be enqueued again">
                     <Icon name="trash" class="h-3.5 w-3.5" />

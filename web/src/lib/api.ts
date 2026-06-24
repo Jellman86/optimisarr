@@ -396,6 +396,16 @@ export type ScanSummary = {
   skippedUnsettled: number
 }
 
+export type Exclusion = {
+  id: number
+  path: string
+  libraryId: number | null
+  relativePath: string | null
+  reason: string | null
+  source: string
+  createdAt: string
+}
+
 export type BrowseResponse = {
   path: string
   parent: string | null
@@ -457,6 +467,13 @@ export const api = {
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
   candidateSummary: () => request<CandidateSummary[]>('/api/candidates/summary'),
+
+  // Exclusions: files the operator never wants optimised again (durable, path-keyed).
+  exclusions: (libraryId?: number) =>
+    request<Exclusion[]>(`/api/exclusions${libraryId != null ? `?libraryId=${libraryId}` : ''}`),
+  excludeFile: (mediaFileId: number, reason?: string) =>
+    request<Exclusion>('/api/exclusions', { method: 'POST', body: JSON.stringify({ mediaFileId, reason }) }),
+  removeExclusion: (id: number) => request<void>(`/api/exclusions/${id}`, { method: 'DELETE' }),
 
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (body: Settings) =>
