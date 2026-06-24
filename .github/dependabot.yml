@@ -4,15 +4,37 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # Development happens on dev; main is the release branch. Target dev so bumps are built and
+    # tested alongside active work and flow to main at release time.
+    target-branch: "dev"
+    # Group minor/patch bumps into one PR per ecosystem. This keeps the .NET/EF Core packages
+    # (which must share a version) moving together instead of splitting into mismatched PRs.
+    groups:
+      dotnet-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: npm
     directory: "/web"
     schedule:
       interval: weekly
+    target-branch: "dev"
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
+    target-branch: "dev"
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    target-branch: "dev"
+    groups:
+      github-actions:
+        patterns: ["*"]
