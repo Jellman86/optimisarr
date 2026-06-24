@@ -2,16 +2,29 @@
   <img src="web/public/favicon-192.png" alt="Optimisarr app icon" width="192">
 </p>
 <h1 align="center">Optimisarr</h1>
-<p align="center"><strong>Safe, verified optimisation for self-hosted media libraries.</strong></p>
+<p align="center"><strong>Safe, verified FFmpeg transcoding for self-hosted media libraries.</strong></p>
 <p align="center">
   <a href="#documentation">Docs</a> •
   <a href="#quick-start-docker">Quick Start</a> •
   <a href="#hardware-acceleration-gpu">Hardware Acceleration</a>
 </p>
 
-Optimisarr is an independently maintained media-library optimiser for people
-running a small self-hosted setup. It can transcode with a CPU or supported GPU,
-schedule work, and verify output before replacing an original.
+**Optimisarr is a self-hosted, Docker-based FFmpeg media-library optimiser.**
+It finds eligible video, audio, and image files, transcodes them to reduce
+storage use, verifies the result, and only then replaces the original.
+
+Built for Plex, Jellyfin, Emby, Sonarr, and Radarr users, Optimisarr supports
+CPU, NVIDIA NVENC, Intel QSV, and VA-API transcoding. Originals are quarantined
+for rollback rather than deleted immediately.
+
+## Why Optimisarr?
+
+- Reduce media-library storage without manually batch-transcoding files.
+- Verify output before replacement, with configurable stream-retention,
+  duration, and size-reduction checks.
+- Run one Docker container on a homelab, Unraid-style server, or other
+  self-hosted setup.
+- Pause processing while Plex, Jellyfin, or Emby has active streams.
 
 <p align="center">
   <img src="docs/images/optimisarr-queue-dark.png" alt="Optimisarr Queue in dark mode, showing active GPU transcoding" width="100%">
@@ -76,10 +89,6 @@ no support SLA or promise of a release schedule.
 Still planned (see the [roadmap](docs/roadmap.md)): dry-run operation and
 real-hardware validation for AMD VA-API. Intel QSV has been tested on real
 hardware for both encoding and decoding.
-
-## But why?
-
-Truth is, I wasn't happy with the current options on the market for media-library optimisation. I've used Unmanic and Tdarr in the past and they either were too complex or did no post-transcode verification (often leaving broken files after a transcode). I wanted something simple, easy to understand, and that guaranteed the files that come out aren't borked. Storage is only going to get more expensive in the short to medium term, so best optimise your library.
 
 ## Before you start
 
