@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-bookworm-slim AS web-build
+FROM node:26-bookworm-slim AS web-build
 # The build context excludes `.git`, so the short commit is passed in here and
 # read by vite.config.ts (it falls back to "unknown" when absent).
 ARG GIT_HASH=unknown
