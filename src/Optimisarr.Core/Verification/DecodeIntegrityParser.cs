@@ -10,6 +10,12 @@ public sealed record DecodeIntegrity(int ErrorCount, string? FirstError);
 /// log level FFmpeg prints one line per real decode problem, so the line count is a
 /// faithful tally of corrupt frames and packet read errors over the whole file —
 /// unlike a stop-at-first-error check, which only proves the file is bad somewhere.
+/// Muxer-side timestamp notes are excluded: the decode pass writes to the null muxer,
+/// which is stricter about timestamps than any player, and a hardware encoder (QSV/NVENC)
+/// can emit equal/duplicate DTS the muxer flags as "non monotonically increasing dts to
+/// muxer". That is a muxing remark about the throwaway output, not decoded-picture
+/// corruption — genuine decode-order regressions are judged separately by the
+/// timestamp-integrity gate — so it must not count as a decode error here.
 /// </summary>
 public static class DecodeIntegrityParser
 {
@@ -20,11 +26,18 @@ public static class DecodeIntegrityParser
             return new DecodeIntegrity(0, null);
         }
 
-        var lines = stderr
-            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var errors = stderr
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(IsDecodeError)
+            .ToArray();
 
-        return lines.Length == 0
+        return errors.Length == 0
             ? new DecodeIntegrity(0, null)
-            : new DecodeIntegrity(lines.Length, lines[0]);
+            : new DecodeIntegrity(errors.Length, errors[0]);
     }
+
+    // A non-strictly-increasing DTS handed to the null muxer is a timestamp remark, not corruption;
+    // it is the dominant false positive for hardware-encoded output and is filtered out here.
+    private static bool IsDecodeError(string line) =>
+        line.IndexOf("non monotonically increasing dts", StringComparison.OrdinalIgnoreCase) < 0;
 }

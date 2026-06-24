@@ -34,4 +34,35 @@ public sealed class DecodeIntegrityParserTests
 
         Assert.Equal(1, integrity.ErrorCount);
     }
+
+    [Fact]
+    public void Muxer_dts_timestamp_warnings_are_not_counted_as_decode_errors()
+    {
+        // The exact noise a hardware encoder (e.g. hevc_qsv) produces against the null muxer:
+        // equal/duplicate DTS the muxer rejects, repeated once per packet. It is not corruption.
+        const string stderr =
+            "[null @ 0x55] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 2 >= 2\n" +
+            "[null @ 0x55] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 5 >= 5\n";
+
+        var integrity = DecodeIntegrityParser.Parse(stderr);
+
+        Assert.Equal(0, integrity.ErrorCount);
+        Assert.Null(integrity.FirstError);
+    }
+
+    [Fact]
+    public void Genuine_decode_errors_still_count_when_mixed_with_muxer_dts_noise()
+    {
+        const string stderr =
+            "[null @ 0x55] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 2 >= 2\n" +
+            "[hevc @ 0x55] Could not find ref with POC 12\n" +
+            "[null @ 0x55] Application provided invalid, non monotonically increasing dts to muxer in stream 0: 3 >= 3\n" +
+            "[hevc @ 0x55] error while decoding MB 3 4\n";
+
+        var integrity = DecodeIntegrityParser.Parse(stderr);
+
+        // Only the two real decode errors count; the first reported is the real one, not muxer noise.
+        Assert.Equal(2, integrity.ErrorCount);
+        Assert.Contains("Could not find ref", integrity.FirstError);
+    }
 }
