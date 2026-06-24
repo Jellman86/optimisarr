@@ -19,8 +19,8 @@ public enum RuleProfile
     RemuxCleanup = 3,
 
     /// <summary>
-    /// "Scott's Settings": conservative HEVC video that also tone-maps HDR to SDR and re-encodes
-    /// audio to AAC 96 kbps downmixed to stereo — a compatibility-first, space-saving bundle.
+    /// "Scott's Settings": conservative HEVC video that preserves HDR and re-encodes audio to AAC
+    /// 96 kbps downmixed to stereo — a compatibility-first, space-saving bundle.
     /// </summary>
     ScottsSettings = 4
 }

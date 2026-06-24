@@ -51,7 +51,7 @@
     CompatibilityH264: 'H.264 in MP4 — plays literally everywhere, at the cost of larger files. (AAC audio recommended.)',
     ExperimentalAv1: 'Smallest files using AV1 in MKV, where hardware allows. Slower to encode. (Opus audio recommended.)',
     RemuxCleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
-    ScottsSettings: "Scott's Settings — HEVC (H.265) in MP4 at CRF 24, HDR tone-mapped to SDR, and audio re-encoded to AAC 96 kbps downmixed to stereo. A compatibility-first, space-saving bundle (the same AAC 96 kbps stereo target applies to a music library).",
+    ScottsSettings: "Scott's Settings — HEVC (H.265) in MP4 at CRF 24, HDR preserved, and audio re-encoded to AAC 96 kbps downmixed to stereo. A compatibility-first, space-saving bundle that avoids CPU-heavy HDR-to-SDR tone mapping (the same AAC 96 kbps stereo target applies to a music library).",
   }
 
   // The re-encode profiles form a single compatibility→efficiency axis, shown as a slider so the
@@ -227,7 +227,7 @@
       form.videoAudioCodec = 'aac'
       form.videoAudioBitrateKbps = 96
       form.downmixToStereo = true
-      form.hdrHandling = 'TonemapToSdr'
+      form.hdrHandling = 'Preserve'
     }
   }
 
@@ -696,7 +696,7 @@
        knobs live under Advanced options. -->
   <div class="mt-4">
     <div class="flex items-center gap-2">
-      <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient. Each stop picks a researched codec, container, and quality; Scott's Settings is an all-in-one preset that also tone-maps HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
+      <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient. Each stop picks a researched codec, container, and quality; Scott's Settings preserves HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
       {#if showVideoOptions && presetOverridden}
         <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="Codec/container set manually in Advanced options">Overridden</span>
       {/if}

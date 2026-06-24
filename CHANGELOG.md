@@ -31,11 +31,12 @@
 ### "Scott's Settings" optimisation preset
 
 - **A new "Scott's Settings" preset** on the library optimisation slider (Film/TV): conservative
-  HEVC (H.265) in MP4 at CRF 24, HDR tone-mapped to SDR, and audio re-encoded to AAC 96 kbps
-  downmixed to stereo — a compatibility-first, space-saving bundle. Selecting it fills the matching
-  Advanced fields so the panel honestly shows what it does (the stereo downmix in particular is an
-  explicit per-library switch). A music library set to this profile gets the same AAC 96 kbps
-  stereo target.
+  HEVC (H.265) in MP4 at CRF 24, HDR preserved, and audio re-encoded to AAC 96 kbps downmixed to
+  stereo — a compatibility-first, space-saving bundle. It preserves HDR rather than defaulting to
+  HDR-to-SDR tone mapping, avoiding the CPU-heavy software tone-map path while retaining the source
+  signal. Selecting it fills the matching Advanced fields so the panel honestly shows what it does
+  (the stereo downmix in particular is an explicit per-library switch). A music library set to this
+  profile gets the same AAC 96 kbps stereo target.
 
 ### Re-encode oversized files already in the target codec
 

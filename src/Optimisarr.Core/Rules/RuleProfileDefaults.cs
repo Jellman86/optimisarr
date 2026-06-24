@@ -57,11 +57,12 @@ public static class RuleProfileDefaults
             Hdr = HdrHandling.Preserve
         },
         // "Scott's Settings": the same conservative, broadly-compatible HEVC/MP4 base as
-        // ConservativeHevc, but a complete bundle rather than video-only — HDR is tone-mapped to
-        // SDR for maximum playback compatibility, and audio is re-encoded to AAC 96 kbps downmixed
-        // to stereo (both the audio track of a video job and an audio-only/music file). 96 kbps
-        // stereo AAC is transparent enough for typical listening while saving a lot over surround
-        // lossless. A music library set to this profile gets the same AAC 96 kbps stereo target.
+        // ConservativeHevc, but a complete bundle rather than video-only. HDR is preserved so a
+        // library does not unexpectedly use the CPU-heavy software HDR-to-SDR tone-map path; audio
+        // is re-encoded to AAC 96 kbps downmixed to stereo (both the audio track of a video job and
+        // an audio-only/music file). 96 kbps stereo AAC is transparent enough for typical listening
+        // while saving a lot over surround lossless. A music library set to this profile gets the
+        // same AAC 96 kbps stereo target.
         RuleProfile.ScottsSettings => new RuleSettings
         {
             Profile = profile,
@@ -69,7 +70,7 @@ public static class RuleProfileDefaults
             TargetContainer = "mp4",
             DefaultCrf = 24,
             MinFileSizeBytes = DefaultMinReencodeSize,
-            Hdr = HdrHandling.TonemapToSdr,
+            Hdr = HdrHandling.Preserve,
             VideoAudioCodec = "aac",
             VideoAudioBitrateKbps = 96,
             DownmixToStereo = true,

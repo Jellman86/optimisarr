@@ -64,12 +64,12 @@ public sealed class RuleProfileDefaultsTests
     }
 
     [Fact]
-    public void Scotts_settings_bundles_tonemap_and_aac_96kbps_stereo_downmix()
+    public void Scotts_settings_preserves_hdr_and_bundles_aac_96kbps_stereo_downmix()
     {
         var settings = RuleProfileDefaults.For(RuleProfile.ScottsSettings);
 
-        // HDR is tone-mapped to SDR for compatibility.
-        Assert.Equal(HdrHandling.TonemapToSdr, settings.Hdr);
+        // Preserve HDR by default: software HDR-to-SDR tone mapping is CPU-intensive.
+        Assert.Equal(HdrHandling.Preserve, settings.Hdr);
         // A video job re-encodes its audio to AAC 96 kbps, downmixed to stereo.
         Assert.Equal("aac", settings.VideoAudioCodec);
         Assert.Equal(96, settings.VideoAudioBitrateKbps);
