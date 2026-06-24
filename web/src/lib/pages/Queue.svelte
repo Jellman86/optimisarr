@@ -669,19 +669,13 @@
         {/if}
       </div>
 
-      <!-- Live CPU/GPU usage while this job encodes -->
+      <!-- The hero panel above already shows this job's live CPU/GPU usage while it encodes, so
+           the graph isn't repeated here; the sheet shows the technical detail (command) instead. -->
       {#if selectedJob.status === 'Transcoding'}
-        <div class="mb-4 grid gap-3 sm:grid-cols-2">
-          <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
-          <UsageGraph
-            label="GPU"
-            data={activity.gpuHistory}
-            current={activity.metrics?.gpuPercent ?? null}
-            color="rgb(34,197,94)"
-            unavailable={gpuUnavailable}
-            detail={activity.metrics?.gpuEngine}
-          />
-        </div>
+        <p class="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
+          <Icon name="chevron" class="h-3.5 w-3.5 rotate-180" />
+          Live CPU/GPU usage is shown in the panel above.
+        </p>
       {/if}
 
       <!-- Details -->
@@ -694,6 +688,15 @@
         <div class="flex justify-between gap-4"><dt class="text-slate-500">Priority</dt><dd>{selectedJob.priority}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-slate-500">Verified</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
       </dl>
+
+      <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
+           hero's live status. Useful while encoding and for diagnosing a failed job. -->
+      {#if selectedJob.ffmpegArguments}
+        <div class="mt-4">
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">FFmpeg command</div>
+          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">ffmpeg {selectedJob.ffmpegArguments}</pre>
+        </div>
+      {/if}
 
       <!-- Verification report, when one exists -->
       {#if parseReport(selectedJob)}

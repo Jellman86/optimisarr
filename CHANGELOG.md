@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Queue detail sheet shows the FFmpeg command
+
+- **Clicking the job that's encoding no longer just repeats the hero panel.** The live CPU/GPU usage
+  graph now appears only in the "now encoding" hero; the detail sheet instead shows the exact FFmpeg
+  command for the job (and points to the hero for live usage), which is also handy for diagnosing a
+  failed job.
+
 ### Exclude files from optimisation
 
 - **You can now exclude individual files so they are never optimised again.** From a failed/stuck
