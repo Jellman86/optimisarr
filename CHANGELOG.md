@@ -27,6 +27,8 @@
 - **Synthetic-media integration coverage has started.** A hermetic test now creates synthetic media
   files, scans them through the real inventory service, applies synthetic ffprobe JSON through the
   parser, and verifies candidate decisions through the real candidate service.
+- **The roadmap now reflects existing GHCR publishing.** CI already builds the production container,
+  runs the container readiness smoke test, and publishes GHCR images on non-PR branch/tag builds.
 
 ### Custom mode for a library's video preset
 

@@ -8,8 +8,9 @@ the replacement workflow is trustworthy.
 
 1. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration
-   coverage, README quickstart hardening, troubleshooting, and security notes are shipped.
-   Backups intentionally omit media, jobs, replacements, quarantine, and rollback history.
+  coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
+  notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
+  and rollback history.
 2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
    for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
    segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
@@ -33,6 +34,8 @@ the replacement workflow is trustworthy.
 - **Synthetic-media integration coverage: started.** A hermetic test now creates synthetic
   media files, scans them through the real inventory service, applies synthetic ffprobe JSON
   through the parser, and verifies candidate decisions through the real candidate service.
+- **GHCR publishing: done.** CI builds the production container, runs the container
+  readiness smoke test, and publishes GHCR images on non-PR branch/tag builds.
 
 - **Media thumbnails in lists: done.** Every row on the Inventory page and the per-library Candidates
   tab shows a kind-appropriate thumbnail: **film/TV** a poster (Radarr/Sonarr first — an exact, local
@@ -815,7 +818,7 @@ Deliverables:
   SQLite state backup remains external/operator-owned.**
 - Database migrations tested. **Done for empty-database migration smoke coverage.**
 - Integration tests with synthetic media fixtures. **Started with scan → parsed probe → candidates.**
-- Docker image published to GHCR.
+- Docker image published to GHCR. **Done via CI after container readiness smoke.**
 - README quickstart. **Done.**
 - Troubleshooting guide. **Done.**
 - Security notes around mounted volumes and reverse proxies. **Done.**
