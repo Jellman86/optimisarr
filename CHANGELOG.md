@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Release hardening
+
+- **Dry-run mode is now available from Settings → Replacement.** Optimisarr can still scan,
+  queue, transcode, verify, and preview normally, but manual replacement, auto-replace, and
+  quarantine purge are blocked while dry-run mode is on. Verified outputs stop at
+  `ReadyToReplace` for review, and rollback remains available for existing replacements because it
+  restores protected originals.
+- **Configuration import is stricter and transactional.** Backup imports now reject malformed image
+  downscale modes/values and auto-enqueue windows instead of silently coercing them to defaults, and
+  the whole import runs inside one database transaction so settings and definitions are applied
+  together or not at all.
+- **Backup restore feedback now includes Sonarr/Radarr connections.** The Settings UI reports imported
+  download-manager connections and reloads that section after import instead of leaving stale data on
+  screen.
+- **The test suite now includes an EF migration smoke test.** It applies all migrations to an empty
+  SQLite database and asserts no pending migrations remain, covering the real migration chain
+  separately from `EnsureCreated`-based unit tests.
+
 ### Custom mode for a library's video preset
 
 - **Setting your own codec/container is now a first-class "Custom" choice, not a warning.** The
