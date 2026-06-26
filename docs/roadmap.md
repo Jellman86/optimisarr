@@ -7,8 +7,8 @@ the replacement workflow is trustworthy.
 ## Up next (priority order, updated 2026-06-26)
 
 1. **Phase 13 release hardening** (README quickstart, troubleshooting, security notes,
-   database migration/integration checks) — release controls are in progress; dry-run mode
-   and config-and-secrets backups are shipped. Backups intentionally omit media, jobs,
+   integration checks) — release controls are in progress; dry-run mode, config-and-secrets
+   backups, and a migration smoke test are shipped. Backups intentionally omit media, jobs,
    replacements, quarantine, and rollback history.
 2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
    for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
@@ -22,6 +22,9 @@ the replacement workflow is trustworthy.
   auto-replace, and quarantine purge. Verified outputs stop at Ready to replace for
   review; rollback remains available for existing replacements because it restores
   the protected original.
+- **Migration smoke test: done.** The test suite now applies all EF migrations to an empty
+  SQLite database and asserts no pending migrations remain, catching broken migration chains
+  separately from the `EnsureCreated`-based unit tests.
 
 - **Media thumbnails in lists: done.** Every row on the Inventory page and the per-library Candidates
   tab shows a kind-appropriate thumbnail: **film/TV** a poster (Radarr/Sonarr first — an exact, local
@@ -802,7 +805,7 @@ Deliverables:
 - Dry-run mode. **Done.**
 - Backup/export of SQLite config. **Done for portable config-and-secrets snapshots; raw
   SQLite state backup remains external/operator-owned.**
-- Database migrations tested.
+- Database migrations tested. **Done for empty-database migration smoke coverage.**
 - Integration tests with synthetic media fixtures.
 - Docker image published to GHCR.
 - README quickstart.
