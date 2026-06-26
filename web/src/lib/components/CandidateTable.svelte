@@ -5,7 +5,7 @@
   import type { Candidate } from '../api'
   import { formatSize } from '../format'
   import PreviewCompare from './PreviewCompare.svelte'
-  import Poster from './Poster.svelte'
+  import Thumbnail from './Thumbnail.svelte'
 
   let { candidates, scoped = false }: { candidates: Candidate[]; scoped?: boolean } = $props()
 
@@ -64,9 +64,7 @@
             </td>
             <td class="px-4 py-2">
               <div class="flex items-center gap-3">
-                {#if candidate.mediaKind !== 'Audio' && candidate.mediaKind !== 'Image'}
-                  <Poster mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
-                {/if}
+                <Thumbnail mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
                 <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
                   {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
                     <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind}</span>

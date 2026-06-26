@@ -1204,16 +1204,17 @@ app.MapGet("/api/jobs/{id:int}/artwork", async (
 })
 .WithName("JobArtwork");
 
-// Poster for a media file's title, resolved from Radarr/Sonarr first (exact, local) then a connected
-// media server, and proxied so no server token reaches the browser. 404 when there's no source, no
-// match, or the file isn't film/TV — the UI then shows its plain placeholder.
-app.MapGet("/api/media/{id:int}/poster", async (
+// Thumbnail for a media file, by kind: a poster (Radarr/Sonarr first, then a media server) for video,
+// the embedded cover art for audio, and a down-scaled still for an image. Bytes are produced/proxied
+// by the backend so no server token reaches the browser. 404 when nothing is available — the UI then
+// shows its plain placeholder.
+app.MapGet("/api/media/{id:int}/thumbnail", async (
     int id,
     ArtworkService artwork,
     HttpContext context,
     CancellationToken cancellationToken) =>
 {
-    var result = await artwork.GetPosterAsync(id, cancellationToken);
+    var result = await artwork.GetThumbnailAsync(id, cancellationToken);
     if (result is null)
     {
         return Results.NotFound();
@@ -1222,7 +1223,7 @@ app.MapGet("/api/media/{id:int}/poster", async (
     context.Response.Headers.CacheControl = "public, max-age=86400";
     return Results.File(result.Value.Bytes, result.Value.ContentType);
 })
-.WithName("MediaPoster");
+.WithName("MediaThumbnail");
 
 // Remove finished jobs (completed, failed, cancelled) to declutter the queue. A job whose
 // original is still in quarantine is the live rollback path and is kept; clearing it would

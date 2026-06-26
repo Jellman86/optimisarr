@@ -18,15 +18,19 @@
   section (e.g. "Video" for Film/TV) had its top padding stripped, so its heading sat tight against
   the drawer border; it now gets the same breathing room as the other sections.
 
-### Media posters in the Inventory and Candidates lists
+### Media thumbnails in the Inventory and Candidates lists
 
-- **Film/TV rows now show a poster** (on the Inventory page and the per-library Candidates tab) so you
-  can recognise a title at a glance instead of parsing a filename. Posters resolve from a connected
-  **Radarr/Sonarr first** — an exact, local match keyed to the file the manager already imported (TV
-  rows get their series poster) — and fall back to a connected media server (Plex/Jellyfin/Emby).
-  Music/photo rows show no poster (there is no movie/series artwork for them). Images are proxied by
-  the backend, so no server/API token ever reaches the browser, and the Radarr/Sonarr library list is
-  cached briefly so a list render is one fetch plus local matches, not one request per row.
+- **Every row now shows a thumbnail** (on the Inventory page and the per-library Candidates tab) so you
+  can recognise an item at a glance instead of parsing a filename. The thumbnail is chosen by kind:
+  - **Film/TV → poster** from a connected **Radarr/Sonarr first** (an exact, local match keyed to the
+    imported file; TV rows show the series poster), falling back to a media server (Plex/Jellyfin/Emby).
+  - **Music → the file's embedded cover art**, extracted with ffmpeg — no external service needed.
+  - **Images → a down-scaled still** of the image itself, rendered with ffmpeg.
+- All bytes are produced/proxied by the backend, so no server/API token ever reaches the browser;
+  thumbnails lazy-load into a fixed box (no layout shift) and fall back silently to a plain
+  placeholder. ffmpeg extraction runs with a timeout and a short negative cache so a list scroll never
+  respawns it for a cover-less file. New reusable `<Thumbnail>` component and `GET
+  /api/media/{id}/thumbnail` endpoint (replacing the film-only poster endpoint).
 - Artwork is a **recognition aid, not decoration**: it lazy-loads into a fixed 2:3 box (no layout
   shift), degrades silently to a plain placeholder when nothing resolves, and never implies state.
   Audio/image candidates show no poster. New reusable `<Poster>` component and `GET

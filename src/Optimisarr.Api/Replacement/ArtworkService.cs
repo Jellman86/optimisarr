@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Replacement;
@@ -15,7 +18,10 @@ namespace Optimisarr.Api.Replacement;
 /// caller falls back to its plain look. Resolved URLs are cached briefly so repeated requests do not
 /// re-search.
 /// </summary>
-public sealed class ArtworkService(IServiceScopeFactory scopeFactory, IHttpClientFactory httpClientFactory)
+public sealed class ArtworkService(
+    IServiceScopeFactory scopeFactory,
+    IHttpClientFactory httpClientFactory,
+    TranscodeOptions transcodeOptions)
 {
     private sealed record Resolved(string? Url, string? AuthHeaderName, string? AuthHeaderValue);
 
@@ -24,10 +30,16 @@ public sealed class ArtworkService(IServiceScopeFactory scopeFactory, IHttpClien
     // The Radarr/Sonarr library list is shared across every poster in a view, so cache it briefly to
     // turn a table render into one list fetch plus local matches rather than one fetch per row.
     private static readonly TimeSpan ArrListTtl = TimeSpan.FromMinutes(10);
+    // Remember "no extractable thumbnail" only briefly, so a list scroll doesn't respawn ffmpeg for a
+    // cover-less file every time, while a fixed/re-probed file recovers without a long wait.
+    private static readonly TimeSpan NegativeTtl = TimeSpan.FromMinutes(30);
+    private const int ThumbnailHeight = 240;
 
+    private readonly string _ffmpeg = transcodeOptions.Ffmpeg;
     private readonly ConcurrentDictionary<int, (Resolved Value, DateTime At)> _backdropCache = new();
     private readonly ConcurrentDictionary<int, (Resolved Value, DateTime At)> _posterCache = new();
     private readonly ConcurrentDictionary<int, (string Json, DateTime At)> _arrListCache = new();
+    private readonly ConcurrentDictionary<int, DateTime> _noThumbnail = new();
 
     /// <summary>Backdrop (wide background) for a job's title, from a connected media server.</summary>
     public async Task<(byte[] Bytes, string ContentType)?> GetBackdropAsync(int jobId, CancellationToken cancellationToken)
@@ -37,12 +49,108 @@ public sealed class ArtworkService(IServiceScopeFactory scopeFactory, IHttpClien
         return await FetchAsync(resolved, cancellationToken);
     }
 
-    /// <summary>Poster (portrait) for a media file's title: Radarr/Sonarr first, then a media server.</summary>
-    public async Task<(byte[] Bytes, string ContentType)?> GetPosterAsync(int mediaFileId, CancellationToken cancellationToken)
+    /// <summary>
+    /// The list thumbnail for a media file, chosen by kind: a poster (Radarr/Sonarr first, then a
+    /// media server) for video, the embedded cover art for audio, and a down-scaled still for an
+    /// image. Null when nothing is available, so the UI shows its plain placeholder.
+    /// </summary>
+    public async Task<(byte[] Bytes, string ContentType)?> GetThumbnailAsync(int mediaFileId, CancellationToken cancellationToken)
+    {
+        if (await LoadMediaAsync(mediaFileId, cancellationToken) is not { } media)
+        {
+            return null;
+        }
+
+        return media.Kind switch
+        {
+            MediaKind.Audio => await ExtractAsync(mediaFileId, media.Path, MediaThumbnail.CoverArtArguments(media.Path), cancellationToken),
+            MediaKind.Image => await ExtractAsync(mediaFileId, media.Path, MediaThumbnail.ImageThumbnailArguments(media.Path, ThumbnailHeight), cancellationToken),
+            _ => await GetVideoPosterAsync(mediaFileId, cancellationToken),
+        };
+    }
+
+    private async Task<(byte[] Bytes, string ContentType)?> GetVideoPosterAsync(int mediaFileId, CancellationToken cancellationToken)
     {
         var resolved = await CachedAsync(_posterCache, mediaFileId,
             () => ResolvePosterAsync(mediaFileId, cancellationToken));
         return await FetchAsync(resolved, cancellationToken);
+    }
+
+    private async Task<(MediaKind Kind, string Path)?> LoadMediaAsync(int mediaFileId, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var media = await db.MediaFiles
+            .AsNoTracking()
+            .Where(file => file.Id == mediaFileId)
+            .Select(file => new { file.MediaKind, file.Path })
+            .FirstOrDefaultAsync(cancellationToken);
+        return media is null ? null : (media.MediaKind, media.Path);
+    }
+
+    // Runs ffmpeg to produce the thumbnail bytes on stdout — embedded cover art (audio) or a scaled
+    // still (image). A file with no extractable image is remembered briefly so a list re-render does
+    // not respawn ffmpeg for it on every scroll. The source path is always a discrete ffmpeg argument
+    // (never a shell string), and the process runs with a timeout and captured stdout/stderr.
+    private async Task<(byte[] Bytes, string ContentType)?> ExtractAsync(
+        int mediaFileId, string path, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    {
+        if (_noThumbnail.TryGetValue(mediaFileId, out var at) && DateTime.UtcNow - at < NegativeTtl)
+        {
+            return null;
+        }
+
+        if (!File.Exists(path))
+        {
+            _noThumbnail[mediaFileId] = DateTime.UtcNow;
+            return null;
+        }
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+
+            var info = new ProcessStartInfo
+            {
+                FileName = _ffmpeg,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in arguments)
+            {
+                info.ArgumentList.Add(argument);
+            }
+
+            using var process = new Process { StartInfo = info };
+            process.Start();
+
+            using var buffer = new MemoryStream();
+            var copy = process.StandardOutput.BaseStream.CopyToAsync(buffer, timeout.Token);
+            var error = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            await copy;
+            await error;
+
+            var bytes = buffer.ToArray();
+            var contentType = MediaThumbnail.DetectImageContentType(bytes);
+            if (process.ExitCode != 0 || contentType is null)
+            {
+                _noThumbnail[mediaFileId] = DateTime.UtcNow;
+                return null;
+            }
+
+            return (bytes, contentType);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // A genuine failure or our own 15s timeout — remember it briefly. A request the caller
+            // cancelled is not caught here, so it is not mistaken for a missing thumbnail.
+            _noThumbnail[mediaFileId] = DateTime.UtcNow;
+            return null;
+        }
     }
 
     private static async Task<Resolved> CachedAsync(

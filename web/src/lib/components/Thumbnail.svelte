@@ -1,8 +1,8 @@
 <script lang="ts">
-  // A small media poster proxied by the backend (Radarr/Sonarr first, then a connected media
-  // server). A fixed 2:3 box so it never shifts layout, with a clean placeholder when no art
-  // resolves — artwork is a recognition aid here, never a state signal, so a missing image is
-  // silent. Film/TV only: callers pass video media file ids.
+  // A small media thumbnail proxied by the backend, chosen by kind: a poster (Radarr/Sonarr, then a
+  // media server) for film/TV, embedded cover art for music, and a down-scaled still for an image.
+  // A fixed box so it never shifts layout, with a clean placeholder when nothing resolves — artwork
+  // is a recognition aid here, never a state signal, so a missing image is silent.
   let { mediaFileId, alt = '', size = 'sm' }: { mediaFileId: number; alt?: string; size?: 'sm' | 'md' } =
     $props()
 
@@ -17,7 +17,7 @@
 >
   {#if !failed}
     <img
-      src="/api/media/{mediaFileId}/poster"
+      src="/api/media/{mediaFileId}/thumbnail"
       {alt}
       loading="lazy"
       class="h-full w-full object-cover transition-opacity duration-200"

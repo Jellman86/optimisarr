@@ -16,10 +16,13 @@ the replacement workflow is trustworthy.
    Phase 11 section.
 **Recently shipped (2026-06-26).**
 
-- **Media posters in lists: done.** Film/TV rows on the Inventory page and the per-library Candidates
-  tab show a poster (Radarr/Sonarr first — an exact, local match keyed to the imported file, with TV
-  rows showing the series poster — then a connected media server). Bytes are proxied so no token
-  reaches the browser; music/photo rows show none. Beyond the original roadmap scope.
+- **Media thumbnails in lists: done.** Every row on the Inventory page and the per-library Candidates
+  tab shows a kind-appropriate thumbnail: **film/TV** a poster (Radarr/Sonarr first — an exact, local
+  match keyed to the imported file, with TV rows showing the series poster — then a connected media
+  server); **music** the file's embedded cover art (extracted with ffmpeg, no external service);
+  **images** a down-scaled still of the image itself. All bytes are produced/proxied by the backend so
+  no token reaches the browser, lazy-loaded into a fixed box with a silent placeholder fallback.
+  Reusable `<Thumbnail>` component + `GET /api/media/{id}/thumbnail`. Beyond the original roadmap scope.
 - **Custom preset stop: done.** The per-library video slider ends in a **Custom** stop, so a manual
   codec/container choice is a deliberate "Custom" configuration rather than an amber "Overridden"
   warning (advances Phase 12's "richer, explicit preset sliders").

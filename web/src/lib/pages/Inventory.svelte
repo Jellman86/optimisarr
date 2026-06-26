@@ -4,7 +4,7 @@
   import Banner from '../components/Banner.svelte'
   import BottomSheet from '../components/BottomSheet.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
-  import Poster from '../components/Poster.svelte'
+  import Thumbnail from '../components/Thumbnail.svelte'
 
   let libraries = $state<Library[]>([])
   let files = $state<MediaFile[]>([])
@@ -290,9 +290,7 @@
               </td>
               <td class="px-4 py-2">
                 <div class="flex items-center gap-3">
-                  {#if file.mediaKind !== 'Audio' && file.mediaKind !== 'Image'}
-                    <Poster mediaFileId={file.id} alt={file.relativePath} />
-                  {/if}
+                  <Thumbnail mediaFileId={file.id} alt={file.relativePath} />
                   <span class="max-w-[50vw] truncate font-mono text-xs sm:max-w-xs" title={file.relativePath}>
                     {file.relativePath}
                   </span>
