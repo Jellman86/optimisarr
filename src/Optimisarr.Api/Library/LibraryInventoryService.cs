@@ -5,7 +5,7 @@ using Optimisarr.Data;
 
 namespace Optimisarr.Api.Library;
 
-public sealed record ScanSummary(int Discovered, int Added, int Updated, int SkippedUnsettled);
+public sealed record ScanSummary(int Discovered, int Added, int Updated, int Removed, int SkippedUnsettled);
 
 /// <summary>
 /// Orchestrates filesystem discovery and ffprobe inspection with the database.
@@ -25,7 +25,7 @@ public sealed class LibraryInventoryService(
             .Where(library => library.Enabled)
             .ToListAsync(cancellationToken);
 
-        var total = new ScanSummary(0, 0, 0, 0);
+        var total = new ScanSummary(0, 0, 0, 0, 0);
         foreach (var library in libraries)
         {
             var summary = await ScanAsync(library, cancellationToken);
@@ -33,6 +33,7 @@ public sealed class LibraryInventoryService(
                 total.Discovered + summary.Discovered,
                 total.Added + summary.Added,
                 total.Updated + summary.Updated,
+                total.Removed + summary.Removed,
                 total.SkippedUnsettled + summary.SkippedUnsettled);
         }
 
@@ -105,9 +106,53 @@ public sealed class LibraryInventoryService(
             }
         }
 
+        var removed = await PruneVanishedFilesAsync(existingByPath, result.Files, cancellationToken);
+
         await db.SaveChangesAsync(cancellationToken);
 
-        return new ScanSummary(result.Files.Count, added, updated, result.SkippedUnsettled);
+        return new ScanSummary(result.Files.Count, added, updated, removed, result.SkippedUnsettled);
+    }
+
+    /// <summary>
+    /// Retires inventory rows whose file has vanished — e.g. Radarr/Sonarr upgraded a release and
+    /// renamed it, leaving the old path dangling. Without this the stale row lingers as a phantom
+    /// candidate and any job enqueued against it fails with "No such file or directory". A row is
+    /// pruned only when the file is genuinely gone from disk (a settled file merely skipped this scan
+    /// — e.g. still within its settling window — is kept), and never when it has replacement history,
+    /// whose rollback records must survive (and whose job rows are FK-restricted from deletion).
+    /// Idempotent: a scan of an unchanged library removes nothing.
+    /// </summary>
+    private async Task<int> PruneVanishedFilesAsync(
+        IReadOnlyDictionary<string, MediaFile> existingByPath,
+        IReadOnlyList<ScannedFile> scannedFiles,
+        CancellationToken cancellationToken)
+    {
+        var scannedPaths = scannedFiles.Select(file => file.AbsolutePath).ToHashSet(StringComparer.Ordinal);
+
+        var candidates = existingByPath.Values
+            .Where(file => !scannedPaths.Contains(file.Path) && !File.Exists(file.Path))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return 0;
+        }
+
+        var protectedIds = await db.Replacements
+            .Where(replacement => replacement.MediaFileId != 0)
+            .Select(replacement => replacement.MediaFileId)
+            .Distinct()
+            .ToHashSetAsync(cancellationToken);
+
+        var prunable = candidates.Where(file => !protectedIds.Contains(file.Id)).ToList();
+        if (prunable.Count == 0)
+        {
+            return 0;
+        }
+
+        // Removing the media file cascades to its jobs (the failed/queued work for a file that no
+        // longer exists is meaningless); rows with replacement history were excluded above.
+        db.MediaFiles.RemoveRange(prunable);
+        return prunable.Count;
     }
 
     /// <summary>

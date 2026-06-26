@@ -54,6 +54,7 @@ public sealed class ReplacementService
     private readonly LibraryRefreshService? _refresh;
     private readonly NotificationService? _notifications;
     private readonly LifetimeStatsStore _lifetime;
+    private readonly ReplacementCoordinator _coordinator;
 
     public ReplacementService(
         OptimisarrDbContext db,
@@ -62,15 +63,19 @@ public sealed class ReplacementService
         IHostEnvironment environment,
         LibraryRefreshService refresh,
         NotificationService notifications,
+        ReplacementCoordinator coordinator,
         ILogger<ReplacementService> logger)
         : this(db, inventory, settings, ResolveTrashRoot(environment), logger,
-            refresh: refresh, notifications: notifications, workRoot: WorkPaths.Resolve(environment))
+            refresh: refresh, notifications: notifications, workRoot: WorkPaths.Resolve(environment),
+            coordinator: coordinator)
     {
     }
 
     // Test seam: lets the suite point the trash root at a temp directory. The library
     // refresh and notifications are optional so tests need not stand up an HTTP stack;
-    // moveFile lets a test simulate a mid-move failure to exercise the restore path.
+    // moveFile lets a test simulate a mid-move failure to exercise the restore path. The
+    // coordinator defaults to a private instance so a test that does not exercise concurrency
+    // need not supply one.
     internal ReplacementService(
         OptimisarrDbContext db,
         LibraryInventoryService inventory,
@@ -81,7 +86,8 @@ public sealed class ReplacementService
         LibraryRefreshService? refresh = null,
         NotificationService? notifications = null,
         string? workRoot = null,
-        Func<string, string, FileMoveResult>? moveFile = null)
+        Func<string, string, FileMoveResult>? moveFile = null,
+        ReplacementCoordinator? coordinator = null)
     {
         _db = db;
         _inventory = inventory;
@@ -94,9 +100,32 @@ public sealed class ReplacementService
         _refresh = refresh;
         _notifications = notifications;
         _lifetime = new LifetimeStatsStore(db);
+        _coordinator = coordinator ?? new ReplacementCoordinator();
     }
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)
+    {
+        // Only one replacement may act on a job at a time. A job becomes replaceable the instant it
+        // reaches ReadyToReplace, where the post-verify auto-replace, the reconcile sweep, and a
+        // manual replace can all target it at once; overlapping runs corrupt each other's moves and
+        // destroy the verified output (the original is still safely restored). The loser of the claim
+        // backs off and lets the winner finish.
+        if (!_coordinator.TryBegin(jobId))
+        {
+            return ReplacementActionResult.Invalid($"A replacement for job {jobId} is already in progress.");
+        }
+
+        try
+        {
+            return await ReplaceCoreAsync(jobId, cancellationToken);
+        }
+        finally
+        {
+            _coordinator.End(jobId);
+        }
+    }
+
+    private async Task<ReplacementActionResult> ReplaceCoreAsync(int jobId, CancellationToken cancellationToken)
     {
         var job = await _db.Jobs
             .Include(j => j.MediaFile)

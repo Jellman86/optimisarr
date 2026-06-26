@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Upgraded/renamed source files no longer leave phantom candidates and failing jobs
+
+- **A scan now retires inventory rows whose file has vanished.** When Radarr/Sonarr upgrade a
+  release and rename the file (e.g. `… WEBDL-1080p.mkv` → `… Bluray-1080p.mkv`), the new file is
+  discovered but the old path used to linger forever as a phantom candidate — and any job already
+  queued against it failed with a bare ffmpeg `No such file or directory`. The scan now removes a row
+  whose file is genuinely gone from disk (a settled file merely skipped this pass is kept), cascading
+  away its now-meaningless jobs. Rows with replacement history are never pruned, so rollback records
+  survive. The reconcile stays idempotent: scanning an unchanged library removes nothing.
+- **A job whose source has disappeared now fails fast with a clear reason.** Before transcoding, the
+  worker checks the source still exists; if it was moved/upgraded it stops immediately with
+  "Source file no longer exists … re-scan the library" instead of spinning up the hardware encoder
+  only to hit a raw ffmpeg error.
+
+### Concurrent auto-replace no longer strands a job and loses its output
+
+- **Fixed a race where two replacements ran on the same job at once, destroying the verified
+  output.** A job becomes replaceable the instant it reaches `ReadyToReplace`, and two callers
+  competed for it — the worker's post-verify auto-replace and the background auto-replace reconcile
+  sweep (a manual replace could join too). Because a same-container replacement puts the output back
+  at the original's own path, the overlapping move sequences corrupted each other: one moved the
+  output into place while the other quarantined what it found there, the final-path integrity check
+  tripped, and both runs restored the original from quarantine. The safety model held — **the
+  original was always preserved** — but the verified output in `/work` was deleted, leaving the job
+  stuck in `ReadyToReplace` forever while the reconcile retried every few seconds. Replacement is now
+  serialised per job by a process-wide claim (`ReplacementCoordinator`): the first caller wins and
+  the rest back off, so only one replacement ever touches a job.
+- **A `ReadyToReplace` job whose verified output has vanished from `/work` is now failed, not retried
+  forever.** Such a job can never be replaced (the output is gone), so the reconcile sweep now marks
+  it `Failed` with a "re-run the optimisation" message instead of looping and burying real warnings.
+  The original is untouched — replacement bails before quarantining when the output is missing.
+- **Quieter logs:** Entity Framework's per-query `Database.Command` logging is now at `Warning`, so a
+  steady background sweep no longer floods the container log with full SQL on every cycle.
+
 ### Queue detail sheet shows the FFmpeg command
 
 - **Clicking the job that's encoding no longer just repeats the hero panel.** The live CPU/GPU usage

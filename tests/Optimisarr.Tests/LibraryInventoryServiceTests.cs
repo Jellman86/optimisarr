@@ -73,6 +73,80 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Scan_removes_a_row_whose_file_has_vanished_and_cascades_its_jobs()
+    {
+        WriteMediaFile("Show/S01E01 WEBDL-1080p.mkv");
+        WriteMediaFile("Show/S01E02.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+
+        // A queued/failed job exists for the file (as job 3328 did for the renamed Godzilla file).
+        int vanishedId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var media = await db.MediaFiles.SingleAsync(f => f.Path.Contains("S01E01"));
+            vanishedId = media.Id;
+            db.Jobs.Add(new Job { MediaFileId = media.Id, Status = JobStatus.Failed });
+            await db.SaveChangesAsync();
+        }
+
+        // Radarr/Sonarr upgraded the release and renamed the file, so the old path is now dangling.
+        File.Delete(Path.Combine(_root, "Show", "S01E01 WEBDL-1080p.mkv"));
+
+        var summary = await ScanAsync(library);
+
+        Assert.Equal(1, summary.Removed);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            Assert.Null(await db.MediaFiles.FindAsync(vanishedId));   // stale row gone
+            Assert.Empty(db.Jobs);                                    // its job cascaded away
+            Assert.Single(db.MediaFiles);                             // the surviving file remains
+        }
+    }
+
+    [Fact]
+    public async Task Scan_keeps_a_vanished_row_that_has_replacement_history()
+    {
+        WriteMediaFile("Movie.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+
+        int mediaId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var media = await db.MediaFiles.SingleAsync();
+            mediaId = media.Id;
+            var job = new Job { MediaFileId = mediaId, Status = JobStatus.Completed };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            db.Replacements.Add(new Replacement
+            {
+                JobId = job.Id,
+                MediaFileId = mediaId,
+                OriginalPath = media.Path,
+                QuarantinePath = "/trash/movie.mkv",
+                FinalPath = media.Path,
+                OriginalSizeBytes = 10,
+                NewSizeBytes = 5,
+                Status = ReplacementStatus.Replaced
+            });
+            await db.SaveChangesAsync();
+        }
+
+        File.Delete(Path.Combine(_root, "Movie.mkv"));
+
+        var summary = await ScanAsync(library);
+
+        // The file is gone, but its rollback history must survive — so the row is kept, not pruned.
+        Assert.Equal(0, summary.Removed);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            Assert.NotNull(await db.MediaFiles.FindAsync(mediaId));
+            Assert.Single(db.Replacements);
+        }
+    }
+
     private async Task<Library> CreateLibraryAsync()
     {
         await using var db = new OptimisarrDbContext(_options);

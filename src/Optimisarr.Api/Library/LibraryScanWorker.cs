@@ -49,11 +49,11 @@ public sealed class LibraryScanWorker(
         var interval = (await settings.GetQueueSettingsAsync(cancellationToken)).LibraryScanIntervalHours;
 
         var summary = await inventory.ScanEnabledAsync(cancellationToken);
-        if (summary.Added > 0 || summary.Updated > 0)
+        if (summary.Added > 0 || summary.Updated > 0 || summary.Removed > 0)
         {
             logger.LogInformation(
-                "Scheduled scan: {Added} new, {Updated} updated, {Settling} settling across enabled libraries.",
-                summary.Added, summary.Updated, summary.SkippedUnsettled);
+                "Scheduled scan: {Added} new, {Updated} updated, {Removed} removed, {Settling} settling across enabled libraries.",
+                summary.Added, summary.Updated, summary.Removed, summary.SkippedUnsettled);
         }
 
         return interval;

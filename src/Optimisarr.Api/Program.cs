@@ -55,6 +55,7 @@ builder.Services.AddScoped<PreviewService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
+builder.Services.AddSingleton<ReplacementCoordinator>();
 builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<LifetimeStatsStore>();
 builder.Services.AddScoped<QuarantinePurgeService>();

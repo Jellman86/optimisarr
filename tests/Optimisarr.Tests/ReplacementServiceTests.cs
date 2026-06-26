@@ -214,6 +214,77 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_fails_without_touching_the_original_when_the_verified_output_is_missing()
+    {
+        // The verified output vanished from /work (the exact condition that left job 3327 looping).
+        // Replacement must bail before quarantining, leaving the original untouched and recording
+        // nothing — the only safe outcome, since the output can no longer be put in place.
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        File.Delete(outputPath);
+
+        var result = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Contains("missing", result.Message);
+        Assert.True(File.Exists(originalPath));
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.Empty(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    [Fact]
+    public async Task Replace_serialises_concurrent_attempts_so_only_one_acts_on_a_job()
+    {
+        // Reproduces the job 3327 corruption: a job is replaceable the instant it reaches
+        // ReadyToReplace, and two callers (post-verify auto-replace + the reconcile sweep) race for
+        // it. The first holds the per-job claim while blocked mid-move; the second must back off
+        // untouched instead of running the destructive move sequence in parallel.
+        var (originalPath, outputPath) = WriteFiles("Show.mkv", "Show.mkv", "ORIGINAL-DATA", "NEW-OUTPUT");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var coordinator = new ReplacementCoordinator();
+        var firstMoveEntered = new TaskCompletionSource();
+        var releaseFirstMove = new TaskCompletionSource();
+
+        FileMoveResult BlockingMove(string source, string destination)
+        {
+            firstMoveEntered.TrySetResult();
+            releaseFirstMove.Task.GetAwaiter().GetResult();   // keep holding the claim
+            return FileMover.Move(source, destination);
+        }
+
+        var first = Task.Run(() => ReplaceAsync(jobId, moveFile: BlockingMove, coordinator: coordinator));
+        await firstMoveEntered.Task;   // the first replace now owns the claim and is mid-move
+
+        var second = await ReplaceAsync(jobId, coordinator: coordinator);
+
+        releaseFirstMove.SetResult();
+        var firstResult = await first;
+
+        Assert.Equal(ReplacementResultKind.Invalid, second.Kind);
+        Assert.Contains("already in progress", second.Message);
+
+        Assert.Equal(ReplacementResultKind.Success, firstResult.Kind);
+        var finalPath = Path.Combine(_dataDir, "Show.mkv");
+        Assert.Equal("NEW-OUTPUT", File.ReadAllText(finalPath));
+        Assert.Equal("ORIGINAL-DATA", File.ReadAllText(firstResult.Replacement!.QuarantinePath));
+        Assert.Single(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    [Fact]
+    public async Task Replace_releases_its_per_job_claim_after_finishing()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var coordinator = new ReplacementCoordinator();
+
+        var result = await ReplaceAsync(jobId, coordinator: coordinator);
+
+        Assert.Equal(ReplacementResultKind.Success, result.Kind);
+        Assert.True(coordinator.TryBegin(jobId));   // the claim was freed for a later cycle
+    }
+
+    [Fact]
     public async Task Rollback_refuses_an_already_rolled_back_replacement()
     {
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
@@ -266,10 +337,11 @@ public sealed class ReplacementServiceTests : IDisposable
     private async Task<ReplacementActionResult> ReplaceAsync(
         int jobId,
         Func<string, string, bool>? canMoveAtomically = null,
-        Func<string, string, FileMoveResult>? moveFile = null)
+        Func<string, string, FileMoveResult>? moveFile = null,
+        ReplacementCoordinator? coordinator = null)
     {
         await using var db = new OptimisarrDbContext(_options);
-        var service = NewService(db, canMoveAtomically, moveFile);
+        var service = NewService(db, canMoveAtomically, moveFile, coordinator);
         return await service.ReplaceAsync(jobId, CancellationToken.None);
     }
 
@@ -289,7 +361,8 @@ public sealed class ReplacementServiceTests : IDisposable
     private ReplacementService NewService(
         OptimisarrDbContext db,
         Func<string, string, bool>? canMoveAtomically = null,
-        Func<string, string, FileMoveResult>? moveFile = null)
+        Func<string, string, FileMoveResult>? moveFile = null,
+        ReplacementCoordinator? coordinator = null)
     {
         var inventory = new LibraryInventoryService(db, new LibraryScanner(), new MediaProbeService(), new ImageMarkerService());
         return new ReplacementService(
@@ -299,7 +372,8 @@ public sealed class ReplacementServiceTests : IDisposable
             _trashDir,
             NullLogger<ReplacementService>.Instance,
             canMoveAtomically,
-            moveFile: moveFile);
+            moveFile: moveFile,
+            coordinator: coordinator);
     }
 
     private async Task SetCrossFilesystemReplacementAsync(bool allowed)
