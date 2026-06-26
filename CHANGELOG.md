@@ -24,6 +24,9 @@
   exposure. Troubleshooting now covers dry-run replacement blocks, readiness failures, config import
   validation, and stale UI after image updates; the security policy spells out that the UI is an
   administrative surface and exports contain secrets.
+- **Synthetic-media integration coverage has started.** A hermetic test now creates synthetic media
+  files, scans them through the real inventory service, applies synthetic ffprobe JSON through the
+  parser, and verifies candidate decisions through the real candidate service.
 
 ### Custom mode for a library's video preset
 
