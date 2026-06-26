@@ -76,6 +76,68 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
         Assert.Contains("Already hevc", skippedCandidate.Reason);
     }
 
+    [Fact]
+    public async Task Synthetic_audio_and_image_fixtures_flow_from_scan_to_candidates()
+    {
+        var track = WriteSparseFile("Music/Album/Track.flac", 40L * 1024 * 1024);
+        var photo = WriteSparseFile("Photos/Shot.png", 1024L * 1024);
+
+        int musicId, photoId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var music = new Library
+            {
+                Name = "Synthetic music",
+                Path = Path.Combine(_root, "Music"),
+                MediaType = MediaType.Music,
+                RuleProfile = RuleProfile.ConservativeHevc
+            };
+            var photos = new Library
+            {
+                Name = "Synthetic photos",
+                Path = Path.Combine(_root, "Photos"),
+                MediaType = MediaType.Photo,
+                RuleProfile = RuleProfile.ConservativeHevc
+            };
+            db.Libraries.AddRange(music, photos);
+            await db.SaveChangesAsync();
+            musicId = music.Id;
+            photoId = photos.Id;
+
+            var inventory = new LibraryInventoryService(
+                db,
+                new LibraryScanner(),
+                new MediaProbeService(),
+                new ImageMarkerService());
+
+            var musicScan = await inventory.ScanAsync(music, CancellationToken.None);
+            var photoScan = await inventory.ScanAsync(photos, CancellationToken.None);
+
+            Assert.Equal(1, musicScan.Added);
+            Assert.Equal(1, photoScan.Added);
+        }
+
+        await ApplyProbeAsync(track, AudioProbeJson("flac"));
+        await ApplyProbeAsync(photo, ImageProbeJson("png"));
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var candidates = await new CandidateService(readDb).EvaluateAsync(libraryId: null, CancellationToken.None);
+
+        var audioCandidate = candidates.Single(candidate => candidate.LibraryId == musicId);
+        Assert.True(audioCandidate.Eligible);
+        Assert.Equal("Audio", audioCandidate.MediaKind);
+        Assert.Equal("flac", audioCandidate.Codec);
+        Assert.Contains("flac", audioCandidate.Reason);
+        Assert.Contains("opus", audioCandidate.Reason);
+
+        var imageCandidate = candidates.Single(candidate => candidate.LibraryId == photoId);
+        Assert.True(imageCandidate.Eligible);
+        Assert.Equal("Image", imageCandidate.MediaKind);
+        Assert.Equal("png", imageCandidate.Codec);
+        Assert.Contains("png", imageCandidate.Reason);
+        Assert.Contains("jpeg", imageCandidate.Reason);
+    }
+
     private string WriteSparseFile(string relativePath, long sizeBytes)
     {
         var path = Path.Combine(_root, relativePath);
@@ -121,6 +183,24 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
             { "codec_type": "audio", "codec_name": "aac", "bit_rate": "160000" }
           ],
           "format": { "format_name": "matroska,webm", "duration": "120.000000" }
+        }
+        """;
+
+    private static string AudioProbeJson(string codec) => $$"""
+        {
+          "streams": [
+            { "codec_type": "audio", "codec_name": "{{codec}}", "bit_rate": "800000" }
+          ],
+          "format": { "format_name": "{{codec}}", "duration": "180.000000" }
+        }
+        """;
+
+    private static string ImageProbeJson(string codec) => $$"""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "{{codec}}", "width": 4000, "height": 3000, "nb_frames": "1" }
+          ],
+          "format": { "format_name": "{{codec}}_pipe" }
         }
         """;
 

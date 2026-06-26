@@ -60,25 +60,15 @@ jobs:
             RENDER_GID=107 docker compose -f "$file" config --quiet
           done
 
-  container-smoke:
-    name: Production container readiness
-    needs: [backend, frontend, docs]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - run: docker build --tag optimisarr:ci .
-      - run: bash scripts/ci_container_smoke.sh optimisarr:ci
-
   docker:
-    name: Docker image
-    needs: [backend, frontend, docs, container-smoke]
+    name: Docker image, smoke, and publish
+    needs: [backend, frontend, docs]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
 
       # Credentials are only needed (and only available) when we actually push.
       # Pull requests build the image to catch Dockerfile breakage but never push.
@@ -103,14 +93,25 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            GIT_HASH=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build image once
+        run: |
+          set -euo pipefail
+          mapfile -t tags <<<"${{ steps.meta.outputs.tags }}"
+          args=()
+          for tag in "${tags[@]}"; do
+            args+=(--tag "$tag")
+          done
+          docker build "${args[@]}" --build-arg "GIT_HASH=${{ github.sha }}" .
+
+      - name: Smoke-test container readiness
+        run: |
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          bash scripts/ci_container_smoke.sh "$first_tag"
+
+      - name: Push image tags
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            docker push "$tag"
+          done <<<"${{ steps.meta.outputs.tags }}"

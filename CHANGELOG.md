@@ -29,6 +29,9 @@
   parser, and verifies candidate decisions through the real candidate service.
 - **The roadmap now reflects existing GHCR publishing.** CI already builds the production container,
   runs the container readiness smoke test, and publishes GHCR images on non-PR branch/tag builds.
+- **CI avoids duplicate Docker builds.** The Docker job now builds the production image once,
+  smoke-tests that exact image, and pushes the same local tags on non-PR runs, keeping release
+  hardening inside standard GitHub-hosted public-repo CI.
 
 ### Custom mode for a library's video preset
 
