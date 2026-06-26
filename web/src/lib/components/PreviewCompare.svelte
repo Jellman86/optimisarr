@@ -107,9 +107,11 @@
         ? 'Queuing…'
         : preview.status === 'Transcoding'
           ? `Encoding ${Math.round(preview.progress * 100)}%`
-          : preview.status === 'Failed'
-            ? 'Failed'
-            : 'Ready',
+          : preview.status === 'Verifying'
+            ? 'Verifying sample'
+            : preview.status === 'Failed'
+              ? 'Failed'
+              : 'Ready',
   )
 </script>
 
@@ -175,6 +177,7 @@
         <p class="text-sm">
           {#if !preview || preview.status === 'Queued'}Queuing preview…
           {:else if preview.status === 'Transcoding'}Encoding… {Math.round(preview.progress * 100)}%
+          {:else if preview.status === 'Verifying'}Verifying sample…
           {:else}{preview.status}…{/if}
         </p>
         <p class="text-xs">This runs a real transcode of this one file; it never touches the original.</p>
@@ -182,7 +185,7 @@
     {:else}
       {#if preview.status === 'Failed'}
         <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
-          The preview transcode failed: {preview.errorMessage ?? 'unknown error'}. The original is untouched.
+          The preview did not complete: {preview.errorMessage ?? 'unknown error'}. The original is untouched.
         </div>
       {/if}
 
@@ -196,7 +199,7 @@
           />
           {#if preview.clipped}
             <p class="mt-2 text-xs text-slate-400">
-              The encoded side is a {Math.round(preview.encoded?.durationSeconds ?? 0)}s sample from the middle of the file, so the saving is estimated from its bitrate. A full optimise encodes the whole file.
+              The encoded side is a {Math.round(preview.encoded?.durationSeconds ?? 0)}s sample from the middle of the file. Saving and verification are calculated from that same segment; a full optimise encodes the whole file.
             </p>
           {/if}
         </div>
@@ -237,7 +240,7 @@
       {#if checks}
         <div>
           <div class="mb-2 text-xs font-medium uppercase text-slate-500 dark:text-slate-400">
-            Verification {preview.verificationPassed ? '✓ passed' : '✗ failed'}
+            Verification {preview.verificationPassed ? '✓ passed' : '✗ failed'}{preview.clipped ? ' · segment only' : ''}
           </div>
           <VerificationChecks {checks} />
         </div>

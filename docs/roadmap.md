@@ -12,13 +12,11 @@ the replacement workflow is trustworthy.
   notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
   and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
   paid external services.
-2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
-   for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
-   segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
-   needs a clip window (`-ss`/`-t`) and the compare UI must label scores as segment-only. See the
-   Phase 11 section.
 **Recently shipped (2026-06-26).**
 
+- **Preview clip mode: done.** Long video previews encode a 60-second segment from the middle of the
+  source, verify against a temporary clipped reference from that same window, and label the compare
+  report as segment-only so VMAF/loudness/duration/size checks are interpreted correctly.
 - **Dry-run mode: done.** A global Settings → Replacement switch lets operators scan,
   queue, transcode, verify, and preview normally while blocking manual replacement,
   auto-replace, and quarantine purge. Verified outputs stop at Ready to replace for
@@ -685,15 +683,17 @@ Exit criteria:
 
 ## Phase 11: Settings Preview and Compare
 
-Status: core done. A **Preview** action on each eligible candidate (Inventory and the Libraries
+Status: core done, clip follow-up done. A **Preview** action on each eligible candidate (Inventory and the Libraries
 workspace) queues a throwaway `Preview` job — the real probe→transcode→verify pipeline on one file
 with the library's resolved settings — that never moves or replaces anything, writes to its own
 `/work/preview/<id>` scratch, is hidden from the queue, is deleted on close, and never survives a
 restart. The compare panel shows the original next to the encoded result with a per-media-type
 viewer (image/video/audio, range-streamed), a size/codec/resolution/audio stats table with the %
-size saving, and the full Phase 9 verification report. Deferred: clip mode (needs segment-aligned
-VMAF) and apply-from-preview (settings are already saved, so previewing then enqueuing already
-works). The Quarantine compare-to-approve half was delivered earlier.
+size saving, and the full Phase 9 verification report. Long video previews use a 60-second sample
+from the middle of the source and verify against a temporary clipped reference from that same window,
+so segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
+previewing then enqueuing already works). The Quarantine compare-to-approve half was delivered
+earlier.
 
 Goal: let a user *try* a library's configured settings on a real file and see the
 result before committing — a temporary, throwaway optimisation shown side by side
@@ -710,8 +710,8 @@ Deliverables:
   frame thumbnails), plus a statistics panel — file size and % change, bitrate,
   codec/container, resolution, audio layout, and the Phase 9 quality scores
   (VMAF/SSIM) and verification summary.
-- **Clip mode** to preview just a segment (e.g. 60 s) for a fast turnaround on
-  large files, with an explicit note that scores are for the sampled segment.
+- **Clip mode: done.** Video previews encode a 60-second middle segment for fast turnaround, verify
+  against the same segment of the original, and label scores as segment-only.
 - **Apply-from-preview**: if happy, the same settings are already saved; the
   preview output is discarded and the real queue run uses them.
 - Pure helpers for the comparison statistics; the temporary-job lifecycle reuses

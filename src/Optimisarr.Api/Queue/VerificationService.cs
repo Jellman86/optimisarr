@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
@@ -21,6 +22,9 @@ public sealed record OriginalSnapshot(
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
 
+/// <summary>The preview clip window to use when building a verification reference segment.</summary>
+public sealed record VerificationClip(int Seconds, int? StartSeconds, string ReferencePath);
+
 /// <summary>
 /// Gathers the real-world evidence a converted output is healthy — a full software
 /// decode and an ffprobe of the output — then hands it to the pure
@@ -34,134 +38,218 @@ public sealed class VerificationService(
     QualityScoreService quality,
     LoudnessService loudness,
     ImageQualityService imageQuality,
-    ImageMetadataService imageMetadata)
+    ImageMetadataService imageMetadata,
+    TranscodeOptions transcodeOptions)
 {
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
         string outputPath,
         VerificationPolicy policy,
+        CancellationToken cancellationToken,
+        VerificationClip? clip = null)
+    {
+        var reference = clip is null
+            ? original
+            : await CreateReferenceClipAsync(original, clip, cancellationToken);
+
+        try
+        {
+            var decodeResult = await decode.CheckAsync(outputPath, cancellationToken);
+            // Packet-timestamp integrity is a video concern; skip it for an audio output.
+            var timestampResult = reference.Kind == MediaKind.Audio
+                ? TimestampCheckResult.NotMeasured
+                : await timestamps.CheckAsync(outputPath, cancellationToken);
+            var outputProbe = await probe.ProbeAsync(outputPath, cancellationToken);
+            var outputSize = TryGetSize(outputPath);
+
+            // A quick re-probe of the original (no decode) gives its audio shape so we can
+            // catch a silent downmix or sample-rate drop in the output.
+            var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
+
+            // VMAF is expensive (a second full decode of both files), so only measure it
+            // when the user has opted into the quality gate.
+            var qualityResult = policy.QualityGateEnabled
+                ? await quality.MeasureAsync(reference.Path, outputPath, cancellationToken)
+                : null;
+
+            // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
+            // image job and only when the user opted in, since it runs an extra ffmpeg pass.
+            var imageQualityResult = policy.ImageQualityGateEnabled && reference.Kind == MediaKind.Image
+                ? await imageQuality.MeasureAsync(reference.Path, outputPath, cancellationToken)
+                : null;
+
+            // The EXIF/ICC-retention gate reads both files' metadata with exiftool; image-only and
+            // opt-in, since it spawns two extra processes.
+            ImageMetadataResult? originalMetadata = null;
+            ImageMetadataResult? outputMetadata = null;
+            if (policy.ImageMetadataGateEnabled && reference.Kind == MediaKind.Image)
+            {
+                originalMetadata = await imageMetadata.ReadAsync(reference.Path, cancellationToken);
+                outputMetadata = await imageMetadata.ReadAsync(outputPath, cancellationToken);
+            }
+
+            var imageMetadataMeasured = originalMetadata is { Measured: true } && outputMetadata is { Measured: true };
+
+            // The loudness and clipping gates share one ebur128 decode of each file, so the
+            // measurement runs when either is enabled; both are opt-in for the extra passes.
+            LoudnessResult? originalLoudness = null;
+            LoudnessResult? outputLoudness = null;
+            if (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled)
+            {
+                originalLoudness = await loudness.MeasureAsync(reference.Path, cancellationToken);
+                outputLoudness = await loudness.MeasureAsync(outputPath, cancellationToken);
+            }
+
+            var loudnessMeasured = originalLoudness is { Measured: true } && outputLoudness is { Measured: true };
+            var loudnessError = originalLoudness?.Error ?? outputLoudness?.Error;
+
+            var truePeakMeasured = loudnessMeasured
+                && originalLoudness?.TruePeakDbtp is not null
+                && outputLoudness?.TruePeakDbtp is not null;
+            var truePeakError = loudnessMeasured
+                ? "ebur128 produced no true-peak reading."
+                : loudnessError;
+
+            var input = new VerificationInput(
+                DecodeSucceeded: decodeResult.Healthy,
+                DecodeError: decodeResult.Error,
+                DecodeErrorCount: decodeResult.ErrorCount,
+                OutputProbeSucceeded: outputProbe.Success,
+                OutputProbeError: outputProbe.Error,
+                OutputVideoCodec: outputProbe.VideoCodec,
+                OriginalSizeBytes: reference.SizeBytes,
+                OutputSizeBytes: outputSize,
+                OriginalDurationSeconds: reference.DurationSeconds,
+                OutputDurationSeconds: outputProbe.DurationSeconds,
+                OriginalAudioTrackCount: reference.AudioTrackCount,
+                OutputAudioTrackCount: outputProbe.AudioTrackCount,
+                OriginalSubtitleTrackCount: reference.SubtitleTrackCount,
+                OutputSubtitleTrackCount: outputProbe.SubtitleTrackCount,
+                OriginalIsHdr: reference.IsHdr,
+                OutputIsHdr: outputProbe.IsHdr,
+                HdrConvertedToSdr: reference.HdrConvertedToSdr,
+                OriginalMaxAudioChannels: originalProbe.MaxAudioChannels,
+                OutputMaxAudioChannels: outputProbe.MaxAudioChannels,
+                OriginalMaxAudioSampleRate: originalProbe.MaxAudioSampleRate,
+                OutputMaxAudioSampleRate: outputProbe.MaxAudioSampleRate,
+                QualityMeasured: qualityResult?.Measured ?? false,
+                QualityError: qualityResult?.Error,
+                QualityScores: qualityResult?.Scores,
+                LoudnessMeasured: loudnessMeasured,
+                LoudnessError: loudnessError,
+                OriginalLoudnessLufs: originalLoudness?.IntegratedLufs,
+                OutputLoudnessLufs: outputLoudness?.IntegratedLufs,
+                TruePeakMeasured: truePeakMeasured,
+                TruePeakError: truePeakError,
+                OriginalTruePeakDbtp: originalLoudness?.TruePeakDbtp,
+                OutputTruePeakDbtp: outputLoudness?.TruePeakDbtp,
+                OriginalColorPrimaries: originalProbe.ColorPrimaries,
+                OutputColorPrimaries: outputProbe.ColorPrimaries,
+                OriginalColorTransfer: originalProbe.ColorTransfer,
+                OutputColorTransfer: outputProbe.ColorTransfer,
+                OriginalColorSpace: originalProbe.ColorSpace,
+                OutputColorSpace: outputProbe.ColorSpace,
+                OutputVideoStartSeconds: outputProbe.VideoStartSeconds,
+                OutputAudioStartSeconds: outputProbe.AudioStartSeconds,
+                TimestampsMeasured: timestampResult.Measured,
+                NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
+                TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
+                OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
+                Kind: reference.Kind,
+                AudioReencoded: reference.AudioReencoded,
+                AudioDownmixed: reference.AudioDownmixed,
+                OriginalWidth: originalProbe.Width,
+                OriginalHeight: originalProbe.Height,
+                OutputWidth: outputProbe.Width,
+                OutputHeight: outputProbe.Height,
+                ImageQualityMeasured: imageQualityResult?.Measured ?? false,
+                ImageQualityError: imageQualityResult?.Error,
+                ImageSsim: imageQualityResult?.Ssim,
+                ImageDownscaleRequested: reference.ImageDownscaleRequested,
+                ImageMetadataMeasured: imageMetadataMeasured,
+                ImageMetadataError: originalMetadata?.Error ?? outputMetadata?.Error,
+                OriginalHasIccProfile: originalMetadata?.Metadata.HasIccProfile ?? false,
+                OutputHasIccProfile: outputMetadata?.Metadata.HasIccProfile ?? false,
+                OriginalHasExif: originalMetadata?.Metadata.HasExif ?? false,
+                OutputHasExif: outputMetadata?.Metadata.HasExif ?? false);
+
+            return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
+        }
+        finally
+        {
+            if (clip is not null)
+            {
+                TryDelete(reference.Path);
+            }
+        }
+    }
+
+    private async Task<OriginalSnapshot> CreateReferenceClipAsync(
+        OriginalSnapshot original,
+        VerificationClip clip,
         CancellationToken cancellationToken)
     {
-        var decodeResult = await decode.CheckAsync(outputPath, cancellationToken);
-        // Packet-timestamp integrity is a video concern; skip it for an audio output.
-        var timestampResult = original.Kind == MediaKind.Audio
-            ? TimestampCheckResult.NotMeasured
-            : await timestamps.CheckAsync(outputPath, cancellationToken);
-        var outputProbe = await probe.ProbeAsync(outputPath, cancellationToken);
-        var outputSize = TryGetSize(outputPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(clip.ReferencePath)!);
+        var args = PreviewReferenceClipCommandBuilder.Build(
+            original.Path,
+            clip.ReferencePath,
+            clip.Seconds,
+            clip.StartSeconds);
 
-        // A quick re-probe of the original (no decode) gives its audio shape so we can
-        // catch a silent downmix or sample-rate drop in the output.
-        var originalProbe = await probe.ProbeAsync(original.Path, cancellationToken);
-
-        // VMAF is expensive (a second full decode of both files), so only measure it
-        // when the user has opted into the quality gate.
-        var qualityResult = policy.QualityGateEnabled
-            ? await quality.MeasureAsync(original.Path, outputPath, cancellationToken)
-            : null;
-
-        // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
-        // image job and only when the user opted in, since it runs an extra ffmpeg pass.
-        var imageQualityResult = policy.ImageQualityGateEnabled && original.Kind == MediaKind.Image
-            ? await imageQuality.MeasureAsync(original.Path, outputPath, cancellationToken)
-            : null;
-
-        // The EXIF/ICC-retention gate reads both files' metadata with exiftool; image-only and
-        // opt-in, since it spawns two extra processes.
-        ImageMetadataResult? originalMetadata = null;
-        ImageMetadataResult? outputMetadata = null;
-        if (policy.ImageMetadataGateEnabled && original.Kind == MediaKind.Image)
+        var run = await RunReferenceClipAsync(args, cancellationToken);
+        if (run.ExitCode != 0)
         {
-            originalMetadata = await imageMetadata.ReadAsync(original.Path, cancellationToken);
-            outputMetadata = await imageMetadata.ReadAsync(outputPath, cancellationToken);
+            throw new InvalidOperationException(
+                $"Could not create preview verification reference clip: {run.Error ?? $"ffmpeg exited with code {run.ExitCode}"}");
         }
 
-        var imageMetadataMeasured = originalMetadata is { Measured: true } && outputMetadata is { Measured: true };
-
-        // The loudness and clipping gates share one ebur128 decode of each file, so the
-        // measurement runs when either is enabled; both are opt-in for the extra passes.
-        LoudnessResult? originalLoudness = null;
-        LoudnessResult? outputLoudness = null;
-        if (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled)
+        var clipProbe = await probe.ProbeAsync(clip.ReferencePath, cancellationToken);
+        return original with
         {
-            originalLoudness = await loudness.MeasureAsync(original.Path, cancellationToken);
-            outputLoudness = await loudness.MeasureAsync(outputPath, cancellationToken);
+            Path = clip.ReferencePath,
+            SizeBytes = TryGetSize(clip.ReferencePath),
+            DurationSeconds = clipProbe.DurationSeconds ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds),
+            AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
+            SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
+            IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr
+        };
+    }
+
+    private async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = transcodeOptions.Ffmpeg,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
         }
 
-        var loudnessMeasured = originalLoudness is { Measured: true } && outputLoudness is { Measured: true };
-        var loudnessError = originalLoudness?.Error ?? outputLoudness?.Error;
+        process.Start();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        var truePeakMeasured = loudnessMeasured
-            && originalLoudness?.TruePeakDbtp is not null
-            && outputLoudness?.TruePeakDbtp is not null;
-        var truePeakError = loudnessMeasured
-            ? "ebur128 produced no true-peak reading."
-            : loudnessError;
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw;
+        }
 
-        var input = new VerificationInput(
-            DecodeSucceeded: decodeResult.Healthy,
-            DecodeError: decodeResult.Error,
-            DecodeErrorCount: decodeResult.ErrorCount,
-            OutputProbeSucceeded: outputProbe.Success,
-            OutputProbeError: outputProbe.Error,
-            OutputVideoCodec: outputProbe.VideoCodec,
-            OriginalSizeBytes: original.SizeBytes,
-            OutputSizeBytes: outputSize,
-            OriginalDurationSeconds: original.DurationSeconds,
-            OutputDurationSeconds: outputProbe.DurationSeconds,
-            OriginalAudioTrackCount: original.AudioTrackCount,
-            OutputAudioTrackCount: outputProbe.AudioTrackCount,
-            OriginalSubtitleTrackCount: original.SubtitleTrackCount,
-            OutputSubtitleTrackCount: outputProbe.SubtitleTrackCount,
-            OriginalIsHdr: original.IsHdr,
-            OutputIsHdr: outputProbe.IsHdr,
-            HdrConvertedToSdr: original.HdrConvertedToSdr,
-            OriginalMaxAudioChannels: originalProbe.MaxAudioChannels,
-            OutputMaxAudioChannels: outputProbe.MaxAudioChannels,
-            OriginalMaxAudioSampleRate: originalProbe.MaxAudioSampleRate,
-            OutputMaxAudioSampleRate: outputProbe.MaxAudioSampleRate,
-            QualityMeasured: qualityResult?.Measured ?? false,
-            QualityError: qualityResult?.Error,
-            QualityScores: qualityResult?.Scores,
-            LoudnessMeasured: loudnessMeasured,
-            LoudnessError: loudnessError,
-            OriginalLoudnessLufs: originalLoudness?.IntegratedLufs,
-            OutputLoudnessLufs: outputLoudness?.IntegratedLufs,
-            TruePeakMeasured: truePeakMeasured,
-            TruePeakError: truePeakError,
-            OriginalTruePeakDbtp: originalLoudness?.TruePeakDbtp,
-            OutputTruePeakDbtp: outputLoudness?.TruePeakDbtp,
-            OriginalColorPrimaries: originalProbe.ColorPrimaries,
-            OutputColorPrimaries: outputProbe.ColorPrimaries,
-            OriginalColorTransfer: originalProbe.ColorTransfer,
-            OutputColorTransfer: outputProbe.ColorTransfer,
-            OriginalColorSpace: originalProbe.ColorSpace,
-            OutputColorSpace: outputProbe.ColorSpace,
-            OutputVideoStartSeconds: outputProbe.VideoStartSeconds,
-            OutputAudioStartSeconds: outputProbe.AudioStartSeconds,
-            TimestampsMeasured: timestampResult.Measured,
-            NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
-            TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
-            OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
-            Kind: original.Kind,
-            AudioReencoded: original.AudioReencoded,
-            AudioDownmixed: original.AudioDownmixed,
-            OriginalWidth: originalProbe.Width,
-            OriginalHeight: originalProbe.Height,
-            OutputWidth: outputProbe.Width,
-            OutputHeight: outputProbe.Height,
-            ImageQualityMeasured: imageQualityResult?.Measured ?? false,
-            ImageQualityError: imageQualityResult?.Error,
-            ImageSsim: imageQualityResult?.Ssim,
-            ImageDownscaleRequested: original.ImageDownscaleRequested,
-            ImageMetadataMeasured: imageMetadataMeasured,
-            ImageMetadataError: originalMetadata?.Error ?? outputMetadata?.Error,
-            OriginalHasIccProfile: originalMetadata?.Metadata.HasIccProfile ?? false,
-            OutputHasIccProfile: outputMetadata?.Metadata.HasIccProfile ?? false,
-            OriginalHasExif: originalMetadata?.Metadata.HasExif ?? false,
-            OutputHasExif: outputMetadata?.Metadata.HasExif ?? false);
-
-        return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
+        await stdoutTask;
+        var error = await stderrTask;
+        return (process.ExitCode, process.ExitCode == 0 ? null : LastLines(error, 8));
     }
 
     private static long TryGetSize(string path)
@@ -174,6 +262,59 @@ public sealed class VerificationService(
         catch (IOException)
         {
             return 0;
+        }
+    }
+
+    private static double? ClipDurationFallback(double? originalDurationSeconds, int clipSeconds)
+    {
+        if (originalDurationSeconds is not > 0)
+        {
+            return clipSeconds;
+        }
+
+        return Math.Min(originalDurationSeconds.Value, clipSeconds);
+    }
+
+    private static string? LastLines(string? text, int maxLines)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var lines = text
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .TakeLast(maxLines);
+        return string.Join('\n', lines);
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup; preview scratch is purged on startup and when the panel closes.
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Already exited.
         }
     }
 }

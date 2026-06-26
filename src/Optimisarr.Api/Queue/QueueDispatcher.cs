@@ -425,16 +425,7 @@ public sealed class QueueDispatcher(
                         "re-optimisation is still prevented by the database.", jobId);
                 }
 
-                // A preview is judged by the side-by-side comparison, not the verification gates;
-                // skipping them keeps it fast (especially the full-file decode/VMAF on video).
-                if (work.Value.IsPreview)
-                {
-                    await CompleteAsync(jobId, JobStatus.Completed, progress: 1.0);
-                }
-                else
-                {
-                    await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
-                }
+                await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
             }
             else
             {
@@ -842,8 +833,14 @@ public sealed class QueueDispatcher(
         var settings = await GetQueueSettingsAsync(cancellationToken);
         var policy = VerificationPolicyResolver.Resolve(
             settings.VerificationPolicy, work.MinVmafHarmonicMean, work.MinVmafMin);
+        var clip = work.IsPreview && work.Spec.ClipSeconds is { } seconds
+            ? new VerificationClip(
+                seconds,
+                work.Spec.ClipStartSeconds,
+                Path.Combine(Path.GetDirectoryName(outputPath)!, ".optimisarr-preview-reference.mkv"))
+            : null;
         var outcome = await verification.VerifyAsync(
-            work.Original, outputPath, policy, cancellationToken);
+            work.Original, outputPath, policy, cancellationToken, clip);
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>
@@ -861,6 +858,12 @@ public sealed class QueueDispatcher(
             var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
             await CompleteAsync(jobId, JobStatus.Failed, error: summary);
             await NotifyJobFailedAsync(jobId, summary);
+            return;
+        }
+
+        if (work.IsPreview)
+        {
+            await CompleteAsync(jobId, JobStatus.Completed, progress: 1.0);
             return;
         }
 

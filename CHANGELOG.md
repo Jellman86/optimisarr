@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Preview clip mode
+
+- **Video previews now verify the same middle sample they encode.** Long video previews still encode
+  a 60-second segment from the middle of the source for fast turnaround, but verification now creates
+  a temporary clipped reference from that same window before running duration, stream, size, VMAF,
+  loudness, timestamp, and tail checks. The compare panel labels clipped verification as
+  segment-only and keeps the saving estimate based on the sample bitrate.
+
 ### Release hardening
 
 - **Dry-run mode is now available from Settings → Replacement.** Optimisarr can still scan,
