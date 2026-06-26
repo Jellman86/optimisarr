@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-06-22)
+## Up next (priority order, updated 2026-06-26)
 
 1. **Phase 13 release hardening** (dry-run, config-and-secrets backup/export, README quickstart,
    troubleshooting, security notes) — release controls are in progress; backups intentionally omit
@@ -14,6 +14,24 @@ the replacement workflow is trustworthy.
    segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
    needs a clip window (`-ss`/`-t`) and the compare UI must label scores as segment-only. See the
    Phase 11 section.
+**Recently shipped (2026-06-26).**
+
+- **Media posters in lists: done.** Film/TV rows on the Inventory page and the per-library Candidates
+  tab show a poster (Radarr/Sonarr first — an exact, local match keyed to the imported file, with TV
+  rows showing the series poster — then a connected media server). Bytes are proxied so no token
+  reaches the browser; music/photo rows show none. Beyond the original roadmap scope.
+- **Custom preset stop: done.** The per-library video slider ends in a **Custom** stop, so a manual
+  codec/container choice is a deliberate "Custom" configuration rather than an amber "Overridden"
+  warning (advances Phase 12's "richer, explicit preset sliders").
+- **Inventory reconciliation: done.** A scan now prunes inventory rows whose file has vanished (e.g. a
+  Radarr/Sonarr upgrade-and-rename), cascading their now-meaningless jobs, while preserving rows with
+  replacement history — so an upgraded title no longer leaves a phantom candidate and a job that fails
+  with "No such file". A job whose source disappears now fails fast with a clear reason.
+- **Replacement safety hardened.** Fixed a concurrency race where the post-verify auto-replace and the
+  background reconcile sweep could replace the same job at once and destroy the verified output (the
+  original was always preserved). Replacement is now serialised per job, and a ReadyToReplace job
+  whose verified output has vanished is failed rather than retried forever.
+
 **Inventory master-detail refactor: done.** Inventory uses a bounded, paged file list with a
 per-file detail card beneath it (probe values, eligibility reason, and actions).
 
@@ -60,7 +78,7 @@ per-library eligible/skipped tallies on the list. The all-libraries candidate li
 unified **Inventory** page (see the Inventory & Candidates note above), not a separate Candidates page.
 See the Phase 12 section for the remaining optional polish.
 
-## Current status (2026-06-12)
+## Current status (2026-06-26)
 
 - **Phase 0 (Foundation): done.** Repo, three .NET projects + Svelte UI, Docker
   image building and publishing to GHCR via CI, health endpoint, SQLite under
@@ -68,7 +86,10 @@ See the Phase 12 section for the remaining optional polish.
 - **Phase 1 (Discovery & Inventory): done, extended.** Recursive settling-aware
   scanning, ffprobe inspection, inventory UI. Extended beyond the original plan
   to support **multiple libraries**, each with its own media type and rule
-  profile, plus a folder-picker for paths.
+  profile, plus a folder-picker for paths. **Scans now reconcile deletions:** a row
+  whose file has vanished from disk (e.g. a Sonarr/Radarr upgrade renamed it) is
+  pruned — cascading its jobs, preserving rows with replacement history — so the
+  inventory matches reality and stale candidates/jobs don't linger.
 - **Phase 2 (Candidate Rules): largely done.** A pure, unit-tested
   `CandidateEvaluator` turns per-library rule profiles into eligibility
   decisions with a human-readable reason for every file (eligible or skipped):
@@ -121,6 +142,11 @@ See the Phase 12 section for the remaining optional polish.
   service are unit tested; originals are retained in quarantine until the
   configurable retention window (Phase 6) expires.
   Surfaced via the Queue **Replace** action and the new **Quarantine** page.
+  **Hardened (2026-06-26):** replacement is serialised per job, closing a race where
+  the post-verify auto-replace and the reconcile sweep could act on one job at once
+  and destroy the verified output (the original was always preserved); and a
+  `ReadyToReplace` job whose verified output has vanished is now failed rather than
+  retried indefinitely.
 - **Phase 6 (Scheduling and Resource Controls): in progress.** Processing
   windows, global max concurrent jobs, CPU thread limits, and disk-space safety
   pause are wired into queue dispatch/FFmpeg arguments and surfaced in

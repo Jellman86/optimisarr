@@ -5,12 +5,12 @@
 ### Custom mode for a library's video preset
 
 - **Setting your own codec/container is now a first-class "Custom" choice, not a warning.** The
-  optimisation preset gains a **Preset / Custom** toggle. Picking Custom (or changing the codec or
-  container in Advanced, which flips to Custom automatically) is treated as a deliberate
-  configuration: the amber "Overridden" badge and caution box are replaced by a calm, neutral note
-  explaining that the slider now just sets the baseline for anything you leave on "Profile default."
-  Switching back to Preset clears the overrides. No data change — "Custom" is derived from the
-  existing override fields, so nothing new is stored.
+  optimisation slider gains a **Custom** stop at the end (kept on the same control for consistency).
+  Selecting it — or changing the codec/container in Advanced, which moves the slider to Custom
+  automatically — is treated as a deliberate configuration: the amber "Overridden" badge and caution
+  box are replaced by a calm, neutral note explaining that the slider now just sets the baseline for
+  anything you leave on "Profile default." Dragging back to a preset stop clears the overrides. No
+  data change — "Custom" is derived from the existing override fields, so nothing new is stored.
 
 ### Library Advanced panel spacing
 
@@ -18,14 +18,15 @@
   section (e.g. "Video" for Film/TV) had its top padding stripped, so its heading sat tight against
   the drawer border; it now gets the same breathing room as the other sections.
 
-### Media posters in the Candidates table
+### Media posters in the Inventory and Candidates lists
 
-- **Candidate rows now show a poster** so you can recognise a title at a glance instead of parsing a
-  filename. Posters resolve from a connected **Radarr/Sonarr first** — an exact, local match keyed to
-  the file the manager already imported — and fall back to a connected media server (Plex/Jellyfin/
-  Emby). Images are proxied by the backend, so no server/API token ever reaches the browser, and the
-  Radarr/Sonarr library list is cached briefly so a table render is one fetch plus local matches, not
-  one request per row.
+- **Film/TV rows now show a poster** (on the Inventory page and the per-library Candidates tab) so you
+  can recognise a title at a glance instead of parsing a filename. Posters resolve from a connected
+  **Radarr/Sonarr first** — an exact, local match keyed to the file the manager already imported (TV
+  rows get their series poster) — and fall back to a connected media server (Plex/Jellyfin/Emby).
+  Music/photo rows show no poster (there is no movie/series artwork for them). Images are proxied by
+  the backend, so no server/API token ever reaches the browser, and the Radarr/Sonarr library list is
+  cached briefly so a list render is one fetch plus local matches, not one request per row.
 - Artwork is a **recognition aid, not decoration**: it lazy-loads into a fixed 2:3 box (no layout
   shift), degrades silently to a plain placeholder when nothing resolves, and never implies state.
   Audio/image candidates show no poster. New reusable `<Poster>` component and `GET

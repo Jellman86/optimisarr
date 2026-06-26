@@ -60,7 +60,10 @@
   // the slider rather than on the quality axis. The exact codec/container/CRF/audio knobs stay in
   // Advanced options.
   const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings']
-  const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency', "Scott's"]
+  // "Custom" is one stop past the real presets — selecting it hands the codec/container/quality to
+  // the operator (set in Advanced) instead of following a preset, so it stays on the same control.
+  const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency', "Scott's", 'Custom']
+  const customStopIndex = encodeProfiles.length
 
   // Friendly display names for raw rule-profile ids so a badge reads "Scott's Settings", not the
   // PascalCase enum name "ScottsSettings".
@@ -213,11 +216,44 @@
   const showImageOptions = $derived(isImageType(form.mediaType))
 
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
-  // Where the current profile sits on the slider; defaults to Balanced (HEVC) for Remux/unknown.
-  const encodeStop = $derived(Math.max(0, encodeProfiles.indexOf(form.ruleProfile)))
+
+  // Custom mode lets the operator fine-tune codec/container themselves instead of following a
+  // preset. It is the honest framing for an override — a deliberate "Custom" config — rather than a
+  // caution that the slider's preset is being ignored. Derived from the Custom slider stop OR any
+  // codec/container override, so editing those in Advanced reads as Custom with no warning. The
+  // slider still sets the baseline that every non-overridden value follows. (resetToPreset is a
+  // hoisted function declaration below, so referencing it here is fine.)
+  let customSelected = $state(false)
+  const isCustom = $derived(
+    showVideoOptions && !isRemuxProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
+  )
+  function selectPresetMode() {
+    customSelected = false
+    resetToPreset() // drop overrides so the slider fully describes the config again
+  }
+  function selectCustomMode() {
+    customSelected = true
+  }
+
+  // Where the current profile sits on the slider; the Custom stop when the operator is hand-tuning,
+  // else the matching preset (Balanced/HEVC for Remux/unknown).
+  const encodeStop = $derived(isCustom ? customStopIndex : Math.max(0, encodeProfiles.indexOf(form.ruleProfile)))
 
   function setEncodeStop(value: string) {
-    const profile = encodeProfiles[Number(value)] ?? 'ConservativeHevc'
+    const index = Number(value)
+    // The last stop is "Custom": hand the config to the operator (codec/container/quality in
+    // Advanced) instead of a preset, keeping the current profile as the baseline for anything they
+    // leave on "Profile default".
+    if (index >= customStopIndex) {
+      selectCustomMode()
+      return
+    }
+
+    // Landing on a preset stop is a deliberate choice of that preset, so drop any override and leave
+    // Custom mode rather than silently keeping a divergent config.
+    customSelected = false
+    resetToPreset()
+    const profile = encodeProfiles[index] ?? 'ConservativeHevc'
     form.ruleProfile = profile
     // "Scott's Settings" bundles audio + HDR choices the slider can't show on its own. Fill the
     // matching form fields so the Advanced panel honestly reflects what the preset does — the
@@ -252,24 +288,6 @@
   function resetToPreset() {
     form.targetVideoCodec = null
     form.targetContainer = null
-  }
-
-  // Custom mode lets the operator fine-tune codec/container themselves instead of following a
-  // preset. It is the honest framing for an override — a deliberate "Custom" config — rather than a
-  // caution that the slider's preset is being ignored. Derived from an explicit pick OR any
-  // codec/container override, so editing those in Advanced reads as Custom with no warning. The
-  // slider still sets the baseline that every non-overridden value follows.
-  let customSelected = $state(false)
-  const isCustom = $derived(
-    showVideoOptions && !isRemuxProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
-  )
-
-  function selectPresetMode() {
-    customSelected = false
-    resetToPreset() // drop overrides so the slider fully describes the config again
-  }
-  function selectCustomMode() {
-    customSelected = true
   }
 
   // A photo library gets its own compatibility→efficiency slider — the image counterpart of the
@@ -718,29 +736,7 @@
        knobs live under Advanced options. -->
   <div class="mt-4">
     <div class="flex items-center gap-2">
-      <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient. Each stop picks a researched codec, container, and quality; Scott's Settings preserves HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
-      {#if showVideoOptions && !isRemuxProfile}
-        <!-- Preset vs Custom: Custom is a first-class, deliberate mode, so a manual codec/container
-             choice reads as "your config" rather than a caution about a deviating preset. -->
-        <div class="ml-auto inline-flex rounded-md border border-slate-200 p-0.5 text-xs dark:border-slate-700" role="group" aria-label="Preset or custom configuration">
-          <button
-            type="button"
-            class="rounded px-2 py-0.5 transition-colors {!isCustom ? 'bg-slate-200 font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-            aria-pressed={!isCustom}
-            onclick={selectPresetMode}
-          >
-            Preset
-          </button>
-          <button
-            type="button"
-            class="rounded px-2 py-0.5 transition-colors {isCustom ? 'bg-slate-200 font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-            aria-pressed={isCustom}
-            onclick={selectCustomMode}
-          >
-            Custom
-          </button>
-        </div>
-      {/if}
+      <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient, ending in Custom for a hand-tuned config. Each preset stop picks a researched codec, container, and quality; Scott's Settings preserves HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
     </div>
 
     {#if showVideoOptions}
@@ -763,7 +759,7 @@
         <input
           type="range"
           min="0"
-          max={encodeProfiles.length - 1}
+          max={encodeStopLabels.length - 1}
           step="1"
           class="w-full"
           aria-label="Compatibility to efficiency"
@@ -778,7 +774,7 @@
             {@const active = !isRemuxProfile && encodeStop === i}
             <span class="flex flex-col {i === 0 ? 'items-start' : i === encodeStopLabels.length - 1 ? 'items-end text-right' : 'items-center text-center'}">
               <span class={active ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
-              <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{specFor(encodeProfiles[i]).codec}</span>
+              <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : '—'}</span>
             </span>
           {/each}
         </div>
