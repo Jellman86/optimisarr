@@ -134,6 +134,100 @@ public static class ArtworkSearchParser
         return typeMatchYear ?? typeMatch ?? any;
     }
 
+    /// <summary>
+    /// From a Plex search response, the relative <c>thumb</c> (poster) path of the best match, e.g.
+    /// <c>/library/metadata/4492/thumb/1782109387</c>. Null when nothing has a thumb. Mirrors
+    /// <see cref="PlexArtPath"/> but selects the portrait poster rather than the wide backdrop.
+    /// </summary>
+    public static string? PlexPosterPath(string? json, bool isTv, int? year)
+    {
+        var root = TryRoot(json);
+        if (root is not { } element || !element.TryGetProperty("MediaContainer", out var container))
+        {
+            return null;
+        }
+
+        string? typeMatchYear = null;
+        string? typeMatch = null;
+        string? anyThumb = null;
+
+        foreach (var item in PlexMetadataItems(container))
+        {
+            var thumb = GetString(item, "thumb");
+            if (string.IsNullOrEmpty(thumb))
+            {
+                continue;
+            }
+
+            anyThumb ??= thumb;
+            var type = GetString(item, "type") ?? "";
+            var kindMatches = isTv ? type is "show" or "season" or "episode" : type == "movie";
+            if (!kindMatches)
+            {
+                continue;
+            }
+
+            typeMatch ??= thumb;
+            if (year is { } y && GetInt(item, "year") == y)
+            {
+                typeMatchYear ??= thumb;
+            }
+        }
+
+        return typeMatchYear ?? typeMatch ?? anyThumb;
+    }
+
+    /// <summary>
+    /// From a Jellyfin/Emby <c>/Items</c> search, the relative primary-image (poster) path of the
+    /// best match, e.g. <c>/Items/{id}/Images/Primary?tag=...</c>. Null when nothing has a poster.
+    /// </summary>
+    public static string? JellyfinPosterPath(string? json, bool isTv, int? year)
+    {
+        var root = TryRoot(json);
+        if (root is not { } element
+            || !element.TryGetProperty("Items", out var items)
+            || items.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        string? typeMatchYear = null;
+        string? typeMatch = null;
+        string? any = null;
+        foreach (var item in items.EnumerateArray())
+        {
+            if (!item.TryGetProperty("ImageTags", out var imageTags)
+                || imageTags.ValueKind != JsonValueKind.Object
+                || GetString(imageTags, "Primary") is not { Length: > 0 } tag)
+            {
+                continue;
+            }
+
+            var id = GetString(item, "Id");
+            if (string.IsNullOrEmpty(id))
+            {
+                continue;
+            }
+
+            var path = $"/Items/{id}/Images/Primary?tag={tag}";
+            any ??= path;
+            var type = GetString(item, "Type") ?? "";
+            var kindMatches = isTv ? type == "Series" : type == "Movie";
+            if (!kindMatches)
+            {
+                continue;
+            }
+
+            typeMatch ??= path;
+            if (year is { } y && GetInt(item, "ProductionYear") == y)
+            {
+                typeMatchYear ??= path;
+            }
+        }
+
+        return typeMatchYear ?? typeMatch ?? any;
+    }
+
     private static JsonElement? TryRoot(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))

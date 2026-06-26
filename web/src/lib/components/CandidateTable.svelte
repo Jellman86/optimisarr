@@ -5,6 +5,7 @@
   import type { Candidate } from '../api'
   import { formatSize } from '../format'
   import PreviewCompare from './PreviewCompare.svelte'
+  import Poster from './Poster.svelte'
 
   let { candidates, scoped = false }: { candidates: Candidate[]; scoped?: boolean } = $props()
 
@@ -61,10 +62,17 @@
                 <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">Skipped</span>
               {/if}
             </td>
-            <td class="max-w-[50vw] truncate px-4 py-2 font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
-              {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
-                <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind}</span>
-              {/if}{candidate.relativePath}
+            <td class="px-4 py-2">
+              <div class="flex items-center gap-3">
+                {#if candidate.mediaKind !== 'Audio' && candidate.mediaKind !== 'Image'}
+                  <Poster mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
+                {/if}
+                <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
+                  {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
+                    <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind}</span>
+                  {/if}{candidate.relativePath}
+                </span>
+              </div>
             </td>
             <td class="hidden px-4 py-2 sm:table-cell">{formatSize(candidate.sizeBytes)}</td>
             <td class="hidden px-4 py-2 md:table-cell">

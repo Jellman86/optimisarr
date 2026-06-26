@@ -104,6 +104,12 @@ dotnet ef migrations add <Name> \
   clean (zero errors, zero warnings) before commit.
 - Show loading, empty, and error states explicitly. Empty states tell the user
   what to do next.
+- **Media artwork is a recognition aid, not decoration.** Posters/backdrops (from
+  Radarr/Sonarr first, then a connected media server, proxied so no token reaches
+  the browser) may be used to help a user recognise a title at a glance. They must
+  degrade silently to a plain placeholder, never imply state, and never shift
+  layout (fixed-aspect, lazy-loaded). This stays within "operational, not
+  marketing": artwork orients the user, it does not sell.
 
 ## 6. Definition of done
 

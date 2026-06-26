@@ -1204,6 +1204,26 @@ app.MapGet("/api/jobs/{id:int}/artwork", async (
 })
 .WithName("JobArtwork");
 
+// Poster for a media file's title, resolved from Radarr/Sonarr first (exact, local) then a connected
+// media server, and proxied so no server token reaches the browser. 404 when there's no source, no
+// match, or the file isn't film/TV — the UI then shows its plain placeholder.
+app.MapGet("/api/media/{id:int}/poster", async (
+    int id,
+    ArtworkService artwork,
+    HttpContext context,
+    CancellationToken cancellationToken) =>
+{
+    var result = await artwork.GetPosterAsync(id, cancellationToken);
+    if (result is null)
+    {
+        return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "public, max-age=86400";
+    return Results.File(result.Value.Bytes, result.Value.ContentType);
+})
+.WithName("MediaPoster");
+
 // Remove finished jobs (completed, failed, cancelled) to declutter the queue. A job whose
 // original is still in quarantine is the live rollback path and is kept; clearing it would
 // destroy a recorded rollback, which the safety standard forbids. Re-optimisation of the

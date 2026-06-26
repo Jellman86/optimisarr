@@ -254,6 +254,24 @@
     form.targetContainer = null
   }
 
+  // Custom mode lets the operator fine-tune codec/container themselves instead of following a
+  // preset. It is the honest framing for an override — a deliberate "Custom" config — rather than a
+  // caution that the slider's preset is being ignored. Derived from an explicit pick OR any
+  // codec/container override, so editing those in Advanced reads as Custom with no warning. The
+  // slider still sets the baseline that every non-overridden value follows.
+  let customSelected = $state(false)
+  const isCustom = $derived(
+    showVideoOptions && !isRemuxProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
+  )
+
+  function selectPresetMode() {
+    customSelected = false
+    resetToPreset() // drop overrides so the slider fully describes the config again
+  }
+  function selectCustomMode() {
+    customSelected = true
+  }
+
   // A photo library gets its own compatibility→efficiency slider — the image counterpart of the
   // video preset — mapping a single choice onto JPEG / WebP / AVIF. It is shown only for Photo
   // libraries (a mixed "Other" library keeps the video slider and sets the format in Advanced).
@@ -446,6 +464,7 @@
     form = blankForm()
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
+    customSelected = false
     minSizeMb = ''
     sameCodecGb = ''
     showAdvanced = false
@@ -496,6 +515,9 @@
     }
     minSizeMb = library.minFileSizeBytes != null ? Math.round(library.minFileSizeBytes / BYTES_PER_MB) : ''
     sameCodecGb = library.reencodeSameCodecAboveBytes != null ? Math.round(library.reencodeSameCodecAboveBytes / BYTES_PER_GB) : ''
+    // A loaded library reads as Custom only when it actually carries a codec/container override
+    // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
+    customSelected = false
     // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
     showAdvanced = false
     activeTab = 'rules'
@@ -697,8 +719,27 @@
   <div class="mt-4">
     <div class="flex items-center gap-2">
       <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient. Each stop picks a researched codec, container, and quality; Scott's Settings preserves HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
-      {#if showVideoOptions && presetOverridden}
-        <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="Codec/container set manually in Advanced options">Overridden</span>
+      {#if showVideoOptions && !isRemuxProfile}
+        <!-- Preset vs Custom: Custom is a first-class, deliberate mode, so a manual codec/container
+             choice reads as "your config" rather than a caution about a deviating preset. -->
+        <div class="ml-auto inline-flex rounded-md border border-slate-200 p-0.5 text-xs dark:border-slate-700" role="group" aria-label="Preset or custom configuration">
+          <button
+            type="button"
+            class="rounded px-2 py-0.5 transition-colors {!isCustom ? 'bg-slate-200 font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+            aria-pressed={!isCustom}
+            onclick={selectPresetMode}
+          >
+            Preset
+          </button>
+          <button
+            type="button"
+            class="rounded px-2 py-0.5 transition-colors {isCustom ? 'bg-slate-200 font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+            aria-pressed={isCustom}
+            onclick={selectCustomMode}
+          >
+            Custom
+          </button>
+        </div>
       {/if}
     </div>
 
@@ -743,7 +784,11 @@
         </div>
       </div>
 
-      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{presetSummaries[form.ruleProfile] ?? 'Custom preset.'}</p>
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        {isCustom
+          ? 'Custom configuration — set the codec, container, and quality yourself in Advanced options. The slider above only sets the baseline for anything left on “Profile default.”'
+          : (presetSummaries[form.ruleProfile] ?? 'Custom preset.')}
+      </p>
 
       <!-- Explicit, concrete selection so the slider isn't a mystery. -->
       <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
@@ -759,10 +804,15 @@
         {/if}
       </div>
 
-      {#if presetOverridden}
-        <div class="mt-2 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          <span>The {overrideSummary()} {form.targetVideoCodec && form.targetContainer ? 'are' : 'is'} set manually in Advanced options, so the slider here only sets the baseline.</span>
-          <button type="button" class="ml-1 font-medium underline" onclick={resetToPreset}>Reset to preset</button>
+      {#if isCustom}
+        <!-- Neutral, not amber: a custom config is a deliberate choice, not a warning. -->
+        <div class="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
+          {#if presetOverridden}
+            <span>Custom — the {overrideSummary()} {form.targetVideoCodec && form.targetContainer ? 'are' : 'is'} set in Advanced options. The slider sets the baseline for everything you haven't overridden.</span>
+          {:else}
+            <span>Custom — set the codec, container, and quality in Advanced options. The slider sets the baseline for anything left on “Profile default.”</span>
+          {/if}
+          <button type="button" class="ml-1 font-medium underline" onclick={selectPresetMode}>Use a preset instead</button>
         </div>
       {/if}
     {:else if showImagePreset}
@@ -857,7 +907,7 @@
 
       {#if showVideoOptions}
       <!-- VIDEO — scoped to Film/TV/Other libraries. -->
-      <section class="py-6 first:pt-0">
+      <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Video</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How video files are re-encoded. Leave a control on “Profile default” to follow the preset.</p>
 
@@ -987,7 +1037,7 @@
 
       {#if showAudioOptions}
       <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
-      <section class="py-6 first:pt-0">
+      <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Audio</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How audio-only files (music) are re-encoded.</p>
 
@@ -1027,7 +1077,7 @@
 
       {#if showImageOptions}
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
-      <section class="py-6 first:pt-0">
+      <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Images</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">How still images are re-encoded. Lossless sources (PNG/BMP/TIFF/GIF) are converted to a modern format.</p>
 
@@ -1107,7 +1157,7 @@
       {#if showVideoOptions || showAudioOptions}
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
-      <section class="py-6 first:pt-0">
+      <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Audio channels</h3>
         <p class="mt-0.5 mb-3 text-xs text-slate-400">Applies wherever audio is re-encoded; copied tracks keep their layout.</p>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
@@ -1123,7 +1173,7 @@
       {/if}
 
       <!-- ELIGIBILITY & QUEUE -->
-      <section class="py-6 first:pt-0">
+      <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Eligibility &amp; queue</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">Which files this library picks up, and how its jobs are prioritised.</p>
         <div class="grid gap-4 sm:grid-cols-2">
@@ -1154,7 +1204,7 @@
       </section>
 
       <!-- COMPLETED OUTPUT -->
-      <section class="py-6 first:pt-0">
+      <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Completed output</h3>
         <p class="mt-0.5 mb-3 text-xs text-slate-400">What happens to a finished file. Your originals are never touched either way.</p>
         <Toggle

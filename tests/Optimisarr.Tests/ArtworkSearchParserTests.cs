@@ -88,4 +88,30 @@ public sealed class ArtworkSearchParserTests
         var json = """{ "Items": [ { "Id": "x", "Type": "Movie", "BackdropImageTags": [] } ] }""";
         Assert.Null(ArtworkSearchParser.JellyfinBackdropPath(json, isTv: false, year: null));
     }
+
+    [Fact]
+    public void Plex_returns_the_matching_year_poster_thumb()
+    {
+        Assert.Equal("/library/metadata/4492/thumb/1",
+            ArtworkSearchParser.PlexPosterPath(PlexJson, isTv: false, year: 2022));
+    }
+
+    [Fact]
+    public void Jellyfin_builds_a_poster_url_from_the_primary_image_tag()
+    {
+        var json = """
+        { "Items": [
+          { "Id": "abc", "Type": "Movie", "ProductionYear": 2022, "ImageTags": { "Primary": "ptag" } }
+        ] }
+        """;
+        Assert.Equal("/Items/abc/Images/Primary?tag=ptag",
+            ArtworkSearchParser.JellyfinPosterPath(json, isTv: false, year: 2022));
+    }
+
+    [Fact]
+    public void Jellyfin_returns_null_when_no_item_has_a_primary_image()
+    {
+        var json = """{ "Items": [ { "Id": "x", "Type": "Movie", "ImageTags": {} } ] }""";
+        Assert.Null(ArtworkSearchParser.JellyfinPosterPath(json, isTv: false, year: null));
+    }
 }
