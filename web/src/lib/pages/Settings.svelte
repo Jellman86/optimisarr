@@ -467,11 +467,13 @@
       backupMessage =
         `Imported ${result.librariesCreated + result.librariesUpdated} libraries, ` +
         `${result.watchersCreated + result.watchersUpdated} watchers, ` +
-        `${result.targetsCreated + result.targetsUpdated} targets, and ` +
+        `${result.targetsCreated + result.targetsUpdated} targets, ` +
+        `${result.arrConnectionsCreated + result.arrConnectionsUpdated} Sonarr/Radarr connections, and ` +
         `${result.settingsApplied} settings.`
       await load()
       await loadWatchers()
       await loadTargets()
+      await loadArrs()
     } catch (err) {
       backupError = err instanceof Error ? err.message : 'Unable to import config'
     } finally {

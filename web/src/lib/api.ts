@@ -143,6 +143,7 @@ export type ConfigSnapshot = {
   libraries: unknown[]
   activityWatchers: unknown[]
   notificationTargets: unknown[]
+  arrConnections: unknown[]
 }
 
 export type ConfigImportResult = {
@@ -154,6 +155,8 @@ export type ConfigImportResult = {
   watchersUpdated: number
   targetsCreated: number
   targetsUpdated: number
+  arrConnectionsCreated: number
+  arrConnectionsUpdated: number
   settingsApplied: number
 }
 

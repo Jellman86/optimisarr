@@ -1,4 +1,6 @@
+using System.Globalization;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Settings;
 
@@ -53,6 +55,19 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
+            if (RequireEnum<ImageDownscaleMode>(library.ImageDownscaleMode, $"{where} image downscale mode", errors, out var downscaleMode))
+            {
+                if (downscaleMode == ImageDownscaleMode.MaxLongEdge && library.ImageDownscaleValue is < 16 or > 100_000)
+                {
+                    errors.Add($"{where} image max long-edge must be between 16 and 100000 pixels.");
+                }
+                if (downscaleMode == ImageDownscaleMode.Percent && library.ImageDownscaleValue is < 1 or > 99)
+                {
+                    errors.Add($"{where} image downscale percentage must be between 1 and 99.");
+                }
+            }
+            RequireWindowTime(library.AutoEnqueueWindowStart, $"{where} auto-enqueue window start", errors);
+            RequireWindowTime(library.AutoEnqueueWindowEnd, $"{where} auto-enqueue window end", errors);
         }
 
         for (var i = 0; i < snapshot.ActivityWatchers.Count; i++)
@@ -96,9 +111,26 @@ public static class ConfigSnapshotValidator
     private static void RequireEnum<T>(string? value, string label, List<string> errors)
         where T : struct, Enum
     {
-        if (!Enum.TryParse<T>(value, ignoreCase: true, out _))
+        _ = RequireEnum<T>(value, label, errors, out _);
+    }
+
+    private static bool RequireEnum<T>(string? value, string label, List<string> errors, out T parsed)
+        where T : struct, Enum
+    {
+        if (!Enum.TryParse<T>(value, ignoreCase: true, out parsed))
         {
             errors.Add($"{label} is not valid: {value}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void RequireWindowTime(string? value, string label, List<string> errors)
+    {
+        if (!TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+        {
+            errors.Add($"{label} must use HH:mm format.");
         }
     }
 }

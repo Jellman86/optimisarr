@@ -145,6 +145,30 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_rejects_invalid_image_and_window_fields_instead_of_coercing_them()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot("Photos", "/data/photos", "Other", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    ImageDownscaleMode: "Impossible",
+                    AutoEnqueueWindowStart: "bad")
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.False(result.Applied);
+        Assert.Contains(result.Errors, error => error.Contains("image downscale mode", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Errors, error => error.Contains("auto-enqueue window start", StringComparison.OrdinalIgnoreCase));
+
+        await using var db = CreateDb();
+        Assert.Equal(0, await db.Libraries.CountAsync());
+    }
+
+    [Fact]
     public async Task Exported_config_round_trips_back_through_import()
     {
         await using (var db = CreateDb())

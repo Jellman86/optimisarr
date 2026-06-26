@@ -66,6 +66,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
 
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
         var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(snapshot.Libraries, cancellationToken);
         var (watchersCreated, watchersUpdated) = await ImportWatchersAsync(snapshot.ActivityWatchers, cancellationToken);
         var (targetsCreated, targetsUpdated) = await ImportTargetsAsync(snapshot.NotificationTargets, cancellationToken);
@@ -73,6 +75,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         await db.SaveChangesAsync(cancellationToken);
 
         var settingsApplied = await settings.ImportSettingsAsync(snapshot.Settings, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return new ConfigImportResult(
             true, [],
@@ -126,10 +129,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.TargetImageFormat = snapshot.TargetImageFormat;
             library.ImageQuality = snapshot.ImageQuality;
             library.ReencodeLossyImages = snapshot.ReencodeLossyImages;
-            library.ImageDownscaleMode = Enum.TryParse<ImageDownscaleMode>(
-                snapshot.ImageDownscaleMode, ignoreCase: true, out var downscaleMode)
-                ? downscaleMode
-                : ImageDownscaleMode.None;
+            library.ImageDownscaleMode = ParseEnum<ImageDownscaleMode>(snapshot.ImageDownscaleMode);
             library.ImageDownscaleValue = snapshot.ImageDownscaleValue;
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
@@ -145,10 +145,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         return (created, updated);
     }
 
-    private static TimeOnly ParseWindowTime(string? value) =>
-        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
-            ? time
-            : default;
+    private static TimeOnly ParseWindowTime(string value) =>
+        TimeOnly.ParseExact(value, "HH:mm", CultureInfo.InvariantCulture);
 
     private async Task<(int Created, int Updated)> ImportWatchersAsync(
         IReadOnlyList<ActivityWatcherSnapshot> snapshots, CancellationToken cancellationToken)
