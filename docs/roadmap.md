@@ -6,10 +6,10 @@ the replacement workflow is trustworthy.
 
 ## Up next (priority order, updated 2026-06-26)
 
-1. **Phase 13 release hardening** (README quickstart, troubleshooting, security notes,
-   integration checks) — release controls are in progress; dry-run mode, config-and-secrets
-   backups, and a migration smoke test are shipped. Backups intentionally omit media, jobs,
-   replacements, quarantine, and rollback history.
+1. **Phase 13 release hardening** (integration checks) — release controls are in
+   progress; dry-run mode, config-and-secrets backups, migration smoke coverage,
+   README quickstart hardening, troubleshooting, and security notes are shipped.
+   Backups intentionally omit media, jobs, replacements, quarantine, and rollback history.
 2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
    for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
    segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
@@ -25,6 +25,11 @@ the replacement workflow is trustworthy.
 - **Migration smoke test: done.** The test suite now applies all EF migrations to an empty
   SQLite database and asserts no pending migrations remain, catching broken migration chains
   separately from the `EnsureCreated`-based unit tests.
+- **Release docs hardening: done.** The quickstart now covers compose selection, writable
+  mounts, readiness checks, dry-run-first operation, and authenticated reverse-proxy exposure.
+  Troubleshooting covers dry-run replacement blocks, readiness failures, config import
+  validation, and stale UI after updates; security notes now call out the administrative
+  surface and secret-bearing exports explicitly.
 
 - **Media thumbnails in lists: done.** Every row on the Inventory page and the per-library Candidates
   tab shows a kind-appropriate thumbnail: **film/TV** a poster (Radarr/Sonarr first — an exact, local
@@ -808,9 +813,9 @@ Deliverables:
 - Database migrations tested. **Done for empty-database migration smoke coverage.**
 - Integration tests with synthetic media fixtures.
 - Docker image published to GHCR.
-- README quickstart.
-- Troubleshooting guide.
-- Security notes around mounted volumes and reverse proxies.
+- README quickstart. **Done.**
+- Troubleshooting guide. **Done.**
+- Security notes around mounted volumes and reverse proxies. **Done.**
 
 Exit criteria:
 

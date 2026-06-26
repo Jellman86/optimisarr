@@ -19,6 +19,11 @@
 - **The test suite now includes an EF migration smoke test.** It applies all migrations to an empty
   SQLite database and asserts no pending migrations remain, covering the real migration chain
   separately from `EnsureCreated`-based unit tests.
+- **Release docs are safer for first-run users.** The quickstart now walks through compose selection,
+  writable mounts, readiness checks, dry-run-first operation, and authenticated reverse-proxy
+  exposure. Troubleshooting now covers dry-run replacement blocks, readiness failures, config import
+  validation, and stale UI after image updates; the security policy spells out that the UI is an
+  administrative surface and exports contain secrets.
 
 ### Custom mode for a library's video preset
 

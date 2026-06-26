@@ -114,18 +114,30 @@ decoding.
 The image is published to GHCR on every push to `dev`:
 
 ```bash
+mkdir -p ./optimisarr-config /path/to/work /path/to/trash
+sudo chown -R 1000:1000 ./optimisarr-config /path/to/work /path/to/trash
+```
+
+```bash
 docker run -d --name optimisarr \
   -p 8787:8787 \
   -e PUID=1000 -e PGID=1000 -e TZ=Europe/London \
-  -v /path/to/config:/config \
+  -v ./optimisarr-config:/config \
   -v /path/to/media:/data \
   -v /path/to/work:/work \
   -v /path/to/trash:/trash \
   ghcr.io/jellman86/optimisarr:dev
 ```
 
-Open `http://localhost:8787`, add a library on the **Libraries** page, then
-scan it. Compose examples are available for every supported runtime:
+Wait for readiness, then open the UI:
+
+```bash
+curl http://localhost:8787/api/ready
+```
+
+Open `http://localhost:8787`, enable **Dry-run mode** in **Settings → Replacement**,
+add a library on the **Libraries** page, then scan and queue a small test set.
+Compose examples are available for every supported runtime:
 
 - [CPU only](compose.cpu.example.yml)
 - [NVIDIA NVENC](compose.nvidia.example.yml)
@@ -134,7 +146,8 @@ scan it. Compose examples are available for every supported runtime:
 - [combined reference file](compose.example.yml)
 
 Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the
-replacement pipeline can use atomic moves.
+replacement pipeline can use atomic moves. Do not publish `8787` directly to the
+internet; use an authenticated reverse proxy for remote access.
 
 ## Hardware acceleration (GPU)
 
