@@ -292,6 +292,12 @@ Before replacement, all required checks must pass:
 - Output size is below original by the configured threshold unless the rule is
   explicitly quality-normalisation rather than size-saving.
 
+Preview jobs reuse the same verification path but never enter replacement. For
+long video previews, the worker encodes a 60-second segment from the middle of
+the source and the verifier creates a temporary clipped reference from that same
+window before running the usual checks. The UI labels those scores as
+segment-only; full queue jobs always verify against the complete original.
+
 ### Replacement
 
 Preferred replacement sequence:

@@ -49,8 +49,11 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 2. Add a library below `/data` and select its media type and rule profile.
 3. Scan it; newly found files are probed in the background.
 4. Review the explicit eligibility reason in **Inventory**.
-5. Queue a small test set and inspect its verification report.
-6. Disable dry-run only after the reports look right, then replace outputs you
+5. Use **Preview** on one representative file to compare the original with the encoded result.
+   Long video previews use a 60-second middle sample and label the verification report as
+   segment-only; full queue jobs still encode and verify the whole file.
+6. Queue a small test set and inspect its verification report.
+7. Disable dry-run only after the reports look right, then replace outputs you
    have reviewed. Originals remain in **Quarantine**
    until approved or retention purges them.
 

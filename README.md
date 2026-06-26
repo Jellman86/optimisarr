@@ -72,6 +72,10 @@ no support SLA or promise of a release schedule.
   **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.
 - A **Dashboard** leading with a persistent lifetime **space-saved** total (resettable),
   what's in flight, and live CPU/GPU usage while a job encodes.
+- **Preview** from Inventory or a library's Candidates tab to try the resolved settings on one
+  file before queueing it. Long video previews encode a 60-second sample from the middle of the
+  source, verify against a temporary clipped reference from that same window, and label the report
+  as segment-only; audio and image previews run in full.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
   NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.

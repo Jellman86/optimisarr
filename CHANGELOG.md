@@ -532,10 +532,11 @@ how often libraries are scanned — and everything about *when work happens* liv
 - **Video previews encode a short sample, not the whole file.** A preview used to run a full
   transcode *and* the full verification (decode-health + VMAF over the entire file), so a long video
   sat on "Verifying" for ages. A video preview now encodes a **60-second sample taken from the middle
-  of the file** (representative content, not the intro) and **skips the gating verification** — the
-  side-by-side comparison is the quality check. Audio/image previews already finished quickly and run
-  in full. The size saving for a sampled video is shown bitrate-based (`≈`) with a note that it is a
-  sample; a full optimise still encodes and verifies the whole file.
+  of the file** (representative content, not the intro). This originally skipped gating verification
+  for speed; the current preview path now verifies against a temporary clipped reference from the same
+  middle segment. Audio/image previews already finished quickly and run in full. The size saving for
+  a sampled video is shown bitrate-based (`≈`) with a note that it is a sample; a full optimise still
+  encodes and verifies the whole file.
 
 ### Settings preview — compare original vs encoded before committing (Phase 11)
 
@@ -555,8 +556,8 @@ how often libraries are scanned — and everything about *when work happens* liv
   difference before approving or rolling back, not just read the numbers. The shared viewer
   (`MediaCompare`) is used by both the preview and the quarantine panels.
 - Deferred for now: in-browser playback of some encoded codecs (HEVC/AV1) depends on the browser;
-  the stats and verification still apply. Clip-mode (preview a short segment) is future work, since a
-  meaningful VMAF needs the comparison segment aligned with the original.
+  the stats and verification still apply. Clip-mode has since shipped: sampled video previews verify
+  against the same middle segment of the original and label scores as segment-only.
 
 ### The Queue shows which encoder each job used (GPU vs CPU)
 
