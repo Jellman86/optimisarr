@@ -114,6 +114,23 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_refuses_while_dry_run_mode_is_enabled()
+    {
+        await SetDryRunModeAsync(true);
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var result = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Contains("Dry-run", result.Message);
+        Assert.True(File.Exists(originalPath));
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.True(File.Exists(outputPath));
+        Assert.Empty(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    [Fact]
     public async Task Replace_refuses_cross_filesystem_moves_when_policy_disallows_them()
     {
         var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
@@ -382,6 +399,14 @@ public sealed class ReplacementServiceTests : IDisposable
         var settings = new SettingsStore(db);
         var current = await settings.GetQueueSettingsAsync(CancellationToken.None);
         await settings.SetQueueSettingsAsync(current with { ReplacementAllowCrossFilesystem = allowed }, CancellationToken.None);
+    }
+
+    private async Task SetDryRunModeAsync(bool enabled)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var settings = new SettingsStore(db);
+        var current = await settings.GetQueueSettingsAsync(CancellationToken.None);
+        await settings.SetQueueSettingsAsync(current with { DryRunMode = enabled }, CancellationToken.None);
     }
 
     public void Dispose()

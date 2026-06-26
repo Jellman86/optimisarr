@@ -8,13 +8,31 @@ public sealed class AutoReplacePolicyTests
     [Fact]
     public void Reconciles_a_verified_ready_job_when_the_library_auto_replaces()
     {
-        Assert.True(AutoReplacePolicy.ShouldReconcile(JobStatus.ReadyToReplace, verificationPassed: true, libraryAutoReplace: true));
+        Assert.True(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed: true,
+            libraryAutoReplace: true,
+            dryRunMode: false));
     }
 
     [Fact]
     public void Skips_when_the_library_does_not_auto_replace()
     {
-        Assert.False(AutoReplacePolicy.ShouldReconcile(JobStatus.ReadyToReplace, verificationPassed: true, libraryAutoReplace: false));
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed: true,
+            libraryAutoReplace: false,
+            dryRunMode: false));
+    }
+
+    [Fact]
+    public void Skips_while_dry_run_mode_is_enabled()
+    {
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed: true,
+            libraryAutoReplace: true,
+            dryRunMode: true));
     }
 
     [Theory]
@@ -25,7 +43,11 @@ public sealed class AutoReplacePolicyTests
     [InlineData(JobStatus.Failed)]
     public void Only_ready_to_replace_jobs_are_reconciled(JobStatus status)
     {
-        Assert.False(AutoReplacePolicy.ShouldReconcile(status, verificationPassed: true, libraryAutoReplace: true));
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            status,
+            verificationPassed: true,
+            libraryAutoReplace: true,
+            dryRunMode: false));
     }
 
     [Theory]
@@ -33,6 +55,10 @@ public sealed class AutoReplacePolicyTests
     [InlineData(false)]
     public void Never_replaces_a_job_that_did_not_pass_verification(bool? verificationPassed)
     {
-        Assert.False(AutoReplacePolicy.ShouldReconcile(JobStatus.ReadyToReplace, verificationPassed, libraryAutoReplace: true));
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed,
+            libraryAutoReplace: true,
+            dryRunMode: false));
     }
 }

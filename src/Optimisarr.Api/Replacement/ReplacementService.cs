@@ -147,6 +147,13 @@ public sealed class ReplacementService
             return ReplacementActionResult.Invalid($"Job {jobId} has no media file to replace.");
         }
 
+        var settings = await _settings.GetQueueSettingsAsync(cancellationToken);
+        if (settings.DryRunMode)
+        {
+            return ReplacementActionResult.Invalid(
+                "Dry-run mode is enabled, so Optimisarr will stop after verification and leave originals untouched.");
+        }
+
         if (string.IsNullOrEmpty(job.WorkOutputPath) || !File.Exists(job.WorkOutputPath))
         {
             return ReplacementActionResult.Failed("The verified output is missing from the work directory.");
@@ -185,7 +192,6 @@ public sealed class ReplacementService
                 + "was left untouched. (The Libraries page has a 'Test access' check that flags this in advance.)");
         }
 
-        var settings = await _settings.GetQueueSettingsAsync(cancellationToken);
         if (!settings.ReplacementAllowCrossFilesystem)
         {
             var originalDirectory = Path.GetDirectoryName(plan.OriginalPath) ?? string.Empty;

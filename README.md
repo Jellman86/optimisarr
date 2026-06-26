@@ -91,14 +91,14 @@ no support SLA or promise of a release schedule.
   exact **FFmpeg command**, the verification report, and inline actions (retry, exclude, replace).
   The sidebar's Queue item throbs a **GPU chip** when work is hardware-accelerated or a **snail**
   when it's on the CPU, with a running-job count.
-- Optional **service-activity pauses** (Plex/Jellyfin/Emby), configurable
-  replacement/quarantine policy with a retention window, and **library integrations**
-  (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions, notifications,
-  config-and-secrets backup/import).
+- Optional **service-activity pauses** (Plex/Jellyfin/Emby), **dry-run mode**,
+  configurable replacement/quarantine policy with a retention window, and **library
+  integrations** (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions,
+  notifications, config-and-secrets backup/import).
 
-Still planned (see the [roadmap](docs/roadmap.md)): dry-run operation and
-real-hardware validation for AMD VA-API. Intel QSV has been tested on real
-hardware for both encoding and decoding.
+Still planned (see the [roadmap](docs/roadmap.md)): real-hardware validation for
+AMD VA-API. Intel QSV has been tested on real hardware for both encoding and
+decoding.
 
 ## Before you start
 

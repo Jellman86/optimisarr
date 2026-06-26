@@ -22,6 +22,11 @@ public sealed class QuarantinePurgeService(
     public async Task<int> PurgeExpiredAsync(CancellationToken cancellationToken)
     {
         var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
+        if (queueSettings.DryRunMode)
+        {
+            return 0;
+        }
+
         var retentionDays = queueSettings.ReplacementQuarantineRetentionDays;
         if (retentionDays <= 0)
         {
@@ -66,6 +71,13 @@ public sealed class QuarantinePurgeService(
     /// </summary>
     public async Task<ReplacementActionResult> PurgeOneAsync(int replacementId, CancellationToken cancellationToken)
     {
+        var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
+        if (queueSettings.DryRunMode)
+        {
+            return ReplacementActionResult.Invalid(
+                "Dry-run mode is enabled, so Optimisarr will keep quarantined originals and preserve rollback.");
+        }
+
         var replacement = await db.Replacements
             .FirstOrDefaultAsync(r => r.Id == replacementId, cancellationToken);
 

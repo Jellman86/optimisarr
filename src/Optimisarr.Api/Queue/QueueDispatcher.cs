@@ -188,6 +188,8 @@ public sealed class QueueDispatcher(
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
+            var queueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
             var ready = await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.ReadyToReplace && job.LibraryId != null)
@@ -200,7 +202,10 @@ public sealed class QueueDispatcher(
 
             jobIds = ready
                 .Where(candidate => AutoReplacePolicy.ShouldReconcile(
-                    candidate.Status, candidate.VerificationPassed, candidate.AutoReplace))
+                    candidate.Status,
+                    candidate.VerificationPassed,
+                    candidate.AutoReplace,
+                    queueSettings.DryRunMode))
                 .OrderBy(candidate => candidate.Id)
                 .Take(AutoReplaceReconcileBatch)
                 .Select(candidate => candidate.Id)
@@ -859,13 +864,13 @@ public sealed class QueueDispatcher(
             return;
         }
 
-        await FinishSuccessfulJobAsync(jobId, outputPath, work);
+        await FinishSuccessfulJobAsync(jobId, outputPath, work, settings.DryRunMode);
     }
 
     // On success the original is never touched. If the library collects outputs in a
     // target folder, move our work output there and mark the job Completed; otherwise
     // leave it in the work directory as ReadyToReplace (safe replacement is a later phase).
-    private async Task FinishSuccessfulJobAsync(int jobId, string outputPath, JobWork work)
+    private async Task FinishSuccessfulJobAsync(int jobId, string outputPath, JobWork work, bool dryRunMode)
     {
         if (work is { MoveOnComplete: true, TargetFolder: { } targetFolder })
         {
@@ -902,11 +907,11 @@ public sealed class QueueDispatcher(
 
         await CompleteAsync(jobId, JobStatus.ReadyToReplace, progress: 1.0);
 
-        // Hands-off replacement, when the library opts in. The output already passed every
-        // verification gate; ReplaceAsync still quarantines the original first and records a
-        // rollback, so the safety model holds. A failure (e.g. an unwritable folder) leaves the
-        // job ReadyToReplace for a manual retry rather than touching the original.
-        if (work.AutoReplace)
+        // Hands-off replacement, when the library opts in and dry-run mode is off. The output
+        // already passed every verification gate; ReplaceAsync still quarantines the original
+        // first and records a rollback, so the safety model holds. A failure (e.g. an unwritable
+        // folder) leaves the job ReadyToReplace for a manual retry rather than touching the original.
+        if (work.AutoReplace && !dryRunMode)
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();

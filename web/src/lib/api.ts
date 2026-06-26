@@ -133,6 +133,7 @@ export type Settings = {
   verificationMinimumImageSsim: number
   verificationImageMetadataGateEnabled: boolean
   replacementAllowCrossFilesystem: boolean
+  dryRunMode: boolean
   replacementQuarantineRetentionDays: number
 }
 

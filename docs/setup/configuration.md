@@ -51,6 +51,11 @@ passes every verification gate is replaced automatically. The original is still
 quarantined first and remains rollback-able through **Quarantine**. Enable it
 only after validating a small manual batch for that library.
 
+**Dry-run mode** is a global replacement safety switch. It leaves scanning,
+queueing, transcoding, verification, previews, and rollback available, but blocks
+manual replacement, auto-replace, and quarantine purge. Use it for first passes
+over a real library when you want evidence without any original-file changes.
+
 Quarantine retention is not a backup policy; retain independent backups of
 irreplaceable media and `/config`.
 

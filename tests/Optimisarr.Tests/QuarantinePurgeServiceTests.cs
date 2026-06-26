@@ -58,6 +58,20 @@ public sealed class QuarantinePurgeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Purge_does_nothing_while_dry_run_mode_is_enabled()
+    {
+        await SetRetentionDaysAsync(30);
+        await SetDryRunModeAsync(true);
+        var (id, quarantinePath) = await SeedQuarantinedAsync(replacedAt: DateTimeOffset.UtcNow.AddDays(-31));
+
+        var purged = await PurgeAsync();
+
+        Assert.Equal(0, purged);
+        Assert.True(File.Exists(quarantinePath));
+        Assert.Equal(ReplacementStatus.Replaced, await StatusOfAsync(id));
+    }
+
+    [Fact]
     public async Task Purge_keeps_originals_still_within_the_retention_window()
     {
         await SetRetentionDaysAsync(30);
@@ -113,6 +127,20 @@ public sealed class QuarantinePurgeServiceTests : IDisposable
 
         await using var db = new OptimisarrDbContext(_options);
         Assert.NotNull((await db.Replacements.SingleAsync(r => r.Id == id)).PurgedAt);
+    }
+
+    [Fact]
+    public async Task Purge_one_refuses_while_dry_run_mode_is_enabled()
+    {
+        await SetDryRunModeAsync(true);
+        var (id, quarantinePath) = await SeedQuarantinedAsync(replacedAt: DateTimeOffset.UtcNow);
+
+        var result = await PurgeOneAsync(id);
+
+        Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Contains("Dry-run", result.Message);
+        Assert.True(File.Exists(quarantinePath));
+        Assert.Equal(ReplacementStatus.Replaced, await StatusOfAsync(id));
     }
 
     [Fact]
@@ -200,6 +228,15 @@ public sealed class QuarantinePurgeServiceTests : IDisposable
         var current = await settings.GetQueueSettingsAsync(CancellationToken.None);
         await settings.SetQueueSettingsAsync(
             current with { ReplacementQuarantineRetentionDays = days }, CancellationToken.None);
+    }
+
+    private async Task SetDryRunModeAsync(bool enabled)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var settings = new SettingsStore(db);
+        var current = await settings.GetQueueSettingsAsync(CancellationToken.None);
+        await settings.SetQueueSettingsAsync(
+            current with { DryRunMode = enabled }, CancellationToken.None);
     }
 
     private async Task<ReplacementStatus> StatusOfAsync(int replacementId)

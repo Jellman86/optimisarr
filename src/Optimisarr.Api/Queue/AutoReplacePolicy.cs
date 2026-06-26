@@ -11,6 +11,13 @@ namespace Optimisarr.Api.Queue;
 /// </summary>
 public static class AutoReplacePolicy
 {
-    public static bool ShouldReconcile(JobStatus status, bool? verificationPassed, bool libraryAutoReplace) =>
-        status == JobStatus.ReadyToReplace && verificationPassed == true && libraryAutoReplace;
+    public static bool ShouldReconcile(
+        JobStatus status,
+        bool? verificationPassed,
+        bool libraryAutoReplace,
+        bool dryRunMode) =>
+        status == JobStatus.ReadyToReplace
+        && verificationPassed == true
+        && libraryAutoReplace
+        && !dryRunMode;
 }

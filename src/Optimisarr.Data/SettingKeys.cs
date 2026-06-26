@@ -78,6 +78,9 @@ public static class SettingKeys
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 
+    /// <summary>Whether replacement and quarantine purge actions are blocked while optimisation can still be tested.</summary>
+    public const string DryRunMode = "replacement.dryRunMode";
+
     /// <summary>How many days quarantined originals should be retained; 0 means indefinitely.</summary>
     public const string ReplacementQuarantineRetentionDays = "replacement.quarantineRetentionDays";
 

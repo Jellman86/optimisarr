@@ -45,6 +45,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(0.95, settings.VerificationPolicy.MinimumImageSsim);
         Assert.False(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
+        Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
     }
 
@@ -76,6 +77,7 @@ public sealed class SettingsStoreTests : IDisposable
                     MinimumImageSsim: 0.97,
                     ImageMetadataGateEnabled: true),
                 ReplacementAllowCrossFilesystem: true,
+                DryRunMode: true,
                 ReplacementQuarantineRetentionDays: 30), CancellationToken.None);
         }
 
@@ -103,6 +105,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(0.97, settings.VerificationPolicy.MinimumImageSsim);
         Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.True(settings.ReplacementAllowCrossFilesystem);
+        Assert.True(settings.DryRunMode);
         Assert.Equal(30, settings.ReplacementQuarantineRetentionDays);
     }
 
@@ -121,6 +124,7 @@ public sealed class SettingsStoreTests : IDisposable
                 new AppSetting { Key = SettingKeys.VerificationRequireSubtitlesRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSizeReduction, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.ReplacementAllowCrossFilesystem, Value = "maybe" },
+                new AppSetting { Key = SettingKeys.DryRunMode, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.ReplacementQuarantineRetentionDays, Value = "-3" });
             await db.SaveChangesAsync();
         }
@@ -139,6 +143,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
         Assert.True(settings.VerificationPolicy.RequireSizeReduction);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
+        Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
     }
 

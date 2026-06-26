@@ -360,6 +360,7 @@
     verificationMinimumImageSsim: 0.95,
     verificationImageMetadataGateEnabled: false,
     replacementAllowCrossFilesystem: false,
+    dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
   })
   let minFreeDiskGiB = $state('10')
@@ -667,6 +668,13 @@
       How a verified output takes the place of your original, and how long the original is kept afterwards.
     </p>
     <div class="max-w-2xl">
+      <Toggle
+        bind:checked={settings.dryRunMode}
+        label="Dry-run mode"
+        hint="Scan, queue, transcode, and verify normally, but never replace originals or purge quarantined originals. Verified outputs stop at Ready to replace for review."
+      />
+    </div>
+    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
         label="Allow cross-filesystem replacement"

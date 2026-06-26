@@ -257,9 +257,10 @@ app.MapPut("/api/settings", async (
             request.VerificationAudioClippingGateEnabled,
             request.VerificationMaxTruePeakDbtp,
             request.VerificationImageQualityGateEnabled,
-            request.VerificationMinimumImageSsim,
-            request.VerificationImageMetadataGateEnabled),
+        request.VerificationMinimumImageSsim,
+        request.VerificationImageMetadataGateEnabled),
         request.ReplacementAllowCrossFilesystem,
+        request.DryRunMode,
         request.ReplacementQuarantineRetentionDays), cancellationToken);
 
     var queue = await settings.GetQueueSettingsAsync(cancellationToken);
@@ -1629,6 +1630,7 @@ internal sealed record SettingsDto(
     double VerificationMinimumImageSsim,
     bool VerificationImageMetadataGateEnabled,
     bool ReplacementAllowCrossFilesystem,
+    bool DryRunMode,
     int ReplacementQuarantineRetentionDays)
 {
     public static SettingsDto From(QueueSettings settings) => new(
@@ -1653,6 +1655,7 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.MinimumImageSsim,
         settings.VerificationPolicy.ImageMetadataGateEnabled,
         settings.ReplacementAllowCrossFilesystem,
+        settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays);
 }
 

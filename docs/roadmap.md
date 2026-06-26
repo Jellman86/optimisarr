@@ -6,15 +6,22 @@ the replacement workflow is trustworthy.
 
 ## Up next (priority order, updated 2026-06-26)
 
-1. **Phase 13 release hardening** (dry-run, config-and-secrets backup/export, README quickstart,
-   troubleshooting, security notes) — release controls are in progress; backups intentionally omit
-   media, jobs, replacements, quarantine, and rollback history.
+1. **Phase 13 release hardening** (README quickstart, troubleshooting, security notes,
+   database migration/integration checks) — release controls are in progress; dry-run mode
+   and config-and-secrets backups are shipped. Backups intentionally omit media, jobs,
+   replacements, quarantine, and rollback history.
 2. **Preview clip mode** (Phase 11 follow-up): preview just a segment (e.g. 60 s) of a large file
    for a fast turnaround instead of a full transcode. Requires the verifier to score the *same*
    segment of the original (a clipped reference), so VMAF/SSIM stay meaningful; the command builder
    needs a clip window (`-ss`/`-t`) and the compare UI must label scores as segment-only. See the
    Phase 11 section.
 **Recently shipped (2026-06-26).**
+
+- **Dry-run mode: done.** A global Settings → Replacement switch lets operators scan,
+  queue, transcode, verify, and preview normally while blocking manual replacement,
+  auto-replace, and quarantine purge. Verified outputs stop at Ready to replace for
+  review; rollback remains available for existing replacements because it restores
+  the protected original.
 
 - **Media thumbnails in lists: done.** Every row on the Inventory page and the per-library Candidates
   tab shows a kind-appropriate thumbnail: **film/TV** a poster (Radarr/Sonarr first — an exact, local
@@ -792,8 +799,9 @@ Goal: make the first public image safe for real libraries.
 
 Deliverables:
 
-- Dry-run mode.
-- Backup/export of SQLite config.
+- Dry-run mode. **Done.**
+- Backup/export of SQLite config. **Done for portable config-and-secrets snapshots; raw
+  SQLite state backup remains external/operator-owned.**
 - Database migrations tested.
 - Integration tests with synthetic media fixtures.
 - Docker image published to GHCR.
