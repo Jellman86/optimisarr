@@ -240,6 +240,7 @@ Settings fields include:
 | `POST` | `/api/media/{id}/probe` | Probe one media file. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |
+| `GET` | `/api/inventory` | Inventory page: files paired with their rule verdict, filtered (`show`=all/eligible/skipped/unprobed), searched (`search`), and paged (`page`/`pageSize`). Returns the page, the filtered total, and per-filter counts. |
 
 Create and update library bodies use the same shape. Common fields:
 

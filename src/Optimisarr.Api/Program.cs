@@ -54,6 +54,7 @@ builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
+builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
@@ -611,6 +612,30 @@ app.MapGet("/api/candidates/summary", async (
     return Results.Ok(summary);
 })
 .WithName("CandidateSummary");
+
+// The Inventory view: discovered files paired with their rule verdict, filtered, counted, and paged
+// on the server. `show` is all/eligible/skipped/unprobed; `search` matches a path substring. The
+// response carries the page, the filtered total, and the per-filter tallies for the UI chips.
+app.MapGet("/api/inventory", async (
+    int? libraryId,
+    string? show,
+    string? search,
+    int? page,
+    int? pageSize,
+    InventoryQueries inventory,
+    CancellationToken cancellationToken) =>
+{
+    var filter = InventoryFilter.All;
+    if (!string.IsNullOrWhiteSpace(show) && !Enum.TryParse(show, ignoreCase: true, out filter))
+    {
+        return Results.BadRequest(
+            $"Unknown inventory filter '{show}'. Valid values: {string.Join(", ", Enum.GetNames<InventoryFilter>())}.");
+    }
+
+    return Results.Ok(await inventory.QueryAsync(
+        libraryId, filter, search, page ?? 1, pageSize ?? 0, cancellationToken));
+})
+.WithName("GetInventory");
 
 // Phase 3: enqueue a library's eligible candidates as transcode jobs.
 app.MapPost("/api/libraries/{id:int}/enqueue", async (

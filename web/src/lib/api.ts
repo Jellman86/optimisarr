@@ -443,6 +443,27 @@ export type CandidateSummary = {
   skipped: number
 }
 
+export type InventoryFilter = 'all' | 'eligible' | 'skipped' | 'unprobed'
+
+export type InventoryRow = {
+  file: MediaFile
+  eligible: boolean | null
+  reason: string | null
+}
+
+export type InventoryCounts = {
+  all: number
+  eligible: number
+  skipped: number
+  unprobed: number
+}
+
+export type InventoryPage = {
+  items: InventoryRow[]
+  total: number
+  counts: InventoryCounts
+}
+
 export type ScanSummary = {
   discovered: number
   added: number
@@ -557,6 +578,18 @@ export const api = {
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
   candidateSummary: () => request<CandidateSummary[]>('/api/candidates/summary'),
+
+  // The paginated Inventory view: a page of files with their verdicts, plus per-filter counts.
+  inventory: (params: { libraryId?: number; show?: InventoryFilter; search?: string; page?: number; pageSize?: number }) => {
+    const q = new URLSearchParams()
+    if (params.libraryId !== undefined) q.set('libraryId', String(params.libraryId))
+    if (params.show && params.show !== 'all') q.set('show', params.show)
+    if (params.search) q.set('search', params.search)
+    if (params.page !== undefined) q.set('page', String(params.page))
+    if (params.pageSize !== undefined) q.set('pageSize', String(params.pageSize))
+    const query = q.toString()
+    return request<InventoryPage>(`/api/inventory${query ? `?${query}` : ''}`)
+  },
 
   // Exclusions: files the operator never wants optimised again (durable, path-keyed).
   exclusions: (libraryId?: number) =>

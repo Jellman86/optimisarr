@@ -59,9 +59,10 @@ the replacement workflow is trustworthy.
    - **Large-library API scalability.** `/api/jobs` and `/api/media` now have server-side
      filtering and pagination (`status`, `search`/`category`, date, `page`/`pageSize`, total in
      `X-Total-Count`), with a `(LibraryId, RelativePath)` index so a large inventory pages without a
-     table sort. Remaining: paginate/filter the fleet-wide candidate views, and adopt the paging in
-     the Inventory/Queue UI tables (bounded or virtualized) so the frontend stays responsive at tens
-     of thousands of rows.
+     table sort. The Inventory page now drives its filter chips, counts, and pager from a combined
+     `GET /api/inventory` (media paired with rule verdict, filtered/counted/paged server-side), so the
+     browser fetches one page instead of every row and every candidate. Remaining: the Queue table
+     paging/virtualization, and folding the same paging into other fleet-wide candidate views.
 
    - **Diagnostics bundle and admin health details.** Shipped as `GET /api/diagnostics` (admin-only):
      version, environment, settings, per-library and integration summaries, dashboard stats, and the

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Candidate, type Library, type MediaFile } from '../api'
+  import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile } from '../api'
   import { formatSize, formatDuration } from '../format'
   import Banner from '../components/Banner.svelte'
   import BottomSheet from '../components/BottomSheet.svelte'
@@ -7,12 +7,23 @@
   import Thumbnail from '../components/Thumbnail.svelte'
 
   let libraries = $state<Library[]>([])
-  let files = $state<MediaFile[]>([])
-  // Eligibility verdict per file (only probed files have one), keyed by media-file id.
-  let verdicts = $state<Record<number, Candidate>>({})
+  // One page of inventory rows from the server, plus the filtered total and per-filter tallies.
+  let rows = $state<InventoryRow[]>([])
+  let total = $state(0)
+  let counts = $state<InventoryCounts>({ all: 0, eligible: 0, skipped: 0, unprobed: 0 })
+  // The page's files and a verdict lookup, derived so the existing table markup keeps working.
+  let files = $derived(rows.map((row) => row.file))
+  let verdicts = $derived(
+    Object.fromEntries(
+      rows
+        .filter((row) => row.eligible !== null)
+        .map((row) => [row.file.id, { eligible: row.eligible as boolean, reason: row.reason ?? '' }]),
+    ),
+  )
   let selectedLibrary = $state<number | 'all'>('all')
-  let show = $state<'all' | 'eligible' | 'skipped' | 'unprobed'>('all')
+  let show = $state<InventoryFilter>('all')
   let page = $state(1)
+  const pageSize = 50
   let selectedId = $state<number | null>(null)
   // Whether the detail sheet is showing its full content (true) or just the header strip (false).
   let sheetExpanded = $state(true)
@@ -29,9 +40,10 @@
     void loadLibraries()
   })
 
-  // Reload media (and the eligibility verdicts that overlay it) whenever the filter changes.
+  // Filtering, counting, and paging are server-side, so reload a page whenever the library, the
+  // filter, or the page changes.
   $effect(() => {
-    void loadMedia(selectedLibrary)
+    void loadInventory(selectedLibrary, show, page)
   })
 
   async function loadLibraries() {
@@ -42,28 +54,23 @@
     }
   }
 
-  async function loadMedia(filter: number | 'all') {
+  async function loadInventory(library: number | 'all', filter: InventoryFilter, pageNumber: number) {
     loading = true
     error = null
-    selectedId = null
     try {
-      files = await api.media(filter === 'all' ? undefined : filter)
-      await loadVerdicts(filter)
+      const result = await api.inventory({
+        libraryId: library === 'all' ? undefined : library,
+        show: filter,
+        page: pageNumber,
+        pageSize,
+      })
+      rows = result.items
+      total = result.total
+      counts = result.counts
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load media'
+      error = err instanceof Error ? err.message : 'Unable to load inventory'
     } finally {
       loading = false
-    }
-  }
-
-  // Candidates are the same files run through the rules. Best-effort: if this fails the file list
-  // still shows, just without eligibility badges.
-  async function loadVerdicts(filter: number | 'all') {
-    try {
-      const candidates = await api.candidates(filter === 'all' ? undefined : filter)
-      verdicts = Object.fromEntries(candidates.map((c) => [c.mediaFileId, c]))
-    } catch {
-      verdicts = {}
     }
   }
 
@@ -71,10 +78,9 @@
     probingId = file.id
     error = null
     try {
-      const updated = await api.probe(file.id)
-      files = files.map((f) => (f.id === file.id ? updated : f))
-      // A freshly probed file now has an eligibility verdict — refresh the overlay.
-      await loadVerdicts(selectedLibrary)
+      await api.probe(file.id)
+      // A freshly probed file now has a verdict — reload the current page to pick it up.
+      await loadInventory(selectedLibrary, show, page)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Probe failed'
     } finally {
@@ -84,11 +90,6 @@
 
   function resolution(file: MediaFile) {
     return file.width && file.height ? `${file.width}×${file.height}` : '—'
-  }
-
-  // A file is probed (and therefore has a verdict) when a candidate row exists for it.
-  function isProbed(file: MediaFile): boolean {
-    return verdicts[file.id] !== undefined
   }
 
   function selectLibrary(event: Event) {
@@ -130,22 +131,13 @@
     if (e.key === 'Escape' && selectedId !== null) dismissSheet()
   }
 
-  let eligibleCount = $derived(files.filter((f) => verdicts[f.id]?.eligible).length)
-  let skippedCount = $derived(files.filter((f) => verdicts[f.id] && !verdicts[f.id].eligible).length)
-  let unprobedCount = $derived(files.filter((f) => !isProbed(f)).length)
-  let filtered = $derived(
-    show === 'eligible'
-      ? files.filter((f) => verdicts[f.id]?.eligible)
-      : show === 'skipped'
-        ? files.filter((f) => verdicts[f.id] && !verdicts[f.id].eligible)
-        : show === 'unprobed'
-          ? files.filter((f) => !isProbed(f))
-          : files,
-  )
-  const pageSize = 50
-  let pageCount = $derived(Math.max(1, Math.ceil(filtered.length / pageSize)))
+  let eligibleCount = $derived(counts.eligible)
+  let skippedCount = $derived(counts.skipped)
+  let unprobedCount = $derived(counts.unprobed)
+  let pageCount = $derived(Math.max(1, Math.ceil(total / pageSize)))
   let pageStart = $derived((Math.min(page, pageCount) - 1) * pageSize)
-  let paged = $derived(filtered.slice(pageStart, pageStart + pageSize))
+  // The server already filtered and paged; the page's files are exactly what to render.
+  let paged = $derived(files)
   // No auto-selection: selectedFile is null until the user clicks a row.
   let selectedFile = $derived(
     selectedId !== null ? (paged.find((file) => file.id === selectedId) ?? null) : null,
@@ -177,7 +169,7 @@
 
 {#if loading}
   <div class="card p-8 text-center text-slate-400">Loading…</div>
-{:else if files.length > 0}
+{:else if counts.all > 0}
   <!-- Filter tabs and pagination on the same row so both are always visible. -->
   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap gap-2">
@@ -186,7 +178,7 @@
         class:btn-primary={show === 'all'}
         onclick={() => selectFilter('all')}
       >
-        All ({files.length.toLocaleString()})
+        All ({counts.all.toLocaleString()})
       </button>
       <button
         class="btn px-3 py-1 text-xs"
@@ -214,10 +206,10 @@
     <!-- Compact pagination: always visible above the table. -->
     <div class="flex items-center gap-2 text-xs text-slate-400">
       <span>
-        {filtered.length === 0 ? '0' : (pageStart + 1).toLocaleString()}–{Math.min(
+        {total === 0 ? '0' : (pageStart + 1).toLocaleString()}–{Math.min(
           pageStart + pageSize,
-          filtered.length,
-        ).toLocaleString()} of {filtered.length.toLocaleString()}
+          total,
+        ).toLocaleString()} of {total.toLocaleString()}
       </span>
       <button
         class="btn px-2 py-1 text-xs"

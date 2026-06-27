@@ -12,6 +12,14 @@
 
 ### Scalability
 
+- **The Inventory page paginates on the server instead of downloading the whole library.** A new
+  `GET /api/inventory` returns one page of files already paired with their rule verdict, plus the
+  filtered total and the per-filter tallies (all/eligible/skipped/unprobed). The Inventory page now
+  fetches a single page (50 rows) and drives its filter chips, counts, and pager from the server, so a
+  library with thousands of files renders a page at a time rather than loading every row and every
+  candidate into the browser. The rule evaluation stays pure logic over the probed inventory, so it is
+  cheap even for a large library.
+
 - **The inventory list paginates and filters in the database.** `GET /api/media` now accepts
   `status`, `search` (a case-insensitive path substring), and `page`/`pageSize`; the body stays a
   media array (existing callers are unaffected) and the pre-paging total is returned in the
