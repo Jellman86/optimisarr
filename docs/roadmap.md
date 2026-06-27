@@ -67,8 +67,9 @@ the replacement workflow is trustworthy.
      version, environment, settings, per-library and integration summaries, dashboard stats, and the
      failure summary, assembled from non-secret data only (a single pure redaction step keeps provider
      tokens, API keys, and webhook URLs out; verified against real data). `/api/ready` stays small and
-     orchestration-friendly. Remaining: fold in tool/hardware capability output and a few recent
-     captured logs so the bundle is fully self-contained for a support ticket.
+     orchestration-friendly. The bundle also carries tool (FFmpeg/ffprobe) and hardware-encoder
+     capability and the most recent captured ffmpeg logs, so it is self-contained for a support
+     ticket. Done.
 
    - **Hardware validation matrix.** Create a maintained matrix that records CPU,
      NVIDIA NVENC, Intel QSV, VA-API, hardware decode, and GPU metrics validation by

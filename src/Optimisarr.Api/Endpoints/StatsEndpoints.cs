@@ -42,6 +42,8 @@ internal static class StatsEndpoints
             OptimisarrDbContext db,
             SettingsStore settings,
             LifetimeStatsStore lifetimeStats,
+            ToolDetectionService tools,
+            HardwareCapabilityService hardware,
             CancellationToken cancellationToken) =>
         {
             var environment = new DiagnosticsEnvironment(
@@ -50,9 +52,11 @@ internal static class StatsEndpoints
                 configDirectory,
                 PathAccessProbe.CanWrite(configDirectory));
             var version = typeof(Program).Assembly.GetName().Version?.ToString();
+            var toolChecks = await tools.DetectAsync(cancellationToken);
+            var hardwareCapability = await hardware.DetectAsync(cancellationToken, forceRefresh: false);
 
             return Results.Ok(await DiagnosticsQueries.BuildAsync(
-                db, settings, lifetimeStats, environment, version, cancellationToken));
+                db, settings, lifetimeStats, toolChecks, hardwareCapability, environment, version, cancellationToken));
         })
         .WithName("GetDiagnostics");
 

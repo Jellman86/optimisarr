@@ -61,9 +61,10 @@
 ### Diagnostics & observability
 
 - **Admin diagnostics snapshot at `GET /api/diagnostics`.** One authenticated call returns the version,
-  environment (OS, framework, config path and writability), global settings, per-library summaries
-  (with file counts), integration summaries, dashboard stats, and the failure summary — enough to file
-  a support issue from API evidence alone. It is assembled only from non-secret data: provider tokens,
+  environment (OS, framework, config path and writability), global settings, tool (FFmpeg/ffprobe) and
+  hardware-encoder capability, per-library summaries (with file counts), integration summaries,
+  dashboard stats, the failure summary, and the most recent captured ffmpeg logs — enough to file a
+  support issue from API evidence alone. It is assembled only from non-secret data: provider tokens,
   API keys, and webhook URLs (which can embed a secret) are never included, enforced by a single pure
   redaction step and verified against real data. The endpoint is under `/api`, so the admin token
   protects it when one is set.

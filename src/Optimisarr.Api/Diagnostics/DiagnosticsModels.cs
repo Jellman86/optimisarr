@@ -1,5 +1,6 @@
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Stats;
+using Optimisarr.Core.Tools;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Diagnostics;
@@ -17,9 +18,15 @@ internal sealed record DiagnosticsBundle(
     DiagnosticsEnvironment Environment,
     SettingsDto Settings,
     StatsDto Stats,
+    IReadOnlyList<ToolCheckResult> Tools,
+    HardwareCapabilityResult Hardware,
     IReadOnlyList<DiagnosticsLibrary> Libraries,
     DiagnosticsIntegrations Integrations,
-    IReadOnlyList<FailureGroupDto> Failures);
+    IReadOnlyList<FailureGroupDto> Failures,
+    IReadOnlyList<DiagnosticsLog> RecentLogs);
+
+/// <summary>A captured ffmpeg log for a recently failed job — its non-secret stderr only.</summary>
+internal sealed record DiagnosticsLog(int JobId, string? RelativePath, string Log);
 
 internal sealed record DiagnosticsEnvironment(
     string OperatingSystem,

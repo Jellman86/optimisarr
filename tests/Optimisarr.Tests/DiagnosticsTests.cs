@@ -5,6 +5,7 @@ using Optimisarr.Api.Diagnostics;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Tools;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -79,21 +80,28 @@ public sealed class DiagnosticsTests : IDisposable
             await db.SaveChangesAsync();
 
             db.Jobs.Add(new Job { MediaFileId = fileA.Id, LibraryId = library.Id, Status = JobStatus.Failed, ErrorMessage = "Verification failed: Size saving", FinishedAt = DateTimeOffset.UtcNow });
+            db.Jobs.Add(new Job { MediaFileId = fileA.Id, LibraryId = library.Id, Status = JobStatus.Failed, ErrorMessage = "Conversion failed!", ProcessLog = "[mp4 @ 0x1] Could not find tag for codec none\nConversion failed!", FinishedAt = DateTimeOffset.UtcNow });
             db.ArrConnections.Add(new ArrConnection { Name = "Sonarr", Type = ArrConnectionType.Sonarr, BaseUrl = "http://sonarr.local", ApiKey = "TOP-SECRET-KEY", Enabled = true });
             await db.SaveChangesAsync();
         }
 
         await using var readDb = new OptimisarrDbContext(_options);
         var environment = new DiagnosticsEnvironment("TestOS", ".NET", "/config", true);
+        var hardware = new HardwareCapabilityResult([], [], NvidiaRuntimeAvailable: false, DriDeviceAvailable: false, Error: null);
         var bundle = await DiagnosticsQueries.BuildAsync(
-            readDb, new SettingsStore(readDb), new LifetimeStatsStore(readDb), environment, "1.2.3.4", CancellationToken.None);
+            readDb, new SettingsStore(readDb), new LifetimeStatsStore(readDb),
+            toolChecks: [], hardware, environment, "1.2.3.4", CancellationToken.None);
 
         Assert.Equal("1.2.3.4", bundle.Version);
         var film = Assert.Single(bundle.Libraries);
         Assert.Equal("Films", film.Name);
         Assert.Equal(2, film.FileCount);
         Assert.Equal("Sonarr", Assert.Single(bundle.Integrations.ArrConnections).Name);
-        Assert.Equal("SizeSaving", Assert.Single(bundle.Failures).Category);
+        Assert.Contains(bundle.Failures, group => group.Category == "SizeSaving");
+        Assert.Empty(bundle.Tools);                                   // the stub passed in
+        // Only the failed job that captured a log appears, with its ffmpeg stderr.
+        var log = Assert.Single(bundle.RecentLogs);
+        Assert.Contains("Could not find tag", log.Log);
 
         // The whole bundle, serialized, must never carry the Arr API key.
         Assert.DoesNotContain("TOP-SECRET-KEY", JsonSerializer.Serialize(bundle));
