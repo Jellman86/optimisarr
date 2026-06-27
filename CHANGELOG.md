@@ -23,6 +23,11 @@
 
 ### Scalability
 
+- **The Queue table renders one page at a time.** A large queue (thousands of jobs) previously
+  rendered every row into the DOM at once. The table now pages 100 rows at a time with prev/next
+  controls and a "showing X–Y of Z" line; the filter chips still count the whole set, and the
+  live current-work hero is unaffected.
+
 - **The Inventory page paginates on the server instead of downloading the whole library.** A new
   `GET /api/inventory` returns one page of files already paired with their rule verdict, plus the
   filtered total and the per-filter tallies (all/eligible/skipped/unprobed). The Inventory page now

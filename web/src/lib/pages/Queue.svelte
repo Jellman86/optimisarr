@@ -203,6 +203,23 @@
   })
   let visibleJobs = $derived(jobs.filter((j) => matchesFilter(j)))
 
+  // Render the table one page at a time so a large queue (thousands of jobs) stays responsive; the
+  // chips above still count the whole set. The page is clamped, so it stays valid as jobs change.
+  const QUEUE_PAGE_SIZE = 100
+  let queuePage = $state(1)
+  let queuePageCount = $derived(Math.max(1, Math.ceil(visibleJobs.length / QUEUE_PAGE_SIZE)))
+  let queuePageStart = $derived((Math.min(queuePage, queuePageCount) - 1) * QUEUE_PAGE_SIZE)
+  let pagedJobs = $derived(visibleJobs.slice(queuePageStart, queuePageStart + QUEUE_PAGE_SIZE))
+
+  function selectFilter(key: typeof filter) {
+    filter = key
+    queuePage = 1
+  }
+
+  function goToQueuePage(next: number) {
+    queuePage = Math.max(1, Math.min(next, queuePageCount))
+  }
+
   // A hardware encoder is named <codec>_<vendor> (e.g. hevc_nvenc, hevc_qsv, h264_vaapi);
   // anything else (libx265, …) is a CPU/software encoder.
   function isGpuEncoder(encoder: string): boolean {
@@ -483,7 +500,7 @@
           ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
           : 'border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}
           {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-red-600 dark:!text-red-400' : ''}"
-        onclick={() => (filter = key as typeof filter)}
+        onclick={() => selectFilter(key as typeof filter)}
       >
         {label} · {counts[key as keyof typeof counts]}
       </button>
@@ -547,7 +564,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-        {#each visibleJobs as job (job.id)}
+        {#each pagedJobs as job (job.id)}
           {@const checks = parseReport(job)}
           <tr
             class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedJobId === job.id ? 'bg-slate-50 dark:bg-slate-900/40' : ''}"
@@ -651,7 +668,19 @@
     </table>
     </div>
   </div>
-  <p class="mt-2 text-xs text-slate-400">{jobs.length.toLocaleString()} jobs</p>
+  <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+    <span>
+      {(queuePageStart + 1).toLocaleString()}–{Math.min(queuePageStart + QUEUE_PAGE_SIZE, visibleJobs.length).toLocaleString()}
+      of {visibleJobs.length.toLocaleString()}{visibleJobs.length !== jobs.length ? ` (${jobs.length.toLocaleString()} total)` : ''}
+    </span>
+    {#if queuePageCount > 1}
+      <div class="flex items-center gap-2">
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToQueuePage(queuePage - 1)} disabled={queuePage <= 1} aria-label="Previous page">‹</button>
+        <span>p.{Math.min(queuePage, queuePageCount)}/{queuePageCount}</span>
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToQueuePage(queuePage + 1)} disabled={queuePage >= queuePageCount} aria-label="Next page">›</button>
+      </div>
+    {/if}
+  </div>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
     The queue is empty. Enqueue a library's eligible files from the Libraries page.
