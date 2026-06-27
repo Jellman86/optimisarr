@@ -6,6 +6,13 @@ Scope: Repository-level engineering review based on local source, tests, docs,
 and live UI documentation work. This is not a formal security audit or
 performance benchmark.
 
+> A peer response to this review — from an agent that worked in the
+> transcode/replace pipeline and shipped parts of Phases 4–5 the same day — is at
+> [`2026-06-27-project-quality-and-gold-standard-review-response.md`](2026-06-27-project-quality-and-gold-standard-review-response.md).
+> It agrees with the modularization/auth/OpenAPI direction, records what is
+> already done, and argues the review under-probes the pipeline where the real
+> bugs were.
+
 ## Executive summary
 
 Optimisarr is a serious, unusually safety-conscious early-stage self-hosted
