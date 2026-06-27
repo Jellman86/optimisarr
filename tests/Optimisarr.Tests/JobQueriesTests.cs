@@ -206,6 +206,83 @@ public sealed class JobQueriesTests : IDisposable
         Assert.Equal("ContainerIncompatibility", listed.FailureCategory);
     }
 
+    [Fact]
+    public async Task QueryAsync_filters_by_library_category_and_pages_with_a_total()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var a = new Library { Name = "A", Path = "/data/a" };
+            var b = new Library { Name = "B", Path = "/data/b" };
+            db.Libraries.AddRange(a, b);
+            await db.SaveChangesAsync();
+            for (var id = 1; id <= 5; id++)
+            {
+                db.MediaFiles.Add(MediaFile(id <= 4 ? a.Id : b.Id, id));
+            }
+            await db.SaveChangesAsync();
+
+            // Library A: 3 size-saving failures + 1 container failure. Library B: 1 size-saving.
+            db.Jobs.Add(FailedIn(a.Id, id: 1, FailureCategory.SizeSaving));
+            db.Jobs.Add(FailedIn(a.Id, id: 2, FailureCategory.SizeSaving));
+            db.Jobs.Add(FailedIn(a.Id, id: 3, FailureCategory.SizeSaving));
+            db.Jobs.Add(FailedIn(a.Id, id: 4, FailureCategory.ContainerIncompatibility));
+            db.Jobs.Add(FailedIn(b.Id, id: 5, FailureCategory.SizeSaving));
+            await db.SaveChangesAsync();
+
+            await using var readDb = new OptimisarrDbContext(_options);
+            // Library A + size-saving = 3 matches; page size 2 returns the first 2 but reports total 3.
+            var result = await JobQueries.QueryAsync(readDb, new JobQuery
+            {
+                LibraryId = a.Id,
+                Category = FailureCategory.SizeSaving,
+                PageSize = 2,
+                Page = 1
+            }, CancellationToken.None);
+
+            Assert.Equal(3, result.Total);
+            Assert.Equal(2, result.Items.Count);
+            Assert.All(result.Items, job => Assert.Equal(a.Id, job.LibraryId));
+
+            var page2 = await JobQueries.QueryAsync(readDb, new JobQuery
+            {
+                LibraryId = a.Id,
+                Category = FailureCategory.SizeSaving,
+                PageSize = 2,
+                Page = 2
+            }, CancellationToken.None);
+            Assert.Single(page2.Items);
+        }
+    }
+
+    [Fact]
+    public async Task QueryAsync_filters_by_a_finished_date_range()
+    {
+        var cutoff = new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, 1));
+            db.MediaFiles.Add(MediaFile(library.Id, 2));
+            await db.SaveChangesAsync();
+
+            var old = Failed(id: 1, "Verification failed: Size saving");
+            old.FinishedAt = cutoff.AddDays(-2);
+            var recent = Failed(id: 2, "Verification failed: Size saving");
+            recent.FinishedAt = cutoff.AddDays(2);
+            db.Jobs.AddRange(old, recent);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var result = await JobQueries.QueryAsync(
+            readDb, new JobQuery { Since = cutoff }, CancellationToken.None);
+
+        Assert.Equal(2, Assert.Single(result.Items).Id);   // only the job finished after the cutoff
+        Assert.Equal(1, result.Total);
+    }
+
     private static MediaFile MediaFile(int libraryId, int id) => new()
     {
         Id = id,
@@ -232,6 +309,18 @@ public sealed class JobQueriesTests : IDisposable
         Priority = 1,
         Status = JobStatus.Failed,
         ErrorMessage = error,
+        EnqueuedAt = DateTimeOffset.UtcNow,
+        FinishedAt = DateTimeOffset.UtcNow
+    };
+
+    private static Job FailedIn(int libraryId, int id, FailureCategory category) => new()
+    {
+        Id = id,
+        MediaFileId = id,
+        LibraryId = libraryId,
+        Priority = 1,
+        Status = JobStatus.Failed,
+        FailureCategory = category,
         EnqueuedAt = DateTimeOffset.UtcNow,
         FinishedAt = DateTimeOffset.UtcNow
     };

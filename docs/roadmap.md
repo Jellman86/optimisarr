@@ -37,7 +37,10 @@ the replacement workflow is trustworthy.
    - **Failures UI: done.** A Failures tab on the Queue page groups failed jobs by reason (count,
      description, recent samples) with an inline "View log" drill-in to the captured ffmpeg log —
      deliberately a Queue tab, not a sidebar entry, to keep job views together and the sidebar lean.
-   - **Remaining: library/reason/date filters and pagination** on the job and failure queries.
+   - **Filters and pagination: done.** `GET /api/jobs` takes `libraryId`, `category`, `since`/`until`,
+     and `page`/`pageSize` (total returned in the `X-Total-Count` header; body unchanged); the failure
+     summary takes a `libraryId`. SQL-translatable filters run in the database, the date filter and
+     ordering in memory (SQLite can't order/compare a `DateTimeOffset`). This completes the item.
    The classification then feeds back into the dashboards and reports rather than the eligibility
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.
@@ -68,7 +71,7 @@ the replacement workflow is trustworthy.
 - **Preview clip mode: done.** Long video previews encode a 60-second segment from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the compare
   report as segment-only so VMAF/loudness/duration/size checks are interpreted correctly.
-- **Dry-run mode: done.** A global Settings → Replacement switch lets operators scan,
+- **Dry-run mode: done.** A global Settings → General → Replacement switch lets operators scan,
   queue, transcode, verify, and preview normally while blocking manual replacement,
   auto-replace, and quarantine purge. Verified outputs stop at Ready to replace for
   review; rollback remains available for existing replacements because it restores

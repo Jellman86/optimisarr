@@ -4,6 +4,13 @@
 
 ### Diagnostics & observability
 
+- **The job and failure queries take filters and paging.** `GET /api/jobs` now accepts `libraryId`,
+  `category` (a failure category), and `since`/`until` (bounding a job's finished/enqueued time), plus
+  `page` and `pageSize`; the body stays a `JobDto` array and the pre-paging total is returned in the
+  `X-Total-Count` header, so existing callers are unaffected. `GET /api/jobs/failures` accepts a
+  `libraryId` to scope the summary to one library. SQL-translatable filters run in the database; the
+  date filter and ordering run in memory (SQLite can't order or compare a `DateTimeOffset`).
+
 - **The Queue page has a Failures tab.** Rather than a new sidebar entry, failed jobs are grouped by
   reason on a tab beside the live queue, so job views stay in one place and the sidebar stays lean.
   Each group shows its plain-language reason, a count, and recent jobs; "View log" expands the
@@ -82,7 +89,7 @@
 
 ### Release hardening
 
-- **Dry-run mode is now available from Settings → Replacement.** Optimisarr can still scan,
+- **Dry-run mode is now available from Settings → General → Replacement.** Optimisarr can still scan,
   queue, transcode, verify, and preview normally, but manual replacement, auto-replace, and
   quarantine purge are blocked while dry-run mode is on. Verified outputs stop at
   `ReadyToReplace` for review, and rollback remains available for existing replacements because it
@@ -789,7 +796,7 @@ recoverable; this prevents wasted/incorrect work):
   silently clobbering the existing file. Originals are never affected either way. Schema column
   `Library.MoveOverwrite` via migration `AddLibraryMoveOverwrite`, wired through the request
   parser, DTO, and config import/export. (The trash/quarantine directory is configurable via
-  `OPTIMISARR_TRASH_DIR`, and quarantine retention via Settings → Replacement.)
+  `OPTIMISARR_TRASH_DIR`, and quarantine retention via Settings → General → Replacement.)
 - **Sliders now say exactly what they select.** The per-library video and image preset sliders show
   a "Selects: …" badge row with the concrete codec/container/CRF (video) or format/quality (image)
   the current position resolves to — accounting for any Advanced overrides — so the slider is no

@@ -1182,9 +1182,23 @@ app.MapGet("/api/preview/{jobId:int}/content", async (
 })
 .WithName("GetPreviewContent");
 
-app.MapGet("/api/jobs", async (string? status, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+// The queue feed and the diagnostics list. All query params are optional: status, libraryId, and
+// category (a FailureCategory) narrow the set; since/until (ISO-8601) bound a job's finished/enqueued
+// time; page/pageSize page the result. The body stays a JobDto array (so existing callers are
+// unaffected); the pre-paging total is returned in the X-Total-Count header.
+app.MapGet("/api/jobs", async (
+    string? status,
+    int? libraryId,
+    string? category,
+    DateTimeOffset? since,
+    DateTimeOffset? until,
+    int? page,
+    int? pageSize,
+    HttpResponse response,
+    OptimisarrDbContext db,
+    CancellationToken cancellationToken) =>
 {
-    JobStatus? wanted = null;
+    JobStatus? wantedStatus = null;
     if (!string.IsNullOrWhiteSpace(status))
     {
         if (!Enum.TryParse<JobStatus>(status, ignoreCase: true, out var parsed))
@@ -1192,18 +1206,41 @@ app.MapGet("/api/jobs", async (string? status, OptimisarrDbContext db, Cancellat
             return Results.BadRequest(
                 $"Unknown job status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<JobStatus>())}.");
         }
-        wanted = parsed;
+        wantedStatus = parsed;
     }
 
-    return Results.Ok(await JobQueries.ListAsync(db, cancellationToken, wanted));
+    FailureCategory? wantedCategory = null;
+    if (!string.IsNullOrWhiteSpace(category))
+    {
+        if (!Enum.TryParse<FailureCategory>(category, ignoreCase: true, out var parsed))
+        {
+            return Results.BadRequest(
+                $"Unknown failure category '{category}'. Valid values: {string.Join(", ", Enum.GetNames<FailureCategory>())}.");
+        }
+        wantedCategory = parsed;
+    }
+
+    var result = await JobQueries.QueryAsync(db, new JobQuery
+    {
+        Status = wantedStatus,
+        LibraryId = libraryId,
+        Category = wantedCategory,
+        Since = since,
+        Until = until,
+        Page = page ?? 1,
+        PageSize = pageSize ?? 0
+    }, cancellationToken);
+
+    response.Headers["X-Total-Count"] = result.Total.ToString();
+    return Results.Ok(result.Items);
 })
 .WithName("ListJobs");
 
 // Diagnostics: failed jobs grouped by classified reason (size-saving, container incompatibility,
 // replacement collision, …) with counts and recent samples, so "why are jobs failing?" is answerable
-// from the API without reading container logs.
-app.MapGet("/api/jobs/failures", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
-    Results.Ok(await JobQueries.SummariseFailuresAsync(db, cancellationToken)))
+// from the API without reading container logs. Optionally scoped to one library.
+app.MapGet("/api/jobs/failures", async (int? libraryId, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+    Results.Ok(await JobQueries.SummariseFailuresAsync(db, cancellationToken, libraryId)))
 .WithName("JobFailureSummary");
 
 // The captured ffmpeg log (non-progress stderr) for a failed job, as plain text, so the full reason
