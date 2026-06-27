@@ -5,10 +5,12 @@
 ### Maintainability
 
 - **`Program.cs` is being split into endpoint modules.** The settings, integration (activity
-  watchers, notification targets, Arr connections, provider connect), and exclusion endpoints now live
-  in focused `Endpoints/*.cs` extension methods mapped from a slimmer `Program.cs` (1960 → 1356 lines
-  so far). This is a pure move — no route, name, or behaviour change — verified by the byte-identical
-  generated OpenAPI document and the full test suite. Further groups follow.
+  watchers, notification targets, Arr connections, provider connect), exclusion, health, system,
+  library, and stats endpoints now live in focused `Endpoints/*.cs` extension methods mapped from a
+  slimmer `Program.cs` (1960 → 986 lines so far; the few endpoints that need startup locals — the
+  admin token, the config directory — take them as method parameters). This is a pure move — no route,
+  name, or behaviour change — verified by the byte-identical generated OpenAPI document and the full
+  test suite. The media/queue/replacement groups (which share a file-serving helper) follow.
 
 ### Scalability
 
