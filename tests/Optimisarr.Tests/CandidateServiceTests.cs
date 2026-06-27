@@ -165,6 +165,36 @@ public sealed class CandidateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Skips_an_original_whose_optimised_copy_already_sits_in_the_library()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            // The h264 original is rule-eligible, but its hevc re-container produced by an earlier
+            // pass is still beside it (same stem, marked). It must not be queued to transcode again.
+            db.MediaFiles.Add(Probed(library.Id, "Movie.mkv", videoCodec: "h264"));
+            db.MediaFiles.Add(Probed(
+                library.Id, "Movie.mp4", videoCodec: "hevc", container: "mov,mp4,m4a", optimisedMarker: "0.1.0.0"));
+            // A lone original with no optimised sibling stays eligible.
+            db.MediaFiles.Add(Probed(library.Id, "Other.mkv", videoCodec: "h264"));
+            await db.SaveChangesAsync();
+        }
+
+        var results = await EvaluateAsync(libraryId: null);
+
+        var original = Single(results, "Movie.mkv");
+        Assert.False(original.Eligible);
+        Assert.Contains("optimised copy already exists", original.Reason);
+        // The marked copy itself is skipped on its own merits (already hevc), never held back as a
+        // sibling of itself, and the unrelated original is still eligible.
+        Assert.False(Single(results, "Movie.mp4").Eligible);
+        Assert.True(Single(results, "Other.mkv").Eligible);
+    }
+
+    [Fact]
     public async Task Ignores_files_that_have_not_been_probed()
     {
         await using (var db = new OptimisarrDbContext(_options))
@@ -274,18 +304,21 @@ public sealed class CandidateServiceTests : IDisposable
     private static Candidate Single(IReadOnlyList<Candidate> results, string relativePath) =>
         results.Single(candidate => candidate.RelativePath == relativePath);
 
-    private static MediaFile Probed(int libraryId, string relativePath, string videoCodec, bool isHdr = false) => new()
+    private static MediaFile Probed(
+        int libraryId, string relativePath, string videoCodec, bool isHdr = false,
+        string? container = "matroska,webm", string? optimisedMarker = null) => new()
     {
         LibraryId = libraryId,
         Path = $"/data/films/{relativePath}",
         RelativePath = relativePath,
         SizeBytes = 5_000_000_000,
         Status = MediaFileStatus.Probed,
-        Container = "matroska,webm",
+        Container = container,
         VideoCodec = videoCodec,
         Width = 1920,
         Height = 1080,
         IsHdr = isHdr,
+        OptimisedMarker = optimisedMarker,
         ProbedAt = DateTimeOffset.UtcNow
     };
 

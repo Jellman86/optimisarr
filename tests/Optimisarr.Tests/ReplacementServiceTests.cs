@@ -91,6 +91,9 @@ public sealed class ReplacementServiceTests : IDisposable
 
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
         Assert.Contains("collide", result.Message);
+        // The occupant will never disappear on its own, so retrying every reconcile cycle would
+        // loop forever; the failure is permanent so the dispatcher can fail the job once.
+        Assert.True(result.Permanent);
         // The original is untouched (never quarantined) and the occupant is intact.
         Assert.True(File.Exists(originalPath));
         Assert.Equal("ORIGINAL-TIF", File.ReadAllText(originalPath));
@@ -224,6 +227,8 @@ public sealed class ReplacementServiceTests : IDisposable
         });
 
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        // A mid-move I/O failure can clear (disk frees up, permissions fixed), so it stays retryable.
+        Assert.False(result.Permanent);
         Assert.True(File.Exists(originalPath));
         Assert.Equal("ORIGINAL-DATA", File.ReadAllText(originalPath));   // the protected original, not the remnant
         Assert.Empty(new OptimisarrDbContext(_options).Replacements);    // nothing recorded
@@ -244,6 +249,9 @@ public sealed class ReplacementServiceTests : IDisposable
 
         Assert.Equal(ReplacementResultKind.Failed, result.Kind);
         Assert.Contains("missing", result.Message);
+        // The output won't reappear, so this is permanent: the dispatcher fails the job once
+        // instead of reconciling it forever (the loop that stranded job 3327).
+        Assert.True(result.Permanent);
         Assert.True(File.Exists(originalPath));
         Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
         Assert.Empty(new OptimisarrDbContext(_options).Replacements);

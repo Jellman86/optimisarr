@@ -12,7 +12,43 @@ the replacement workflow is trustworthy.
   notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
   and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
   paid external services.
+
+2. **First-class diagnostics & observability API** — make "why did this fail?" answerable
+   from the API alone, without SSH-ing the host or reading container logs. Today failed-job
+   detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
+   verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
+   - **Filtered, paged job queries** — `GET /api/jobs?status=Failed` (and by library, reason,
+     date) with pagination, so callers don't fetch every row and filter client-side.
+   - **Failure aggregation endpoint** — group failures by classified reason (e.g. *container
+     incompatibility*, *size-saving gate*, *A/V sync*, *source missing*) with counts and
+     sample jobs, reusing the existing `FfmpegErrorInterpreter` so the classes are shared
+     between UI and API.
+   - **Full process-log capture** — persist the complete ffmpeg stdout/stderr per attempt and
+     expose it (`GET /api/jobs/{id}/log`), instead of only a truncated `ErrorMessage`. The
+     rich stderr that actually explains a failure currently lives only in container logs.
+   - **Structured failure category on `Job`** — a stored reason enum (migration-backed) so a
+     failure's *class* is queryable, not just free text.
+   This also unblocks smarter eligibility: classified *size-saving* failures show sources that
+   are already low-bitrate (e.g. ~1.6 Mbps 1080p h264) and should be skipped before a job is
+   queued, rather than transcoded and rejected by the gate. (A first slice of "skip before we
+   waste an encode" has shipped — see *already-optimised sibling skip* below — leaving the
+   low-bitrate heuristic as the remaining piece.)
+
 **Recently shipped (2026-06-26).**
+
+- **Already-optimised sibling skip: done.** When an Optimisarr-produced output (a marked re-container,
+  e.g. an hevc `.mp4`) still sits beside its original (e.g. the h264 `.mkv`), the original is now
+  skipped at eligibility ("An optimised copy already exists alongside this file") instead of being
+  transcoded again only to collide at replacement time. Detected purely from the probed inventory
+  (same library, same path stem, marked sibling) via the pure `OptimisedSiblingEvaluator` overlay.
+- **Permanently blocked auto-replace no longer loops: done.** A `ReadyToReplace` job that can never be
+  applied (destination occupied by a different optimised file, verified output gone, or original gone)
+  is now failed once rather than retried every reconcile cycle. Because it becomes terminally failed,
+  the "previously failed" overlay and auto-exclusion then stop the file being re-queued.
+- **MP4 container compatibility fix: done.** A re-encode/remux to an MP4-family output now drops
+  Matroska attachment (`-0:t`) and data (`-0:d`) streams, which MP4 cannot mux. Previously a source
+  carrying a font/cover attachment (reported by ffmpeg as "codec none in stream #N") aborted the whole
+  job before a frame was written; the original was always left untouched, but the file never optimised.
 
 - **Preview clip mode: done.** Long video previews encode a 60-second segment from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the compare

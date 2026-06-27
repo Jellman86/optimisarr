@@ -19,7 +19,11 @@ public enum ReplacementResultKind
 public sealed record ReplacementActionResult(
     ReplacementResultKind Kind,
     string? Message,
-    ReplacementEntity? Replacement)
+    ReplacementEntity? Replacement,
+    // A permanent failure can never succeed on a later retry (the verified output is gone, the
+    // original is gone, or a different optimised file permanently occupies the destination). The
+    // dispatcher fails such a job once rather than reconciling it on every cycle forever.
+    bool Permanent = false)
 {
     public static ReplacementActionResult Ok(ReplacementEntity replacement) =>
         new(ReplacementResultKind.Success, null, replacement);
@@ -30,8 +34,8 @@ public sealed record ReplacementActionResult(
     public static ReplacementActionResult Invalid(string message) =>
         new(ReplacementResultKind.Invalid, message, null);
 
-    public static ReplacementActionResult Failed(string message) =>
-        new(ReplacementResultKind.Failed, message, null);
+    public static ReplacementActionResult Failed(string message, bool permanent = false) =>
+        new(ReplacementResultKind.Failed, message, null, permanent);
 }
 
 /// <summary>
@@ -156,12 +160,14 @@ public sealed class ReplacementService
 
         if (string.IsNullOrEmpty(job.WorkOutputPath) || !File.Exists(job.WorkOutputPath))
         {
-            return ReplacementActionResult.Failed("The verified output is missing from the work directory.");
+            return ReplacementActionResult.Failed(
+                "The verified output is missing from the work directory.", permanent: true);
         }
 
         if (!File.Exists(media.Path))
         {
-            return ReplacementActionResult.Failed($"The original file no longer exists: {media.Path}");
+            return ReplacementActionResult.Failed(
+                $"The original file no longer exists: {media.Path}", permanent: true);
         }
 
         var plan = ReplacementPlanner.Plan(media.Path, job.WorkOutputPath, _trashRoot, DateTimeOffset.UtcNow);
@@ -175,7 +181,8 @@ public sealed class ReplacementService
         {
             return ReplacementActionResult.Failed(
                 $"Replacement would collide with an existing file at {plan.FinalPath}. " +
-                "Another optimised file already occupies that path, so the original was left untouched.");
+                "Another optimised file already occupies that path, so the original was left untouched.",
+                permanent: true);
         }
 
         // Replacement moves the original into quarantine and the optimised file into the

@@ -228,19 +228,16 @@ public sealed class QueueDispatcher(
                 replaced++;
                 logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace, reconciled).", jobId);
             }
-            else if (result.Kind == ReplacementResultKind.Failed
-                && await WorkOutputMissingAsync(jobId, cancellationToken))
+            else if (result.Permanent)
             {
-                // A ReadyToReplace job whose verified output has vanished from /work can never be
-                // replaced, so retrying it every cycle would loop forever and bury real warnings.
-                // Fail it once. Replacement bails before quarantining when the output is missing, so
-                // the original is untouched — failing here loses nothing and tells the user to re-run.
-                await CompleteAsync(jobId, JobStatus.Failed, error:
-                    "The verified output is no longer in the work directory, so the original could not be "
-                    + "replaced. Re-run the optimisation to produce a fresh output.");
+                // A permanently blocked replacement (the verified output vanished, the original is
+                // gone, or a different optimised file occupies the destination) can never succeed on
+                // retry. Reconciling it every cycle would loop forever and bury real warnings, so fail
+                // it once. Replacement leaves the original untouched in each of these cases.
+                await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
                 logger.LogWarning(
-                    "Job {JobId}: verified output missing from the work directory; marked Failed (re-run to retry).",
-                    jobId);
+                    "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
+                    jobId, result.Kind, result.Message);
             }
             else
             {
@@ -254,20 +251,6 @@ public sealed class QueueDispatcher(
         {
             await NotifyAsync();
         }
-    }
-
-    // True when a job's verified output is no longer on disk under /work — an unrecoverable state for
-    // replacement (the output is gone), distinct from a transient failure worth retrying.
-    private async Task<bool> WorkOutputMissingAsync(int jobId, CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-        var path = await db.Jobs
-            .AsNoTracking()
-            .Where(job => job.Id == jobId)
-            .Select(job => job.WorkOutputPath)
-            .FirstOrDefaultAsync(cancellationToken);
-        return string.IsNullOrEmpty(path) || !File.Exists(path);
     }
 
     private async Task DispatchAsync(CancellationToken stoppingToken)
@@ -922,6 +905,15 @@ public sealed class QueueDispatcher(
             if (result.Kind == ReplacementResultKind.Success)
             {
                 logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace).", jobId);
+            }
+            else if (result.Permanent)
+            {
+                // This replacement can never succeed (see ReplacementActionResult.Permanent), so fail
+                // the job now rather than leaving it ReadyToReplace for the reconcile sweep to retry.
+                await CompleteAsync(jobId, JobStatus.Failed, error: result.Message);
+                logger.LogWarning(
+                    "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
+                    jobId, result.Kind, result.Message);
             }
             else
             {

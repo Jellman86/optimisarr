@@ -422,6 +422,54 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Drops_attachment_and_data_streams_for_an_mp4_video_output()
+    {
+        // A Matroska source can carry a font/cover attachment (codec "none") or a data stream.
+        // MP4/MOV cannot mux those: ffmpeg reports "Could not find tag for codec none" and aborts
+        // the whole job before writing a frame. They must be excluded so the file still transcodes.
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+
+        Assert.Contains(("-map", "-0:t"), MapPairs(args));
+        Assert.Contains(("-map", "-0:d"), MapPairs(args));
+        // The exclusions follow the blanket "-map 0" so they actually remove those streams.
+        Assert.True(IndexOf(args, "0") < ((List<string>)args).IndexOf("-0:t"));
+    }
+
+    [Fact]
+    public void Keeps_attachment_and_data_streams_for_a_matroska_video_output()
+    {
+        // Matroska can hold attachments and data streams, so the blanket copy keeps them.
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.DoesNotContain("-0:t", args);
+        Assert.DoesNotContain("-0:d", args);
+    }
+
+    [Fact]
+    public void Drops_attachment_and_data_streams_for_an_mp4_remux()
+    {
+        // A remux from .mkv to .mp4 hits the same wall, so the exclusion must apply there too.
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: null) with { OutputPath = "/work/Movie.opt.mp4" });
+
+        Assert.Contains(("-map", "-0:t"), MapPairs(args));
+        Assert.Contains(("-map", "-0:d"), MapPairs(args));
+    }
+
+    // Pairs each "-map" with the argument that follows it, so a negative-mapping exclusion can be
+    // asserted unambiguously (there are several "-map" arguments in a command).
+    private static IEnumerable<(string, string)> MapPairs(IReadOnlyList<string> args)
+    {
+        for (var i = 0; i < args.Count - 1; i++)
+        {
+            if (args[i] == "-map")
+            {
+                yield return (args[i], args[i + 1]);
+            }
+        }
+    }
+
+    [Fact]
     public void Remux_only_copies_all_streams_and_never_re_encodes()
     {
         var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null));

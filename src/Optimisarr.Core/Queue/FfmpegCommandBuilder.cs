@@ -145,6 +145,18 @@ public static class FfmpegCommandBuilder
         args.Add("-map");
         args.Add("0");
 
+        // MP4/MOV cannot mux Matroska attachments (fonts/cover-art files) or data streams: ffmpeg
+        // reports them as "codec none", fails to write the header, and aborts the whole job before a
+        // single frame is produced. Exclude them for an MP4-family output so a source carrying one
+        // still transcodes. Matroska holds them, so the blanket "-c copy" below keeps them there.
+        if (IsMp4Family(spec.OutputPath))
+        {
+            args.Add("-map");
+            args.Add("-0:t");
+            args.Add("-map");
+            args.Add("-0:d");
+        }
+
         if (spec.VideoCodec is null)
         {
             // Remux only: copy every stream into the new container, no re-encode.

@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Eligibility
+
+- **A file whose optimised copy already sits beside it is no longer re-transcoded.** When an
+  Optimisarr-produced output (e.g. an hevc `.mp4`) remains next to its original (e.g. the h264
+  `.mkv`) — left by a cleared replacement history, a move-on-complete, or a separate re-import — the
+  original was still rule-eligible and would be transcoded again, only to be refused at replacement
+  time because the destination is occupied. The candidate and enqueue paths now detect the marked
+  sibling (same library, same path stem) and skip the original up front with the reason "An optimised
+  copy already exists alongside this file", so no GPU/CPU time is spent on an encode that can never be
+  applied. Only the unmarked original is held back; the optimised copy itself is unaffected.
+
+### Replacement reliability
+
+- **A permanently blocked auto-replace now fails the job once instead of retrying forever.** When a
+  verified `ReadyToReplace` job can never be applied — the destination is already occupied by a
+  different optimised file, the verified output has vanished from `/work`, or the original is gone —
+  the reconcile sweep marked it with a warning and left it `ReadyToReplace`, so it was re-attempted on
+  every cycle and flooded the logs. These unrecoverable outcomes are now classified as permanent and
+  the job is failed once. The original is still never touched. Because the job becomes terminally
+  failed, the file is also skipped by the "previously failed" overlay and counts toward auto-exclusion,
+  so it is no longer re-queued and re-transcoded on each scan.
+
+### Transcode reliability
+
+- **MP4 outputs no longer abort on Matroska attachment or data streams.** A re-encode or remux to an
+  MP4-family container (`.mp4`/`.m4v`/`.mov`) now excludes attachment (`-0:t`) and data (`-0:d`)
+  streams, which MP4 cannot mux. Previously a source carrying an embedded font or cover-art
+  attachment — reported by ffmpeg as `Could not find tag for codec none in stream #N` — failed the
+  whole job before a frame was written. The original was always left untouched, but the file could
+  never be optimised. Matroska outputs still keep these streams via the blanket stream copy.
+
 ### Preview clip mode
 
 - **Video previews now verify the same middle sample they encode.** Long video previews still encode

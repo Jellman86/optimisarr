@@ -49,6 +49,15 @@ public sealed class CandidateService(OptimisarrDbContext db)
 
         var history = await LoadHistoryAsync(libraryId, cancellationToken);
 
+        // Stems (a relative path minus its extension) that already have an Optimisarr-produced output
+        // in the same library, so a still-eligible original sitting beside its optimised copy isn't
+        // transcoded again only to collide with that copy at replacement time. Keyed per library so a
+        // same-named title in another library never cross-matches.
+        var optimisedStems = files
+            .Where(file => !string.IsNullOrEmpty(file.OptimisedMarker))
+            .Select(file => (file.LibraryId, Stem: StemOf(file.RelativePath)))
+            .ToHashSet();
+
         // Excluded files are never offered, whatever the rules say. Keyed by path so the exclusion
         // holds across re-scans and is independent of any job history.
         var excludedPaths = await db.Exclusions
@@ -86,6 +95,13 @@ public sealed class CandidateService(OptimisarrDbContext db)
             // overlay then stops a file we've already optimised (or that failed) for its
             // current version being offered again.
             var decision = CandidateEvaluator.Evaluate(media, rules);
+
+            // An unmarked original whose optimised sibling is already on disk is skipped before any
+            // transcode; only the original (no marker) is held back, never the marked copy itself.
+            var hasOptimisedSibling = string.IsNullOrEmpty(file.OptimisedMarker)
+                && optimisedStems.Contains((file.LibraryId, StemOf(file.RelativePath)));
+            decision = OptimisedSiblingEvaluator.Apply(decision, hasOptimisedSibling);
+
             decision = OptimisationHistoryEvaluator.Apply(
                 decision,
                 history.GetValueOrDefault(file.Id, OptimisationHistory.None),
@@ -138,6 +154,12 @@ public sealed class CandidateService(OptimisarrDbContext db)
     // is the file's primary audio codec, which drives audio eligibility.
     private static string? PrimaryAudioCodec(string? audioCodecs) =>
         string.IsNullOrWhiteSpace(audioCodecs) ? null : audioCodecs.Split(',')[0].Trim();
+
+    // A relative path minus its final extension, so an original and its optimised re-container
+    // (e.g. "Show - S01E01.mkv" and "Show - S01E01.mp4") share one key. GetExtension returns ""
+    // when there is none, leaving the path unchanged.
+    private static string StemOf(string relativePath) =>
+        relativePath[..^Path.GetExtension(relativePath).Length];
 
     /// <summary>
     /// The most recent successful and failed job finish times per media file, used to
