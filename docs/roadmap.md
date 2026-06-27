@@ -17,17 +17,19 @@ the replacement workflow is trustworthy.
    from the API alone, without SSH-ing the host or reading container logs. Today failed-job
    detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
    verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
-   - **Filtered, paged job queries** — `GET /api/jobs?status=Failed` (and by library, reason,
-     date) with pagination, so callers don't fetch every row and filter client-side.
-   - **Failure aggregation endpoint** — group failures by classified reason (e.g. *container
-     incompatibility*, *size-saving gate*, *A/V sync*, *source missing*) with counts and
-     sample jobs, reusing the existing `FfmpegErrorInterpreter` so the classes are shared
-     between UI and API.
-   - **Full process-log capture** — persist the complete ffmpeg stdout/stderr per attempt and
-     expose it (`GET /api/jobs/{id}/log`), instead of only a truncated `ErrorMessage`. The
-     rich stderr that actually explains a failure currently lives only in container logs.
-   - **Structured failure category on `Job`** — a stored reason enum (migration-backed) so a
-     failure's *class* is queryable, not just free text.
+   - **Status-filtered job queries: done.** `GET /api/jobs?status=Failed` narrows server-side so
+     callers don't fetch every row and filter client-side. (Library/reason/date filters and
+     pagination remain to add.)
+   - **Failure aggregation endpoint: done.** `GET /api/jobs/failures` groups failures by classified
+     reason (size-saving gate, container incompatibility, image-based subtitles, replacement
+     collision, source/output missing, verification, other) with counts and recent sample jobs,
+     largest first. Backed by a pure, shared `FailureClassifier` so the buckets drive both the API
+     and (later) the UI.
+   - **Full process-log capture: still to do.** Persist the complete ffmpeg stdout/stderr per attempt
+     and expose it (`GET /api/jobs/{id}/log`), instead of only a truncated `ErrorMessage`. The rich
+     stderr that actually explains a failure currently lives only in container logs.
+   - **Structured failure category on `Job`: still to do.** A stored reason enum (migration-backed)
+     so a failure's *class* is queryable directly, rather than re-classified from text on read.
    The classification then feeds back into the dashboards and reports rather than the eligibility
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.

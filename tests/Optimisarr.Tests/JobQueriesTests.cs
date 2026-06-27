@@ -98,6 +98,66 @@ public sealed class JobQueriesTests : IDisposable
         Assert.Equal(1, Assert.Single(jobs).Id);
     }
 
+    [Fact]
+    public async Task ListAsync_narrows_to_a_single_status_when_one_is_given()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            db.MediaFiles.Add(MediaFile(library.Id, id: 2));
+            db.MediaFiles.Add(MediaFile(library.Id, id: 3));
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(Failed(id: 1, "Verification failed: Size saving"));
+            db.Jobs.Add(Failed(id: 2, "Verification failed: A/V sync"));
+            db.Jobs.Add(Job(id: 3, priority: 1, enqueuedAt: DateTimeOffset.UtcNow));   // still Queued
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var failed = await JobQueries.ListAsync(readDb, CancellationToken.None, JobStatus.Failed);
+
+        Assert.Equal(new[] { 1, 2 }, failed.Select(job => job.Id).OrderBy(id => id));
+        Assert.All(failed, job => Assert.Equal("Failed", job.Status));
+    }
+
+    [Fact]
+    public async Task SummariseFailuresAsync_groups_failures_by_classified_reason_largest_first()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            for (var id = 1; id <= 4; id++)
+            {
+                db.MediaFiles.Add(MediaFile(library.Id, id));
+            }
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(Failed(id: 1, "Verification failed: Size saving"));
+            db.Jobs.Add(Failed(id: 2, "Verification failed: Size saving"));
+            db.Jobs.Add(Failed(id: 3, "Could not find tag for codec none in stream #37"));
+            db.Jobs.Add(Job(id: 4, priority: 1, enqueuedAt: DateTimeOffset.UtcNow));   // not failed, ignored
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var groups = await JobQueries.SummariseFailuresAsync(readDb, CancellationToken.None);
+
+        Assert.Equal(2, groups.Count);
+        // Largest group first: two size-saving failures, then one container-incompatibility.
+        Assert.Equal("SizeSaving", groups[0].Category);
+        Assert.Equal(2, groups[0].Count);
+        Assert.Equal(2, groups[0].Samples.Count);
+        Assert.Equal("ContainerIncompatibility", groups[1].Category);
+        Assert.Equal(1, groups[1].Count);
+        Assert.False(string.IsNullOrWhiteSpace(groups[0].Description));
+    }
+
     private static MediaFile MediaFile(int libraryId, int id) => new()
     {
         Id = id,
@@ -115,6 +175,17 @@ public sealed class JobQueriesTests : IDisposable
         Priority = priority,
         Status = JobStatus.Queued,
         EnqueuedAt = enqueuedAt
+    };
+
+    private static Job Failed(int id, string error) => new()
+    {
+        Id = id,
+        MediaFileId = id,
+        Priority = 1,
+        Status = JobStatus.Failed,
+        ErrorMessage = error,
+        EnqueuedAt = DateTimeOffset.UtcNow,
+        FinishedAt = DateTimeOffset.UtcNow
     };
 
     public void Dispose() => _connection.Dispose();

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Diagnostics & observability
+
+- **Failed transcodes are now answerable from the API.** `GET /api/jobs` accepts a `status` filter
+  (e.g. `?status=Failed`) so callers no longer fetch every job and filter client-side, and a new
+  `GET /api/jobs/failures` groups failed jobs by a classified reason — size-saving gate, container
+  incompatibility, image-based subtitles, replacement collision, source/output missing, verification,
+  or other — with a count and recent samples (job id, path, error) per group, largest first. The
+  classification is a pure, shared `FailureClassifier`, so the same buckets drive the API and, in
+  future, the UI. This makes "why are jobs failing?" answerable without reading container logs. (Full
+  per-attempt ffmpeg log capture and a stored failure-category column are the planned next steps.)
+
 ### Eligibility
 
 - **Sources already too efficiently encoded to shrink are skipped before transcoding.** A video whose

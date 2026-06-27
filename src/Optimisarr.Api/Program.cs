@@ -1182,9 +1182,29 @@ app.MapGet("/api/preview/{jobId:int}/content", async (
 })
 .WithName("GetPreviewContent");
 
-app.MapGet("/api/jobs", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
-    Results.Ok(await JobQueries.ListAsync(db, cancellationToken)))
+app.MapGet("/api/jobs", async (string? status, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    JobStatus? wanted = null;
+    if (!string.IsNullOrWhiteSpace(status))
+    {
+        if (!Enum.TryParse<JobStatus>(status, ignoreCase: true, out var parsed))
+        {
+            return Results.BadRequest(
+                $"Unknown job status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<JobStatus>())}.");
+        }
+        wanted = parsed;
+    }
+
+    return Results.Ok(await JobQueries.ListAsync(db, cancellationToken, wanted));
+})
 .WithName("ListJobs");
+
+// Diagnostics: failed jobs grouped by classified reason (size-saving, container incompatibility,
+// replacement collision, …) with counts and recent samples, so "why are jobs failing?" is answerable
+// from the API without reading container logs.
+app.MapGet("/api/jobs/failures", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
+    Results.Ok(await JobQueries.SummariseFailuresAsync(db, cancellationToken)))
+.WithName("JobFailureSummary");
 
 // Backdrop artwork for a job's title, proxied from the first connected media server. 404 when
 // there's no server, no match, or the file isn't film/TV — the hero just shows no background then.
