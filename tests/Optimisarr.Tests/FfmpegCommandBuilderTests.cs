@@ -412,22 +412,28 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("copy", args[subIndex + 1]);
     }
 
-    [Fact]
-    public void Converts_subtitles_to_mov_text_for_an_mp4_video_output()
+    [Theory]
+    [InlineData(".mp4")]
+    [InlineData(".m4v")]
+    [InlineData(".mov")]
+    public void Converts_subtitles_to_mov_text_for_mp4_family_video_outputs(string extension)
     {
-        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = $"/work/Movie.opt{extension}" });
 
         var subIndex = IndexOf(args, "-c:s");
         Assert.Equal("mov_text", args[subIndex + 1]);
     }
 
-    [Fact]
-    public void Drops_attachment_and_data_streams_for_an_mp4_video_output()
+    [Theory]
+    [InlineData(".mp4")]
+    [InlineData(".m4v")]
+    [InlineData(".mov")]
+    public void Drops_attachment_and_data_streams_for_mp4_family_video_outputs(string extension)
     {
         // A Matroska source can carry a font/cover attachment (codec "none") or a data stream.
         // MP4/MOV cannot mux those: ffmpeg reports "Could not find tag for codec none" and aborts
         // the whole job before writing a frame. They must be excluded so the file still transcodes.
-        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" });
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = $"/work/Movie.opt{extension}" });
 
         Assert.Contains(("-map", "-0:t"), MapPairs(args));
         Assert.Contains(("-map", "-0:d"), MapPairs(args));
@@ -523,6 +529,20 @@ public sealed class FfmpegCommandBuilderTests
     public void Adds_the_mp4_flag_so_custom_tags_round_trip_for_mp4_outputs()
     {
         var spec = Reencode() with { OutputPath = "/work/Movie.opt.mp4" };
+
+        var args = FfmpegCommandBuilder.Build(spec, optimisedMarker: "0.4.2");
+
+        var flagsIndex = IndexOf(args, "-movflags");
+        Assert.True(flagsIndex >= 0);
+        Assert.Equal("use_metadata_tags", args[flagsIndex + 1]);
+    }
+
+    [Theory]
+    [InlineData(".m4a")]
+    [InlineData(".m4b")]
+    public void Adds_the_mp4_flag_so_custom_tags_round_trip_for_mp4_audio_outputs(string extension)
+    {
+        var spec = AudioReencode() with { OutputPath = $"/work/Track{extension}" };
 
         var args = FfmpegCommandBuilder.Build(spec, optimisedMarker: "0.4.2");
 

@@ -20,12 +20,30 @@ public sealed class TranscodeSpecResolverTests
         Assert.Equal("/work/Movie/Movie.mp4", spec.OutputPath);
     }
 
-    [Fact]
-    public void Falls_back_to_mkv_when_an_mp4_target_meets_image_subtitles()
+    [Theory]
+    [InlineData("mp4")]
+    [InlineData(".m4v")]
+    [InlineData("mov")]
+    public void Falls_back_to_mkv_when_an_mp4_family_target_meets_image_subtitles(string container)
     {
         // MP4 can't store PGS/VobSub, so a source with image subtitles must go to MKV instead.
+        var rules = Hevc with { TargetContainer = container };
+
         var spec = TranscodeSpecResolver.Resolve(
-            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            kind: MediaKind.Video, sourceHasImageSubtitles: true);
+
+        Assert.Equal("/work/Movie/Movie.mkv", spec.OutputPath);
+    }
+
+    [Fact]
+    public void Keeps_the_mkv_target_when_image_subtitles_are_already_container_compatible()
+    {
+        var rules = Hevc with { TargetContainer = "mkv" };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
             workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
             kind: MediaKind.Video, sourceHasImageSubtitles: true);
 

@@ -18,6 +18,13 @@
   verifies every method/path listed in `docs/api.md` exists in the generated spec, so the human API
   reference can no longer silently document missing endpoints.
 
+### Test coverage
+
+- **Pipeline robustness coverage now includes more MP4-family edge cases.** FFmpeg command tests cover
+  `.mp4`, `.m4v`, and `.mov` subtitle conversion plus attachment/data stream exclusion, and `.m4a`/
+  `.m4b` metadata handling for audio outputs. Transcode-spec tests also confirm image-based subtitles
+  fall back from every MP4-family video container to MKV while MKV targets stay unchanged.
+
 ### Diagnostics & observability
 
 - **The job and failure queries take filters and paging.** `GET /api/jobs` now accepts `libraryId`,
