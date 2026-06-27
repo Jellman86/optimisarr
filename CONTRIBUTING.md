@@ -22,7 +22,8 @@ configuration changes.
 
 ## Documentation
 
-Write for a person setting up one server at home:
+Follow the [documentation standard](docs/documentation-standard.md). In short,
+write for a person setting up one server at home:
 
 - Use plain English, active voice, and `you` for instructions.
 - Start with the working command or action. Put background detail after it.

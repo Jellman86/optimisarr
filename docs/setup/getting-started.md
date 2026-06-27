@@ -4,6 +4,13 @@ Optimisarr runs as one container. It persists SQLite state in `/config`, reads
 libraries in `/data`, writes temporary results to `/work`, and quarantines
 originals in `/trash`.
 
+Use a small test library first. Optimisarr is designed to avoid replacing an
+original unless a verified output exists, but it is still software operating on
+your media paths.
+
+Screenshots in these docs use fabricated dummy media created for documentation.
+No copyrighted material is used.
+
 ## Deploy
 
 Pick the Compose file that matches the host:
@@ -41,11 +48,11 @@ mounts.
 Do not publish `8787` directly to the internet. For remote access, put Optimisarr
 behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 
-![Libraries page in dark mode, showing media types, preset, access status, and scan controls](../images/optimisarr-libraries-dark.png)
+![Libraries page in dark mode, showing media types, preset, access status, and scan controls](../images/optimisarr-libraries-main-dark.png)
 
 ## First workflow
 
-1. Enable **Dry-run mode** in **Settings → Replacement**.
+1. Enable **Dry-run mode** in **Settings → General → Replacement**.
 2. Add a library below `/data` and select its media type and rule profile.
 3. Scan it; newly found files are probed in the background.
 4. Review the explicit eligibility reason in **Inventory**.
@@ -60,3 +67,11 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 After that manual test, optional **Auto-optimise** and **Auto-replace** settings
 can automate the same workflow per library. See [configuration and scheduling](configuration.md)
 before enabling either one.
+
+For a page-by-page walkthrough with screenshots, see the [user workflow](../usage/workflow.md).
+
+## What to back up
+
+Back up `/config/optimisarr.db` for Optimisarr state and keep independent media
+backups for anything irreplaceable. `/trash` contains rollback originals after
+replacement, but entries can be approved or purged by retention policy.

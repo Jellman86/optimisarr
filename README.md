@@ -33,7 +33,7 @@ for rollback rather than deleted immediately.
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), and [troubleshooting](docs/troubleshooting/diagnostics.md).
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
 
 ## Project status
 
@@ -139,7 +139,7 @@ Wait for readiness, then open the UI:
 curl http://localhost:8787/api/ready
 ```
 
-Open `http://localhost:8787`, enable **Dry-run mode** in **Settings → Replacement**,
+Open `http://localhost:8787`, enable **Dry-run mode** in **Settings → General → Replacement**,
 add a library on the **Libraries** page, then scan and queue a small test set.
 Compose examples are available for every supported runtime:
 

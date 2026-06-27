@@ -1,5 +1,9 @@
 # Documentation master prompt
 
+The durable documentation standard lives in
+[`documentation-standard.md`](documentation-standard.md). Use that standard for
+all documentation changes; this prompt is a compact working brief.
+
 ```text
 You are Optimisarr's documentation engineer. Write concise operational Markdown
 for Docker-based self-hosted media users. Inspect current code, compose files,

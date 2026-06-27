@@ -3,6 +3,11 @@
 Settings are stored in `/config/optimisarr.db`; idempotent EF Core migrations
 run at startup.
 
+Screenshots in this page use fabricated dummy media created for documentation.
+No copyrighted material is used.
+
+![Settings General tab showing queue, encoder, scan interval, disk threshold, and hardware decode controls](../images/optimisarr-settings-general-dark.png)
+
 Each library has its own root, media type, rule profile, and optional overrides.
 The Inventory explains why every file is eligible or skipped.
 
@@ -13,9 +18,33 @@ The Inventory explains why every file is eligible or skipped.
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
+| Hardware decoding | Uses GPU decode with hardware encoders when possible, then falls back to CPU decode for sources the GPU cannot decode. |
 
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
+
+## Verification gates
+
+Every job must pass decode health, output readability, and the media-kind checks
+that apply to it. The configurable gates make replacement stricter:
+
+![Verification gates panel showing always-on checks, VMAF, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
+
+| Gate | Applies to | Default |
+|---|---|---|
+| Duration tolerance | Video and audio | On, 1% |
+| Require audio tracks retained | Video and audio | On |
+| Require subtitle tracks retained | Video | Off |
+| Require output smaller than original | Video, audio, image | On |
+| Perceptual quality (VMAF) | Video | Off |
+| Audio loudness drift (EBU R128) | Video and audio | Off |
+| Audio clipping (true peak) | Video and audio | Off |
+| Image SSIM | Images | Off |
+| Image metadata | Images | Off |
+
+Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
+VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
+becoming replaceable.
 
 ## Rule profiles (presets)
 
@@ -79,6 +108,8 @@ The **Settings** page can export and import a JSON configuration snapshot. It
 includes libraries, activity watchers, notification targets, Arr connections,
 and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
+
+![Backup tab showing export and import controls plus the sensitive-data warning](../images/optimisarr-settings-backup-dark.png)
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,
