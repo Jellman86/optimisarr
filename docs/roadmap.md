@@ -48,13 +48,12 @@ the replacement workflow is trustworthy.
      Sonarr/Radarr import-aware holds. Known live failure classes should be represented
      by tests before this phase is considered done.
 
-   - **Endpoint modularization.** In progress. `Settings`, `Integration`, `Exclusion`, `Health`,
-     `System`, `Library`, `Stats`, and `Replacement` endpoints are extracted into
-     `src/Optimisarr.Api/Endpoints/*.cs` extension methods mapped from `Program.cs` (1960 → 896 lines),
-     as a pure move verified by the byte-identical generated OpenAPI document and the full test suite;
-     the few that need startup locals (`adminToken`, `configDirectory`) take them as method parameters,
-     and the range-aware file server is now a shared `FileServing` helper. Remaining: the inventory/
-     media and queue/jobs endpoints (one interleaved block) are the last group to move.
+   - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
+     `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
+     system, library, stats, replacement, media/queue), leaving `Program.cs` a 418-line composition
+     root (down from 1,960). A pure move verified by the byte-identical generated OpenAPI document and
+     the full test suite; the few endpoints that need startup locals (`adminToken`, `configDirectory`)
+     take them as parameters, and the range-aware file server is a shared `FileServing` helper.
 
    - **Large-library API scalability.** `/api/jobs` and `/api/media` now have server-side
      filtering and pagination (`status`, `search`/`category`, date, `page`/`pageSize`, total in

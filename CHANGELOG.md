@@ -4,14 +4,14 @@
 
 ### Maintainability
 
-- **`Program.cs` is being split into endpoint modules.** The settings, integration (activity
-  watchers, notification targets, Arr connections, provider connect), exclusion, health, system,
-  library, stats, and replacement endpoints now live in focused `Endpoints/*.cs` extension methods
-  mapped from a slimmer `Program.cs` (1960 → 896 lines so far; the few endpoints that need startup
-  locals — the admin token, the config directory — take them as method parameters, and the range-aware
-  file-serving helper is now a shared `FileServing` class). This is a pure move — no route, name, or
-  behaviour change — verified by the byte-identical generated OpenAPI document and the full test suite.
-  The media/queue group is the last to follow.
+- **`Program.cs` is now a composition root, not a 2,000-line endpoint file.** All 72 endpoints live in
+  nine focused `Endpoints/*.cs` extension methods (settings, integration, exclusion, health, system,
+  library, stats, replacement, and media/queue), mapped from a `Program.cs` trimmed from 1,960 to 418
+  lines that now holds only service registration, startup, middleware, and the endpoint-group calls.
+  The few endpoints that need startup locals (the admin token, the config directory) take them as
+  method parameters, and the range-aware file server is a shared `FileServing` helper. A pure move —
+  no route, name, or behaviour change — verified by the byte-identical generated OpenAPI document and
+  the full test suite.
 
 ### Scalability
 
