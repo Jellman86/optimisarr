@@ -17,7 +17,13 @@
   — is captured (the thousands of progress frames are filtered out, and a very long log keeps its head
   and tail with the middle elided) and stored on the job. The endpoint returns it as plain text, or
   404 when a job has none. The rich "Could not find tag for codec none…" detail that previously lived
-  only in container logs is now one request away. (A stored failure-category column is the next step.)
+  only in container logs is now one request away.
+
+- **A job's failure category is stored when it fails, not re-derived on every read.** The classified
+  reason is written to a new `FailureCategory` column the moment a job fails, so the failure summary
+  groups in the database and the class stays stable even if the message is later edited (older rows
+  fall back to classifying the message). The category is also surfaced per job on `GET /api/jobs`, so
+  the queue can label a failure by its kind. Migration `AddJobFailureCategory`.
 
 ### Eligibility
 

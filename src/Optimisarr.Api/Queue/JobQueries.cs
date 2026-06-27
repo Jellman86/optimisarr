@@ -14,6 +14,7 @@ public sealed record JobDto(
     int Priority,
     double Progress,
     string? ErrorMessage,
+    string? FailureCategory,
     string? FfmpegArguments,
     string? VideoEncoder,
     long? OutputSizeBytes,
@@ -65,6 +66,7 @@ public static class JobQueries
                 job.Priority,
                 job.Progress,
                 job.ErrorMessage,
+                job.FailureCategory != null ? job.FailureCategory.ToString() : null,
                 job.FfmpegArguments,
                 job.VideoEncoder,
                 job.OutputSizeBytes,
@@ -109,12 +111,15 @@ public static class JobQueries
                 job.MediaFileId,
                 RelativePath = job.MediaFile != null ? job.MediaFile.RelativePath : null,
                 job.ErrorMessage,
+                job.FailureCategory,
                 job.FinishedAt
             })
             .ToListAsync(cancellationToken);
 
         return failures
-            .GroupBy(job => FailureClassifier.Classify(job.ErrorMessage))
+            // Prefer the category stored when the job failed; fall back to classifying the message for
+            // rows that failed before the category was persisted.
+            .GroupBy(job => job.FailureCategory ?? FailureClassifier.Classify(job.ErrorMessage))
             .Select(group => new FailureGroupDto(
                 group.Key.ToString(),
                 FailureClassifier.Describe(group.Key),

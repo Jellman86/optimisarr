@@ -1,3 +1,5 @@
+using Optimisarr.Core.Queue;
+
 namespace Optimisarr.Data;
 
 /// <summary>
@@ -70,6 +72,13 @@ public sealed class Job
     public double Progress { get; set; }
 
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// The classified reason a job failed, derived from <see cref="ErrorMessage"/> at the moment it
+    /// fails and stored so the diagnostics summary can group in the database and the class survives an
+    /// edited message. Null until (and unless) the job fails.
+    /// </summary>
+    public FailureCategory? FailureCategory { get; set; }
 
     /// <summary>
     /// The captured ffmpeg log for the run that failed — its non-progress stderr (stream mapping,

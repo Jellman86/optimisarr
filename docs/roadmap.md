@@ -30,8 +30,11 @@ the replacement workflow is trustworthy.
      served at `GET /api/jobs/{id}/log` as plain text. The rich stderr that explains a failure is no
      longer container-log-only. Stored only on ffmpeg failure to keep the DB lean (verification
      failures are explained by their report). Migration `AddJobProcessLog`.
-   - **Structured failure category on `Job`: still to do.** A stored reason enum (migration-backed)
-     so a failure's *class* is queryable directly, rather than re-classified from text on read.
+   - **Structured failure category on `Job`: done.** The classified reason is written to a
+     `FailureCategory` column the moment a job fails, so the summary groups in the database and the
+     class survives an edited message (older rows fall back to on-read classification). Surfaced per
+     job on `GET /api/jobs` too. Migration `AddJobFailureCategory`.
+   - **Remaining: library/reason/date filters and pagination** on the job and failure queries.
    The classification then feeds back into the dashboards and reports rather than the eligibility
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.

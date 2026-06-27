@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -156,6 +157,53 @@ public sealed class JobQueriesTests : IDisposable
         Assert.Equal("ContainerIncompatibility", groups[1].Category);
         Assert.Equal(1, groups[1].Count);
         Assert.False(string.IsNullOrWhiteSpace(groups[0].Description));
+    }
+
+    [Fact]
+    public async Task SummariseFailuresAsync_prefers_the_stored_category_over_the_message()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+
+            // The message would classify as size-saving, but the stored category wins (e.g. the
+            // message was later edited). Proves grouping trusts the persisted class.
+            var job = Failed(id: 1, "Verification failed: Size saving");
+            job.FailureCategory = FailureCategory.Verification;
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var groups = await JobQueries.SummariseFailuresAsync(readDb, CancellationToken.None);
+
+        Assert.Equal("Verification", Assert.Single(groups).Category);
+    }
+
+    [Fact]
+    public async Task ListAsync_surfaces_the_stored_failure_category()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+            var job = Failed(id: 1, "Could not find tag for codec none");
+            job.FailureCategory = FailureCategory.ContainerIncompatibility;
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var listed = Assert.Single(await JobQueries.ListAsync(readDb, CancellationToken.None));
+
+        Assert.Equal("ContainerIncompatibility", listed.FailureCategory);
     }
 
     private static MediaFile MediaFile(int libraryId, int id) => new()

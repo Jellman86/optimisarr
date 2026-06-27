@@ -765,6 +765,12 @@ public sealed class QueueDispatcher(
             {
                 job.ProcessLog = processLog;
             }
+            // Classify and store the reason once, the moment it fails, so the diagnostics summary can
+            // group in the database and the class is stable even if the message is later edited.
+            if (status == JobStatus.Failed)
+            {
+                job.FailureCategory = FailureClassifier.Classify(job.ErrorMessage);
+            }
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
