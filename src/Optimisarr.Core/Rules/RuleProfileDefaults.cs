@@ -19,6 +19,14 @@ public static class RuleProfileDefaults
     /// <summary>Re-encode profiles ignore files below this size by default.</summary>
     private const long DefaultMinReencodeSize = 200 * Megabyte;
 
+    // Efficiency floors in bits per pixel-second (file bitrate ÷ width ÷ height). Below the floor a
+    // source is already compressed enough that re-encoding to the profile's codec is unlikely to
+    // save space. HEVC's break-even is ≈ 0.8 (a ~1.6 Mbps 1080p h264), so 1.0 leaves a safe margin;
+    // H.264 is less efficient, so it needs a higher-bitrate source to win. AV1 sets no floor — it is
+    // efficient enough to shrink even low-bitrate sources. Calibrated against real library data.
+    private const double HevcEfficiencyFloor = 1.0;
+    private const double H264EfficiencyFloor = 2.0;
+
     public static RuleSettings For(RuleProfile profile) => profile switch
     {
         // Broad compatibility + good efficiency: HEVC in MP4 plays on virtually all phones,
@@ -31,6 +39,7 @@ public static class RuleProfileDefaults
             TargetContainer = "mp4",
             DefaultCrf = 24,
             MinFileSizeBytes = DefaultMinReencodeSize,
+            MinSourceBitsPerPixelSecond = HevcEfficiencyFloor,
             Hdr = HdrHandling.Exclude
         },
         // Maximum compatibility: H.264 + AAC in MP4 plays literally everywhere, at the cost of
@@ -42,6 +51,7 @@ public static class RuleProfileDefaults
             TargetContainer = "mp4",
             DefaultCrf = 20,
             MinFileSizeBytes = DefaultMinReencodeSize,
+            MinSourceBitsPerPixelSecond = H264EfficiencyFloor,
             Hdr = HdrHandling.Exclude
         },
         // Maximum efficiency: AV1 (30–50% smaller than HEVC, royalty-free, slower to encode) with
@@ -70,6 +80,7 @@ public static class RuleProfileDefaults
             TargetContainer = "mp4",
             DefaultCrf = 24,
             MinFileSizeBytes = DefaultMinReencodeSize,
+            MinSourceBitsPerPixelSecond = HevcEfficiencyFloor,
             Hdr = HdrHandling.Preserve,
             VideoAudioCodec = "aac",
             VideoAudioBitrateKbps = 96,

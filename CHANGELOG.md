@@ -4,6 +4,16 @@
 
 ### Eligibility
 
+- **Sources already too efficiently encoded to shrink are skipped before transcoding.** A video whose
+  bitrate is already very low for its resolution (e.g. a ~1.6 Mbps 1080p h264 episode) cannot be made
+  meaningfully smaller by re-encoding, so it used to transcode and then fail the size-saving
+  verification gate — burning GPU/CPU time for nothing. Profiles now carry an efficiency floor
+  (bits per pixel-second, so it holds across resolutions and frame rates) and skip such a source up
+  front with the reason "Already efficiently encoded (~X.X Mbps at 1080p) — re-encoding is unlikely to
+  save space". The floor is conservative and uses the total-file bitrate (which overstates the video
+  bitrate), so it only skips clear cases; the size-saving gate remains the backstop. HEVC and H.264
+  profiles set a floor; AV1 sets none, as it can shrink even low-bitrate sources.
+
 - **A file whose optimised copy already sits beside it is no longer re-transcoded.** When an
   Optimisarr-produced output (e.g. an hevc `.mp4`) remains next to its original (e.g. the h264
   `.mkv`) — left by a cleared replacement history, a move-on-complete, or a separate re-import — the

@@ -31,6 +31,17 @@ public sealed record RuleSettings
     public int? MaxHeight { get; init; }
 
     /// <summary>
+    /// When set, a video source already encoded at or below this density — measured as bits per
+    /// pixel-second, i.e. the file bitrate divided by (width × height), so it is resolution- and
+    /// frame-rate-independent — is skipped before any transcode, because re-encoding it to the
+    /// target codec is unlikely to save space (e.g. a ~1.6 Mbps 1080p h264 source ≈ 0.8). The
+    /// total-file bitrate is used, which overstates the video bitrate, so the check only skips when
+    /// a saving is clearly improbable; the size-saving verification gate remains the backstop.
+    /// <c>null</c> disables the heuristic (e.g. AV1, efficient enough to shrink low-bitrate sources).
+    /// </summary>
+    public double? MinSourceBitsPerPixelSecond { get; init; }
+
+    /// <summary>
     /// When set, a file already in <see cref="TargetVideoCodec"/> is still re-encoded if it is at
     /// least this many bytes, to shrink oversized same-codec files (e.g. a large HEVC remux under an
     /// HEVC target). <c>null</c> keeps the conservative default of skipping a same-codec file. The

@@ -17,8 +17,10 @@ public sealed class CandidateEvaluatorTests
         string relativePath = "Movies/Example (2020)/Example.mkv",
         string? optimisedMarker = null,
         MediaKind kind = MediaKind.Video,
-        string? audioCodec = null) =>
-        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind, audioCodec);
+        string? audioCodec = null,
+        double? durationSeconds = null) =>
+        new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind,
+            audioCodec, DurationSeconds: durationSeconds);
 
     private static MediaProperties AudioFile(
         string audioCodec, long sizeBytes = 40L * 1024 * 1024, int? audioBitrateKbps = null) =>
@@ -202,6 +204,54 @@ public sealed class CandidateEvaluatorTests
         Assert.True(decision.IsEligible);
         Assert.Contains("h264", decision.Reason);
         Assert.Contains("hevc", decision.Reason);
+    }
+
+    // ~1.6 Mbps for 1080p ≈ 0.8 bits per pixel-second — well below the HEVC profile's 1.0 floor.
+    // 570 MB over 2842 s = 1.61 Mbps; the file is already so compressed a re-encode won't beat it.
+    private static MediaProperties AlreadyEfficientH264() =>
+        File(videoCodec: "h264", width: 1920, height: 1080, sizeBytes: 570_000_000L, durationSeconds: 2842);
+
+    [Fact]
+    public void An_already_efficiently_encoded_source_is_skipped_before_transcoding()
+    {
+        var decision = CandidateEvaluator.Evaluate(AlreadyEfficientH264(), Hevc);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("efficiently encoded", decision.Reason);
+    }
+
+    [Fact]
+    public void A_healthy_bitrate_source_is_still_eligible()
+    {
+        // ~8 Mbps for 1080p (a typical Blu-ray h264) is well above the floor — re-encoding saves space.
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", width: 1920, height: 1080, sizeBytes: 2_800_000_000L, durationSeconds: 2842),
+            Hevc);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("hevc", decision.Reason);
+    }
+
+    [Fact]
+    public void A_source_with_unknown_duration_is_left_eligible_so_the_size_gate_decides()
+    {
+        // Without a duration the bitrate cannot be measured; stay conservative and let the encode run,
+        // where the size-saving verification gate is the backstop.
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", sizeBytes: 570_000_000L, durationSeconds: null), Hevc);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void A_profile_with_no_efficiency_floor_does_not_skip_a_low_bitrate_source()
+    {
+        // AV1 is efficient enough to shrink even a low-bitrate source, so its profile sets no floor.
+        var av1 = RuleProfileDefaults.For(RuleProfile.ExperimentalAv1);
+
+        var decision = CandidateEvaluator.Evaluate(AlreadyEfficientH264(), av1);
+
+        Assert.True(decision.IsEligible);
     }
 
     [Fact]

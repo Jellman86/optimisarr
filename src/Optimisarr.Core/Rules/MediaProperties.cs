@@ -19,4 +19,5 @@ public sealed record MediaProperties(
     MediaKind Kind = MediaKind.Video,
     string? AudioCodec = null,
     int? AudioBitrateKbps = null,
-    int? FrameCount = null);
+    int? FrameCount = null,
+    double? DurationSeconds = null);

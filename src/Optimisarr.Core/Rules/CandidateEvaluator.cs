@@ -177,7 +177,45 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetVideoCodec} (no expected saving)");
         }
 
+        // A source already encoded so efficiently that re-encoding it to the target codec is unlikely
+        // to shrink it is skipped here, rather than transcoded and then rejected by the size-saving
+        // gate (wasting GPU/CPU time). Measured as bits per pixel-second so it holds across
+        // resolutions and frame rates; only applied when the profile sets a floor and the bitrate can
+        // actually be measured.
+        if (rules.MinSourceBitsPerPixelSecond is { } floor
+            && BitsPerPixelSecond(media) is { } density
+            && density < floor)
+        {
+            return CandidateDecision.Skipped(
+                $"Already efficiently encoded ({FormatBitrate(media)} at {media.Height}p) — re-encoding is unlikely to save space");
+        }
+
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetVideoCodec}");
+    }
+
+    // The source bitrate normalised by pixel count (bits per pixel-second): file bitrate ÷
+    // (width × height). Null when the duration or resolution needed to compute it is missing, so the
+    // caller stays conservative and lets the encode run. The total-file bitrate is used, which
+    // slightly overstates the video bitrate and so only ever errs toward keeping a file eligible.
+    private static double? BitsPerPixelSecond(MediaProperties media)
+    {
+        if (media.DurationSeconds is not { } duration || duration <= 0)
+        {
+            return null;
+        }
+
+        if (media.Width is not { } width || media.Height is not { } height || width <= 0 || height <= 0)
+        {
+            return null;
+        }
+
+        return media.SizeBytes * 8.0 / duration / ((double)width * height);
+    }
+
+    private static string FormatBitrate(MediaProperties media)
+    {
+        var megabitsPerSecond = media.SizeBytes * 8.0 / media.DurationSeconds!.Value / 1_000_000.0;
+        return $"~{megabitsPerSecond.ToString("0.0", CultureInfo.InvariantCulture)} Mbps";
     }
 
     // ffprobe reports the demuxer's format_name (e.g. "matroska,webm"), which uses

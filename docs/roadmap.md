@@ -28,14 +28,19 @@ the replacement workflow is trustworthy.
      rich stderr that actually explains a failure currently lives only in container logs.
    - **Structured failure category on `Job`** — a stored reason enum (migration-backed) so a
      failure's *class* is queryable, not just free text.
-   This also unblocks smarter eligibility: classified *size-saving* failures show sources that
-   are already low-bitrate (e.g. ~1.6 Mbps 1080p h264) and should be skipped before a job is
-   queued, rather than transcoded and rejected by the gate. (A first slice of "skip before we
-   waste an encode" has shipped — see *already-optimised sibling skip* below — leaving the
-   low-bitrate heuristic as the remaining piece.)
+   The classification then feeds back into the dashboards and reports rather than the eligibility
+   logic, which now handles the "skip before we waste an encode" cases directly — see the
+   *already-optimised sibling skip* and *already-efficient source skip* notes below.
 
 **Recently shipped (2026-06-26).**
 
+- **Already-efficient source skip: done.** A video already encoded at a very low bitrate for its
+  resolution (e.g. a ~1.6 Mbps 1080p h264 episode) is skipped at eligibility instead of being
+  transcoded and then rejected by the size-saving gate. Uses a per-profile efficiency floor in bits
+  per pixel-second (resolution/frame-rate independent), calibrated against real library data; HEVC and
+  H.264 set a floor, AV1 sets none. Conservative (uses total-file bitrate), with the size-saving gate
+  still the backstop. Remaining follow-up: expose the floor as a per-library override (needs a
+  Library column + migration + UI) for operators who want to tune it.
 - **Already-optimised sibling skip: done.** When an Optimisarr-produced output (a marked re-container,
   e.g. an hevc `.mp4`) still sits beside its original (e.g. the h264 `.mkv`), the original is now
   skipped at eligibility ("An optimised copy already exists alongside this file") instead of being
