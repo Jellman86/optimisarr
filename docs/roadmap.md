@@ -49,12 +49,12 @@ the replacement workflow is trustworthy.
      by tests before this phase is considered done.
 
    - **Endpoint modularization.** In progress. `Settings`, `Integration`, `Exclusion`, `Health`,
-     `System`, `Library`, and `Stats` endpoints are extracted into `src/Optimisarr.Api/Endpoints/*.cs`
-     extension methods mapped from `Program.cs` (1960 → 986 lines), as a pure move verified by the
-     byte-identical generated OpenAPI document and the full test suite; the few that need startup
-     locals (`adminToken`, `configDirectory`) take them as method parameters. Remaining: the
-     inventory/media, queue/jobs, and replacement groups, which first need the local `ServeFile`
-     helper promoted to a shared class so the range-serving content endpoints can move with them.
+     `System`, `Library`, `Stats`, and `Replacement` endpoints are extracted into
+     `src/Optimisarr.Api/Endpoints/*.cs` extension methods mapped from `Program.cs` (1960 → 896 lines),
+     as a pure move verified by the byte-identical generated OpenAPI document and the full test suite;
+     the few that need startup locals (`adminToken`, `configDirectory`) take them as method parameters,
+     and the range-aware file server is now a shared `FileServing` helper. Remaining: the inventory/
+     media and queue/jobs endpoints (one interleaved block) are the last group to move.
 
    - **Large-library API scalability.** `/api/jobs` and `/api/media` now have server-side
      filtering and pagination (`status`, `search`/`category`, date, `page`/`pageSize`, total in
