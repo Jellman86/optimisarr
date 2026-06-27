@@ -1206,6 +1206,21 @@ app.MapGet("/api/jobs/failures", async (OptimisarrDbContext db, CancellationToke
     Results.Ok(await JobQueries.SummariseFailuresAsync(db, cancellationToken)))
 .WithName("JobFailureSummary");
 
+// The captured ffmpeg log (non-progress stderr) for a failed job, as plain text, so the full reason
+// is available from the API without container access. 404 when the job is unknown or has no log
+// (only failed transcodes capture one).
+app.MapGet("/api/jobs/{id:int}/log", async (int id, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+{
+    var log = await db.Jobs
+        .AsNoTracking()
+        .Where(job => job.Id == id)
+        .Select(job => job.ProcessLog)
+        .FirstOrDefaultAsync(cancellationToken);
+
+    return string.IsNullOrEmpty(log) ? Results.NotFound() : Results.Text(log, "text/plain");
+})
+.WithName("JobLog");
+
 // Backdrop artwork for a job's title, proxied from the first connected media server. 404 when
 // there's no server, no match, or the file isn't film/TV — the hero just shows no background then.
 app.MapGet("/api/jobs/{id:int}/artwork", async (

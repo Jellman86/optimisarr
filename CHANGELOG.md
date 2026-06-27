@@ -10,8 +10,14 @@
   incompatibility, image-based subtitles, replacement collision, source/output missing, verification,
   or other — with a count and recent samples (job id, path, error) per group, largest first. The
   classification is a pure, shared `FailureClassifier`, so the same buckets drive the API and, in
-  future, the UI. This makes "why are jobs failing?" answerable without reading container logs. (Full
-  per-attempt ffmpeg log capture and a stored failure-category column are the planned next steps.)
+  future, the UI. This makes "why are jobs failing?" answerable without reading container logs.
+
+- **A failed transcode now keeps its ffmpeg log, served at `GET /api/jobs/{id}/log`.** When ffmpeg
+  exits non-zero, its substantive stderr — stream mapping, warnings, and the error that ended the run
+  — is captured (the thousands of progress frames are filtered out, and a very long log keeps its head
+  and tail with the middle elided) and stored on the job. The endpoint returns it as plain text, or
+  404 when a job has none. The rich "Could not find tag for codec none…" detail that previously lived
+  only in container logs is now one request away. (A stored failure-category column is the next step.)
 
 ### Eligibility
 

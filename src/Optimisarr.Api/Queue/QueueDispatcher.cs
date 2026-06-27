@@ -418,7 +418,7 @@ public sealed class QueueDispatcher(
                 var error = FfmpegErrorInterpreter.Explain(run.Error)
                     ?? run.Error
                     ?? $"ffmpeg exited with code {run.ExitCode}";
-                await CompleteAsync(jobId, JobStatus.Failed, error: error);
+                await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log);
                 await NotifyJobFailedAsync(jobId, error);
             }
         }
@@ -606,7 +606,7 @@ public sealed class QueueDispatcher(
             usedHardwareDecode ? softwareArguments : null);
     }
 
-    private sealed record FfmpegRun(int ExitCode, string? Error);
+    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -650,37 +650,46 @@ public sealed class QueueDispatcher(
         }
 
         await stdoutTask;
-        var tail = await stderrTask;
-        return new FfmpegRun(process.ExitCode, process.ExitCode == 0 ? null : tail);
+        var stderr = await stderrTask;
+        return process.ExitCode == 0
+            ? new FfmpegRun(process.ExitCode, null, null)
+            : new FfmpegRun(process.ExitCode, stderr.Tail, stderr.Log);
     }
 
-    // Reads ffmpeg's stderr, pushing live progress/speed/ETA from its "time=" lines
-    // (throttled) and keeping the last few lines for a useful failure message.
-    private async Task<string?> ReadStderrAsync(
+    private sealed record FfmpegStderr(string? Tail, string? Log);
+
+    // Reads ffmpeg's stderr, pushing live progress/speed/ETA from its "time=" lines (throttled),
+    // keeping the last few lines for a one-line failure message, and collecting the non-progress
+    // lines into a bounded log so the full reason is recoverable from the API on failure.
+    private async Task<FfmpegStderr> ReadStderrAsync(
         Process process,
         int jobId,
         double? durationSeconds,
         CancellationToken cancellationToken)
     {
         var tail = new Queue<string>();
+        var log = new FfmpegLogBuffer();
         var lastReported = 0.0;
 
         string? line;
         while ((line = await process.StandardError.ReadLineAsync(cancellationToken)) is not null)
         {
+            var sample = FfmpegProgressParser.Parse(line);
+            var isProgress = sample.ElapsedSeconds is not null;
+
+            // The progress frames are the bulk of stderr; keep only the substantive lines in the log.
+            if (!isProgress)
+            {
+                log.Append(line);
+            }
+
             tail.Enqueue(line);
             while (tail.Count > 12)
             {
                 tail.Dequeue();
             }
 
-            if (durationSeconds is not > 0)
-            {
-                continue;
-            }
-
-            var sample = FfmpegProgressParser.Parse(line);
-            if (sample.ElapsedSeconds is not { } elapsed)
+            if (durationSeconds is not > 0 || sample.ElapsedSeconds is not { } elapsed)
             {
                 continue;
             }
@@ -699,7 +708,9 @@ public sealed class QueueDispatcher(
             await BroadcastProgressAsync(jobId, progress, sample.Fps, sample.Speed, eta);
         }
 
-        return tail.Count > 0 ? string.Join('\n', tail) : null;
+        return new FfmpegStderr(
+            tail.Count > 0 ? string.Join('\n', tail) : null,
+            log.ToLog());
     }
 
     private async Task BeginTranscodeAsync(
@@ -727,7 +738,8 @@ public sealed class QueueDispatcher(
     /// </summary>
     private const int AutoExcludeFailureThreshold = AutoExclusionPolicy.DefaultFailureThreshold;
 
-    private async Task CompleteAsync(int jobId, JobStatus status, double? progress = null, string? error = null)
+    private async Task CompleteAsync(
+        int jobId, JobStatus status, double? progress = null, string? error = null, string? processLog = null)
     {
         await _dbLock.WaitAsync(CancellationToken.None);
         try
@@ -748,6 +760,10 @@ public sealed class QueueDispatcher(
             if (error is not null)
             {
                 job.ErrorMessage = error;
+            }
+            if (processLog is not null)
+            {
+                job.ProcessLog = processLog;
             }
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;

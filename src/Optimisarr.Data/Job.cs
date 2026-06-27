@@ -71,6 +71,14 @@ public sealed class Job
 
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// The captured ffmpeg log for the run that failed — its non-progress stderr (stream mapping,
+    /// warnings, and the error that ended it), with the thousands of progress frames filtered out and
+    /// the middle elided if very long. Populated only on failure, so the full "why" is available from
+    /// the API (<c>GET /api/jobs/{id}/log</c>) without reading container logs. Null otherwise.
+    /// </summary>
+    public string? ProcessLog { get; set; }
+
     // --- Verification (Phase 4: populated once the output has been verified) ---
 
     /// <summary>Size of the produced output in bytes, recorded at verification time.</summary>

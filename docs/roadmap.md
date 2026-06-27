@@ -25,9 +25,11 @@ the replacement workflow is trustworthy.
      collision, source/output missing, verification, other) with counts and recent sample jobs,
      largest first. Backed by a pure, shared `FailureClassifier` so the buckets drive both the API
      and (later) the UI.
-   - **Full process-log capture: still to do.** Persist the complete ffmpeg stdout/stderr per attempt
-     and expose it (`GET /api/jobs/{id}/log`), instead of only a truncated `ErrorMessage`. The rich
-     stderr that actually explains a failure currently lives only in container logs.
+   - **Process-log capture: done.** A failed ffmpeg run keeps its substantive stderr (stream mapping,
+     warnings, the ending error; progress frames filtered, long logs head/tail-elided) on the job,
+     served at `GET /api/jobs/{id}/log` as plain text. The rich stderr that explains a failure is no
+     longer container-log-only. Stored only on ffmpeg failure to keep the DB lean (verification
+     failures are explained by their report). Migration `AddJobProcessLog`.
    - **Structured failure category on `Job`: still to do.** A stored reason enum (migration-backed)
      so a failure's *class* is queryable directly, rather than re-classified from text on read.
    The classification then feeds back into the dashboards and reports rather than the eligibility
