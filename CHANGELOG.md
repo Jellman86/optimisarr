@@ -24,6 +24,11 @@
   `.mp4`, `.m4v`, and `.mov` subtitle conversion plus attachment/data stream exclusion, and `.m4a`/
   `.m4b` metadata handling for audio outputs. Transcode-spec tests also confirm image-based subtitles
   fall back from every MP4-family video container to MKV while MKV targets stay unchanged.
+- **Replacement now has coverage for a vanished original.** When the original is deleted or renamed
+  between verification and replacement (e.g. a Sonarr/Radarr upgrade), replacement fails permanently
+  without creating anything, retains the verified output, records nothing, and saves no lifetime
+  bytes — so the reconcile sweep fails the job once instead of retrying it forever. This closes the
+  one untested branch in the destructive replacement path.
 
 ### Diagnostics & observability
 

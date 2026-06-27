@@ -258,6 +258,28 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_fails_permanently_when_the_original_has_vanished()
+    {
+        // The original was deleted or moved out from under the job (e.g. a Sonarr/Radarr upgrade
+        // renamed it) between verification and replacement. There is nothing to quarantine, so
+        // replacement must bail without creating anything, and the failure is permanent so the
+        // reconcile sweep fails the job once instead of retrying it forever.
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        File.Delete(originalPath);
+
+        var result = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Contains("no longer exists", result.Message);
+        Assert.True(result.Permanent);
+        Assert.False(File.Exists(originalPath));                       // still gone; nothing recreated it
+        Assert.Equal("NEW", File.ReadAllText(outputPath));             // the verified output is retained
+        Assert.Empty(new OptimisarrDbContext(_options).Replacements);  // nothing recorded
+        Assert.Equal(LifetimeStats.Empty, await ReadLifetimeAsync());  // a failed replace saves nothing
+    }
+
+    [Fact]
     public async Task Replace_serialises_concurrent_attempts_so_only_one_acts_on_a_job()
     {
         // Reproduces the job 3327 corruption: a job is replaceable the instant it reaches
