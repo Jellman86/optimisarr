@@ -63,13 +63,12 @@ the replacement workflow is trustworthy.
      the Inventory/Queue UI tables (bounded or virtualized) so the frontend stays responsive at tens
      of thousands of rows.
 
-   - **Diagnostics bundle and admin health details.** Build on the shipped failure
-     categories, failure summary endpoint, Failures tab, and captured ffmpeg logs. Add
-     an authenticated diagnostics bundle containing version/build, redacted settings
-     summary, enabled libraries, tool/hardware capability output, queue/failure summary,
-     selected recent logs, and environment facts needed for support. Secrets and provider
-     tokens must be redacted by default. Add an authenticated health-details endpoint for
-     admins; keep `/api/ready` small and orchestration-friendly.
+   - **Diagnostics bundle and admin health details.** Shipped as `GET /api/diagnostics` (admin-only):
+     version, environment, settings, per-library and integration summaries, dashboard stats, and the
+     failure summary, assembled from non-secret data only (a single pure redaction step keeps provider
+     tokens, API keys, and webhook URLs out; verified against real data). `/api/ready` stays small and
+     orchestration-friendly. Remaining: fold in tool/hardware capability output and a few recent
+     captured logs so the bundle is fully self-contained for a support ticket.
 
    - **Hardware validation matrix.** Create a maintained matrix that records CPU,
      NVIDIA NVENC, Intel QSV, VA-API, hardware decode, and GPU metrics validation by

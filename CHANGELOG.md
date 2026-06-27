@@ -41,6 +41,14 @@
 
 ### Diagnostics & observability
 
+- **Admin diagnostics snapshot at `GET /api/diagnostics`.** One authenticated call returns the version,
+  environment (OS, framework, config path and writability), global settings, per-library summaries
+  (with file counts), integration summaries, dashboard stats, and the failure summary — enough to file
+  a support issue from API evidence alone. It is assembled only from non-secret data: provider tokens,
+  API keys, and webhook URLs (which can embed a secret) are never included, enforced by a single pure
+  redaction step and verified against real data. The endpoint is under `/api`, so the admin token
+  protects it when one is set.
+
 - **The job and failure queries take filters and paging.** `GET /api/jobs` now accepts `libraryId`,
   `category` (a failure category), and `since`/`until` (bounding a job's finished/enqueued time), plus
   `page` and `pageSize`; the body stays a `JobDto` array and the pre-paging total is returned in the

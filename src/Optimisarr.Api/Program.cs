@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Diagnostics;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Metrics;
 using Optimisarr.Api.Queue;
@@ -1594,6 +1596,27 @@ app.MapGet("/api/stats", async (
     return Results.Ok(await StatsQueries.GetAsync(db, lifetime, cancellationToken));
 })
 .WithName("GetStats");
+
+// Admin-only support snapshot: version, environment, settings, library and integration summaries,
+// stats, and the failure summary — assembled from non-secret data only (no provider tokens, API keys,
+// or webhook URLs). It is under /api, so the admin-token middleware protects it when a token is set.
+app.MapGet("/api/diagnostics", async (
+    OptimisarrDbContext db,
+    SettingsStore settings,
+    LifetimeStatsStore lifetimeStats,
+    CancellationToken cancellationToken) =>
+{
+    var environment = new DiagnosticsEnvironment(
+        RuntimeInformation.OSDescription,
+        RuntimeInformation.FrameworkDescription,
+        configDirectory,
+        PathAccessProbe.CanWrite(configDirectory));
+    var version = typeof(Program).Assembly.GetName().Version?.ToString();
+
+    return Results.Ok(await DiagnosticsQueries.BuildAsync(
+        db, settings, lifetimeStats, environment, version, cancellationToken));
+})
+.WithName("GetDiagnostics");
 
 // Reset the persistent lifetime "total space saved" tally to zero. This only clears the headline
 // figure the operator chose to reset; it touches no files, quarantine, or rollback history.

@@ -1449,6 +1449,19 @@
         ]
       }
     },
+    "/api/diagnostics": {
+      "get": {
+        "operationId": "GetDiagnostics",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
     "/api/exclusions": {
       "get": {
         "operationId": "ListExclusions",
