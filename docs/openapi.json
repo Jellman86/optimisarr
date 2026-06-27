@@ -375,6 +375,12 @@
           "ruleProfile": {
             "type": "string"
           },
+          "skipEfficientSources": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -782,6 +788,12 @@
               "string"
             ]
           },
+          "skipEfficientSources": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -832,6 +844,7 @@
           "minFileSizeBytes",
           "maxHeight",
           "reencodeSameCodecAboveBytes",
+          "skipEfficientSources",
           "targetVideoCodec",
           "targetContainer",
           "hdrHandling",

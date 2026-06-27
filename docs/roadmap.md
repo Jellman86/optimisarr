@@ -128,8 +128,9 @@ the replacement workflow is trustworthy.
   transcoded and then rejected by the size-saving gate. Uses a per-profile efficiency floor in bits
   per pixel-second (resolution/frame-rate independent), calibrated against real library data; HEVC and
   H.264 set a floor, AV1 sets none. Conservative (uses total-file bitrate), with the size-saving gate
-  still the backstop. Remaining follow-up: expose the floor as a per-library override (needs a
-  Library column + migration + UI) for operators who want to tune it.
+  still the backstop. A per-library **"Skip already-efficient sources"** toggle (Libraries → video
+  settings, on by default, migration `AddLibrarySkipEfficientSources`, carried in settings backups)
+  lets an operator disable the floor for a library and send every eligible file to the encoder.
 - **Already-optimised sibling skip: done.** When an Optimisarr-produced output (a marked re-container,
   e.g. an hevc `.mp4`) still sits beside its original (e.g. the h264 `.mkv`), the original is now
   skipped at eligibility ("An optimised copy already exists alongside this file") instead of being

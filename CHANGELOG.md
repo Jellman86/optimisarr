@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Eligibility
+
+- **A per-library "Skip already-efficient sources" toggle.** The efficiency floor that skips sources
+  already too compressed to shrink is on by default per the library's preset, and can now be turned
+  off per library (Libraries → video settings) to send every eligible file to the encoder anyway — the
+  size-saving gate still protects the original. Settings backups carry the toggle. Migration
+  `AddLibrarySkipEfficientSources` (existing libraries keep the floor on).
+
 ### Maintainability
 
 - **`Program.cs` is now a composition root, not a 2,000-line endpoint file.** All 72 endpoints live in

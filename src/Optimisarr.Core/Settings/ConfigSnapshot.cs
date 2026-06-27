@@ -54,7 +54,8 @@ public sealed record LibrarySnapshot(
     string ImageDownscaleMode = "None",
     int ImageDownscaleValue = 0,
     bool MoveOverwrite = false,
-    bool AutoReplace = false);
+    bool AutoReplace = false,
+    bool? SkipEfficientSources = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

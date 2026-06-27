@@ -43,6 +43,14 @@ public sealed class Library
     /// </summary>
     public long? ReencodeSameCodecAboveBytes { get; set; }
 
+    /// <summary>
+    /// When <c>true</c> (the default), a source already encoded so efficiently that re-encoding it to
+    /// the target codec is unlikely to save space is skipped before transcoding, using the profile's
+    /// efficiency floor. Set <c>false</c> to disable that floor for this library and let every
+    /// eligible source through to the encoder (the size-saving gate still protects the original).
+    /// </summary>
+    public bool SkipEfficientSources { get; set; } = true;
+
     /// <summary>Overrides the profile's target video codec (ffprobe name, e.g. "hevc").</summary>
     public string? TargetVideoCodec { get; set; }
 

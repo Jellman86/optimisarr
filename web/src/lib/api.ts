@@ -70,6 +70,7 @@ export type LibraryRules = {
   minFileSizeBytes: number | null
   maxHeight: number | null
   reencodeSameCodecAboveBytes: number | null
+  skipEfficientSources: boolean
   targetVideoCodec: string | null
   targetContainer: string | null
   hdrHandling: string | null

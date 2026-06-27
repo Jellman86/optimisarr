@@ -371,6 +371,7 @@
       minFileSizeBytes: null,
       maxHeight: null,
       reencodeSameCodecAboveBytes: null,
+      skipEfficientSources: true,
       targetVideoCodec: null,
       targetContainer: null,
       hdrHandling: null,
@@ -504,6 +505,7 @@
       minFileSizeBytes: library.minFileSizeBytes,
       maxHeight: library.maxHeight,
       reencodeSameCodecAboveBytes: library.reencodeSameCodecAboveBytes,
+      skipEfficientSources: library.skipEfficientSources,
       targetVideoCodec: library.targetVideoCodec,
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
@@ -1027,6 +1029,21 @@
               <span class="text-slate-500 dark:text-slate-400">GB</span>
             </div>
           {/if}
+        </div>
+
+        <!-- Skip sources already so efficiently encoded that re-encoding won't shrink them. On by
+             default; the size-saving gate still protects the original either way. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.skipEfficientSources} />
+            <span>
+              Skip already-efficient sources
+              <InfoTip text="A file already encoded at a very low bitrate for its resolution can't be made meaningfully smaller, so it's skipped before transcoding instead of wasting an encode that the size-saving gate would reject. Turn this off to send every eligible file to the encoder anyway." />
+              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+                Avoids wasted encodes on files that can't shrink. Turn off to re-encode everything.
+              </span>
+            </span>
+          </label>
         </div>
       </section>
       {/if}

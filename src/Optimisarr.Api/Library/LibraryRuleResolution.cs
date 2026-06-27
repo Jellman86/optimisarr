@@ -13,8 +13,16 @@ internal static class LibraryRuleResolution
     public static RuleProfile ProfileOf(Data.Library? library) =>
         library?.RuleProfile ?? RuleProfile.ConservativeHevc;
 
-    public static RuleSettings Resolve(Data.Library? library) =>
-        RuleResolver.Resolve(ProfileOf(library), ToOverrides(library));
+    public static RuleSettings Resolve(Data.Library? library)
+    {
+        var rules = RuleResolver.Resolve(ProfileOf(library), ToOverrides(library));
+
+        // A library can opt out of the profile's "skip already-efficient sources" floor, sending every
+        // eligible source to the encoder (the size-saving gate still guards the original).
+        return library is { SkipEfficientSources: false }
+            ? rules with { MinSourceBitsPerPixelSecond = null }
+            : rules;
+    }
 
     public static RuleOverrides ToOverrides(Data.Library? library)
     {

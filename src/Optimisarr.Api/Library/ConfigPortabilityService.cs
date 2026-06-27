@@ -114,6 +114,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.Priority = snapshot.Priority;
             library.MinFileSizeBytes = snapshot.MinFileSizeBytes;
             library.MaxHeight = snapshot.MaxHeight;
+            library.SkipEfficientSources = snapshot.SkipEfficientSources ?? true;
             library.TargetVideoCodec = snapshot.TargetVideoCodec;
             library.TargetContainer = snapshot.TargetContainer;
             library.HdrHandling = snapshot.HdrHandling is null ? null : ParseEnum<HdrHandling>(snapshot.HdrHandling);
@@ -284,7 +285,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ImageDownscaleMode.ToString(),
         library.ImageDownscaleValue,
         library.MoveOverwrite,
-        library.AutoReplace);
+        library.AutoReplace,
+        library.SkipEfficientSources);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

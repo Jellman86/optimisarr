@@ -91,6 +91,7 @@ internal static class LibraryEndpoints
                 MinFileSizeBytes = parsed.MinFileSizeBytes,
                 MaxHeight = parsed.MaxHeight,
                 ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes,
+                SkipEfficientSources = parsed.SkipEfficientSources,
                 TargetVideoCodec = parsed.TargetVideoCodec,
                 TargetContainer = parsed.TargetContainer,
                 HdrHandling = parsed.HdrHandling,
@@ -156,6 +157,7 @@ internal static class LibraryEndpoints
             library.MinFileSizeBytes = parsed.MinFileSizeBytes;
             library.MaxHeight = parsed.MaxHeight;
             library.ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes;
+            library.SkipEfficientSources = parsed.SkipEfficientSources;
             library.TargetVideoCodec = parsed.TargetVideoCodec;
             library.TargetContainer = parsed.TargetContainer;
             library.HdrHandling = parsed.HdrHandling;
