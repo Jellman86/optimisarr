@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-06-27
+
 ### Eligibility
 
 - **A per-library "Skip already-efficient sources" toggle.** The efficiency floor that skips sources
