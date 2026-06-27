@@ -237,6 +237,7 @@ export type Job = {
   priority: number
   progress: number
   errorMessage: string | null
+  failureCategory: string | null
   ffmpegArguments: string | null
   videoEncoder: string | null
   outputSizeBytes: number | null
@@ -254,6 +255,20 @@ export type EnqueueResult = {
   alreadyQueued: number
   ineligible: number
   importing: number
+}
+
+export type FailureSample = {
+  jobId: number
+  mediaFileId: number
+  relativePath: string | null
+  errorMessage: string | null
+}
+
+export type FailureGroup = {
+  category: string
+  description: string
+  count: number
+  samples: FailureSample[]
 }
 
 export type Replacement = {
@@ -523,6 +538,14 @@ export const api = {
     request<ConnectionTestResult>('/api/connect/test', { method: 'POST', body: JSON.stringify(body) }),
 
   jobs: () => request<Job[]>('/api/jobs'),
+  jobFailures: () => request<FailureGroup[]>('/api/jobs/failures'),
+  // The captured ffmpeg log is plain text, and 404s when a job has none — return null rather than throw.
+  jobLog: async (id: number): Promise<string | null> => {
+    const response = await fetch(`/api/jobs/${id}/log`)
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`Request failed with ${response.status}`)
+    return response.text()
+  },
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
   retryJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),

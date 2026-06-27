@@ -9,6 +9,7 @@
   import BottomSheet from '../components/BottomSheet.svelte'
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
+  import FailuresPanel from '../components/FailuresPanel.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
@@ -25,6 +26,8 @@
   let clearingPending = $state(false)
   let expandedId = $state<number | null>(null)
   let filter = $state<'all' | 'active' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
+  // Queue (live work) vs Failures (failed jobs grouped by reason, with the captured ffmpeg log).
+  let activeTab = $state<'queue' | 'failures'>('queue')
 
   // The job open in the detail bottom sheet, and whether the sheet shows full content.
   let selectedJobId = $state<number | null>(null)
@@ -348,6 +351,32 @@
     {#if activeCount > 0}<span class="text-slate-400"> · {activeCount} active</span>{/if}
   </p>
 </header>
+
+<!-- Queue | Failures: live work and the diagnostics view for failed jobs live together, so the
+     sidebar stays lean and job views are in one place. -->
+<div class="mb-5 flex gap-1 border-b border-slate-200 dark:border-slate-700">
+  <button
+    class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'queue'
+      ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+    onclick={() => (activeTab = 'queue')}
+  >
+    Queue{#if activeCount > 0} ({activeCount}){/if}
+  </button>
+  <button
+    class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'failures'
+      ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}
+      {counts.failed > 0 && activeTab !== 'failures' ? '!text-red-600 dark:!text-red-400' : ''}"
+    onclick={() => (activeTab = 'failures')}
+  >
+    Failures{#if counts.failed > 0} ({counts.failed}){/if}
+  </button>
+</div>
+
+{#if activeTab === 'failures'}
+  <FailuresPanel />
+{:else}
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>
@@ -730,3 +759,4 @@
     {/if}
   {/snippet}
 </BottomSheet>
+{/if}

@@ -4,6 +4,12 @@
 
 ### Diagnostics & observability
 
+- **The Queue page has a Failures tab.** Rather than a new sidebar entry, failed jobs are grouped by
+  reason on a tab beside the live queue, so job views stay in one place and the sidebar stays lean.
+  Each group shows its plain-language reason, a count, and recent jobs; "View log" expands the
+  captured ffmpeg log inline. Reads the diagnostics endpoints below, so "why did it fail?" is
+  answerable in the UI without container access.
+
 - **Failed transcodes are now answerable from the API.** `GET /api/jobs` accepts a `status` filter
   (e.g. `?status=Failed`) so callers no longer fetch every job and filter client-side, and a new
   `GET /api/jobs/failures` groups failed jobs by a classified reason — size-saving gate, container

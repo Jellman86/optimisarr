@@ -34,6 +34,9 @@ the replacement workflow is trustworthy.
      `FailureCategory` column the moment a job fails, so the summary groups in the database and the
      class survives an edited message (older rows fall back to on-read classification). Surfaced per
      job on `GET /api/jobs` too. Migration `AddJobFailureCategory`.
+   - **Failures UI: done.** A Failures tab on the Queue page groups failed jobs by reason (count,
+     description, recent samples) with an inline "View log" drill-in to the captured ffmpeg log —
+     deliberately a Queue tab, not a sidebar entry, to keep job views together and the sidebar lean.
    - **Remaining: library/reason/date filters and pagination** on the job and failure queries.
    The classification then feeds back into the dashboards and reports rather than the eligibility
    logic, which now handles the "skip before we waste an encode" cases directly — see the
