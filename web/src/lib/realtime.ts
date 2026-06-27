@@ -3,6 +3,7 @@
 // job) and `systemMetrics` (live CPU/GPU usage while encoding). The consumer owns
 // the connection lifecycle; callers should `stop()` the returned connection on teardown.
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
+import { getAdminToken } from './api'
 
 export type JobProgress = {
   jobId: number
@@ -27,7 +28,9 @@ export type JobsHandlers = {
 
 export function createJobsConnection(handlers: JobsHandlers): HubConnection {
   const connection = new HubConnectionBuilder()
-    .withUrl('/hubs/jobs')
+    .withUrl('/hubs/jobs', {
+      accessTokenFactory: () => getAdminToken() ?? '',
+    })
     .withAutomaticReconnect()
     .build()
 

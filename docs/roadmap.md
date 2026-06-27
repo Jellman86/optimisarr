@@ -13,23 +13,28 @@ the replacement workflow is trustworthy.
    [`docs/reviews/2026-06-27-project-quality-and-gold-standard-review.md`](reviews/2026-06-27-project-quality-and-gold-standard-review.md)
    and its peer response.
 
-   - **Optional admin-token auth.** Add `OPTIMISARR_ADMIN_TOKEN`; when set, require
-     bearer-token authentication for administrative API calls and decide explicitly
-     whether the SPA shell is protected or only useful API calls are. Exempt
-     `/api/health` and `/api/ready` only if needed for health checks. Token comparison
-     must be constant-time (`CryptographicOperations.FixedTimeEquals` over token bytes),
-     and tests must cover secret-bearing and destructive endpoints:
-     settings export/import, settings update, enqueue, cancel/retry/remove, replace,
-     approve, rollback, and purge/history clearing. Keep reverse-proxy authentication
-     documented as the preferred public-access boundary; this token is the built-in
-     backstop for direct or accidentally exposed deployments.
+   - **Optional admin-token auth: initial implementation done.** `OPTIMISARR_ADMIN_TOKEN`
+     now gates the administrative API and SignalR hub with bearer-token authentication
+     when set. The static SPA shell remains public so it can show a token prompt; useful
+     API calls are blocked until the token is supplied. `/api/health`, `/api/ready`, and
+     `/api/auth/status` stay open for health checks and discovery. Token comparison uses
+     constant-time comparison over fixed-size token hashes, the UI stores the token
+     locally and sends it on API, hub, and media-preview requests, and the deployment
+     docs keep reverse-proxy authentication as the preferred public-access boundary.
+     Follow-up: add integration
+     coverage over the full destructive/secret-bearing endpoint set — settings
+     export/import, settings update, enqueue, cancel/retry/remove, replace, approve,
+     rollback, and purge/history clearing — once the OpenAPI/test-host work below is in
+     place.
 
-   - **Generated, CI-checked OpenAPI contract.** `AddOpenApi()` is already wired; turn
-     that into a generated artifact in CI. The contract should include route groups,
-     schemas for request/response DTOs, status codes for destructive/state-gated
-     operations, and descriptions for safety-sensitive endpoints. Add a docs check that
-     every path/method listed in `docs/api.md` exists in the generated spec. This turns
-     the API reference from a manually maintained page into a checked contract.
+   - **Generated, CI-checked OpenAPI contract: initial implementation done.** The
+     runtime OpenAPI 3.1 document is generated from the app into `docs/openapi.json`,
+     and CI fails when the checked-in document drifts from the running API. The docs
+     checker also verifies every path/method listed in `docs/api.md` exists in the
+     generated spec. Follow-up: improve route grouping, response metadata, status codes
+     for destructive/state-gated operations, auth annotations, and descriptions for
+     safety-sensitive endpoints so the generated contract becomes more useful to client
+     generators and API browsers.
 
    - **Pipeline robustness pass.** The project has proven the originals stay safe, but
      recent live fixes showed that safe can still mean failed, looping, or wasteful.

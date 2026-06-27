@@ -5,6 +5,10 @@ for local automation, health checks, and read-only dashboards, but it is not a
 stable public contract yet. Check this page against the running version before
 building long-lived integrations.
 
+The generated OpenAPI 3.1 document is checked in at [`openapi.json`](openapi.json)
+and regenerated in CI from the running API. This page is the readable companion
+to that machine-readable contract.
+
 Examples below assume Optimisarr is reachable at `http://localhost:8787`.
 
 ```bash
@@ -18,8 +22,10 @@ curl http://localhost:8787/api/health
 - Validation errors return `400` with an `error` field when the endpoint can
   describe the problem.
 - Readiness failures return `503` from `/api/ready` with a `detail` string.
-- The app does not implement its own authentication. Put it behind an
-  authenticated reverse proxy before exposing it outside a trusted network.
+- If `OPTIMISARR_ADMIN_TOKEN` is set, protected endpoints require
+  `Authorization: Bearer <token>`. Put Optimisarr behind an authenticated reverse
+  proxy before exposing it outside a trusted network; the token is a built-in
+  backstop, not a full public-access security model.
 - Live queue updates are also published through the SignalR hub at `/hubs/jobs`.
 
 Common status codes:
@@ -29,9 +35,36 @@ Common status codes:
 | `200` | Request succeeded and usually returned JSON. |
 | `204` | Delete-style request succeeded with no response body. |
 | `400` | Request body or query value was invalid. |
+| `401` | `OPTIMISARR_ADMIN_TOKEN` is set and the request did not include the correct token. |
 | `404` | Requested library, media file, job, preview, exclusion, or replacement was not found. |
 | `409` | The requested action is not allowed in the current state. |
 | `503` | Readiness failed; check the response detail before starting work. |
+
+## Authentication
+
+`GET /api/health`, `GET /api/ready`, and `GET /api/auth/status` are always open
+so health checks and clients can detect whether a token is required.
+
+```bash
+curl -fsS http://localhost:8787/api/auth/status
+```
+
+Response:
+
+```json
+{ "required": true }
+```
+
+When `required` is `true`, send the configured token on protected requests:
+
+```bash
+curl -fsS -H "Authorization: Bearer change-this-long-random-token" \
+  http://localhost:8787/api/settings
+```
+
+The SignalR hub at `/hubs/jobs` accepts the same bearer token. Browser media
+content endpoints also accept `?access_token=<token>` because native media
+requests cannot attach custom headers.
 
 ## Common Recipes
 
@@ -134,6 +167,7 @@ exists in quarantine.
 |---|---|---|
 | `GET` | `/api/health` | Liveness check: the web process is responding. |
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
+| `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/system/tools` | FFmpeg and ffprobe availability/version checks. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |

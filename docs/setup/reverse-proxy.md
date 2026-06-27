@@ -7,11 +7,34 @@ Queue progress, CPU/GPU graphs, and job updates use a SignalR hub at
 `Upgrade`/`Connection` headers, the UI still works but falls back to slower
 polling and live updates feel laggy.
 
-Optimisarr has no built-in authentication — put it behind your proxy's auth
-(or a trusted network) if it's reachable from outside.
+Put Optimisarr behind your proxy's authentication (or a trusted network) if it
+is reachable from outside. You can also set `OPTIMISARR_ADMIN_TOKEN` for a
+built-in bearer-token backstop on the UI, API, and SignalR hub, but it is not a
+replacement for TLS, proxy authentication, IP allow-lists, or your normal
+internet-facing access controls.
 
 Assume the container is reachable from the proxy as `http://optimisarr:8787`
 (Docker network) or `http://127.0.0.1:8787` (host). Adjust the upstream to match.
+
+## Built-in admin token
+
+Set `OPTIMISARR_ADMIN_TOKEN` on the container to require the same token in the
+web UI and on API calls. Health probes remain unauthenticated:
+
+- `GET /api/health`
+- `GET /api/ready`
+- `GET /api/auth/status`
+
+API clients should send:
+
+```bash
+curl -H "Authorization: Bearer change-this-long-random-token" \
+  https://optimisarr.example.com/api/settings
+```
+
+Browser media previews use request URLs that include the token as `access_token`
+because `<video>` and `<img>` requests cannot attach bearer headers. Prefer
+HTTPS and avoid logging query strings at the proxy if you enable remote previews.
 
 ## Caddy
 

@@ -21,6 +21,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 ## Reference
 
 - [API reference](api.md) - HTTP endpoints used by the UI and local automation.
+- [OpenAPI contract](openapi.json) - generated OpenAPI 3.1 document for API tooling.
 - [Glossary](glossary.md) - Optimisarr terms in plain English.
 - [Documentation standard](documentation-standard.md) - how project docs should be written and reviewed.
 - [Product and architecture](product-and-architecture.md)

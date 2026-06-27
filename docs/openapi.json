@@ -1,0 +1,2652 @@
+{
+  "components": {
+    "schemas": {
+      "ActivityWatcherSnapshot": {
+        "properties": {
+          "apiToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "refreshOnReplace": {
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "baseUrl",
+          "enabled",
+          "refreshOnReplace"
+        ],
+        "type": "object"
+      },
+      "ArrConnectionSnapshot": {
+        "properties": {
+          "apiKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "baseUrl",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "ConfigSnapshot": {
+        "properties": {
+          "activityWatchers": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityWatcherSnapshot"
+            },
+            "type": "array"
+          },
+          "arrConnections": {
+            "items": {
+              "$ref": "#/components/schemas/ArrConnectionSnapshot"
+            },
+            "type": "array"
+          },
+          "exportedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "libraries": {
+            "items": {
+              "$ref": "#/components/schemas/LibrarySnapshot"
+            },
+            "type": "array"
+          },
+          "notificationTargets": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationTargetSnapshot"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "version": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "exportedAt",
+          "settings",
+          "libraries",
+          "activityWatchers",
+          "notificationTargets",
+          "arrConnections"
+        ],
+        "type": "object"
+      },
+      "ConnectionTestRequest": {
+        "properties": {
+          "baseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "baseUrl",
+          "token",
+          "id"
+        ],
+        "type": "object"
+      },
+      "ExcludeRequest": {
+        "properties": {
+          "mediaFileId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "mediaFileId",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "JellyfinConnectRequest": {
+        "properties": {
+          "baseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "baseUrl"
+        ],
+        "type": "object"
+      },
+      "JellyfinPollRequest": {
+        "properties": {
+          "baseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secret": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "baseUrl",
+          "secret"
+        ],
+        "type": "object"
+      },
+      "LibrarySnapshot": {
+        "properties": {
+          "audioBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "audioTargetCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "autoEnqueueEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "autoEnqueueWindowEnd": {
+            "default": "00:00",
+            "type": "string"
+          },
+          "autoEnqueueWindowStart": {
+            "default": "00:00",
+            "type": "string"
+          },
+          "autoReplace": {
+            "default": false,
+            "type": "boolean"
+          },
+          "downmixToStereo": {
+            "default": false,
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "encoderPreset": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "excludePaths": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hdrHandling": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageDownscaleMode": {
+            "default": "None",
+            "type": "string"
+          },
+          "imageDownscaleValue": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "imageQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "maxHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "minFileSizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "minVmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "moveOnComplete": {
+            "type": "boolean"
+          },
+          "moveOverwrite": {
+            "default": false,
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "priority": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "qualityCrf": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "reencodeLossyAudio": {
+            "default": false,
+            "type": "boolean"
+          },
+          "reencodeLossyImages": {
+            "default": false,
+            "type": "boolean"
+          },
+          "ruleProfile": {
+            "type": "string"
+          },
+          "targetContainer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetFolder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetImageFormat": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetVideoCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoAudioBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "videoAudioCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "mediaType",
+          "ruleProfile",
+          "enabled",
+          "priority",
+          "minFileSizeBytes",
+          "maxHeight",
+          "targetVideoCodec",
+          "targetContainer",
+          "hdrHandling",
+          "excludePaths",
+          "qualityCrf",
+          "encoderPreset",
+          "moveOnComplete",
+          "targetFolder"
+        ],
+        "type": "object"
+      },
+      "NotificationTargetSnapshot": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notifyOnFailure": {
+            "type": "boolean"
+          },
+          "notifyOnReplacement": {
+            "type": "boolean"
+          },
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "url",
+          "enabled",
+          "notifyOnReplacement",
+          "notifyOnFailure"
+        ],
+        "type": "object"
+      },
+      "PlexServersRequest": {
+        "properties": {
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "SaveActivityWatcherRequest": {
+        "properties": {
+          "apiToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "refreshOnReplace": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "baseUrl",
+          "apiToken",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "SaveArrConnectionRequest": {
+        "properties": {
+          "apiKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "baseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "baseUrl",
+          "apiKey",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "SaveLibraryRequest": {
+        "properties": {
+          "audioBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "audioTargetCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "autoEnqueueEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "autoEnqueueWindowEnd": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "autoEnqueueWindowStart": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "autoReplace": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "downmixToStereo": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "encoderPreset": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "excludePaths": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hdrHandling": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageDownscaleMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageDownscaleValue": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "imageQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "maxHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "mediaType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "minFileSizeBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "minVmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "moveOnComplete": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "moveOverwrite": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "path": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "priority": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "qualityCrf": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "reencodeLossyAudio": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "reencodeLossyImages": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "reencodeSameCodecAboveBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "ruleProfile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetContainer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetFolder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetImageFormat": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetVideoCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoAudioBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "videoAudioCodec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "mediaType",
+          "ruleProfile",
+          "enabled",
+          "priority",
+          "minFileSizeBytes",
+          "maxHeight",
+          "reencodeSameCodecAboveBytes",
+          "targetVideoCodec",
+          "targetContainer",
+          "hdrHandling",
+          "excludePaths",
+          "qualityCrf",
+          "encoderPreset",
+          "audioTargetCodec",
+          "audioBitrateKbps",
+          "videoAudioCodec",
+          "videoAudioBitrateKbps",
+          "downmixToStereo",
+          "reencodeLossyAudio",
+          "targetImageFormat",
+          "imageQuality",
+          "reencodeLossyImages",
+          "imageDownscaleMode",
+          "imageDownscaleValue",
+          "moveOnComplete",
+          "targetFolder",
+          "moveOverwrite",
+          "minVmafHarmonicMean",
+          "minVmafMin",
+          "autoEnqueueEnabled",
+          "autoEnqueueWindowStart",
+          "autoEnqueueWindowEnd",
+          "autoReplace"
+        ],
+        "type": "object"
+      },
+      "SaveNotificationTargetRequest": {
+        "properties": {
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notifyOnFailure": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "notifyOnReplacement": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "url",
+          "token",
+          "enabled",
+          "notifyOnReplacement",
+          "notifyOnFailure"
+        ],
+        "type": "object"
+      },
+      "SettingsDto": {
+        "properties": {
+          "cpuThreadLimit": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "dryRunMode": {
+            "type": "boolean"
+          },
+          "encoderMode": {
+            "type": "string"
+          },
+          "hardwareDecode": {
+            "type": "boolean"
+          },
+          "libraryScanIntervalHours": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "maxConcurrentJobs": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "minFreeDiskBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "replacementAllowCrossFilesystem": {
+            "type": "boolean"
+          },
+          "replacementQuarantineRetentionDays": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "verificationAudioClippingGateEnabled": {
+            "type": "boolean"
+          },
+          "verificationAudioLoudnessGateEnabled": {
+            "type": "boolean"
+          },
+          "verificationDurationTolerancePercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "verificationImageMetadataGateEnabled": {
+            "type": "boolean"
+          },
+          "verificationImageQualityGateEnabled": {
+            "type": "boolean"
+          },
+          "verificationMaxLoudnessDriftLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "verificationMaxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "verificationMinimumImageSsim": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "verificationMinimumVmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "verificationMinimumVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "verificationQualityGateEnabled": {
+            "type": "boolean"
+          },
+          "verificationRequireAudioRetained": {
+            "type": "boolean"
+          },
+          "verificationRequireSizeReduction": {
+            "type": "boolean"
+          },
+          "verificationRequireSubtitlesRetained": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "maxConcurrentJobs",
+          "minFreeDiskBytes",
+          "cpuThreadLimit",
+          "libraryScanIntervalHours",
+          "encoderMode",
+          "hardwareDecode",
+          "verificationDurationTolerancePercent",
+          "verificationRequireAudioRetained",
+          "verificationRequireSubtitlesRetained",
+          "verificationRequireSizeReduction",
+          "verificationQualityGateEnabled",
+          "verificationMinimumVmafHarmonicMean",
+          "verificationMinimumVmafMin",
+          "verificationAudioLoudnessGateEnabled",
+          "verificationMaxLoudnessDriftLufs",
+          "verificationAudioClippingGateEnabled",
+          "verificationMaxTruePeakDbtp",
+          "verificationImageQualityGateEnabled",
+          "verificationMinimumImageSsim",
+          "verificationImageMetadataGateEnabled",
+          "replacementAllowCrossFilesystem",
+          "dryRunMode",
+          "replacementQuarantineRetentionDays"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Optimisarr.Api | v1",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.1",
+  "paths": {
+    "/api/activity-watchers": {
+      "get": {
+        "operationId": "ListActivityWatchers",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "post": {
+        "operationId": "CreateActivityWatcher",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveActivityWatcherRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/activity-watchers/{id}": {
+      "delete": {
+        "operationId": "DeleteActivityWatcher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateActivityWatcher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveActivityWatcherRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/arr-connections": {
+      "get": {
+        "operationId": "ListArrConnections",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "post": {
+        "operationId": "CreateArrConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveArrConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/arr-connections/{id}": {
+      "delete": {
+        "operationId": "DeleteArrConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateArrConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveArrConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "operationId": "GetAuthStatus",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/candidates": {
+      "get": {
+        "operationId": "ListCandidates",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/candidates/summary": {
+      "get": {
+        "operationId": "CandidateSummary",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/connect/jellyfin/poll": {
+      "post": {
+        "operationId": "PollJellyfinConnect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JellyfinPollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/connect/jellyfin/start": {
+      "post": {
+        "operationId": "StartJellyfinConnect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JellyfinConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/connect/plex/poll": {
+      "get": {
+        "operationId": "PollPlexConnect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/connect/plex/servers": {
+      "post": {
+        "operationId": "ListPlexServers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlexServersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/connect/plex/start": {
+      "post": {
+        "operationId": "StartPlexConnect",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/connect/test": {
+      "post": {
+        "operationId": "TestConnection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/exclusions": {
+      "get": {
+        "operationId": "ListExclusions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "post": {
+        "operationId": "CreateExclusion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExcludeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/exclusions/{id}": {
+      "delete": {
+        "operationId": "DeleteExclusion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/fs/browse": {
+      "get": {
+        "operationId": "BrowseFileSystem",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "GetHealth",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "operationId": "ListJobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "libraryId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/clear": {
+      "post": {
+        "operationId": "ClearJobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/clear-pending": {
+      "post": {
+        "operationId": "ClearPendingJobs",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/failures": {
+      "get": {
+        "operationId": "JobFailureSummary",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/{id}": {
+      "delete": {
+        "operationId": "RemoveResettableJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/{id}/artwork": {
+      "get": {
+        "operationId": "JobArtwork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/{id}/cancel": {
+      "post": {
+        "operationId": "CancelJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/{id}/log": {
+      "get": {
+        "operationId": "JobLog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/{id}/replace": {
+      "post": {
+        "operationId": "ReplaceFromJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/jobs/{id}/retry": {
+      "post": {
+        "operationId": "RetryJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/libraries": {
+      "get": {
+        "operationId": "ListLibraries",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "post": {
+        "operationId": "CreateLibrary",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLibraryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/libraries/scan": {
+      "post": {
+        "operationId": "ScanAllLibraries",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/libraries/{id}": {
+      "delete": {
+        "operationId": "DeleteLibrary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateLibrary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLibraryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/libraries/{id}/access": {
+      "get": {
+        "operationId": "CheckLibraryAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/libraries/{id}/enqueue": {
+      "post": {
+        "operationId": "EnqueueLibrary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/libraries/{id}/scan": {
+      "post": {
+        "operationId": "ScanLibrary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/library-options": {
+      "get": {
+        "operationId": "GetLibraryOptions",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/media": {
+      "get": {
+        "operationId": "ListMedia",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/media/{id}/content": {
+      "get": {
+        "operationId": "GetMediaContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/media/{id}/preview": {
+      "post": {
+        "operationId": "CreatePreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/media/{id}/probe": {
+      "post": {
+        "operationId": "ProbeMedia",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/media/{id}/thumbnail": {
+      "get": {
+        "operationId": "MediaThumbnail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/notification-targets": {
+      "get": {
+        "operationId": "ListNotificationTargets",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "post": {
+        "operationId": "CreateNotificationTarget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveNotificationTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/notification-targets/{id}": {
+      "delete": {
+        "operationId": "DeleteNotificationTarget",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateNotificationTarget",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveNotificationTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/preview/{jobId}": {
+      "delete": {
+        "operationId": "DeletePreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "get": {
+        "operationId": "GetPreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/preview/{jobId}/content": {
+      "get": {
+        "operationId": "GetPreviewContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/queue/status": {
+      "get": {
+        "operationId": "GetQueueDispatchStatus",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "operationId": "GetReadiness",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements": {
+      "get": {
+        "operationId": "ListReplacements",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements/clear": {
+      "post": {
+        "operationId": "ClearSpentReplacements",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements/{id}": {
+      "get": {
+        "operationId": "GetReplacement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements/{id}/approve": {
+      "post": {
+        "operationId": "ApproveReplacement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements/{id}/original/content": {
+      "get": {
+        "operationId": "GetReplacementOriginalContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements/{id}/replacement/content": {
+      "get": {
+        "operationId": "GetReplacementReplacementContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/replacements/{id}/rollback": {
+      "post": {
+        "operationId": "RollbackReplacement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "GetSettings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/settings/export": {
+      "get": {
+        "operationId": "ExportSettings",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/settings/import": {
+      "post": {
+        "operationId": "ImportSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigSnapshot"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "operationId": "GetStats",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/stats/clear": {
+      "post": {
+        "operationId": "ClearStats",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/system/hardware": {
+      "get": {
+        "operationId": "GetHardwareCapabilities",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "refresh",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    },
+    "/api/system/tools": {
+      "get": {
+        "operationId": "GetSystemTools",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Optimisarr.Api"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Optimisarr.Api"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
+  import { auth } from './lib/stores/auth.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import BrandMark from './lib/components/BrandMark.svelte'
   import Dashboard from './lib/pages/Dashboard.svelte'
@@ -26,20 +27,79 @@
     return Dashboard
   })
 
+  let tokenInput = $state('')
+
   // One app-wide connection drives the sidebar activity indicator and the Queue usage graph.
-  onMount(() => activity.start())
+  onMount(() => {
+    void auth.check()
+  })
+
+  $effect(() => {
+    if (auth.canUseApp) activity.start()
+  })
+
+  async function submitToken(event: SubmitEvent) {
+    event.preventDefault()
+    await auth.login(tokenInput)
+    if (auth.token) tokenInput = ''
+  }
 </script>
 
 <svelte:head>
   <title>Optimisarr</title>
 </svelte:head>
 
-<!-- h-dvh tracks iOS Safari's dynamic toolbar; the safe-area insets keep the bar
-     and content clear of the notch and home indicator. -->
-<div
-  class="flex h-dvh bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200"
-  style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
->
+{#if !auth.checked}
+  <div
+    class="flex h-dvh items-center justify-center bg-slate-50 p-4 text-slate-800 dark:bg-slate-950 dark:text-slate-200"
+    style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+  >
+    <div class="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+      <BrandMark sizes="32px" class="h-8 w-8" />
+      <span class="text-sm font-semibold">Loading Optimisarr...</span>
+    </div>
+  </div>
+{:else if auth.required && !auth.token}
+  <div
+    class="flex h-dvh items-center justify-center bg-slate-50 p-4 text-slate-800 dark:bg-slate-950 dark:text-slate-200"
+    style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+  >
+    <form class="card w-full max-w-sm p-6" onsubmit={submitToken}>
+      <div class="mb-6 flex items-center gap-3">
+        <BrandMark sizes="36px" class="h-9 w-9" />
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">Optimisarr</h1>
+          <p class="text-sm text-slate-500 dark:text-slate-400">Admin token required</p>
+        </div>
+      </div>
+
+      <label class="label" for="admin-token">Admin token</label>
+      <input
+        id="admin-token"
+        class="input"
+        type="password"
+        autocomplete="current-password"
+        bind:value={tokenInput}
+      />
+
+      {#if auth.error}
+        <p class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          {auth.error}
+        </p>
+      {/if}
+
+      <button class="btn btn-primary mt-5 w-full" type="submit" disabled={auth.checking}>
+        {auth.checking ? 'Checking...' : 'Continue'}
+      </button>
+    </form>
+  </div>
+{:else}
+  <!-- h-dvh tracks iOS Safari's dynamic toolbar; the safe-area insets keep the bar
+       and content clear of the notch and home indicator. -->
+  <div
+    class="flex h-dvh bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200"
+    style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+  >
   <!-- Backdrop behind the mobile drawer; tap to dismiss. Desktop never shows it. -->
   {#if layout.mobileOpen}
     <button
@@ -88,4 +148,5 @@
       </div>
     </main>
   </div>
-</div>
+  </div>
+{/if}

@@ -126,6 +126,7 @@ sudo chown -R 1000:1000 ./optimisarr-config /path/to/work /path/to/trash
 docker run -d --name optimisarr \
   -p 8787:8787 \
   -e PUID=1000 -e PGID=1000 -e TZ=Europe/London \
+  -e OPTIMISARR_ADMIN_TOKEN='change-this-long-random-token' \
   -v ./optimisarr-config:/config \
   -v /path/to/media:/data \
   -v /path/to/work:/work \
@@ -151,7 +152,9 @@ Compose examples are available for every supported runtime:
 
 Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the
 replacement pipeline can use atomic moves. Do not publish `8787` directly to the
-internet; use an authenticated reverse proxy for remote access.
+internet; use an authenticated reverse proxy for remote access. Setting
+`OPTIMISARR_ADMIN_TOKEN` adds a built-in bearer-token backstop for the UI and API,
+but a reverse proxy remains the recommended public-access boundary.
 
 ## Hardware acceleration (GPU)
 

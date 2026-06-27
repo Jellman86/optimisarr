@@ -1,10 +1,45 @@
 // Typed client for the Optimisarr API. All HTTP lives here, not in components.
 
+const ADMIN_TOKEN_KEY = 'optimisarr.adminToken'
+
+let authRequiredHandler: (() => void) | null = null
+
+export class AuthRequiredError extends Error {
+  constructor(message = 'Admin token required.') {
+    super(message)
+    this.name = 'AuthRequiredError'
+  }
+}
+
+export function getAdminToken(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY)
+  return token && token.trim().length > 0 ? token : null
+}
+
+export function setAdminToken(token: string) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(ADMIN_TOKEN_KEY, token)
+}
+
+export function clearAdminToken() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(ADMIN_TOKEN_KEY)
+}
+
+export function setAuthRequiredHandler(handler: (() => void) | null) {
+  authRequiredHandler = handler
+}
+
 export type Health = {
   status: string
   service: string
   version: string | null
   checkedAt: string
+}
+
+export type AuthStatus = {
+  required: boolean
 }
 
 export type ToolCheck = {
@@ -431,17 +466,52 @@ export type BrowseResponse = {
   directories: { name: string; path: string }[]
 }
 
+function authorizedHeaders(init?: RequestInit): Headers {
+  const headers = new Headers(init?.headers)
+  const token = getAdminToken()
+  if (token) headers.set('authorization', `Bearer ${token}`)
+  if (init?.body && !headers.has('content-type')) headers.set('content-type', 'application/json')
+  return headers
+}
+
+function authenticatedUrl(url: string): string {
+  const token = getAdminToken()
+  if (!token) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}access_token=${encodeURIComponent(token)}`
+}
+
+function handleAuthRequired(): never {
+  clearAdminToken()
+  authRequiredHandler?.()
+  throw new AuthRequiredError()
+}
+
+function tryParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
-    headers: init?.body ? { 'content-type': 'application/json', ...init?.headers } : init?.headers,
+    headers: authorizedHeaders(init),
   })
 
   const text = await response.text()
-  const payload = text ? JSON.parse(text) : null
+  const payload = text ? tryParseJson(text) : null
+
+  if (response.status === 401) handleAuthRequired()
 
   if (!response.ok) {
-    throw new Error(payload?.error ?? `Request failed with ${response.status}`)
+    throw new Error(
+      payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : `Request failed with ${response.status}`
+    )
   }
 
   return payload as T
@@ -449,6 +519,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<Health>('/api/health'),
+  authStatus: () => request<AuthStatus>('/api/auth/status'),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
   hardware: (refresh = false) =>
     request<{ hardware: HardwareCapability }>(`/api/system/hardware${refresh ? '?refresh=true' : ''}`).then(
@@ -480,8 +551,8 @@ export const api = {
     request<{ jobId: number }>(`/api/media/${mediaFileId}/preview`, { method: 'POST' }),
   getPreview: (jobId: number) => request<PreviewComparison>(`/api/preview/${jobId}`),
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
-  mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
-  previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
+  mediaContentUrl: (mediaFileId: number) => authenticatedUrl(`/api/media/${mediaFileId}/content`),
+  previewContentUrl: (jobId: number) => authenticatedUrl(`/api/preview/${jobId}/content`),
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
@@ -541,8 +612,9 @@ export const api = {
   jobFailures: () => request<FailureGroup[]>('/api/jobs/failures'),
   // The captured ffmpeg log is plain text, and 404s when a job has none — return null rather than throw.
   jobLog: async (id: number): Promise<string | null> => {
-    const response = await fetch(`/api/jobs/${id}/log`)
+    const response = await fetch(`/api/jobs/${id}/log`, { headers: authorizedHeaders() })
     if (response.status === 404) return null
+    if (response.status === 401) handleAuthRequired()
     if (!response.ok) throw new Error(`Request failed with ${response.status}`)
     return response.text()
   },
@@ -559,8 +631,8 @@ export const api = {
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
-  replacementOriginalContentUrl: (id: number) => `/api/replacements/${id}/original/content`,
-  replacementReplacementContentUrl: (id: number) => `/api/replacements/${id}/replacement/content`,
+  replacementOriginalContentUrl: (id: number) => authenticatedUrl(`/api/replacements/${id}/original/content`),
+  replacementReplacementContentUrl: (id: number) => authenticatedUrl(`/api/replacements/${id}/replacement/content`),
   rollbackReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
   approveReplacement: (id: number) =>

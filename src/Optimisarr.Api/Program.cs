@@ -6,6 +6,7 @@ using Optimisarr.Api.Metrics;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
@@ -17,6 +18,7 @@ using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+var adminToken = Environment.GetEnvironmentVariable(AdminTokenAuth.EnvironmentVariable)?.Trim();
 
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
@@ -84,6 +86,13 @@ builder.Services.AddDbContext<OptimisarrDbContext>(options =>
 
 var app = builder.Build();
 
+if (!AdminTokenAuth.Required(adminToken))
+{
+    app.Logger.LogWarning(
+        "{EnvironmentVariable} is not set. Optimisarr has no built-in authentication; keep it on a trusted network or behind an authenticated reverse proxy.",
+        AdminTokenAuth.EnvironmentVariable);
+}
+
 using (var scope = app.Services.CreateScope())
 {
     // Migrations are versioned and idempotent: applying an up-to-date database
@@ -123,6 +132,26 @@ var staticFileOptions = new StaticFileOptions
 
 app.UseDefaultFiles();
 app.UseStaticFiles(staticFileOptions);
+
+app.Use(async (context, next) =>
+{
+    if (!AdminTokenAuth.Required(adminToken)
+        || AdminTokenAuth.IsOpenPath(context.Request.Path)
+        || !AdminTokenAuth.IsProtectedPath(context.Request.Path))
+    {
+        await next();
+        return;
+    }
+
+    if (AdminTokenAuth.IsAuthorized(context.Request, adminToken!))
+    {
+        await next();
+        return;
+    }
+
+    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+    await context.Response.WriteAsJsonAsync(new { error = "Admin token required." }, context.RequestAborted);
+});
 
 app.MapGet("/api/health", () => Results.Ok(new
 {
@@ -166,6 +195,12 @@ app.MapGet("/api/ready", async (
         : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, detail: string.Join("; ", failures));
 })
 .WithName("GetReadiness");
+
+app.MapGet("/api/auth/status", () => Results.Ok(new
+{
+    required = AdminTokenAuth.Required(adminToken)
+}))
+.WithName("GetAuthStatus");
 
 app.MapGet("/api/settings", async (
     SettingsStore settings,

@@ -8,6 +8,29 @@ No copyrighted material is used.
 
 ![Settings General tab showing queue, encoder, scan interval, disk threshold, and hardware decode controls](../images/optimisarr-settings-general-dark.png)
 
+## Admin token
+
+Optimisarr is intended to run on a trusted network or behind an authenticated
+reverse proxy. For a built-in backstop, set `OPTIMISARR_ADMIN_TOKEN` to a long
+random value before starting the container:
+
+```yaml
+environment:
+  OPTIMISARR_ADMIN_TOKEN: "change-this-long-random-token"
+```
+
+When the token is set, the web UI asks for it before loading operational data.
+API clients must send it as a bearer token:
+
+```bash
+curl -H "Authorization: Bearer change-this-long-random-token" \
+  http://localhost:8787/api/settings
+```
+
+`/api/health`, `/api/ready`, and `/api/auth/status` remain open for health
+checks and startup detection. If the token is not set, Optimisarr behaves as it
+did before and logs a warning at startup.
+
 Each library has its own root, media type, rule profile, and optional overrides.
 The Inventory explains why every file is eligible or skipped.
 

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Security
+
+- **Optional built-in admin token.** Set `OPTIMISARR_ADMIN_TOKEN` to require a bearer token for
+  protected API calls and the SignalR jobs hub. The SPA shell stays loadable so it can show a token
+  prompt; `/api/health`, `/api/ready`, and `/api/auth/status` remain open for health checks and
+  discovery. Browser media previews append the token as `access_token` because native media requests
+  cannot send custom authorization headers. Reverse-proxy authentication remains the recommended
+  boundary for internet-exposed instances.
+
+### API contract
+
+- **The OpenAPI document is now generated and checked in CI.** `docs/openapi.json` is generated from
+  the running API, and CI fails if the checked-in contract drifts. The documentation checker also
+  verifies every method/path listed in `docs/api.md` exists in the generated spec, so the human API
+  reference can no longer silently document missing endpoints.
+
 ### Diagnostics & observability
 
 - **The job and failure queries take filters and paging.** `GET /api/jobs` now accepts `libraryId`,
