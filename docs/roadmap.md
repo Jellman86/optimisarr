@@ -56,11 +56,12 @@ the replacement workflow is trustworthy.
      maintainability and reviewability change; it should be a pure move with no
      behavior change and must stay under a green test suite.
 
-   - **Large-library API scalability.** `/api/jobs` now has server-side filtering and
-     pagination; keep that covered by tests. Add equivalent pagination/filtering for
-     `/api/media` and any fleet-wide inventory/candidate views that can grow to tens of
-     thousands of rows. Add database indexes for common filters and keep UI tables
-     bounded or virtualized so Inventory and Queue stay responsive.
+   - **Large-library API scalability.** `/api/jobs` and `/api/media` now have server-side
+     filtering and pagination (`status`, `search`/`category`, date, `page`/`pageSize`, total in
+     `X-Total-Count`), with a `(LibraryId, RelativePath)` index so a large inventory pages without a
+     table sort. Remaining: paginate/filter the fleet-wide candidate views, and adopt the paging in
+     the Inventory/Queue UI tables (bounded or virtualized) so the frontend stays responsive at tens
+     of thousands of rows.
 
    - **Diagnostics bundle and admin health details.** Build on the shipped failure
      categories, failure summary endpoint, Failures tab, and captured ffmpeg logs. Add

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Scalability
+
+- **The inventory list paginates and filters in the database.** `GET /api/media` now accepts
+  `status`, `search` (a case-insensitive path substring), and `page`/`pageSize`; the body stays a
+  media array (existing callers are unaffected) and the pre-paging total is returned in the
+  `X-Total-Count` header. Filtering, counting, ordering, and paging all run in SQL, and a new
+  `(LibraryId, RelativePath)` index lets a large library page without a table sort — so Inventory stays
+  responsive with tens of thousands of files. Migration `AddMediaFileLibraryPathIndex`.
+
 ### Security
 
 - **Optional built-in admin token.** Set `OPTIMISARR_ADMIN_TOKEN` to require a bearer token for

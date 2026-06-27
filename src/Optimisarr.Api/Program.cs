@@ -1041,39 +1041,42 @@ app.MapPost("/api/libraries/scan", async (
 })
 .WithName("ScanAllLibraries");
 
+// The inventory list. Optional `libraryId`, `status` (a MediaFileStatus), and `search` (a
+// case-insensitive substring of the relative path) narrow the set; `page`/`pageSize` page it. The
+// body stays a MediaFileDto array (existing callers are unaffected); the pre-paging total is returned
+// in the X-Total-Count header. Filtering, counting, ordering, and paging all run in the database.
 app.MapGet("/api/media", async (
     int? libraryId,
+    string? status,
+    string? search,
+    int? page,
+    int? pageSize,
+    HttpResponse response,
     OptimisarrDbContext db,
     CancellationToken cancellationToken) =>
 {
-    var query = db.MediaFiles.AsNoTracking();
-    if (libraryId is not null)
+    MediaFileStatus? wantedStatus = null;
+    if (!string.IsNullOrWhiteSpace(status))
     {
-        query = query.Where(file => file.LibraryId == libraryId);
+        if (!Enum.TryParse<MediaFileStatus>(status, ignoreCase: true, out var parsed))
+        {
+            return Results.BadRequest(
+                $"Unknown media status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<MediaFileStatus>())}.");
+        }
+        wantedStatus = parsed;
     }
 
-    var files = await query
-        .OrderBy(file => file.RelativePath)
-        .Select(file => new MediaFileDto(
-            file.Id,
-            file.LibraryId,
-            file.RelativePath,
-            file.SizeBytes,
-            file.Status.ToString(),
-            file.MediaKind.ToString(),
-            file.Container,
-            file.VideoCodec,
-            file.Width,
-            file.Height,
-            file.DurationSeconds,
-            file.AudioCodecs,
-            file.AudioTrackCount,
-            file.SubtitleTrackCount,
-            file.ProbedAt,
-            file.ProbeError))
-        .ToListAsync(cancellationToken);
+    var result = await MediaQueries.QueryAsync(db, new MediaQuery
+    {
+        LibraryId = libraryId,
+        Status = wantedStatus,
+        Search = search,
+        Page = page ?? 1,
+        PageSize = pageSize ?? 0
+    }, cancellationToken);
 
-    return Results.Ok(files);
+    response.Headers["X-Total-Count"] = result.Total.ToString();
+    return Results.Ok(result.Items);
 })
 .WithName("ListMedia");
 
@@ -1937,24 +1940,6 @@ internal sealed record LibraryDto(
         library.CreatedAt,
         library.UpdatedAt);
 }
-
-internal sealed record MediaFileDto(
-    int Id,
-    int? LibraryId,
-    string RelativePath,
-    long SizeBytes,
-    string Status,
-    string MediaKind,
-    string? Container,
-    string? VideoCodec,
-    int? Width,
-    int? Height,
-    double? DurationSeconds,
-    string? AudioCodecs,
-    int? AudioTrackCount,
-    int? SubtitleTrackCount,
-    DateTimeOffset? ProbedAt,
-    string? ProbeError);
 
 // Exposed so the test host (WebApplicationFactory) and EF tooling can locate the entry assembly.
 public partial class Program;

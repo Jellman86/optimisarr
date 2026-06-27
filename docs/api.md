@@ -235,7 +235,7 @@ Settings fields include:
 | `DELETE` | `/api/libraries/{id}` | Delete a library record. |
 | `POST` | `/api/libraries/{id}/scan` | Scan one library. |
 | `POST` | `/api/libraries/scan` | Scan all enabled libraries. |
-| `GET` | `/api/media?libraryId={id}` | List discovered files. Omit `libraryId` for all libraries. |
+| `GET` | `/api/media?libraryId={id}` | List discovered files. Omit `libraryId` for all libraries. Optional `status`, `search` (path substring), and `page`/`pageSize`; the pre-paging total is returned in `X-Total-Count`. |
 | `POST` | `/api/media/{id}/probe` | Probe one media file. |
 | `GET` | `/api/candidates?libraryId={id}` | Show rule decisions for discovered files. |
 | `GET` | `/api/candidates/summary` | Eligible/skipped counts per library. |

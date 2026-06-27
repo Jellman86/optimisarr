@@ -67,7 +67,9 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
                 .WithMany(library => library.MediaFiles)
                 .HasForeignKey(file => file.LibraryId)
                 .OnDelete(DeleteBehavior.Cascade);
-            entity.HasIndex(file => file.LibraryId);
+            // Serves both a library filter (leftmost prefix) and the inventory list's order-by-path,
+            // so a large library pages without a table sort.
+            entity.HasIndex(file => new { file.LibraryId, file.RelativePath });
         });
 
         modelBuilder.Entity<Job>(entity =>
