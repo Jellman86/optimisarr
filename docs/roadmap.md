@@ -48,13 +48,13 @@ the replacement workflow is trustworthy.
      Sonarr/Radarr import-aware holds. Known live failure classes should be represented
      by tests before this phase is considered done.
 
-   - **Endpoint modularization.** Split `src/Optimisarr.Api/Program.cs` into endpoint
-     modules after auth/OpenAPI/pipeline tests are in place. Target shape:
-     `HealthEndpoints`, `SettingsEndpoints`, `LibraryEndpoints`, `InventoryEndpoints`,
-     `QueueEndpoints`, `ReplacementEndpoints`, `IntegrationEndpoints`, and
-     `StatsEndpoints`, all mapped from a slim `Program.cs`. This is primarily a
-     maintainability and reviewability change; it should be a pure move with no
-     behavior change and must stay under a green test suite.
+   - **Endpoint modularization.** In progress. `SettingsEndpoints`, `IntegrationEndpoints`, and
+     `ExclusionEndpoints` are extracted into `src/Optimisarr.Api/Endpoints/*.cs` extension methods
+     mapped from `Program.cs` (1960 → 1356 lines), as a pure move verified by the byte-identical
+     generated OpenAPI document and the full test suite. Remaining target groups: `HealthEndpoints`,
+     `LibraryEndpoints`, `InventoryEndpoints`, `QueueEndpoints`, `ReplacementEndpoints`, and
+     `StatsEndpoints` (the last few close over `Program.cs` locals — `adminToken`, `configDirectory`,
+     the static-file options — so they need those passed in).
 
    - **Large-library API scalability.** `/api/jobs` and `/api/media` now have server-side
      filtering and pagination (`status`, `search`/`category`, date, `page`/`pageSize`, total in

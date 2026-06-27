@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Maintainability
+
+- **`Program.cs` is being split into endpoint modules.** The settings, integration (activity
+  watchers, notification targets, Arr connections, provider connect), and exclusion endpoints now live
+  in focused `Endpoints/*.cs` extension methods mapped from a slimmer `Program.cs` (1960 → 1356 lines
+  so far). This is a pure move — no route, name, or behaviour change — verified by the byte-identical
+  generated OpenAPI document and the full test suite. Further groups follow.
+
 ### Scalability
 
 - **The inventory list paginates and filters in the database.** `GET /api/media` now accepts
