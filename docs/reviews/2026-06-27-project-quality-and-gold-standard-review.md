@@ -6,6 +6,13 @@ Scope: Repository-level engineering review based on local source, tests, docs,
 and live UI documentation work. This is not a formal security audit or
 performance benchmark.
 
+Current as of: the follow-up peer response in
+[`2026-06-27-project-quality-and-gold-standard-review-response.md`](2026-06-27-project-quality-and-gold-standard-review-response.md).
+That response notes that diagnostics work landed after the first draft of this
+review: `/api/jobs` filtering/pagination, failure classification, grouped
+failures, failed-ffmpeg log capture, and persisted failure categories. This
+document has been adjusted so those are no longer treated as untouched backlog.
+
 > A peer response to this review — from an agent that worked in the
 > transcode/replace pipeline and shipped parts of Phases 4–5 the same day — is at
 > [`2026-06-27-project-quality-and-gold-standard-review-response.md`](2026-06-27-project-quality-and-gold-standard-review-response.md).
@@ -276,45 +283,30 @@ operations:
 - queue control.
 
 Gold-standard target: add optional app-level authentication that is simple and
-hard to misconfigure.
+hard to misconfigure. This is the highest-priority hardening item because
+`/api/settings/export` can return provider secrets in plaintext.
 
 Recommended first step:
 
 - environment variable: `OPTIMISARR_ADMIN_TOKEN`;
-- if set, require `Authorization: Bearer <token>` for all `/api/*` and app
-  routes except `/api/health` and maybe `/api/ready`;
+- if set, require `Authorization: Bearer <token>` for administrative API calls
+  and decide deliberately whether the SPA shell itself is also protected;
+- exempt `/api/health` and `/api/ready` if they are needed by container health
+  checks or orchestrators;
+- compare supplied tokens in constant time;
 - show a clear startup warning when no token is configured and the app is bound
   beyond loopback;
 - document reverse-proxy auth as still recommended.
 
-Example policy shape:
+Implementation note: do not copy a naive bearer-token middleware that compares
+strings with `!=`. Use `CryptographicOperations.FixedTimeEquals` over UTF-8
+token bytes, keep parsing strict, and add tests for protected destructive and
+secret-bearing endpoints. A production implementation should also be clear about
+static assets: either protect the SPA shell too, or explicitly allow public
+assets while all useful API calls require the token.
 
-```csharp
-var adminToken = Environment.GetEnvironmentVariable("OPTIMISARR_ADMIN_TOKEN");
-if (!string.IsNullOrWhiteSpace(adminToken))
-{
-    app.Use(async (context, next) =>
-    {
-        if (context.Request.Path == "/api/health")
-        {
-            await next();
-            return;
-        }
-
-        var authorization = context.Request.Headers.Authorization.ToString();
-        if (authorization != $"Bearer {adminToken}")
-        {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return;
-        }
-
-        await next();
-    });
-}
-```
-
-That is not the final polished implementation, but it shows the level of
-complexity needed to remove the biggest deployment foot-gun.
+This is not a replacement for reverse-proxy authentication, but it removes the
+largest accidental-exposure foot-gun.
 
 ### 4. API authorization and object access assumptions should be explicit
 
@@ -334,13 +326,42 @@ Gold-standard target:
 
 Examples:
 
-- `GET /api/jobs` should eventually support pagination.
-- `GET /api/media` should eventually support pagination/filtering for very large
+- `GET /api/jobs` now supports server-side filtering/pagination and should keep
+  that behavior covered by tests.
+- `GET /api/media` should still gain pagination/filtering for very large
   libraries.
 - `POST /api/libraries/{id}/enqueue` should remain idempotent and report counts.
 - `POST /api/jobs/{id}/replace` should remain state-gated and dry-run-aware.
 
-### 5. Roadmap is too dense for outside users
+### 5. Pipeline robustness needs its own adversarial pass
+
+The first draft of this review focused more on structure than the product's
+highest-risk behavior: transcode command building, eligibility, verification,
+and replacement/reconcile state transitions. The peer response correctly points
+out real bugs found in those paths the same day:
+
+- MP4 muxing failed on Matroska attachment/data streams until MP4-family outputs
+  dropped incompatible attachment/data streams.
+- permanently blocked auto-replace jobs could be retried forever;
+- already-optimised siblings and already-efficient sources could waste compute
+  by being re-transcoded.
+
+The originals were still protected, which validates the safety model, but
+"originals are safe" is not the same as "the pipeline is robust." Gold-standard
+quality requires adversarial tests around the full command and replacement
+pipeline, not just structural review.
+
+Gold-standard target:
+
+- table-driven `FfmpegCommandBuilder` tests for attachment, data, bitmap
+  subtitle, cover-art, HDR, audio-only, image, remux, and container permutations;
+- replacement/reconcile tests for missing source, missing output, destination
+  occupied, concurrent replace attempts, cross-filesystem fallback, dry-run, and
+  rollback after partial failure;
+- candidate tests for already-optimised siblings, already-efficient sources,
+  repeated failures, exclusions, and imported/downloading media.
+
+### 6. Roadmap is too dense for outside users
 
 The roadmap is valuable as an engineering log. It is also very long and
 implementation-heavy. That makes it less useful for someone asking "what is
@@ -360,7 +381,7 @@ docs/engineering/
 
 Keep the implementation details, but move them out of the main roadmap.
 
-### 6. Real-hardware validation should become a tracked matrix
+### 7. Real-hardware validation should become a tracked matrix
 
 The project has meaningful hardware support: CPU, NVIDIA NVENC, Intel QSV,
 VA-API, hardware decode, and GPU metrics. Some validation is complete, some is
@@ -381,25 +402,28 @@ This would make the state of hardware support honest and actionable.
 
 ## Gold-standard implementation plan
 
-### Phase 1: Stabilize architecture seams
+### Phase 1: Add optional built-in auth
 
-Goal: reduce cognitive load and make future changes safer.
+Goal: reduce the risk of accidental unauthenticated exposure.
 
 Tasks:
 
-1. Split minimal API endpoint groups out of `Program.cs`.
-2. Move request validation into focused parsers/validators where endpoint logic
-   is currently long.
-3. Add endpoint-level tags and names consistently.
-4. Keep `Program.cs` responsible for composition only: services, middleware,
-   static files, migrations, and endpoint group mapping.
+1. Add `OPTIMISARR_ADMIN_TOKEN`.
+2. Require the token when configured.
+3. Exempt `/api/health` and `/api/ready` only if needed for health checks.
+4. Use constant-time token comparison.
+5. Decide and document whether the SPA shell is protected or only API calls are
+   protected.
+6. Add docs for reverse proxy and bearer-token usage.
+7. Add tests for protected endpoints.
 
 Acceptance criteria:
 
-- `Program.cs` is short enough to review in one screenful per concern.
-- Each endpoint group has focused tests for important validation and state
-  transitions.
-- Existing API behavior remains compatible.
+- Existing trusted-network deployments keep working when no token is set.
+- Token-enabled deployments reject unauthenticated destructive and
+  secret-bearing endpoints.
+- Config export, replacement, approve, rollback, queue mutation, and settings
+  mutation endpoints are covered by auth tests.
 
 ### Phase 2: Make the API contract machine-checkable
 
@@ -419,33 +443,59 @@ Acceptance criteria:
 - Publicly documented paths in `docs/api.md` exist in the generated spec.
 - Destructive endpoints are labeled clearly in the spec.
 
-### Phase 3: Add optional built-in auth
+### Phase 3: Add a pipeline robustness pass
 
-Goal: reduce the risk of accidental unauthenticated exposure.
+Goal: find operational failures that do not necessarily endanger originals but
+still break trust: failed muxes, infinite retries, wasted transcodes, and bad
+state transitions.
 
 Tasks:
 
-1. Add `OPTIMISARR_ADMIN_TOKEN`.
-2. Require the token when configured.
-3. Exempt only liveness/readiness endpoints if needed.
-4. Add docs for reverse proxy and bearer-token usage.
-5. Add tests for protected endpoints.
+1. Add adversarial command-builder tests for stream/container permutations.
+2. Add replacement/reconcile state-machine tests for permanent failures and
+   concurrent callers.
+3. Add candidate tests for already-optimised and already-efficient sources.
+4. Run the tests against synthetic fixtures and at least one realistic anonymized
+   inventory snapshot.
 
 Acceptance criteria:
 
-- Existing trusted-network deployments keep working when no token is set.
-- Token-enabled deployments reject unauthenticated API and UI access.
-- Config export and destructive endpoints are covered by auth tests.
+- Known live failure classes are reproduced by tests.
+- Permanent replacement blockers fail once with a clear reason.
+- Incompatible stream/container combinations are handled before wasting a full
+  transcode when possible.
+- Candidate reasons explain why work is skipped.
 
-### Phase 4: Improve large-library scalability
+### Phase 4: Stabilize architecture seams
+
+Goal: reduce cognitive load and make future changes safer.
+
+Tasks:
+
+1. Split minimal API endpoint groups out of `Program.cs`.
+2. Move request validation into focused parsers/validators where endpoint logic
+   is currently long.
+3. Add endpoint-level tags and names consistently.
+4. Keep `Program.cs` responsible for composition only: services, middleware,
+   static files, migrations, and endpoint group mapping.
+
+Acceptance criteria:
+
+- `Program.cs` is short enough to review in one screenful per concern.
+- Each endpoint group has focused tests for important validation and state
+  transitions.
+- Existing API behavior remains compatible.
+
+### Phase 5: Improve large-library scalability
 
 Goal: keep the app responsive with very large libraries.
 
 Tasks:
 
-1. Add pagination to media and jobs endpoints.
-2. Add server-side filters for library, status, failure category, eligibility,
-   and date where relevant.
+1. Keep `/api/jobs` filtering/pagination covered by tests.
+2. Add pagination to media endpoints.
+3. Add server-side filters for library, eligibility, media kind, status, and
+   date where relevant.
 3. Add indexes for common filters.
 4. Add UI pagination/virtualization where tables grow large.
 
@@ -455,13 +505,14 @@ Acceptance criteria:
 - API callers can inspect failures without fetching the world.
 - Query plans are covered by tests or migration/index review.
 
-### Phase 5: Mature observability
+### Phase 6: Mature observability
 
 Goal: make failures diagnosable without SSH.
 
 Tasks:
 
-1. Continue failure classification work.
+1. Keep failure classification, grouped failures, and ffmpeg log capture covered
+   by tests.
 2. Add structured event records for major lifecycle transitions.
 3. Add downloadable diagnostics bundle with config summary, versions, tools,
    selected logs, and redacted secrets.
@@ -473,7 +524,7 @@ Acceptance criteria:
 - Diagnostics redact provider tokens and filesystem secrets.
 - Failed-job root causes are grouped and searchable.
 
-### Phase 6: Keep docs as a first-class artifact
+### Phase 7: Keep docs as a first-class artifact
 
 Goal: make documentation stay correct as the app changes.
 

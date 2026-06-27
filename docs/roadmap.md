@@ -4,16 +4,86 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-06-26)
+## Up next (priority order, updated 2026-06-27)
 
-1. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
+1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
+   Optimisarr safer to expose, easier to automate, and easier to change without
+   weakening the transcode → verify → replace pipeline. This phase is grounded in
+   the project review at
+   [`docs/reviews/2026-06-27-project-quality-and-gold-standard-review.md`](reviews/2026-06-27-project-quality-and-gold-standard-review.md)
+   and its peer response.
+
+   - **Optional admin-token auth.** Add `OPTIMISARR_ADMIN_TOKEN`; when set, require
+     bearer-token authentication for administrative API calls and decide explicitly
+     whether the SPA shell is protected or only useful API calls are. Exempt
+     `/api/health` and `/api/ready` only if needed for health checks. Token comparison
+     must be constant-time (`CryptographicOperations.FixedTimeEquals` over token bytes),
+     and tests must cover secret-bearing and destructive endpoints:
+     settings export/import, settings update, enqueue, cancel/retry/remove, replace,
+     approve, rollback, and purge/history clearing. Keep reverse-proxy authentication
+     documented as the preferred public-access boundary; this token is the built-in
+     backstop for direct or accidentally exposed deployments.
+
+   - **Generated, CI-checked OpenAPI contract.** `AddOpenApi()` is already wired; turn
+     that into a generated artifact in CI. The contract should include route groups,
+     schemas for request/response DTOs, status codes for destructive/state-gated
+     operations, and descriptions for safety-sensitive endpoints. Add a docs check that
+     every path/method listed in `docs/api.md` exists in the generated spec. This turns
+     the API reference from a manually maintained page into a checked contract.
+
+   - **Pipeline robustness pass.** The project has proven the originals stay safe, but
+     recent live fixes showed that safe can still mean failed, looping, or wasteful.
+     Add adversarial tests around the behavior that actually carries product risk:
+     `FfmpegCommandBuilder` stream/container permutations (attachments, data streams,
+     cover art, bitmap/image subtitles, audio-only, still image, HDR, remux, MP4/MKV);
+     replacement/reconcile state transitions (missing source, missing work output,
+     destination occupied, concurrent replace callers, dry-run, rollback after partial
+     failure, cross-filesystem fallback); and candidate decisions for already-optimised
+     siblings, already-efficient sources, repeated failures, exclusions, and
+     Sonarr/Radarr import-aware holds. Known live failure classes should be represented
+     by tests before this phase is considered done.
+
+   - **Endpoint modularization.** Split `src/Optimisarr.Api/Program.cs` into endpoint
+     modules after auth/OpenAPI/pipeline tests are in place. Target shape:
+     `HealthEndpoints`, `SettingsEndpoints`, `LibraryEndpoints`, `InventoryEndpoints`,
+     `QueueEndpoints`, `ReplacementEndpoints`, `IntegrationEndpoints`, and
+     `StatsEndpoints`, all mapped from a slim `Program.cs`. This is primarily a
+     maintainability and reviewability change; it should be a pure move with no
+     behavior change and must stay under a green test suite.
+
+   - **Large-library API scalability.** `/api/jobs` now has server-side filtering and
+     pagination; keep that covered by tests. Add equivalent pagination/filtering for
+     `/api/media` and any fleet-wide inventory/candidate views that can grow to tens of
+     thousands of rows. Add database indexes for common filters and keep UI tables
+     bounded or virtualized so Inventory and Queue stay responsive.
+
+   - **Diagnostics bundle and admin health details.** Build on the shipped failure
+     categories, failure summary endpoint, Failures tab, and captured ffmpeg logs. Add
+     an authenticated diagnostics bundle containing version/build, redacted settings
+     summary, enabled libraries, tool/hardware capability output, queue/failure summary,
+     selected recent logs, and environment facts needed for support. Secrets and provider
+     tokens must be redacted by default. Add an authenticated health-details endpoint for
+     admins; keep `/api/ready` small and orchestration-friendly.
+
+   - **Hardware validation matrix.** Create a maintained matrix that records CPU,
+     NVIDIA NVENC, Intel QSV, VA-API, hardware decode, and GPU metrics validation by
+     platform, with date, evidence, and known limits. AMD VA-API remains the important
+     open validation target. The matrix should distinguish "implemented and unit-tested"
+     from "validated on real hardware."
+
+   - **Roadmap/docs split.** Keep this roadmap readable for users by moving dense
+     engineering history into dated engineering notes once the current release hardening
+     stabilizes. Preserve the useful detail, but let `docs/roadmap.md` answer "what is
+     next?" while engineering notes answer "what exactly changed and why?"
+
+2. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration
   coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
   notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
   and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
   paid external services.
 
-2. **First-class diagnostics & observability API** — make "why did this fail?" answerable
+3. **First-class diagnostics & observability API** — make "why did this fail?" answerable
    from the API alone, without SSH-ing the host or reading container logs. Today failed-job
    detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
    verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
