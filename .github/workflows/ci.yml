@@ -83,7 +83,7 @@ jobs:
 
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # metadata-action lowercases the image name, so Jellman86 -> jellman86.
           images: ghcr.io/${{ github.repository }}
