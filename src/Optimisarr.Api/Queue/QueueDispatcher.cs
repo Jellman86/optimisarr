@@ -526,6 +526,14 @@ public sealed class QueueDispatcher(
             sourceHasImageSubtitles = probeResult.HasImageSubtitles;
         }
 
+        // MP4/MOV has no tag for some Blu-ray audio (TrueHD, LPCM); copying one into an MP4 target
+        // aborts the encode. The inventory already recorded the source's audio codecs, so this needs
+        // no extra probe — the resolver falls back to MKV when such audio would be copied.
+        var sourceHasMp4IncompatibleAudio =
+            media.MediaKind is not (MediaKind.Audio or MediaKind.Image)
+            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
+            && AudioContainerCompatibility.ContainsMp4Incompatible(media.AudioCodecs);
+
         // Each file's output lives under a per-media-file work root so two sources that share a
         // stem but differ by extension can never resolve to the same work path and clobber each
         // other's verified output before it is moved or replaced. A preview writes under its own
@@ -541,7 +549,8 @@ public sealed class QueueDispatcher(
             library?.QualityCrf ?? rules.DefaultCrf,
             library?.EncoderPreset,
             media.MediaKind,
-            sourceHasImageSubtitles);
+            sourceHasImageSubtitles,
+            sourceHasMp4IncompatibleAudio);
 
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an

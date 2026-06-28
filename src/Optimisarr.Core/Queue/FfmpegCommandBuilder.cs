@@ -220,6 +220,16 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
+        // MP4/MOV expect a constant frame rate: a variable-frame-rate source (whose timebase is not
+        // cleanly divisible by the frame rate) drifts out of audio/video sync in the MP4 timeline,
+        // which the A/V-sync verification gate then rejects. Normalise the re-encoded video to CFR for
+        // MP4-family outputs only — Matroska carries VFR natively, so it is left untouched.
+        if (IsMp4Family(spec.OutputPath))
+        {
+            args.Add("-fps_mode");
+            args.Add("cfr");
+        }
+
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
         // cannot mux SubRip directly, so their text subtitles must use the native mov_text
         // codec; containers such as Matroska can retain the source subtitle codec unchanged.

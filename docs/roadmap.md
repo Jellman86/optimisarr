@@ -99,20 +99,21 @@ the replacement workflow is trustworthy.
    - **Edge-case hardening (from upstream research).** A pass grounded in real failure modes that
      Tdarr/Unmanic/HandBrake and ffmpeg users hit, prioritised by product risk. In order:
 
-     1. **Dolby Vision — the one safety gap.** DV Profile 5 has no HDR10 base layer, so re-encoding
-        or tone-mapping it without the DV RPU produces green/pink output. The probe already reads the
-        `DOVI` side-data but folds it into `IsHdr`; with VMAF off by default, a DV source can be
-        transcoded to garbage and still pass verification, replacing the original. Persist a distinct
-        Dolby-Vision flag at probe and **skip DV sources by default** (conservative), with opt-in that
-        force-enables a perceptual (VMAF) gate. (HandBrake #5597, FFmpeg HDR/DoVi notes.)
-     2. **VFR / video-start-offset → A/V-sync drift in MP4.** The live job 3334 failure: MP4's
-        timebase isn't cleanly divisible by the frame rate and MKV→MP4 loses timing ffmpeg must
-        recompute. We set no `fps_mode`/`vsync`. Detect VFR (`avg_frame_rate ≠ r_frame_rate`) or a
-        non-zero video start and normalise (`-fps_mode cfr`, `-af aresample=async=1`, and/or prefer
-        MKV), and classify the failure cleanly. (VideoHelp, EncodeX.)
-     3. **MP4 target + MP4-incompatible audio (TrueHD/DTS-HD/PCM) copied → mux failure.** We already
-        fall back MP4→MKV for image-based subtitles; extend the same container-compatibility resolver
-        to audio codecs. (Unmanic #454.)
+     1. **Dolby Vision — the one safety gap: done.** The probe now flags DV distinctly (DOVI side-data
+        or a `dvhe`/`dvh1`/`dav1` codec tag) and the candidate evaluator skips DV sources regardless of
+        the HDR setting unless a per-library **Optimise Dolby Vision** opt-in is enabled (off by
+        default, settable in the library form, preserved across config backup). This closes the gap
+        where a DV Profile 5 source could be re-encoded to green/pink and still pass verification with
+        VMAF off. Migration `AddDolbyVisionHandling`. (HandBrake #5597, FFmpeg HDR/DoVi notes.)
+     2. **VFR → A/V-sync drift in MP4: done.** A video re-encode to an MP4-family container now forces
+        a constant frame rate (`-fps_mode cfr`), the documented fix for the MP4/MOV-only VFR drift that
+        caused the live job 3334 failure; Matroska carries VFR natively and is left untouched, and a
+        remux is never re-timed. The A/V-sync gate remains the backstop for any residual start-offset
+        cases. (VideoHelp, EncodeX.)
+     3. **MP4 + MP4-incompatible audio copied → mux failure: done.** The resolver now falls back
+        MP4→MKV when a source carries audio MP4 cannot mux (Dolby TrueHD, Blu-ray/DVD LPCM) and that
+        audio is being copied rather than re-encoded to a compatible codec — the same pattern already
+        used for image-based subtitles. (Unmanic #454.)
      4. **Robustness polish:** non-monotonous-DTS timestamp guards (`-fflags +genpts`,
         `-avoid_negative_ts make_zero`); drop data streams for hardware encodes generally (Tdarr's
         `-dn` fix); a classified, actionable NVENC session-limit error; and a single transient-retry

@@ -475,6 +475,35 @@ public sealed class FfmpegCommandBuilderTests
         }
     }
 
+    [Theory]
+    [InlineData(".mp4")]
+    [InlineData(".m4v")]
+    [InlineData(".mov")]
+    public void Forces_constant_frame_rate_for_mp4_family_re_encodes(string extension)
+    {
+        // MP4/MOV need CFR or a VFR source drifts out of A/V sync; normalise the re-encode.
+        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = $"/work/Movie.opt{extension}" });
+
+        var index = IndexOf(args, "-fps_mode");
+        Assert.True(index >= 0);
+        Assert.Equal("cfr", args[index + 1]);
+    }
+
+    [Fact]
+    public void Keeps_source_frame_timing_for_a_matroska_re_encode()
+    {
+        // Matroska carries variable frame rate natively, so no CFR normalisation is forced.
+        Assert.DoesNotContain("-fps_mode", FfmpegCommandBuilder.Build(Reencode()));
+    }
+
+    [Fact]
+    public void Does_not_force_cfr_on_a_remux_only_job()
+    {
+        // A remux copies the video stream untouched, so frame timing is never rewritten.
+        Assert.DoesNotContain("-fps_mode",
+            FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { OutputPath = "/work/Movie.opt.mp4" }));
+    }
+
     [Fact]
     public void Remux_only_copies_all_streams_and_never_re_encodes()
     {

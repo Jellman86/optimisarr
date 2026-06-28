@@ -13,6 +13,17 @@
   setting unless a per-library **Optimise Dolby Vision** opt-in is enabled (off by default; settable
   in the library form and preserved across config backup/restore). Migration `AddDolbyVisionHandling`.
 
+- **MP4 re-encodes are normalised to a constant frame rate.** A variable-frame-rate source whose
+  timebase isn't cleanly divisible by the frame rate drifts out of A/V sync in the MP4 timeline (the
+  cause of the live A/V-sync verification failure), which the gate then rejects after a wasted encode.
+  A video re-encode to an MP4-family container now forces CFR (`-fps_mode cfr`); Matroska carries VFR
+  natively and is left untouched, and a remux (stream copy) is never re-timed.
+
+- **MP4 falls back to MKV when the audio can't be muxed.** Copying a Blu-ray audio format MP4 has no
+  tag for (Dolby TrueHD, Blu-ray/DVD LPCM) into an MP4 target aborts the encode. The resolver now
+  falls back to MKV in that case — the same proven pattern as image-based subtitles — but only when the
+  audio is being copied; a library that re-encodes audio to a compatible codec keeps its MP4 target.
+
 ## 0.2.1 — 2026-06-28
 
 ### Security

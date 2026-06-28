@@ -19,7 +19,8 @@ public static class TranscodeSpecResolver
         int? crf,
         string? preset,
         MediaKind kind = MediaKind.Video,
-        bool sourceHasImageSubtitles = false)
+        bool sourceHasImageSubtitles = false,
+        bool sourceHasMp4IncompatibleAudio = false)
     {
         if (kind == MediaKind.Image)
         {
@@ -53,10 +54,13 @@ public static class TranscodeSpecResolver
                 DownmixToStereo: rules.DownmixToStereo);
         }
 
-        // MP4 can only carry text subtitles (mov_text). If the source has image-based subtitles
-        // (Blu-ray PGS, DVD VobSub), fall back to MKV so they're preserved by a stream copy rather
-        // than failing the encode. Any other target container already handles them.
-        var container = sourceHasImageSubtitles && IsMp4Container(rules.TargetContainer)
+        // MP4 can only carry text subtitles (mov_text) and has no tag for some Blu-ray audio formats
+        // (TrueHD, LPCM). If the source has image-based subtitles (PGS/VobSub), or audio MP4 can't mux
+        // that is being copied rather than re-encoded to a compatible codec, fall back to MKV so the
+        // stream survives instead of aborting the encode. Any other target container already holds them.
+        var copyingAudio = rules.VideoAudioCodec is null;
+        var audioForcesMkv = sourceHasMp4IncompatibleAudio && copyingAudio;
+        var container = (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(rules.TargetContainer)
             ? "mkv"
             : rules.TargetContainer;
         var outputPath = BuildOutputPath(workRoot, relativePath, container);

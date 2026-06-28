@@ -62,6 +62,32 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void Falls_back_to_mkv_when_an_mp4_target_meets_copied_mp4_incompatible_audio()
+    {
+        // A TrueHD track copied (no audio re-encode) into MP4 aborts the encode, so go to MKV.
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            kind: MediaKind.Video, sourceHasMp4IncompatibleAudio: true);
+
+        Assert.Equal("/work/Movie/Movie.mkv", spec.OutputPath);
+    }
+
+    [Fact]
+    public void Keeps_the_mp4_target_when_incompatible_audio_is_being_re_encoded()
+    {
+        // Re-encoding the audio to AAC makes the output MP4-compatible, so the MP4 target stands.
+        var rules = Hevc with { VideoAudioCodec = "aac" };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            kind: MediaKind.Video, sourceHasMp4IncompatibleAudio: true);
+
+        Assert.Equal("/work/Movie/Movie.mp4", spec.OutputPath);
+    }
+
+    [Fact]
     public void An_audio_kind_resolves_to_an_audio_spec_with_the_default_target()
     {
         var spec = TranscodeSpecResolver.Resolve(
