@@ -333,10 +333,12 @@
       <img
         src="/api/media/{selectedFile.id}/thumbnail"
         alt=""
-        class="h-full w-full scale-110 object-cover opacity-[0.12] blur-2xl dark:opacity-20"
+        class="h-full w-full scale-105 object-cover opacity-25 blur-[3px] dark:opacity-30"
         onerror={() => (backdropFailed = true)}
       />
-      <div class="absolute inset-0 bg-gradient-to-b from-white/20 via-white/60 to-white/90 dark:from-slate-900/20 dark:via-slate-900/60 dark:to-slate-900/90"></div>
+      <!-- Readable on the left, where the labels sit; the poster shows through on the right —
+           the same directional fade as the Queue hero. -->
+      <div class="absolute inset-0 bg-gradient-to-r from-white/90 via-white/50 to-white/20 dark:from-slate-900/90 dark:via-slate-900/50 dark:to-slate-900/20"></div>
     {/if}
   {/snippet}
   {#snippet header()}

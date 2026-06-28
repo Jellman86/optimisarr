@@ -51,6 +51,9 @@
   above the progress bar. In the Inventory detail sheet the faded poster backdrop now spans the whole
   sheet — `BottomSheet` gained an optional ambient `backdrop` layer rendered behind the header and the
   full content, clipped to the panel — instead of being trapped inside the scrolling details panel.
+  The backdrop is tuned to the Queue hero's intensity (a directional fade that keeps the labels
+  readable on the left while the poster shows through on the right) so it is actually visible rather
+  than washed out.
 
 ### Diagnostics & observability
 
