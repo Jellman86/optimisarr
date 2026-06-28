@@ -23,17 +23,35 @@
         ? candidates.filter((c) => !c.eligible)
         : candidates,
   )
+
+  // Render one page at a time so a large library (thousands of probed files) stays responsive; the
+  // chips above still count the whole set. The page is clamped, so it stays valid as the data or
+  // filter changes. Mirrors the Queue table's client-side paging.
+  const CANDIDATE_PAGE_SIZE = 100
+  let page = $state(1)
+  let pageCount = $derived(Math.max(1, Math.ceil(visible.length / CANDIDATE_PAGE_SIZE)))
+  let pageStart = $derived((Math.min(page, pageCount) - 1) * CANDIDATE_PAGE_SIZE)
+  let pagedVisible = $derived(visible.slice(pageStart, pageStart + CANDIDATE_PAGE_SIZE))
+
+  function selectShow(key: typeof show) {
+    show = key
+    page = 1
+  }
+
+  function goToPage(next: number) {
+    page = Math.max(1, Math.min(next, pageCount))
+  }
 </script>
 
 {#if candidates.length > 0}
   <div class="mb-4 flex flex-wrap gap-2">
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'all'} onclick={() => (show = 'all')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'all'} onclick={() => selectShow('all')}>
       All ({candidates.length})
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'eligible'} onclick={() => (show = 'eligible')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'eligible'} onclick={() => selectShow('eligible')}>
       Eligible ({eligibleCount})
     </button>
-    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'skipped'} onclick={() => (show = 'skipped')}>
+    <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'skipped'} onclick={() => selectShow('skipped')}>
       Skipped ({skippedCount})
     </button>
   </div>
@@ -53,7 +71,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-        {#each visible as candidate (candidate.mediaFileId)}
+        {#each pagedVisible as candidate (candidate.mediaFileId)}
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2">
               {#if candidate.eligible}
@@ -101,7 +119,24 @@
       onClose={() => (previewing = null)}
     />
   {/if}
-  <p class="mt-2 text-xs text-slate-400">{visible.length.toLocaleString()} of {candidates.length.toLocaleString()} probed files</p>
+  <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+    <span>
+      {#if visible.length > 0}
+        {(pageStart + 1).toLocaleString()}–{Math.min(pageStart + CANDIDATE_PAGE_SIZE, visible.length).toLocaleString()}
+        of {visible.length.toLocaleString()}
+      {:else}
+        0
+      {/if}
+      {visible.length === candidates.length ? 'probed files' : `of ${candidates.length.toLocaleString()} probed files`}
+    </span>
+    {#if pageCount > 1}
+      <span class="flex items-center gap-2">
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label="Previous page">‹</button>
+        <span>Page {Math.min(page, pageCount).toLocaleString()} of {pageCount.toLocaleString()}</span>
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label="Next page">›</button>
+      </span>
+    {/if}
+  </div>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
     No candidates yet. Probe some files on the Inventory page first — candidates are evaluated from probed media.

@@ -28,6 +28,14 @@
   the pipeline robustness pass, whose FFmpeg stream/container permutations, replacement state
   transitions, and candidate decisions are now all covered by adversarial tests.
 
+### UI
+
+- **The candidate table now pages a large library one screen at a time.** The shared candidate table
+  (the fleet-wide Candidates page and the per-library Candidates tab) renders 100 rows per page with a
+  range readout and prev/next controls, and resets to page one when the all/eligible/skipped filter
+  changes — the same client-side paging the Queue table uses, so a library with thousands of probed
+  files stays responsive instead of rendering every row.
+
 ### Diagnostics & observability
 
 - **The media/inventory API now exposes the optimisation marker.** `GET /api/media` and `/api/inventory`

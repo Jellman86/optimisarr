@@ -63,8 +63,9 @@ the replacement workflow is trustworthy.
      table sort. The Inventory page now drives its filter chips, counts, and pager from a combined
      `GET /api/inventory` (media paired with rule verdict, filtered/counted/paged server-side), so the
      browser fetches one page instead of every row and every candidate. The Queue table also pages
-     100 rows at a time client-side so a large queue stays responsive. Remaining: fold the same paging
-     into other fleet-wide candidate views.
+     100 rows at a time client-side so a large queue stays responsive, and the shared candidate table
+     (the fleet-wide Candidates page and the per-library Candidates tab) now pages the same way, so a
+     large library's candidate list renders one page at a time. Done.
 
    - **Diagnostics bundle and admin health details.** Shipped as `GET /api/diagnostics` (admin-only):
      version, environment, settings, per-library and integration summaries, dashboard stats, and the
