@@ -4,16 +4,20 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-06-27)
+## Up next (priority order, updated 2026-06-28)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
    weakening the transcode → verify → replace pipeline. This phase is grounded in
    the project review at
    [`docs/reviews/2026-06-27-project-quality-and-gold-standard-review.md`](reviews/2026-06-27-project-quality-and-gold-standard-review.md)
-   and its peer response.
+   and its peer response. Most of the phase has shipped — admin-token auth (with
+   end-to-end coverage), the self-describing CI-checked OpenAPI contract, the pipeline
+   robustness pass, endpoint modularization, large-library paging, the diagnostics
+   bundle, and the roadmap/docs split are all done. The **hardware validation matrix**
+   below is the remaining open item, gated on access to non-Intel GPUs.
 
-   - **Optional admin-token auth: initial implementation done.** `OPTIMISARR_ADMIN_TOKEN`
+   - **Optional admin-token auth: done.** `OPTIMISARR_ADMIN_TOKEN`
      now gates the administrative API and SignalR hub with bearer-token authentication
      when set. The static SPA shell remains public so it can show a token prompt; useful
      API calls are blocked until the token is supplied. `/api/health`, `/api/ready`, and
@@ -21,20 +25,21 @@ the replacement workflow is trustworthy.
      constant-time comparison over fixed-size token hashes, the UI stores the token
      locally and sends it on API, hub, and media-preview requests, and the deployment
      docs keep reverse-proxy authentication as the preferred public-access boundary.
-     Follow-up: add integration
-     coverage over the full destructive/secret-bearing endpoint set — settings
-     export/import, settings update, enqueue, cancel/retry/remove, replace, approve,
-     rollback, and purge/history clearing — once the OpenAPI/test-host work below is in
-     place.
+     The full destructive/secret-bearing endpoint set — settings read/save/export/import,
+     library create/delete/enqueue, job clear/cancel/retry/remove/replace, replacement
+     rollback/approve, and the diagnostics bundle — is now covered by end-to-end tests
+     that boot the real host with the token set and prove each is rejected with `401`
+     without it, that the open endpoints stay reachable, and that a valid token passes.
 
-   - **Generated, CI-checked OpenAPI contract: initial implementation done.** The
+   - **Generated, CI-checked OpenAPI contract: done.** The
      runtime OpenAPI 3.1 document is generated from the app into `docs/openapi.json`,
      and CI fails when the checked-in document drifts from the running API. The docs
      checker also verifies every path/method listed in `docs/api.md` exists in the
-     generated spec. Follow-up: improve route grouping, response metadata, status codes
-     for destructive/state-gated operations, auth annotations, and descriptions for
-     safety-sensitive endpoints so the generated contract becomes more useful to client
-     generators and API browsers.
+     generated spec. The document is now self-describing too: a titled/versioned/described
+     info block, every operation grouped under an area tag (System, Settings, Libraries,
+     Inventory, Queue, Replacements, Integrations, Realtime), and a documented `401` on
+     every admin-token-protected operation (the three open endpoints correctly have none),
+     produced by a single document transformer over a pure route→tag/protection mapping.
 
    - **Pipeline robustness pass: done.** The behaviour that carries product risk is now
      covered by adversarial tests, and every known live failure class is represented.
