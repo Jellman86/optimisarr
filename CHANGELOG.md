@@ -24,6 +24,12 @@
   falls back to MKV in that case — the same proven pattern as image-based subtitles — but only when the
   audio is being copied; a library that re-encodes audio to a compatible codec keeps its MP4 target.
 
+- **Timestamp and hardware-stream robustness.** Every video job now regenerates presentation
+  timestamps (`-fflags +genpts`) so a source with missing or non-monotonic DTS muxes cleanly instead
+  of warning or aborting (a no-op when timestamps are valid). And a hardware encode (QSV/VAAPI/NVENC)
+  now drops data streams (camera timecode, GoPro GPMF) even for a Matroska output — previously dropped
+  only for MP4 — since a hardware encoder can abort on one whatever the container.
+
 ## 0.2.1 — 2026-06-28
 
 ### Security

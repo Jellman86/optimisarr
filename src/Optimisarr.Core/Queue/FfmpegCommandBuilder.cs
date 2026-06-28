@@ -89,6 +89,15 @@ public static class FfmpegCommandBuilder
 
         AppendHardwareDeviceInit(args, family, useHardwareDecode);
 
+        // Regenerate presentation timestamps for a video source whose DTS/PTS are missing or
+        // non-monotonic, so it muxes cleanly instead of warning ("Non-monotonous DTS …") or aborting.
+        // A demuxer input flag, so it precedes -i; a no-op when the source's timestamps are valid.
+        if (spec.Kind is not (MediaKind.Audio or MediaKind.Image))
+        {
+            args.Add("-fflags");
+            args.Add("+genpts");
+        }
+
         // A preview clip seeks to its start before the input (fast keyframe seek) so the sample can
         // be taken from the middle of the file, where content is representative, not the intro.
         if (spec.ClipStartSeconds is { } start and > 0)
@@ -153,6 +162,14 @@ public static class FfmpegCommandBuilder
         {
             args.Add("-map");
             args.Add("-0:t");
+            args.Add("-map");
+            args.Add("-0:d");
+        }
+        else if (family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc)
+        {
+            // A hardware encoder can abort on a data stream (camera timecode, GoPro GPMF) even in a
+            // Matroska output, where the MP4 exclusion above doesn't apply. Drop data streams for any
+            // hardware encode so such a source still transcodes; attachments stay (MKV holds them).
             args.Add("-map");
             args.Add("-0:d");
         }

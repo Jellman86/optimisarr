@@ -114,10 +114,12 @@ the replacement workflow is trustworthy.
         MP4→MKV when a source carries audio MP4 cannot mux (Dolby TrueHD, Blu-ray/DVD LPCM) and that
         audio is being copied rather than re-encoded to a compatible codec — the same pattern already
         used for image-based subtitles. (Unmanic #454.)
-     4. **Robustness polish:** non-monotonous-DTS timestamp guards (`-fflags +genpts`,
-        `-avoid_negative_ts make_zero`); drop data streams for hardware encodes generally (Tdarr's
-        `-dn` fix); a classified, actionable NVENC session-limit error; and a single transient-retry
-        of the encode on known-transient NVENC/QSV errors (Tdarr #729). (Tdarr #613/#729, IPCamTalk.)
+     4. **Robustness polish: partly done.** Done: every video job regenerates presentation timestamps
+        (`-fflags +genpts`) so a source with missing/non-monotonic DTS muxes cleanly; and a hardware
+        encode now drops data streams (timecode/GPMF) even for a Matroska output (Tdarr's `-dn` fix
+        generalised). Deferred as speculative without hardware to reproduce against: a classified
+        NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
+        of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
 2. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration

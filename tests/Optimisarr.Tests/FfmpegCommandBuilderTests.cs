@@ -442,13 +442,43 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void Keeps_attachment_and_data_streams_for_a_matroska_video_output()
+    public void Keeps_attachment_and_data_streams_for_a_software_matroska_video_output()
     {
-        // Matroska can hold attachments and data streams, so the blanket copy keeps them.
+        // A CPU encode to Matroska can hold attachments and data streams, so the copy keeps them.
         var args = FfmpegCommandBuilder.Build(Reencode());
 
         Assert.DoesNotContain("-0:t", args);
         Assert.DoesNotContain("-0:d", args);
+    }
+
+    [Fact]
+    public void Drops_data_streams_for_a_hardware_matroska_re_encode_but_keeps_attachments()
+    {
+        // A hardware encoder can abort on a data stream even in Matroska, so drop those; the font
+        // attachment is fine and stays.
+        var args = FfmpegCommandBuilder.Build(Reencode(), videoEncoder: "hevc_qsv");
+
+        Assert.Contains(("-map", "-0:d"), MapPairs(args));
+        Assert.DoesNotContain("-0:t", args);
+    }
+
+    [Fact]
+    public void Regenerates_timestamps_for_a_video_job_before_the_input()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        // -fflags +genpts is a demuxer flag: it must precede -i to apply to the source.
+        var index = IndexOf(args, "-fflags");
+        Assert.True(index >= 0);
+        Assert.Equal("+genpts", args[index + 1]);
+        Assert.True(index < IndexOf(args, "-i"));
+    }
+
+    [Fact]
+    public void Regenerates_timestamps_for_a_remux_too_but_not_for_an_audio_job()
+    {
+        Assert.Contains("+genpts", FfmpegCommandBuilder.Build(Reencode(videoCodec: null)));
+        Assert.DoesNotContain("-fflags", FfmpegCommandBuilder.Build(AudioReencode()));
     }
 
     [Fact]
