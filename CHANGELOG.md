@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 — 2026-06-28
+
 ### Security
 
 - **Admin-token auth is now covered by end-to-end tests.** A real HTTP host (with the token configured)
