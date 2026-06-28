@@ -20,7 +20,11 @@ public sealed record MediaFileDto(
     int? AudioTrackCount,
     int? SubtitleTrackCount,
     DateTimeOffset? ProbedAt,
-    string? ProbeError);
+    string? ProbeError,
+    // The Optimisarr version stamped into the file's metadata when it was produced by Optimisarr, or
+    // null for an original/foreign file. Surfaced so the inventory can tell an optimised output apart
+    // from a source and so a collision-style issue is diagnosable from the API.
+    string? OptimisedMarker);
 
 /// <summary>
 /// Filters and paging for <see cref="MediaQueries.QueryAsync"/>. All optional; <see cref="PageSize"/>
@@ -91,7 +95,8 @@ public static class MediaQueries
                 file.AudioTrackCount,
                 file.SubtitleTrackCount,
                 file.ProbedAt,
-                file.ProbeError))
+                file.ProbeError,
+                file.OptimisedMarker))
             .ToListAsync(cancellationToken);
 
         return new MediaQueryResult(items, total);

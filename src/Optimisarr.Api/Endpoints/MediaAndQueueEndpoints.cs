@@ -93,7 +93,8 @@ internal static class MediaAndQueueEndpoints
                 file.AudioTrackCount,
                 file.SubtitleTrackCount,
                 file.ProbedAt,
-                file.ProbeError));
+                file.ProbeError,
+                file.OptimisedMarker));
         })
         .WithName("ProbeMedia");
 

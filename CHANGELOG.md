@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Diagnostics & observability
+
+- **The media/inventory API now exposes the optimisation marker.** `GET /api/media` and `/api/inventory`
+  rows carry `optimisedMarker` — the Optimisarr version stamped into a file when Optimisarr produced it,
+  or null for a source. This lets a client tell an optimised output apart from an original (and which
+  version made it) without inspecting the file, closing a gap that previously required filesystem access
+  to diagnose a replacement collision.
+
 ### UI
 
 - **The sidebar shows the running version alongside the build's git hash** (e.g. `v0.2.0 · a7283c3`).

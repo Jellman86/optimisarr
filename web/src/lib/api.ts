@@ -421,6 +421,8 @@ export type MediaFile = {
   subtitleTrackCount: number | null
   probedAt: string | null
   probeError: string | null
+  // The Optimisarr version stamped into the file when Optimisarr produced it, or null for a source.
+  optimisedMarker: string | null
 }
 
 export type Candidate = {
