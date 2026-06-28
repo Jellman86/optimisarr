@@ -7,6 +7,7 @@ using Optimisarr.Api.Diagnostics;
 using Optimisarr.Api.Endpoints;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Metrics;
+using Optimisarr.Api.OpenApi;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
@@ -24,7 +25,7 @@ using Optimisarr.Data;
 var builder = WebApplication.CreateBuilder(args);
 var adminToken = Environment.GetEnvironmentVariable(AdminTokenAuth.EnvironmentVariable)?.Trim();
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<OptimisarrOpenApiTransformer>());
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ToolDetectionService>();
 // The transcoding/detection ffmpeg. Defaults to "ffmpeg" on PATH, but can be pointed at a

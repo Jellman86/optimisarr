@@ -1087,8 +1087,9 @@
     }
   },
   "info": {
-    "title": "Optimisarr.Api | v1",
-    "version": "1.0.0"
+    "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
+    "title": "Optimisarr API",
+    "version": "0.2.0.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -1098,10 +1099,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       },
       "post": {
@@ -1119,10 +1123,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1144,10 +1151,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       },
       "put": {
@@ -1177,10 +1187,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1190,10 +1203,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       },
       "post": {
@@ -1211,10 +1227,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1236,10 +1255,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       },
       "put": {
@@ -1269,10 +1291,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1285,7 +1310,7 @@
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -1309,10 +1334,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -1322,10 +1350,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -1345,10 +1376,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1368,10 +1402,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1396,10 +1433,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1419,10 +1459,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1432,10 +1475,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1455,10 +1501,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -1468,10 +1517,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -1495,10 +1547,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       },
       "post": {
@@ -1516,10 +1571,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -1541,10 +1599,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -1563,10 +1624,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -1579,7 +1643,7 @@
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -1641,10 +1705,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -1722,10 +1789,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1744,10 +1814,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1757,10 +1830,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1784,10 +1860,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1809,10 +1888,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1834,10 +1916,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1859,10 +1944,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1884,10 +1972,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1909,10 +2000,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1934,10 +2028,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Queue"
         ]
       }
     },
@@ -1947,10 +2044,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       },
       "post": {
@@ -1968,10 +2068,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -1981,10 +2084,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -2006,10 +2112,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       },
       "put": {
@@ -2039,10 +2148,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -2064,10 +2176,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -2089,10 +2204,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -2114,10 +2232,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Libraries"
         ]
       }
     },
@@ -2127,10 +2248,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -2192,10 +2316,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2217,10 +2344,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2242,10 +2372,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2267,10 +2400,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2292,10 +2428,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2305,10 +2444,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       },
       "post": {
@@ -2326,10 +2468,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -2351,10 +2496,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       },
       "put": {
@@ -2384,10 +2532,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Integrations"
         ]
       }
     },
@@ -2409,10 +2560,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       },
       "get": {
@@ -2432,10 +2586,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2457,10 +2614,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Inventory"
         ]
       }
     },
@@ -2470,10 +2630,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Settings"
         ]
       }
     },
@@ -2486,7 +2649,7 @@
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -2496,10 +2659,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2509,10 +2675,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2534,10 +2703,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2559,10 +2731,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2584,10 +2759,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2609,10 +2787,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2634,10 +2815,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Replacements"
         ]
       }
     },
@@ -2647,10 +2831,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Settings"
         ]
       },
       "put": {
@@ -2668,10 +2855,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Settings"
         ]
       }
     },
@@ -2681,10 +2871,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Settings"
         ]
       }
     },
@@ -2704,10 +2897,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "Settings"
         ]
       }
     },
@@ -2717,10 +2913,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -2730,10 +2929,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -2752,10 +2954,13 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     },
@@ -2765,17 +2970,41 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
           }
         },
         "tags": [
-          "Optimisarr.Api"
+          "System"
         ]
       }
     }
   },
   "tags": [
     {
-      "name": "Optimisarr.Api"
+      "name": "System"
+    },
+    {
+      "name": "Settings"
+    },
+    {
+      "name": "Libraries"
+    },
+    {
+      "name": "Inventory"
+    },
+    {
+      "name": "Queue"
+    },
+    {
+      "name": "Replacements"
+    },
+    {
+      "name": "Integrations"
+    },
+    {
+      "name": "Realtime"
     }
   ]
 }
