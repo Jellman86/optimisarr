@@ -12,6 +12,12 @@
 
 ### UI
 
+- **Inventory shows the filename, with the full path in the detail sheet.** The Inventory list now
+  shows each file's name instead of its full library path (the path is still the hover title); opening
+  a row shows the filename and the full relative path in the detail header, over a faded, blurred
+  poster backdrop (like the Queue hero) that stays silent when no artwork resolves.
+- **The Queue detail sheet shows larger box art.** Clicking a queue row now shows a larger poster of
+  the title beside the job's progress and details, as a recognition aid.
 - **The sidebar shows the running version alongside the build's git hash** (e.g. `v0.2.0 · a7283c3`).
   The version comes from `/api/health` — the same assembly version stamped into the `optimisarr=<version>`
   marker on optimised files — so what the UI reports always matches what the backend writes. It falls

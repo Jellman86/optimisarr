@@ -10,6 +10,7 @@
   import UsageGraph from '../components/UsageGraph.svelte'
   import VerificationChecks from '../components/VerificationChecks.svelte'
   import FailuresPanel from '../components/FailuresPanel.svelte'
+  import Thumbnail from '../components/Thumbnail.svelte'
 
   let jobs = $state<Job[]>([])
   let queueStatus = $state<QueueStatus | null>(null)
@@ -703,8 +704,10 @@
   {#snippet children()}
     {#if selectedJob}
       {@const telemetry = live[selectedJob.id]}
-      <!-- Progress / stage -->
-      <div class="mb-4">
+      <!-- Box art beside the live progress/stage — a larger recognition aid for the title. -->
+      <div class="mb-4 flex gap-4">
+        <Thumbnail mediaFileId={selectedJob.mediaFileId} alt={selectedJob.relativePath ?? ''} size="lg" />
+        <div class="min-w-0 flex-1">
         {#if selectedJob.status === 'Transcoding'}
           <div class="flex items-center gap-3">
             <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(selectedJob.progress * 100)}%"></div></div>
@@ -725,6 +728,7 @@
         {:else}
           <p class="text-sm text-slate-500 dark:text-slate-400">{selectedJob.status}</p>
         {/if}
+        </div>
       </div>
 
       <!-- The hero panel above already shows this job's live CPU/GPU usage while it encodes, so

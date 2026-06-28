@@ -92,6 +92,19 @@
     return file.width && file.height ? `${file.width}×${file.height}` : '—'
   }
 
+  // The leaf filename; the full relative path is shown in the detail sheet instead of the list.
+  function fileName(path: string): string {
+    const i = path.lastIndexOf('/')
+    return i >= 0 ? path.slice(i + 1) : path
+  }
+
+  // The detail sheet's faded poster backdrop; reset its "no artwork" flag whenever the selection changes.
+  let backdropFailed = $state(false)
+  $effect(() => {
+    selectedId
+    backdropFailed = false
+  })
+
   function selectLibrary(event: Event) {
     selectedLibrary =
       (event.currentTarget as HTMLSelectElement).value === 'all'
@@ -283,8 +296,8 @@
               <td class="px-4 py-2">
                 <div class="flex items-center gap-3">
                   <Thumbnail mediaFileId={file.id} alt={file.relativePath} />
-                  <span class="max-w-[50vw] truncate font-mono text-xs sm:max-w-xs" title={file.relativePath}>
-                    {file.relativePath}
+                  <span class="max-w-[50vw] truncate text-xs sm:max-w-xs" title={file.relativePath}>
+                    {fileName(file.relativePath)}
                   </span>
                 </div>
               </td>
@@ -315,12 +328,29 @@
 <!-- Detail bottom sheet: slides into view on row selection. -->
 <BottomSheet open={selectedFile !== null} bind:expanded={sheetExpanded} bind:height={sheetHeight} onclose={dismissSheet}>
   {#snippet header()}
-    <p class="break-all font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+    <p class="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={selectedFile?.relativePath ?? ''}>
+      {fileName(selectedFile?.relativePath ?? '')}
+    </p>
+    <p class="break-all font-mono text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
       {selectedFile?.relativePath ?? ''}
     </p>
   {/snippet}
   {#snippet children()}
     {#if selectedFile}
+      <div class="relative">
+        {#if !backdropFailed}
+          <!-- A faded, blurred poster as ambient backdrop, like the Queue hero; silent if none. -->
+          <div class="pointer-events-none absolute -inset-x-5 -top-4 bottom-0 overflow-hidden">
+            <img
+              src="/api/media/{selectedFile.id}/thumbnail"
+              alt=""
+              class="h-full w-full scale-110 object-cover opacity-[0.12] blur-2xl dark:opacity-20"
+              onerror={() => (backdropFailed = true)}
+            />
+            <div class="absolute inset-0 bg-gradient-to-b from-white/30 via-white/70 to-white dark:from-slate-900/30 dark:via-slate-900/70 dark:to-slate-900"></div>
+          </div>
+        {/if}
+        <div class="relative">
         <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="flex justify-between gap-4">
             <dt class="text-slate-500">Status</dt>
@@ -387,6 +417,8 @@
             </button>
           {/if}
         </div>
+        </div>
+      </div>
     {/if}
   {/snippet}
 </BottomSheet>

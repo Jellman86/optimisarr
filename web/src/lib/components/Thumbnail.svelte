@@ -3,13 +3,13 @@
   // media server) for film/TV, embedded cover art for music, and a down-scaled still for an image.
   // A fixed box so it never shifts layout, with a clean placeholder when nothing resolves — artwork
   // is a recognition aid here, never a state signal, so a missing image is silent.
-  let { mediaFileId, alt = '', size = 'sm' }: { mediaFileId: number; alt?: string; size?: 'sm' | 'md' } =
+  let { mediaFileId, alt = '', size = 'sm' }: { mediaFileId: number; alt?: string; size?: 'sm' | 'md' | 'lg' } =
     $props()
 
   let loaded = $state(false)
   let failed = $state(false)
 
-  const box = $derived(size === 'md' ? 'h-16 w-11' : 'h-12 w-8')
+  const box = $derived(size === 'lg' ? 'h-36 w-24' : size === 'md' ? 'h-16 w-11' : 'h-12 w-8')
 </script>
 
 <div
