@@ -96,6 +96,28 @@ the replacement workflow is trustworthy.
      roadmap answers "what is next?" while the engineering notes answer "what exactly changed and
      why?".
 
+   - **Edge-case hardening (from upstream research).** A pass grounded in real failure modes that
+     Tdarr/Unmanic/HandBrake and ffmpeg users hit, prioritised by product risk. In order:
+
+     1. **Dolby Vision — the one safety gap.** DV Profile 5 has no HDR10 base layer, so re-encoding
+        or tone-mapping it without the DV RPU produces green/pink output. The probe already reads the
+        `DOVI` side-data but folds it into `IsHdr`; with VMAF off by default, a DV source can be
+        transcoded to garbage and still pass verification, replacing the original. Persist a distinct
+        Dolby-Vision flag at probe and **skip DV sources by default** (conservative), with opt-in that
+        force-enables a perceptual (VMAF) gate. (HandBrake #5597, FFmpeg HDR/DoVi notes.)
+     2. **VFR / video-start-offset → A/V-sync drift in MP4.** The live job 3334 failure: MP4's
+        timebase isn't cleanly divisible by the frame rate and MKV→MP4 loses timing ffmpeg must
+        recompute. We set no `fps_mode`/`vsync`. Detect VFR (`avg_frame_rate ≠ r_frame_rate`) or a
+        non-zero video start and normalise (`-fps_mode cfr`, `-af aresample=async=1`, and/or prefer
+        MKV), and classify the failure cleanly. (VideoHelp, EncodeX.)
+     3. **MP4 target + MP4-incompatible audio (TrueHD/DTS-HD/PCM) copied → mux failure.** We already
+        fall back MP4→MKV for image-based subtitles; extend the same container-compatibility resolver
+        to audio codecs. (Unmanic #454.)
+     4. **Robustness polish:** non-monotonous-DTS timestamp guards (`-fflags +genpts`,
+        `-avoid_negative_ts make_zero`); drop data streams for hardware encodes generally (Tdarr's
+        `-dn` fix); a classified, actionable NVENC session-limit error; and a single transient-retry
+        of the encode on known-transient NVENC/QSV errors (Tdarr #729). (Tdarr #613/#729, IPCamTalk.)
+
 2. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration
   coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
