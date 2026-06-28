@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Security
+
+- **Admin-token auth is now covered by end-to-end tests.** A real HTTP host (with the token configured)
+  asserts that every destructive or secret-bearing endpoint — settings read/save/export/import, library
+  create/delete/enqueue, job clear/cancel/retry/remove/replace, replacement rollback/approve, and the
+  diagnostics bundle — is rejected with `401` when the token is missing or wrong, that `/api/health`,
+  `/api/ready`, and `/api/auth/status` stay open, and that a valid token passes. The auth enforcement is
+  now proven at the pipeline level, not just in the matcher unit tests.
+
 ### Diagnostics & observability
 
 - **The media/inventory API now exposes the optimisation marker.** `GET /api/media` and `/api/inventory`
