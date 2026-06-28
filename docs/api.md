@@ -309,7 +309,11 @@ the total number of matches before paging is returned in the `X-Total-Count`
 response header.
 
 Common job states include `Queued`, `Probing`, `Transcoding`, `Verifying`,
-`ReadyToReplace`, `Completed`, `Failed`, and `Cancelled`.
+`ReadyToReplace`, `Completed`, `Failed`, and `Cancelled`. A job is re-checked
+against its library's current rules immediately before it transcodes; one that
+is no longer a candidate (e.g. an already-efficient source enqueued before the
+efficiency floor existed) is marked `Cancelled` with an `errorMessage` of
+`Skipped before encoding: …` rather than being transcoded and failed.
 
 Verification reports are stored as JSON in `verificationReportJson`:
 

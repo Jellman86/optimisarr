@@ -53,7 +53,12 @@ the replacement workflow is trustworthy.
      fallback. Candidate decisions are tested for already-optimised siblings and
      marker-tagged files, already-efficient sources, repeated failures (auto-exclude and
      optimisation history), path and HDR/resolution exclusions, and Sonarr/Radarr
-     import-aware holds.
+     import-aware holds. The dispatcher also re-checks a queued job against the current
+     rules immediately before it transcodes, so a job that became ineligible while sitting
+     in a long backlog (e.g. an already-efficient source enqueued before the floor existed)
+     is skipped — marked `Cancelled` with the reason — rather than wasting an encode the
+     size-saving gate would only reject. The skip is a soft, reversible rule decision, not a
+     blacklist entry, so the file becomes eligible again automatically if the profile changes.
 
    - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,

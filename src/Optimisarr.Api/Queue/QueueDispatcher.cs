@@ -365,6 +365,25 @@ public sealed class QueueDispatcher(
                 return;
             }
 
+            // Pre-flight eligibility re-check: a job can sit in a long backlog while the library's
+            // rules tighten (e.g. the already-efficient-source floor) or the file gains an optimised
+            // sibling. Re-evaluate against the current rules and skip rather than burn an encode the
+            // size-saving gate would only reject. Previews always run — they exist to show settings.
+            if (!work.Value.IsPreview)
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var candidates = scope.ServiceProvider.GetRequiredService<CandidateService>();
+                var decision = await candidates.EvaluateFileAsync(work.Value.MediaFileId, cancellationToken);
+                if (decision is { IsEligible: false })
+                {
+                    await CompleteAsync(jobId, JobStatus.Cancelled,
+                        error: $"Skipped before encoding: {decision.Reason}");
+                    logger.LogInformation(
+                        "Job {JobId}: skipped before encoding — {Reason}", jobId, decision.Reason);
+                    return;
+                }
+            }
+
             var (spec, arguments) = work.Value;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
             Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);

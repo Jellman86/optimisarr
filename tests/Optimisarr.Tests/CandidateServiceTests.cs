@@ -295,6 +295,95 @@ public sealed class CandidateServiceTests : IDisposable
         Assert.True(Single(await EvaluateAsync(libraryId: null), "a.mkv").Eligible);
     }
 
+    [Fact]
+    public async Task EvaluateFile_skips_an_already_efficient_source_so_a_queued_job_can_be_pre_flighted()
+    {
+        int fileId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "TV", Path = "/data/tv", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            // ~1.6 Mbps at 1080p — below the HEVC efficiency floor, exactly the Breaking Bad case.
+            var file = Probed(library.Id, "lean.mkv", videoCodec: "h264");
+            file.SizeBytes = 570_000_000;
+            file.DurationSeconds = 2820;
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+            fileId = file.Id;
+        }
+
+        await using var read = new OptimisarrDbContext(_options);
+        var decision = await new CandidateService(read).EvaluateFileAsync(fileId, CancellationToken.None);
+
+        Assert.NotNull(decision);
+        Assert.False(decision!.IsEligible);
+        Assert.Contains("efficiently encoded", decision.Reason);
+    }
+
+    [Fact]
+    public async Task EvaluateFile_keeps_a_genuine_candidate_eligible()
+    {
+        int fileId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "TV", Path = "/data/tv", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            // A fat 1080p h264 source: plenty to gain from HEVC, so it stays eligible.
+            var file = Probed(library.Id, "fat.mkv", videoCodec: "h264");
+            file.SizeBytes = 12_000_000_000;
+            file.DurationSeconds = 2820;
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+            fileId = file.Id;
+        }
+
+        await using var read = new OptimisarrDbContext(_options);
+        var decision = await new CandidateService(read).EvaluateFileAsync(fileId, CancellationToken.None);
+
+        Assert.NotNull(decision);
+        Assert.True(decision!.IsEligible);
+    }
+
+    [Fact]
+    public async Task EvaluateFile_skips_an_excluded_file()
+    {
+        int fileId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "TV", Path = "/data/tv", RuleProfile = RuleProfile.ConservativeHevc };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "fat.mkv", videoCodec: "h264");
+            file.SizeBytes = 12_000_000_000;
+            file.DurationSeconds = 2820;
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+            fileId = file.Id;
+
+            db.Exclusions.Add(new Exclusion { Path = file.Path, LibraryId = library.Id, RelativePath = file.RelativePath });
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = new OptimisarrDbContext(_options);
+        var decision = await new CandidateService(read).EvaluateFileAsync(fileId, CancellationToken.None);
+
+        Assert.NotNull(decision);
+        Assert.False(decision!.IsEligible);
+        Assert.Contains("Excluded", decision.Reason);
+    }
+
+    [Fact]
+    public async Task EvaluateFile_returns_null_for_a_missing_file_so_the_job_proceeds()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Null(await new CandidateService(db).EvaluateFileAsync(999, CancellationToken.None));
+    }
+
     private async Task<IReadOnlyList<Candidate>> EvaluateAsync(int? libraryId)
     {
         await using var db = new OptimisarrDbContext(_options);

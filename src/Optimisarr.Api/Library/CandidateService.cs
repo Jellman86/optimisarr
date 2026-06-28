@@ -72,25 +72,7 @@ public sealed class CandidateService(OptimisarrDbContext db)
             var profile = LibraryRuleResolution.ProfileOf(library);
             var rules = LibraryRuleResolution.Resolve(library);
 
-            var audioCodec = PrimaryAudioCodec(file.AudioCodecs);
-            var media = new MediaProperties(
-                file.Container,
-                file.VideoCodec,
-                file.Width,
-                file.Height,
-                file.SizeBytes,
-                file.IsHdr,
-                file.RelativePath,
-                file.OptimisedMarker,
-                file.MediaKind,
-                audioCodec,
-                file.AudioBitrateKbps,
-                file.FrameCount,
-                file.DurationSeconds);
-
-            // The codec that matters depends on the kind: audio files report their audio codec,
-            // while video and still-image files both carry it as the (probe's) video codec.
-            var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
+            var (media, codec) = Describe(file);
 
             // The rule decision says whether the file is worth optimising; the history
             // overlay then stops a file we've already optimised (or that failed) for its
@@ -130,6 +112,82 @@ public sealed class CandidateService(OptimisarrDbContext db)
         }
 
         return candidates;
+    }
+
+    /// <summary>
+    /// Re-evaluates a single probed file against its library's <em>current</em> rules — the pre-flight
+    /// check a queued job runs before it transcodes. A job can sit in a long backlog while the rules
+    /// tighten (e.g. the already-efficient-source floor is added) or the file gains an optimised
+    /// sibling; this catches the "this file should not be encoded" cases so the dispatcher skips it
+    /// rather than burning an encode the size-saving gate would only reject. It applies the rule
+    /// decision, the optimised-sibling skip, and explicit exclusions, but deliberately <em>not</em> the
+    /// job-history overlay — a queued job is an explicit intent to run (e.g. a retry). Returns
+    /// <c>null</c> when the file is gone or not yet probed, so the caller proceeds and fails naturally.
+    /// </summary>
+    public async Task<CandidateDecision?> EvaluateFileAsync(int mediaFileId, CancellationToken cancellationToken)
+    {
+        var file = await db.MediaFiles.AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == mediaFileId && f.Status == MediaFileStatus.Probed, cancellationToken);
+        if (file is null)
+        {
+            return null;
+        }
+
+        var library = file.LibraryId is { } id
+            ? await db.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken)
+            : null;
+        var rules = LibraryRuleResolution.Resolve(library);
+
+        var (media, _) = Describe(file);
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        var hasOptimisedSibling = string.IsNullOrEmpty(file.OptimisedMarker)
+            && await HasOptimisedSiblingAsync(file, cancellationToken);
+        decision = OptimisedSiblingEvaluator.Apply(decision, hasOptimisedSibling);
+
+        if (await db.Exclusions.AsNoTracking().AnyAsync(e => e.Path == file.Path, cancellationToken))
+        {
+            decision = CandidateDecision.Skipped("Excluded — won't be optimised");
+        }
+
+        return decision;
+    }
+
+    private async Task<bool> HasOptimisedSiblingAsync(MediaFile file, CancellationToken cancellationToken)
+    {
+        var stem = StemOf(file.RelativePath);
+
+        // SQLite can't strip an extension server-side, so compare stems in memory over just this
+        // library's Optimisarr-produced files (a small set), never the whole inventory.
+        var markedPaths = await db.MediaFiles.AsNoTracking()
+            .Where(f => f.LibraryId == file.LibraryId && f.OptimisedMarker != null && f.Id != file.Id)
+            .Select(f => f.RelativePath)
+            .ToListAsync(cancellationToken);
+
+        return markedPaths.Any(path => string.Equals(StemOf(path), stem, StringComparison.Ordinal));
+    }
+
+    // Project a probed row into the pure evaluator's input plus the codec that drives its eligibility
+    // (audio files report their audio codec; video and still-image files carry it as the video codec).
+    private static (MediaProperties Media, string? Codec) Describe(MediaFile file)
+    {
+        var audioCodec = PrimaryAudioCodec(file.AudioCodecs);
+        var media = new MediaProperties(
+            file.Container,
+            file.VideoCodec,
+            file.Width,
+            file.Height,
+            file.SizeBytes,
+            file.IsHdr,
+            file.RelativePath,
+            file.OptimisedMarker,
+            file.MediaKind,
+            audioCodec,
+            file.AudioBitrateKbps,
+            file.FrameCount,
+            file.DurationSeconds);
+        var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
+        return (media, codec);
     }
 
     /// <summary>

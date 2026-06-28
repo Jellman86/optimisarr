@@ -22,6 +22,16 @@
 
 ### Pipeline robustness
 
+- **A queued job is re-checked for eligibility just before it transcodes.** A job can sit in a long
+  backlog while the library's rules tighten (e.g. the already-efficient-source floor is added) or the
+  file gains an optimised sibling — previously such a job still ran and was only caught by the
+  size-saving gate after wasting an encode. The dispatcher now re-evaluates the file against the
+  current rules first (the shared `CandidateService` logic: rule decision, optimised-sibling skip, and
+  explicit exclusions — but not the job-history overlay, so a retry still runs) and, when the file is
+  no longer a candidate, marks the job `Cancelled` with the reason ("Skipped before encoding: …")
+  instead of transcoding. Previews always run. This closes the gap that let pre-floor Breaking Bad
+  episodes re-encode to a larger file and fail.
+
 - **Rollback now fails safely when the quarantined original is gone.** A regression test proves that
   if the quarantined original has been purged or lost, a rollback returns a clear failure and leaves
   the in-place optimised file untouched (instead of deleting it and losing both copies) — completing
