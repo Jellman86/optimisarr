@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Safety — edge-case hardening
+
+- **Dolby Vision sources are now left untouched by default.** DV carries a dynamic-metadata RPU that
+  cannot survive a re-encode; without it the file degrades to HDR10/SDR, and a Profile 5 source (no
+  HDR10 base layer) comes out green/pink. With the perceptual (VMAF) gate off by default there was no
+  backstop, so a DV source could be transcoded to a colour-shifted output and still pass verification,
+  replacing the original. The probe now detects Dolby Vision distinctly (DOVI side-data or a
+  `dvhe`/`dvh1`/`dav1` codec tag), and the candidate evaluator skips DV sources regardless of the HDR
+  setting unless a per-library **Optimise Dolby Vision** opt-in is enabled (off by default; settable
+  in the library form and preserved across config backup/restore). Migration `AddDolbyVisionHandling`.
+
 ## 0.2.1 — 2026-06-28
 
 ### Security

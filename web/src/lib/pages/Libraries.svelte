@@ -375,6 +375,7 @@
       targetVideoCodec: null,
       targetContainer: null,
       hdrHandling: null,
+      optimiseDolbyVision: false,
       excludePaths: null,
       qualityCrf: null,
       encoderPreset: null,
@@ -509,6 +510,7 @@
       targetVideoCodec: library.targetVideoCodec,
       targetContainer: library.targetContainer,
       hdrHandling: library.hdrHandling,
+      optimiseDolbyVision: library.optimiseDolbyVision,
       excludePaths: library.excludePaths,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
@@ -569,6 +571,7 @@
       targetVideoCodec: emptyToNull(form.targetVideoCodec),
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
+      optimiseDolbyVision: form.optimiseDolbyVision,
       excludePaths: emptyToNull(form.excludePaths),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
@@ -1041,6 +1044,21 @@
               <InfoTip text="A file already encoded at a very low bitrate for its resolution can't be made meaningfully smaller, so it's skipped before transcoding instead of wasting an encode that the size-saving gate would reject. Turn this off to send every eligible file to the encoder anyway." />
               <span class="mt-0.5 block text-xs font-normal text-slate-400">
                 Avoids wasted encodes on files that can't shrink. Turn off to re-encode everything.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <!-- Dolby Vision is left untouched by default: a re-encode drops the DV layer and a Profile 5
+             source comes out green/pink. Opt in only if losing the DV presentation is acceptable. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.optimiseDolbyVision} />
+            <span>
+              Optimise Dolby Vision sources
+              <InfoTip text="Dolby Vision needs its dynamic-metadata RPU to render correctly, and that can't survive a re-encode — the file degrades to HDR10/SDR, and a Profile 5 source comes out green/pink. Off by default, so DV files are left untouched whatever the HDR setting. Turn on only if losing the Dolby Vision presentation is acceptable for this library." />
+              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+                Off by default — DV sources are skipped to avoid colour shifts. Turn on to re-encode them anyway.
               </span>
             </span>
           </label>

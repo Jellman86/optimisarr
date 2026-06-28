@@ -93,6 +93,7 @@ public sealed class LibraryInventoryService(
                 file.AudioBitrateKbps = null;
                 file.SubtitleTrackCount = null;
                 file.IsHdr = false;
+                file.IsDolbyVision = false;
                 file.OptimisedMarker = null;
                 file.ProbedAt = null;
                 file.ProbeError = null;
@@ -220,6 +221,7 @@ public sealed class LibraryInventoryService(
             file.AudioBitrateKbps = result.AudioBitrateKbps;
             file.SubtitleTrackCount = result.SubtitleTrackCount;
             file.IsHdr = result.IsHdr;
+            file.IsDolbyVision = result.IsDolbyVision;
             // Images carry their marker in EXIF/XMP (ffprobe doesn't surface it), so read it back
             // with exiftool when the container probe found none.
             file.OptimisedMarker = result.OptimisedMarker

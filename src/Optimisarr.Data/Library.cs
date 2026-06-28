@@ -60,6 +60,13 @@ public sealed class Library
     /// <summary>Overrides the profile's HDR / Dolby Vision handling.</summary>
     public HdrHandling? HdrHandling { get; set; }
 
+    /// <summary>
+    /// When true, Dolby Vision sources are optimised like any HDR file. Off by default: a re-encode
+    /// drops the DV layer and a Profile 5 source comes out green/pink, so DV is left untouched unless
+    /// the operator accepts losing the DV presentation for this library.
+    /// </summary>
+    public bool OptimiseDolbyVision { get; set; }
+
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 

@@ -344,6 +344,12 @@
           "name": {
             "type": "string"
           },
+          "optimiseDolbyVision": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "path": {
             "type": "string"
           },
@@ -737,6 +743,12 @@
               "string"
             ]
           },
+          "optimiseDolbyVision": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "path": {
             "type": [
               "null",
@@ -848,6 +860,7 @@
           "targetVideoCodec",
           "targetContainer",
           "hdrHandling",
+          "optimiseDolbyVision",
           "excludePaths",
           "qualityCrf",
           "encoderPreset",

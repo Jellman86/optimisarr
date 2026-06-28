@@ -74,6 +74,7 @@ export type LibraryRules = {
   targetVideoCodec: string | null
   targetContainer: string | null
   hdrHandling: string | null
+  optimiseDolbyVision: boolean
   excludePaths: string | null
   qualityCrf: number | null
   encoderPreset: string | null

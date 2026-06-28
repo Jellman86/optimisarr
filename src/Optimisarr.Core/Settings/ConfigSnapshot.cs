@@ -55,7 +55,8 @@ public sealed record LibrarySnapshot(
     int ImageDownscaleValue = 0,
     bool MoveOverwrite = false,
     bool AutoReplace = false,
-    bool? SkipEfficientSources = null);
+    bool? SkipEfficientSources = null,
+    bool? OptimiseDolbyVision = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

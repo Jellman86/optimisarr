@@ -39,6 +39,7 @@ internal static class LibraryRuleResolution
             TargetVideoCodec = library.TargetVideoCodec,
             TargetContainer = library.TargetContainer,
             Hdr = library.HdrHandling,
+            OptimiseDolbyVision = library.OptimiseDolbyVision,
             ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
             TargetAudioCodec = library.AudioTargetCodec,
             AudioBitrateKbps = library.AudioBitrateKbps,

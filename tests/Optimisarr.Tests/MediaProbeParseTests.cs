@@ -245,5 +245,41 @@ public sealed class MediaProbeParseTests
         var result = MediaProbeService.Parse(json);
 
         Assert.True(result.IsHdr);
+        Assert.True(result.IsDolbyVision);
+    }
+
+    [Fact]
+    public void Parse_detects_dolby_vision_from_a_dvhe_codec_tag()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "codec_tag_string": "dvh1" }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.True(result.IsDolbyVision);
+    }
+
+    [Fact]
+    public void Parse_does_not_flag_a_plain_hdr10_file_as_dolby_vision()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "color_transfer": "smpte2084" }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.True(result.IsHdr);
+        Assert.False(result.IsDolbyVision);
     }
 }

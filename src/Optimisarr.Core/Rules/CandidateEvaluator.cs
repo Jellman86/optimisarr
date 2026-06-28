@@ -139,6 +139,17 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("HDR / Dolby Vision excluded by this library's rules");
         }
 
+        // Dolby Vision needs its dynamic-metadata RPU to render correctly. Re-encoding or tone-mapping
+        // it without that RPU degrades it to HDR10/SDR at best, and a Profile 5 source (no HDR10 base
+        // layer) comes out green/pink. With the perceptual gate off by default there is no backstop, so
+        // a DV source is left untouched unless the library opts in — even when HDR is otherwise
+        // tone-mapped or preserved, because neither path carries the DV layer.
+        if (media.IsDolbyVision && !rules.OptimiseDolbyVision)
+        {
+            return CandidateDecision.Skipped(
+                "Dolby Vision — re-encoding would drop the DV layer and risk a colour shift (Profile 5); left untouched");
+        }
+
         if (media.SizeBytes < rules.MinFileSizeBytes)
         {
             return CandidateDecision.Skipped(

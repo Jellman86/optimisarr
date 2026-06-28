@@ -18,9 +18,10 @@ public sealed class CandidateEvaluatorTests
         string? optimisedMarker = null,
         MediaKind kind = MediaKind.Video,
         string? audioCodec = null,
-        double? durationSeconds = null) =>
+        double? durationSeconds = null,
+        bool isDolbyVision = false) =>
         new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind,
-            audioCodec, DurationSeconds: durationSeconds);
+            audioCodec, DurationSeconds: durationSeconds, IsDolbyVision: isDolbyVision);
 
     private static MediaProperties AudioFile(
         string audioCodec, long sizeBytes = 40L * 1024 * 1024, int? audioBitrateKbps = null) =>
@@ -323,6 +324,31 @@ public sealed class CandidateEvaluatorTests
         var av1 = RuleProfileDefaults.For(RuleProfile.ExperimentalAv1);
 
         var decision = CandidateEvaluator.Evaluate(File(videoCodec: "h264", isHdr: true), av1);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Dolby_vision_file_is_left_untouched_by_default_even_when_hdr_is_allowed()
+    {
+        // The AV1 profile allows HDR, so only the Dolby Vision guard can stop this — a re-encode
+        // would drop the DV layer and a Profile 5 source comes out green/pink.
+        var av1 = RuleProfileDefaults.For(RuleProfile.ExperimentalAv1);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", isHdr: true, isDolbyVision: true), av1);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("Dolby Vision", decision.Reason);
+    }
+
+    [Fact]
+    public void Dolby_vision_file_is_eligible_when_the_library_opts_in()
+    {
+        var av1 = RuleProfileDefaults.For(RuleProfile.ExperimentalAv1) with { OptimiseDolbyVision = true };
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", isHdr: true, isDolbyVision: true), av1);
 
         Assert.True(decision.IsEligible);
     }

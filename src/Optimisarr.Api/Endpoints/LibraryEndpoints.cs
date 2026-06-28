@@ -95,6 +95,7 @@ internal static class LibraryEndpoints
                 TargetVideoCodec = parsed.TargetVideoCodec,
                 TargetContainer = parsed.TargetContainer,
                 HdrHandling = parsed.HdrHandling,
+                OptimiseDolbyVision = parsed.OptimiseDolbyVision,
                 ExcludePaths = parsed.ExcludePaths,
                 QualityCrf = parsed.QualityCrf,
                 EncoderPreset = parsed.EncoderPreset,
@@ -161,6 +162,7 @@ internal static class LibraryEndpoints
             library.TargetVideoCodec = parsed.TargetVideoCodec;
             library.TargetContainer = parsed.TargetContainer;
             library.HdrHandling = parsed.HdrHandling;
+            library.OptimiseDolbyVision = parsed.OptimiseDolbyVision;
             library.ExcludePaths = parsed.ExcludePaths;
             library.QualityCrf = parsed.QualityCrf;
             library.EncoderPreset = parsed.EncoderPreset;

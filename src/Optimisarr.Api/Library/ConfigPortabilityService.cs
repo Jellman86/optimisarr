@@ -118,6 +118,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.TargetVideoCodec = snapshot.TargetVideoCodec;
             library.TargetContainer = snapshot.TargetContainer;
             library.HdrHandling = snapshot.HdrHandling is null ? null : ParseEnum<HdrHandling>(snapshot.HdrHandling);
+            library.OptimiseDolbyVision = snapshot.OptimiseDolbyVision ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.QualityCrf = snapshot.QualityCrf;
             library.EncoderPreset = snapshot.EncoderPreset;
@@ -286,7 +287,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ImageDownscaleValue,
         library.MoveOverwrite,
         library.AutoReplace,
-        library.SkipEfficientSources);
+        library.SkipEfficientSources,
+        library.OptimiseDolbyVision);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

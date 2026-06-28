@@ -60,6 +60,15 @@ public sealed record RuleSettings
     /// <summary>How HDR / Dolby Vision content is handled. Defaults to the safe Exclude.</summary>
     public HdrHandling Hdr { get; init; } = HdrHandling.Exclude;
 
+    /// <summary>
+    /// When <c>false</c> (the default), a Dolby Vision source is left untouched regardless of
+    /// <see cref="Hdr"/>. Re-encoding or tone-mapping DV without its dynamic-metadata RPU degrades it
+    /// to HDR10/SDR, and a Profile 5 source (no HDR10 base layer) comes out green/pink; with the
+    /// perceptual (VMAF) gate off by default there is no backstop. Opt in only if losing the DV
+    /// presentation is acceptable for that library.
+    /// </summary>
+    public bool OptimiseDolbyVision { get; init; }
+
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 

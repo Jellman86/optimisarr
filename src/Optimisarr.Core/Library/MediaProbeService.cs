@@ -19,6 +19,7 @@ public sealed record MediaProbeResult(
     int SubtitleTrackCount,
     bool HasImageSubtitles,
     bool IsHdr,
+    bool IsDolbyVision,
     int MaxAudioChannels,
     int MaxAudioSampleRate,
     int? AudioBitrateKbps,
@@ -32,7 +33,7 @@ public sealed record MediaProbeResult(
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, 0, 0, null,
+        new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, error);
 }
 
@@ -140,6 +141,7 @@ public sealed class MediaProbeService
         int? height = null;
         int? frameCount = null;
         var isHdr = false;
+        var isDolbyVision = false;
         var hasRealVideoStream = false;
         var audioCodecs = new List<string>();
         var subtitleCount = 0;
@@ -196,6 +198,7 @@ public sealed class MediaProbeService
                             frameCount = frames;
                         }
                         isHdr = IsHdrVideoStream(stream);
+                        isDolbyVision = IsDolbyVisionStream(stream);
                         colorPrimaries = ReadString(stream, "color_primaries");
                         colorTransfer = ReadString(stream, "color_transfer");
                         colorSpace = ReadString(stream, "color_space");
@@ -251,6 +254,7 @@ public sealed class MediaProbeService
             subtitleCount,
             hasImageSubtitles,
             isHdr,
+            isDolbyVision,
             maxAudioChannels,
             maxAudioSampleRate,
             audioBitrateKbps,
@@ -322,6 +326,32 @@ public sealed class MediaProbeService
         }
 
         return false;
+    }
+
+    // Dolby Vision is carried as a DOVI configuration record in the stream's side data, and is also
+    // signalled by the dvhe/dvh1/dav1/dvav codec tags on a remux. Either marks the stream as DV; the
+    // RPU it depends on cannot survive a re-encode, so the source is left untouched by default.
+    private static bool IsDolbyVisionStream(JsonElement videoStream)
+    {
+        if (videoStream.TryGetProperty("side_data_list", out var sideData) &&
+            sideData.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in sideData.EnumerateArray())
+            {
+                if (entry.TryGetProperty("side_data_type", out var typeElement) &&
+                    typeElement.GetString() is { } sideDataType &&
+                    sideDataType.Contains("DOVI", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return videoStream.TryGetProperty("codec_tag_string", out var tagElement) &&
+            tagElement.GetString() is { } tag &&
+            (tag.StartsWith("dvh", StringComparison.OrdinalIgnoreCase) ||
+             tag.StartsWith("dav", StringComparison.OrdinalIgnoreCase) ||
+             tag.StartsWith("dvav", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? ReadString(JsonElement stream, string property)

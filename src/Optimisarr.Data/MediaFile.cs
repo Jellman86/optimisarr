@@ -74,6 +74,13 @@ public sealed class MediaFile
     public bool IsHdr { get; set; }
 
     /// <summary>
+    /// True when the video stream carries Dolby Vision (DOVI side data or a dvhe/dvh1/dav1 codec
+    /// tag). Tracked separately from <see cref="IsHdr"/> so DV can be left untouched by default — its
+    /// RPU cannot survive a re-encode, and a Profile 5 source comes out green/pink.
+    /// </summary>
+    public bool IsDolbyVision { get; set; }
+
+    /// <summary>
     /// The Optimisarr fingerprint read from the file's container metadata, if present. A
     /// non-null value means this exact file was produced by Optimisarr, so it is never
     /// optimised again — even on a fresh install or after the queue history is cleared.

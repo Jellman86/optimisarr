@@ -15,6 +15,7 @@ public sealed record RuleOverrides
     public string? TargetVideoCodec { get; init; }
     public string? TargetContainer { get; init; }
     public HdrHandling? Hdr { get; init; }
+    public bool? OptimiseDolbyVision { get; init; }
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public string? TargetAudioCodec { get; init; }
     public int? AudioBitrateKbps { get; init; }
