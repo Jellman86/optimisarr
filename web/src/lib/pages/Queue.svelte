@@ -704,10 +704,9 @@
   {#snippet children()}
     {#if selectedJob}
       {@const telemetry = live[selectedJob.id]}
-      <!-- Box art beside the live progress/stage — a larger recognition aid for the title. -->
-      <div class="mb-4 flex gap-4">
-        <Thumbnail mediaFileId={selectedJob.mediaFileId} alt={selectedJob.relativePath ?? ''} size="lg" />
-        <div class="min-w-0 flex-1">
+      <!-- Live progress/stage spans the full width; the box art lives beside the detail/verification
+           body below, not up here. -->
+      <div class="mb-4">
         {#if selectedJob.status === 'Transcoding'}
           <div class="flex items-center gap-3">
             <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(selectedJob.progress * 100)}%"></div></div>
@@ -728,7 +727,6 @@
         {:else}
           <p class="text-sm text-slate-500 dark:text-slate-400">{selectedJob.status}</p>
         {/if}
-        </div>
       </div>
 
       <!-- The hero panel above already shows this job's live CPU/GPU usage while it encodes, so
@@ -740,8 +738,12 @@
         </p>
       {/if}
 
+      <!-- Body: technical detail and the verification report on the left, box art floated to their
+           right as a recognition aid for the title. -->
+      <div class="flex flex-col gap-4 sm:flex-row">
+        <div class="min-w-0 flex-1">
       <!-- Details -->
-      <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+      <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <div class="flex justify-between gap-4">
           <dt class="text-slate-500">Encoder</dt>
           <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-slate-400">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
@@ -767,6 +769,9 @@
           {#if checks}<VerificationChecks {checks} />{/if}
         </div>
       {/if}
+        </div>
+        <Thumbnail mediaFileId={selectedJob.mediaFileId} alt={selectedJob.relativePath ?? ''} size="lg" />
+      </div>
 
       <!-- Actions -->
       <div class="mt-4 flex flex-wrap gap-2">

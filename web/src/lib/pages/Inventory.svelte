@@ -327,6 +327,18 @@
 
 <!-- Detail bottom sheet: slides into view on row selection. -->
 <BottomSheet open={selectedFile !== null} bind:expanded={sheetExpanded} bind:height={sheetHeight} onclose={dismissSheet}>
+  {#snippet backdrop()}
+    <!-- A faded, blurred poster spanning the whole sheet, like the Queue hero; silent if none. -->
+    {#if selectedFile && !backdropFailed}
+      <img
+        src="/api/media/{selectedFile.id}/thumbnail"
+        alt=""
+        class="h-full w-full scale-110 object-cover opacity-[0.12] blur-2xl dark:opacity-20"
+        onerror={() => (backdropFailed = true)}
+      />
+      <div class="absolute inset-0 bg-gradient-to-b from-white/20 via-white/60 to-white/90 dark:from-slate-900/20 dark:via-slate-900/60 dark:to-slate-900/90"></div>
+    {/if}
+  {/snippet}
   {#snippet header()}
     <p class="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={selectedFile?.relativePath ?? ''}>
       {fileName(selectedFile?.relativePath ?? '')}
@@ -337,21 +349,7 @@
   {/snippet}
   {#snippet children()}
     {#if selectedFile}
-      <div class="relative">
-        {#if !backdropFailed}
-          <!-- A faded, blurred poster as ambient backdrop, like the Queue hero; silent if none. -->
-          <div class="pointer-events-none absolute -inset-x-5 -top-4 bottom-0 overflow-hidden">
-            <img
-              src="/api/media/{selectedFile.id}/thumbnail"
-              alt=""
-              class="h-full w-full scale-110 object-cover opacity-[0.12] blur-2xl dark:opacity-20"
-              onerror={() => (backdropFailed = true)}
-            />
-            <div class="absolute inset-0 bg-gradient-to-b from-white/30 via-white/70 to-white dark:from-slate-900/30 dark:via-slate-900/70 dark:to-slate-900"></div>
-          </div>
-        {/if}
-        <div class="relative">
-        <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+      <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="flex justify-between gap-4">
             <dt class="text-slate-500">Status</dt>
             <dd>{selectedFile.status}</dd>
@@ -417,8 +415,6 @@
             </button>
           {/if}
         </div>
-        </div>
-      </div>
     {/if}
   {/snippet}
 </BottomSheet>

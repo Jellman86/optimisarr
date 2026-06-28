@@ -36,6 +36,12 @@
   changes — the same client-side paging the Queue table uses, so a library with thousands of probed
   files stays responsive instead of rendering every row.
 
+- **Detail-sheet layout polish.** In the Queue detail sheet the box art now sits to the right of the
+  technical detail and verification report (a clean left-info / right-art body) instead of being wedged
+  above the progress bar. In the Inventory detail sheet the faded poster backdrop now spans the whole
+  sheet — `BottomSheet` gained an optional ambient `backdrop` layer rendered behind the header and the
+  full content, clipped to the panel — instead of being trapped inside the scrolling details panel.
+
 ### Diagnostics & observability
 
 - **The media/inventory API now exposes the optimisation marker.** `GET /api/media` and `/api/inventory`
