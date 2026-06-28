@@ -36,17 +36,19 @@ the replacement workflow is trustworthy.
      safety-sensitive endpoints so the generated contract becomes more useful to client
      generators and API browsers.
 
-   - **Pipeline robustness pass.** The project has proven the originals stay safe, but
-     recent live fixes showed that safe can still mean failed, looping, or wasteful.
-     Add adversarial tests around the behavior that actually carries product risk:
-     `FfmpegCommandBuilder` stream/container permutations (attachments, data streams,
-     cover art, bitmap/image subtitles, audio-only, still image, HDR, remux, MP4/MKV);
-     replacement/reconcile state transitions (missing source, missing work output,
-     destination occupied, concurrent replace callers, dry-run, rollback after partial
-     failure, cross-filesystem fallback); and candidate decisions for already-optimised
-     siblings, already-efficient sources, repeated failures, exclusions, and
-     Sonarr/Radarr import-aware holds. Known live failure classes should be represented
-     by tests before this phase is considered done.
+   - **Pipeline robustness pass: done.** The behaviour that carries product risk is now
+     covered by adversarial tests, and every known live failure class is represented.
+     `FfmpegCommandBuilder` stream/container permutations — attachments, data streams,
+     cover art, image-based subtitles (the MP4→MKV fallback that avoids the `mov_text`
+     trap), audio-only, still image, HDR tone-map, remux, and MP4/MKV — are tested.
+     Replacement/reconcile state transitions are tested end to end: missing source,
+     missing work output, destination occupied by a different file, concurrent replace
+     callers (the job 3327 corruption), dry-run, rollback after a partial mid-move
+     failure, rollback when the quarantined original is gone, and the cross-filesystem
+     fallback. Candidate decisions are tested for already-optimised siblings and
+     marker-tagged files, already-efficient sources, repeated failures (auto-exclude and
+     optimisation history), path and HDR/resolution exclusions, and Sonarr/Radarr
+     import-aware holds.
 
    - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,

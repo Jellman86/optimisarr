@@ -344,6 +344,32 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Equal(ReplacementResultKind.Invalid, second.Kind);
     }
 
+    [Fact]
+    public async Task Rollback_fails_and_preserves_the_optimised_file_when_the_quarantined_original_is_missing()
+    {
+        // The quarantined original was purged or lost between the replacement and the rollback
+        // attempt. Rollback must not delete the in-place optimised file when it has nothing to
+        // restore — that would lose both copies. It must fail cleanly and leave everything as-is so
+        // the replacement stays valid and replayable.
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        var finalPath = replaced.Replacement!.FinalPath;
+        File.Delete(replaced.Replacement.QuarantinePath);
+
+        var result = await RollbackAsync(replaced.Replacement.Id);
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Contains("missing", result.Message);
+        // The optimised file is still in place and the replacement is untouched — nothing was lost.
+        Assert.True(File.Exists(finalPath));
+        Assert.Equal("NEW", File.ReadAllText(finalPath));
+        await using var db = new OptimisarrDbContext(_options);
+        var replacement = await db.Replacements.SingleAsync();
+        Assert.Equal(ReplacementStatus.Replaced, replacement.Status);
+        Assert.Null(replacement.RolledBackAt);
+    }
+
     private (string OriginalPath, string OutputPath) WriteFiles(
         string originalName, string outputName, string originalContent, string outputContent)
     {
