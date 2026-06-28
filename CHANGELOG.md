@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### UI
+
+- **The sidebar shows the running version alongside the build's git hash** (e.g. `v0.2.0 · a7283c3`).
+  The version comes from `/api/health` — the same assembly version stamped into the `optimisarr=<version>`
+  marker on optimised files — so what the UI reports always matches what the backend writes. It falls
+  back to just the hash if the version can't be read.
+
 ## 0.2.0 — 2026-06-27
 
 ### Eligibility

@@ -1,11 +1,20 @@
 <script lang="ts">
   import { theme, layout, router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
+  import { api } from '../api'
   import BrandMark from './BrandMark.svelte'
   import Icon from './Icon.svelte'
 
   const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
-  const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : gitHash
+
+  // The running backend's version — the same source as the optimisation marker stamped into files —
+  // shown alongside the build's git hash. Fetched once; falls back to just the hash if unavailable.
+  let version = $state<string | null>(null)
+  $effect(() => {
+    api.health().then((health) => (version = health.version)).catch(() => {})
+  })
+  // "0.2.0.0" -> "v0.2.0" for display.
+  let versionLabel = $derived(version ? `v${version.split('.').slice(0, 3).join('.')}` : null)
 
   type NavItem = { path: string; label: string; icon: string; enabled: boolean }
 
@@ -114,15 +123,19 @@
     {/each}
   </nav>
 
-  <!-- Build version (git hash) -->
+  <!-- Running version + the build's git hash -->
   <a
     href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
     target="_blank"
     rel="noopener noreferrer"
     class="border-t border-slate-200 px-2 py-1.5 text-center font-mono text-[10px] text-slate-400 transition-colors hover:text-cyan-600 dark:border-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
-    title="Build {appVersion}"
+    title={version ? `Optimisarr ${version} · build ${gitHash}` : `build ${gitHash}`}
   >
-    {railCollapsed ? gitHash.slice(0, 4) : `build ${gitHash}`}
+    {railCollapsed
+      ? (versionLabel ?? gitHash.slice(0, 4))
+      : versionLabel
+        ? `${versionLabel} · ${gitHash}`
+        : `build ${gitHash}`}
   </a>
 
   <!-- Footer: theme + collapse -->
