@@ -3,6 +3,44 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Recently shipped (2026-06-28) — upstream-grounded edge-case hardening.** A pass driven by real
+failure modes Tdarr/Unmanic/HandBrake and ffmpeg users hit, prioritised by product risk. The design
+decisions, not just the changes:
+
+- **Dolby Vision skipped by default — the one safety fix.** DV carries a dynamic-metadata RPU that
+  cannot survive a re-encode; without it the file degrades to HDR10/SDR, and a Profile 5 source (no
+  HDR10 base layer) comes out green/pink. With the perceptual (VMAF) gate off by default, a DV source
+  could be transcoded to a colour-shifted output and still pass verification, replacing the original —
+  the kind of silent loss the safety model exists to prevent. The probe now flags DV distinctly (DOVI
+  side-data or a `dvhe`/`dvh1`/`dav1` codec tag, tracked separately from `IsHdr`), and the evaluator
+  skips DV regardless of the HDR setting. **Decision: a soft, reversible rule skip, not a blacklist** —
+  same reasoning as the efficiency floor: a per-library `OptimiseDolbyVision` opt-in (off by default,
+  in the library form, carried in config backups) re-enables it, and changing the profile makes such
+  files eligible again automatically. A hard exclusion would wrongly persist past a settings change.
+  Migration `AddDolbyVisionHandling`.
+- **MP4 re-encodes forced to CFR.** A variable-frame-rate source drifts out of A/V sync in the MP4
+  timeline (the MP4/MOV-only timebase problem), the cause of the live job 3334 A/V-sync failure. A
+  video re-encode to an MP4-family container now sets `-fps_mode cfr`; Matroska carries VFR natively
+  and is untouched, and a remux is never re-timed. **Decision: fix the VFR class, don't chase the
+  residual start-offset with blind flags** — a pure start-offset desync is rare and the A/V-sync gate
+  already catches it safely (original untouched, job retryable), so injecting timestamp-shifting flags
+  we couldn't validate against the real file would have risked regressing other content for little gain.
+- **MP4 → MKV fallback for unmuxable audio.** Copying a Blu-ray audio format MP4 has no tag for aborts
+  the encode. The resolver now falls back to MKV — the same pattern as image-based subtitles — but only
+  when the audio is *copied*; re-encoding it to a compatible codec keeps the MP4 target. **Decision:
+  flag only the formats that genuinely abort the mux** (Dolby TrueHD, its MLP core, Blu-ray/DVD LPCM).
+  DTS, AC-3, E-AC-3, AAC, Opus, and FLAC have MP4 tags and mux fine, so they are deliberately *not*
+  listed — flagging them would force needless MKV fallbacks.
+- **Timestamp and hardware-stream robustness.** Every video job adds `-fflags +genpts` so a source with
+  missing or non-monotonic DTS muxes cleanly instead of warning/aborting — chosen because it is a no-op
+  when timestamps are valid, so it is safe to apply unconditionally. And a hardware encode now drops
+  data streams (camera timecode, GoPro GPMF) even for a Matroska output (previously MP4-only), since a
+  hardware encoder can abort on one whatever the container — Tdarr's `-dn` fix, generalised.
+- **Deliberately deferred.** A classified NVENC session-limit error and a single transient-retry of the
+  encode on known-transient NVENC/QSV errors were left out: both are speculative without the hardware to
+  reproduce against, and the session-limit case is low risk while the concurrency default is 1. Recorded
+  in the roadmap so the decision is visible rather than silently dropped.
+
 **Recently shipped (2026-06-26).**
 
 - **Already-efficient source skip: done.** A video already encoded at a very low bitrate for its
