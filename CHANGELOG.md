@@ -37,6 +37,11 @@
   their midpoint once metadata loads, so the operator lands on a representative frame instead of the
   black leader at the start.
 
+- **A "Play both" button starts the two compare viewers together.** In the same compare panel
+  (Quarantine and the shared Settings preview), one control now plays or pauses the original and
+  encoded viewers at once, so they can be compared in motion without juggling two sets of controls.
+  The toggle reflects the real element state, so using a viewer's own controls keeps the label honest.
+
 ### Build
 
 - **Pinned `Microsoft.OpenApi` to 2.9.0 to clear a security advisory.** The 2.0.0 pulled in
