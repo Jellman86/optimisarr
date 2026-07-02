@@ -11,6 +11,16 @@
   } = $props()
 
   let sides = $derived([left, right])
+
+  // Start playback in the middle of the file: the opening seconds are often
+  // black frames/leaders, so the midpoint is a more representative frame to
+  // compare original vs encoded at a glance.
+  function seekToMiddle(event: Event) {
+    const video = event.currentTarget as HTMLVideoElement
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      video.currentTime = video.duration / 2
+    }
+  }
 </script>
 
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -28,7 +38,7 @@
       {:else if mediaKind === 'Audio'}
         <audio src={side.url} controls preload="metadata" class="w-full"></audio>
       {:else}
-        <video src={side.url} controls preload="metadata" class="max-h-72 w-full rounded bg-black"><track kind="captions" /></video>
+        <video src={side.url} controls preload="metadata" onloadedmetadata={seekToMiddle} class="max-h-72 w-full rounded bg-black"><track kind="captions" /></video>
       {/if}
     </div>
   {/each}

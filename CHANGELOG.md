@@ -30,6 +30,13 @@
   now drops data streams (camera timecode, GoPro GPMF) even for a Matroska output — previously dropped
   only for MP4 — since a hardware encoder can abort on one whatever the container.
 
+### UI
+
+- **The compare preview starts at the middle of the file.** In the Quarantine compare-to-approve
+  panel (and the Settings preview it shares), both the original and encoded video previews now seek to
+  their midpoint once metadata loads, so the operator lands on a representative frame instead of the
+  black leader at the start.
+
 ## 0.2.1 — 2026-06-28
 
 ### Security
