@@ -37,6 +37,14 @@
   their midpoint once metadata loads, so the operator lands on a representative frame instead of the
   black leader at the start.
 
+### Build
+
+- **Pinned `Microsoft.OpenApi` to 2.9.0 to clear a security advisory.** The 2.0.0 pulled in
+  transitively by `Microsoft.AspNetCore.OpenApi` is flagged by NuGet audit (GHSA-v5pm-xwqc-g5wc,
+  `NU1903`: a circular schema reference can trigger a stack overflow), which the CI backend build
+  promotes to an error via `-warnaserror` — failing the build on a clean restore. Added a direct
+  reference at 2.9.0 (latest on the patched 2.x line; the fix first shipped in 2.7.5).
+
 ## 0.2.1 — 2026-06-28
 
 ### Security
