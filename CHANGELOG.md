@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.2 — 2026-07-05
+
 ### Safety — edge-case hardening
 
 - **Dolby Vision sources are now left untouched by default.** DV carries a dynamic-metadata RPU that
