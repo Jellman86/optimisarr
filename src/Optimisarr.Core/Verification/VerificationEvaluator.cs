@@ -239,18 +239,38 @@ public static class VerificationEvaluator
 
     private static VerificationCheck AvSync(VerificationInput input)
     {
-        // A small start offset (audio priming, container quirks) is normal; only a gross
-        // divergence indicates the output's audio and video are out of sync.
+        // A source can legitimately carry an inherent A/V start offset (audio priming, an
+        // authored audio delay, container quirks) that plays fine. Faithfully preserving that
+        // offset is not a desync — so when the original's start times are known, judge the
+        // *change* the transcode made to the A/V relationship, not the output's absolute offset.
         const double toleranceSeconds = 0.5;
-        var drift = Math.Abs(input.OutputVideoStartSeconds!.Value - input.OutputAudioStartSeconds!.Value);
-        var detail = string.Format(
+        var outputOffset = input.OutputVideoStartSeconds!.Value - input.OutputAudioStartSeconds!.Value;
+
+        if (input.OriginalVideoStartSeconds is { } originalVideo
+            && input.OriginalAudioStartSeconds is { } originalAudio)
+        {
+            var originalOffset = originalVideo - originalAudio;
+            var drift = Math.Abs(outputOffset - originalOffset);
+            var detail = string.Format(
+                CultureInfo.InvariantCulture,
+                "Original A/V start offset {0:0.###}s, output {1:0.###}s ({2:0.###}s change, tolerance {3:0.###}s).",
+                originalOffset, outputOffset, drift, toleranceSeconds);
+
+            return drift <= toleranceSeconds
+                ? Pass("A/V sync", detail)
+                : Fail("A/V sync", detail);
+        }
+
+        // Original start times unknown: fall back to the output's absolute A/V start divergence.
+        var absoluteDrift = Math.Abs(outputOffset);
+        var absoluteDetail = string.Format(
             CultureInfo.InvariantCulture,
             "Video starts at {0:0.###}s, audio at {1:0.###}s ({2:0.###}s offset, tolerance {3:0.###}s).",
-            input.OutputVideoStartSeconds.Value, input.OutputAudioStartSeconds.Value, drift, toleranceSeconds);
+            input.OutputVideoStartSeconds.Value, input.OutputAudioStartSeconds.Value, absoluteDrift, toleranceSeconds);
 
-        return drift <= toleranceSeconds
-            ? Pass("A/V sync", detail)
-            : Fail("A/V sync", detail);
+        return absoluteDrift <= toleranceSeconds
+            ? Pass("A/V sync", absoluteDetail)
+            : Fail("A/V sync", absoluteDetail);
     }
 
     private static VerificationCheck AudioFidelity(VerificationInput input)

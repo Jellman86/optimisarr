@@ -149,6 +149,8 @@ public sealed class VerificationService(
                 OutputColorTransfer: outputProbe.ColorTransfer,
                 OriginalColorSpace: originalProbe.ColorSpace,
                 OutputColorSpace: outputProbe.ColorSpace,
+                OriginalVideoStartSeconds: originalProbe.VideoStartSeconds,
+                OriginalAudioStartSeconds: originalProbe.AudioStartSeconds,
                 OutputVideoStartSeconds: outputProbe.VideoStartSeconds,
                 OutputAudioStartSeconds: outputProbe.AudioStartSeconds,
                 TimestampsMeasured: timestampResult.Measured,

@@ -48,6 +48,8 @@ public sealed record VerificationInput(
     string? OutputColorTransfer = null,
     string? OriginalColorSpace = null,
     string? OutputColorSpace = null,
+    double? OriginalVideoStartSeconds = null,
+    double? OriginalAudioStartSeconds = null,
     double? OutputVideoStartSeconds = null,
     double? OutputAudioStartSeconds = null,
     bool TimestampsMeasured = false,

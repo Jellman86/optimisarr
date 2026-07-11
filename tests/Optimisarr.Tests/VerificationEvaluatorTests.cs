@@ -810,6 +810,58 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, SyncCheck));
     }
 
+    [Fact]
+    public void An_inherent_source_av_offset_faithfully_preserved_passes_sync()
+    {
+        // The source already carries a ~1s audio start delay; the transcode preserves it.
+        // That is not a desync the transcode introduced, so the gate must pass.
+        var input = Healthy() with
+        {
+            OriginalVideoStartSeconds = 0.0,
+            OriginalAudioStartSeconds = 0.996,
+            OutputVideoStartSeconds = 0.0,
+            OutputAudioStartSeconds = 0.996,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, SyncCheck));
+    }
+
+    [Fact]
+    public void A_transcode_that_shifts_the_av_offset_beyond_tolerance_fails_sync()
+    {
+        // Source audio/video aligned, but the output pushed them apart — a real regression.
+        var input = Healthy() with
+        {
+            OriginalVideoStartSeconds = 0.0,
+            OriginalAudioStartSeconds = 0.0,
+            OutputVideoStartSeconds = 0.0,
+            OutputAudioStartSeconds = 0.8,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, SyncCheck));
+    }
+
+    [Fact]
+    public void A_transcode_that_drops_an_inherent_audio_delay_fails_sync()
+    {
+        // The source had a 1s audio delay; the output removed it, which would desync playback.
+        var input = Healthy() with
+        {
+            OriginalVideoStartSeconds = 0.0,
+            OriginalAudioStartSeconds = 1.0,
+            OutputVideoStartSeconds = 0.0,
+            OutputAudioStartSeconds = 0.0,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, SyncCheck));
+    }
+
     private const string HdrCheck = "HDR signal";
 
     [Fact]

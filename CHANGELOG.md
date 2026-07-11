@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- **A/V sync verification no longer false-fails sources with an inherent audio-start offset.** The
+  gate previously checked the *output's* absolute video-vs-audio start divergence (>0.5 s = fail),
+  so a source that legitimately carries a baked-in audio delay — e.g. a Bluray rip whose AC3 track
+  starts ~1 s after video — failed verification on every episode even though the transcode preserved
+  the timing exactly, blocking optimisation of whole seasons (observed live on a Stargate SG-1 S2
+  release). The check is now **relative**: when the original's stream start times are known it
+  compares the *change* the transcode made to the A/V offset and fails only when that change exceeds
+  the 0.5 s tolerance — so a faithfully-preserved offset passes, while a transcode that shifts sync
+  (or drops an inherent delay) still fails. Falls back to the previous absolute check when the
+  original's start times can't be read. `VerificationInput` gains `OriginalVideoStartSeconds` /
+  `OriginalAudioStartSeconds`, populated from the original probe.
+
 ## 0.2.2 — 2026-07-05
 
 ### Safety — edge-case hardening
