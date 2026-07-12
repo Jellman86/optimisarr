@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-06-28)
+## Up next (priority order, updated 2026-07-12)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -159,6 +159,57 @@ the replacement workflow is trustworthy.
    The classification then feeds back into the dashboards and reports rather than the eligibility
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.
+
+4. **Full translation parity with YA-WAMF** — internationalise the Optimisarr UI and
+   user-facing API/status strings, then provide complete translations for the same language
+   set currently carried by YA-WAMF: English, German, Spanish, French, Italian, Japanese,
+   Portuguese, Russian, and Chinese (`en`, `de`, `es`, `fr`, `it`, `ja`, `pt`, `ru`, `zh`).
+   Scope should include a shared locale loader, language selection/persistence in the SPA,
+   typed/checked translation keys, fallback behaviour for missing strings, and CI coverage
+   that fails when any supported locale is incomplete. User-facing job errors, validation
+   messages, settings labels, diagnostics summaries, empty states, and documentation-facing
+   setup copy should be included so the feature is genuinely full translation rather than
+   navigation-only localisation.
+
+5. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
+   install where Docker media-stack users already look. Keep the Docker contract stable and
+   make every template expose the same core surface: image tag, web port, admin token,
+   `/config`, work/output, quarantine, media-library paths, health check, optional hardware
+   acceleration, update-channel guidance, and a smoke-test checklist.
+
+   - **Unraid Community Applications template: template shipped; discovery listing remains.**
+     `unraid/optimisarr.xml` (volume mappings for config, media, work, and quarantine, the `8787`
+     port, optional `OPTIMISARR_ADMIN_TOKEN`, PUID/PGID/UMASK, and an optional `/dev/dri` device),
+     a repository-root `ca_profile.xml`, and `docs/setup/unraid.md` are shipped. Remaining: promote
+     the template + profile to the default branch at release and pursue the Community Applications
+     discovery listing so users don't need to paste the raw template URL.
+
+   - **TrueNAS custom-app docs, then catalog submission.** First document the low-friction
+     TrueNAS Custom App path so users can deploy the existing container before catalog
+     acceptance. Then submit a community-train app to `truenas/apps` with the expected
+     Docker Compose catalog files: `app.yaml`, `ix_values.yaml`, `questions.yaml`, a Jinja2
+     `templates/docker-compose.yaml`, `README.md`, and `templates/test_values/basic-values.yaml`.
+     The TrueNAS wizard should expose the web port, private admin token, storage mappings,
+     optional GPU/device settings, CPU/memory limits, a portal link, and a health check against
+     `/api/ready` or `/api/health`. Validate with the TrueNAS apps CI render/deploy workflow
+     before opening the PR, and open a draft PR early to catch catalog-review issues.
+
+   - **Container registry discoverability.** Continue publishing GHCR images and add Docker Hub
+     publishing once release tags are stable, with matching descriptions, labels, README text,
+     supported architectures, and examples. Keep image names, environment variables, health
+     checks, and permissions in sync across docs and templates.
+
+   - **Additional self-hosting templates.** Add a Portainer app-template/stack example and
+     evaluate CasaOS/ZimaOS packaging after the Unraid and TrueNAS paths settle. Consider YunoHost
+     only if the install and upgrade model can be made appliance-like enough to avoid fragile
+     maintenance.
+
+   - **Project directories and community launch points.** Submit or announce Optimisarr in the
+     places media-stack and self-hosting users already discover tools: Awesome Selfhosted,
+     selfh.st/apps, AlternativeTo, the Unraid and TrueNAS forums, and relevant communities such
+     as r/selfhosted, r/unRAID, r/truenas, r/radarr, and r/sonarr. Prioritise a short, honest
+     positioning statement, screenshots, quickstart links, and clear safety guarantees over
+     generic promotion.
 
 
 ## Guiding principles
