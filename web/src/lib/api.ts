@@ -522,8 +522,8 @@ function tryParseJson(text: string): unknown {
 }
 
 function apiErrorMessage(payload: unknown, status: number): string {
-  if (!payload || typeof payload !== 'object') return `Request failed with ${status}`
-  const error = 'error' in payload ? String(payload.error) : `Request failed with ${status}`
+  if (!payload || typeof payload !== 'object') return t(i18n.m.common.api_request_failed, { status })
+  const error = 'error' in payload ? String(payload.error) : t(i18n.m.common.api_request_failed, { status })
   if (!('code' in payload)) return error
   const args = 'args' in payload && payload.args && typeof payload.args === 'object'
     ? payload.args as Record<string, string | number>
@@ -544,6 +544,23 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'job.cancel.invalidState': return t(i18n.m.common.api_job_cancel_state, args)
     case 'job.remove.active': return i18n.m.common.api_job_remove_active
     case 'job.retry.invalidState': return t(i18n.m.common.api_job_retry_state, args)
+    case 'replacement.notFound': return t(i18n.m.common.api_replacement_not_found, args)
+    case 'exclusion.notFound': return t(i18n.m.common.api_exclusion_not_found, args)
+    case 'watcher.notFound': return t(i18n.m.common.api_watcher_not_found, args)
+    case 'watcher.validation': return i18n.m.common.api_watcher_invalid
+    case 'watcher.type.invalid': return i18n.m.common.api_watcher_type_invalid
+    case 'notification.notFound': return t(i18n.m.common.api_notification_not_found, args)
+    case 'notification.validation': return i18n.m.common.api_notification_invalid
+    case 'arr.notFound': return t(i18n.m.common.api_arr_not_found, args)
+    case 'arr.validation': return i18n.m.common.api_arr_invalid
+    case 'plex.signIn.start': return i18n.m.common.api_plex_start_failed
+    case 'plex.signIn.check': return i18n.m.common.api_plex_check_failed
+    case 'plex.signIn.required': return i18n.m.common.api_plex_required
+    case 'plex.servers.list': return i18n.m.common.api_plex_servers_failed
+    case 'jellyfin.baseUrl.required': return i18n.m.common.api_jellyfin_url_required
+    case 'jellyfin.quickConnect.start': return i18n.m.common.api_quick_connect_start_failed
+    case 'jellyfin.quickConnect.sessionMissing': return i18n.m.common.api_quick_connect_session_missing
+    case 'jellyfin.quickConnect.check': return i18n.m.common.api_quick_connect_check_failed
     case 'settings.maxConcurrentJobs.minimum': return i18n.m.settings.validation_max_jobs
     case 'settings.minFreeDiskBytes.nonNegative': return i18n.m.settings.validation_free_disk
     case 'settings.cpuThreadLimit.nonNegative': return i18n.m.settings.validation_cpu_threads

@@ -56,7 +56,7 @@ internal static class ExclusionEndpoints
             var file = await db.MediaFiles.FirstOrDefaultAsync(f => f.Id == request.MediaFileId, cancellationToken);
             if (file is null)
             {
-                return Results.NotFound(new { error = $"No media file with id {request.MediaFileId}." });
+                return ApiErrors.NotFound("media.notFound", $"No media file with id {request.MediaFileId}.", new { id = request.MediaFileId });
             }
 
             var exclusion = await db.Exclusions.FirstOrDefaultAsync(e => e.Path == file.Path, cancellationToken);
@@ -96,7 +96,7 @@ internal static class ExclusionEndpoints
             var exclusion = await db.Exclusions.FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
             if (exclusion is null)
             {
-                return Results.NotFound(new { error = $"No exclusion with id {id}." });
+                return ApiErrors.NotFound("exclusion.notFound", $"No exclusion with id {id}.", new { id });
             }
 
             db.Exclusions.Remove(exclusion);

@@ -44,7 +44,7 @@ internal static class IntegrationEndpoints
         {
             if (!ActivityWatcherRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("watcher.validation", error!);
             }
 
             var watcher = new ActivityWatcher
@@ -72,12 +72,12 @@ internal static class IntegrationEndpoints
             var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
             if (watcher is null)
             {
-                return Results.NotFound(new { error = $"No activity watcher with id {id}." });
+                return ApiErrors.NotFound("watcher.notFound", $"No activity watcher with id {id}.", new { id });
             }
 
             if (!ActivityWatcherRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("watcher.validation", error!);
             }
 
             watcher.Name = parsed.Name;
@@ -105,7 +105,7 @@ internal static class IntegrationEndpoints
             var watcher = await db.ActivityWatchers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
             if (watcher is null)
             {
-                return Results.NotFound(new { error = $"No activity watcher with id {id}." });
+                return ApiErrors.NotFound("watcher.notFound", $"No activity watcher with id {id}.", new { id });
             }
 
             db.ActivityWatchers.Remove(watcher);
@@ -133,7 +133,7 @@ internal static class IntegrationEndpoints
         {
             if (!NotificationTargetRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("notification.validation", error!);
             }
 
             var target = new NotificationTarget
@@ -162,12 +162,12 @@ internal static class IntegrationEndpoints
             var target = await db.NotificationTargets.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
             if (target is null)
             {
-                return Results.NotFound(new { error = $"No notification target with id {id}." });
+                return ApiErrors.NotFound("notification.notFound", $"No notification target with id {id}.", new { id });
             }
 
             if (!NotificationTargetRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("notification.validation", error!);
             }
 
             target.Name = parsed.Name;
@@ -196,7 +196,7 @@ internal static class IntegrationEndpoints
             var target = await db.NotificationTargets.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
             if (target is null)
             {
-                return Results.NotFound(new { error = $"No notification target with id {id}." });
+                return ApiErrors.NotFound("notification.notFound", $"No notification target with id {id}.", new { id });
             }
 
             db.NotificationTargets.Remove(target);
@@ -224,7 +224,7 @@ internal static class IntegrationEndpoints
         {
             if (!ArrConnectionRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("arr.validation", error!);
             }
 
             var connection = new ArrConnection
@@ -251,12 +251,12 @@ internal static class IntegrationEndpoints
             var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
             if (connection is null)
             {
-                return Results.NotFound(new { error = $"No arr connection with id {id}." });
+                return ApiErrors.NotFound("arr.notFound", $"No arr connection with id {id}.", new { id });
             }
 
             if (!ArrConnectionRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("arr.validation", error!);
             }
 
             connection.Name = parsed.Name;
@@ -283,7 +283,7 @@ internal static class IntegrationEndpoints
             var connection = await db.ArrConnections.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
             if (connection is null)
             {
-                return Results.NotFound(new { error = $"No arr connection with id {id}." });
+                return ApiErrors.NotFound("arr.notFound", $"No arr connection with id {id}.", new { id });
             }
 
             db.ArrConnections.Remove(connection);
@@ -306,7 +306,7 @@ internal static class IntegrationEndpoints
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Results.Problem($"Could not start Plex sign-in: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+                return ApiErrors.Upstream("plex.signIn.start", $"Could not start Plex sign-in: {ex.Message}");
             }
         })
         .WithName("StartPlexConnect");
@@ -323,7 +323,7 @@ internal static class IntegrationEndpoints
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Results.Problem($"Could not check Plex sign-in: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+                return ApiErrors.Upstream("plex.signIn.check", $"Could not check Plex sign-in: {ex.Message}");
             }
         })
         .WithName("PollPlexConnect");
@@ -335,7 +335,7 @@ internal static class IntegrationEndpoints
         {
             if (string.IsNullOrWhiteSpace(request.BaseUrl))
             {
-                return Results.BadRequest(new { error = "Enter the Jellyfin server's base URL first." });
+                return ApiErrors.BadRequest("jellyfin.baseUrl.required", "Enter the Jellyfin server's base URL first.");
             }
 
             try
@@ -345,7 +345,7 @@ internal static class IntegrationEndpoints
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Results.Problem($"Could not start Quick Connect: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+                return ApiErrors.Upstream("jellyfin.quickConnect.start", $"Could not start Quick Connect: {ex.Message}");
             }
         })
         .WithName("StartJellyfinConnect");
@@ -357,7 +357,7 @@ internal static class IntegrationEndpoints
         {
             if (string.IsNullOrWhiteSpace(request.BaseUrl) || string.IsNullOrWhiteSpace(request.Secret))
             {
-                return Results.BadRequest(new { error = "Quick Connect session details are missing." });
+                return ApiErrors.BadRequest("jellyfin.quickConnect.sessionMissing", "Quick Connect session details are missing.");
             }
 
             try
@@ -367,7 +367,7 @@ internal static class IntegrationEndpoints
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Results.Problem($"Could not check Quick Connect: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+                return ApiErrors.Upstream("jellyfin.quickConnect.check", $"Could not check Quick Connect: {ex.Message}");
             }
         })
         .WithName("PollJellyfinConnect");
@@ -380,7 +380,7 @@ internal static class IntegrationEndpoints
         {
             if (string.IsNullOrWhiteSpace(request.Token))
             {
-                return Results.BadRequest(new { error = "Sign in with Plex first to discover servers." });
+                return ApiErrors.BadRequest("plex.signIn.required", "Sign in with Plex first to discover servers.");
             }
 
             try
@@ -390,7 +390,7 @@ internal static class IntegrationEndpoints
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Results.Problem($"Could not list Plex servers: {ex.Message}", statusCode: StatusCodes.Status502BadGateway);
+                return ApiErrors.Upstream("plex.servers.list", $"Could not list Plex servers: {ex.Message}");
             }
         })
         .WithName("ListPlexServers");
@@ -404,7 +404,7 @@ internal static class IntegrationEndpoints
         {
             if (!Enum.TryParse<ActivityWatcherType>(request.Type, ignoreCase: true, out var type))
             {
-                return Results.BadRequest(new { error = "Type must be one of Plex, Jellyfin, or Emby." });
+                return ApiErrors.BadRequest("watcher.type.invalid", "Type must be one of Plex, Jellyfin, or Emby.");
             }
 
             var token = request.Token;
