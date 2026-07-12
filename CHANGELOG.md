@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- **Unraid Community Applications template.** Added `unraid/optimisarr.xml` (Docker template with
+  config/media/work/quarantine volume mappings, the `8787` web port, optional
+  `OPTIMISARR_ADMIN_TOKEN`, PUID/PGID/UMASK, and an optional `/dev/dri` device for Intel/AMD
+  hardware transcoding), a repository-root `ca_profile.xml` (the profile Community Applications
+  requires for a repository submission), and [`docs/setup/unraid.md`](docs/setup/unraid.md) covering
+  volume layout, atomic-move guidance for `/trash`, and CPU/Intel/AMD/NVIDIA transcoding on Unraid.
+
 ### Fixed
 
 - **A/V sync verification no longer false-fails sources with an inherent audio-start offset.** The
