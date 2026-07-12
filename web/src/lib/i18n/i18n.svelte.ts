@@ -1,0 +1,69 @@
+import { en, type Messages } from './en'
+import { de } from './de'
+
+// Re-exported so components can import the contract type from the i18n entry point.
+// `npm run check` (svelte-check + tsc, run in CI) is the translation-completeness gate:
+// a locale that doesn't satisfy `Messages` fails the build.
+export type { Messages }
+
+// Registry of fully-translated locales. Add an entry only when its file is complete;
+// the `Messages` type guarantees completeness at compile time.
+const REGISTRY = { en, de } satisfies Record<string, Messages>
+
+export type LocaleCode = keyof typeof REGISTRY
+
+// Shown in the language selector, in each language's own name (endonym).
+export const AVAILABLE_LOCALES: ReadonlyArray<{ code: LocaleCode; name: string }> = [
+  { code: 'en', name: 'English' },
+  { code: 'de', name: 'Deutsch' },
+]
+
+const STORAGE_KEY = 'optimisarr:locale'
+
+function isLocale(code: string): code is LocaleCode {
+  return code in REGISTRY
+}
+
+function detectInitial(): LocaleCode {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved && isLocale(saved)) return saved
+  } catch {
+    // localStorage unavailable (private mode / SSR) — fall through to detection.
+  }
+  const nav = typeof navigator !== 'undefined' ? navigator.language.slice(0, 2).toLowerCase() : 'en'
+  return isLocale(nav) ? nav : 'en'
+}
+
+function createI18n() {
+  let locale = $state<LocaleCode>(detectInitial())
+  return {
+    get locale() {
+      return locale
+    },
+    // The active locale's messages, fully typed. Reading this in markup makes the
+    // component re-render when the language changes.
+    get m(): Messages {
+      return REGISTRY[locale]
+    },
+    set(code: string) {
+      if (!isLocale(code)) return
+      locale = code
+      try {
+        localStorage.setItem(STORAGE_KEY, code)
+      } catch {
+        // Persisting the choice is best-effort; the in-memory selection still applies.
+      }
+    },
+  }
+}
+
+export const i18n = createI18n()
+
+// Fill `{token}` placeholders in a resolved message. Unknown tokens are left as-is
+// so a missing value is visible rather than silently dropped.
+export function t(template: string, params: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    key in params ? String(params[key]) : `{${key}}`,
+  )
+}

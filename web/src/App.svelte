@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { i18n } from './lib/i18n/i18n.svelte'
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
   import { auth } from './lib/stores/auth.svelte'
@@ -56,7 +57,7 @@
   >
     <div class="flex items-center gap-3 text-slate-500 dark:text-slate-400">
       <BrandMark sizes="32px" class="h-8 w-8" />
-      <span class="text-sm font-semibold">Loading Optimisarr...</span>
+      <span class="text-sm font-semibold">{i18n.m.common.loading}</span>
     </div>
   </div>
 {:else if auth.required && !auth.token}
@@ -69,11 +70,11 @@
         <BrandMark sizes="36px" class="h-9 w-9" />
         <div>
           <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">Optimisarr</h1>
-          <p class="text-sm text-slate-500 dark:text-slate-400">Admin token required</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.auth.token_required}</p>
         </div>
       </div>
 
-      <label class="label" for="admin-token">Admin token</label>
+      <label class="label" for="admin-token">{i18n.m.auth.token_label}</label>
       <input
         id="admin-token"
         class="input"
@@ -89,7 +90,7 @@
       {/if}
 
       <button class="btn btn-primary mt-5 w-full" type="submit" disabled={auth.checking}>
-        {auth.checking ? 'Checking...' : 'Continue'}
+        {auth.checking ? i18n.m.common.checking : i18n.m.common.continue}
       </button>
     </form>
   </div>
@@ -104,7 +105,7 @@
   {#if layout.mobileOpen}
     <button
       class="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm md:hidden"
-      aria-label="Close menu"
+      aria-label={i18n.m.nav.close_menu}
       onclick={() => layout.closeMobile()}
     ></button>
   {/if}
@@ -118,7 +119,7 @@
     <header
       class="flex items-center gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden dark:border-slate-700 dark:bg-slate-900/95"
     >
-      <button class="btn btn-ghost px-2" aria-label="Open menu" onclick={() => layout.toggleMobile()}>
+      <button class="btn btn-ghost px-2" aria-label={i18n.m.nav.open_menu} onclick={() => layout.toggleMobile()}>
         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
@@ -127,7 +128,7 @@
         <BrandMark sizes="28px" class="h-7 w-7" />
         <span class="font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</span>
       </button>
-      <button class="btn btn-ghost ml-auto px-2" aria-label="Toggle theme" onclick={() => theme.toggle()}>
+      <button class="btn btn-ghost ml-auto px-2" aria-label={i18n.m.nav.toggle_theme} onclick={() => theme.toggle()}>
         {#if theme.isDark}
           <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
         {:else}

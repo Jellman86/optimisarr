@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Internationalisation (i18n) foundation.** The web UI now resolves user-facing text through a
+  typed locale system (`web/src/lib/i18n/`): English is the source of truth, and every other locale
+  is typed against it, so a missing or misspelled key fails `npm run check` — making translation
+  completeness a compile-time CI gate rather than something that can silently rot. A lightweight
+  runes store exposes the active locale's messages and a `t()` interpolation helper, the choice is
+  persisted (and falls back to the browser language, then English), and a language selector lives in
+  the sidebar. The app shell and navigation are migrated as the first slice; German ships as the
+  first translated locale. Remaining pages/components migrate incrementally, and the German/other
+  locales are populated toward parity with the YA-WAMF language set.
+
 - **Unraid Community Applications template.** Added `unraid/optimisarr.xml` (Docker template with
   config/media/work/quarantine volume mappings, the `8787` web port, optional
   `OPTIMISARR_ADMIN_TOKEN`, PUID/PGID/UMASK, and an optional `/dev/dri` device for Intel/AMD
