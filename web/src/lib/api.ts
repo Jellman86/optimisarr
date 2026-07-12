@@ -1,4 +1,5 @@
 // Typed client for the Optimisarr API. All HTTP lives here, not in components.
+import { i18n } from './i18n/i18n.svelte'
 
 const ADMIN_TOKEN_KEY = 'optimisarr.adminToken'
 
@@ -520,6 +521,28 @@ function tryParseJson(text: string): unknown {
   }
 }
 
+function apiErrorMessage(payload: unknown, status: number): string {
+  if (!payload || typeof payload !== 'object') return `Request failed with ${status}`
+  const error = 'error' in payload ? String(payload.error) : `Request failed with ${status}`
+  if (!('code' in payload)) return error
+
+  switch (String(payload.code)) {
+    case 'settings.maxConcurrentJobs.minimum': return i18n.m.settings.validation_max_jobs
+    case 'settings.minFreeDiskBytes.nonNegative': return i18n.m.settings.validation_free_disk
+    case 'settings.cpuThreadLimit.nonNegative': return i18n.m.settings.validation_cpu_threads
+    case 'settings.libraryScanIntervalHours.minimum': return i18n.m.settings.validation_scan_interval
+    case 'settings.verificationDurationTolerance.nonNegative': return i18n.m.settings.validation_duration
+    case 'settings.vmaf.range': return i18n.m.settings.validation_vmaf
+    case 'settings.loudnessDrift.nonNegative': return i18n.m.settings.validation_loudness
+    case 'settings.truePeak.finite': return i18n.m.settings.validation_true_peak
+    case 'settings.imageSsim.range': return i18n.m.settings.validation_ssim
+    case 'settings.quarantineRetention.nonNegative': return i18n.m.settings.validation_quarantine
+    case 'settings.encoderMode.invalid': return i18n.m.settings.validation_encoder
+    case 'settings.import.invalid': return i18n.m.settings.validation_import
+    default: return error
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -532,11 +555,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (response.status === 401) handleAuthRequired()
 
   if (!response.ok) {
-    throw new Error(
-      payload && typeof payload === 'object' && 'error' in payload
-        ? String(payload.error)
-        : `Request failed with ${response.status}`
-    )
+    throw new Error(apiErrorMessage(payload, response.status))
   }
 
   return payload as T

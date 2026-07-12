@@ -1,0 +1,13 @@
+namespace Optimisarr.Api.Endpoints;
+
+/// <summary>
+/// A machine-readable API error. <paramref name="Error"/> remains an English compatibility
+/// fallback for older clients; the web client translates <paramref name="Code"/>.
+/// </summary>
+internal sealed record ApiError(string Code, string Error, object? Args = null, object? Details = null);
+
+internal static class ApiErrors
+{
+    public static IResult BadRequest(string code, string fallback, object? args = null, object? details = null) =>
+        Results.BadRequest(new ApiError(code, fallback, args, details));
+}

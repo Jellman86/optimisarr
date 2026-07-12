@@ -41,58 +41,58 @@ internal static class SettingsEndpoints
         {
             if (request.MaxConcurrentJobs < 1)
             {
-                return Results.BadRequest(new { error = "Max concurrent jobs must be at least 1." });
+                return ApiErrors.BadRequest("settings.maxConcurrentJobs.minimum", "Max concurrent jobs must be at least 1.");
             }
 
             if (request.MinFreeDiskBytes < 0)
             {
-                return Results.BadRequest(new { error = "Minimum free disk space cannot be negative." });
+                return ApiErrors.BadRequest("settings.minFreeDiskBytes.nonNegative", "Minimum free disk space cannot be negative.");
             }
 
             if (request.CpuThreadLimit < 0)
             {
-                return Results.BadRequest(new { error = "CPU thread limit cannot be negative." });
+                return ApiErrors.BadRequest("settings.cpuThreadLimit.nonNegative", "CPU thread limit cannot be negative.");
             }
 
             if (request.LibraryScanIntervalHours < 1)
             {
-                return Results.BadRequest(new { error = "Library scan interval must be at least 1 hour." });
+                return ApiErrors.BadRequest("settings.libraryScanIntervalHours.minimum", "Library scan interval must be at least 1 hour.");
             }
 
             if (request.VerificationDurationTolerancePercent < 0)
             {
-                return Results.BadRequest(new { error = "Verification duration tolerance cannot be negative." });
+                return ApiErrors.BadRequest("settings.verificationDurationTolerance.nonNegative", "Verification duration tolerance cannot be negative.");
             }
 
             if (request.VerificationMinimumVmafHarmonicMean is < 0 or > 100
                 || request.VerificationMinimumVmafMin is < 0 or > 100)
             {
-                return Results.BadRequest(new { error = "VMAF thresholds must be between 0 and 100." });
+                return ApiErrors.BadRequest("settings.vmaf.range", "VMAF thresholds must be between 0 and 100.");
             }
 
             if (request.VerificationMaxLoudnessDriftLufs < 0)
             {
-                return Results.BadRequest(new { error = "Loudness drift tolerance cannot be negative." });
+                return ApiErrors.BadRequest("settings.loudnessDrift.nonNegative", "Loudness drift tolerance cannot be negative.");
             }
 
             if (!double.IsFinite(request.VerificationMaxTruePeakDbtp))
             {
-                return Results.BadRequest(new { error = "True-peak ceiling must be a finite dBTP value." });
+                return ApiErrors.BadRequest("settings.truePeak.finite", "True-peak ceiling must be a finite dBTP value.");
             }
 
             if (request.VerificationMinimumImageSsim is < 0 or > 1)
             {
-                return Results.BadRequest(new { error = "Image SSIM threshold must be between 0 and 1." });
+                return ApiErrors.BadRequest("settings.imageSsim.range", "Image SSIM threshold must be between 0 and 1.");
             }
 
             if (request.ReplacementQuarantineRetentionDays < 0)
             {
-                return Results.BadRequest(new { error = "Quarantine retention days cannot be negative." });
+                return ApiErrors.BadRequest("settings.quarantineRetention.nonNegative", "Quarantine retention days cannot be negative.");
             }
 
             if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
             {
-                return Results.BadRequest(new { error = "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi." });
+                return ApiErrors.BadRequest("settings.encoderMode.invalid", "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi.");
             }
 
             await settings.SetQueueSettingsAsync(new QueueSettings(
@@ -145,7 +145,7 @@ internal static class SettingsEndpoints
             var result = await portability.ImportAsync(snapshot, cancellationToken);
             return result.Applied
                 ? Results.Ok(result)
-                : Results.BadRequest(new { error = "The config file is invalid.", details = result.Errors });
+                : ApiErrors.BadRequest("settings.import.invalid", "The config file is invalid.", details: result.Errors);
         })
         .WithName("ImportSettings");
 
