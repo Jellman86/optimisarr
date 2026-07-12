@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommunityApplications>
+  <!-- Repository overview shown in Community Applications. Markdown is supported. -->
+  <Profile>
+Optimisarr is a safe media-library optimiser that transcodes your movies and TV to reclaim space — and **never deletes or replaces an original until the converted file has passed explicit verification gates**, keeping the untouched original in quarantine for rollback. It supports CPU, Intel QSV/VA-API, and NVIDIA NVENC hardware transcoding and fits alongside a Sonarr/Radarr media stack.
+
+This repository provides the Unraid Community Applications template for the Docker image (`ghcr.io/jellman86/optimisarr`).
+
+**Support:** open an issue at https://github.com/Jellman86/optimisarr/issues
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/Jellman86/optimisarr/main/web/public/favicon-192.png</Icon>
+  <WebPage>https://github.com/Jellman86/optimisarr</WebPage>
+</CommunityApplications>

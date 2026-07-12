@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Optimisarr</Name>
+  <Repository>ghcr.io/jellman86/optimisarr:latest</Repository>
+  <Registry>https://github.com/Jellman86/optimisarr/pkgs/container/optimisarr</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Jellman86/optimisarr/issues</Support>
+  <Project>https://github.com/Jellman86/optimisarr</Project>
+  <Overview>Optimisarr is a safe media-library optimiser: it transcodes your movies and TV to save space and never deletes or replaces an original until the converted file has passed explicit verification gates. It probes each file, decides whether re-encoding is worthwhile, transcodes to a work directory, verifies the output (decodes cleanly, duration/stream policy match, size actually reduced), then atomically replaces the original and keeps the untouched original in quarantine so any replacement can be rolled back.&#13;&#13;Supports CPU, Intel QSV/VA-API and NVIDIA NVENC hardware transcoding, integrates with a Sonarr/Radarr media stack, and shows a real-time dashboard with a live queue, per-job logs, and savings stats. Set the media library you want it to watch under /data.</Overview>
+  <Category>MediaApp:Video Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:8787]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Jellman86/optimisarr/main/unraid/optimisarr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Jellman86/optimisarr/main/web/public/favicon-192.png</Icon>
+  <ExtraSearchTerms>transcode transcoding ffmpeg media optimise optimize hevc h265 nvenc qsv vaapi radarr sonarr</ExtraSearchTerms>
+  <Description>Optimisarr safely transcodes your media library to reclaim space without ever losing an original — every replacement is verified first and the original is quarantined for rollback. Supports CPU, Intel QSV/VA-API, and NVIDIA NVENC. Point /data at your media, /work at fast scratch storage, and keep /trash on the same filesystem as /data for atomic replacements.&#13;&#13;Optional: set an admin token to protect the API/UI, or put Optimisarr behind an authenticated reverse proxy for remote access. Enable hardware transcoding by mapping /dev/dri (Intel/AMD).</Description>
+  <Config Name="WebUI Port" Target="8787" Default="8787" Mode="tcp" Description="Host port for the Optimisarr web interface (container listens on 8787)." Type="Port" Display="always" Required="true" Mask="false">8787</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/optimisarr" Mode="rw" Description="Persistent application state: SQLite database and configuration. Keep on fast storage." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/optimisarr</Config>
+  <Config Name="Media" Target="/data" Default="/mnt/user/media" Mode="rw" Description="Your media library root. Optimisarr scans this and replaces files in place after verification, so it must be read-write. Use one consistent path for movies/TV to preserve atomic moves." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  <Config Name="Work" Target="/work" Default="/mnt/user/appdata/optimisarr/work" Mode="rw" Description="Scratch directory for temporary transcode outputs. Prefer fast local storage; can be large during encodes." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/optimisarr/work</Config>
+  <Config Name="Trash (quarantine)" Target="/trash" Default="/mnt/user/media/.optimisarr-trash" Mode="rw" Description="Quarantine for replaced originals (rollback restores from here). Put it on the SAME filesystem as your media so replacement uses an atomic move; on a different mount Optimisarr falls back to a verified copy-plus-delete." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/.optimisarr-trash</Config>
+  <Config Name="Admin Token" Target="OPTIMISARR_ADMIN_TOKEN" Default="" Mode="" Description="Optional. When set, the administrative API and UI require this bearer token. Leave blank to rely on your network/reverse-proxy for access control." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Timezone (TZ)" Target="TZ" Default="Europe/London" Mode="" Description="Container timezone, e.g. Europe/London." Type="Variable" Display="always" Required="false" Mask="false">Europe/London</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID the app runs as (Unraid 'nobody' is 99). Files it creates use this owner." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID the app runs as (Unraid 'users' is 100)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="Permissions mask for files Optimisarr creates." Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
+  <Config Name="Intel/AMD GPU (/dev/dri)" Target="/dev/dri" Default="/dev/dri" Mode="" Description="Optional. Map the render node for Intel QSV/VA-API or AMD VA-API hardware transcoding. Remove if the host has no /dev/dri. For NVIDIA NVENC, add '--runtime=nvidia' and the NVIDIA_* variables via Extra Parameters instead (see the setup guide)." Type="Device" Display="advanced" Required="false" Mask="false">/dev/dri</Config>
+</Container>
