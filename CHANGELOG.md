@@ -20,6 +20,9 @@
   loading/empty guidance, playback controls, downloads, and browser compatibility guidance.
   Candidate tables, grouped failure diagnostics/log controls, and the tools/hardware capability
   panel now use the same contract for filters, paging, status, empty states, and accessible actions.
+  The preview-transcode comparison completes the shared-component pass: progress/failure states,
+  safety guidance, minimised controls, original/encoded labels, sample explanation, technical stats,
+  and verification summary all switch live with the selected locale.
 
 - **Unraid Community Applications template.** Added `unraid/optimisarr.xml` (Docker template with
   config/media/work/quarantine volume mappings, the `8787` web port, optional

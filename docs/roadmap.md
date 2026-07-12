@@ -176,11 +176,12 @@ the replacement workflow is trustworthy.
      Quarantine, Inventory, Queue, Settings, and Libraries — including confirm dialogs, InfoTip help
      text, preset/profile/HDR label maps, empty states, and count-aware/pluralised strings. **German**
      ships complete across all of it as the first translated locale.
-   - **Shared components: in progress.** `MediaCompare`, `FolderPicker`, `BottomSheet`,
+   - **Shared components: done.** `MediaCompare`, `FolderPicker`, `BottomSheet`,
      `FailuresPanel`, `ToolsPanel`, and `CandidateTable` now use the typed locale contract.
-     `VerificationChecks` owns no prose (its names/details come from the backend), leaving
-     `PreviewCompare`; then localise user-facing job
-     errors, validation messages, and diagnostics
+     `VerificationChecks` owns no prose (its names/details come from the backend), and
+     `PreviewCompare` now translates its progress, errors, safety copy, comparison labels, stats,
+     and verification summary too. Remaining: localise user-facing job errors,
+     validation messages, and diagnostics
      summaries emitted by the backend; and populate the remaining eight locales (`es`, `fr`, `it`,
      `ja`, `pt`, `ru`, `zh`) toward parity — ideally with native review — so the feature is genuinely
      full translation rather than navigation-only localisation.
