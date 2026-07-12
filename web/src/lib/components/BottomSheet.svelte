@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { i18n } from '../i18n/i18n.svelte'
   import type { Snippet } from 'svelte'
   import { layout } from '../stores/ui.svelte'
 
@@ -81,14 +82,14 @@
       <button
         class="btn btn-ghost flex-shrink-0 px-2 py-1"
         onclick={() => (expanded = !expanded)}
-        aria-label={expanded ? 'Collapse detail panel' : 'Expand detail panel'}
-        title={expanded ? 'Collapse' : 'Expand'}
+        aria-label={expanded ? i18n.m.shared.collapse_detail : i18n.m.shared.expand_detail}
+        title={expanded ? i18n.m.shared.collapse : i18n.m.shared.expand}
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d={expanded ? 'M19 9l-7 7-7-7' : 'M5 15l7-7 7 7'} />
         </svg>
       </button>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={onclose} aria-label="Close detail panel">
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={onclose} aria-label={i18n.m.shared.close_detail}>
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>

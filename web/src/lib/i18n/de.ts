@@ -741,4 +741,23 @@ export const de: Messages = {
     empty_title: 'Noch keine Bibliotheken',
     empty_hint: 'Fügen Sie eine hinzu, um mit der Medienerkennung zu beginnen.',
   },
+  shared: {
+    close: 'Schließen',
+    collapse_detail: 'Detailbereich einklappen',
+    expand_detail: 'Detailbereich ausklappen',
+    collapse: 'Einklappen',
+    expand: 'Ausklappen',
+    close_detail: 'Detailbereich schließen',
+    choose_folder: 'Ordner auswählen',
+    browse_failed: 'Ordner konnten nicht geladen werden',
+    up_one_level: 'Eine Ebene nach oben',
+    no_subfolders: 'Hier gibt es keine Unterordner.',
+    select_highlighted: 'Den oben markierten Ordner auswählen',
+    select_folder: 'Ordner auswählen',
+    play_both: 'Beide abspielen',
+    pause_both: 'Beide pausieren',
+    download: 'Herunterladen',
+    playback_note:
+      'Die Wiedergabe verwendet die Originalstreams. Manche Browser können MKV, HEVC, AV1 oder E-AC-3 nicht abspielen; laden Sie die Dateien herunter, um sie lokal zu prüfen. Die Statistiken und Prüfungen unten gelten weiterhin.',
+  },
 }

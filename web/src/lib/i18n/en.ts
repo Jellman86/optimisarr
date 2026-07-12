@@ -741,6 +741,25 @@ export const en = {
     empty_title: 'No libraries yet',
     empty_hint: 'Add one to start discovering media.',
   },
+  shared: {
+    close: 'Close',
+    collapse_detail: 'Collapse detail panel',
+    expand_detail: 'Expand detail panel',
+    collapse: 'Collapse',
+    expand: 'Expand',
+    close_detail: 'Close detail panel',
+    choose_folder: 'Choose a folder',
+    browse_failed: 'Unable to browse',
+    up_one_level: 'Up one level',
+    no_subfolders: 'No subfolders here.',
+    select_highlighted: 'Select the highlighted folder above',
+    select_folder: 'Select folder',
+    play_both: 'Play both',
+    pause_both: 'Pause both',
+    download: 'Download',
+    playback_note:
+      'Playback uses the original streams. Some browsers cannot play MKV, HEVC, AV1, or E-AC-3; use Download to inspect either exact file locally. The stats and verification below still apply.',
+  },
 }
 
 // Every locale must match this exact shape (string leaves), so a locale cannot omit,

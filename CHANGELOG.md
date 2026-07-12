@@ -15,6 +15,9 @@
   Libraries — each with complete German (including confirm dialogs, InfoTip help text, preset
   summaries, and count-aware/pluralised strings). Shared components migrate next, and the other
   locales are populated toward parity with the YA-WAMF language set.
+- **Shared-component i18n migration started.** Folder selection, detail-sheet controls, and the
+  original/encoded media comparison now use the typed locale contract, including accessible labels,
+  loading/empty guidance, playback controls, downloads, and browser compatibility guidance.
 
 - **Unraid Community Applications template.** Added `unraid/optimisarr.xml` (Docker template with
   config/media/work/quarantine volume mappings, the `8787` web port, optional
