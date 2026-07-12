@@ -632,7 +632,7 @@
               {:else if job.status === 'Queued'}
                 <span class="text-xs text-slate-400">{i18n.m.queue.stage_waiting}</span>
               {:else if job.status === 'Failed'}
-                <div class="flex items-start gap-1 text-xs text-red-600 dark:text-red-400" title={job.errorMessage ?? ''}>
+                <div class="flex items-start gap-1 text-xs text-red-600 dark:text-red-400" title={jobFailureDescription(job.failureCategory, i18n.m)}>
                   <Icon name="warning" class="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                   <span class="line-clamp-2">{jobFailureDescription(job.failureCategory, i18n.m)}</span>
                 </div>
