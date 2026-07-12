@@ -7,6 +7,7 @@
   import EmptyState from './EmptyState.svelte'
   import Icon from './Icon.svelte'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
+  import { jobFailureDescription } from '../i18n/jobErrors'
 
   let groups = $state<FailureGroup[]>([])
   let loading = $state(true)
@@ -91,7 +92,7 @@
           <Icon name="warning" class="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h3 class="font-medium text-slate-800 dark:text-slate-100">{group.description}</h3>
+              <h3 class="font-medium text-slate-800 dark:text-slate-100">{jobFailureDescription(group.category, i18n.m, group.description)}</h3>
               <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">{group.count}</span>
             </div>
             <p class="text-xs text-slate-400 dark:text-slate-500">{group.category}</p>
@@ -107,9 +108,10 @@
                     {fileName(sample.relativePath)}
                   </div>
                   {#if sample.errorMessage}
-                    <p class="mt-0.5 line-clamp-2 whitespace-pre-line text-xs text-red-600 dark:text-red-400" title={sample.errorMessage}>
-                      {sample.errorMessage}
-                    </p>
+                    <details class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
+                      <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-red-600 dark:text-red-400">{sample.errorMessage}</p>
+                    </details>
                   {/if}
                 </div>
                 <button

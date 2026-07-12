@@ -3,6 +3,7 @@
   import { formatSize, formatDuration } from '../format'
   import { createJobsConnection, type JobProgress } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
+  import { jobFailureDescription } from '../i18n/jobErrors'
   import { router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
   import Icon from '../components/Icon.svelte'
@@ -633,7 +634,7 @@
               {:else if job.status === 'Failed'}
                 <div class="flex items-start gap-1 text-xs text-red-600 dark:text-red-400" title={job.errorMessage ?? ''}>
                   <Icon name="warning" class="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                  <span class="line-clamp-2">{job.errorMessage ?? i18n.m.queue.job_failed}</span>
+                  <span class="line-clamp-2">{jobFailureDescription(job.failureCategory, i18n.m)}</span>
                 </div>
               {:else}
                 <span class="text-xs text-slate-400">—</span>
@@ -754,7 +755,13 @@
           <div class="progress-track"><div class="progress-indeterminate"></div></div>
           <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{selectedJob.status === 'Probing' ? i18n.m.queue.stage_probing_full : i18n.m.queue.stage_verifying_full}</p>
         {:else if selectedJob.status === 'Failed'}
-          <p class="text-sm text-red-600 dark:text-red-400">{selectedJob.errorMessage ?? i18n.m.queue.job_failed}</p>
+          <p class="text-sm text-red-600 dark:text-red-400">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
+          {#if selectedJob.errorMessage}
+            <details class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
+              <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-red-600 dark:text-red-400">{selectedJob.errorMessage}</p>
+            </details>
+          {/if}
         {:else}
           <p class="text-sm text-slate-500 dark:text-slate-400">{statusLabel(selectedJob.status)}</p>
         {/if}
