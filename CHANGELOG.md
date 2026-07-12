@@ -15,6 +15,12 @@
   Libraries — each with complete German (including confirm dialogs, InfoTip help text, preset
   summaries, and count-aware/pluralised strings). Shared components migrate next, and the other
   locales are populated toward parity with the YA-WAMF language set.
+- **Backend-originated messages now participate in i18n.** User-facing JSON errors expose stable
+  machine codes while retaining English fallback text for older clients. The typed web client
+  translates settings/query validation and filesystem, library, media, queue, exclusion,
+  replacement, and integration failures. Queue rows and grouped failure diagnostics use persisted
+  failure categories for localized summaries; raw process errors remain available as collapsed,
+  explicitly labelled technical detail.
 - **Shared-component i18n migration started.** Folder selection, detail-sheet controls, and the
   original/encoded media comparison now use the typed locale contract, including accessible labels,
   loading/empty guidance, playback controls, downloads, and browser compatibility guidance.

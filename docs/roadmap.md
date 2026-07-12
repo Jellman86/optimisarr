@@ -180,9 +180,14 @@ the replacement workflow is trustworthy.
      `FailuresPanel`, `ToolsPanel`, and `CandidateTable` now use the typed locale contract.
      `VerificationChecks` owns no prose (its names/details come from the backend), and
      `PreviewCompare` now translates its progress, errors, safety copy, comparison labels, stats,
-     and verification summary too. Remaining: localise user-facing job errors,
-     validation messages, and diagnostics
-     summaries emitted by the backend; and populate the remaining eight locales (`es`, `fr`, `it`,
+     and verification summary too.
+   - **Backend-originated UI messages: done for the shipped locales.** JSON endpoint failures now
+     carry stable machine-readable codes plus an English compatibility fallback; the web client
+     resolves those codes through the same typed locale contract. This covers settings and query
+     validation, filesystem/library/media/job errors, exclusions, replacements, and integrations.
+     Persisted job failure categories likewise drive translated queue and diagnostics summaries,
+     while raw encoder/backend output remains available only as explicitly labelled technical
+     detail. Remaining: populate the remaining seven locales (`es`, `fr`, `it`,
      `ja`, `pt`, `ru`, `zh`) toward parity — ideally with native review — so the feature is genuinely
      full translation rather than navigation-only localisation.
 
