@@ -28,6 +28,8 @@ export const de: Messages = {
     api_job_cancel_state: 'Die Aufgabe {id} kann nicht mehr abgebrochen werden.',
     api_job_remove_active: 'Stoppen Sie die aktive Aufgabe, bevor Sie sie aus der Warteschlange entfernen.',
     api_job_retry_state: 'Die Aufgabe {id} kann nur nach einem Fehler oder Abbruch wiederholt werden.',
+    api_job_status_invalid: 'Unbekannter Aufgabenstatus: {value}',
+    api_failure_category_invalid: 'Unbekannte Fehlerkategorie: {value}',
     api_request_failed: 'Die Anfrage ist mit Status {status} fehlgeschlagen.',
     api_replacement_not_found: 'Keine Ersetzung mit der ID {id} gefunden.',
     api_exclusion_not_found: 'Kein Ausschluss mit der ID {id} gefunden.',

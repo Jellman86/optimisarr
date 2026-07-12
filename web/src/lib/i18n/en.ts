@@ -28,6 +28,8 @@ export const en = {
     api_job_cancel_state: 'Job {id} can no longer be cancelled.',
     api_job_remove_active: 'Stop the active job before removing it from the queue.',
     api_job_retry_state: 'Job {id} can only be retried after it has failed or been cancelled.',
+    api_job_status_invalid: 'Unknown job status: {value}',
+    api_failure_category_invalid: 'Unknown failure category: {value}',
     api_request_failed: 'Request failed with status {status}.',
     api_replacement_not_found: 'No replacement with ID {id}.',
     api_exclusion_not_found: 'No exclusion with ID {id}.',

@@ -254,8 +254,9 @@ internal static class MediaAndQueueEndpoints
             {
                 if (!Enum.TryParse<JobStatus>(status, ignoreCase: true, out var parsed))
                 {
-                    return Results.BadRequest(
-                        $"Unknown job status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<JobStatus>())}.");
+                    return ApiErrors.BadRequest("job.status.invalid",
+                        $"Unknown job status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<JobStatus>())}.",
+                        new { value = status });
                 }
                 wantedStatus = parsed;
             }
@@ -265,8 +266,9 @@ internal static class MediaAndQueueEndpoints
             {
                 if (!Enum.TryParse<FailureCategory>(category, ignoreCase: true, out var parsed))
                 {
-                    return Results.BadRequest(
-                        $"Unknown failure category '{category}'. Valid values: {string.Join(", ", Enum.GetNames<FailureCategory>())}.");
+                    return ApiErrors.BadRequest("job.failureCategory.invalid",
+                        $"Unknown failure category '{category}'. Valid values: {string.Join(", ", Enum.GetNames<FailureCategory>())}.",
+                        new { value = category });
                 }
                 wantedCategory = parsed;
             }
