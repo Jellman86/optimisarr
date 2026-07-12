@@ -10,8 +10,10 @@
   completeness a compile-time CI gate rather than something that can silently rot. A lightweight
   runes store exposes the active locale's messages and a `t()` interpolation helper, the choice is
   persisted (and falls back to the browser language, then English), and a language selector lives in
-  the sidebar. The app shell and navigation are migrated as the first slice; German ships as the
-  first translated locale. Remaining pages/components migrate incrementally, and the German/other
+  the sidebar. German ships as the first translated locale. **Every page is migrated** — the app
+  shell and navigation, plus Dashboard, Schedule, Quarantine, Inventory, Queue, Settings, and
+  Libraries — each with complete German (including confirm dialogs, InfoTip help text, preset
+  summaries, and count-aware/pluralised strings). Shared components migrate next, and the other
   locales are populated toward parity with the YA-WAMF language set.
 
 - **Unraid Community Applications template.** Added `unraid/optimisarr.xml` (Docker template with
