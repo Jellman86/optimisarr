@@ -15,6 +15,9 @@
     type PlexDiscoveredServer,
   } from '../api'
   import { formatSize } from '../format'
+  // `t` is aliased to `tr` here because this component already uses `t`/`c`/`w` as local
+  // names for notification-target, connection, and watcher records.
+  import { i18n, t as tr } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import Toggle from '../components/Toggle.svelte'
   import InfoTip from '../components/InfoTip.svelte'
@@ -25,13 +28,13 @@
   // rather than in its own sidebar entry. The General tab holds the core settings the
   // single "Save settings" button persists together; the rest manage their own records.
   type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'backup'
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'general', label: 'General' },
-    { key: 'connections', label: 'Connections' },
-    { key: 'notifications', label: 'Notifications' },
-    { key: 'tools', label: 'Tools' },
-    { key: 'backup', label: 'Backup' },
-  ]
+  let tabs: { key: TabKey; label: string }[] = $derived([
+    { key: 'general', label: i18n.m.settings.tab_general },
+    { key: 'connections', label: i18n.m.settings.tab_connections },
+    { key: 'notifications', label: i18n.m.settings.tab_notifications },
+    { key: 'tools', label: i18n.m.settings.tab_tools },
+    { key: 'backup', label: i18n.m.settings.tab_backup },
+  ])
   // A visit to the old /tools route lands on Settings with the Tools tab open.
   let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
 
@@ -51,7 +54,7 @@
       targets = await api.notificationTargets()
       targetError = null
     } catch (err) {
-      targetError = err instanceof Error ? err.message : 'Unable to load notification targets'
+      targetError = err instanceof Error ? err.message : i18n.m.settings.error_load_targets
     }
   }
 
@@ -78,21 +81,21 @@
       editingTargetId = null
       await loadTargets()
     } catch (err) {
-      targetError = err instanceof Error ? err.message : 'Unable to save notification target'
+      targetError = err instanceof Error ? err.message : i18n.m.settings.error_save_target
     } finally {
       savingTarget = false
     }
   }
 
   async function deleteTarget(t: NotificationTarget) {
-    if (!confirm(`Remove the notification target "${t.name}"?`)) return
+    if (!confirm(tr(i18n.m.settings.confirm_remove_target, { name: t.name }))) return
     targetError = null
     try {
       await api.deleteNotificationTarget(t.id)
       if (editingTargetId === t.id) startAddTarget()
       await loadTargets()
     } catch (err) {
-      targetError = err instanceof Error ? err.message : 'Unable to remove target'
+      targetError = err instanceof Error ? err.message : i18n.m.settings.error_remove_target
     }
   }
 
@@ -110,7 +113,7 @@
       arrs = await api.arrConnections()
       arrError = null
     } catch (err) {
-      arrError = err instanceof Error ? err.message : 'Unable to load Sonarr/Radarr connections'
+      arrError = err instanceof Error ? err.message : i18n.m.settings.error_load_arrs
     }
   }
 
@@ -134,21 +137,21 @@
       editingArrId = null
       await loadArrs()
     } catch (err) {
-      arrError = err instanceof Error ? err.message : 'Unable to save connection'
+      arrError = err instanceof Error ? err.message : i18n.m.settings.error_save_arr
     } finally {
       savingArr = false
     }
   }
 
   async function deleteArr(c: ArrConnection) {
-    if (!confirm(`Remove the ${c.type} connection "${c.name}"?`)) return
+    if (!confirm(tr(i18n.m.settings.confirm_remove_arr, { type: c.type, name: c.name }))) return
     arrError = null
     try {
       await api.deleteArrConnection(c.id)
       if (editingArrId === c.id) startAddArr()
       await loadArrs()
     } catch (err) {
-      arrError = err instanceof Error ? err.message : 'Unable to remove connection'
+      arrError = err instanceof Error ? err.message : i18n.m.settings.error_remove_arr
     }
   }
 
@@ -191,7 +194,7 @@
       const result = await check()
       if (result.authorized && result.token) return result.token
     }
-    if (!connectCancelled) connectMessage = 'Timed out waiting for approval. Try again.'
+    if (!connectCancelled) connectMessage = i18n.m.settings.timed_out
     return null
   }
 
@@ -204,26 +207,26 @@
   async function connectPlex() {
     connecting = true
     jellyfinCode = null
-    connectMessage = 'Opening the Plex sign-in page…'
+    connectMessage = i18n.m.settings.connect_plex_opening
     try {
       const start = await api.plexConnectStart()
       window.open(start.authUrl, '_blank', 'noopener')
-      connectMessage = 'Approve Optimisarr in the opened Plex tab, then come back here…'
+      connectMessage = i18n.m.settings.connect_plex_approve
       const token = await pollForToken(() => api.plexConnectPoll(start.id))
       if (token) {
         watcherDraft.apiToken = token
-        connectMessage = 'Connected to Plex — finding your servers…'
+        connectMessage = i18n.m.settings.connect_plex_finding
         try {
           plexServers = await api.plexServers(token)
           connectMessage = plexServers.length
-            ? 'Pick your server below, or save the token as-is.'
-            : 'Connected — no servers found on this account. Enter the URL manually.'
+            ? i18n.m.settings.connect_plex_pick
+            : i18n.m.settings.connect_plex_none
         } catch {
-          connectMessage = 'Connected to Plex — token filled in. Enter the server URL, then Test.'
+          connectMessage = i18n.m.settings.connect_plex_manual
         }
       }
     } catch (err) {
-      watcherError = err instanceof Error ? err.message : 'Plex sign-in failed'
+      watcherError = err instanceof Error ? err.message : i18n.m.settings.error_plex
       connectMessage = null
     } finally {
       connecting = false
@@ -237,7 +240,7 @@
     if (!watcherDraft.name.trim()) watcherDraft.name = server.name
     plexServers = null
     testResult = null
-    connectMessage = `Selected "${server.name}". Test or save the connection.`
+    connectMessage = tr(i18n.m.settings.connect_plex_selected, { name: server.name })
   }
 
   async function testConnection() {
@@ -251,7 +254,7 @@
         id: editingId ?? undefined,
       })
     } catch (err) {
-      testResult = { ok: false, serverName: null, version: null, error: err instanceof Error ? err.message : 'Test failed' }
+      testResult = { ok: false, serverName: null, version: null, error: err instanceof Error ? err.message : i18n.m.settings.error_test }
     } finally {
       testing = false
     }
@@ -260,23 +263,23 @@
   async function connectJellyfin() {
     const baseUrl = watcherDraft.baseUrl.trim()
     if (!baseUrl) {
-      watcherError = 'Enter the Jellyfin base URL first.'
+      watcherError = i18n.m.settings.error_jellyfin_url
       return
     }
     connecting = true
-    connectMessage = 'Starting Quick Connect…'
+    connectMessage = i18n.m.settings.connect_jellyfin_starting
     try {
       const start = await api.jellyfinConnectStart(baseUrl)
       jellyfinCode = start.code
-      connectMessage = 'In Jellyfin, open Quick Connect and enter this code, then keep this open…'
+      connectMessage = i18n.m.settings.connect_jellyfin_code
       const token = await pollForToken(() => api.jellyfinConnectPoll(baseUrl, start.secret))
       if (token) {
         watcherDraft.apiToken = token
         jellyfinCode = null
-        connectMessage = 'Connected to Jellyfin — token filled in. Save the watcher to keep it.'
+        connectMessage = i18n.m.settings.connect_jellyfin_done
       }
     } catch (err) {
-      watcherError = err instanceof Error ? err.message : 'Quick Connect failed'
+      watcherError = err instanceof Error ? err.message : i18n.m.settings.error_quick_connect
       connectMessage = null
       jellyfinCode = null
     } finally {
@@ -289,7 +292,7 @@
       watchers = await api.activityWatchers()
       watcherError = null
     } catch (err) {
-      watcherError = err instanceof Error ? err.message : 'Unable to load watchers'
+      watcherError = err instanceof Error ? err.message : i18n.m.settings.error_load_watchers
     }
   }
 
@@ -320,21 +323,21 @@
       resetConnect()
       await loadWatchers()
     } catch (err) {
-      watcherError = err instanceof Error ? err.message : 'Unable to save watcher'
+      watcherError = err instanceof Error ? err.message : i18n.m.settings.error_save_watcher
     } finally {
       savingWatcher = false
     }
   }
 
   async function deleteWatcher(w: ActivityWatcher) {
-    if (!confirm(`Remove the activity watcher "${w.name}"?`)) return
+    if (!confirm(tr(i18n.m.settings.confirm_remove_watcher, { name: w.name }))) return
     watcherError = null
     try {
       await api.deleteActivityWatcher(w.id)
       if (editingId === w.id) startAdd()
       await loadWatchers()
     } catch (err) {
-      watcherError = err instanceof Error ? err.message : 'Unable to remove watcher'
+      watcherError = err instanceof Error ? err.message : i18n.m.settings.error_remove_watcher
     }
   }
 
@@ -383,7 +386,7 @@
       settings = await api.settings()
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load settings'
+      error = err instanceof Error ? err.message : i18n.m.settings.error_load
     } finally {
       loading = false
     }
@@ -408,9 +411,9 @@
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
-      message = 'Settings saved.'
+      message = i18n.m.settings.saved
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to save settings'
+      error = err instanceof Error ? err.message : i18n.m.settings.error_save
     } finally {
       saving = false
     }
@@ -448,9 +451,9 @@
       link.download = `optimisarr-config-${new Date().toISOString().slice(0, 10)}.json`
       link.click()
       URL.revokeObjectURL(url)
-      backupMessage = 'Config exported. It includes provider secrets; store the file securely and never commit or share it.'
+      backupMessage = i18n.m.settings.export_done
     } catch (err) {
-      backupError = err instanceof Error ? err.message : 'Unable to export config'
+      backupError = err instanceof Error ? err.message : i18n.m.settings.error_export
     }
   }
 
@@ -465,18 +468,19 @@
     try {
       const snapshot = JSON.parse(await file.text())
       const result = await api.importSettings(snapshot)
-      backupMessage =
-        `Imported ${result.librariesCreated + result.librariesUpdated} libraries, ` +
-        `${result.watchersCreated + result.watchersUpdated} watchers, ` +
-        `${result.targetsCreated + result.targetsUpdated} targets, ` +
-        `${result.arrConnectionsCreated + result.arrConnectionsUpdated} Sonarr/Radarr connections, and ` +
-        `${result.settingsApplied} settings.`
+      backupMessage = tr(i18n.m.settings.import_done, {
+        libraries: result.librariesCreated + result.librariesUpdated,
+        watchers: result.watchersCreated + result.watchersUpdated,
+        targets: result.targetsCreated + result.targetsUpdated,
+        arrs: result.arrConnectionsCreated + result.arrConnectionsUpdated,
+        settings: result.settingsApplied,
+      })
       await load()
       await loadWatchers()
       await loadTargets()
       await loadArrs()
     } catch (err) {
-      backupError = err instanceof Error ? err.message : 'Unable to import config'
+      backupError = err instanceof Error ? err.message : i18n.m.settings.error_import
     } finally {
       importing = false
     }
@@ -484,8 +488,8 @@
 </script>
 
 <header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Settings</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400">Global options that apply across every library.</p>
+  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
 </header>
 
 {#if error}
@@ -493,7 +497,7 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">Loading…</div>
+  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else}
   <div class="no-scrollbar mb-5 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
     {#each tabs as tab}
@@ -511,18 +515,18 @@
   {#if activeTab === 'general'}
   <div class="space-y-5">
   <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Queue</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      How many jobs run, what does the encoding, and when the queue is allowed to start work.
+      {i18n.m.settings.queue_desc}
     </p>
     <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
       <div>
-        <label class="label" for="max-jobs">Max concurrent jobs <InfoTip text="How many transcodes run at once across all libraries. Start at 1 and raise it only if your CPU/GPU and disk keep up." /></label>
+        <label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label>
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
       </div>
 
       <div>
-        <label class="label" for="encoder-mode">Encoder mode <InfoTip text="Auto prefers a hardware encoder when available, then falls back to CPU. The Tools tab shows what your GPU supports." /></label>
+        <label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label>
         <select id="encoder-mode" class="input" bind:value={settings.encoderMode}>
           <option value="Auto">Auto</option>
           <option value="Cpu">CPU</option>
@@ -533,23 +537,23 @@
       </div>
 
       <div>
-        <label class="label" for="cpu-threads">CPU thread limit <InfoTip text="Passed to FFmpeg as -threads for each job. 0 lets FFmpeg decide." /></label>
+        <label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
       </div>
 
       <div>
-        <label class="label" for="scan-interval">Library scan interval <InfoTip text="How often every enabled library is rescanned for new or changed files (and they are reprobed). Scanning is cheap — it skips unchanged files. When each library's files are auto-enqueued and run is set per library (its auto-optimise window)." /></label>
+        <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
         <div class="flex items-center gap-2">
           <input id="scan-interval" class="input" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
-          <span class="text-sm text-slate-500 dark:text-slate-400">hours</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
         </div>
       </div>
 
       <div>
-        <label class="label" for="free-disk">Minimum free work disk <InfoTip text={`New jobs pause when the work disk falls below this. 0 disables the check. Currently ${formatSize(gibToBytes(minFreeDiskGiB))}.`} /></label>
+        <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
         <div class="flex items-center gap-2">
           <input id="free-disk" class="input" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
-          <span class="text-sm text-slate-500 dark:text-slate-400">GiB</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
         </div>
       </div>
     </div>
@@ -557,53 +561,51 @@
     <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
       <Toggle
         bind:checked={settings.hardwareDecode}
-        label="Hardware decoding"
-        hint="When a hardware encoder is in use, decode the source on the GPU too, to cut CPU load. Falls back to CPU decoding automatically for sources the GPU can't decode. No effect on CPU encoding."
+        label={i18n.m.settings.hardware_decode}
+        hint={i18n.m.settings.hardware_decode_hint}
       />
       <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        When jobs run is set per library, on the <button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>Libraries</button> page: enable "Optimise automatically" and choose a window.
+        {i18n.m.settings.auto_run_before}<button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
     </div>
   </div>
 
   <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Verification gates</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.gates_title}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      Every job must already pass a decode-health check, be readable by ffprobe, and keep a video stream.
-      These optional gates add stricter checks before an output may replace an original. Each fails closed —
-      if a measurement can't be taken, the job fails rather than risk a bad replacement.
+      {i18n.m.settings.gates_desc}
     </p>
 
     <div class="grid gap-4 lg:grid-cols-2">
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Always-on checks</h3>
+        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">{i18n.m.settings.always_on}</h3>
         <div class="max-w-[16rem]">
-          <label class="label" for="duration-tolerance">Duration tolerance <InfoTip text="How far the output's runtime may drift from the original before the job fails." /></label>
+          <label class="label" for="duration-tolerance">{i18n.m.settings.duration_tolerance} <InfoTip text={i18n.m.settings.duration_tolerance_tip} /></label>
           <div class="flex items-center gap-2">
             <input id="duration-tolerance" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
             <span class="text-sm text-slate-500 dark:text-slate-400">%</span>
           </div>
         </div>
         <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-          <Toggle bind:checked={settings.verificationRequireAudioRetained} label="Require all audio tracks to be retained" />
-          <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label="Require all subtitle tracks to be retained" />
-          <Toggle bind:checked={settings.verificationRequireSizeReduction} label="Require output to be smaller than the original" />
+          <Toggle bind:checked={settings.verificationRequireAudioRetained} label={i18n.m.settings.require_audio} />
+          <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
+          <Toggle bind:checked={settings.verificationRequireSizeReduction} label={i18n.m.settings.require_smaller} />
         </div>
       </div>
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationQualityGateEnabled}
-          label="Perceptual quality (VMAF)"
-          hint="Compares output to original with FFmpeg's libvmaf. Needs an ffmpeg built with libvmaf and roughly doubles verification time, so it's off by default. ~95 is visually indistinguishable from the source."
+          label={i18n.m.settings.vmaf_label}
+          hint={i18n.m.settings.vmaf_hint}
         />
         <div class="mt-4 grid gap-4 sm:grid-cols-2" class:opacity-50={!settings.verificationQualityGateEnabled}>
           <div>
-            <label class="label" for="vmaf-harmonic">Min VMAF (harmonic mean) <InfoTip text="Overall quality floor. The harmonic mean penalises bad frames more than a plain average." /></label>
+            <label class="label" for="vmaf-harmonic">{i18n.m.settings.vmaf_harmonic} <InfoTip text={i18n.m.settings.vmaf_harmonic_tip} /></label>
             <input id="vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafHarmonicMean} disabled={!settings.verificationQualityGateEnabled} />
           </div>
           <div>
-            <label class="label" for="vmaf-min">Min VMAF (worst frame) <InfoTip text="Catches short artifact bursts a healthy average would hide." /></label>
+            <label class="label" for="vmaf-min">{i18n.m.settings.vmaf_min} <InfoTip text={i18n.m.settings.vmaf_min_tip} /></label>
             <input id="vmaf-min" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafMin} disabled={!settings.verificationQualityGateEnabled} />
           </div>
         </div>
@@ -612,14 +614,14 @@
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationAudioLoudnessGateEnabled}
-          label="Audio loudness drift (EBU R128)"
-          hint="Measures integrated loudness of original and output with FFmpeg's ebur128 filter and fails the job if they differ too much. Adds a decode pass, so it's off by default; most useful when a profile re-encodes audio."
+          label={i18n.m.settings.loudness_label}
+          hint={i18n.m.settings.loudness_hint}
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
-          <label class="label" for="loudness-drift">Maximum loudness drift</label>
+          <label class="label" for="loudness-drift">{i18n.m.settings.loudness_max}</label>
           <div class="flex items-center gap-2">
             <input id="loudness-drift" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">LU</span>
+            <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
           </div>
         </div>
       </div>
@@ -627,14 +629,14 @@
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationAudioClippingGateEnabled}
-          label="Introduced audio clipping (true peak)"
-          hint="Reads the output's true peak from the same ebur128 pass and fails only when the re-encode pushes the peak above the ceiling while the original sat below it — a source that was already hot is not blamed on the re-encode."
+          label={i18n.m.settings.clipping_label}
+          hint={i18n.m.settings.clipping_hint}
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
-          <label class="label" for="true-peak-ceiling">True-peak ceiling <InfoTip text="0 dBTP is full scale; set a margin like −1 to be stricter. The job fails only if the re-encode pushes the peak above this while the original sat below it." /></label>
+          <label class="label" for="true-peak-ceiling">{i18n.m.settings.true_peak} <InfoTip text={i18n.m.settings.true_peak_tip} /></label>
           <div class="flex items-center gap-2">
             <input id="true-peak-ceiling" class="input" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">dBTP</span>
+            <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
           </div>
         </div>
       </div>
@@ -642,11 +644,11 @@
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationImageQualityGateEnabled}
-          label="Image structural quality (SSIM)"
-          hint="Photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails when structural similarity drops below the floor. Runs an extra pass, so it's off by default."
+          label={i18n.m.settings.ssim_label}
+          hint={i18n.m.settings.ssim_hint}
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
-          <label class="label" for="image-ssim-floor">Minimum SSIM <InfoTip text="Structural similarity, 0–1 where 1 is identical. 0.95 is a conservative default." /></label>
+          <label class="label" for="image-ssim-floor">{i18n.m.settings.ssim_min} <InfoTip text={i18n.m.settings.ssim_min_tip} /></label>
           <input id="image-ssim-floor" class="input" type="number" step="0.01" min="0" max="1" bind:value={settings.verificationMinimumImageSsim} disabled={!settings.verificationImageQualityGateEnabled} />
         </div>
       </div>
@@ -654,46 +656,46 @@
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationImageMetadataGateEnabled}
-          label="Preserve image EXIF/ICC metadata"
-          hint="Photo/image jobs only: fails the job when the re-encode drops the original's embedded ICC colour profile or EXIF (reads both with exiftool). Only flags loss — an output may gain metadata."
+          label={i18n.m.settings.exif_label}
+          hint={i18n.m.settings.exif_hint}
         />
-        <p class="mt-3 text-xs text-slate-400">No threshold — it simply requires the original's colour profile and EXIF to survive.</p>
+        <p class="mt-3 text-xs text-slate-400">{i18n.m.settings.exif_note}</p>
       </div>
     </div>
   </div>
 
   <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Replacement</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.replacement_title}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      How a verified output takes the place of your original, and how long the original is kept afterwards.
+      {i18n.m.settings.replacement_desc}
     </p>
     <div class="max-w-2xl">
       <Toggle
         bind:checked={settings.dryRunMode}
-        label="Dry-run mode"
-        hint="Scan, queue, transcode, and verify normally, but never replace originals or purge quarantined originals. Verified outputs stop at Ready to replace for review."
+        label={i18n.m.settings.dry_run}
+        hint={i18n.m.settings.dry_run_hint}
       />
     </div>
     <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
-        label="Allow cross-filesystem replacement"
-        hint="Falls back to copy-plus-delete instead of an atomic move. Off is safer; enable only for intentional split-mount layouts."
+        label={i18n.m.settings.cross_fs}
+        hint={i18n.m.settings.cross_fs_hint}
       />
     </div>
     <div class="mt-5 max-w-[16rem] border-t border-slate-200 pt-5 dark:border-slate-800">
-      <label class="label" for="quarantine-retention">Quarantine retention <InfoTip text="How long quarantined originals are kept before they are purged to free space. 0 keeps them indefinitely (roll back any time)." /></label>
+      <label class="label" for="quarantine-retention">{i18n.m.settings.quarantine_retention} <InfoTip text={i18n.m.settings.quarantine_retention_tip} /></label>
       <div class="flex items-center gap-2">
         <input id="quarantine-retention" class="input" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
-        <span class="text-sm text-slate-500 dark:text-slate-400">days</span>
+        <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
       </div>
     </div>
   </div>
 
   <div class="flex items-center gap-3">
-    <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
+    <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
-    <span class="text-xs text-slate-400">Saves every option on this tab. Connections and notifications save on their own.</span>
+    <span class="text-xs text-slate-400">{i18n.m.settings.save_note}</span>
   </div>
   </div>
   {/if}
@@ -702,11 +704,9 @@
   <div class="space-y-5">
     <!-- Media servers (Plex/Jellyfin/Emby): playback-aware pause + post-replacement re-scan. -->
     <div class="card p-5">
-      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Media servers</h2>
+      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.media_servers}</h2>
       <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-        Connect Plex, Jellyfin, or Emby. While an enabled server is streaming, new jobs pause so transcodes
-        never compete with playback (running jobs are never interrupted, and an unreachable server never pauses
-        the queue). Connected servers are also asked to re-scan a title after a verified replacement.
+        {i18n.m.settings.media_servers_desc}
       </p>
 
       {#if watcherError}
@@ -723,59 +723,59 @@
                 <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-                {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title="Re-scans this server after a verified replacement.">refresh</span>{/if}
-                {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No token set — Optimisarr cannot query this server.">no token</span>{/if}
-                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>Edit</button>
-                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>Remove</button>
+                {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
+                {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
+                {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
+                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
+                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mb-4 text-sm text-slate-400">No media servers yet. Add one to pause while you stream and auto-refresh after replacements.</p>
+        <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.media_servers_empty}</p>
       {/if}
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {editingId === null ? 'Add a media server' : 'Edit media server'}
+          {editingId === null ? i18n.m.settings.add_media_server : i18n.m.settings.edit_media_server}
         </h3>
         <div class="grid gap-3 sm:grid-cols-2">
           <div>
-            <label class="label" for="watcher-name">Name</label>
-            <input id="watcher-name" class="input" placeholder="Living room Plex" bind:value={watcherDraft.name} />
+            <label class="label" for="watcher-name">{i18n.m.settings.name}</label>
+            <input id="watcher-name" class="input" placeholder={i18n.m.settings.media_server_name_ph} bind:value={watcherDraft.name} />
           </div>
           <div>
-            <label class="label" for="watcher-type">Type</label>
+            <label class="label" for="watcher-type">{i18n.m.settings.type}</label>
             <select id="watcher-type" class="input" bind:value={watcherDraft.type}>
               {#each watcherTypes as t}<option value={t}>{t}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="watcher-url">Base URL</label>
+            <label class="label" for="watcher-url">{i18n.m.settings.base_url}</label>
             <input id="watcher-url" class="input" placeholder="http://192.168.1.10:32400" bind:value={watcherDraft.baseUrl} />
             {#if watcherDraft.type === 'Plex'}
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Or sign in and pick a server below — it fills the URL for you.</p>
+              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.plex_pick_hint}</p>
             {/if}
           </div>
           <div>
             <label class="label" for="watcher-token">
-              {watcherDraft.type === 'Plex' ? 'Plex token' : 'API key'}
+              {watcherDraft.type === 'Plex' ? i18n.m.settings.plex_token : i18n.m.settings.api_key}
             </label>
             <div class="flex items-center gap-2">
               <input
                 id="watcher-token"
                 class="input"
                 type="password"
-                placeholder={editingId === null ? '' : 'Leave blank to keep current'}
+                placeholder={editingId === null ? '' : i18n.m.settings.keep_current}
                 bind:value={watcherDraft.apiToken}
               />
               {#if watcherDraft.type !== 'Emby'}
                 {#if connecting}
-                  <button class="btn btn-ghost whitespace-nowrap px-3 py-1 text-xs" onclick={resetConnect}>Cancel</button>
+                  <button class="btn btn-ghost whitespace-nowrap px-3 py-1 text-xs" onclick={resetConnect}>{i18n.m.common.cancel}</button>
                 {:else}
                   <button class="btn whitespace-nowrap px-3 py-1 text-xs" onclick={connect}>
-                    {watcherDraft.type === 'Plex' ? 'Sign in with Plex' : 'Quick Connect'}
+                    {watcherDraft.type === 'Plex' ? i18n.m.settings.sign_in_plex : i18n.m.settings.quick_connect}
                   </button>
                 {/if}
               {/if}
@@ -799,7 +799,7 @@
                         <span class="block truncate font-mono text-[11px] text-slate-400">{server.uri}</span>
                       </span>
                       <span class="badge flex-shrink-0 {server.local ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
-                        {server.local ? 'local' : 'remote'}
+                        {server.local ? i18n.m.settings.badge_local : i18n.m.settings.badge_remote}
                       </span>
                     </button>
                   </li>
@@ -809,32 +809,32 @@
           </div>
         </div>
         <div class="mt-3 grid max-w-2xl gap-3">
-          <Toggle bind:checked={watcherDraft.enabled} label="Pause while streaming" hint="Hold new jobs while this server has active playback." />
-          <Toggle bind:checked={watcherDraft.refreshOnReplace} label="Refresh after replacements" hint="Ask this server to re-scan the title after a verified replacement or rollback." />
+          <Toggle bind:checked={watcherDraft.enabled} label={i18n.m.settings.pause_streaming} hint={i18n.m.settings.pause_streaming_hint} />
+          <Toggle bind:checked={watcherDraft.refreshOnReplace} label={i18n.m.settings.refresh_replace} hint={i18n.m.settings.refresh_replace_hint} />
         </div>
         {#if testResult}
           <p class="mt-3 text-sm {testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">
             {#if testResult.ok}
-              ✓ Connected to {testResult.serverName}{testResult.version ? ` (v${testResult.version})` : ''}
+              {tr(i18n.m.settings.test_ok, { name: testResult.serverName ?? '' })}{testResult.version ? tr(i18n.m.settings.test_ok_version, { version: testResult.version }) : ''}
             {:else}
-              ✗ {testResult.error}
+              {tr(i18n.m.settings.test_fail, { error: testResult.error ?? '' })}
             {/if}
           </p>
         {/if}
         <div class="mt-4 flex items-center gap-2">
           <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>
-            {savingWatcher ? 'Saving…' : editingId === null ? 'Add media server' : 'Save changes'}
+            {savingWatcher ? i18n.m.settings.saving : editingId === null ? i18n.m.settings.add_media_server_btn : i18n.m.settings.save_changes}
           </button>
           <button
             class="btn px-3 py-1 text-sm"
             onclick={testConnection}
             disabled={testing || (!watcherDraft.baseUrl.trim())}
-            title="Check the URL and token reach the server"
+            title={i18n.m.settings.test_connection_title}
           >
-            {testing ? 'Testing…' : 'Test connection'}
+            {testing ? i18n.m.settings.testing : i18n.m.settings.test_connection}
           </button>
           {#if editingId !== null}
-            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>Cancel</button>
+            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
       </div>
@@ -842,11 +842,9 @@
 
     <!-- Download managers (Sonarr/Radarr): hold files back while an import is in progress. -->
     <div class="card p-5">
-      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Download managers</h2>
+      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.download_managers}</h2>
       <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-        Connect Sonarr or Radarr. While one is importing into a title's folder, files there are held back from
-        queueing so a transcode never fights an import; they become eligible again on the next enqueue once the
-        import settles. An unreachable manager never blocks the queue.
+        {i18n.m.settings.download_managers_desc}
       </p>
 
       {#if arrError}
@@ -863,57 +861,57 @@
                 <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-                {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="No API key set — Optimisarr cannot query this manager.">no key</span>{/if}
-                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>Edit</button>
-                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>Remove</button>
+                {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
+                {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
+                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
+                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mb-4 text-sm text-slate-400">No download managers yet. Add Sonarr or Radarr to avoid optimising files mid-import.</p>
+        <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.download_managers_empty}</p>
       {/if}
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {editingArrId === null ? 'Add a download manager' : 'Edit download manager'}
+          {editingArrId === null ? i18n.m.settings.add_download_manager : i18n.m.settings.edit_download_manager}
         </h3>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label class="label" for="arr-name">Name</label>
-            <input id="arr-name" class="input" placeholder="Sonarr" bind:value={arrDraft.name} />
+            <label class="label" for="arr-name">{i18n.m.settings.name}</label>
+            <input id="arr-name" class="input" placeholder={i18n.m.settings.arr_name_ph} bind:value={arrDraft.name} />
           </div>
           <div>
-            <label class="label" for="arr-type">Type</label>
+            <label class="label" for="arr-type">{i18n.m.settings.type}</label>
             <select id="arr-type" class="input" bind:value={arrDraft.type}>
               {#each arrTypes as t}<option value={t}>{t}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="arr-url">Base URL</label>
+            <label class="label" for="arr-url">{i18n.m.settings.base_url}</label>
             <input id="arr-url" class="input" placeholder="http://192.168.1.10:8989" bind:value={arrDraft.baseUrl} />
           </div>
           <div>
-            <label class="label" for="arr-key">API key</label>
+            <label class="label" for="arr-key">{i18n.m.settings.api_key}</label>
             <input
               id="arr-key"
               class="input"
               type="password"
-              placeholder={editingArrId === null ? '' : 'Leave blank to keep current'}
+              placeholder={editingArrId === null ? '' : i18n.m.settings.keep_current}
               bind:value={arrDraft.apiKey}
             />
           </div>
         </div>
         <div class="mt-3">
-          <Toggle bind:checked={arrDraft.enabled} label="Enabled" hint="Query this manager for in-progress imports before queueing." />
+          <Toggle bind:checked={arrDraft.enabled} label={i18n.m.settings.enabled} hint={i18n.m.settings.arr_enabled_hint} />
         </div>
         <div class="mt-4 flex items-center gap-2">
           <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveArr} disabled={savingArr}>
-            {savingArr ? 'Saving…' : editingArrId === null ? 'Add download manager' : 'Save changes'}
+            {savingArr ? i18n.m.settings.saving : editingArrId === null ? i18n.m.settings.add_download_manager_btn : i18n.m.settings.save_changes}
           </button>
           {#if editingArrId !== null}
-            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddArr} disabled={savingArr}>Cancel</button>
+            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddArr} disabled={savingArr}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
       </div>
@@ -923,10 +921,9 @@
 
   {#if activeTab === 'notifications'}
   <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Notifications</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.tab_notifications}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      POST to a webhook, Discord channel, ntfy topic, or Apprise endpoint when a file is replaced or
-      a job fails. Delivery is best-effort and never affects processing.
+      {i18n.m.settings.notifications_desc}
     </p>
 
     {#if targetError}
@@ -943,68 +940,68 @@
               <div class="truncate font-mono text-[11px] text-slate-400" title={t.url}>{t.url}</div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">disabled</span>{/if}
-              {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">replaced</span>{/if}
-              {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">failed</span>{/if}
-              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>Edit</button>
-              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>Remove</button>
+              {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
+              {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.settings.badge_replaced}</span>{/if}
+              {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_failed}</span>{/if}
+              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
+              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
             </div>
           </li>
         {/each}
       </ul>
     {:else}
-      <p class="mb-4 text-sm text-slate-400">No notification targets yet.</p>
+      <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.targets_empty}</p>
     {/if}
 
     <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
       <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-        {editingTargetId === null ? 'Add a target' : 'Edit target'}
+        {editingTargetId === null ? i18n.m.settings.add_target : i18n.m.settings.edit_target}
       </h3>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <label class="label" for="target-name">Name</label>
-          <input id="target-name" class="input" placeholder="ntfy alerts" bind:value={targetDraft.name} />
+          <label class="label" for="target-name">{i18n.m.settings.name}</label>
+          <input id="target-name" class="input" placeholder={i18n.m.settings.target_name_ph} bind:value={targetDraft.name} />
         </div>
         <div>
-          <label class="label" for="target-type">Type</label>
+          <label class="label" for="target-type">{i18n.m.settings.type}</label>
           <select id="target-type" class="input" bind:value={targetDraft.type}>
             {#each notificationTypes as t}<option value={t}>{t}</option>{/each}
           </select>
         </div>
         <div>
-          <label class="label" for="target-url">URL</label>
+          <label class="label" for="target-url">{i18n.m.settings.url}</label>
           <input
             id="target-url"
             class="input"
-            placeholder={targetDraft.type === 'Discord' ? 'https://discord.com/api/webhooks/…' : 'https://ntfy.sh/my-topic'}
+            placeholder={targetDraft.type === 'Discord' ? i18n.m.settings.discord_url_ph : i18n.m.settings.ntfy_url_ph}
             bind:value={targetDraft.url}
           />
           {#if targetDraft.type === 'Discord'}
-            <p class="mt-1 text-[11px] text-slate-400">Discord channel → Edit → Integrations → Webhooks → Copy URL. No token needed — the URL carries the secret.</p>
+            <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.discord_hint}</p>
           {/if}
         </div>
         <div>
-          <label class="label" for="target-token">Token <span class="text-slate-400">(optional)</span></label>
+          <label class="label" for="target-token">{i18n.m.settings.token} <span class="text-slate-400">{i18n.m.settings.optional}</span></label>
           <input
             id="target-token"
             class="input"
             type="password"
-            placeholder={editingTargetId === null ? '' : 'Leave blank to keep current'}
+            placeholder={editingTargetId === null ? '' : i18n.m.settings.keep_current}
             bind:value={targetDraft.token}
           />
         </div>
       </div>
       <div class="mt-3 grid max-w-2xl gap-3">
-        <Toggle bind:checked={targetDraft.enabled} label="Enabled" />
-        <Toggle bind:checked={targetDraft.notifyOnReplacement} label="Notify when a file is replaced" />
-        <Toggle bind:checked={targetDraft.notifyOnFailure} label="Notify when a job fails" />
+        <Toggle bind:checked={targetDraft.enabled} label={i18n.m.settings.enabled} />
+        <Toggle bind:checked={targetDraft.notifyOnReplacement} label={i18n.m.settings.notify_replaced} />
+        <Toggle bind:checked={targetDraft.notifyOnFailure} label={i18n.m.settings.notify_failed} />
       </div>
       <div class="mt-4 flex items-center gap-2">
         <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveTarget} disabled={savingTarget}>
-          {savingTarget ? 'Saving…' : editingTargetId === null ? 'Add target' : 'Save changes'}
+          {savingTarget ? i18n.m.settings.saving : editingTargetId === null ? i18n.m.settings.add_target_btn : i18n.m.settings.save_changes}
         </button>
         {#if editingTargetId !== null}
-          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddTarget} disabled={savingTarget}>Cancel</button>
+          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddTarget} disabled={savingTarget}>{i18n.m.common.cancel}</button>
         {/if}
       </div>
     </div>
@@ -1017,12 +1014,9 @@
 
   {#if activeTab === 'backup'}
   <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">Backup &amp; restore</h2>
+    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.backup_title}</h2>
     <p class="mb-4 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
-      Export your settings, libraries, media-server and download-manager connections, and notification targets
-      to a JSON file, or import one. The file includes provider tokens and API keys, so store it securely and never
-      commit or share it. It does not include media, jobs, replacements, quarantine, or rollback history. Importing
-      merges into your current config (matching libraries by path and connections/targets by name) and never deletes anything.
+      {i18n.m.settings.backup_desc}
     </p>
 
     {#if backupError}
@@ -1033,9 +1027,9 @@
     {/if}
 
     <div class="flex items-center gap-3">
-      <button class="btn" onclick={exportConfig}>Export config</button>
+      <button class="btn" onclick={exportConfig}>{i18n.m.settings.export_config}</button>
       <button class="btn" onclick={() => fileInput?.click()} disabled={importing}>
-        {importing ? 'Importing…' : 'Import config'}
+        {importing ? i18n.m.settings.importing : i18n.m.settings.import_config}
       </button>
       <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
     </div>
