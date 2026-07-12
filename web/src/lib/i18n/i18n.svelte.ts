@@ -67,3 +67,15 @@ export function t(template: string, params: Record<string, string | number>): st
     key in params ? String(params[key]) : `{${key}}`,
   )
 }
+
+// Pick the singular/plural message for a count and interpolate `{count}`. English and
+// German share the one/other split; locales with richer plural rules can be handled when
+// they are added. Pass a preformatted `display` when the number needs locale grouping.
+export function plural(
+  count: number,
+  one: string,
+  other: string,
+  display: string | number = count,
+): string {
+  return t(count === 1 ? one : other, { count: display })
+}
