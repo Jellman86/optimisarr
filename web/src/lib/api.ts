@@ -1,5 +1,5 @@
 // Typed client for the Optimisarr API. All HTTP lives here, not in components.
-import { i18n } from './i18n/i18n.svelte'
+import { i18n, t } from './i18n/i18n.svelte'
 
 const ADMIN_TOKEN_KEY = 'optimisarr.adminToken'
 
@@ -525,8 +525,25 @@ function apiErrorMessage(payload: unknown, status: number): string {
   if (!payload || typeof payload !== 'object') return `Request failed with ${status}`
   const error = 'error' in payload ? String(payload.error) : `Request failed with ${status}`
   if (!('code' in payload)) return error
+  const args = 'args' in payload && payload.args && typeof payload.args === 'object'
+    ? payload.args as Record<string, string | number>
+    : {}
 
   switch (String(payload.code)) {
+    case 'filesystem.notDirectory': return t(i18n.m.common.api_not_directory, args)
+    case 'filesystem.accessDenied': return t(i18n.m.common.api_access_denied, args)
+    case 'library.notFound': return t(i18n.m.common.api_library_not_found, args)
+    case 'library.validation': return i18n.m.common.api_library_invalid
+    case 'library.pathConflict': return t(i18n.m.common.api_library_conflict, args)
+    case 'library.pathMissing': return t(i18n.m.common.api_library_path_missing, args)
+    case 'media.notFound': return t(i18n.m.common.api_media_not_found, args)
+    case 'media.previewUnavailable': return t(i18n.m.common.api_preview_unavailable, args)
+    case 'media.status.invalid': return t(i18n.m.common.api_media_status_invalid, args)
+    case 'inventory.filter.invalid': return t(i18n.m.common.api_inventory_filter_invalid, args)
+    case 'job.notFound': return t(i18n.m.common.api_job_not_found, args)
+    case 'job.cancel.invalidState': return t(i18n.m.common.api_job_cancel_state, args)
+    case 'job.remove.active': return i18n.m.common.api_job_remove_active
+    case 'job.retry.invalidState': return t(i18n.m.common.api_job_retry_state, args)
     case 'settings.maxConcurrentJobs.minimum': return i18n.m.settings.validation_max_jobs
     case 'settings.minFreeDiskBytes.nonNegative': return i18n.m.settings.validation_free_disk
     case 'settings.cpuThreadLimit.nonNegative': return i18n.m.settings.validation_cpu_threads

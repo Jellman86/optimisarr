@@ -46,8 +46,9 @@ internal static class MediaAndQueueEndpoints
             {
                 if (!Enum.TryParse<MediaFileStatus>(status, ignoreCase: true, out var parsed))
                 {
-                    return Results.BadRequest(
-                        $"Unknown media status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<MediaFileStatus>())}.");
+                    return ApiErrors.BadRequest("media.status.invalid",
+                        $"Unknown media status '{status}'. Valid values: {string.Join(", ", Enum.GetNames<MediaFileStatus>())}.",
+                        new { value = status });
                 }
                 wantedStatus = parsed;
             }
@@ -74,7 +75,7 @@ internal static class MediaAndQueueEndpoints
             var file = await inventory.ProbeAsync(id, cancellationToken);
             if (file is null)
             {
-                return Results.NotFound(new { error = $"No media file with id {id}." });
+                return ApiErrors.NotFound("media.notFound", $"No media file with id {id}.", new { id });
             }
 
             return Results.Ok(new MediaFileDto(
@@ -136,8 +137,9 @@ internal static class MediaAndQueueEndpoints
             var filter = InventoryFilter.All;
             if (!string.IsNullOrWhiteSpace(show) && !Enum.TryParse(show, ignoreCase: true, out filter))
             {
-                return Results.BadRequest(
-                    $"Unknown inventory filter '{show}'. Valid values: {string.Join(", ", Enum.GetNames<InventoryFilter>())}.");
+                return ApiErrors.BadRequest("inventory.filter.invalid",
+                    $"Unknown inventory filter '{show}'. Valid values: {string.Join(", ", Enum.GetNames<InventoryFilter>())}.",
+                    new { value = show });
             }
 
             return Results.Ok(await inventory.QueryAsync(
@@ -156,7 +158,7 @@ internal static class MediaAndQueueEndpoints
             var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
             if (library is null)
             {
-                return Results.NotFound(new { error = $"No library with id {id}." });
+                return ApiErrors.NotFound("library.notFound", $"No library with id {id}.", new { id });
             }
 
             var result = await enqueue.EnqueueEligibleAsync(library, cancellationToken);
@@ -177,7 +179,7 @@ internal static class MediaAndQueueEndpoints
         {
             var jobId = await preview.CreateAsync(id, cancellationToken);
             return jobId is null
-                ? Results.NotFound(new { error = $"No media file with id {id} (or it has no library)." })
+                ? ApiErrors.NotFound("media.previewUnavailable", $"No media file with id {id} (or it has no library).", new { id })
                 : Results.Ok(new { jobId });
         })
         .WithName("CreatePreview");
@@ -409,12 +411,12 @@ internal static class MediaAndQueueEndpoints
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
             if (job is null)
             {
-                return Results.NotFound(new { error = $"No job with id {id}." });
+                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
             }
 
             if (!JobEnqueueService.ActiveStatuses.Contains(job.Status))
             {
-                return Results.BadRequest(new { error = $"Job {id} is already {job.Status} and cannot be cancelled." });
+                return ApiErrors.BadRequest("job.cancel.invalidState", $"Job {id} is already {job.Status} and cannot be cancelled.", new { id, status = job.Status.ToString() });
             }
 
             job.Status = JobStatus.Cancelled;
@@ -439,12 +441,12 @@ internal static class MediaAndQueueEndpoints
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
             if (job is null)
             {
-                return Results.NotFound(new { error = $"No job with id {id}." });
+                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
             }
 
             if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
             {
-                return Results.BadRequest(new { error = "Stop an active job before removing it from the queue." });
+                return ApiErrors.BadRequest("job.remove.active", "Stop an active job before removing it from the queue.");
             }
 
             db.Jobs.Remove(job);
@@ -465,12 +467,12 @@ internal static class MediaAndQueueEndpoints
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
             if (job is null)
             {
-                return Results.NotFound(new { error = $"No job with id {id}." });
+                return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
             }
 
             if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
             {
-                return Results.BadRequest(new { error = $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}." });
+                return ApiErrors.BadRequest("job.retry.invalidState", $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}.", new { id, status = job.Status.ToString() });
             }
 
             job.Status = JobStatus.Queued;

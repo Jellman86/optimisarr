@@ -49,7 +49,7 @@ internal static class LibraryEndpoints
             var library = await db.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
             if (library is null)
             {
-                return Results.NotFound(new { error = $"No library with id {id}." });
+                return ApiErrors.NotFound("library.notFound", $"No library with id {id}.", new { id });
             }
 
             var (exists, readable, writable) = PathAccessProbe.Probe(library.Path);
@@ -72,12 +72,12 @@ internal static class LibraryEndpoints
         {
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("library.validation", error!);
             }
 
             if (await db.Libraries.AnyAsync(library => library.Path == parsed.Path, cancellationToken))
             {
-                return Results.Conflict(new { error = $"A library already exists for path: {parsed.Path}" });
+                return ApiErrors.Conflict("library.pathConflict", $"A library already exists for path: {parsed.Path}", new { path = parsed.Path });
             }
 
             var library = new Optimisarr.Data.Library
@@ -136,17 +136,17 @@ internal static class LibraryEndpoints
             var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
             if (library is null)
             {
-                return Results.NotFound(new { error = $"No library with id {id}." });
+                return ApiErrors.NotFound("library.notFound", $"No library with id {id}.", new { id });
             }
 
             if (!LibraryRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return Results.BadRequest(new { error });
+                return ApiErrors.BadRequest("library.validation", error!);
             }
 
             if (await db.Libraries.AnyAsync(l => l.Path == parsed.Path && l.Id != id, cancellationToken))
             {
-                return Results.Conflict(new { error = $"A library already exists for path: {parsed.Path}" });
+                return ApiErrors.Conflict("library.pathConflict", $"A library already exists for path: {parsed.Path}", new { path = parsed.Path });
             }
 
             library.Name = parsed.Name;
@@ -202,7 +202,7 @@ internal static class LibraryEndpoints
             var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
             if (library is null)
             {
-                return Results.NotFound(new { error = $"No library with id {id}." });
+                return ApiErrors.NotFound("library.notFound", $"No library with id {id}.", new { id });
             }
 
             db.Libraries.Remove(library);
@@ -220,12 +220,12 @@ internal static class LibraryEndpoints
             var library = await db.Libraries.FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
             if (library is null)
             {
-                return Results.NotFound(new { error = $"No library with id {id}." });
+                return ApiErrors.NotFound("library.notFound", $"No library with id {id}.", new { id });
             }
 
             if (!Directory.Exists(library.Path))
             {
-                return Results.BadRequest(new { error = $"Library path does not exist: {library.Path}" });
+                return ApiErrors.BadRequest("library.pathMissing", $"Library path does not exist: {library.Path}", new { path = library.Path });
             }
 
             var summary = await inventory.ScanAsync(library, cancellationToken);

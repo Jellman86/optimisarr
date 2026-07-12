@@ -63,7 +63,7 @@ internal static class SystemEndpoints
 
             if (!Directory.Exists(target))
             {
-                return Results.BadRequest(new { error = $"Not a directory: {target}" });
+                return ApiErrors.BadRequest("filesystem.notDirectory", $"Not a directory: {target}", new { path = target });
             }
 
             var fullPath = Path.GetFullPath(target);
@@ -83,7 +83,7 @@ internal static class SystemEndpoints
             }
             catch (UnauthorizedAccessException)
             {
-                return Results.BadRequest(new { error = $"Access denied: {fullPath}" });
+                return ApiErrors.BadRequest("filesystem.accessDenied", $"Access denied: {fullPath}", new { path = fullPath });
             }
 
             return Results.Ok(new BrowseResponse(fullPath, parent, directories));
