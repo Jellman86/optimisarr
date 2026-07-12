@@ -156,7 +156,9 @@ app.Use(async (context, next) =>
     }
 
     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-    await context.Response.WriteAsJsonAsync(new { error = "Admin token required." }, context.RequestAborted);
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("auth.required", "Admin token required."),
+        context.RequestAborted);
 });
 
 app.MapHealthEndpoints(adminToken, configDirectory);

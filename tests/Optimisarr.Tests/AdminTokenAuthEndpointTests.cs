@@ -79,6 +79,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         using var response = await client.GetAsync("/api/settings");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("\"code\":\"auth.required\"", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]

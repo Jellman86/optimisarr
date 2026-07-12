@@ -510,7 +510,7 @@ function authenticatedUrl(url: string): string {
 function handleAuthRequired(): never {
   clearAdminToken()
   authRequiredHandler?.()
-  throw new AuthRequiredError()
+  throw new AuthRequiredError(i18n.m.auth.token_required)
 }
 
 function tryParseJson(text: string): unknown {
