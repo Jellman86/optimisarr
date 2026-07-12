@@ -164,12 +164,24 @@ the replacement workflow is trustworthy.
    user-facing API/status strings, then provide complete translations for the same language
    set currently carried by YA-WAMF: English, German, Spanish, French, Italian, Japanese,
    Portuguese, Russian, and Chinese (`en`, `de`, `es`, `fr`, `it`, `ja`, `pt`, `ru`, `zh`).
-   Scope should include a shared locale loader, language selection/persistence in the SPA,
-   typed/checked translation keys, fallback behaviour for missing strings, and CI coverage
-   that fails when any supported locale is incomplete. User-facing job errors, validation
-   messages, settings labels, diagnostics summaries, empty states, and documentation-facing
-   setup copy should be included so the feature is genuinely full translation rather than
-   navigation-only localisation.
+
+   - **Foundation and completeness gate: done.** A typed locale system under `web/src/lib/i18n/`
+     with English as the source of truth (`type Messages = typeof en`) and every other locale typed
+     against it, so a missing or misspelled key fails `npm run check` — translation completeness is a
+     compile-time CI gate, not something that can silently rot. A Svelte 5 runes store exposes the
+     active locale's messages with a `t()` interpolation helper and a `plural()` helper; the choice
+     is persisted to `localStorage` and falls back to the browser language, then English. A language
+     selector lives in the sidebar footer.
+   - **Every page migrated: done.** The app shell and navigation, plus Dashboard, Schedule,
+     Quarantine, Inventory, Queue, Settings, and Libraries — including confirm dialogs, InfoTip help
+     text, preset/profile/HDR label maps, empty states, and count-aware/pluralised strings. **German**
+     ships complete across all of it as the first translated locale.
+   - **Remaining.** Migrate the shared components that still hold hardcoded copy (`FailuresPanel`,
+     `ToolsPanel`, `CandidateTable`, `PreviewCompare`, `MediaCompare`, `FolderPicker`, `BottomSheet`,
+     `VerificationChecks`); localise user-facing job errors, validation messages, and diagnostics
+     summaries emitted by the backend; and populate the remaining eight locales (`es`, `fr`, `it`,
+     `ja`, `pt`, `ru`, `zh`) toward parity — ideally with native review — so the feature is genuinely
+     full translation rather than navigation-only localisation.
 
 5. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
    install where Docker media-stack users already look. Keep the Docker contract stable and
