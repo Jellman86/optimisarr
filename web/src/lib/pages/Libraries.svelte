@@ -424,6 +424,13 @@
 
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
   let access = $state<Record<number, LibraryAccess>>({})
+
+  function accessMessage(value: LibraryAccess): string {
+    if (!value.exists) return i18n.m.libraries.access_missing_detail
+    if (!value.readable) return i18n.m.libraries.access_unreadable_detail
+    if (!value.writable) return i18n.m.libraries.access_unwritable_detail
+    return i18n.m.libraries.access_ok_detail
+  }
   async function checkAllAccess() {
     for (const library of libraries) {
       try {
@@ -1335,13 +1342,13 @@
               {#if access[library.id]}
                 {@const a = access[library.id]}
                 {#if a.ok}
-                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={a.message}>{i18n.m.libraries.access_ok}</span>
+                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={accessMessage(a)}>{i18n.m.libraries.access_ok}</span>
                 {:else if !a.exists}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={a.message}>{i18n.m.libraries.access_missing}</span>
+                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
                 {:else if !a.readable}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={a.message}>{i18n.m.libraries.access_unreadable}</span>
+                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
                 {:else}
-                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={a.message}>{i18n.m.libraries.access_unwritable}</span>
+                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
                 {/if}
               {/if}
             </div>
@@ -1359,7 +1366,7 @@
             {#if access[library.id] && !access[library.id].ok}
               <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
                 <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <span>{access[library.id].message}</span>
+                <span>{accessMessage(access[library.id])}</span>
               </div>
             {/if}
           </div>

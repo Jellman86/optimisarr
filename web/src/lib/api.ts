@@ -547,6 +547,9 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'job.status.invalid': return t(i18n.m.common.api_job_status_invalid, args)
     case 'job.failureCategory.invalid': return t(i18n.m.common.api_failure_category_invalid, args)
     case 'replacement.notFound': return t(i18n.m.common.api_replacement_not_found, args)
+    case 'replacement.action.notFound': return i18n.m.common.api_replacement_action_not_found
+    case 'replacement.action.invalid': return i18n.m.common.api_replacement_action_invalid
+    case 'replacement.action.failed': return i18n.m.common.api_replacement_action_failed
     case 'exclusion.notFound': return t(i18n.m.common.api_exclusion_not_found, args)
     case 'watcher.notFound': return t(i18n.m.common.api_watcher_not_found, args)
     case 'watcher.validation': return i18n.m.common.api_watcher_invalid

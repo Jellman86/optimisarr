@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Optimisarr.Api.Endpoints;
+using Optimisarr.Api.Replacement;
 
 namespace Optimisarr.Tests;
 
@@ -29,5 +30,14 @@ public sealed class ApiErrorContractTests
         using var document = JsonDocument.Parse(json);
         Assert.Equal(42, document.RootElement.GetProperty("args").GetProperty("id").GetInt32());
         Assert.Equal("detail", document.RootElement.GetProperty("details")[0].GetString());
+    }
+
+    [Theory]
+    [InlineData(ReplacementResultKind.NotFound, "replacement.action.notFound")]
+    [InlineData(ReplacementResultKind.Invalid, "replacement.action.invalid")]
+    [InlineData(ReplacementResultKind.Failed, "replacement.action.failed")]
+    public void Replacement_errors_use_stable_machine_codes(ReplacementResultKind kind, string expected)
+    {
+        Assert.Equal(expected, ReplacementResults.ErrorCode(kind));
     }
 }
