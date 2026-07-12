@@ -18,6 +18,8 @@
 - **Shared-component i18n migration started.** Folder selection, detail-sheet controls, and the
   original/encoded media comparison now use the typed locale contract, including accessible labels,
   loading/empty guidance, playback controls, downloads, and browser compatibility guidance.
+  Candidate tables, grouped failure diagnostics/log controls, and the tools/hardware capability
+  panel now use the same contract for filters, paging, status, empty states, and accessible actions.
 
 - **Unraid Community Applications template.** Added `unraid/optimisarr.xml` (Docker template with
   config/media/work/quarantine volume mappings, the `8787` web port, optional
