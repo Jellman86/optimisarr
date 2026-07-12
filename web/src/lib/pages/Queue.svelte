@@ -2,6 +2,7 @@
   import { api, type Job, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize, formatDuration } from '../format'
   import { createJobsConnection, type JobProgress } from '../realtime'
+  import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
   import Icon from '../components/Icon.svelte'
@@ -72,7 +73,7 @@
       }
       error = null
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load jobs'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_load
     } finally {
       loading = false
     }
@@ -84,7 +85,14 @@
 
   function etaLabel(seconds: number | null): string {
     if (seconds == null) return ''
-    return seconds < 60 ? `~${Math.round(seconds)}s left` : `~${formatDuration(seconds)} left`
+    return seconds < 60
+      ? t(i18n.m.queue.eta_seconds, { seconds: Math.round(seconds) })
+      : t(i18n.m.queue.eta_duration, { duration: formatDuration(seconds) })
+  }
+
+  // The job's display name for confirms and the hero, falling back to a job id when the path is unknown.
+  function jobName(job: Job): string {
+    return job.relativePath ?? t(i18n.m.queue.job_fallback, { id: job.id })
   }
 
   function telemetryLabel(progress: JobProgress | undefined): string {
@@ -98,14 +106,14 @@
       await api.cancelJob(job.id)
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Cancel failed'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_cancel
     } finally {
       cancellingId = null
     }
   }
 
   async function stopAndRemove(job: Job) {
-    if (!confirm(`Stop and remove this job from the queue?\n\n${job.relativePath ?? `Job ${job.id}`}\n\nIt can be enqueued again later. Completed replacements are not removed because their rollback record must be kept.`)) return
+    if (!confirm(t(i18n.m.queue.confirm_remove, { name: jobName(job) }))) return
     removingId = job.id
     try {
       if (isActive(job.status)) await api.cancelJob(job.id)
@@ -113,7 +121,7 @@
       if (selectedJobId === job.id) selectedJobId = null
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to remove job'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_remove
     } finally {
       removingId = null
     }
@@ -130,21 +138,21 @@
       await api.retryJob(job.id)
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Retry failed'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_retry
     } finally {
       retryingId = null
     }
   }
 
   async function exclude(job: Job) {
-    if (!confirm(`Exclude this file from optimisation?\n\n${job.relativePath ?? `Job ${job.id}`}\n\nIt won't be offered or auto-enqueued again until you remove it from the library's Excluded list. This failed attempt is cleared from the queue; your original file is untouched.`)) return
+    if (!confirm(t(i18n.m.queue.confirm_exclude, { name: jobName(job) }))) return
     excludingId = job.id
     try {
       await api.excludeFile(job.mediaFileId)
       if (selectedJobId === job.id) selectedJobId = null
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to exclude file'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_exclude
     } finally {
       excludingId = null
     }
@@ -156,7 +164,7 @@
       await api.clearJobs(scope)
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Clear failed'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_clear
     } finally {
       clearingScope = null
     }
@@ -167,15 +175,19 @@
   // verified-but-not-applied, so only recomputable work is discarded.
   async function clearPending() {
     if (!confirm(
-      `Clear ${pendingCount.toLocaleString()} pending job${pendingCount === 1 ? '' : 's'} (queued + ready-to-replace) and stop anything running?\n\n` +
-      `No original files are touched. Ready-to-replace jobs lose their optimised output and will be re-encoded if enqueued again.`,
+      plural(
+        pendingCount,
+        i18n.m.queue.confirm_clear_pending_one,
+        i18n.m.queue.confirm_clear_pending_other,
+        pendingCount.toLocaleString(),
+      ),
     )) return
     clearingPending = true
     try {
       await api.clearPendingJobs()
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Clear queue failed'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_clear_queue
     } finally {
       clearingPending = false
     }
@@ -258,7 +270,7 @@
   // GPU graph is shown only while the selected job is actually encoding; when the host can't
   // expose GPU stats without elevation the broadcaster reports it unsupported.
   let gpuUnavailable = $derived(
-    activity.metrics && !activity.metrics.gpuSupported ? 'GPU stats unavailable on this host' : null,
+    activity.metrics && !activity.metrics.gpuSupported ? i18n.m.dashboard.gpu_unavailable : null,
   )
 
   // The "now processing" hero: jobs actively doing work right now (usually one, since the
@@ -322,6 +334,22 @@
     }
   }
 
+  // Human-readable, translated label for a job's status enum; falls back to the raw value for any
+  // status not yet mapped.
+  const STATUS_LABELS: Record<string, string> = $derived({
+    Queued: i18n.m.queue.status_queued,
+    Probing: i18n.m.queue.status_probing,
+    Transcoding: i18n.m.queue.status_transcoding,
+    Verifying: i18n.m.queue.status_verifying,
+    ReadyToReplace: i18n.m.queue.status_readytoreplace,
+    Completed: i18n.m.queue.status_completed,
+    Failed: i18n.m.queue.status_failed,
+    Cancelled: i18n.m.queue.status_cancelled,
+  })
+  function statusLabel(status: string): string {
+    return STATUS_LABELS[status] ?? status
+  }
+
   function parseReport(job: Job): VerificationCheck[] | null {
     if (!job.verificationReportJson) return null
     try {
@@ -338,7 +366,7 @@
   }
 
   async function replace(job: Job) {
-    if (!confirm('Replace the original with the verified output?\n\nThe original is moved to quarantine first and can be rolled back at any time.')) {
+    if (!confirm(i18n.m.queue.confirm_replace)) {
       return
     }
     replacingId = job.id
@@ -347,7 +375,7 @@
       await load()
       router.go('/quarantine')
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Replace failed'
+      error = err instanceof Error ? err.message : i18n.m.queue.error_replace
     } finally {
       replacingId = null
     }
@@ -363,10 +391,10 @@
 </script>
 
 <header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Queue</h1>
+  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400">
-    Transcode jobs. Outputs are verified before they are marked ready — your originals are never touched.
-    {#if activeCount > 0}<span class="text-slate-400"> · {activeCount} active</span>{/if}
+    {i18n.m.queue.subtitle}
+    {#if activeCount > 0}<span class="text-slate-400">{t(i18n.m.queue.active_suffix, { count: activeCount })}</span>{/if}
   </p>
 </header>
 
@@ -379,7 +407,7 @@
       : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
     onclick={() => (activeTab = 'queue')}
   >
-    Queue{#if activeCount > 0} ({activeCount}){/if}
+    {i18n.m.nav.queue}{#if activeCount > 0} ({activeCount}){/if}
   </button>
   <button
     class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'failures'
@@ -388,7 +416,7 @@
       {counts.failed > 0 && activeTab !== 'failures' ? '!text-red-600 dark:!text-red-400' : ''}"
     onclick={() => (activeTab = 'failures')}
   >
-    Failures{#if counts.failed > 0} ({counts.failed}){/if}
+    {i18n.m.queue.tab_failures}{#if counts.failed > 0} ({counts.failed}){/if}
   </button>
 </div>
 
@@ -424,10 +452,10 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="min-w-0">
                 <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
-                  Now {job.status === 'Transcoding' ? 'encoding' : job.status === 'Probing' ? 'probing' : 'verifying'}
+                  {job.status === 'Transcoding' ? i18n.m.queue.now_encoding : job.status === 'Probing' ? i18n.m.queue.now_probing : i18n.m.queue.now_verifying}
                 </div>
                 <div class="truncate font-medium text-slate-800 dark:text-slate-100" title={job.relativePath ?? ''}>
-                  {heroTitle(job.relativePath) ?? `Job ${job.id}`}
+                  {heroTitle(job.relativePath) ?? jobName(job)}
                 </div>
                 {#if heroFolder(job.relativePath)}
                   <div class="truncate text-xs text-slate-400 dark:text-slate-500">{heroFolder(job.relativePath)}</div>
@@ -465,7 +493,7 @@
               </div>
             {:else}
               <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
-              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? 'Probing source…' : 'Verifying output…'}</div>
+              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.probing_source : i18n.m.queue.verifying_output}</div>
             {/if}
           </div>
         {/each}
@@ -475,7 +503,7 @@
   <div class="card mb-4 p-4">
     <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
       <Icon name="pause" class="h-4 w-4 text-slate-400" />
-      <span>Nothing processing right now.{#if queuedCount > 0} {queuedCount.toLocaleString()} job{queuedCount === 1 ? '' : 's'} queued and waiting to start.{/if}</span>
+      <span>{i18n.m.queue.nothing_processing}{#if queuedCount > 0}{plural(queuedCount, i18n.m.queue.queued_waiting_one, i18n.m.queue.queued_waiting_other, queuedCount.toLocaleString())}{/if}</span>
     </div>
     <!-- The waiting-window reason is shown once, by the dispatch-state card below; don't repeat it here. -->
   </div>
@@ -485,17 +513,17 @@
      closed window). The healthy "ready · N running · work free" line was noise, so it's dropped. -->
 {#if queueStatus && !queueStatus.canStart}
   <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
-    Queue dispatch is paused: {queueStatus.blockedReason}. Existing encodes are allowed to finish safely; this only prevents new jobs from starting.
+    {t(i18n.m.queue.dispatch_paused, { reason: queueStatus.blockedReason ?? '' })}
   </div>
 {:else if queueStatus?.waitingReason}
   <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
-    {queueStatus.waitingReason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.
+    {t(i18n.m.queue.waiting_window, { reason: queueStatus.waitingReason })}
   </div>
 {/if}
 
 {#if !loading && jobs.length > 0}
   <div class="mb-4 flex flex-wrap items-center gap-2">
-    {#each [['all', 'All'], ['active', 'Active'], ['completed', 'Completed'], ['failed', 'Failed'], ['verified', 'Verified'], ['verifyFailed', 'Verification failed']] as [key, label]}
+    {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed], ['verified', i18n.m.queue.filter_verified], ['verifyFailed', i18n.m.queue.filter_verify_failed]] as [key, label]}
       <button
         class="badge cursor-pointer border {filter === key
           ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
@@ -512,10 +540,10 @@
           class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
           onclick={clearPending}
           disabled={clearingPending}
-          title="Reset the queue: remove all queued and ready-to-replace jobs and stop anything running. No original files are touched."
+          title={i18n.m.queue.clear_queue_title}
         >
           <Icon name="trash" class="h-4 w-4" />
-          {clearingPending ? 'Clearing…' : `Clear queue (${pendingCount.toLocaleString()})`}
+          {clearingPending ? i18n.m.queue.clearing : t(i18n.m.queue.clear_queue, { count: pendingCount.toLocaleString() })}
         </button>
       {/if}
       {#if erroredClearable > 0}
@@ -523,10 +551,10 @@
           class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
           onclick={() => clear('errored')}
           disabled={clearingScope !== null}
-          title="Remove failed and cancelled jobs from the list. Files stay tagged so they are never re-optimised; any job still holding a rollback is kept."
+          title={i18n.m.queue.clear_errored_title}
         >
           <Icon name="trash" class="h-4 w-4" />
-          {clearingScope === 'errored' ? 'Clearing…' : `Clear errored (${erroredClearable})`}
+          {clearingScope === 'errored' ? i18n.m.queue.clearing : t(i18n.m.queue.clear_errored, { count: erroredClearable })}
         </button>
       {/if}
       {#if counts.completed > 0}
@@ -534,10 +562,10 @@
           class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
           onclick={() => clear('finished')}
           disabled={clearingScope !== null || finishedClearable === 0}
-          title={finishedClearable > 0 ? 'Remove completed jobs whose rollback is no longer available.' : 'Completed jobs are retained because their quarantined originals can still be rolled back.'}
+          title={finishedClearable > 0 ? i18n.m.queue.clear_completed_title_available : i18n.m.queue.clear_completed_title_protected}
         >
           <Icon name="trash" class="h-4 w-4" />
-          {clearingScope === 'finished' ? 'Clearing…' : finishedClearable > 0 ? `Clear completed (${finishedClearable})` : `Completed protected (${finishedProtected})`}
+          {clearingScope === 'finished' ? i18n.m.queue.clearing : finishedClearable > 0 ? t(i18n.m.queue.clear_completed, { count: finishedClearable }) : t(i18n.m.queue.completed_protected, { count: finishedProtected })}
         </button>
       {/if}
     </div>
@@ -545,7 +573,7 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">Loading…</div>
+  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else if visibleJobs.length > 0}
   <div class="card overflow-hidden">
     <div
@@ -556,11 +584,11 @@
     <table class="w-full text-sm">
       <thead class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
         <tr>
-          <th class="px-4 py-3">Status</th>
-          <th class="px-4 py-3">File</th>
-          <th class="w-32 px-4 py-3 sm:w-48">Progress</th>
-          <th class="hidden px-4 py-3 md:table-cell">Verification</th>
-          <th class="hidden px-4 py-3 lg:table-cell">Priority</th>
+          <th class="px-4 py-3">{i18n.m.queue.col_status}</th>
+          <th class="px-4 py-3">{i18n.m.queue.col_file}</th>
+          <th class="w-32 px-4 py-3 sm:w-48">{i18n.m.queue.col_progress}</th>
+          <th class="hidden px-4 py-3 md:table-cell">{i18n.m.queue.col_verification}</th>
+          <th class="hidden px-4 py-3 lg:table-cell">{i18n.m.queue.col_priority}</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -571,14 +599,14 @@
             class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedJobId === job.id ? 'bg-slate-50 dark:bg-slate-900/40' : ''}"
             onclick={() => selectRow(job.id)}
           >
-            <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{job.status}</span></td>
+            <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span></td>
             <td class="max-w-[40vw] px-4 py-2 sm:max-w-xs">
               <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</div>
               {#if job.videoEncoder}
                 {@const gpu = isGpuEncoder(job.videoEncoder)}
                 <span
                   class="badge mt-1 {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}"
-                  title="Video encoder for this job"
+                  title={i18n.m.queue.encoder_title}
                 >{gpu ? 'GPU' : 'CPU'} · {job.videoEncoder}</span>
               {/if}
             </td>
@@ -598,14 +626,14 @@
               {:else if job.status === 'Probing' || job.status === 'Verifying'}
                 <div class="space-y-1">
                   <div class="progress-track"><div class="progress-indeterminate"></div></div>
-                  <div class="text-[11px] text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? 'probing…' : 'verifying…'}</div>
+                  <div class="text-[11px] text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.stage_probing : i18n.m.queue.stage_verifying}</div>
                 </div>
               {:else if job.status === 'Queued'}
-                <span class="text-xs text-slate-400">waiting…</span>
+                <span class="text-xs text-slate-400">{i18n.m.queue.stage_waiting}</span>
               {:else if job.status === 'Failed'}
                 <div class="flex items-start gap-1 text-xs text-red-600 dark:text-red-400" title={job.errorMessage ?? ''}>
                   <Icon name="warning" class="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-                  <span class="line-clamp-2">{job.errorMessage ?? 'Job failed'}</span>
+                  <span class="line-clamp-2">{job.errorMessage ?? i18n.m.queue.job_failed}</span>
                 </div>
               {:else}
                 <span class="text-xs text-slate-400">—</span>
@@ -617,7 +645,7 @@
                   class="text-xs font-medium hover:underline {job.verificationPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}"
                   onclick={(e) => { e.stopPropagation(); toggle(job) }}
                 >
-                  {job.verificationPassed ? '✓ passed' : '✗ failed'}
+                  {job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}
                   {#if job.outputSizeBytes}<span class="text-slate-400"> · {formatSize(job.outputSizeBytes)}</span>{/if}
                   <span class="text-slate-400">{expandedId === job.id ? ' ▾' : ' ▸'}</span>
                 </button>
@@ -631,27 +659,27 @@
                 {#if job.status === 'ReadyToReplace' && job.verificationPassed}
                   <button class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); replace(job) }} disabled={replacingId === job.id}>
                     <Icon name="replace" class="h-3.5 w-3.5" />
-                    {replacingId === job.id ? 'Replacing' : 'Replace'}
+                    {replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}
                   </button>
                 {/if}
                 {#if job.status === 'Failed' || job.status === 'Cancelled'}
-                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); retry(job) }} disabled={retryingId === job.id} title="Re-queue this file as a fresh attempt">
+                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); retry(job) }} disabled={retryingId === job.id} title={i18n.m.queue.retry_title}>
                     <Icon name="retry" class="h-3.5 w-3.5" />
-                    {retryingId === job.id ? 'Retrying' : 'Retry'}
+                    {retryingId === job.id ? i18n.m.queue.action_retrying : i18n.m.queue.action_retry}
                   </button>
-                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); exclude(job) }} disabled={excludingId === job.id} title="Never optimise this file again (durable; manage it from the library's Excluded list)">
+                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); exclude(job) }} disabled={excludingId === job.id} title={i18n.m.queue.exclude_title}>
                     <Icon name="ban" class="h-3.5 w-3.5" />
-                    {excludingId === job.id ? 'Excluding' : 'Exclude'}
+                    {excludingId === job.id ? i18n.m.queue.action_excluding : i18n.m.queue.action_exclude}
                   </button>
-                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); stopAndRemove(job) }} disabled={removingId === job.id} title="Remove this attempt so the file can be enqueued again">
+                  <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); stopAndRemove(job) }} disabled={removingId === job.id} title={i18n.m.queue.remove_title}>
                     <Icon name="trash" class="h-3.5 w-3.5" />
-                    {removingId === job.id ? 'Removing' : 'Remove'}
+                    {removingId === job.id ? i18n.m.queue.action_removing : i18n.m.queue.action_remove}
                   </button>
                 {/if}
                 {#if isActive(job.status)}
                   <button class="btn btn-danger inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); stopAndRemove(job) }} disabled={removingId === job.id}>
                     <Icon name="x" class="h-3.5 w-3.5" />
-                    {removingId === job.id ? 'Stopping…' : 'Stop & remove'}
+                    {removingId === job.id ? i18n.m.queue.action_stopping : i18n.m.queue.action_stop_remove}
                   </button>
                 {/if}
               </div>
@@ -671,20 +699,23 @@
   </div>
   <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
     <span>
-      {(queuePageStart + 1).toLocaleString()}–{Math.min(queuePageStart + QUEUE_PAGE_SIZE, visibleJobs.length).toLocaleString()}
-      of {visibleJobs.length.toLocaleString()}{visibleJobs.length !== jobs.length ? ` (${jobs.length.toLocaleString()} total)` : ''}
+      {t(i18n.m.queue.range, {
+        start: (queuePageStart + 1).toLocaleString(),
+        end: Math.min(queuePageStart + QUEUE_PAGE_SIZE, visibleJobs.length).toLocaleString(),
+        total: visibleJobs.length.toLocaleString(),
+      })}{visibleJobs.length !== jobs.length ? t(i18n.m.queue.range_total_suffix, { total: jobs.length.toLocaleString() }) : ''}
     </span>
     {#if queuePageCount > 1}
       <div class="flex items-center gap-2">
-        <button class="btn px-2 py-1 text-xs" onclick={() => goToQueuePage(queuePage - 1)} disabled={queuePage <= 1} aria-label="Previous page">‹</button>
-        <span>p.{Math.min(queuePage, queuePageCount)}/{queuePageCount}</span>
-        <button class="btn px-2 py-1 text-xs" onclick={() => goToQueuePage(queuePage + 1)} disabled={queuePage >= queuePageCount} aria-label="Next page">›</button>
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToQueuePage(queuePage - 1)} disabled={queuePage <= 1} aria-label={i18n.m.queue.prev_page}>‹</button>
+        <span>{t(i18n.m.queue.page_of, { page: Math.min(queuePage, queuePageCount), count: queuePageCount })}</span>
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToQueuePage(queuePage + 1)} disabled={queuePage >= queuePageCount} aria-label={i18n.m.queue.next_page}>›</button>
       </div>
     {/if}
   </div>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
-    The queue is empty. Enqueue a library's eligible files from the Libraries page.
+    {i18n.m.queue.empty}
   </div>
 {/if}
 
@@ -694,7 +725,7 @@
   {#snippet header()}
     {#if selectedJob}
       <div class="flex min-w-0 items-center gap-2">
-        <span class="badge flex-shrink-0 {badgeClass(selectedJob.status)}">{selectedJob.status}</span>
+        <span class="badge flex-shrink-0 {badgeClass(selectedJob.status)}">{statusLabel(selectedJob.status)}</span>
         <p class="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={selectedJob.relativePath ?? ''}>
           {selectedJob.relativePath ?? '—'}
         </p>
@@ -721,11 +752,11 @@
           {/if}
         {:else if selectedJob.status === 'Probing' || selectedJob.status === 'Verifying'}
           <div class="progress-track"><div class="progress-indeterminate"></div></div>
-          <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{selectedJob.status === 'Probing' ? 'Probing…' : 'Verifying…'}</p>
+          <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{selectedJob.status === 'Probing' ? i18n.m.queue.stage_probing_full : i18n.m.queue.stage_verifying_full}</p>
         {:else if selectedJob.status === 'Failed'}
-          <p class="text-sm text-red-600 dark:text-red-400">{selectedJob.errorMessage ?? 'Job failed'}</p>
+          <p class="text-sm text-red-600 dark:text-red-400">{selectedJob.errorMessage ?? i18n.m.queue.job_failed}</p>
         {:else}
-          <p class="text-sm text-slate-500 dark:text-slate-400">{selectedJob.status}</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">{statusLabel(selectedJob.status)}</p>
         {/if}
       </div>
 
@@ -734,7 +765,7 @@
       {#if selectedJob.status === 'Transcoding'}
         <p class="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
           <Icon name="chevron" class="h-3.5 w-3.5 rotate-180" />
-          Live CPU/GPU usage is shown in the panel above.
+          {i18n.m.queue.usage_above}
         </p>
       {/if}
 
@@ -745,19 +776,19 @@
       <!-- Details -->
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <div class="flex justify-between gap-4">
-          <dt class="text-slate-500">Encoder</dt>
+          <dt class="text-slate-500">{i18n.m.queue.detail_encoder}</dt>
           <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-slate-400">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
         </div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Output size</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Priority</dt><dd>{selectedJob.priority}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">Verified</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
       </dl>
 
       <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
            hero's live status. Useful while encoding and for diagnosing a failed job. -->
       {#if selectedJob.ffmpegArguments}
         <div class="mt-4">
-          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">FFmpeg command</div>
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">{i18n.m.queue.ffmpeg_command}</div>
           <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">ffmpeg {selectedJob.ffmpegArguments}</pre>
         </div>
       {/if}
@@ -777,20 +808,20 @@
       <div class="mt-4 flex flex-wrap gap-2">
         {#if selectedJob.status === 'ReadyToReplace' && selectedJob.verificationPassed}
           <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => selectedJob && replace(selectedJob)} disabled={replacingId === selectedJob.id}>
-            {replacingId === selectedJob.id ? 'Replacing…' : 'Replace original'}
+            {replacingId === selectedJob.id ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace_original}
           </button>
         {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
           <button class="btn px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
-            {retryingId === selectedJob.id ? 'Retrying…' : 'Retry'}
+            {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry}
           </button>
           <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
-            {removingId === selectedJob.id ? 'Removing…' : 'Remove from queue'}
+            {removingId === selectedJob.id ? i18n.m.queue.action_removing_ellipsis : i18n.m.queue.action_remove_from_queue}
           </button>
         {/if}
         {#if isActive(selectedJob.status)}
           <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
-            {removingId === selectedJob.id ? 'Stopping…' : 'Stop & remove'}
+            {removingId === selectedJob.id ? i18n.m.queue.action_stopping : i18n.m.queue.action_stop_remove}
           </button>
         {/if}
       </div>
