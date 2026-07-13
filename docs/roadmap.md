@@ -17,6 +17,10 @@ the replacement workflow is trustworthy.
    bundle, and the roadmap/docs split are all done. The **hardware validation matrix**
    below is the remaining open item, gated on access to non-Intel GPUs.
 
+   - **Adaptive language selector: done.** The sidebar language menu now measures the available
+     viewport space and opens upward or downward as appropriate, with keyboard navigation and
+     accessible listbox semantics retained in either direction.
+
    - **Default-on perceptual quality safety: done.** VMAF now protects video re-encodes by default
      at the existing 93 harmonic-mean / 80 worst-frame floors, while remux and non-video work skip
      the inapplicable extra decode. Existing saved opt-outs remain unchanged. CI executes a real

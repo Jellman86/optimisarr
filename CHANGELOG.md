@@ -55,6 +55,11 @@
 
 ### Fixed
 
+- **The language selector can open in either direction.** Its accessible custom menu measures the
+  available viewport space and opens upward near the bottom of the sidebar, while retaining a
+  downward menu where there is room. It supports outside-click/Escape dismissal and arrow-key,
+  Home, and End navigation. Shared toggle checkboxes now also expose their visible labels to
+  assistive technology, including the default-on VMAF control.
 - **VMAF is now a default safety gate for video re-encodes.** New installations compare every
   re-encoded video with its original at the existing conservative floors (93 harmonic mean / 80
   worst frame), while existing installations retain their explicitly saved choice. Remux, audio,

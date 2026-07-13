@@ -29,7 +29,7 @@
   </span>
 
   <span class="relative inline-flex h-6 w-11 flex-shrink-0 items-center">
-    <input type="checkbox" class="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0" bind:checked {disabled} />
+    <input type="checkbox" class="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0" aria-label={label} bind:checked {disabled} />
     <span
       class="pointer-events-none absolute inset-0 rounded-full bg-slate-300 transition-colors duration-200 peer-checked:bg-cyan-600 peer-focus-visible:ring-2 peer-focus-visible:ring-cyan-500/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-white dark:bg-slate-600 dark:peer-focus-visible:ring-offset-slate-950"
     ></span>
