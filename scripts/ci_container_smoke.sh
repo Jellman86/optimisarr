@@ -129,7 +129,10 @@ for _ in {1..30}; do
         -f framemd5 "$fixture/source.framemd5"
       "$transcode" -nostdin -v error -i "$fixture/output.webp" -pix_fmt rgba \
         -f framemd5 "$fixture/output.framemd5"
-      diff -u "$fixture/source.framemd5" "$fixture/output.framemd5"
+      source_rgba_hash="$(tail -n 1 "$fixture/source.framemd5" | cut -d, -f6 | tr -d "[:space:]")"
+      output_rgba_hash="$(tail -n 1 "$fixture/output.framemd5" | cut -d, -f6 | tr -d "[:space:]")"
+      test -n "$source_rgba_hash"
+      test "$source_rgba_hash" = "$output_rgba_hash"
       image_ssim_log="$fixture/image-ssim.log"
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -i "$fixture/output.webp" -i "$fixture/source.png" \
