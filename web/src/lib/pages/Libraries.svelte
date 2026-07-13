@@ -977,9 +977,9 @@
           </div>
           {#if form.qualityCrf != null}
             <div class="flex items-center gap-3">
-              <span class="text-xs text-slate-400">{i18n.m.libraries.smaller}</span>
-              <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
               <span class="text-xs text-slate-400">{i18n.m.libraries.sharper}</span>
+              <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <span class="text-xs text-slate-400">{i18n.m.libraries.smaller}</span>
               <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
             </div>
           {:else}
