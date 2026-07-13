@@ -46,6 +46,26 @@ The Inventory explains why every file is eligible or skipped.
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
 
+## Media toolchain overrides
+
+The published container configures a matched Jellyfin FFmpeg/ffprobe pair automatically. Custom
+installations can select the production transcoder with `OPTIMISARR_FFMPEG`; Optimisarr derives a
+sibling `ffprobe` from an absolute FFmpeg path so probing and verification interpret streams with
+the same build. Set `OPTIMISARR_FFPROBE` only when the paired probe lives elsewhere. The independent
+`OPTIMISARR_FFMPEG_VMAF` command supplies libvmaf, loudness, and image-SSIM measurement, while
+`OPTIMISARR_EXIFTOOL` can select a non-PATH ExifTool binary.
+
+```yaml
+environment:
+  OPTIMISARR_FFMPEG: /opt/media/ffmpeg
+  OPTIMISARR_FFPROBE: /opt/media/ffprobe
+  OPTIMISARR_FFMPEG_VMAF: /opt/media/ffmpeg-vmaf
+  OPTIMISARR_EXIFTOOL: /opt/media/exiftool
+```
+
+The standard image already provides these values; do not override them unless supplying a complete,
+tested replacement toolchain.
+
 ## Verification gates
 
 Every job must pass decode health, output readability, and the media-kind checks

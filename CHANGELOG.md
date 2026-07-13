@@ -152,6 +152,11 @@
   retained with scaled bitrate; there is no implicit downmix. Advanced now distinguishes “Profile
   default” from an explicit “Copy” override, which remains available for operators who require
   bit-exact source audio. AV1/MKV and remux profiles continue to copy by default.
+- **Every production media pass now uses one configured toolchain.** Probing, timestamp inspection,
+  decode verification, hardware detection, and transcoding share the configured Jellyfin
+  FFmpeg/ffprobe pair instead of mixing it with Debian's PATH binaries. Custom installations can
+  set `OPTIMISARR_FFPROBE`; otherwise an absolute `OPTIMISARR_FFMPEG` path automatically resolves
+  its sibling probe. The final-container smoke suite exercises that exact configured pair.
 
 - **MP4 falls back to MKV when the audio can't be muxed.** Copying a Blu-ray audio format MP4 has no
   tag for (Dolby TrueHD, Blu-ray/DVD LPCM) into an MP4 target aborts the encode. The resolver now

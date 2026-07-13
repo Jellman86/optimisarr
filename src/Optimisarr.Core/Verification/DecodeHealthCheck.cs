@@ -20,7 +20,12 @@ public sealed record DecodeHealthResult(bool Healthy, string? Error, int ErrorCo
 /// </summary>
 public sealed class DecodeHealthCheck
 {
-    private const string FfmpegCommand = "ffmpeg";
+    private readonly string _ffmpeg;
+
+    public DecodeHealthCheck(string? ffmpegCommand = null)
+    {
+        _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
+    }
 
     public async Task<DecodeHealthResult> CheckAsync(string path, CancellationToken cancellationToken)
     {
@@ -37,7 +42,7 @@ public sealed class DecodeHealthCheck
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
-                FileName = FfmpegCommand,
+                FileName = _ffmpeg,
                 ArgumentList =
                 {
                     "-nostdin",

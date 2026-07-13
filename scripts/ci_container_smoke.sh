@@ -56,8 +56,8 @@ for _ in {1..30}; do
       # prove the selected encoders, muxers, stream maps, metadata, and artwork dispositions work
       # together in the final image.
       transcode="$OPTIMISARR_FFMPEG"
-      # MediaProbeService resolves ffprobe from PATH in the runtime image, so use the same binary.
-      probe=ffprobe
+      # Production probing and verification use the ffprobe paired with the transcode build.
+      probe="$OPTIMISARR_FFPROBE"
       fixture=/tmp/optimisarr-pipeline-smoke
       rm -rf "$fixture"
       mkdir -p "$fixture"

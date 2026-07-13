@@ -50,7 +50,12 @@ public sealed record MediaProbeResult(
 /// </summary>
 public sealed class MediaProbeService
 {
-    private const string FfprobeCommand = "ffprobe";
+    private readonly string _ffprobe;
+
+    public MediaProbeService(string? ffprobeCommand = null)
+    {
+        _ffprobe = string.IsNullOrWhiteSpace(ffprobeCommand) ? "ffprobe" : ffprobeCommand;
+    }
 
     public async Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken)
     {
@@ -68,7 +73,7 @@ public sealed class MediaProbeService
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
-                FileName = FfprobeCommand,
+                FileName = _ffprobe,
                 ArgumentList =
                 {
                     "-v", "error",

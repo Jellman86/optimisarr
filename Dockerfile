@@ -70,6 +70,7 @@ COPY --from=api-build /app/publish/ /app/
 ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
     OPTIMISARR_CONFIG_DIR=/config \
     OPTIMISARR_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
+    OPTIMISARR_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe \
     OPTIMISARR_FFMPEG_VMAF=/usr/local/lib/optimisarr/ffmpeg-vmaf \
     PUID=1000 \
     PGID=1000 \
