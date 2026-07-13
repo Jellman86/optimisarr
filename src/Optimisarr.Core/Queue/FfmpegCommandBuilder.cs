@@ -24,6 +24,7 @@ public sealed record TranscodeSpec(
     string? ImageEncoder = null,
     int? ImageQuality = null,
     string? ImageScaleFilter = null,
+    bool ImageLossless = false,
     int? ClipSeconds = null,
     int? ClipStartSeconds = null);
 
@@ -341,6 +342,12 @@ public static class FfmpegCommandBuilder
 
         args.Add("-c:v");
         args.Add(encoder);
+
+        if (encoder == "libwebp" && spec.ImageLossless)
+        {
+            args.Add("-lossless");
+            args.Add("1");
+        }
 
         // A still is a single frame; tell the AV1 encoder so, and give it a 4:2:0 pixel format.
         if (encoder == "libaom-av1")

@@ -162,6 +162,25 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_records_pixel_format_and_bit_depth_for_image_safety_rules()
+    {
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "png", "width": 800, "height": 600,
+            "pix_fmt": "rgba64be", "bits_per_raw_sample": "16", "nb_frames": "1"
+          }],
+          "format": { "format_name": "png_pipe" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".png");
+
+        Assert.Equal("rgba64be", result.PixelFormat);
+        Assert.Equal(16, result.BitsPerRawSample);
+    }
+
+    [Fact]
     public void Parse_reads_the_optimisarr_marker_from_format_tags()
     {
         const string json = """

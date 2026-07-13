@@ -56,6 +56,11 @@ public sealed class MediaFile
     /// <summary>Number of frames in the picture/video stream. >1 marks an animated image.</summary>
     public int? FrameCount { get; set; }
 
+    /// <summary>Decoded pixel format used to prevent alpha or high-bit-depth image loss.</summary>
+    public string? PixelFormat { get; set; }
+
+    public int? BitsPerRawSample { get; set; }
+
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 

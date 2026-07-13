@@ -97,7 +97,8 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
                 Name = "Synthetic photos",
                 Path = Path.Combine(_root, "Photos"),
                 MediaType = MediaType.Photo,
-                RuleProfile = RuleProfile.ConservativeHevc
+                RuleProfile = RuleProfile.ConservativeHevc,
+                TargetImageFormat = "webp"
             };
             db.Libraries.AddRange(music, photos);
             await db.SaveChangesAsync();
@@ -135,7 +136,7 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
         Assert.Equal("Image", imageCandidate.MediaKind);
         Assert.Equal("png", imageCandidate.Codec);
         Assert.Contains("png", imageCandidate.Reason);
-        Assert.Contains("jpeg", imageCandidate.Reason);
+        Assert.Contains("webp", imageCandidate.Reason);
     }
 
     private string WriteSparseFile(string relativePath, long sizeBytes)
@@ -165,6 +166,8 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
         file.Width = probe.Width;
         file.Height = probe.Height;
         file.FrameCount = probe.FrameCount;
+        file.PixelFormat = probe.PixelFormat;
+        file.BitsPerRawSample = probe.BitsPerRawSample;
         file.AudioCodecs = probe.AudioCodecs.Count > 0 ? string.Join(", ", probe.AudioCodecs) : null;
         file.AudioTrackCount = probe.AudioTrackCount;
         file.AudioBitrateKbps = probe.AudioBitrateKbps;

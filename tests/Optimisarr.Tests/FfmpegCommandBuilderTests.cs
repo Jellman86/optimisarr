@@ -103,6 +103,14 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void A_lossless_webp_image_job_uses_the_lossless_encoder_mode()
+    {
+        var args = FfmpegCommandBuilder.Build(ImageReencode() with { ImageLossless = true });
+
+        Assert.Equal("1", args[IndexOf(args, "-lossless") + 1]);
+    }
+
+    [Fact]
     public void An_avif_image_job_uses_constant_quality_crf_and_still_picture()
     {
         var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1", quality: 100));

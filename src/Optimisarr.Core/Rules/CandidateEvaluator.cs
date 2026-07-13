@@ -39,8 +39,13 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("No image data detected");
         }
 
-        // An animated image (e.g. an animated GIF or WebP) is really a short video; the still
-        // pipeline would flatten it to a broken single-frame output, so leave it untouched.
+        // Animated-capable formats must have a proven single frame. ffprobe can omit nb_frames
+        // for animated WebP, and treating "unknown" as a still would flatten it silently.
+        if (ImageSafety.RequiresKnownFrameCount(media.VideoCodec) && media.FrameCount is null)
+        {
+            return CandidateDecision.Skipped("Frame count could not be proven for an animated-capable image");
+        }
+
         if (media.FrameCount is > 1)
         {
             return CandidateDecision.Skipped($"Animated image ({media.FrameCount} frames) — not optimised");
@@ -56,18 +61,40 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetImageFormat} (no expected saving)");
         }
 
-        // Lossless sources (PNG/BMP/TIFF/GIF) are always worth re-encoding: a large saving with no
-        // quality loss.
-        if (ImageTarget.IsLossless(media.VideoCodec))
+        if (ImageSafety.MayContainMultiplePages(media.VideoCodec))
         {
-            return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
+            return CandidateDecision.Skipped("TIFF multi-page status cannot be proven safely");
         }
 
-        // The source is already a lossy/efficient image (e.g. a JPEG). By default it is left
-        // untouched, since re-encoding adds generational loss for a smaller gain.
-        if (!rules.ReencodeLossyImages)
+        var sourceIsLossless = ImageTarget.IsLossless(media.VideoCodec);
+        if (!sourceIsLossless && !rules.ReencodeLossyImages)
         {
-            return CandidateDecision.Skipped($"{media.VideoCodec} is already a compressed (lossy) image — left untouched");
+            return CandidateDecision.Skipped(
+                $"{media.VideoCodec} is already a compressed (lossy) image — left untouched");
+        }
+
+        if (ImageSafety.TargetDropsStructuralData(rules.TargetImageFormat))
+        {
+            if (ImageSafety.MayContainAlpha(media.PixelFormat))
+            {
+                return CandidateDecision.Skipped("Target format cannot safely preserve the source alpha channel");
+            }
+
+            if (ImageSafety.IsHighBitDepth(media.PixelFormat, media.BitsPerRawSample))
+            {
+                return CandidateDecision.Skipped("Target format cannot safely preserve the source bit depth");
+            }
+        }
+
+        if (sourceIsLossless)
+        {
+            if (ImageSafety.TargetIsLossy(rules.TargetImageFormat) && !rules.ReencodeLossyImages)
+            {
+                return CandidateDecision.Skipped(
+                    $"{media.VideoCodec} → {rules.TargetImageFormat} is a lossy conversion; explicit opt-in required");
+            }
+
+            return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
         }
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");

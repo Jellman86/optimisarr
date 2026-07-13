@@ -30,9 +30,14 @@ public sealed class CandidateEvaluatorTests
 
     // An image's still-picture codec is captured as the file's VideoCodec by the probe.
     private static MediaProperties ImageFile(
-        string imageCodec, long sizeBytes = 4L * 1024 * 1024, int? frameCount = null) =>
+        string imageCodec,
+        long sizeBytes = 4L * 1024 * 1024,
+        int? frameCount = null,
+        string? pixelFormat = null,
+        int? bitsPerRawSample = null) =>
         new("image2", imageCodec, 4000, 3000, sizeBytes, false, "Photos/2024/IMG_0001.jpg", null,
-            MediaKind.Image, FrameCount: frameCount);
+            MediaKind.Image, FrameCount: frameCount, PixelFormat: pixelFormat,
+            BitsPerRawSample: bitsPerRawSample);
 
     [Fact]
     public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
@@ -119,13 +124,12 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void A_lossless_image_is_eligible_for_re_encode_to_the_target_format()
+    public void A_lossless_image_is_not_silently_converted_to_lossy_jpeg()
     {
-        var decision = CandidateEvaluator.Evaluate(ImageFile("png"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(ImageFile("png", pixelFormat: "rgb24", bitsPerRawSample: 8), Hevc);
 
-        Assert.True(decision.IsEligible);
-        // The default image target is JPEG (max compatibility).
-        Assert.Contains("jpeg", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(decision.IsEligible);
+        Assert.Contains("lossy", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -139,11 +143,50 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void A_single_frame_image_is_still_eligible()
+    public void A_single_frame_lossless_image_is_eligible_for_lossless_webp()
     {
-        var decision = CandidateEvaluator.Evaluate(ImageFile("png", frameCount: 1), Hevc);
+        var rules = Hevc with { TargetImageFormat = "webp" };
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("png", frameCount: 1, pixelFormat: "rgba", bitsPerRawSample: 8), rules);
 
         Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void An_animated_capable_image_with_unknown_frame_count_is_left_untouched()
+    {
+        var rules = Hevc with { ReencodeLossyImages = true };
+
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp", frameCount: null), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("frame count", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("rgba", 8, "alpha")]
+    [InlineData("rgb48be", 16, "bit depth")]
+    public void Jpeg_conversion_rejects_structural_image_loss_even_with_lossy_opt_in(
+        string pixelFormat, int bitsPerRawSample, string expectedReason)
+    {
+        var rules = Hevc with { ReencodeLossyImages = true };
+
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("png", pixelFormat: pixelFormat, bitsPerRawSample: bitsPerRawSample), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains(expectedReason, decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Tiff_is_left_untouched_when_page_count_cannot_be_proven()
+    {
+        var rules = Hevc with { TargetImageFormat = "webp" };
+
+        var decision = CandidateEvaluator.Evaluate(ImageFile("tiff", pixelFormat: "rgb24"), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("multi-page", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -151,7 +194,7 @@ public sealed class CandidateEvaluatorTests
     {
         // A WebP source is lossy and not the (JPEG) target, so re-encoding it risks generational
         // loss; the conservative default leaves it alone.
-        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp", frameCount: 1), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("left untouched", decision.Reason, StringComparison.OrdinalIgnoreCase);
@@ -162,7 +205,8 @@ public sealed class CandidateEvaluatorTests
     {
         var rules = Hevc with { ReencodeLossyImages = true };
 
-        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), rules);
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("webp", frameCount: 1, pixelFormat: "yuv420p", bitsPerRawSample: 8), rules);
 
         Assert.True(decision.IsEligible);
         Assert.Contains("jpeg", decision.Reason, StringComparison.OrdinalIgnoreCase);

@@ -20,7 +20,8 @@ public static class TranscodeSpecResolver
         string? preset,
         MediaKind kind = MediaKind.Video,
         bool sourceHasImageSubtitles = false,
-        bool sourceHasMp4IncompatibleAudio = false)
+        bool sourceHasMp4IncompatibleAudio = false,
+        string? sourceImageCodec = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -35,7 +36,10 @@ public static class TranscodeSpecResolver
                 Kind: MediaKind.Image,
                 ImageEncoder: image.Encoder,
                 ImageQuality: rules.ImageQuality,
-                ImageScaleFilter: ImageScale.BuildFilter(rules.ImageDownscaleMode, rules.ImageDownscaleValue));
+                ImageScaleFilter: ImageScale.BuildFilter(rules.ImageDownscaleMode, rules.ImageDownscaleValue),
+                ImageLossless: image.Encoder == "libwebp"
+                    && sourceImageCodec is not null
+                    && ImageTarget.IsLossless(sourceImageCodec));
         }
 
         if (kind == MediaKind.Audio)

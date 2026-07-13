@@ -30,11 +30,13 @@ public sealed record MediaProbeResult(
     double? AudioStartSeconds,
     string? OptimisedMarker,
     MediaKind MediaKind,
+    string? PixelFormat,
+    int? BitsPerRawSample,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
-            null, null, null, null, null, null, MediaKind.Unknown, error);
+            null, null, null, null, null, null, MediaKind.Unknown, null, null, error);
 }
 
 /// <summary>
@@ -154,6 +156,8 @@ public sealed class MediaProbeService
         string? colorSpace = null;
         double? videoStart = null;
         double? audioStart = null;
+        string? pixelFormat = null;
+        int? bitsPerRawSample = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -202,6 +206,8 @@ public sealed class MediaProbeService
                         colorPrimaries = ReadString(stream, "color_primaries");
                         colorTransfer = ReadString(stream, "color_transfer");
                         colorSpace = ReadString(stream, "color_space");
+                        pixelFormat = ReadString(stream, "pix_fmt");
+                        bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
                         videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
@@ -265,6 +271,8 @@ public sealed class MediaProbeService
             audioStart,
             optimisedMarker,
             MediaKindClassifier.Classify(extension, hasRealVideoStream, audioCodecs.Count > 0),
+            pixelFormat,
+            bitsPerRawSample,
             null);
     }
 
@@ -365,6 +373,13 @@ public sealed class MediaProbeService
 
         return null;
     }
+
+    private static int? ReadIntegerString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
 
     // ffprobe reports bit_rate as a string of bits per second on both streams and the format.
     // Convert to whole kbps; a missing or non-numeric value (some VBR sources omit it) is absent.
