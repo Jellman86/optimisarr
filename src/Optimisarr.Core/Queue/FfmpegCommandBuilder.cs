@@ -317,9 +317,10 @@ public static class FfmpegCommandBuilder
             args.Add("-map");
             args.Add("0:v?");
             args.Add("-c:v");
-            args.Add("copy");
-            // Make the album-art contract explicit when remuxing a cover from formats such as
-            // FLAC into MP4/MP3, rather than relying on each demuxer to propagate its disposition.
+            // Normalise artwork to the universally supported APIC/MP4 cover codec. The shipped
+            // Jellyfin FFmpeg can silently omit a stream-copied FLAC picture from M4A, while an
+            // explicit MJPEG cover is muxed deterministically (and also handles PNG sources).
+            args.Add("mjpeg");
             args.Add("-disposition:v");
             args.Add("attached_pic");
         }

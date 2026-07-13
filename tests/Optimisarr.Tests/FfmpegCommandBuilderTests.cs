@@ -34,9 +34,9 @@ public sealed class FfmpegCommandBuilderTests
     {
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
-        // Cover art is copied, not re-encoded; metadata is carried over.
+        // Cover art is normalised to a broadly supported embedded JPEG; metadata is carried over.
         var videoCodecIndex = IndexOf(args, "-c:v");
-        Assert.Equal("copy", args[videoCodecIndex + 1]);
+        Assert.Equal("mjpeg", args[videoCodecIndex + 1]);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
         var metaMapIndex = IndexOf(args, "-map_metadata");
