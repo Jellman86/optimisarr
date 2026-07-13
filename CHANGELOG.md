@@ -81,8 +81,8 @@
   attached art is rejected before queueing instead of failing in the Ogg muxer or losing its cover;
   MP3/Opus likewise reject timed-lyrics streams they cannot contain. Verification now compares
   source/output format tags and embedded-picture counts, and probing persists artwork counts for
-  deterministic candidate decisions. Mapped M4A/MP3 covers are explicitly marked `attached_pic`,
-  because stream-copy alone can lose FLAC's disposition during remux. The UI explains the default
+  deterministic candidate decisions. Mapped M4A/MP3 covers are explicitly marked `attached_pic`
+  instead of relying on a source demuxer to propagate that disposition. The UI explains the default
   consistently in every language.
 - **Audio bitrate policy is now channel-aware.** The configured value is a stereo baseline;
   retained 5.1/7.1 layouts automatically receive the same budget for each channel pair, while an

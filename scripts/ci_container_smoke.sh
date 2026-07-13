@@ -77,8 +77,8 @@ for _ in {1..30}; do
         -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
-      "$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
-        -of default=noprint_wrappers=1 "$fixture/output.m4a" | grep -qx "attached_pic=1"
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = 1
       test "$("$probe" -v error -show_entries format_tags=artist \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = "Optimisarr Smoke Artist"
 

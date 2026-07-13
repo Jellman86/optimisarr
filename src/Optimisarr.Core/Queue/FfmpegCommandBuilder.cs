@@ -318,9 +318,8 @@ public static class FfmpegCommandBuilder
             args.Add("0:v?");
             args.Add("-c:v");
             args.Add("copy");
-            // Stream mapping alone does not preserve FLAC's attached-picture disposition when
-            // remuxing the cover into MP4/MP3. Mark every mapped picture explicitly so the muxer
-            // writes album art rather than a normal video track (or silently omitting it).
+            // Make the album-art contract explicit when remuxing a cover from formats such as
+            // FLAC into MP4/MP3, rather than relying on each demuxer to propagate its disposition.
             args.Add("-disposition:v");
             args.Add("attached_pic");
         }
