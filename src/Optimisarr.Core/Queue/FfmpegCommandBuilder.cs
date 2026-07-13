@@ -371,11 +371,11 @@ public static class FfmpegCommandBuilder
             args.Add("1");
         }
 
-        // A still is a single frame; tell the AV1 encoder so, and give it a 4:2:0 pixel format.
+        // AVIF uses a broadly decodable 4:2:0 pixel format. Do not emit FFmpeg's optional
+        // -still-picture muxer flag: the production Jellyfin build rejects that option. Image
+        // jobs already contain exactly one eligible source frame, which the AVIF muxer accepts.
         if (encoder == "libaom-av1")
         {
-            args.Add("-still-picture");
-            args.Add("1");
             args.Add("-pix_fmt");
             args.Add("yuv420p");
         }

@@ -137,7 +137,7 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_avif_image_job_uses_constant_quality_crf_and_still_picture()
+    public void An_avif_image_job_uses_supported_constant_quality_arguments()
     {
         var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1", quality: 100));
 
@@ -145,7 +145,7 @@ public sealed class FfmpegCommandBuilderTests
         // Best quality (100) maps to CRF 0 with a zero target bitrate (constant-quality mode).
         Assert.Equal("0", args[IndexOf(args, "-crf") + 1]);
         Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
-        Assert.Equal("1", args[IndexOf(args, "-still-picture") + 1]);
+        Assert.DoesNotContain("-still-picture", args);
         Assert.Equal("yuv420p", args[IndexOf(args, "-pix_fmt") + 1]);
     }
 

@@ -78,7 +78,8 @@ the replacement workflow is trustworthy.
      capabilities. Music now preserves tags/artwork or refuses an unsafe container (including the
      shipped FFmpeg's demonstrated M4A attached-picture limitation), audio bitrate
      scales with retained channels, compatibility presets include compatible AAC, images guard
-     animation/alpha/bit depth and default to SSIM plus metadata verification, and video timing and
+     animation/alpha/bit depth, avoid the shipped FFmpeg's unsupported AVIF `-still-picture` flag,
+     and default to SSIM plus metadata verification, while video timing and
      encoded signal structure are evidence-checked. Probing, decode checks, and transcoding use one
      configured FFmpeg/ffprobe pair. Final-container CI now runs real representative music, JPEG,
      WebP, AVIF, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and

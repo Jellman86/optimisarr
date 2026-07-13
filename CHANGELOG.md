@@ -74,7 +74,9 @@
   and JPEG/AVIF targets reject alpha or high-bit-depth inputs. Lossless-to-lossy conversion now
   requires the existing explicit lossy-image opt-in, while PNG/BMP/GIF to WebP uses the encoder's
   genuinely lossless mode. Pixel format and raw bit depth are persisted via a schema migration so
-  rescans and queue dispatch make the same decision.
+  rescans and queue dispatch make the same decision. AVIF no longer emits the optional
+  `-still-picture` muxer flag that the shipped Jellyfin FFmpeg rejects; the single-frame input
+  contract, output probe, decode, and image-quality gates enforce still-image behaviour instead.
 - **Music conversion now treats artwork, tags, and lyrics as replacement-critical data.** AAC in
   M4A is the compatibility-first default for art-free music and can retain timed-text lyrics. The
   shipped Jellyfin FFmpeg silently drops inherited M4A cover streams, while Opus needs a picture-
@@ -1166,7 +1168,7 @@ everywhere.
   get their own one-choice slider (the image counterpart of the video preset): **JPEG** (max
   compatibility — every server/client incl. Plex), **WebP** (smaller; Jellyfin/modern), **AVIF**
   (smallest; newer clients only). All three are genuinely wired in the command builder — JPEG via
-  `mjpeg -q:v`, AVIF via `libaom-av1` constant-quality CRF with `-still-picture` — with a single
+  `mjpeg -q:v`, AVIF via `libaom-av1` constant-quality CRF — with a single
   0–100 quality mapped onto each encoder's native scale. JXL is detected as a *source* but is no
   longer an encode target (no media server displays it).
 - **New default for Photo libraries is JPEG**, not WebP — safety/compatibility beats savings, and a

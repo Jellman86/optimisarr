@@ -162,7 +162,7 @@ for _ in {1..30}; do
       "$transcode" -nostdin -v error -i "$fixture/output.jpg" -f null -
 
       "$transcode" -nostdin -v error -y -i "$fixture/source-opaque.png" \
-        -map_metadata 0 -map 0:v:0 -c:v libaom-av1 -still-picture 1 -pix_fmt yuv420p \
+        -map_metadata 0 -map 0:v:0 -c:v libaom-av1 -pix_fmt yuv420p \
         -crf 13 -b:v 0 "$fixture/output.avif"
       exiftool -overwrite_original -TagsFromFile "$fixture/source-opaque.png" \
         -EXIF:all -ICC_Profile:all --Orientation --ThumbnailImage --PreviewImage --JpgFromRaw \
