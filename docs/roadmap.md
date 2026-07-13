@@ -23,9 +23,12 @@ the replacement workflow is trustworthy.
 
    - **Default-on perceptual quality safety: done.** VMAF now protects video re-encodes by default
      at the existing 93 harmonic-mean / 80 worst-frame floors, while remux and non-video work skip
-     the inapplicable extra decode. Existing saved opt-outs remain unchanged. CI executes a real
-     `libvmaf` comparison inside the final image so the shipped binary, model data, filter, and
-     runtime dependencies must work together rather than merely advertise the capability.
+     the inapplicable extra decode. Existing saved opt-outs remain unchanged. Measurement is
+     self-configuring: deterministic timebase/timestamp/range/pixel-format alignment, reference-size
+     bicubic scaling, bounded threading, automatic HDTV/4K model selection, and like-for-like
+     HDR→SDR reference tone-mapping. The report records the selected model and preparation. Unit
+     tests own the exact production graph, while CI executes that graph at mismatched resolutions
+     and separately proves the bundled 4K model and HDR-reference tone-map run inside the final image.
 
    - **Optional admin-token auth: done.** `OPTIMISARR_ADMIN_TOKEN`
      now gates the administrative API and SignalR hub with bearer-token authentication

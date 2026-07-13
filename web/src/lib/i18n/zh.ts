@@ -436,7 +436,7 @@ export const zh: Messages = {
     require_subtitles: "要求保留所有字幕轨道",
     require_smaller: "要求输出比原来小",
     vmaf_label: "感知质量（VMAF）",
-    vmaf_hint: "使用 FFmpeg 的 libvmaf 将重新编码的视频与原始视频进行比较。默认启用，因为它能发现结构检查无法检测的可见质量损失；验证时间大约会增加一倍。仅当处理速度比此保护更重要时才禁用。~95 在视觉上与源视频几乎无法区分。",
+    vmaf_hint: "使用 FFmpeg 的 libvmaf 将重新编码的视频与原始视频进行比较。Optimisarr 会自动选择 HDTV 或 4K 模型，并处理缩放、时间同步、色彩范围以及 HDR 到 SDR 的参考预处理。默认启用，因为它能发现结构检查无法检测的可见质量损失；验证时间大约会增加一倍。",
     vmaf_harmonic: "最小值 VMAF（调和平均值）",
     vmaf_harmonic_tip: "地板整体质量好。调和平均值比普通平均值对不良帧的惩罚更大。",
     vmaf_min: "最小 VMAF（最差帧）",

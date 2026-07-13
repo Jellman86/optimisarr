@@ -460,7 +460,7 @@ require_subtitles: 'Requerir que todas las pistas de subtítulos se mantengan',
 require_smaller: 'Requerir que la salida sea más pequeña que el original',
 vmaf_label: 'Calidad perceptual (VMAF)',
 vmaf_hint:
-  "Compara los vídeos recodificados con el original mediante libvmaf de FFmpeg. Está activado por defecto porque detecta pérdidas visibles que las comprobaciones estructurales no encuentran; aproximadamente duplica el tiempo de verificación. Desactívalo solo si el rendimiento importa más que esta protección. ~95 es visualmente indistinguible de la fuente.",
+  "Compara los vídeos recodificados con el original mediante libvmaf de FFmpeg. Optimisarr selecciona automáticamente el modelo HDTV o 4K y gestiona el escalado, la sincronización, el rango de color y la preparación de la referencia HDR a SDR. Está activado por defecto porque detecta pérdidas visibles que las comprobaciones estructurales no encuentran; aproximadamente duplica el tiempo de verificación.",
 vmaf_harmonic: 'VMAF mínimo (media armónica)',
 vmaf_harmonic_tip: 'Piso de calidad general. La media armónica penaliza los cuadros malos más que un promedio simple.',
 vmaf_min: 'VMAF mínimo (peor cuadro)',

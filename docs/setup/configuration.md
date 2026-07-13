@@ -71,6 +71,25 @@ becoming replaceable. VMAF is skipped for remux-only work because those jobs cop
 the encoded video frames unchanged. Existing installations retain their saved VMAF
 choice; a new installation starts with the safer gate enabled.
 
+No libvmaf model or filter configuration is required in the UI. Optimisarr prepares
+both streams at the original's resolution with bicubic scaling, aligns their
+timebases and starting timestamps, normalises colour range and pixel format, and
+uses bounded automatic threading. It selects Netflix's `vmaf_v0.6.1` HDTV model
+for HD material and `vmaf_4k_v0.6.1` when either source axis reaches UHD. If a job
+intentionally converts HDR to SDR, the reference receives the same production
+tone-map before comparison; HDR-preserving jobs keep both streams in the matching
+HDR transfer domain. The model and preparation used are recorded in the result.
+
+The 93 harmonic-mean and 80 worst-frame floors are Optimisarr's conservative
+replacement guardrails, not universal scores promised by Netflix. VMAF is most
+useful for compression and scaling damage; the independent decode, duration,
+stream, HDR-signal, colour, timestamp, and A/V-sync checks remain equally important.
+Netflix does not publish a general HDR VMAF model: for HDR-preserving work Optimisarr
+compares both streams in the same HDR transfer domain, which remains a useful
+full-reference compression check, but its absolute threshold is less formally
+calibrated than the SDR viewing models. The default general-purpose profiles exclude
+HDR; preserving or tone-mapping it is an explicit library-profile choice.
+
 ## Rule profiles (presets)
 
 Each library picks an **optimisation preset** that sets its codec, container, and a

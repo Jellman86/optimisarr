@@ -462,7 +462,7 @@ export const de: Messages = {
     require_smaller: 'Ausgabe muss kleiner als das Original sein',
     vmaf_label: 'Wahrnehmungsqualität (VMAF)',
     vmaf_hint:
-      'Vergleicht neu codierte Videos über FFmpegs libvmaf mit dem Original. Standardmäßig aktiviert, da so sichtbare Qualitätsverluste erkannt werden, die Strukturprüfungen nicht finden; die Prüfzeit verdoppelt sich ungefähr. Nur deaktivieren, wenn Durchsatz wichtiger als dieser Schutz ist. ~95 ist vom Quellmaterial visuell nicht zu unterscheiden.',
+      'Vergleicht neu codierte Videos über FFmpegs libvmaf mit dem Original. Optimisarr wählt automatisch das HDTV- oder 4K-Modell und übernimmt Skalierung, Zeitabgleich, Farbbereich und die HDR-zu-SDR-Aufbereitung der Referenz. Standardmäßig aktiviert, da so sichtbare Qualitätsverluste erkannt werden, die Strukturprüfungen nicht finden; die Prüfzeit verdoppelt sich ungefähr.',
     vmaf_harmonic: 'Min. VMAF (harmonisches Mittel)',
     vmaf_harmonic_tip: 'Untergrenze der Gesamtqualität. Das harmonische Mittel bestraft schlechte Frames stärker als ein einfacher Durchschnitt.',
     vmaf_min: 'Min. VMAF (schlechtestes Frame)',

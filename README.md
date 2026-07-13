@@ -167,6 +167,9 @@ the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned s
 with `libvmaf`; the Tools page reports that optional capability independently.
 VMAF verification is enabled by default for video re-encodes and skipped for remuxes;
 it can be disabled under **Settings → Verification gates** when throughput is preferred.
+Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
+bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
+tone-mapping require no libvmaf expertise. The report records the chosen model and preparation.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so frames never round-trip through system
