@@ -8,9 +8,10 @@ No copyrighted material is used.
 
 ![Tools tab showing FFmpeg, ffprobe, hardware acceleration, and encoder availability](../images/optimisarr-settings-tools-dark.png)
 
-The bundled FFmpeg is used for both detection and transcoding, so the Tools page
-is the source of truth for what this container can actually encode. The Queue
-shows the selected encoder on each job.
+The bundled Jellyfin FFmpeg is used for both hardware detection and transcoding, so the
+Tools page is the source of truth for what this container can actually encode. A separate
+static FFmpeg supplies the optional `libvmaf` quality-measurement filter and appears as its
+own Tools entry. The Queue shows the selected encoder on each job.
 
 ## Intel and AMD
 

@@ -55,7 +55,7 @@ internal static class HealthEndpoints
             }
 
             var unavailableTools = (await tools.DetectAsync(cancellationToken))
-                .Where(tool => !tool.Available)
+                .Where(tool => tool.Required && !tool.Available)
                 .Select(tool => tool.Name)
                 .ToList();
             if (unavailableTools.Count > 0)

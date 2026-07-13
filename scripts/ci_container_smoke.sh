@@ -19,6 +19,8 @@ docker run -d --name "$name" -p 127.0.0.1::8787 \
 for _ in {1..30}; do
   port="$(docker port "$name" 8787/tcp | awk -F: '{print $NF}')"
   if curl --fail --silent "http://127.0.0.1:$port/api/ready" >/dev/null; then
+    docker exec "$name" sh -ec \
+      '"$OPTIMISARR_FFMPEG_VMAF" -hide_banner -filters 2>&1 | grep -Eq "^[[:space:]].*[[:space:]]libvmaf[[:space:]]"'
     exit 0
   fi
   sleep 1

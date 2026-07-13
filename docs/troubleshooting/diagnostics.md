@@ -15,9 +15,9 @@ docker compose logs --tail=200 optimisarr
 work. Check the reported path ownership/mount, database, or missing tool before
 placing jobs in the queue. Docker's health check uses this readiness endpoint.
 
-Use **Settings → Tools** to verify the FFmpeg/ffprobe executable and the actual
-encoder test result. For a failed job, open Queue details and read the FFmpeg
-error and verification report before retrying.
+Use **Settings → Tools** to verify the required FFmpeg/ffprobe executables, the optional
+`libvmaf` measurement capability, and the actual encoder test result. For a failed job,
+open Queue details and read the FFmpeg error and verification report before retrying.
 
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.

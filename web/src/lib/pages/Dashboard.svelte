@@ -47,7 +47,7 @@
     }
   }
 
-  let toolsReady = $derived(tools.length > 0 && tools.every((t) => t.available))
+  let toolsReady = $derived(tools.length > 0 && tools.filter((t) => t.required).every((t) => t.available))
   let healthy = $derived(health?.status === 'healthy' && toolsReady)
   let activeWork = $derived((stats?.running ?? 0) + (stats?.queued ?? 0))
 

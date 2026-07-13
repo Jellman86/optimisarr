@@ -49,6 +49,13 @@
 
 ### Fixed
 
+- **CRF direction guidance and VMAF availability.** The library video-quality slider now correctly
+  labels low CRF values as sharper and high CRF values as smaller. The container no longer assumes
+  Jellyfin FFmpeg provides `libvmaf`: it keeps that binary for hardware-aware transcoding and adds a
+  digest-pinned, multi-architecture static FFmpeg for perceptual measurements. The image build and
+  container smoke test assert the exact `libvmaf` filter (without mistaking `vmafmotion` for it), and
+  Settings → Tools reports the measurement binary as an optional capability without making core
+  readiness depend on an opt-in quality gate.
 - **A/V sync verification no longer false-fails sources with an inherent audio-start offset.** The
   gate previously checked the *output's* absolute video-vs-audio start divergence (>0.5 s = fail),
   so a source that legitimately carries a baked-in audio delay — e.g. a Bluray rip whose AC3 track

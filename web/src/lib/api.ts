@@ -47,6 +47,7 @@ export type ToolCheck = {
   name: string
   command: string
   available: boolean
+  required: boolean
   version: string | null
   error: string | null
 }

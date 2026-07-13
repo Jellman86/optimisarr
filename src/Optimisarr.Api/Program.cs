@@ -27,7 +27,6 @@ var adminToken = Environment.GetEnvironmentVariable(AdminTokenAuth.EnvironmentVa
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<OptimisarrOpenApiTransformer>());
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<ToolDetectionService>();
 // The transcoding/detection ffmpeg. Defaults to "ffmpeg" on PATH, but can be pointed at a
 // hardware-capable build (e.g. jellyfin-ffmpeg, which bundles Intel iHD + oneVPL and NVENC)
 // via OPTIMISARR_FFMPEG. Detection and transcode share it so the encoder list never lies
@@ -44,6 +43,7 @@ builder.Services.AddSingleton<TimestampIntegrityCheck>();
 // different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
 // OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH.
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
+builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg));
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));

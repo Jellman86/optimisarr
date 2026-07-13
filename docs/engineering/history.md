@@ -574,8 +574,8 @@ This deepens Phase 4 rather than replacing it; every existing gate stays.
 
 Status: feature-complete. The output is scored against the original with `libvmaf`
 (opt-in, fail-closed VMAF gate with harmonic-mean and per-frame-minimum floors, plus
-PSNR/SSIM as corroborating signals), and the image bundles a libvmaf-enabled ffmpeg
-(jellyfin-ffmpeg) so the gate can run without disturbing the transcode path. Always-on
+PSNR/SSIM as corroborating signals), and the image bundles a dedicated libvmaf-enabled static
+FFmpeg alongside Jellyfin FFmpeg so the gate can run without disturbing the transcode path. Always-on
 gates cover **HDR preservation** (an HDR original whose library preserves HDR must keep
 its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR passes),
 **colour primaries/transfer/matrix** preservation, **A/V sync**, **monotonic decode

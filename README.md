@@ -163,7 +163,8 @@ iHD driver and oneVPL runtime — so NVIDIA, Intel (incl. iGPUs like the N100), 
 work without installing host driver packages. The encoder is picked by the global **encoder
 mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
-the **GPU** or **CPU**.
+the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
+with `libvmaf`; the Tools page reports that optional capability independently.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so frames never round-trip through system
@@ -207,8 +208,9 @@ cd web && npm run dev             # frontend dev server (proxies /api to :8787)
 ## License
 
 Optimisarr is licensed under the [GNU General Public License v3.0](LICENSE). The
-published Docker image also bundles GPL-licensed FFmpeg (jellyfin-ffmpeg), which
-remains under its own license.
+published Docker image also bundles GPL-licensed FFmpeg distributions
+([jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg) and
+[static-ffmpeg](https://github.com/wader/static-ffmpeg)), which remain under their own licenses.
 
 ## Project references
 

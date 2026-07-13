@@ -59,12 +59,15 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="font-semibold text-slate-800 dark:text-slate-100">{tool.name}</span>
+          {#if !tool.required}<span class="text-xs text-slate-400">{i18n.m.settings.optional}</span>{/if}
           <code class="text-xs text-slate-400">{tool.command}</code>
         </div>
         <span
           class="badge {tool.available
             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-            : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'}"
+            : tool.required
+              ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+              : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}"
         >
           {tool.available ? i18n.m.shared.available : i18n.m.shared.missing}
         </span>
