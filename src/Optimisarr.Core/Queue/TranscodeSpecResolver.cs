@@ -21,7 +21,8 @@ public static class TranscodeSpecResolver
         MediaKind kind = MediaKind.Video,
         bool sourceHasImageSubtitles = false,
         bool sourceHasMp4IncompatibleAudio = false,
-        string? sourceImageCodec = null)
+        string? sourceImageCodec = null,
+        int sourceMaxAudioChannels = 0)
     {
         if (kind == MediaKind.Image)
         {
@@ -54,7 +55,8 @@ public static class TranscodeSpecResolver
                 TonemapToSdr: false,
                 Kind: MediaKind.Audio,
                 AudioEncoder: audio.Encoder,
-                AudioBitrateKbps: rules.AudioBitrateKbps,
+                AudioBitrateKbps: AudioTarget.EffectiveBitrateKbps(
+                    rules.AudioBitrateKbps, sourceMaxAudioChannels, rules.DownmixToStereo),
                 DownmixToStereo: rules.DownmixToStereo);
         }
 
@@ -88,7 +90,10 @@ public static class TranscodeSpecResolver
             rules.TargetVideoCodec is null ? null : preset,
             tonemap,
             AudioEncoder: audioEncoder,
-            AudioBitrateKbps: audioEncoder is null ? null : rules.VideoAudioBitrateKbps,
+            AudioBitrateKbps: audioEncoder is null
+                ? null
+                : AudioTarget.EffectiveBitrateKbps(
+                    rules.VideoAudioBitrateKbps, sourceMaxAudioChannels, rules.DownmixToStereo),
             // A downmix needs an audio re-encode; a copied track keeps its layout.
             DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo);
     }

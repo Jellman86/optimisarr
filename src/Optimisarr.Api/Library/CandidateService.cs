@@ -190,7 +190,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             file.PixelFormat,
             file.BitsPerRawSample,
             file.AttachedPictureCount,
-            file.SubtitleTrackCount ?? 0);
+            file.SubtitleTrackCount ?? 0,
+            file.MaxAudioChannels);
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }

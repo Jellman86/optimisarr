@@ -551,7 +551,8 @@ public sealed class QueueDispatcher(
             media.MediaKind,
             sourceHasImageSubtitles,
             sourceHasMp4IncompatibleAudio,
-            media.VideoCodec);
+            media.VideoCodec,
+            media.MaxAudioChannels);
 
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an

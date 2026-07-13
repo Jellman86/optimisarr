@@ -82,6 +82,12 @@
   MP3/Opus likewise reject timed-lyrics streams they cannot contain. Verification now compares
   source/output format tags and embedded-picture counts, and probing persists artwork counts for
   deterministic candidate decisions. The UI explains the default consistently in every language.
+- **Audio bitrate policy is now channel-aware.** The configured value is a stereo baseline;
+  retained 5.1/7.1 layouts automatically receive the same budget for each channel pair, while an
+  explicit stereo downmix keeps the configured bitrate. Candidate size-saving decisions use that
+  effective bitrate too, preventing a lossy surround source from being queued when it cannot save
+  space. MP3 rejects more than two retained channels and AAC/Opus reject layouts above their
+  supported eight-channel ceiling before FFmpeg runs. Channel counts are persisted by migration.
 - **CRF direction guidance and VMAF availability.** The library video-quality slider now correctly
   labels low CRF values as sharper and high CRF values as smaller. The container no longer assumes
   Jellyfin FFmpeg provides `libvmaf`: it keeps that binary for hardware-aware transcoding and adds a

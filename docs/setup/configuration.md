@@ -109,6 +109,17 @@ same-codec files above a size you set (default 20 GB) — useful for shrinking a
 HEVC remux under an HEVC preset. The size-saving verification gate still rejects an
 output that does not get smaller, so the original is never lost.
 
+### Audio channel and bitrate policy
+
+For music and any opted-in video-audio re-encode, the configured bitrate is the budget for a
+mono/stereo programme. When Optimisarr retains surround audio it applies that budget per channel
+pair: for example, a 128 kbps baseline becomes 384 kbps for 5.1 and 512 kbps for 7.1. Enabling the
+explicit stereo downmix keeps the configured value. This conservative scaling prevents a setting
+chosen for stereo from starving retained surround channels, and the candidate saving calculation
+uses the same effective value. MP3 requires stereo downmix for sources above two channels; AAC and
+Opus accept up to eight retained channels. Post-encode verification independently rejects any
+unrequested channel loss.
+
 ## Per-library automation
 
 **Auto-optimise** uses a per-library local-time window. Inside that window the

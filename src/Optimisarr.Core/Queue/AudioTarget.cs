@@ -79,4 +79,31 @@ public static class AudioTarget
     /// </summary>
     public static bool LossyReencodeSaves(int sourceKbps, int targetKbps) =>
         sourceKbps >= targetKbps * (1 + LossyReencodeMinSavingRatio);
+
+    /// <summary>
+    /// Treat the configured value as a stereo-programme bitrate. Retaining surround needs one
+    /// such budget per channel pair; an intentional stereo downmix keeps the configured value.
+    /// Unknown channel layouts retain the configured value for compatibility with legacy probe
+    /// rows and are still protected by post-encode channel verification.
+    /// </summary>
+    public static int EffectiveBitrateKbps(int configuredKbps, int sourceChannels, bool downmixToStereo) =>
+        downmixToStereo || sourceChannels <= 2
+            ? configuredKbps
+            : configuredKbps * (int)Math.Ceiling(sourceChannels / 2.0);
+
+    public static bool CanEncodeChannels(string codec, int sourceChannels, bool downmixToStereo)
+    {
+        var outputChannels = downmixToStereo ? Math.Min(sourceChannels, 2) : sourceChannels;
+        if (outputChannels <= 0)
+        {
+            return true;
+        }
+
+        return codec.ToLowerInvariant() switch
+        {
+            "mp3" => outputChannels <= 2,
+            "aac" or "opus" => outputChannels <= 8,
+            _ => false
+        };
+    }
 }

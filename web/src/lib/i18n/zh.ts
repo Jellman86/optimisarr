@@ -642,7 +642,7 @@ export const zh: Messages = {
     audio_copy: "复制（保留音频不变）",
     reencode_to: "重新编码为 {codec}",
     audio_bitrate: "音频比特率 (kbps)",
-    audio_bitrate_tip: "音频重新编码的目标比特率 (32–512 kbps)。仅当音轨在上面重新编码时适用。 96 kbps 立体声 AAC 对于大多数聆听来说都是透明的。",
+    audio_bitrate_tip: "音频重新编码的立体声基准比特率 (32–512 kbps)。保留环绕声时，每对声道会自动获得该比特率预算；明确下混为立体声时则保持此值。96 kbps 立体声 AAC 对于大多数聆听来说都是透明的。",
     audio_bitrate_ph: "默认 (160)",
     vmaf_thresholds: "质量门阈值 (VMAF)",
     vmaf_thresholds_tip: "感知质量门的每个媒体库覆盖。仅当在“设置”中启用该门时才使用。更高=更严格（接近无损）：低于这些的输出分数将被拒绝并保留原始分数。",

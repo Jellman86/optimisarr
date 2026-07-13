@@ -91,6 +91,7 @@ public sealed class LibraryInventoryService(
                 file.Height = null;
                 file.AudioCodecs = null;
                 file.AudioTrackCount = null;
+                file.MaxAudioChannels = 0;
                 file.AudioBitrateKbps = null;
                 file.SubtitleTrackCount = null;
                 file.IsHdr = false;
@@ -222,6 +223,7 @@ public sealed class LibraryInventoryService(
             file.AttachedPictureCount = result.AttachedPictureCount;
             file.AudioCodecs = result.AudioCodecs.Count > 0 ? string.Join(", ", result.AudioCodecs) : null;
             file.AudioTrackCount = result.AudioTrackCount;
+            file.MaxAudioChannels = result.MaxAudioChannels;
             file.AudioBitrateKbps = result.AudioBitrateKbps;
             file.SubtitleTrackCount = result.SubtitleTrackCount;
             file.IsHdr = result.IsHdr;

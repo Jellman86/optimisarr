@@ -69,6 +69,9 @@ public sealed class MediaFile
 
     public int? AudioTrackCount { get; set; }
 
+    /// <summary>Largest channel count among the source audio streams.</summary>
+    public int MaxAudioChannels { get; set; }
+
     /// <summary>
     /// The source audio bitrate in kbps (the highest audio stream, or the container bitrate for
     /// an audio-only file). Null when ffprobe reported none. Drives the any-source audio

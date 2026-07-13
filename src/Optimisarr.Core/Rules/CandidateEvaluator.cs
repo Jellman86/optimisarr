@@ -134,6 +134,16 @@ public static class CandidateEvaluator
                 $"{rules.TargetAudioCodec} cannot preserve the embedded timed lyrics/subtitle stream");
         }
 
+        if (!AudioTarget.CanEncodeChannels(
+                rules.TargetAudioCodec, media.MaxAudioChannels, rules.DownmixToStereo))
+        {
+            return CandidateDecision.Skipped(
+                $"{rules.TargetAudioCodec} cannot safely encode the {media.MaxAudioChannels}-channel layout; enable stereo downmix or choose another codec");
+        }
+
+        var targetBitrate = AudioTarget.EffectiveBitrateKbps(
+            rules.AudioBitrateKbps, media.MaxAudioChannels, rules.DownmixToStereo);
+
         // Lossless sources are always worth re-encoding: a large saving with no audible loss.
         if (AudioTarget.IsLossless(media.AudioCodec))
         {
@@ -154,14 +164,14 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"{media.AudioCodec} source bitrate unknown — cannot confirm a saving, left untouched");
         }
 
-        if (!AudioTarget.LossyReencodeSaves(sourceKbps, rules.AudioBitrateKbps))
+        if (!AudioTarget.LossyReencodeSaves(sourceKbps, targetBitrate))
         {
             return CandidateDecision.Skipped(
-                $"{media.AudioCodec} at {sourceKbps} kbps is not far enough above the {rules.AudioBitrateKbps} kbps target to save space — left untouched");
+                $"{media.AudioCodec} at {sourceKbps} kbps is not far enough above the {targetBitrate} kbps target to save space — left untouched");
         }
 
         return CandidateDecision.Eligible(
-            $"{media.AudioCodec} {sourceKbps} kbps → {rules.TargetAudioCodec} {rules.AudioBitrateKbps} kbps");
+            $"{media.AudioCodec} {sourceKbps} kbps → {rules.TargetAudioCodec} {targetBitrate} kbps");
     }
 
     private static CandidateDecision EvaluateVideo(MediaProperties media, RuleSettings rules)

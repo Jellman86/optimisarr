@@ -28,10 +28,11 @@ public sealed class CandidateEvaluatorTests
         long sizeBytes = 40L * 1024 * 1024,
         int? audioBitrateKbps = null,
         int attachedPictureCount = 0,
-        int subtitleTrackCount = 0) =>
+        int subtitleTrackCount = 0,
+        int maxAudioChannels = 2) =>
         new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
             MediaKind.Audio, audioCodec, audioBitrateKbps, AttachedPictureCount: attachedPictureCount,
-            SubtitleTrackCount: subtitleTrackCount);
+            SubtitleTrackCount: subtitleTrackCount, MaxAudioChannels: maxAudioChannels);
 
     // An image's still-picture codec is captured as the file's VideoCodec by the probe.
     private static MediaProperties ImageFile(
@@ -150,6 +151,39 @@ public sealed class CandidateEvaluatorTests
 
         Assert.False(decision.IsEligible);
         Assert.Contains("timed lyrics", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Multichannel_mp3_is_rejected_without_an_explicit_downmix()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3" };
+
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", maxAudioChannels: 6), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("6-channel", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Multichannel_mp3_is_eligible_with_an_explicit_stereo_downmix()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3", DownmixToStereo = true };
+
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", maxAudioChannels: 6), rules);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Lossy_surround_reencode_uses_the_channel_aware_bitrate_for_saving_decisions()
+    {
+        var rules = Hevc with { ReencodeLossyAudio = true, AudioBitrateKbps = 128 };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("ac3", audioBitrateKbps: 384, maxAudioChannels: 6), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("384 kbps target", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

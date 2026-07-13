@@ -642,7 +642,7 @@ export const pt: Messages = {
     audio_copy: "Copiar (deixar o áudio intacto)",
     reencode_to: "Recodificar para {codec}",
     audio_bitrate: "Taxa de bits de áudio (kbps)",
-    audio_bitrate_tip: "Taxa de bits desejada para a recodificação de áudio (32–512 kbps). Aplica-se apenas quando a trilha de áudio é recodificada acima. 96 kbps estéreo AAC é transparente para a maioria dos ouvintes.",
+    audio_bitrate_tip: "Taxa de bits base estéreo para a recodificação de áudio (32–512 kbps). O som surround preservado recebe automaticamente este orçamento por par de canais; uma redução estéreo explícita mantém este valor. 96 kbps estéreo AAC é transparente para a maioria dos ouvintes.",
     audio_bitrate_ph: "Padrão (160)",
     vmaf_thresholds: "Limites de controle de qualidade (VMAF)",
     vmaf_thresholds_tip: "Substituição da biblioteca por mídia para a porta de qualidade perceptual. Usado apenas quando esse portão está habilitado nas configurações. Maior = mais rigoroso (quase sem perdas): uma pontuação de saída abaixo desta é rejeitada e o original mantido.",

@@ -680,7 +680,7 @@ export const en = {
     audio_copy: 'Copy (leave audio untouched)',
     reencode_to: 'Re-encode to {codec}',
     audio_bitrate: 'Audio bitrate (kbps)',
-    audio_bitrate_tip: 'Target bitrate for the audio re-encode (32–512 kbps). Only applies when the audio track is re-encoded above. 96 kbps stereo AAC is transparent for most listening.',
+    audio_bitrate_tip: 'Stereo baseline bitrate for the audio re-encode (32–512 kbps). Retained surround automatically receives this budget per channel pair; an explicit stereo downmix keeps this value. 96 kbps stereo AAC is transparent for most listening.',
     audio_bitrate_ph: 'Default (160)',
     vmaf_thresholds: 'Quality-gate thresholds (VMAF)',
     vmaf_thresholds_tip: 'Per-library override for the perceptual-quality gate. Only used when that gate is enabled in Settings. Higher = stricter (near-lossless): an output scoring below these is rejected and the original kept.',

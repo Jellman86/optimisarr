@@ -25,4 +25,5 @@ public sealed record MediaProperties(
     string? PixelFormat = null,
     int? BitsPerRawSample = null,
     int AttachedPictureCount = 0,
-    int SubtitleTrackCount = 0);
+    int SubtitleTrackCount = 0,
+    int MaxAudioChannels = 0);

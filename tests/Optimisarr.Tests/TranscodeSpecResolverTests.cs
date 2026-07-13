@@ -201,6 +201,44 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void An_audio_job_scales_the_stereo_bitrate_budget_for_retained_surround()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, "/data/music/Track.flac", "Track.flac", "/work",
+            sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Audio,
+            sourceMaxAudioChannels: 6);
+
+        Assert.Equal(384, spec.AudioBitrateKbps);
+        Assert.False(spec.DownmixToStereo);
+    }
+
+    [Fact]
+    public void An_audio_downmix_keeps_the_configured_stereo_bitrate()
+    {
+        var rules = Hevc with { DownmixToStereo = true };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, "/data/music/Track.flac", "Track.flac", "/work",
+            sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Audio,
+            sourceMaxAudioChannels: 6);
+
+        Assert.Equal(128, spec.AudioBitrateKbps);
+        Assert.True(spec.DownmixToStereo);
+    }
+
+    [Fact]
+    public void A_video_audio_reencode_scales_its_bitrate_for_retained_surround()
+    {
+        var rules = Hevc with { VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23,
+            preset: "medium", sourceMaxAudioChannels: 6);
+
+        Assert.Equal(480, spec.AudioBitrateKbps);
+    }
+
+    [Fact]
     public void A_video_downmix_only_applies_when_its_audio_is_re_encoded()
     {
         // Downmix requires an audio re-encode; with audio copied (no video-audio codec) the

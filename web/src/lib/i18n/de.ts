@@ -680,7 +680,7 @@ export const de: Messages = {
     audio_copy: 'Kopieren (Audio unangetastet lassen)',
     reencode_to: 'Neu kodieren zu {codec}',
     audio_bitrate: 'Audio-Bitrate (kbps)',
-    audio_bitrate_tip: 'Ziel-Bitrate für die Audio-Neukodierung (32–512 kbps). Gilt nur, wenn die Audiospur oben neu kodiert wird. 96 kbps Stereo-AAC ist für die meisten Hörsituationen transparent.',
+    audio_bitrate_tip: 'Stereo-Basisbitrate für die Audio-Neukodierung (32–512 kbps). Beibehaltener Surround-Ton erhält dieses Budget automatisch pro Kanalpaar; ein ausdrücklicher Stereo-Downmix behält diesen Wert. 96 kbps Stereo-AAC ist für die meisten Hörsituationen transparent.',
     audio_bitrate_ph: 'Standard (160)',
     vmaf_thresholds: 'Qualitäts-Gate-Schwellenwerte (VMAF)',
     vmaf_thresholds_tip: 'Bibliotheksspezifische Überschreibung für das Wahrnehmungsqualitäts-Gate. Wird nur verwendet, wenn dieses Gate in den Einstellungen aktiviert ist. Höher = strenger (nahezu verlustfrei): eine Ausgabe, die darunter liegt, wird abgelehnt und das Original behalten.',
