@@ -481,7 +481,7 @@ export const en = {
     dbtp: 'dBTP',
     ssim_label: 'Image structural quality (SSIM)',
     ssim_hint:
-      "Photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails when structural similarity drops below the floor. Runs an extra pass, so it's off by default.",
+      "Photo/image jobs only: compares the re-encoded still to the original with FFmpeg's ssim filter and fails when structural similarity drops below the floor. Runs an extra pass and is enabled by default to protect replacements.",
     ssim_min: 'Minimum SSIM',
     ssim_min_tip: 'Structural similarity, 0–1 where 1 is identical. 0.95 is a conservative default.',
     exif_label: 'Preserve image EXIF/ICC metadata',

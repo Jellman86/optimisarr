@@ -49,14 +49,14 @@ public static class VerificationEvaluator
             checks.Add(DimensionsRetained(input));
 
             // The structural-quality (SSIM) gate is the still-image counterpart of VMAF and
-            // only contributes when the user has opted in; otherwise the report is unchanged.
+            // contributes when enabled (the safe default); otherwise the report is unchanged.
             if (policy.ImageQualityGateEnabled)
             {
                 checks.Add(ImageQuality(input, policy));
             }
 
             // The metadata gate fails an image whose re-encode silently dropped the source's
-            // ICC colour profile or EXIF; opt-in, and only flags loss (never a gain).
+            // ICC colour profile or EXIF; enabled by default, and only flags loss (never a gain).
             if (policy.ImageMetadataGateEnabled)
             {
                 checks.Add(ImageMetadataPreserved(input));

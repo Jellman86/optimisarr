@@ -59,7 +59,10 @@ public sealed class VerificationEvaluatorTests
         OriginalWidth = 4000,
         OriginalHeight = 3000,
         OutputWidth = 4000,
-        OutputHeight = 3000
+        OutputHeight = 3000,
+        ImageQualityMeasured = true,
+        ImageSsim = 0.99,
+        ImageMetadataMeasured = true
     };
 
     [Fact]
@@ -187,9 +190,10 @@ public sealed class VerificationEvaluatorTests
     private const string ImageMetadataCheck = "Image metadata (EXIF/ICC)";
 
     [Fact]
-    public void Image_metadata_gate_is_absent_unless_enabled()
+    public void Image_metadata_gate_is_absent_when_explicitly_disabled()
     {
-        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+        var policy = VerificationPolicy.Default with { ImageMetadataGateEnabled = false };
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), policy);
 
         Assert.DoesNotContain(report.Checks, check => check.Name == ImageMetadataCheck);
     }
@@ -206,7 +210,8 @@ public sealed class VerificationEvaluatorTests
     public void Image_metadata_gate_fails_closed_when_it_could_not_be_measured()
     {
         // The gate is enabled but exiftool produced nothing; fail rather than assume retention.
-        var report = VerificationEvaluator.Evaluate(HealthyImage(), ImageMetadataGate);
+        var report = VerificationEvaluator.Evaluate(
+            HealthyImage() with { ImageMetadataMeasured = false }, ImageMetadataGate);
 
         Assert.False(report.Passed);
         Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageMetadataCheck));
@@ -289,9 +294,10 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
-    public void Image_quality_gate_is_absent_unless_enabled()
+    public void Image_quality_gate_is_absent_when_explicitly_disabled()
     {
-        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+        var policy = VerificationPolicy.Default with { ImageQualityGateEnabled = false };
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), policy);
 
         Assert.DoesNotContain(report.Checks, check => check.Name == ImageQualityCheck);
     }

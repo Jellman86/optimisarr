@@ -93,6 +93,13 @@
   It runs the production stream-map/codec argument shapes with the shipped Jellyfin FFmpeg, fully
   decodes the video, probes codec/art/tag retention, and byte-compares decoded RGBA frame hashes for
   lossless WebP. This complements pure command-builder tests with real encoder/muxer coverage.
+- **Image verification is now default-on and uses a current SSIM graph.** New installations require
+  0.95 SSIM plus EXIF/ICC retention before replacing a still; saved opt-outs remain unchanged. Both
+  inputs are independently aligned to explicit reference dimensions, timestamps, full colour range,
+  and planar RGB/RGBA without deprecated `scale2ref`, so alpha participates when applicable. ExifTool
+  copies source EXIF/ICC before verification while excluding orientation, previews, and stale raster
+  dimensions that would misdescribe the encoded pixels. WebP now also rejects high-bit-depth sources
+  because its wired encoder path is eight-bit.
 - **CRF direction guidance and VMAF availability.** The library video-quality slider now correctly
   labels low CRF values as sharper and high CRF values as smaller. The container no longer assumes
   Jellyfin FFmpeg provides `libvmaf`: it keeps that binary for hardware-aware transcoding and adds a

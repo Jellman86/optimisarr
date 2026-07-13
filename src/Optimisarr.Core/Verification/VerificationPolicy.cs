@@ -23,14 +23,14 @@ namespace Optimisarr.Core.Verification;
 /// clipping gate fails an output whose true peak rises above the ceiling when the
 /// original sat below it — i.e. the re-encode introduced clipping.
 ///
-/// The image-quality gate is the still-image counterpart of VMAF: it is opt-in
+/// The image-quality gate is the still-image counterpart of VMAF: it is on by default
 /// (measuring it runs ffmpeg's <c>ssim</c> filter over the original and output
 /// pictures) and, when enabled, blocks replacement when the structural similarity
 /// of the re-encoded still falls below a floor. SSIM (not VMAF) is the image metric
 /// because VMAF is tuned for moving video, while SSIM is a well-understood
 /// structural measure for a single frame.
 ///
-/// The image-metadata gate is also opt-in: when enabled it fails an image whose
+/// The image-metadata gate is also on by default: when enabled it fails an image whose
 /// re-encode silently dropped the source's embedded ICC colour profile or its EXIF
 /// metadata. Some encoders/containers discard these by default, which can shift
 /// colours or lose capture data, so a colour-sensitive library can demand they
@@ -65,9 +65,9 @@ public sealed record VerificationPolicy(
         MaxLoudnessDriftLufs: 1.0,
         AudioClippingGateEnabled: false,
         MaxTruePeakDbtp: 0.0,
-        ImageQualityGateEnabled: false,
+        ImageQualityGateEnabled: true,
         MinimumImageSsim: 0.95,
-        ImageMetadataGateEnabled: false);
+        ImageMetadataGateEnabled: true);
 
     public bool RequiresVmaf(MediaKind kind, bool videoReencoded) =>
         QualityGateEnabled && kind == MediaKind.Video && videoReencoded;

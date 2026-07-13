@@ -451,7 +451,7 @@ export const pt: Messages = {
     true_peak_tip: "0 dBTP é escala completa; defina uma margem como -1 para ser mais rigorosa. A tarefa de processamento falha apenas se a recodificação empurrar o pico acima deste enquanto o original fica abaixo dele.",
     dbtp: "dBTP",
     ssim_label: "Qualidade estrutural da imagem (SSIM)",
-    ssim_hint: "Somente tarefas de processamento de foto/imagem: compara a imagem estática recodificada com o original com o filtro ssim do FFmpeg e falha quando a similaridade estrutural cai abaixo do nível do chão. Executa uma passagem extra, por isso está desativado por padrão.",
+    ssim_hint: "Somente tarefas de processamento de foto/imagem: compara a imagem estática recodificada com o original com o filtro ssim do FFmpeg e falha quando a similaridade estrutural cai abaixo do limite. Executa uma passagem extra e fica ativado por padrão para proteger substituições.",
     ssim_min: "Mínimo SSIM",
     ssim_min_tip: "Similaridade estrutural, 0–1 onde 1 é idêntico. 0,95 é um padrão conservador.",
     exif_label: "Preservar metadados da imagem EXIF/ICC",

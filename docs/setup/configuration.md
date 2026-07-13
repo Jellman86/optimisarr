@@ -62,14 +62,18 @@ that apply to it. The configurable gates make replacement stricter:
 | Perceptual quality (VMAF) | Video re-encodes | On, harmonic mean 93 / worst frame 80 |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
-| Image SSIM | Images | Off |
-| Image metadata | Images | Off |
+| Image SSIM | Images | On, 0.95 |
+| Image metadata | Images | On |
 
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
 the encoded video frames unchanged. Existing installations retain their saved VMAF
-choice; a new installation starts with the safer gate enabled.
+choice; a new installation starts with the safer gate enabled. Image SSIM and EXIF/ICC retention
+are likewise enabled for new installations; existing saved opt-outs remain unchanged. SSIM uses
+explicit reference dimensions, aligned timebases, full-range planar RGB/RGBA, and includes alpha
+when the source may carry it. Before verification, ExifTool copies EXIF and ICC while deliberately
+excluding orientation, embedded previews, and stale raster dimensions from the old image.
 
 No libvmaf model or filter configuration is required in the UI. Optimisarr prepares
 both streams at the original's resolution with bicubic scaling, aligns their

@@ -75,13 +75,20 @@ public sealed class VerificationService(
                 : null;
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
-            // image job and only when the user opted in, since it runs an extra ffmpeg pass.
+            // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
             var imageQualityResult = policy.ImageQualityGateEnabled && reference.Kind == MediaKind.Image
-                ? await imageQuality.MeasureAsync(reference.Path, outputPath, cancellationToken)
+                ? await imageQuality.MeasureAsync(
+                    reference.Path,
+                    outputPath,
+                    new ImageQualityMeasurementContext(
+                        originalProbe.Width ?? 0,
+                        originalProbe.Height ?? 0,
+                        Optimisarr.Core.Rules.ImageSafety.MayContainAlpha(originalProbe.PixelFormat)),
+                    cancellationToken)
                 : null;
 
             // The EXIF/ICC-retention gate reads both files' metadata with exiftool; image-only and
-            // opt-in, since it spawns two extra processes.
+            // enabled by default, since it spawns two extra processes.
             ImageMetadataResult? originalMetadata = null;
             ImageMetadataResult? outputMetadata = null;
             if (policy.ImageMetadataGateEnabled && reference.Kind == MediaKind.Image)

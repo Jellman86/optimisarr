@@ -481,7 +481,7 @@ export const de: Messages = {
     dbtp: 'dBTP',
     ssim_label: 'Strukturelle Bildqualität (SSIM)',
     ssim_hint:
-      'Nur Foto-/Bildaufgaben: vergleicht das neu kodierte Standbild mit dem Original über FFmpegs ssim-Filter und schlägt fehl, wenn die strukturelle Ähnlichkeit unter die Grenze fällt. Führt einen zusätzlichen Durchlauf aus, daher standardmäßig deaktiviert.',
+      'Nur Foto-/Bildaufgaben: vergleicht das neu kodierte Standbild mit dem Original über FFmpegs ssim-Filter und schlägt fehl, wenn die strukturelle Ähnlichkeit unter die Grenze fällt. Führt einen zusätzlichen Durchlauf aus und ist zum Schutz von Ersetzungen standardmäßig aktiviert.',
     ssim_min: 'Minimaler SSIM',
     ssim_min_tip: 'Strukturelle Ähnlichkeit, 0–1, wobei 1 identisch bedeutet. 0,95 ist ein konservativer Standardwert.',
     exif_label: 'Bild-EXIF/ICC-Metadaten erhalten',

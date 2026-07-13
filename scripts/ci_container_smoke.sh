@@ -85,13 +85,24 @@ for _ in {1..30}; do
       "$transcode" -nostdin -v error -y -f lavfi \
         -i "color=c=red@0.5:size=48x48:rate=1:duration=1,format=rgba" \
         -frames:v 1 "$fixture/source.png"
+      exiftool -overwrite_original -EXIF:Artist="Optimisarr Smoke Artist" "$fixture/source.png" >/dev/null
       "$transcode" -nostdin -v error -y -i "$fixture/source.png" \
         -map_metadata 0 -map 0:v:0 -c:v libwebp -lossless 1 -quality 80 "$fixture/output.webp"
+      exiftool -overwrite_original -TagsFromFile "$fixture/source.png" \
+        -EXIF:all -ICC_Profile:all --Orientation --ThumbnailImage --PreviewImage --JpgFromRaw \
+        --ImageWidth --ImageHeight --ExifImageWidth --ExifImageHeight "$fixture/output.webp" >/dev/null
+      test "$(exiftool -s3 -EXIF:Artist "$fixture/output.webp")" = "Optimisarr Smoke Artist"
       "$transcode" -nostdin -v error -i "$fixture/source.png" -pix_fmt rgba \
         -f framemd5 "$fixture/source.framemd5"
       "$transcode" -nostdin -v error -i "$fixture/output.webp" -pix_fmt rgba \
         -f framemd5 "$fixture/output.framemd5"
       diff -u "$fixture/source.framemd5" "$fixture/output.framemd5"
+      image_ssim_log="$fixture/image-ssim.log"
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -i "$fixture/output.webp" -i "$fixture/source.png" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=48:48:flags=bicubic:in_range=auto:out_range=full,format=gbrap[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=48:48:flags=bicubic:in_range=auto:out_range=full,format=gbrap[ref];[dist][ref]ssim=stats_file=$image_ssim_log:shortest=1:repeatlast=0" \
+        -f null -
+      grep -Eq "All:[[:space:]]*(1|0\\.9)" "$image_ssim_log"
 
       # Video: H.264/AAC MP4 -> the current production HEVC MP4 stream-map and codec policy.
       "$transcode" -nostdin -v error -y \

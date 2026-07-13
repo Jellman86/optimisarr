@@ -479,7 +479,7 @@ quarantine: {
     dbtp: 'dBTP',
     ssim_label: 'Qualità strutturale dell’immagine (SSIM)',
     ssim_hint:
-      "Solo lavori foto/immagini: confronta l’immagine codificata con l’originale usando il filtro ssim di FFmpeg e fallisce se la somiglianza strutturale scende sotto la soglia. Richiede un passaggio extra, quindi è disattivato di default.",
+      "Solo lavori foto/immagini: confronta l’immagine codificata con l’originale usando il filtro ssim di FFmpeg e fallisce se la somiglianza strutturale scende sotto la soglia. Richiede un passaggio extra ed è attivato di default per proteggere le sostituzioni.",
     ssim_min: 'SSIM minimo',
     ssim_min_tip: 'Somiglianza strutturale, 0–1 dove 1 è identico. 0,95 è il valore predefinito conservativo.',
     exif_label: 'Preserva metadati EXIF/ICC dell’immagine',

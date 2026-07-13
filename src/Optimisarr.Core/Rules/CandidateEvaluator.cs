@@ -73,17 +73,16 @@ public static class CandidateEvaluator
                 $"{media.VideoCodec} is already a compressed (lossy) image — left untouched");
         }
 
-        if (ImageSafety.TargetDropsStructuralData(rules.TargetImageFormat))
+        if (ImageSafety.TargetDropsAlpha(rules.TargetImageFormat)
+            && ImageSafety.MayContainAlpha(media.PixelFormat))
         {
-            if (ImageSafety.MayContainAlpha(media.PixelFormat))
-            {
-                return CandidateDecision.Skipped("Target format cannot safely preserve the source alpha channel");
-            }
+            return CandidateDecision.Skipped("Target format cannot safely preserve the source alpha channel");
+        }
 
-            if (ImageSafety.IsHighBitDepth(media.PixelFormat, media.BitsPerRawSample))
-            {
-                return CandidateDecision.Skipped("Target format cannot safely preserve the source bit depth");
-            }
+        if (ImageSafety.TargetDropsHighBitDepth(rules.TargetImageFormat)
+            && ImageSafety.IsHighBitDepth(media.PixelFormat, media.BitsPerRawSample))
+        {
+            return CandidateDecision.Skipped("Target format cannot safely preserve the source bit depth");
         }
 
         if (sourceIsLossless)

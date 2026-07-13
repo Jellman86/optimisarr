@@ -27,6 +27,16 @@ public sealed class ImageMarkerService(string? exiftoolCommand = null)
         return result is { ExitCode: 0 };
     }
 
+    /// <summary>Copies EXIF and ICC metadata from the source into the encoded image.</summary>
+    public async Task<bool> CopyMetadataAsync(
+        string sourcePath, string outputPath, CancellationToken cancellationToken)
+    {
+        var result = await RunAsync(
+            ImageMetadataCommandBuilder.BuildCopyArguments(sourcePath, outputPath),
+            cancellationToken);
+        return result is { ExitCode: 0 };
+    }
+
     /// <summary>Reads the marker back from the image's Software field, or <c>null</c> if absent/foreign.</summary>
     public async Task<string?> ReadAsync(string path, CancellationToken cancellationToken)
     {

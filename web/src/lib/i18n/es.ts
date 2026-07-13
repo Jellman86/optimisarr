@@ -479,7 +479,7 @@ true_peak_tip:
     dbtp: 'dBTP',
     ssim_label: 'Calidad estructural de imagen (SSIM)',
     ssim_hint:
-      "Solo para trabajos de fotos/imágenes: compara el fotograma re-codificado con el original usando el filtro ssim de FFmpeg y falla cuando la similitud estructural cae por debajo del mínimo. Realiza un pase extra, por eso está desactivado por defecto.",
+      "Solo para trabajos de fotos/imágenes: compara el fotograma re-codificado con el original usando el filtro ssim de FFmpeg y falla cuando la similitud estructural cae por debajo del mínimo. Realiza un pase extra y está activado por defecto para proteger los reemplazos.",
     ssim_min: 'SSIM mínimo',
     ssim_min_tip: 'Similitud estructural, 0–1 donde 1 es idéntico. 0.95 es el valor predeterminado conservador.',
     exif_label: 'Preservar metadata EXIF/ICC de imagen',

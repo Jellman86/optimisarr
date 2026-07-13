@@ -201,7 +201,10 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
     private static string ImageProbeJson(string codec) => $$"""
         {
           "streams": [
-            { "codec_type": "video", "codec_name": "{{codec}}", "width": 4000, "height": 3000, "nb_frames": "1" }
+            {
+              "codec_type": "video", "codec_name": "{{codec}}", "width": 4000, "height": 3000,
+              "nb_frames": "1", "pix_fmt": "rgb24", "bits_per_raw_sample": "8"
+            }
           ],
           "format": { "format_name": "{{codec}}_pipe" }
         }

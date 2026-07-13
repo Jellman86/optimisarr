@@ -215,9 +215,9 @@ Settings fields include:
   "verificationMaxLoudnessDriftLufs": 1,
   "verificationAudioClippingGateEnabled": false,
   "verificationMaxTruePeakDbtp": 0,
-  "verificationImageQualityGateEnabled": false,
+  "verificationImageQualityGateEnabled": true,
   "verificationMinimumImageSsim": 0.95,
-  "verificationImageMetadataGateEnabled": false,
+  "verificationImageMetadataGateEnabled": true,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0

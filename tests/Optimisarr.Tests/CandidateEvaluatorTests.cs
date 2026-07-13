@@ -251,6 +251,18 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
+    public void Webp_conversion_rejects_a_high_bit_depth_source()
+    {
+        var rules = Hevc with { TargetImageFormat = "webp" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("png", frameCount: 1, pixelFormat: "rgb48be", bitsPerRawSample: 16), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("bit depth", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Tiff_is_left_untouched_when_page_count_cannot_be_proven()
     {
         var rules = Hevc with { TargetImageFormat = "webp" };

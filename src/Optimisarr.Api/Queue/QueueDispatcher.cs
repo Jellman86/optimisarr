@@ -419,12 +419,22 @@ public sealed class QueueDispatcher(
                 // verified and replaced is the final, marked file. ffmpeg drops -metadata for
                 // stills, so this is done out-of-band with exiftool; a failure only loses marker
                 // portability (the DB history still prevents re-optimisation), so it never blocks.
-                if (spec.Kind == MediaKind.Image
-                    && !await imageMarker.WriteAsync(spec.OutputPath, OptimisedMarkerValue, cancellationToken))
+                if (spec.Kind == MediaKind.Image)
                 {
-                    logger.LogWarning(
-                        "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
-                        "re-optimisation is still prevented by the database.", jobId);
+                    if (!await imageMarker.CopyMetadataAsync(
+                            work.Value.Original.Path, spec.OutputPath, cancellationToken))
+                    {
+                        logger.LogWarning(
+                            "Job {JobId}: could not copy source EXIF/ICC metadata; the default metadata " +
+                            "verification gate will reject the output if the source carried either.", jobId);
+                    }
+
+                    if (!await imageMarker.WriteAsync(spec.OutputPath, OptimisedMarkerValue, cancellationToken))
+                    {
+                        logger.LogWarning(
+                            "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
+                            "re-optimisation is still prevented by the database.", jobId);
+                    }
                 }
 
                 await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);

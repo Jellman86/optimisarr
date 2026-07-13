@@ -479,7 +479,7 @@ true_peak_tip:
 dbtp: 'dBTP',
 ssim_label: 'Qualité structurale de l’image (SSIM)',
 ssim_hint:
-  "Uniquement pour les tâches photo/image : compare l’image ré-encodée à l’originale avec le filtre ssim de FFmpeg et échoue lorsque la similarité structurale descend sous le seuil. Effectue un passage supplémentaire, donc désactivé par défaut.",
+  "Uniquement pour les tâches photo/image : compare l’image ré-encodée à l’originale avec le filtre ssim de FFmpeg et échoue lorsque la similarité structurale descend sous le seuil. Effectue un passage supplémentaire et est activé par défaut pour protéger les remplacements.",
 ssim_min: 'SSIM minimum',
 ssim_min_tip: 'Similarité structurale, 0–1 où 1 est identique. 0.95 est une valeur par défaut prudente.',
 exif_label: 'Préserver les métadonnées EXIF/ICC de l’image',
