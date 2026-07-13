@@ -15,7 +15,7 @@
     <!-- Pin above the 2.0.0 pulled in transitively by Microsoft.AspNetCore.OpenApi:
          2.0.0 is flagged by NuGet audit (GHSA-v5pm-xwqc-g5wc, NU1903), which -warnaserror
          turns into a build failure. The fix landed in 2.7.5; we track the latest 2.x. -->
-    <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
+    <PackageReference Include="Microsoft.OpenApi" Version="3.8.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
