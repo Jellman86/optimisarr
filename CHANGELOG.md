@@ -139,6 +139,13 @@
   encoder timebase in every container; CFR and unknown sources receive no frame-rate override, and
   remuxes are never re-timed. Timestamp-integrity, tail, duration, and relative A/V-sync verification
   remain the fail-closed backstops. Migration `TrackVariableFrameRate`.
+- **Video verification now checks the encoded signal structure.** Replacement requires the resolved
+  target codec (or unchanged codec/profile for a remux), exact source resolution, no reduction in
+  pixel bit depth or chroma sampling, and a reported profile consistent with high-bit-depth output.
+  These checks catch silent 10→8-bit, 4:4:4→4:2:0, resize, wrong-codec, and missing-profile outcomes
+  that a clean decode or good VMAF score cannot prove. ffprobe profiles are persisted via
+  `TrackVideoProfile`, unit tests cover each failure class, and container CI probes the real HEVC
+  output's dimensions, format, and profile.
 
 - **MP4 falls back to MKV when the audio can't be muxed.** Copying a Blu-ray audio format MP4 has no
   tag for (Dolby TrueHD, Blu-ray/DVD LPCM) into an MP4 target aborts the encode. The resolver now

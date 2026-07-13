@@ -35,12 +35,13 @@ public sealed record MediaProbeResult(
     int AttachedPictureCount,
     IReadOnlyDictionary<string, string> FormatTags,
     bool? IsVariableFrameRate,
+    string? VideoProfile,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, error);
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, null, error);
 }
 
 /// <summary>
@@ -175,6 +176,7 @@ public sealed class MediaProbeService
         int? bitsPerRawSample = null;
         var attachedPictureCount = 0;
         bool? isVariableFrameRate = null;
+        string? videoProfile = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -227,6 +229,7 @@ public sealed class MediaProbeService
                         pixelFormat = ReadString(stream, "pix_fmt");
                         bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
                         isVariableFrameRate = DetectVariableFrameRate(stream);
+                        videoProfile = ReadString(stream, "profile");
                         videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
@@ -310,6 +313,7 @@ public sealed class MediaProbeService
             attachedPictureCount,
             formatTags,
             isVariableFrameRate,
+            videoProfile,
             null);
     }
 

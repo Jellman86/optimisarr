@@ -480,6 +480,18 @@ public sealed class VerificationEvaluatorTests
         OutputAudioTrackCount: 2,
         OriginalSubtitleTrackCount: 1,
         OutputSubtitleTrackCount: 1,
+        OriginalWidth: 1920,
+        OriginalHeight: 1080,
+        OutputWidth: 1920,
+        OutputHeight: 1080,
+        OriginalVideoCodec: "h264",
+        ExpectedVideoCodec: "hevc",
+        OriginalPixelFormat: "yuv420p",
+        OutputPixelFormat: "yuv420p",
+        OriginalBitsPerRawSample: 8,
+        OutputBitsPerRawSample: 8,
+        OriginalVideoProfile: "High",
+        OutputVideoProfile: "Main",
         QualityMeasured: true,
         QualityScores: new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99));
 
@@ -525,6 +537,75 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video stream"));
+    }
+
+    [Fact]
+    public void Unexpected_output_video_codec_fails_structural_verification()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OutputVideoCodec = "h264" }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Unrequested_video_resolution_change_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OutputWidth = 1280, OutputHeight = 720 }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Video_bit_depth_reduction_fails()
+    {
+        var input = Healthy() with
+        {
+            OriginalPixelFormat = "yuv420p10le",
+            OriginalBitsPerRawSample = 10,
+            OutputPixelFormat = "yuv420p",
+            OutputBitsPerRawSample = 8
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Video_chroma_subsampling_reduction_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OriginalPixelFormat = "yuv444p", OutputPixelFormat = "yuv420p" },
+            VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Missing_output_video_profile_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OutputVideoProfile = null }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Remux_must_preserve_codec_and_profile()
+    {
+        var input = Healthy() with
+        {
+            VideoReencoded = false,
+            ExpectedVideoCodec = null,
+            OutputVideoCodec = "h264",
+            OutputVideoProfile = "Main"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
     }
 
     [Fact]
@@ -1027,7 +1108,14 @@ public sealed class VerificationEvaluatorTests
     [Fact]
     public void Quality_gate_is_absent_for_a_remux()
     {
-        var input = Healthy() with { VideoReencoded = false, QualityMeasured = false, QualityScores = null };
+        var input = Healthy() with
+        {
+            VideoReencoded = false,
+            OutputVideoCodec = "h264",
+            OutputVideoProfile = "High",
+            QualityMeasured = false,
+            QualityScores = null
+        };
 
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 

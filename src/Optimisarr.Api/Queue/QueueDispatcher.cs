@@ -598,7 +598,8 @@ public sealed class QueueDispatcher(
             ImageDownscaleRequested: spec.ImageScaleFilter is not null,
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
             // would add a full decode pass without providing another safety signal.
-            VideoReencoded: spec.VideoCodec is not null);
+            VideoReencoded: spec.VideoCodec is not null,
+            ExpectedVideoCodec: spec.VideoCodec);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,

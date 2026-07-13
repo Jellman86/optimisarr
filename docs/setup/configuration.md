@@ -49,7 +49,11 @@ below). Jobs you queue manually run whenever the queue can start one.
 ## Verification gates
 
 Every job must pass decode health, output readability, and the media-kind checks
-that apply to it. The configurable gates make replacement stricter:
+that apply to it. Video jobs also have an always-on structural comparison: the output codec must
+match the resolved target (or the source for a remux), resolution must not change without a resize
+policy, bit depth and chroma sampling may not be reduced, and ffprobe must report a coherent output
+profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
+requested codec or signal structure was retained. The configurable gates make replacement stricter:
 
 ![Verification gates panel showing always-on checks, VMAF, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
 

@@ -76,6 +76,8 @@ no support SLA or promise of a release schedule.
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
   as segment-only; audio and image previews run in full.
+- Video replacement verifies the resolved codec, exact resolution, pixel bit depth, chroma sampling,
+  and encoder profile in addition to full decode, timing, HDR/colour, stream, size, and VMAF gates.
 - Music defaults to **AAC 128 kbps in M4A**, preserving common attached cover art, tags, and timed
   lyrics. Opus remains an efficient option for art-free libraries; incompatible artwork/lyrics
   combinations are rejected before queueing rather than being dropped or failing during muxing.

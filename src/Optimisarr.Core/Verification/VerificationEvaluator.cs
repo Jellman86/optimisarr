@@ -66,6 +66,7 @@ public static class VerificationEvaluator
         if (isVideo)
         {
             checks.Add(VideoStreamPresent(input));
+            checks.Add(VideoStructurePreserved(input));
         }
 
         // HDR preservation only matters when the original carries an HDR signal, so
@@ -590,6 +591,74 @@ public static class VerificationEvaluator
         !string.IsNullOrWhiteSpace(input.OutputVideoCodec)
             ? Pass("Video stream", $"Output has a video stream ({input.OutputVideoCodec}).")
             : Fail("Video stream", "Output has no video stream.");
+
+    private static VerificationCheck VideoStructurePreserved(VerificationInput input)
+    {
+        const string name = "Video structure";
+        var requiredCodec = input.VideoReencoded ? input.ExpectedVideoCodec : input.OriginalVideoCodec;
+        if (string.IsNullOrWhiteSpace(requiredCodec)
+            || !string.Equals(requiredCodec, input.OutputVideoCodec, StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(name,
+                $"Expected codec {Describe(requiredCodec)}, output codec {Describe(input.OutputVideoCodec)}.");
+        }
+
+        if (input.OriginalWidth is not { } originalWidth || input.OriginalHeight is not { } originalHeight
+            || input.OutputWidth is not { } outputWidth || input.OutputHeight is not { } outputHeight)
+        {
+            return Fail(name, "Source/output video dimensions could not be compared.");
+        }
+
+        if (originalWidth != outputWidth || originalHeight != outputHeight)
+        {
+            return Fail(name,
+                $"Video resolution changed from {originalWidth}x{originalHeight} to {outputWidth}x{outputHeight} without a resize policy.");
+        }
+
+        var originalFormat = PixelFormatInfo.Parse(input.OriginalPixelFormat, input.OriginalBitsPerRawSample);
+        var outputFormat = PixelFormatInfo.Parse(input.OutputPixelFormat, input.OutputBitsPerRawSample);
+        if (originalFormat is null || outputFormat is null)
+        {
+            return Fail(name,
+                $"Pixel format could not be compared (source {Describe(input.OriginalPixelFormat)}, output {Describe(input.OutputPixelFormat)}).");
+        }
+
+        if (outputFormat.Value.BitDepth < originalFormat.Value.BitDepth)
+        {
+            return Fail(name,
+                $"Video bit depth dropped from {originalFormat.Value.BitDepth}-bit to {outputFormat.Value.BitDepth}-bit.");
+        }
+
+        if (outputFormat.Value.ChromaRank < originalFormat.Value.ChromaRank)
+        {
+            return Fail(name,
+                $"Chroma sampling was reduced ({input.OriginalPixelFormat} → {input.OutputPixelFormat}).");
+        }
+
+        if (string.IsNullOrWhiteSpace(input.OutputVideoProfile))
+        {
+            return Fail(name, "Output video profile was not reported.");
+        }
+
+        if (!input.VideoReencoded
+            && !string.Equals(input.OriginalVideoProfile, input.OutputVideoProfile, StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(name,
+                $"Remux changed the video profile from {Describe(input.OriginalVideoProfile)} to {input.OutputVideoProfile}.");
+        }
+
+        if (outputFormat.Value.BitDepth > 8
+            && !input.OutputVideoProfile.Contains("10", StringComparison.OrdinalIgnoreCase)
+            && !input.OutputVideoProfile.Contains("12", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(input.OutputVideoCodec, "av1", StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(name,
+                $"Output profile '{input.OutputVideoProfile}' does not describe its {outputFormat.Value.BitDepth}-bit signal.");
+        }
+
+        return Pass(name,
+            $"{outputWidth}x{outputHeight}, {input.OutputPixelFormat}, profile {input.OutputVideoProfile}, codec {input.OutputVideoCodec}.");
+    }
 
     private static VerificationCheck DurationWithinTolerance(VerificationInput input, VerificationPolicy policy)
     {

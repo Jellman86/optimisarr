@@ -77,4 +77,12 @@ public sealed record VerificationInput(
     int OriginalAttachedPictureCount = 0,
     int OutputAttachedPictureCount = 0,
     IReadOnlyDictionary<string, string>? OriginalFormatTags = null,
-    IReadOnlyDictionary<string, string>? OutputFormatTags = null);
+    IReadOnlyDictionary<string, string>? OutputFormatTags = null,
+    string? OriginalVideoCodec = null,
+    string? ExpectedVideoCodec = null,
+    string? OriginalPixelFormat = null,
+    string? OutputPixelFormat = null,
+    int? OriginalBitsPerRawSample = null,
+    int? OutputBitsPerRawSample = null,
+    string? OriginalVideoProfile = null,
+    string? OutputVideoProfile = null);

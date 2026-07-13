@@ -49,6 +49,8 @@ public sealed class MediaFile
 
     public string? VideoCodec { get; set; }
 
+    public string? VideoProfile { get; set; }
+
     public int? Width { get; set; }
 
     public int? Height { get; set; }

@@ -86,6 +86,7 @@ public sealed class LibraryInventoryService(
                 file.Container = null;
                 file.DurationSeconds = null;
                 file.VideoCodec = null;
+                file.VideoProfile = null;
                 file.IsVariableFrameRate = null;
                 file.AttachedPictureCount = 0;
                 file.Width = null;
@@ -216,6 +217,7 @@ public sealed class LibraryInventoryService(
             file.Container = result.Container;
             file.DurationSeconds = result.DurationSeconds;
             file.VideoCodec = result.VideoCodec;
+            file.VideoProfile = result.VideoProfile;
             file.Width = result.Width;
             file.Height = result.Height;
             file.FrameCount = result.FrameCount;

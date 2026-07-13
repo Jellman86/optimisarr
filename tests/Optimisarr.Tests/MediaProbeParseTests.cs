@@ -8,7 +8,7 @@ public sealed class MediaProbeParseTests
     private const string SampleJson = """
     {
       "streams": [
-        { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080 },
+        { "codec_type": "video", "codec_name": "h264", "profile": "High", "width": 1920, "height": 1080 },
         { "codec_type": "audio", "codec_name": "eac3" },
         { "codec_type": "audio", "codec_name": "aac" },
         { "codec_type": "subtitle", "codec_name": "subrip" }
@@ -28,6 +28,7 @@ public sealed class MediaProbeParseTests
         Assert.Equal("h264", result.VideoCodec);
         Assert.Equal(1920, result.Width);
         Assert.Equal(1080, result.Height);
+        Assert.Equal("High", result.VideoProfile);
         Assert.Equal(new[] { "eac3", "aac" }, result.AudioCodecs);
         Assert.Equal(2, result.AudioTrackCount);
         Assert.Equal(1, result.SubtitleTrackCount);

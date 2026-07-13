@@ -115,6 +115,14 @@ for _ in {1..30}; do
         -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.mp4"
       test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = hevc
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=width \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = 64
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=height \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = 64
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=pix_fmt \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = yuv420p
+      test -n "$("$probe" -v error -select_streams v:0 -show_entries stream=profile \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")"
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = aac
       "$transcode" -nostdin -v error -i "$fixture/output.mp4" -f null -

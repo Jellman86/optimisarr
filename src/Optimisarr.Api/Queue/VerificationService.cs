@@ -18,7 +18,8 @@ public sealed record OriginalSnapshot(
     bool AudioReencoded = false,
     bool AudioDownmixed = false,
     bool ImageDownscaleRequested = false,
-    bool VideoReencoded = true);
+    bool VideoReencoded = true,
+    string? ExpectedVideoCodec = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -187,7 +188,15 @@ public sealed class VerificationService(
                 OriginalAttachedPictureCount: originalProbe.AttachedPictureCount,
                 OutputAttachedPictureCount: outputProbe.AttachedPictureCount,
                 OriginalFormatTags: originalProbe.FormatTags,
-                OutputFormatTags: outputProbe.FormatTags);
+                OutputFormatTags: outputProbe.FormatTags,
+                OriginalVideoCodec: originalProbe.VideoCodec,
+                ExpectedVideoCodec: reference.ExpectedVideoCodec,
+                OriginalPixelFormat: originalProbe.PixelFormat,
+                OutputPixelFormat: outputProbe.PixelFormat,
+                OriginalBitsPerRawSample: originalProbe.BitsPerRawSample,
+                OutputBitsPerRawSample: outputProbe.BitsPerRawSample,
+                OriginalVideoProfile: originalProbe.VideoProfile,
+                OutputVideoProfile: outputProbe.VideoProfile);
 
             return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
         }
