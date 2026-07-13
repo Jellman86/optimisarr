@@ -137,23 +137,12 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_avif_image_job_uses_supported_constant_quality_arguments()
-    {
-        var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1", quality: 100));
-
-        Assert.Equal("libaom-av1", args[IndexOf(args, "-c:v") + 1]);
-        // Best quality (100) maps to CRF 0 with a zero target bitrate (constant-quality mode).
-        Assert.Equal("0", args[IndexOf(args, "-crf") + 1]);
-        Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
-        Assert.DoesNotContain("-still-picture", args);
-        Assert.Equal("yuv420p", args[IndexOf(args, "-pix_fmt") + 1]);
-    }
-
-    [Fact]
     public void Image_encoding_for_an_unknown_encoder_still_throws()
     {
         Assert.Throws<NotSupportedException>(() =>
             FfmpegCommandBuilder.Build(ImageReencode(encoder: "libjxl")));
+        Assert.Throws<NotSupportedException>(() =>
+            FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1")));
     }
 
     [Fact]

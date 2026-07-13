@@ -48,8 +48,6 @@ public sealed class ImageTargetTests
     [Theory]
     [InlineData("jpeg")]
     [InlineData("webp")]
-    [InlineData("avif")]
-    [InlineData("jxl")]
     public void Supported_targets_resolve_to_an_encoder_and_extension(string format)
     {
         Assert.True(ImageTarget.IsSupportedTarget(format));
@@ -68,16 +66,15 @@ public sealed class ImageTargetTests
     }
 
     [Fact]
-    public void Jpeg_webp_and_avif_are_encodable_targets_but_jxl_is_detect_only()
+    public void Only_targets_proven_in_the_production_image_are_encodable()
     {
-        // JPEG/WebP/AVIF form the compatibility→efficiency axis offered to operators. JXL is
-        // recognised as a *source* (so an already-JXL file is detected) but never an encode target,
-        // because no media server displays it.
         Assert.True(ImageTarget.IsEncodable("jpeg"));
         Assert.True(ImageTarget.IsEncodable("webp"));
-        Assert.True(ImageTarget.IsEncodable("avif"));
+        Assert.False(ImageTarget.IsEncodable("avif"));
         Assert.False(ImageTarget.IsEncodable("jxl"));
-        Assert.Equal(new[] { "jpeg", "webp", "avif" }, ImageTarget.EncodableFormats);
+        Assert.False(ImageTarget.IsSupportedTarget("avif"));
+        Assert.False(ImageTarget.IsSupportedTarget("jxl"));
+        Assert.Equal(new[] { "jpeg", "webp" }, ImageTarget.EncodableFormats);
     }
 
     [Fact]

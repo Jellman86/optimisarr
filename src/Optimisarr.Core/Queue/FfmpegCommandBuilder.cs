@@ -371,15 +371,6 @@ public static class FfmpegCommandBuilder
             args.Add("1");
         }
 
-        // AVIF uses a broadly decodable 4:2:0 pixel format. Do not emit FFmpeg's optional
-        // -still-picture muxer flag: the production Jellyfin build rejects that option. Image
-        // jobs already contain exactly one eligible source frame, which the AVIF muxer accepts.
-        if (encoder == "libaom-av1")
-        {
-            args.Add("-pix_fmt");
-            args.Add("yuv420p");
-        }
-
         args.AddRange(qualityArgs);
     }
 
@@ -394,8 +385,6 @@ public static class FfmpegCommandBuilder
             "libwebp" => new[] { "-quality", q.ToString() },
             // mjpeg uses -q:v 2 (best) … 31 (worst); invert and scale our 0–100 onto that range.
             "mjpeg" => new[] { "-q:v", MapToRange(q, bestAt100: 2, worstAt0: 31).ToString() },
-            // libaom-av1 still image uses constant-quality CRF 0 (best) … 63 (worst) with -b:v 0.
-            "libaom-av1" => new[] { "-crf", MapToRange(q, bestAt100: 0, worstAt0: 63).ToString(), "-b:v", "0" },
             _ => throw new NotSupportedException(
                 $"Image encoding for encoder '{encoder}' is not implemented yet.")
         };

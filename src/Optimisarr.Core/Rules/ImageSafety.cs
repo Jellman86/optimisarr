@@ -11,17 +11,15 @@ public static class ImageSafety
         codec.Equals("tiff", StringComparison.OrdinalIgnoreCase);
 
     public static bool TargetIsLossy(string targetFormat) =>
-        targetFormat.Equals("jpeg", StringComparison.OrdinalIgnoreCase)
-        || targetFormat.Equals("avif", StringComparison.OrdinalIgnoreCase);
+        targetFormat.Equals("jpeg", StringComparison.OrdinalIgnoreCase);
 
     public static bool TargetDropsAlpha(string targetFormat) => TargetIsLossy(targetFormat);
 
     // Every currently wired encoder path produces eight-bit output. WebP can retain alpha but not
-    // a 10/12/16-bit source; JPEG and the current AVIF command drop both.
+    // a 10/12/16-bit source; JPEG drops both.
     public static bool TargetDropsHighBitDepth(string targetFormat) =>
         targetFormat.Equals("jpeg", StringComparison.OrdinalIgnoreCase)
-        || targetFormat.Equals("webp", StringComparison.OrdinalIgnoreCase)
-        || targetFormat.Equals("avif", StringComparison.OrdinalIgnoreCase);
+        || targetFormat.Equals("webp", StringComparison.OrdinalIgnoreCase);
 
     public static bool MayContainAlpha(string? pixelFormat)
     {

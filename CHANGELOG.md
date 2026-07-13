@@ -71,12 +71,12 @@
   reference tone-mapping require no libvmaf expertise; reports record the selected policy.
 - **Still-image conversion now fails closed around structural loss.** Animated GIF/WebP inputs
   require a proven single frame, TIFF is left untouched while multi-page status cannot be proved,
-  and JPEG/AVIF targets reject alpha or high-bit-depth inputs. Lossless-to-lossy conversion now
+  and the JPEG target rejects alpha or high-bit-depth inputs. Lossless-to-lossy conversion now
   requires the existing explicit lossy-image opt-in, while PNG/BMP/GIF to WebP uses the encoder's
   genuinely lossless mode. Pixel format and raw bit depth are persisted via a schema migration so
-  rescans and queue dispatch make the same decision. AVIF no longer emits the optional
-  `-still-picture` muxer flag that the shipped Jellyfin FFmpeg rejects; the single-frame input
-  contract, output probe, decode, and image-quality gates enforce still-image behaviour instead.
+  rescans and queue dispatch make the same decision. AVIF has been withdrawn as an output choice
+  because the shipped Jellyfin FFmpeg contains no AVIF encoder (`libaom-av1`); existing AVIF library
+  overrides migrate to the proven WebP target, and API/UI choices expose only JPEG and WebP.
 - **Music conversion now treats artwork, tags, and lyrics as replacement-critical data.** AAC in
   M4A is the compatibility-first default for art-free music and can retain timed-text lyrics. The
   shipped Jellyfin FFmpeg silently drops inherited M4A cover streams, while Opus needs a picture-
@@ -96,7 +96,7 @@
   supported eight-channel ceiling before FFmpeg runs. Channel counts are persisted by migration.
 - **Container CI now exercises the actual media pipelines.** The final image creates and converts
   real synthetic H.264/AAC video, FLAC music with tags and attached JPEG artwork, and opaque/alpha
-  PNG fixtures across the production JPEG, WebP, and AVIF targets.
+  PNG fixtures across the production JPEG and WebP targets.
   It runs the production stream-map/codec argument shapes with the shipped Jellyfin FFmpeg, fully
   decodes the video, probes codec/art/tag retention, and byte-compares decoded RGBA frame hashes for
   lossless WebP, and probes and decodes every selectable still format. This complements pure

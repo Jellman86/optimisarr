@@ -55,6 +55,14 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
+            if (library.TargetImageFormat is { } targetImageFormat
+                && !ImageTarget.IsEncodable(targetImageFormat)
+                && !targetImageFormat.Equals("avif", StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add(
+                    $"{where} image target is not supported: {targetImageFormat}. " +
+                    $"Expected one of {string.Join(", ", ImageTarget.EncodableFormats)}.");
+            }
             if (RequireEnum<ImageDownscaleMode>(library.ImageDownscaleMode, $"{where} image downscale mode", errors, out var downscaleMode))
             {
                 if (downscaleMode == ImageDownscaleMode.MaxLongEdge && library.ImageDownscaleValue is < 16 or > 100_000)

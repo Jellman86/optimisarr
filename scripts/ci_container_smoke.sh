@@ -161,21 +161,6 @@ for _ in {1..30}; do
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.jpg")" = 48
       "$transcode" -nostdin -v error -i "$fixture/output.jpg" -f null -
 
-      "$transcode" -nostdin -v error -y -i "$fixture/source-opaque.png" \
-        -map_metadata 0 -map 0:v:0 -c:v libaom-av1 -pix_fmt yuv420p \
-        -crf 13 -b:v 0 "$fixture/output.avif"
-      exiftool -overwrite_original -TagsFromFile "$fixture/source-opaque.png" \
-        -EXIF:all -ICC_Profile:all --Orientation --ThumbnailImage --PreviewImage --JpgFromRaw \
-        --ImageWidth --ImageHeight --ExifImageWidth --ExifImageHeight "$fixture/output.avif" >/dev/null
-      test "$(exiftool -s3 -EXIF:Artist "$fixture/output.avif")" = "Optimisarr Smoke Artist"
-      test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.avif")" = av1
-      test "$("$probe" -v error -select_streams v:0 -show_entries stream=width \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.avif")" = 48
-      test "$("$probe" -v error -select_streams v:0 -show_entries stream=height \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.avif")" = 48
-      "$transcode" -nostdin -v error -i "$fixture/output.avif" -f null -
-
       # Video: H.264/AAC MP4 -> the current production HEVC MP4 stream-map and codec policy.
       "$transcode" -nostdin -v error -y \
         -f lavfi -i "testsrc2=size=64x64:rate=12:duration=1" \

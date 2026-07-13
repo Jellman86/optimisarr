@@ -298,9 +298,9 @@
   }
 
   // A photo library gets its own compatibility→efficiency slider — the image counterpart of the
-  // video preset — mapping a single choice onto JPEG / WebP / AVIF. It is shown only for Photo
+  // video preset — mapping a single choice onto JPEG / WebP. It is shown only for Photo
   // libraries (a mixed "Other" library keeps the video slider and sets the format in Advanced).
-  const imageFormats = ['jpeg', 'webp', 'avif'] as const
+  const imageFormats = ['jpeg', 'webp'] as const
   const showImagePreset = $derived(isImageType(form.mediaType) && !isVideoType(form.mediaType))
   const imageStop = $derived(Math.max(0, imageFormats.indexOf((form.targetImageFormat ?? 'jpeg') as (typeof imageFormats)[number])))
   function setImageStop(value: string) {
@@ -309,7 +309,6 @@
   const imagePresetSummaries: Record<string, string> = $derived({
     jpeg: i18n.m.libraries.image_preset_jpeg,
     webp: i18n.m.libraries.image_preset_webp,
-    avif: i18n.m.libraries.image_preset_avif,
   })
 
   // Downscale UI: a friendly mode picker maps onto the stored (mode, value) pair. The named caps
@@ -842,7 +841,7 @@
         </div>
       {/if}
     {:else if showImagePreset}
-      <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP → AVIF. -->
+      <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP. -->
       <div class="mt-1">
         <input
           class="w-full accent-cyan-600"
@@ -855,8 +854,8 @@
           aria-label={i18n.m.libraries.image_slider_aria}
         />
         <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-          {#each ['JPEG', 'WebP', 'AVIF'] as stop, i}
-            <span class={imageStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+          {#each imageFormats as stop, i}
+            <span class={imageStop === i ? 'font-semibold uppercase text-slate-700 dark:text-slate-200' : 'uppercase'}>{stop}</span>
           {/each}
         </div>
         <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-slate-400">

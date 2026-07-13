@@ -128,7 +128,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.VideoAudioBitrateKbps = snapshot.VideoAudioBitrateKbps;
             library.DownmixToStereo = snapshot.DownmixToStereo;
             library.ReencodeLossyAudio = snapshot.ReencodeLossyAudio;
-            library.TargetImageFormat = snapshot.TargetImageFormat;
+            // Configs exported before AVIF was withdrawn remain importable; move the stale target
+            // to the same proven WebP fallback as the database migration.
+            library.TargetImageFormat = snapshot.TargetImageFormat?.Equals(
+                "avif", StringComparison.OrdinalIgnoreCase) == true
+                ? "webp"
+                : snapshot.TargetImageFormat;
             library.ImageQuality = snapshot.ImageQuality;
             library.ReencodeLossyImages = snapshot.ReencodeLossyImages;
             library.ImageDownscaleMode = ParseEnum<ImageDownscaleMode>(snapshot.ImageDownscaleMode);

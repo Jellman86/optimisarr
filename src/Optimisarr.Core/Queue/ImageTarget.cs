@@ -13,8 +13,8 @@ public static class ImageTarget
     /// <summary>
     /// The default target format. JPEG is the maximally compatible choice — every media server
     /// (including Plex, which does not display WebP) and every client renders it — so a photo
-    /// library is safe out of the box. Operators on Jellyfin can move the preset toward WebP or
-    /// AVIF for greater savings.
+    /// library is safe out of the box. Operators on Jellyfin can move the preset toward WebP for
+    /// greater savings.
     /// </summary>
     public const string DefaultFormat = "jpeg";
 
@@ -31,16 +31,14 @@ public static class ImageTarget
     public const long MinFileSizeBytes = 200L * 1024;
 
     // The supported target formats and how to produce each. They form a compatibility→efficiency
-    // axis: JPEG plays everywhere (incl. Plex), WebP is the modern middle ground (Jellyfin/web),
-    // and AVIF is the most efficient where viewers support it. JXL is recognised for detection of
-    // already-JXL sources but is not an encode target (no media server displays it).
+    // axis: JPEG plays everywhere (incl. Plex), while WebP is smaller for Jellyfin/modern clients.
+    // AVIF/JXL remain recognised as source codecs below but are not encode targets: the FFmpeg
+    // build shipped for production transcoding provides neither libaom-av1 nor libjxl.
     private static readonly IReadOnlyDictionary<string, ImageFormatSpec> Targets =
         new Dictionary<string, ImageFormatSpec>(StringComparer.OrdinalIgnoreCase)
         {
             ["jpeg"] = new("mjpeg", "jpg"),
-            ["webp"] = new("libwebp", "webp"),
-            ["avif"] = new("libaom-av1", "avif"),
-            ["jxl"] = new("libjxl", "jxl")
+            ["webp"] = new("libwebp", "webp")
         };
 
     /// <summary>The target formats an operator may choose.</summary>
@@ -48,10 +46,8 @@ public static class ImageTarget
 
     public static bool IsSupportedTarget(string format) => Targets.ContainsKey(format);
 
-    // The formats whose encode parameters are wired in the command builder and offered as a
-    // per-library choice. JXL is intentionally absent: it is detected as a source format but no
-    // media server displays it, so producing one would be a dead end.
-    private static readonly string[] EncodableFormatList = { "jpeg", "webp", "avif" };
+    // The formats proven against the exact production FFmpeg and offered per library.
+    private static readonly string[] EncodableFormatList = { "jpeg", "webp" };
 
     /// <summary>The formats an operator may currently choose as a per-library target.</summary>
     public static IReadOnlyList<string> EncodableFormats => EncodableFormatList;
