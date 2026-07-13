@@ -88,6 +88,11 @@
   effective bitrate too, preventing a lossy surround source from being queued when it cannot save
   space. MP3 rejects more than two retained channels and AAC/Opus reject layouts above their
   supported eight-channel ceiling before FFmpeg runs. Channel counts are persisted by migration.
+- **Container CI now exercises the actual media pipelines.** The final image creates and converts
+  real synthetic H.264/AAC video, FLAC music with tags and attached JPEG artwork, and an alpha PNG.
+  It runs the production stream-map/codec argument shapes with the shipped Jellyfin FFmpeg, fully
+  decodes the video, probes codec/art/tag retention, and byte-compares decoded RGBA frame hashes for
+  lossless WebP. This complements pure command-builder tests with real encoder/muxer coverage.
 - **CRF direction guidance and VMAF availability.** The library video-quality slider now correctly
   labels low CRF values as sharper and high CRF values as smaller. The container no longer assumes
   Jellyfin FFmpeg provides `libvmaf`: it keeps that binary for hardware-aware transcoding and adds a

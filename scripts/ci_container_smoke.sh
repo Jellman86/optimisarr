@@ -50,6 +50,64 @@ for _ in {1..30}; do
         -f null -
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
       rm -f "$vmaf_log"
+
+      # Exercise representative production transcode argument shapes with the FFmpeg that ships
+      # for real jobs. These are deliberately small synthetic fixtures, but unlike unit tests they
+      # prove the selected encoders, muxers, stream maps, metadata, and artwork dispositions work
+      # together in the final image.
+      transcode="$OPTIMISARR_FFMPEG"
+      # MediaProbeService resolves ffprobe from PATH in the runtime image, so use the same binary.
+      probe=ffprobe
+      fixture=/tmp/optimisarr-pipeline-smoke
+      rm -rf "$fixture"
+      mkdir -p "$fixture"
+
+      # Music: FLAC + JPEG cover + tags -> the default AAC/M4A policy. The output must contain
+      # AAC, the attached picture, and the exact source artist tag.
+      "$transcode" -nostdin -v error -y \
+        -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
+        -f lavfi -i "color=c=blue:size=48x48:rate=1:duration=1" \
+        -map 0:a -map 1:v -c:a flac -c:v mjpeg -frames:v 1 -disposition:v attached_pic \
+        -metadata artist="Optimisarr Smoke Artist" "$fixture/source.flac"
+      "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
+        -map_metadata 0 -map 0:a -c:a aac -b:a 128k \
+        -map 0:v? -c:v copy -map 0:s? -c:s mov_text \
+        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
+      "$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1 "$fixture/output.m4a" | grep -qx "attached_pic=1"
+      test "$("$probe" -v error -show_entries format_tags=artist \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = "Optimisarr Smoke Artist"
+
+      # Still image: an RGBA PNG -> production lossless-WebP policy. Compare decoded RGBA frame
+      # hashes, so a nominally successful encoder invocation cannot hide alpha or pixel loss.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "color=c=red@0.5:size=48x48:rate=1:duration=1,format=rgba" \
+        -frames:v 1 "$fixture/source.png"
+      "$transcode" -nostdin -v error -y -i "$fixture/source.png" \
+        -map_metadata 0 -map 0:v:0 -c:v libwebp -lossless 1 -quality 80 "$fixture/output.webp"
+      "$transcode" -nostdin -v error -i "$fixture/source.png" -pix_fmt rgba \
+        -f framemd5 "$fixture/source.framemd5"
+      "$transcode" -nostdin -v error -i "$fixture/output.webp" -pix_fmt rgba \
+        -f framemd5 "$fixture/output.framemd5"
+      diff -u "$fixture/source.framemd5" "$fixture/output.framemd5"
+
+      # Video: H.264/AAC MP4 -> the current production HEVC MP4 stream-map and codec policy.
+      "$transcode" -nostdin -v error -y \
+        -f lavfi -i "testsrc2=size=64x64:rate=12:duration=1" \
+        -f lavfi -i "sine=frequency=880:sample_rate=48000:duration=1" \
+        -map 0:v -map 1:a -c:v libx264 -pix_fmt yuv420p -c:a aac "$fixture/source.mp4"
+      "$transcode" -nostdin -v error -y -fflags +genpts -i "$fixture/source.mp4" \
+        -map 0 -map -0:t -map -0:d -c copy -c:v:0 libx265 -crf 24 -preset ultrafast \
+        -fps_mode cfr -c:a copy -c:s mov_text \
+        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.mp4"
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = hevc
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = aac
+      "$transcode" -nostdin -v error -i "$fixture/output.mp4" -f null -
+      rm -rf "$fixture"
     '
     exit 0
   fi
