@@ -1,5 +1,6 @@
 import { en, type Messages } from './en'
 import { de } from './de'
+import { es } from './es'
 
 // Re-exported so components can import the contract type from the i18n entry point.
 // `npm run check` (svelte-check + tsc, run in CI) is the translation-completeness gate:
@@ -8,7 +9,7 @@ export type { Messages }
 
 // Registry of fully-translated locales. Add an entry only when its file is complete;
 // the `Messages` type guarantees completeness at compile time.
-const REGISTRY = { en, de } satisfies Record<string, Messages>
+const REGISTRY = { en, de, es } satisfies Record<string, Messages>
 
 export type LocaleCode = keyof typeof REGISTRY
 
@@ -16,6 +17,7 @@ export type LocaleCode = keyof typeof REGISTRY
 export const AVAILABLE_LOCALES: ReadonlyArray<{ code: LocaleCode; name: string }> = [
   { code: 'en', name: 'English' },
   { code: 'de', name: 'Deutsch' },
+  { code: 'es', name: 'Español' },
 ]
 
 const STORAGE_KEY = 'optimisarr:locale'

@@ -21,6 +21,11 @@
   replacement, and integration failures. Queue rows and grouped failure diagnostics use persisted
   failure categories for localized summaries; raw process errors remain available as collapsed,
   explicitly labelled technical detail.
+- **Spanish translation.** Spanish joins English and German as a complete selectable locale across
+  all 832 message leaves, with YA-WAMF's existing Spanish vocabulary used for shared product terms.
+  The frontend completeness check now also compares interpolation placeholders in every locale, so
+  a translation that drops or changes runtime tokens such as `{count}`, `{path}`, or `{error}` fails
+  `npm run check`.
 - **Shared-component i18n migration started.** Folder selection, detail-sheet controls, and the
   original/encoded media comparison now use the typed locale contract, including accessible labels,
   loading/empty guidance, playback controls, downloads, and browser compatibility guidance.
