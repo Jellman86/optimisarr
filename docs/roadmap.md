@@ -73,6 +73,15 @@ the replacement workflow is trustworthy.
      size-saving gate would only reject. The skip is a soft, reversible rule decision, not a
      blacklist entry, so the file becomes eligible again automatically if the profile changes.
 
+   - **Cross-media pipeline standards audit: done.** The video, music, and still-image paths were
+     rechecked against the repository's fail-closed replacement standard and the shipped FFmpeg
+     capabilities. Music now preserves tags/artwork or refuses an unsafe container, audio bitrate
+     scales with retained channels, compatibility presets include compatible AAC, images guard
+     animation/alpha/bit depth and default to SSIM plus metadata verification, and video timing and
+     encoded signal structure are evidence-checked. Probing, decode checks, and transcoding use one
+     configured FFmpeg/ffprobe pair. Final-container CI now runs real representative music, JPEG,
+     WebP, AVIF, CFR/VFR video, metadata, quality, stream-structure, and decode assertions.
+
    - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
      system, library, stats, replacement, media/queue), leaving `Program.cs` a 418-line composition

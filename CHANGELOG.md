@@ -89,10 +89,12 @@
   space. MP3 rejects more than two retained channels and AAC/Opus reject layouts above their
   supported eight-channel ceiling before FFmpeg runs. Channel counts are persisted by migration.
 - **Container CI now exercises the actual media pipelines.** The final image creates and converts
-  real synthetic H.264/AAC video, FLAC music with tags and attached JPEG artwork, and an alpha PNG.
+  real synthetic H.264/AAC video, FLAC music with tags and attached JPEG artwork, and opaque/alpha
+  PNG fixtures across the production JPEG, WebP, and AVIF targets.
   It runs the production stream-map/codec argument shapes with the shipped Jellyfin FFmpeg, fully
   decodes the video, probes codec/art/tag retention, and byte-compares decoded RGBA frame hashes for
-  lossless WebP. This complements pure command-builder tests with real encoder/muxer coverage.
+  lossless WebP, and probes and decodes every selectable still format. This complements pure
+  command-builder tests with real encoder/muxer coverage.
 - **Image verification is now default-on and uses a current SSIM graph.** New installations require
   0.95 SSIM plus EXIF/ICC retention before replacing a still; saved opt-outs remain unchanged. Both
   inputs are independently aligned to explicit reference dimensions, timestamps, full colour range,
@@ -118,20 +120,6 @@
   (or drops an inherent delay) still fails. Falls back to the previous absolute check when the
   original's start times can't be read. `VerificationInput` gains `OriginalVideoStartSeconds` /
   `OriginalAudioStartSeconds`, populated from the original probe.
-
-## 0.2.2 — 2026-07-05
-
-### Safety — edge-case hardening
-
-- **Dolby Vision sources are now left untouched by default.** DV carries a dynamic-metadata RPU that
-  cannot survive a re-encode; without it the file degrades to HDR10/SDR, and a Profile 5 source (no
-  HDR10 base layer) comes out green/pink. With the perceptual (VMAF) gate off by default there was no
-  backstop, so a DV source could be transcoded to a colour-shifted output and still pass verification,
-  replacing the original. The probe now detects Dolby Vision distinctly (DOVI side-data or a
-  `dvhe`/`dvh1`/`dav1` codec tag), and the candidate evaluator skips DV sources regardless of the HDR
-  setting unless a per-library **Optimise Dolby Vision** opt-in is enabled (off by default; settable
-  in the library form and preserved across config backup/restore). Migration `AddDolbyVisionHandling`.
-
 - **Video timing now follows probe evidence instead of forcing MP4 to CFR.** The earlier blanket
   `-fps_mode cfr` response to live job 3334 could duplicate/drop frames and alter motion cadence.
   Probing now compares nominal and average frame rate (with a rounding tolerance) and persists a
@@ -157,6 +145,19 @@
   FFmpeg/ffprobe pair instead of mixing it with Debian's PATH binaries. Custom installations can
   set `OPTIMISARR_FFPROBE`; otherwise an absolute `OPTIMISARR_FFMPEG` path automatically resolves
   its sibling probe. The final-container smoke suite exercises that exact configured pair.
+
+## 0.2.2 — 2026-07-05
+
+### Safety — edge-case hardening
+
+- **Dolby Vision sources are now left untouched by default.** DV carries a dynamic-metadata RPU that
+  cannot survive a re-encode; without it the file degrades to HDR10/SDR, and a Profile 5 source (no
+  HDR10 base layer) comes out green/pink. With the perceptual (VMAF) gate off by default there was no
+  backstop, so a DV source could be transcoded to a colour-shifted output and still pass verification,
+  replacing the original. The probe now detects Dolby Vision distinctly (DOVI side-data or a
+  `dvhe`/`dvh1`/`dav1` codec tag), and the candidate evaluator skips DV sources regardless of the HDR
+  setting unless a per-library **Optimise Dolby Vision** opt-in is enabled (off by default; settable
+  in the library form and preserved across config backup/restore). Migration `AddDolbyVisionHandling`.
 
 - **MP4 falls back to MKV when the audio can't be muxed.** Copying a Blu-ray audio format MP4 has no
   tag for (Dolby TrueHD, Blu-ray/DVD LPCM) into an MP4 target aborts the encode. The resolver now
