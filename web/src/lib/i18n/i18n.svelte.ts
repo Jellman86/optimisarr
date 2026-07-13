@@ -1,29 +1,34 @@
 import { en, type Messages } from './en'
-import { de } from './de'
-import { es } from './es'
 
 // Re-exported so components can import the contract type from the i18n entry point.
 // `npm run check` (svelte-check + tsc, run in CI) is the translation-completeness gate:
 // a locale that doesn't satisfy `Messages` fails the build.
 export type { Messages }
 
-// Registry of fully-translated locales. Add an entry only when its file is complete;
-// the `Messages` type guarantees completeness at compile time.
-const REGISTRY = { en, de, es } satisfies Record<string, Messages>
+// Load translations on demand so adding languages does not inflate the initial application chunk.
+// Each imported locale is independently typed as Messages, and therefore still fails compilation
+// if it is incomplete.
+const LOADERS = {
+  en: async () => en,
+  de: async () => (await import('./de')).de,
+  es: async () => (await import('./es')).es,
+  fr: async () => (await import('./fr')).fr,
+} satisfies Record<string, () => Promise<Messages>>
 
-export type LocaleCode = keyof typeof REGISTRY
+export type LocaleCode = keyof typeof LOADERS
 
 // Shown in the language selector, in each language's own name (endonym).
 export const AVAILABLE_LOCALES: ReadonlyArray<{ code: LocaleCode; name: string }> = [
   { code: 'en', name: 'English' },
   { code: 'de', name: 'Deutsch' },
   { code: 'es', name: 'Español' },
+  { code: 'fr', name: 'Français' },
 ]
 
 const STORAGE_KEY = 'optimisarr:locale'
 
 function isLocale(code: string): code is LocaleCode {
-  return code in REGISTRY
+  return code in LOADERS
 }
 
 function detectInitial(): LocaleCode {
@@ -38,7 +43,27 @@ function detectInitial(): LocaleCode {
 }
 
 function createI18n() {
-  let locale = $state<LocaleCode>(detectInitial())
+  let locale = $state<LocaleCode>('en')
+  let messages = $state<Messages>(en)
+  let loadSequence = 0
+
+  async function apply(code: LocaleCode, persist: boolean) {
+    const sequence = ++loadSequence
+    const loaded = await LOADERS[code]()
+    if (sequence !== loadSequence) return
+    locale = code
+    messages = loaded
+    if (!persist) return
+    try {
+      localStorage.setItem(STORAGE_KEY, code)
+    } catch {
+      // Persisting the choice is best-effort; the in-memory selection still applies.
+    }
+  }
+
+  const initial = detectInitial()
+  if (initial !== 'en') void apply(initial, false)
+
   return {
     get locale() {
       return locale
@@ -46,16 +71,11 @@ function createI18n() {
     // The active locale's messages, fully typed. Reading this in markup makes the
     // component re-render when the language changes.
     get m(): Messages {
-      return REGISTRY[locale]
+      return messages
     },
     set(code: string) {
       if (!isLocale(code)) return
-      locale = code
-      try {
-        localStorage.setItem(STORAGE_KEY, code)
-      } catch {
-        // Persisting the choice is best-effort; the in-memory selection still applies.
-      }
+      void apply(code, true)
     },
   }
 }

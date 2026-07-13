@@ -26,6 +26,9 @@
   The frontend completeness check now also compares interpolation placeholders in every locale, so
   a translation that drops or changes runtime tokens such as `{count}`, `{path}`, or `{error}` fails
   `npm run check`.
+- **French translation.** French is now selectable and complete across the same 832-message
+  contract, including backend error summaries, validation feedback, operational panels, and
+  accessibility labels.
 - **Shared-component i18n migration started.** Folder selection, detail-sheet controls, and the
   original/encoded media comparison now use the typed locale contract, including accessible labels,
   loading/empty guidance, playback controls, downloads, and browser compatibility guidance.
