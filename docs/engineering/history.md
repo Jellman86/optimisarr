@@ -719,8 +719,9 @@ with the library's resolved settings — that never moves or replaces anything, 
 restart. The compare panel shows the original next to the encoded result with a per-media-type
 viewer (image/video/audio, range-streamed), a size/codec/resolution/audio stats table with the %
 size saving, and the full Phase 9 verification report. Long video previews use a 60-second sample
-from the middle of the source and verify against a temporary clipped reference from that same window,
-so segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
+from the middle; VMAF seeks and decodes the full original at that exact sample start, rather than
+judging against a stream-copied clip that may retain pre-roll from the preceding keyframe, so
+segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
 previewing then enqueuing already works). The Quarantine compare-to-approve half was delivered
 earlier.
 

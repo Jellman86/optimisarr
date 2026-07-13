@@ -317,9 +317,8 @@ public static class FfmpegCommandBuilder
             args.Add("-map");
             args.Add("0:v?");
             args.Add("-c:v");
-            // Normalise artwork to the universally supported APIC/MP4 cover codec. The shipped
-            // Jellyfin FFmpeg can silently omit a stream-copied FLAC picture from M4A, while an
-            // explicit MJPEG cover is muxed deterministically (and also handles PNG sources).
+            // Normalise artwork to the universally supported APIC/MP4 cover codec so both JPEG
+            // and PNG source pictures have one deterministic representation across players.
             args.Add("mjpeg");
             args.Add("-disposition:v");
             args.Add("attached_pic");

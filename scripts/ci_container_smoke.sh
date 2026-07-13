@@ -53,6 +53,24 @@ for _ in {1..30}; do
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
       rm -f "$vmaf_log"
 
+      # Preview VMAF must compare the encoded sample with the same decoded source window. A
+      # stream-copied reference can retain the previous keyframe and produce near-zero nonsense;
+      # seeking the second (reference) input before decode must score this ordinary CRF encode high.
+      "$OPTIMISARR_FFMPEG" -nostdin -v error -y -f lavfi \
+        -i "testsrc2=size=64x64:rate=12:duration=4" \
+        -c:v libx264 -g 48 -keyint_min 48 -sc_threshold 0 -pix_fmt yuv420p \
+        /tmp/optimisarr-vmaf-source.mkv
+      "$OPTIMISARR_FFMPEG" -nostdin -v error -y -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
+        -t 2 -c:v libx265 -crf 24 -preset ultrafast /tmp/optimisarr-vmaf-preview.mkv
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -i /tmp/optimisarr-vmaf-preview.mkv -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -f null -
+      vmaf_mean="$(awk -F: "/\"vmaf\"[[:space:]]*:/ { in_vmaf=1; next } in_vmaf && /\"mean\"[[:space:]]*:/ { gsub(/[,[:space:]]/, \"\", \$2); print \$2; exit }" "$vmaf_log")"
+      test -n "$vmaf_mean"
+      awk -v score="$vmaf_mean" "BEGIN { exit !(score >= 90) }"
+      rm -f "$vmaf_log" /tmp/optimisarr-vmaf-source.mkv /tmp/optimisarr-vmaf-preview.mkv
+
       # Exercise representative production transcode argument shapes with the FFmpeg that ships
       # for real jobs. These are deliberately small synthetic fixtures, but unlike unit tests they
       # prove the selected encoders, muxers, stream maps, metadata, and artwork dispositions work
@@ -66,11 +84,15 @@ for _ in {1..30}; do
 
       # Music: FLAC + JPEG cover + tags -> the default AAC/M4A policy. The output must contain
       # AAC, the attached picture, and the exact source artist tag.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "color=c=blue:size=48x48:rate=1:duration=1" -frames:v 1 "$fixture/cover.jpg"
       "$transcode" -nostdin -v error -y \
         -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
-        -f lavfi -i "color=c=blue:size=48x48:rate=1:duration=1" \
-        -map 0:a -map 1:v -c:a flac -c:v mjpeg -frames:v 1 -disposition:v attached_pic \
+        -i "$fixture/cover.jpg" \
+        -map 0:a -map 1:v -c:a flac -c:v copy -disposition:v attached_pic \
         -metadata artist="Optimisarr Smoke Artist" "$fixture/source.flac"
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/source.flac")" = 1
       "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
         -map_metadata 0 -map 0:a -c:a aac -b:a 128k \
         -map 0:v? -c:v mjpeg -disposition:v attached_pic -map 0:s? -c:s mov_text \

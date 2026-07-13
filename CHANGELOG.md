@@ -82,9 +82,8 @@
   MP3/Opus likewise reject timed-lyrics streams they cannot contain. Verification now compares
   source/output format tags and embedded-picture counts, and probing persists artwork counts for
   deterministic candidate decisions. Mapped M4A/MP3 covers are normalised to broadly supported
-  embedded JPEG and explicitly marked `attached_pic`; this avoids Jellyfin FFmpeg accepting but
-  silently omitting a stream-copied FLAC picture. The UI explains the default consistently in every
-  language.
+  embedded JPEG and explicitly marked `attached_pic` so JPEG and PNG sources have a deterministic
+  cross-player representation. The UI explains the default consistently in every language.
 - **Audio bitrate policy is now channel-aware.** The configured value is a stereo baseline;
   retained 5.1/7.1 layouts automatically receive the same budget for each channel pair, while an
   explicit stereo downmix keeps the configured bitrate. Candidate size-saving decisions use that
@@ -123,6 +122,12 @@
   (or drops an inherent delay) still fails. Falls back to the previous absolute check when the
   original's start times can't be read. `VerificationInput` gains `OriginalVideoStartSeconds` /
   `OriginalAudioStartSeconds`, populated from the original probe.
+- **Preview VMAF now compares the same source window frame-for-frame.** The encoded preview used an
+  accurate decode seek, while its stream-copied reference could retain frames from the preceding
+  keyframe; libvmaf then compared different moments and reported near-zero, CRF-insensitive scores.
+  Preview measurement now seeks and decodes the full original as libvmaf's reference input, while
+  `shortest` bounds it to the encoded sample. Final-container CI starts deliberately between
+  keyframes and requires the resulting ordinary CRF encode to score at least 90.
 - **Video timing now follows probe evidence instead of forcing MP4 to CFR.** The earlier blanket
   `-fps_mode cfr` response to live job 3334 could duplicate/drop frames and alter motion cadence.
   Probing now compares nominal and average frame rate (with a rounding tolerance) and persists a

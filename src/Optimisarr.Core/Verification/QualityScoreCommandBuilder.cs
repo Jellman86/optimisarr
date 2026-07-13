@@ -7,7 +7,8 @@ public sealed record QualityMeasurementContext(
     int ReferenceWidth,
     int ReferenceHeight,
     bool ReferenceIsHdr,
-    bool HdrConvertedToSdr);
+    bool HdrConvertedToSdr,
+    int? ReferenceStartSeconds = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -70,17 +71,29 @@ public static class QualityScoreCommandBuilder
             $"n_threads={boundedThreads}:n_subsample=1:" +
             $"log_fmt=json:log_path={logPath}:shortest=1:repeatlast=0";
 
-        IReadOnlyList<string> arguments =
-        [
+        var arguments = new List<string>
+        {
             "-nostdin",
             "-v", "error",
             // libvmaf requires distorted first and reference second.
-            "-i", distortedPath,
-            "-i", referencePath,
+            "-i", distortedPath
+        };
+        // Preview outputs begin at zero after an accurate decode seek into the source. Seek the
+        // full reference as its own decoded input so FFmpeg discards keyframe pre-roll before
+        // libvmaf; comparing against a stream-copied clip can start on an earlier keyframe.
+        if (context.ReferenceStartSeconds is > 0)
+        {
+            arguments.Add("-ss");
+            arguments.Add(context.ReferenceStartSeconds.Value.ToString());
+        }
+        arguments.Add("-i");
+        arguments.Add(referencePath);
+        arguments.AddRange(
+        [
             "-lavfi", filter,
             "-f", "null",
             "-"
-        ];
+        ]);
 
         return new QualityScoreCommand(arguments, filter, model, preprocessing);
     }

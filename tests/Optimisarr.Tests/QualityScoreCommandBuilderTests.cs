@@ -40,6 +40,26 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Preview_measurement_seeks_only_the_decoded_reference_before_its_input()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/preview.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceStartSeconds: 1770),
+            threads: 2);
+
+        var firstInput = IndexOf(command.Arguments, "-i", occurrence: 1);
+        var referenceSeek = IndexOf(command.Arguments, "-ss", occurrence: 1);
+        var secondInput = IndexOf(command.Arguments, "-i", occurrence: 2);
+
+        Assert.True(firstInput < referenceSeek);
+        Assert.Equal("1770", command.Arguments[referenceSeek + 1]);
+        Assert.True(referenceSeek < secondInput);
+        Assert.Equal("/data/original.mkv", command.Arguments[secondInput + 1]);
+    }
+
+    [Fact]
     public void Cropped_uhd_measurement_still_selects_the_4k_model()
     {
         var command = QualityScoreCommandBuilder.Build(
@@ -97,6 +117,20 @@ public sealed class QualityScoreCommandBuilderTests
             if (arguments[index] == option && ++seen == occurrence)
             {
                 return arguments[index + 1];
+            }
+        }
+
+        throw new InvalidOperationException($"Missing occurrence {occurrence} of {option}.");
+    }
+
+    private static int IndexOf(IReadOnlyList<string> arguments, string option, int occurrence)
+    {
+        var seen = 0;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            if (arguments[index] == option && ++seen == occurrence)
+            {
+                return index;
             }
         }
 

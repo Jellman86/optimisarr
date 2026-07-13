@@ -80,7 +80,8 @@ the replacement workflow is trustworthy.
      animation/alpha/bit depth and default to SSIM plus metadata verification, and video timing and
      encoded signal structure are evidence-checked. Probing, decode checks, and transcoding use one
      configured FFmpeg/ffprobe pair. Final-container CI now runs real representative music, JPEG,
-     WebP, AVIF, CFR/VFR video, metadata, quality, stream-structure, and decode assertions.
+     WebP, AVIF, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and
+     decode assertions.
 
    - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
