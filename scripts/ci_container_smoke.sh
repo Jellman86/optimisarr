@@ -19,7 +19,9 @@ docker run -d --name "$name" -p 127.0.0.1::8787 \
 for _ in {1..30}; do
   port="$(docker port "$name" 8787/tcp | awk -F: '{print $NF}')"
   if curl --fail --silent "http://127.0.0.1:$port/api/ready" >/dev/null; then
-    docker exec "$name" sh -ec '
+    # Trace the synthetic commands: all inputs are fixed test fixtures and contain no secrets,
+    # while a bare `sh -e` otherwise reports only exit 1 and hides which safety assertion failed.
+    docker exec "$name" sh -exc '
       vmaf_log=/tmp/optimisarr-ci-vmaf.json
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=48x48:rate=2:duration=1" \
