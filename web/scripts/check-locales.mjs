@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import ts from 'typescript'
 
-const localeNames = ['de', 'es', 'fr']
+const localeNames = ['de', 'es', 'fr', 'it']
 
 function readLocale(name) {
   const path = `src/lib/i18n/${name}.ts`

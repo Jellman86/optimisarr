@@ -187,10 +187,10 @@ the replacement workflow is trustworthy.
      validation, filesystem/library/media/job errors, exclusions, replacements, and integrations.
      Persisted job failure categories likewise drive translated queue and diagnostics summaries,
      while raw encoder/backend output remains available only as explicitly labelled technical
-     detail. **Spanish and French are now complete** across the same 832-message typed contract,
+     detail. **Spanish, French, and Italian are now complete** across the same 832-message typed contract,
      using YA-WAMF's corresponding locale terminology as the vocabulary reference. CI also audits
      interpolation placeholders across every translation so tokens such as `{count}` and `{path}` cannot be
-     dropped silently. Remaining: populate the remaining five locales (`it`, `ja`, `pt`, `ru`,
+     dropped silently. Remaining: populate the remaining four locales (`ja`, `pt`, `ru`,
      `zh`) toward parity — ideally with native review — so the feature is genuinely
      full translation rather than navigation-only localisation.
 
