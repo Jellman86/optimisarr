@@ -436,7 +436,7 @@ export const zh: Messages = {
     require_subtitles: "要求保留所有字幕轨道",
     require_smaller: "要求输出比原来小",
     vmaf_label: "感知质量（VMAF）",
-    vmaf_hint: "使用 FFmpeg 的 libvmaf 将输出与原始值进行比较。需要使用 libvmaf 构建的 ffmpeg 并使验证时间大致加倍，因此默认情况下处于关闭状态。 ~95 在视觉上与源无法区分。",
+    vmaf_hint: "使用 FFmpeg 的 libvmaf 将重新编码的视频与原始视频进行比较。默认启用，因为它能发现结构检查无法检测的可见质量损失；验证时间大约会增加一倍。仅当处理速度比此保护更重要时才禁用。~95 在视觉上与源视频几乎无法区分。",
     vmaf_harmonic: "最小值 VMAF（调和平均值）",
     vmaf_harmonic_tip: "地板整体质量好。调和平均值比普通平均值对不良帧的惩罚更大。",
     vmaf_min: "最小 VMAF（最差帧）",

@@ -36,7 +36,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
         Assert.True(settings.VerificationPolicy.RequireSizeReduction);
-        Assert.False(settings.VerificationPolicy.QualityGateEnabled);
+        Assert.True(settings.VerificationPolicy.QualityGateEnabled);
         Assert.Equal(93.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
         Assert.Equal(80.0, settings.VerificationPolicy.MinimumVmafMin);
         Assert.False(settings.VerificationPolicy.AudioLoudnessGateEnabled);

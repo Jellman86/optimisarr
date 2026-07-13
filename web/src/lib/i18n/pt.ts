@@ -436,7 +436,7 @@ export const pt: Messages = {
     require_subtitles: "Exigir que todas as faixas de legenda sejam retidas",
     require_smaller: "Exigir que a saída seja menor que a original",
     vmaf_label: "Qualidade perceptiva (VMAF)",
-    vmaf_hint: "Compara a saída ao original com FFmpeg do libvmaf. Precisa de um ffmpeg construído com libvmaf e praticamente dobra o tempo de verificação, por isso está desativado por padrão. ~95 é visualmente indistinguível da fonte.",
+    vmaf_hint: "Compara vídeos recodificados com o original usando o libvmaf do FFmpeg. Está ativado por padrão porque deteta perdas visíveis que as verificações estruturais não encontram; praticamente duplica o tempo de verificação. Desative apenas se o desempenho for mais importante do que esta proteção. ~95 é visualmente indistinguível da fonte.",
     vmaf_harmonic: "Min VMAF (média harmônica)",
     vmaf_harmonic_tip: "Piso de qualidade geral. A média harmônica penaliza mais quadros ruins do que uma média simples.",
     vmaf_min: "Min VMAF (pior quadro)",

@@ -208,7 +208,7 @@ Settings fields include:
   "verificationRequireAudioRetained": true,
   "verificationRequireSubtitlesRetained": false,
   "verificationRequireSizeReduction": true,
-  "verificationQualityGateEnabled": false,
+  "verificationQualityGateEnabled": true,
   "verificationMinimumVmafHarmonicMean": 93,
   "verificationMinimumVmafMin": 80,
   "verificationAudioLoudnessGateEnabled": false,

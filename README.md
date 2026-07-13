@@ -165,6 +165,8 @@ mode** (Settings → Auto by default); the **Tools** page shows what each GPU ac
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
 with `libvmaf`; the Tools page reports that optional capability independently.
+VMAF verification is enabled by default for video re-encodes and skipped for remuxes;
+it can be disabled under **Settings → Verification gates** when throughput is preferred.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so frames never round-trip through system

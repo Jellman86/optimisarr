@@ -419,7 +419,9 @@ public sealed class VerificationEvaluatorTests
         OriginalAudioTrackCount: 2,
         OutputAudioTrackCount: 2,
         OriginalSubtitleTrackCount: 1,
-        OutputSubtitleTrackCount: 1);
+        OutputSubtitleTrackCount: 1,
+        QualityMeasured: true,
+        QualityScores: new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99));
 
     private static CheckOutcome Outcome(VerificationReport report, string name) =>
         report.Checks.Single(check => check.Name == name).Outcome;
@@ -910,10 +912,23 @@ public sealed class VerificationEvaluatorTests
     private const string QualityCheck = "Perceptual quality (VMAF)";
 
     [Fact]
-    public void Quality_gate_is_absent_unless_enabled()
+    public void Quality_gate_is_absent_after_explicit_opt_out()
     {
-        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = false };
 
+        var report = VerificationEvaluator.Evaluate(Healthy(), policy);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == QualityCheck);
+    }
+
+    [Fact]
+    public void Quality_gate_is_absent_for_a_remux()
+    {
+        var input = Healthy() with { VideoReencoded = false, QualityMeasured = false, QualityScores = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
         Assert.DoesNotContain(report.Checks, check => check.Name == QualityCheck);
     }
 

@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Verification;
 
 /// <summary>
@@ -7,11 +9,14 @@ namespace Optimisarr.Core.Verification;
 /// than the original. Subtitle retention is not required by default because some
 /// rule profiles intentionally drop image-based subtitles.
 ///
-/// The perceptual-quality (VMAF) gate is opt-in: measuring it requires an ffmpeg
-/// built with libvmaf and roughly doubles verification time, so it is off by
-/// default. When enabled, the output must clear both a harmonic-mean VMAF floor
-/// (which penalises bad frames) and a per-frame minimum floor (which catches short
-/// artifact bursts a healthy average would hide).
+/// The perceptual-quality (VMAF) gate is on by default for video re-encodes because
+/// structural checks cannot prove that the picture still looks acceptable. It is
+/// skipped for remuxes and non-video media, where VMAF has no useful work to do.
+/// Measuring it roughly doubles verification time; an operator may explicitly opt
+/// out when throughput matters more than the additional quality safeguard. When
+/// enabled, the output must clear both a harmonic-mean VMAF floor (which penalises
+/// bad frames) and a per-frame minimum floor (which catches short artifact bursts
+/// a healthy average would hide).
 ///
 /// The audio loudness and clipping gates are opt-in too and share one
 /// <c>ebur128</c> decode pass: the loudness gate bounds EBU R128 drift, and the
@@ -53,7 +58,7 @@ public sealed record VerificationPolicy(
         RequireAudioRetained: true,
         RequireSubtitlesRetained: false,
         RequireSizeReduction: true,
-        QualityGateEnabled: false,
+        QualityGateEnabled: true,
         MinimumVmafHarmonicMean: 93.0,
         MinimumVmafMin: 80.0,
         AudioLoudnessGateEnabled: false,
@@ -63,4 +68,7 @@ public sealed record VerificationPolicy(
         ImageQualityGateEnabled: false,
         MinimumImageSsim: 0.95,
         ImageMetadataGateEnabled: false);
+
+    public bool RequiresVmaf(MediaKind kind, bool videoReencoded) =>
+        QualityGateEnabled && kind == MediaKind.Video && videoReencoded;
 }

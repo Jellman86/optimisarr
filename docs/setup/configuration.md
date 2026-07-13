@@ -59,7 +59,7 @@ that apply to it. The configurable gates make replacement stricter:
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video | Off |
+| Perceptual quality (VMAF) | Video re-encodes | On, harmonic mean 93 / worst frame 80 |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | Off |
@@ -67,7 +67,9 @@ that apply to it. The configurable gates make replacement stricter:
 
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
-becoming replaceable.
+becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
+the encoded video frames unchanged. Existing installations retain their saved VMAF
+choice; a new installation starts with the safer gate enabled.
 
 ## Rule profiles (presets)
 

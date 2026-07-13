@@ -108,9 +108,9 @@ public static class VerificationEvaluator
             checks.Add(TailComplete(input));
         }
 
-        // The perceptual-quality (VMAF) gate is a video measure, and only contributes when
-        // the user has opted in; otherwise the report and its cost are unchanged.
-        if (isVideo && policy.QualityGateEnabled)
+        // Remuxes copy the encoded frames unchanged, so VMAF is both redundant and expensive.
+        // Non-video media use their applicable audio/image gates instead.
+        if (policy.RequiresVmaf(input.Kind, input.VideoReencoded))
         {
             checks.Add(PerceptualQuality(input, policy));
         }

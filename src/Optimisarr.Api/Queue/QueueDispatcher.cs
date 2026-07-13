@@ -582,7 +582,10 @@ public sealed class QueueDispatcher(
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo,
             // A requested image downscale is an intentional dimension reduction, not corruption.
-            ImageDownscaleRequested: spec.ImageScaleFilter is not null);
+            ImageDownscaleRequested: spec.ImageScaleFilter is not null,
+            // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
+            // would add a full decode pass without providing another safety signal.
+            VideoReencoded: spec.VideoCodec is not null);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,

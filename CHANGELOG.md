@@ -55,6 +55,12 @@
 
 ### Fixed
 
+- **VMAF is now a default safety gate for video re-encodes.** New installations compare every
+  re-encoded video with its original at the existing conservative floors (93 harmonic mean / 80
+  worst frame), while existing installations retain their explicitly saved choice. Remux, audio,
+  and image work skip VMAF because it is either redundant or inapplicable. The Settings UI now
+  explains the safety/performance trade-off in every supported language, and the final-container
+  smoke test performs a real synthetic `libvmaf` comparison rather than trusting the filter list.
 - **CRF direction guidance and VMAF availability.** The library video-quality slider now correctly
   labels low CRF values as sharper and high CRF values as smaller. The container no longer assumes
   Jellyfin FFmpeg provides `libvmaf`: it keeps that binary for hardware-aware transcoding and adds a

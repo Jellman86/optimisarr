@@ -460,7 +460,7 @@ quarantine: {
     require_smaller: 'Richiedi che l’output sia più piccolo dell’originale',
     vmaf_label: 'Qualità percettiva (VMAF)',
     vmaf_hint:
-      "Confronta l’output con l’originale tramite libvmaf di FFmpeg. Richiede un FFmpeg compilato con libvmaf e circa raddoppia il tempo di verifica, quindi è disattivato di default. ~95 è visivamente indistinguibile dalla sorgente.",
+      "Confronta i video ricodificati con l’originale tramite libvmaf di FFmpeg. È attivo per impostazione predefinita perché rileva perdite visibili che i controlli strutturali non trovano; circa raddoppia il tempo di verifica. Disattivalo solo se la velocità conta più di questa protezione. ~95 è visivamente indistinguibile dalla sorgente.",
     vmaf_harmonic: 'VMAF minimo (media armonica)',
     vmaf_harmonic_tip: 'Livello minimo di qualità generale. La media armonica penalizza i frame peggiori più della media semplice.',
     vmaf_min: 'VMAF minimo (peggior frame)',

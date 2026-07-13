@@ -462,7 +462,7 @@ export const de: Messages = {
     require_smaller: 'Ausgabe muss kleiner als das Original sein',
     vmaf_label: 'Wahrnehmungsqualität (VMAF)',
     vmaf_hint:
-      'Vergleicht die Ausgabe mit dem Original über FFmpegs libvmaf. Erfordert ein mit libvmaf gebautes ffmpeg und verdoppelt die Prüfzeit ungefähr, daher standardmäßig deaktiviert. ~95 ist vom Quellmaterial visuell nicht zu unterscheiden.',
+      'Vergleicht neu codierte Videos über FFmpegs libvmaf mit dem Original. Standardmäßig aktiviert, da so sichtbare Qualitätsverluste erkannt werden, die Strukturprüfungen nicht finden; die Prüfzeit verdoppelt sich ungefähr. Nur deaktivieren, wenn Durchsatz wichtiger als dieser Schutz ist. ~95 ist vom Quellmaterial visuell nicht zu unterscheiden.',
     vmaf_harmonic: 'Min. VMAF (harmonisches Mittel)',
     vmaf_harmonic_tip: 'Untergrenze der Gesamtqualität. Das harmonische Mittel bestraft schlechte Frames stärker als ein einfacher Durchschnitt.',
     vmaf_min: 'Min. VMAF (schlechtestes Frame)',

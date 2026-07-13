@@ -17,7 +17,8 @@ public sealed record OriginalSnapshot(
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
     bool AudioDownmixed = false,
-    bool ImageDownscaleRequested = false);
+    bool ImageDownscaleRequested = false,
+    bool VideoReencoded = true);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -66,9 +67,10 @@ public sealed class VerificationService(
             // catch a silent downmix or sample-rate drop in the output.
             var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
 
-            // VMAF is expensive (a second full decode of both files), so only measure it
-            // when the user has opted into the quality gate.
-            var qualityResult = policy.QualityGateEnabled
+            // VMAF is expensive (a second full decode of both files), so run it only for
+            // video that was actually re-encoded. Remuxes preserve the encoded frames, while
+            // audio and image jobs have their own applicable verification gates.
+            var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
                 ? await quality.MeasureAsync(reference.Path, outputPath, cancellationToken)
                 : null;
 
@@ -173,7 +175,8 @@ public sealed class VerificationService(
                 OriginalHasIccProfile: originalMetadata?.Metadata.HasIccProfile ?? false,
                 OutputHasIccProfile: outputMetadata?.Metadata.HasIccProfile ?? false,
                 OriginalHasExif: originalMetadata?.Metadata.HasExif ?? false,
-                OutputHasExif: outputMetadata?.Metadata.HasExif ?? false);
+                OutputHasExif: outputMetadata?.Metadata.HasExif ?? false,
+                VideoReencoded: reference.VideoReencoded);
 
             return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
         }

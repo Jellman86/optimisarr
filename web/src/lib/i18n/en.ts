@@ -462,7 +462,7 @@ export const en = {
     require_smaller: 'Require output to be smaller than the original',
     vmaf_label: 'Perceptual quality (VMAF)',
     vmaf_hint:
-      "Compares output to original with FFmpeg's libvmaf. Needs an ffmpeg built with libvmaf and roughly doubles verification time, so it's off by default. ~95 is visually indistinguishable from the source.",
+      "Compares video re-encodes with the original using FFmpeg's libvmaf. Enabled by default because it catches visible quality loss that structural checks cannot; it roughly doubles verification time, so disable it only when throughput matters more than this safeguard. ~95 is visually indistinguishable from the source.",
     vmaf_harmonic: 'Min VMAF (harmonic mean)',
     vmaf_harmonic_tip: 'Overall quality floor. The harmonic mean penalises bad frames more than a plain average.',
     vmaf_min: 'Min VMAF (worst frame)',

@@ -72,4 +72,5 @@ public sealed record VerificationInput(
     bool OriginalHasIccProfile = false,
     bool OutputHasIccProfile = false,
     bool OriginalHasExif = false,
-    bool OutputHasExif = false);
+    bool OutputHasExif = false,
+    bool VideoReencoded = true);

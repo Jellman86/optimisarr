@@ -17,6 +17,12 @@ the replacement workflow is trustworthy.
    bundle, and the roadmap/docs split are all done. The **hardware validation matrix**
    below is the remaining open item, gated on access to non-Intel GPUs.
 
+   - **Default-on perceptual quality safety: done.** VMAF now protects video re-encodes by default
+     at the existing 93 harmonic-mean / 80 worst-frame floors, while remux and non-video work skip
+     the inapplicable extra decode. Existing saved opt-outs remain unchanged. CI executes a real
+     `libvmaf` comparison inside the final image so the shipped binary, model data, filter, and
+     runtime dependencies must work together rather than merely advertise the capability.
+
    - **Optional admin-token auth: done.** `OPTIMISARR_ADMIN_TOKEN`
      now gates the administrative API and SignalR hub with bearer-token authentication
      when set. The static SPA shell remains public so it can show a token prompt; useful

@@ -37,9 +37,11 @@ public sealed class VerificationPolicyResolverTests
     [Fact]
     public void Overrides_are_ignored_when_the_gate_is_disabled()
     {
-        var resolved = VerificationPolicyResolver.Resolve(VerificationPolicy.Default, 97, 90);
+        var disabled = VerificationPolicy.Default with { QualityGateEnabled = false };
 
-        Assert.Same(VerificationPolicy.Default, resolved);
+        var resolved = VerificationPolicyResolver.Resolve(disabled, 97, 90);
+
+        Assert.Same(disabled, resolved);
     }
 
     [Fact]

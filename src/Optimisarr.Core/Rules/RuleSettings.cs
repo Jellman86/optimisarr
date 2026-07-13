@@ -63,9 +63,9 @@ public sealed record RuleSettings
     /// <summary>
     /// When <c>false</c> (the default), a Dolby Vision source is left untouched regardless of
     /// <see cref="Hdr"/>. Re-encoding or tone-mapping DV without its dynamic-metadata RPU degrades it
-    /// to HDR10/SDR, and a Profile 5 source (no HDR10 base layer) comes out green/pink; with the
-    /// perceptual (VMAF) gate off by default there is no backstop. Opt in only if losing the DV
-    /// presentation is acceptable for that library.
+    /// to HDR10/SDR, and a Profile 5 source (no HDR10 base layer) comes out green/pink. VMAF cannot
+    /// preserve the missing dynamic metadata, so opt in only if losing the Dolby Vision presentation
+    /// is acceptable for that library.
     /// </summary>
     public bool OptimiseDolbyVision { get; init; }
 
