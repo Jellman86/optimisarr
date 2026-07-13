@@ -318,6 +318,11 @@ public static class FfmpegCommandBuilder
             args.Add("0:v?");
             args.Add("-c:v");
             args.Add("copy");
+            // Stream mapping alone does not preserve FLAC's attached-picture disposition when
+            // remuxing the cover into MP4/MP3. Mark every mapped picture explicitly so the muxer
+            // writes album art rather than a normal video track (or silently omitting it).
+            args.Add("-disposition:v");
+            args.Add("attached_pic");
         }
 
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio

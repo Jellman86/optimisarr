@@ -43,6 +43,7 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("0", args[metaMapIndex + 1]);
         Assert.Contains("0:s?", args);
         Assert.Equal("mov_text", args[IndexOf(args, "-c:s") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v") + 1]);
     }
 
     [Fact]
