@@ -645,6 +645,11 @@ export const pt: Messages = {
     audio_bitrate: "Taxa de bits de áudio (kbps)",
     audio_bitrate_tip: "Taxa de bits base estéreo para a recodificação de áudio (32–512 kbps). O som surround preservado recebe automaticamente este orçamento por par de canais; uma redução estéreo explícita mantém este valor. 96 kbps estéreo AAC é transparente para a maioria dos ouvintes.",
     audio_bitrate_ph: "Padrão (160)",
+    keep_audio_langs: "Manter idiomas de áudio",
+    keep_audio_langs_tip:
+      "Códigos ISO 639 separados por vírgulas (ex.: \"por, eng\"). Ao otimizar ou remuxar um vídeo, as trilhas de áudio em qualquer outro idioma são removidas da saída. Trilhas sem etiqueta de idioma são sempre mantidas e, se nenhuma trilha corresponder, nada é removido — a saída mantém sempre pelo menos uma trilha de áudio. O original permanece intocado até todas as verificações passarem.",
+    keep_audio_langs_ph: "Todos os idiomas (ex.: por, eng)",
+    keep_audio_langs_hint: "Deixe vazio para manter todas as trilhas. Trilhas de idioma desconhecido nunca são removidas.",
     vmaf_thresholds: "Limites de controle de qualidade (VMAF)",
     vmaf_thresholds_tip: "Substituição da biblioteca por mídia para a porta de qualidade perceptual. Usado apenas quando esse portão está habilitado nas configurações. Maior = mais rigoroso (quase sem perdas): uma pontuação de saída abaixo desta é rejeitada e o original mantido.",
     override: "Substituir",

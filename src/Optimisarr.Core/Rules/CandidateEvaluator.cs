@@ -214,16 +214,30 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Resolution {height}p above limit ({maxHeight}p)");
         }
 
-        // Remux/cleanup-only profile never re-encodes; it only acts on containers.
+        // Remux/cleanup-only profile never re-encodes; it only acts on containers and,
+        // when a kept-languages rule is set, on unwanted audio tracks.
         if (rules.TargetVideoCodec is null)
         {
             var keyword = ContainerKeyword(rules.TargetContainer);
             var alreadyClean = media.Container is not null &&
                 media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase);
 
-            return alreadyClean
-                ? CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})")
-                : CandidateDecision.Eligible($"Remux to {rules.TargetContainer} ({media.Container} → {rules.TargetContainer})");
+            if (!alreadyClean)
+            {
+                return CandidateDecision.Eligible($"Remux to {rules.TargetContainer} ({media.Container} → {rules.TargetContainer})");
+            }
+
+            // A container-clean file can still carry audio tracks the kept-languages rule
+            // removes; stripping them (a stream copy, no re-encode) is part of this profile's
+            // cleanup. Unknown languages stay conservative: no data, no eligibility.
+            var removableTracks = media.AudioLanguages is null
+                ? 0
+                : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages).Count;
+
+            return removableTracks > 0
+                ? CandidateDecision.Eligible(
+                    $"Remove {removableTracks} audio track(s) not in the kept languages ({string.Join(", ", rules.KeepAudioLanguages)})")
+                : CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})");
         }
 
         if (string.Equals(media.VideoCodec, rules.TargetVideoCodec, StringComparison.OrdinalIgnoreCase))

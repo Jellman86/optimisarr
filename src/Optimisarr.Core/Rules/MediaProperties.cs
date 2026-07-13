@@ -26,4 +26,7 @@ public sealed record MediaProperties(
     int? BitsPerRawSample = null,
     int AttachedPictureCount = 0,
     int SubtitleTrackCount = 0,
-    int MaxAudioChannels = 0);
+    int MaxAudioChannels = 0,
+    // Per-track audio language tags in stream order; null when the probe predates
+    // language capture, so language rules stay conservative.
+    IReadOnlyList<string?>? AudioLanguages = null);

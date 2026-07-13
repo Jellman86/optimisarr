@@ -434,6 +434,37 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("copy", args[subIndex + 1]);
     }
 
+    [Fact]
+    public void Excludes_the_removed_audio_tracks_from_a_video_re_encode()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode() with { RemoveAudioStreamIndexes = new[] { 1, 3 } });
+
+        Assert.Contains(("-map", "-0:a:1"), MapPairs(args));
+        Assert.Contains(("-map", "-0:a:3"), MapPairs(args));
+        // The exclusions follow the blanket "-map 0" so they actually remove those streams.
+        Assert.True(IndexOf(args, "0") < ((List<string>)args).IndexOf("-0:a:1"));
+    }
+
+    [Fact]
+    public void Excludes_the_removed_audio_tracks_from_a_remux()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: null, crf: null, preset: null) with { RemoveAudioStreamIndexes = new[] { 0 } });
+
+        Assert.Contains(("-map", "-0:a:0"), MapPairs(args));
+        // Still a pure stream copy: the kept tracks are not re-encoded.
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+    }
+
+    [Fact]
+    public void Removes_no_audio_tracks_by_default()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.DoesNotContain(args, argument => argument.StartsWith("-0:a:"));
+    }
+
     [Theory]
     [InlineData(".mp4")]
     [InlineData(".m4v")]

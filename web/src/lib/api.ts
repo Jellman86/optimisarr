@@ -85,6 +85,7 @@ export type LibraryRules = {
   videoAudioCodec: string | null
   videoAudioBitrateKbps: number | null
   downmixToStereo: boolean
+  keepAudioLanguages: string | null
   reencodeLossyAudio: boolean
   targetImageFormat: string | null
   imageQuality: number | null
@@ -420,6 +421,8 @@ export type MediaFile = {
   height: number | null
   durationSeconds: number | null
   audioCodecs: string | null
+  // Per-track audio languages in stream order (e.g. "eng, jpn, und"); null when not yet captured.
+  audioLanguages: string | null
   audioTrackCount: number | null
   subtitleTrackCount: number | null
   probedAt: string | null

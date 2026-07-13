@@ -542,4 +542,60 @@ public sealed class CandidateEvaluatorTests
         Assert.False(decision.IsEligible);
         Assert.Contains("container", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Remux_profile_is_eligible_for_a_clean_container_with_removable_audio_languages()
+    {
+        // The container is already right, but the kept-languages rule would strip a track —
+        // exactly the cleanup this profile exists for.
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", container: "matroska,webm") with
+            {
+                AudioLanguages = new string?[] { "eng", "fra" }
+            },
+            remux);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("audio track", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Remux_profile_still_skips_a_clean_container_when_no_track_is_removable()
+    {
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", container: "matroska,webm") with
+            {
+                AudioLanguages = new string?[] { "eng", "und" }
+            },
+            remux);
+
+        Assert.False(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Remux_profile_stays_conservative_when_track_languages_are_unknown()
+    {
+        // A file probed before languages were captured reports null; a clean container must
+        // not become eligible on data we don't have.
+        var remux = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "h264", container: "matroska,webm"),
+            remux);
+
+        Assert.False(decision.IsEligible);
+    }
 }

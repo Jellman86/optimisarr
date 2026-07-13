@@ -104,6 +104,7 @@ internal static class LibraryEndpoints
                 VideoAudioCodec = parsed.VideoAudioCodec,
                 VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
                 DownmixToStereo = parsed.DownmixToStereo,
+                KeepAudioLanguages = parsed.KeepAudioLanguages,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
                 TargetImageFormat = parsed.TargetImageFormat,
                 ImageQuality = parsed.ImageQuality,
@@ -171,6 +172,7 @@ internal static class LibraryEndpoints
             library.VideoAudioCodec = parsed.VideoAudioCodec;
             library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
             library.DownmixToStereo = parsed.DownmixToStereo;
+            library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
             library.TargetImageFormat = parsed.TargetImageFormat;
             library.ImageQuality = parsed.ImageQuality;

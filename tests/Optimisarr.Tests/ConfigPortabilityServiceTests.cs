@@ -179,6 +179,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
                 RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080,
                 VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160, DownmixToStereo = true,
+                KeepAudioLanguages = "eng, jpn",
                 ReencodeLossyAudio = true,
                 AutoEnqueueEnabled = true,
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
@@ -215,6 +216,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal("aac", library.VideoAudioCodec);
         Assert.Equal(160, library.VideoAudioBitrateKbps);
         Assert.True(library.DownmixToStereo);
+        Assert.Equal("eng, jpn", library.KeepAudioLanguages);
         Assert.True(library.ReencodeLossyAudio);
         Assert.True(library.AutoEnqueueEnabled);
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);

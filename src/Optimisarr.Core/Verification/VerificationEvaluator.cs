@@ -692,7 +692,21 @@ public static class VerificationEvaluator
             return Pass("Audio tracks", $"{detail} Retention not required by policy.");
         }
 
-        return input.OutputAudioTrackCount >= input.OriginalAudioTrackCount
+        // Tracks the kept-languages rule removed are intentional, so expect exactly that many
+        // fewer — but a source that had audio must never verify with none at all, even if the
+        // planned removal claims otherwise (the selection logic forbids removing every track).
+        var expected = input.OriginalAudioTrackCount - input.AudioTracksRemoved;
+        if (input.OriginalAudioTrackCount > 0)
+        {
+            expected = Math.Max(expected, 1);
+        }
+
+        if (input.AudioTracksRemoved > 0)
+        {
+            detail += $" {input.AudioTracksRemoved} track(s) intentionally removed by the kept-languages rule.";
+        }
+
+        return input.OutputAudioTrackCount >= expected
             ? Pass("Audio tracks", detail)
             : Fail("Audio tracks", $"{detail} Audio tracks were lost.");
     }

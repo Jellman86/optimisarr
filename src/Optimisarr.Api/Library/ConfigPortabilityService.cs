@@ -127,6 +127,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.VideoAudioCodec = snapshot.VideoAudioCodec;
             library.VideoAudioBitrateKbps = snapshot.VideoAudioBitrateKbps;
             library.DownmixToStereo = snapshot.DownmixToStereo;
+            library.KeepAudioLanguages = snapshot.KeepAudioLanguages;
             library.ReencodeLossyAudio = snapshot.ReencodeLossyAudio;
             library.TargetImageFormat = snapshot.TargetImageFormat;
             library.ImageQuality = snapshot.ImageQuality;
@@ -288,7 +289,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MoveOverwrite,
         library.AutoReplace,
         library.SkipEfficientSources,
-        library.OptimiseDolbyVision);
+        library.OptimiseDolbyVision,
+        library.KeepAudioLanguages);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

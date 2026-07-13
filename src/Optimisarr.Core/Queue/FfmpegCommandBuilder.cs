@@ -27,7 +27,10 @@ public sealed record TranscodeSpec(
     bool ImageLossless = false,
     bool SourceIsVariableFrameRate = false,
     int? ClipSeconds = null,
-    int? ClipStartSeconds = null);
+    int? ClipStartSeconds = null,
+    // Audio-relative indexes of the source tracks a kept-languages rule removes from the
+    // output (see AudioTrackSelection). Null or empty keeps every track.
+    IReadOnlyList<int>? RemoveAudioStreamIndexes = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -172,6 +175,18 @@ public static class FfmpegCommandBuilder
             // hardware encode so such a source still transcodes; attachments stay (MKV holds them).
             args.Add("-map");
             args.Add("-0:d");
+        }
+
+        // The tracks a kept-languages rule removes. The selection already guarantees at least
+        // one audio track survives, and the verification gate re-checks the output against the
+        // planned removal — this only translates the decided indexes into stream exclusions.
+        if (spec.RemoveAudioStreamIndexes is { Count: > 0 } removedAudio)
+        {
+            foreach (var index in removedAudio)
+            {
+                args.Add("-map");
+                args.Add($"-0:a:{index}");
+            }
         }
 
         if (spec.VideoCodec is null)

@@ -99,6 +99,14 @@ public sealed class Library
     public bool DownmixToStereo { get; set; }
 
     /// <summary>
+    /// Comma-separated ISO 639 codes of the audio languages a video job keeps (e.g. "eng, jpn");
+    /// tracks in any other language are removed from the output. Null (the default) keeps every
+    /// track. Tracks with an unknown language are always kept, and when no track matches a kept
+    /// language nothing is removed, so the output never loses all its audio.
+    /// </summary>
+    public string? KeepAudioLanguages { get; set; }
+
+    /// <summary>
     /// When true, already-lossy audio is also eligible for re-encoding to the target codec, but
     /// only when its source bitrate is known to exceed the target enough to save space. Defaults
     /// to false: the conservative behaviour re-encodes only lossless sources.

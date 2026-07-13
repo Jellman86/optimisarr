@@ -91,6 +91,7 @@ internal static class MediaAndQueueEndpoints
                 file.Height,
                 file.DurationSeconds,
                 file.AudioCodecs,
+                file.AudioLanguages,
                 file.AudioTrackCount,
                 file.SubtitleTrackCount,
                 file.ProbedAt,

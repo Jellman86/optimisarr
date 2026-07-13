@@ -148,6 +148,18 @@ uses the same effective value. MP3 requires stereo downmix for sources above two
 Opus accept up to eight retained channels. Post-encode verification independently rejects any
 unrequested channel loss.
 
+**Keep audio languages** (Advanced options) removes unwanted audio tracks while a
+video is optimised or remuxed. Enter comma-separated ISO 639 codes (e.g. `eng, jpn`);
+tracks in any other language are dropped from the output. The behaviour is
+deliberately conservative: a track with no language tag is never removed, and when no
+track matches a kept language nothing is removed — so the output always keeps at
+least one audio track. Verification then holds the output to exactly the planned
+removal (never fewer tracks than planned, never zero), and the original is untouched
+until every gate passes. Under the **Remux / cleanup** preset, a file already in the
+right container but carrying removable foreign-language tracks becomes eligible for a
+fast stream-copy cleanup; re-encode presets strip tracks as part of the jobs they
+already run.
+
 ## Per-library automation
 
 **Auto-optimise** uses a per-library local-time window. Inside that window the

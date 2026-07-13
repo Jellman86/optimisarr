@@ -6,6 +6,9 @@ using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Core.Library;
 
+/// <summary>One audio stream's shape, in the file's stream order (index = audio-relative position).</summary>
+public sealed record AudioTrackInfo(string? Language, int Channels, int SampleRate, string? Codec);
+
 public sealed record MediaProbeResult(
     bool Success,
     string? Container,
@@ -15,6 +18,7 @@ public sealed record MediaProbeResult(
     int? Height,
     int? FrameCount,
     IReadOnlyList<string> AudioCodecs,
+    IReadOnlyList<AudioTrackInfo> AudioTracks,
     int AudioTrackCount,
     int SubtitleTrackCount,
     bool HasImageSubtitles,
@@ -39,7 +43,8 @@ public sealed record MediaProbeResult(
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
+        new(false, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
+            0, 0, false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, null, error);
 }
@@ -167,6 +172,7 @@ public sealed class MediaProbeService
         var isDolbyVision = false;
         var hasRealVideoStream = false;
         var audioCodecs = new List<string>();
+        var audioTracks = new List<AudioTrackInfo>();
         var subtitleCount = 0;
         var hasImageSubtitles = false;
         var maxAudioChannels = 0;
@@ -255,20 +261,19 @@ public sealed class MediaProbeService
                             }
                         }
                         audioStart ??= ReadStartTime(stream);
-                        if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var channels))
-                        {
-                            maxAudioChannels = Math.Max(maxAudioChannels, channels);
-                        }
-                        if (stream.TryGetProperty("sample_rate", out var sr)
-                            && sr.ValueKind == JsonValueKind.String
-                            && int.TryParse(sr.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var sampleRate))
-                        {
-                            maxAudioSampleRate = Math.Max(maxAudioSampleRate, sampleRate);
-                        }
+                        var audioChannels = ReadChannels(stream);
+                        maxAudioChannels = Math.Max(maxAudioChannels, audioChannels);
+                        var audioSampleRate = ReadSampleRate(stream);
+                        maxAudioSampleRate = Math.Max(maxAudioSampleRate, audioSampleRate);
                         if (ReadBitrateKbps(stream) is { } streamBitrate)
                         {
                             audioBitrateKbps = Math.Max(audioBitrateKbps ?? 0, streamBitrate);
                         }
+                        audioTracks.Add(new AudioTrackInfo(
+                            ReadLanguageTag(stream),
+                            audioChannels,
+                            audioSampleRate,
+                            codecName));
                         break;
                     case "subtitle":
                         subtitleCount++;
@@ -298,6 +303,7 @@ public sealed class MediaProbeService
             height,
             frameCount,
             audioCodecs,
+            audioTracks,
             audioCodecs.Count,
             subtitleCount,
             hasImageSubtitles,
@@ -487,6 +493,40 @@ public sealed class MediaProbeService
 
         return null;
     }
+
+    // Containers tag streams with ISO 639 codes in any case; normalise to lower case so
+    // language comparisons are stable. A blank tag means the language is unknown.
+    private static string? ReadLanguageTag(JsonElement stream)
+    {
+        if (!stream.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var tag in tags.EnumerateObject())
+        {
+            if (string.Equals(tag.Name, "language", StringComparison.OrdinalIgnoreCase)
+                && tag.Value.ValueKind == JsonValueKind.String)
+            {
+                var value = tag.Value.GetString()?.Trim();
+                return string.IsNullOrEmpty(value) ? null : value.ToLowerInvariant();
+            }
+        }
+
+        return null;
+    }
+
+    private static int ReadChannels(JsonElement stream) =>
+        stream.TryGetProperty("channels", out var channels) && channels.TryGetInt32(out var value)
+            ? value
+            : 0;
+
+    private static int ReadSampleRate(JsonElement stream) =>
+        stream.TryGetProperty("sample_rate", out var sampleRate)
+            && sampleRate.ValueKind == JsonValueKind.String
+            && int.TryParse(sampleRate.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : 0;
 
     private static string? FirstLine(string value) =>
         value.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
