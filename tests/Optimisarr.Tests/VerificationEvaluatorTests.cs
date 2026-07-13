@@ -793,6 +793,49 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Intentional_hdr_to_sdr_accepts_the_expected_rec709_metadata_change()
+    {
+        var input = Healthy() with
+        {
+            OriginalIsHdr = true,
+            HdrConvertedToSdr = true,
+            OutputIsHdr = false,
+            OriginalColorPrimaries = "bt2020",
+            OutputColorPrimaries = "bt709",
+            OriginalColorTransfer = "smpte2084",
+            OutputColorTransfer = "bt709",
+            OriginalColorSpace = "bt2020nc",
+            OutputColorSpace = "bt709"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
+    public void Intentional_hdr_to_sdr_rejects_metadata_that_still_claims_bt2020()
+    {
+        var input = Healthy() with
+        {
+            OriginalIsHdr = true,
+            HdrConvertedToSdr = true,
+            OutputIsHdr = false,
+            OriginalColorPrimaries = "bt2020",
+            OutputColorPrimaries = "bt2020",
+            OriginalColorTransfer = "smpte2084",
+            OutputColorTransfer = "bt709",
+            OriginalColorSpace = "bt2020nc",
+            OutputColorSpace = "bt709"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
     public void Aligned_audio_and_video_starts_pass_sync()
     {
         var input = Healthy() with { OutputVideoStartSeconds = 0.0, OutputAudioStartSeconds = 0.02 };
@@ -938,13 +981,19 @@ public sealed class VerificationEvaluatorTests
         var input = Healthy() with
         {
             QualityMeasured = true,
-            QualityScores = new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99)
+            QualityScores = new QualityScores(
+                95.0, 94.5, 88.0, 45.0, 0.99,
+                ModelVersion: "vmaf_v0.6.1",
+                Preprocessing: "SDR")
         };
 
         var report = VerificationEvaluator.Evaluate(input, QualityGate);
 
         Assert.True(report.Passed);
         Assert.Equal(CheckOutcome.Passed, Outcome(report, QualityCheck));
+        var detail = Assert.Single(report.Checks, check => check.Name == QualityCheck).Detail;
+        Assert.Contains("model vmaf_v0.6.1", detail);
+        Assert.Contains("SDR", detail);
     }
 
     [Fact]

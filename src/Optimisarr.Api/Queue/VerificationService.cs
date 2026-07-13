@@ -71,7 +71,7 @@ public sealed class VerificationService(
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
             // audio and image jobs have their own applicable verification gates.
             var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
-                ? await quality.MeasureAsync(reference.Path, outputPath, cancellationToken)
+                ? await MeasureQualityAsync(reference, outputPath, originalProbe, quality, cancellationToken)
                 : null;
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
@@ -187,6 +187,27 @@ public sealed class VerificationService(
                 TryDelete(reference.Path);
             }
         }
+    }
+
+    private static Task<QualityResult> MeasureQualityAsync(
+        OriginalSnapshot reference,
+        string outputPath,
+        MediaProbeResult originalProbe,
+        QualityScoreService quality,
+        CancellationToken cancellationToken)
+    {
+        if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
+        {
+            return Task.FromResult(QualityResult.Failed(
+                "Could not determine the original video dimensions required for VMAF."));
+        }
+
+        var context = new QualityMeasurementContext(
+            originalProbe.Width.Value,
+            originalProbe.Height.Value,
+            reference.IsHdr,
+            reference.HdrConvertedToSdr);
+        return quality.MeasureAsync(reference.Path, outputPath, context, cancellationToken);
     }
 
     private async Task<OriginalSnapshot> CreateReferenceClipAsync(

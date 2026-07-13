@@ -36,9 +36,7 @@ public sealed record TranscodeSpec(
 public static class FfmpegCommandBuilder
 {
     // A conservative Rec.709 tone-map chain for HDR (PQ/HLG) -> SDR.
-    private const string TonemapFilter =
-        "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable," +
-        "zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
+    private const string TonemapFilter = HdrToneMap.Filter;
 
     /// <param name="threads">
     /// CPU thread cap for encoding; <c>0</c> (or less) lets ffmpeg decide. Surfaced

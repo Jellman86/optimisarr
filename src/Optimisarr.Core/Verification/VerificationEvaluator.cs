@@ -174,6 +174,22 @@ public static class VerificationEvaluator
 
     private static VerificationCheck ColorMetadataPreserved(VerificationInput input)
     {
+        if (input.HdrConvertedToSdr)
+        {
+            // The shared production tone-map deliberately converts BT.2020/PQ or
+            // HLG into limited-range Rec.709. Comparing output tags with the HDR
+            // source would reject the intended conversion; validate the declared
+            // SDR domain instead so stale HDR tags still fail safely.
+            var unexpected = new List<string>();
+            AddUnexpectedToneMapValue(unexpected, "primaries", input.OutputColorPrimaries);
+            AddUnexpectedToneMapValue(unexpected, "transfer", input.OutputColorTransfer);
+            AddUnexpectedToneMapValue(unexpected, "matrix", input.OutputColorSpace);
+
+            return unexpected.Count == 0
+                ? Pass("Colour metadata", "Intentional HDR-to-SDR output is tagged as Rec.709.")
+                : Fail("Colour metadata", $"Tone-mapped SDR metadata is invalid: {string.Join("; ", unexpected)}.");
+        }
+
         // Only a definite change is a failure: the original and output both declare a
         // value and they differ (e.g. BT.709 re-tagged as BT.601). A dropped tag on the
         // output is treated as benign, since absence usually means "container default".
@@ -185,6 +201,14 @@ public static class VerificationEvaluator
         return mismatches.Count == 0
             ? Pass("Colour metadata", "Colour primaries, transfer, and matrix preserved.")
             : Fail("Colour metadata", $"Colour metadata changed: {string.Join("; ", mismatches)}.");
+    }
+
+    private static void AddUnexpectedToneMapValue(List<string> unexpected, string label, string? output)
+    {
+        if (output is not null && !string.Equals(output, "bt709", StringComparison.OrdinalIgnoreCase))
+        {
+            unexpected.Add($"{label} is {output}, expected bt709");
+        }
     }
 
     private static void AddMismatch(List<string> mismatches, string label, string? original, string? output)
@@ -422,6 +446,14 @@ public static class VerificationEvaluator
         if (scores.SsimMean is { } ssim)
         {
             parts.Add(string.Format(CultureInfo.InvariantCulture, "SSIM {0:0.####}", ssim));
+        }
+        if (!string.IsNullOrWhiteSpace(scores.ModelVersion))
+        {
+            parts.Add($"model {scores.ModelVersion}");
+        }
+        if (!string.IsNullOrWhiteSpace(scores.Preprocessing))
+        {
+            parts.Add(scores.Preprocessing);
         }
 
         return string.Join("; ", parts) + ".";

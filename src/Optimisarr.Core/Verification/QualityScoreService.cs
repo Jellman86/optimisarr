@@ -14,10 +14,9 @@ public sealed record QualityResult(bool Measured, QualityScores? Scores, string?
 /// Measures the perceptual quality of a converted output against its original with
 /// FFmpeg's <c>libvmaf</c> filter, writing a JSON log that the pure
 /// <see cref="QualityScoreParser"/> turns into scores. The distorted stream is
-/// scaled to the reference with <c>scale2ref</c> so a downscaled encode is still
-/// compared like-for-like; presentation timestamps are reset so the two streams
-/// align from the first frame. FFmpeg is invoked through an explicit argument list,
-/// never a shell string.
+/// prepared by <see cref="QualityScoreCommandBuilder"/> so resolution, timebase,
+/// colour range, model, and HDR-to-SDR handling are deterministic. FFmpeg is
+/// invoked through an explicit argument list, never a shell string.
 /// </summary>
 public sealed class QualityScoreService(string? ffmpegCommand = null)
 {
@@ -28,6 +27,7 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
     public async Task<QualityResult> MeasureAsync(
         string referencePath,
         string distortedPath,
+        QualityMeasurementContext context,
         CancellationToken cancellationToken)
     {
         if (!File.Exists(referencePath))
@@ -41,14 +41,19 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
 
         // A unique log path with no special characters keeps the filtergraph valid.
         var logPath = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
-        // Compute VMAF plus PSNR and SSIM as corroborating signals in one pass. The
-        // "\|" escapes the feature separator so the filtergraph parser keeps both
-        // features in libvmaf's "feature" option rather than splitting the filter.
-        var filter =
-            "[0:v]setpts=PTS-STARTPTS[dist];" +
-            "[1:v]setpts=PTS-STARTPTS[ref];" +
-            "[dist][ref]scale2ref[dists][refs];" +
-            $"[dists][refs]libvmaf=feature=name=psnr\\|name=float_ssim:log_fmt=json:log_path={logPath}";
+        QualityScoreCommand command;
+        try
+        {
+            // Keep measurement useful without monopolising a small home server. Four
+            // libvmaf workers scale well while leaving capacity for the API and disk I/O.
+            var threads = Math.Clamp(Environment.ProcessorCount, 1, 4);
+            command = QualityScoreCommandBuilder.Build(
+                distortedPath, referencePath, logPath, context, threads);
+        }
+        catch (ArgumentException ex)
+        {
+            return QualityResult.Failed($"Could not prepare VMAF measurement: {ex.Message}");
+        }
 
         try
         {
@@ -61,22 +66,16 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = _ffmpeg,
-                    ArgumentList =
-                    {
-                        "-nostdin",
-                        "-v", "error",
-                        // Input 0 is the distorted (output) stream, input 1 the reference (original).
-                        "-i", distortedPath,
-                        "-i", referencePath,
-                        "-lavfi", filter,
-                        "-f", "null",
-                        "-"
-                    },
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+
+                foreach (var argument in command.Arguments)
+                {
+                    process.StartInfo.ArgumentList.Add(argument);
+                }
 
                 process.Start();
 
@@ -115,6 +114,14 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
 
             var json = await File.ReadAllTextAsync(logPath, cancellationToken);
             var scores = QualityScoreParser.Parse(json);
+            if (scores is not null)
+            {
+                scores = scores with
+                {
+                    ModelVersion = command.ModelVersion,
+                    Preprocessing = command.Preprocessing
+                };
+            }
             return scores is null
                 ? QualityResult.Failed("libvmaf log contained no usable VMAF score.")
                 : QualityResult.Ok(scores);
