@@ -645,8 +645,10 @@ Deliverables:
 - **Audio optimisation**: target codec/bitrate/sample-rate rules (e.g. lossless →
   efficient lossy or re-pack), with verification on loudness, channel layout,
   duration, and decode health. Tag/metadata and embedded-art preservation. **Done**
-  (lossless → configurable codec/bitrate, default Opus 128 kbps; outputs carry the
-  optimisation marker like video).
+  (lossless → configurable codec/bitrate, compatibility-first AAC 128 kbps default;
+  outputs carry the optimisation marker like video). Attached-art counts and source tags are
+  replacement gates. Opus sources with attached pictures are rejected because FFmpeg cannot
+  translate an attached video stream into Ogg's picture-comment representation safely.
 - **Transcode from any audio source, not just lossless.** A per-library "re-encode lossy audio"
   opt-in now also makes already-lossy sources eligible, but only when re-encoding would
   genuinely save space: probing records the source audio bitrate, and a lossy file is eligible

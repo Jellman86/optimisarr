@@ -73,4 +73,8 @@ public sealed record VerificationInput(
     bool OutputHasIccProfile = false,
     bool OriginalHasExif = false,
     bool OutputHasExif = false,
-    bool VideoReencoded = true);
+    bool VideoReencoded = true,
+    int OriginalAttachedPictureCount = 0,
+    int OutputAttachedPictureCount = 0,
+    IReadOnlyDictionary<string, string>? OriginalFormatTags = null,
+    IReadOnlyDictionary<string, string>? OutputFormatTags = null);

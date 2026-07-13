@@ -117,6 +117,23 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetAudioCodec} (no expected saving)");
         }
 
+        // Ogg Opus represents album art as a METADATA_BLOCK_PICTURE comment rather than an
+        // attached video stream. FFmpeg cannot translate the latter safely during this encode;
+        // fail before queueing instead of either dropping the artwork or failing at the muxer.
+        if (rules.TargetAudioCodec.Equals("opus", StringComparison.OrdinalIgnoreCase)
+            && media.AttachedPictureCount > 0)
+        {
+            return CandidateDecision.Skipped(
+                "Opus cannot safely preserve the embedded cover art; choose AAC or MP3 for this library");
+        }
+
+        if (!rules.TargetAudioCodec.Equals("aac", StringComparison.OrdinalIgnoreCase)
+            && media.SubtitleTrackCount > 0)
+        {
+            return CandidateDecision.Skipped(
+                $"{rules.TargetAudioCodec} cannot preserve the embedded timed lyrics/subtitle stream");
+        }
+
         // Lossless sources are always worth re-encoding: a large saving with no audible loss.
         if (AudioTarget.IsLossless(media.AudioCodec))
         {

@@ -8,13 +8,13 @@ public sealed class FfmpegCommandBuilderTests
     private static TranscodeSpec AudioReencode() =>
         new(
             InputPath: "/data/music/Track.flac",
-            OutputPath: "/work/Track.opus",
+            OutputPath: "/work/Track.m4a",
             VideoCodec: null,
             Crf: null,
             Preset: null,
             TonemapToSdr: false,
             Kind: MediaKind.Audio,
-            AudioEncoder: "libopus",
+            AudioEncoder: "aac",
             AudioBitrateKbps: 128);
 
     [Fact]
@@ -23,10 +23,10 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
         var audioCodecIndex = IndexOf(args, "-c:a");
-        Assert.Equal("libopus", args[audioCodecIndex + 1]);
+        Assert.Equal("aac", args[audioCodecIndex + 1]);
         var bitrateIndex = IndexOf(args, "-b:a");
         Assert.Equal("128k", args[bitrateIndex + 1]);
-        Assert.Equal("/work/Track.opus", args[^1]);
+        Assert.Equal("/work/Track.m4a", args[^1]);
     }
 
     [Fact]
@@ -41,6 +41,20 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-crf", args);
         var metaMapIndex = IndexOf(args, "-map_metadata");
         Assert.Equal("0", args[metaMapIndex + 1]);
+        Assert.Contains("0:s?", args);
+        Assert.Equal("mov_text", args[IndexOf(args, "-c:s") + 1]);
+    }
+
+    [Fact]
+    public void An_opus_audio_job_maps_only_audio_so_attached_art_cannot_break_the_ogg_muxer()
+    {
+        var spec = AudioReencode() with { OutputPath = "/work/Track.opus", AudioEncoder = "libopus" };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.DoesNotContain("0:v?", args);
+        Assert.DoesNotContain("-c:v", args);
+        Assert.DoesNotContain("0:s?", args);
     }
 
     [Fact]

@@ -176,7 +176,11 @@ public sealed class VerificationService(
                 OutputHasIccProfile: outputMetadata?.Metadata.HasIccProfile ?? false,
                 OriginalHasExif: originalMetadata?.Metadata.HasExif ?? false,
                 OutputHasExif: outputMetadata?.Metadata.HasExif ?? false,
-                VideoReencoded: reference.VideoReencoded);
+                VideoReencoded: reference.VideoReencoded,
+                OriginalAttachedPictureCount: originalProbe.AttachedPictureCount,
+                OutputAttachedPictureCount: outputProbe.AttachedPictureCount,
+                OriginalFormatTags: originalProbe.FormatTags,
+                OutputFormatTags: outputProbe.FormatTags);
 
             return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
         }

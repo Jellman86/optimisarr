@@ -144,6 +144,31 @@ public sealed class MediaProbeParseTests
 
         Assert.Equal(MediaKind.Audio, result.MediaKind);
         Assert.Null(result.VideoCodec);
+        Assert.Equal(1, result.AttachedPictureCount);
+    }
+
+    [Fact]
+    public void Parse_records_format_tags_for_audio_metadata_verification()
+    {
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "audio", "codec_name": "flac",
+            "tags": { "LYRICS": "Example lyrics" }
+          }],
+          "format": {
+            "format_name": "flac",
+            "tags": { "ARTIST": "Example Artist", "album": "Example Album", "empty": "" }
+          }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".flac");
+
+        Assert.Equal("Example Artist", result.FormatTags["artist"]);
+        Assert.Equal("Example Album", result.FormatTags["ALBUM"]);
+        Assert.Equal("Example lyrics", result.FormatTags["lyrics"]);
+        Assert.False(result.FormatTags.ContainsKey("empty"));
     }
 
     [Fact]

@@ -10,7 +10,10 @@ public sealed record AudioCodecSpec(string Encoder, string Container);
 public static class AudioTarget
 {
     /// <summary>The default target codec (ffprobe name) when a library sets no override.</summary>
-    public const string DefaultCodec = "opus";
+    // AAC in M4A is the conservative music default: unlike Ogg Opus, FFmpeg can carry common
+    // JPEG/PNG attached cover art and timed-text lyrics into this container without a lossy
+    // side-channel conversion. Opus remains available for art-free libraries.
+    public const string DefaultCodec = "aac";
 
     public const int DefaultBitrateKbps = 128;
 

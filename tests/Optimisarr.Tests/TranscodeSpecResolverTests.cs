@@ -95,8 +95,8 @@ public sealed class TranscodeSpecResolverTests
             workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium", kind: MediaKind.Audio);
 
         Assert.Equal(MediaKind.Audio, spec.Kind);
-        Assert.Equal("/work/Album/Track.opus", spec.OutputPath);
-        Assert.Equal("libopus", spec.AudioEncoder);
+        Assert.Equal("/work/Album/Track.m4a", spec.OutputPath);
+        Assert.Equal("aac", spec.AudioEncoder);
         Assert.Equal(128, spec.AudioBitrateKbps);
         // The video fields stay empty for an audio job.
         Assert.Null(spec.VideoCodec);

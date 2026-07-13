@@ -61,6 +61,9 @@ public sealed class MediaFile
 
     public int? BitsPerRawSample { get; set; }
 
+    /// <summary>Embedded album-art streams reported with the attached-picture disposition.</summary>
+    public int AttachedPictureCount { get; set; }
+
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 

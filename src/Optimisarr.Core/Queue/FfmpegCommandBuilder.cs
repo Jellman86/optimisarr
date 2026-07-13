@@ -307,11 +307,26 @@ public static class FfmpegCommandBuilder
 
         AppendDownmix(args, spec);
 
-        // "?" makes the cover-art stream optional so audio with no embedded art still works.
-        args.Add("-map");
-        args.Add("0:v?");
-        args.Add("-c:v");
-        args.Add("copy");
+        // MP3 and M4A can carry JPEG/PNG attached pictures. Ogg Opus cannot mux those video
+        // streams (its standard artwork representation is a Vorbis-comment picture block), so
+        // Opus candidates with art are rejected before dispatch and the command maps audio only.
+        if (!Path.GetExtension(spec.OutputPath).Equals(".opus", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("-map");
+            args.Add("0:v?");
+            args.Add("-c:v");
+            args.Add("copy");
+        }
+
+        // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
+        // containers cannot, and their candidates are rejected when such a stream exists.
+        if (Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("-map");
+            args.Add("0:s?");
+            args.Add("-c:s");
+            args.Add("mov_text");
+        }
     }
 
     private static void AppendImageArguments(List<string> args, TranscodeSpec spec)

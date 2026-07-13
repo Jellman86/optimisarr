@@ -32,6 +32,13 @@ public static class VerificationEvaluator
             checks.Add(SubtitlesRetained(input, policy));
         }
 
+        // Music metadata and embedded artwork are part of the media, not decoration. Audio-only
+        // jobs must prove both survived before their source can be replaced.
+        if (input.Kind == MediaKind.Audio)
+        {
+            checks.Add(AudioMetadataPreserved(input));
+        }
+
         checks.Add(SizeReduced(input, policy));
 
         // A still is verified as an image: it must contain a picture and keep its dimensions.
@@ -126,6 +133,69 @@ public static class VerificationEvaluator
         }
 
         return new VerificationReport(checks);
+    }
+
+    private static VerificationCheck AudioMetadataPreserved(VerificationInput input)
+    {
+        const string name = "Audio metadata and artwork";
+        if (input.OutputAttachedPictureCount < input.OriginalAttachedPictureCount)
+        {
+            return Fail(name,
+                $"Embedded artwork dropped from {input.OriginalAttachedPictureCount} to {input.OutputAttachedPictureCount} picture(s).");
+        }
+
+        var original = NormaliseAudioTags(input.OriginalFormatTags);
+        var output = NormaliseAudioTags(input.OutputFormatTags);
+        foreach (var (key, value) in original)
+        {
+            if (!output.TryGetValue(key, out var outputValue))
+            {
+                return Fail(name, $"Audio metadata tag '{key}' was lost.");
+            }
+
+            if (!string.Equals(value, outputValue, StringComparison.Ordinal))
+            {
+                return Fail(name, $"Audio metadata tag '{key}' changed during conversion.");
+            }
+        }
+
+        return Pass(name,
+            $"Retained {original.Count} source metadata tag(s) and {input.OriginalAttachedPictureCount} embedded picture(s).");
+    }
+
+    private static IReadOnlyDictionary<string, string> NormaliseAudioTags(
+        IReadOnlyDictionary<string, string>? tags)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (tags is null)
+        {
+            return result;
+        }
+
+        foreach (var (rawKey, rawValue) in tags)
+        {
+            var key = rawKey.Trim().ToLowerInvariant() switch
+            {
+                "albumartist" => "album_artist",
+                "year" => "date",
+                var other => other
+            };
+
+            // Technical container fields are regenerated legitimately and are not music tags.
+            if (key is "encoder" or "vendor_id" or "major_brand" or "minor_version"
+                or "compatible_brands" or "handler_name" or "duration" or "language"
+                or "optimisarr")
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rawValue))
+            {
+                result[key] = rawValue.Trim();
+            }
+        }
+
+        return result;
     }
 
     private static VerificationCheck NoClippingIntroduced(VerificationInput input, VerificationPolicy policy)

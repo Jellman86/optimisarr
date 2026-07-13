@@ -23,4 +23,6 @@ public sealed record MediaProperties(
     double? DurationSeconds = null,
     bool IsDolbyVision = false,
     string? PixelFormat = null,
-    int? BitsPerRawSample = null);
+    int? BitsPerRawSample = null,
+    int AttachedPictureCount = 0,
+    int SubtitleTrackCount = 0);

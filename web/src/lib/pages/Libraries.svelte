@@ -1100,7 +1100,7 @@
           <div>
             <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
             <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>{i18n.m.libraries.audio_default_opus}</option>
+              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
               {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
             </select>
           </div>

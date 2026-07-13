@@ -75,6 +75,13 @@
   requires the existing explicit lossy-image opt-in, while PNG/BMP/GIF to WebP uses the encoder's
   genuinely lossless mode. Pixel format and raw bit depth are persisted via a schema migration so
   rescans and queue dispatch make the same decision.
+- **Music conversion now treats artwork, tags, and lyrics as replacement-critical data.** AAC in
+  M4A is the new compatibility-first default because FFmpeg can preserve common attached JPEG/PNG
+  artwork and timed-text lyrics there. Opus remains available for art-free music, but a source with
+  attached art is rejected before queueing instead of failing in the Ogg muxer or losing its cover;
+  MP3/Opus likewise reject timed-lyrics streams they cannot contain. Verification now compares
+  source/output format tags and embedded-picture counts, and probing persists artwork counts for
+  deterministic candidate decisions. The UI explains the default consistently in every language.
 - **CRF direction guidance and VMAF availability.** The library video-quality slider now correctly
   labels low CRF values as sharper and high CRF values as smaller. The container no longer assumes
   Jellyfin FFmpeg provides `libvmaf`: it keeps that binary for hardware-aware transcoding and adds a

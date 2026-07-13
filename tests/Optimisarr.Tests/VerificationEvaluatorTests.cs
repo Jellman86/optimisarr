@@ -403,6 +403,60 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
         Assert.False(report.Passed);
     }
+
+    [Fact]
+    public void An_audio_output_that_loses_cover_art_fails()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalAttachedPictureCount = 1,
+            OutputAttachedPictureCount = 0
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio metadata and artwork"));
+    }
+
+    [Fact]
+    public void An_audio_output_that_loses_or_changes_a_source_tag_fails()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalFormatTags = new Dictionary<string, string> { ["ARTIST"] = "Example", ["album"] = "First" },
+            OutputFormatTags = new Dictionary<string, string> { ["artist"] = "Example", ["album"] = "Second" }
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio metadata and artwork"));
+    }
+
+    [Fact]
+    public void Audio_tag_aliases_and_regenerated_container_tags_are_handled_safely()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalAttachedPictureCount = 1,
+            OutputAttachedPictureCount = 1,
+            OriginalFormatTags = new Dictionary<string, string>
+            {
+                ["ALBUMARTIST"] = "Example",
+                ["YEAR"] = "2026",
+                ["encoder"] = "source encoder"
+            },
+            OutputFormatTags = new Dictionary<string, string>
+            {
+                ["album_artist"] = "Example",
+                ["date"] = "2026",
+                ["encoder"] = "Lavf"
+            }
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio metadata and artwork"));
+    }
     // A converted output that passes every default gate: decodes cleanly, probes,
     // keeps duration and audio, and is meaningfully smaller than the original.
     private static VerificationInput Healthy() => new(

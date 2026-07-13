@@ -24,9 +24,14 @@ public sealed class CandidateEvaluatorTests
             audioCodec, DurationSeconds: durationSeconds, IsDolbyVision: isDolbyVision);
 
     private static MediaProperties AudioFile(
-        string audioCodec, long sizeBytes = 40L * 1024 * 1024, int? audioBitrateKbps = null) =>
+        string audioCodec,
+        long sizeBytes = 40L * 1024 * 1024,
+        int? audioBitrateKbps = null,
+        int attachedPictureCount = 0,
+        int subtitleTrackCount = 0) =>
         new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
-            MediaKind.Audio, audioCodec, audioBitrateKbps);
+            MediaKind.Audio, audioCodec, audioBitrateKbps, AttachedPictureCount: attachedPictureCount,
+            SubtitleTrackCount: subtitleTrackCount);
 
     // An image's still-picture codec is captured as the file's VideoCodec by the probe.
     private static MediaProperties ImageFile(
@@ -40,13 +45,13 @@ public sealed class CandidateEvaluatorTests
             BitsPerRawSample: bitsPerRawSample);
 
     [Fact]
-    public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
+    public void A_lossless_audio_file_is_eligible_for_re_encode_to_aac()
     {
         var decision = CandidateEvaluator.Evaluate(AudioFile("flac"), Hevc);
 
         Assert.True(decision.IsEligible);
         Assert.Contains("flac", decision.Reason);
-        Assert.Contains("opus", decision.Reason);
+        Assert.Contains("aac", decision.Reason);
     }
 
     [Fact]
@@ -63,12 +68,12 @@ public sealed class CandidateEvaluatorTests
     {
         var rules = Hevc with { ReencodeLossyAudio = true };
 
-        // 320 kbps MP3 well above the 128 kbps Opus target — re-encoding genuinely saves space.
+        // 320 kbps MP3 is well above the 128 kbps AAC target, so conversion genuinely saves space.
         var decision = CandidateEvaluator.Evaluate(AudioFile("mp3", audioBitrateKbps: 320), rules);
 
         Assert.True(decision.IsEligible);
         Assert.Contains("320", decision.Reason);
-        Assert.Contains("opus", decision.Reason);
+        Assert.Contains("aac", decision.Reason);
     }
 
     [Fact]
@@ -106,12 +111,45 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void An_audio_file_already_in_opus_is_skipped()
+    public void An_audio_file_already_in_aac_is_skipped()
     {
-        var decision = CandidateEvaluator.Evaluate(AudioFile("opus"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(AudioFile("aac"), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("Already", decision.Reason);
+    }
+
+    [Fact]
+    public void Opus_target_rejects_attached_cover_art_before_queueing()
+    {
+        var rules = Hevc with { TargetAudioCodec = "opus" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", attachedPictureCount: 1), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("cover art", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Aac_target_accepts_attached_cover_art_and_timed_lyrics()
+    {
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", attachedPictureCount: 1, subtitleTrackCount: 1), Hevc);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Mp3_target_rejects_timed_lyrics_before_queueing()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", subtitleTrackCount: 1), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("timed lyrics", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

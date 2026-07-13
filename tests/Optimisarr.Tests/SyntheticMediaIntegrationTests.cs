@@ -129,7 +129,7 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
         Assert.Equal("Audio", audioCandidate.MediaKind);
         Assert.Equal("flac", audioCandidate.Codec);
         Assert.Contains("flac", audioCandidate.Reason);
-        Assert.Contains("opus", audioCandidate.Reason);
+        Assert.Contains("aac", audioCandidate.Reason);
 
         var imageCandidate = candidates.Single(candidate => candidate.LibraryId == photoId);
         Assert.True(imageCandidate.Eligible);

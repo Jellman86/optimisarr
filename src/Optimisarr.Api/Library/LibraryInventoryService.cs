@@ -86,6 +86,7 @@ public sealed class LibraryInventoryService(
                 file.Container = null;
                 file.DurationSeconds = null;
                 file.VideoCodec = null;
+                file.AttachedPictureCount = 0;
                 file.Width = null;
                 file.Height = null;
                 file.AudioCodecs = null;
@@ -218,6 +219,7 @@ public sealed class LibraryInventoryService(
             file.FrameCount = result.FrameCount;
             file.PixelFormat = result.PixelFormat;
             file.BitsPerRawSample = result.BitsPerRawSample;
+            file.AttachedPictureCount = result.AttachedPictureCount;
             file.AudioCodecs = result.AudioCodecs.Count > 0 ? string.Join(", ", result.AudioCodecs) : null;
             file.AudioTrackCount = result.AudioTrackCount;
             file.AudioBitrateKbps = result.AudioBitrateKbps;

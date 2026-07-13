@@ -32,11 +32,14 @@ public sealed record MediaProbeResult(
     MediaKind MediaKind,
     string? PixelFormat,
     int? BitsPerRawSample,
+    int AttachedPictureCount,
+    IReadOnlyDictionary<string, string> FormatTags,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
-            null, null, null, null, null, null, MediaKind.Unknown, null, null, error);
+            null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), error);
 }
 
 /// <summary>
@@ -118,6 +121,7 @@ public sealed class MediaProbeService
         double? duration = null;
         string? optimisedMarker = null;
         int? formatBitrateKbps = null;
+        var formatTags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (root.TryGetProperty("format", out var format))
         {
@@ -136,6 +140,16 @@ public sealed class MediaProbeService
             }
 
             optimisedMarker = ReadOptimisedMarker(format);
+            if (format.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var tag in tags.EnumerateObject())
+                {
+                    if (tag.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(tag.Value.GetString()))
+                    {
+                        formatTags[tag.Name] = tag.Value.GetString()!;
+                    }
+                }
+            }
         }
 
         string? videoCodec = null;
@@ -158,6 +172,7 @@ public sealed class MediaProbeService
         double? audioStart = null;
         string? pixelFormat = null;
         int? bitsPerRawSample = null;
+        var attachedPictureCount = 0;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -176,6 +191,7 @@ public sealed class MediaProbeService
                     // video stream but not real video; skip it so audio files aren't mistaken
                     // for movies and the captured video codec is the actual picture track.
                     case "video" when IsAttachedPicture(stream):
+                        attachedPictureCount++;
                         break;
                     case "video":
                         hasRealVideoStream = true;
@@ -212,6 +228,21 @@ public sealed class MediaProbeService
                         break;
                     case "audio":
                         audioCodecs.Add(codecName ?? "unknown");
+                        // Vorbis/Opus commonly expose music tags on the audio stream rather than
+                        // format.tags. Merge them into the verification view without overriding a
+                        // container-level value when both are present.
+                        if (stream.TryGetProperty("tags", out var audioTags)
+                            && audioTags.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var tag in audioTags.EnumerateObject())
+                            {
+                                if (tag.Value.ValueKind == JsonValueKind.String
+                                    && !string.IsNullOrWhiteSpace(tag.Value.GetString()))
+                                {
+                                    formatTags.TryAdd(tag.Name, tag.Value.GetString()!);
+                                }
+                            }
+                        }
                         audioStart ??= ReadStartTime(stream);
                         if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var channels))
                         {
@@ -273,6 +304,8 @@ public sealed class MediaProbeService
             MediaKindClassifier.Classify(extension, hasRealVideoStream, audioCodecs.Count > 0),
             pixelFormat,
             bitsPerRawSample,
+            attachedPictureCount,
+            formatTags,
             null);
     }
 
