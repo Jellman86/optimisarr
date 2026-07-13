@@ -13,8 +13,8 @@
   the sidebar. German ships as the first translated locale. **Every page is migrated** — the app
   shell and navigation, plus Dashboard, Schedule, Quarantine, Inventory, Queue, Settings, and
   Libraries — each with complete German (including confirm dialogs, InfoTip help text, preset
-  summaries, and count-aware/pluralised strings). Shared components migrate next, and the other
-  locales are populated toward parity with the YA-WAMF language set.
+  summaries, and count-aware/pluralised strings). Shared components and the complete YA-WAMF
+  language set now use the same contract.
 - **Backend-originated messages now participate in i18n.** User-facing JSON errors expose stable
   machine codes while retaining English fallback text for older clients. The typed web client
   translates settings/query validation and filesystem, library, media, queue, exclusion,
@@ -31,6 +31,12 @@
   accessibility labels.
 - **Italian translation.** Italian is now selectable and complete across the full typed message
   contract, including media terminology, safety guidance, validation, and diagnostics.
+- **Japanese, Portuguese, Russian, and Simplified Chinese translations.** The final four YA-WAMF
+  languages are selectable and complete across all 832 message leaves. Ambiguous software terms
+  such as media library, processing queue, job, container, candidate, and space saving receive
+  context-specific translations rather than literal dictionary meanings. The placeholder audit now
+  checks all eight non-English translations, completing parity across `en`, `de`, `es`, `fr`, `it`,
+  `ja`, `pt`, `ru`, and `zh` without adding any language to the initial application chunk.
 - **Shared-component i18n migration started.** Folder selection, detail-sheet controls, and the
   original/encoded media comparison now use the typed locale contract, including accessible labels,
   loading/empty guidance, playback controls, downloads, and browser compatibility guidance.

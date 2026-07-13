@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-12)
+## Up next (priority order, updated 2026-07-13)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -160,7 +160,7 @@ the replacement workflow is trustworthy.
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.
 
-4. **Full translation parity with YA-WAMF** — internationalise the Optimisarr UI and
+4. **Full translation parity with YA-WAMF: done.** The Optimisarr UI and
    user-facing API/status strings, then provide complete translations for the same language
    set currently carried by YA-WAMF: English, German, Spanish, French, Italian, Japanese,
    Portuguese, Russian, and Chinese (`en`, `de`, `es`, `fr`, `it`, `ja`, `pt`, `ru`, `zh`).
@@ -181,18 +181,18 @@ the replacement workflow is trustworthy.
      `VerificationChecks` owns no prose (its names/details come from the backend), and
      `PreviewCompare` now translates its progress, errors, safety copy, comparison labels, stats,
      and verification summary too.
-   - **Backend-originated UI messages: done for the shipped locales.** JSON endpoint failures now
+   - **Backend-originated UI messages and language parity: done.** JSON endpoint failures now
      carry stable machine-readable codes plus an English compatibility fallback; the web client
      resolves those codes through the same typed locale contract. This covers settings and query
      validation, filesystem/library/media/job errors, exclusions, replacements, and integrations.
      Persisted job failure categories likewise drive translated queue and diagnostics summaries,
      while raw encoder/backend output remains available only as explicitly labelled technical
-     detail. **Spanish, French, and Italian are now complete** across the same 832-message typed contract,
-     using YA-WAMF's corresponding locale terminology as the vocabulary reference. CI also audits
-     interpolation placeholders across every translation so tokens such as `{count}` and `{path}` cannot be
-     dropped silently. Remaining: populate the remaining four locales (`ja`, `pt`, `ru`,
-     `zh`) toward parity — ideally with native review — so the feature is genuinely
-     full translation rather than navigation-only localisation.
+     detail. **German, Spanish, French, Italian, Japanese, Portuguese, Russian, and Simplified
+     Chinese are complete** across the same 832-message typed contract. CI audits interpolation
+     placeholders across all eight translations so tokens such as `{count}` and `{path}` cannot be
+     dropped silently. Locale modules remain lazy-loaded, keeping every translation out of the
+     initial application chunk until selected. Native-speaker refinements remain welcome through
+     normal issue reports, but no language is navigation-only or structurally incomplete.
 
 5. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
    install where Docker media-stack users already look. Keep the Docker contract stable and

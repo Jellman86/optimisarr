@@ -14,6 +14,10 @@ const LOADERS = {
   es: async () => (await import('./es')).es,
   fr: async () => (await import('./fr')).fr,
   it: async () => (await import('./it')).it,
+  ja: async () => (await import('./ja')).ja,
+  pt: async () => (await import('./pt')).pt,
+  ru: async () => (await import('./ru')).ru,
+  zh: async () => (await import('./zh')).zh,
 } satisfies Record<string, () => Promise<Messages>>
 
 export type LocaleCode = keyof typeof LOADERS
@@ -25,6 +29,10 @@ export const AVAILABLE_LOCALES: ReadonlyArray<{ code: LocaleCode; name: string }
   { code: 'es', name: 'Español' },
   { code: 'fr', name: 'Français' },
   { code: 'it', name: 'Italiano' },
+  { code: 'ja', name: '日本語' },
+  { code: 'pt', name: 'Português' },
+  { code: 'ru', name: 'Русский' },
+  { code: 'zh', name: '简体中文' },
 ]
 
 const STORAGE_KEY = 'optimisarr:locale'
