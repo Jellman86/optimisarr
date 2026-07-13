@@ -676,8 +676,9 @@ Deliverables:
   **Compatibility H.264 → MP4 + AAC, CRF 20** for older clients; **Experimental AV1 → MKV + Opus,
   CRF 30** for maximum efficiency; Remux/Cleanup unchanged. A new profile-level `DefaultCrf`
   replaces the encoder's arbitrary built-in default; per-library overrides still layer on top.
-  Audio defaults to copy (the recommended codec is documented, not forced) so a re-encode never
-  silently downgrades the original. The preset is now picked via a simple compatibility↔efficiency
+  The two MP4 compatibility profiles now use channel-aware AAC by default so their playback promise
+  covers the whole file; Advanced retains an explicit Copy override, with no implicit downmix.
+  AV1/MKV and remux profiles continue to copy audio. The preset is now picked via a simple compatibility↔efficiency
   **slider** (with a separate "no re-encode" toggle for Remux/Cleanup), keeping every exact knob
   behind Advanced options. **Done.**
 - **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,

@@ -31,19 +31,21 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
-    public void Video_audio_defaults_to_copy_and_can_be_overridden()
+    public void Compatibility_video_audio_defaults_to_aac_and_can_be_explicitly_copied()
     {
         var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
-        // Null video-audio codec means "copy untouched"; the bitrate default is only used
-        // once a codec is chosen.
-        Assert.Null(defaults.VideoAudioCodec);
+        Assert.Equal("aac", defaults.VideoAudioCodec);
         Assert.Equal(160, defaults.VideoAudioBitrateKbps);
+
+        var copied = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { VideoAudioCodec = "copy" });
+
+        Assert.Null(copied.VideoAudioCodec);
 
         var overridden = RuleResolver.Resolve(
             RuleProfile.ConservativeHevc,
             new RuleOverrides { VideoAudioCodec = "aac", VideoAudioBitrateKbps = 192 });
-
-        Assert.Equal("aac", overridden.VideoAudioCodec);
         Assert.Equal(192, overridden.VideoAudioBitrateKbps);
     }
 

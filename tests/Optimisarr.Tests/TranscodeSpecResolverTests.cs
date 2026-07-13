@@ -65,8 +65,9 @@ public sealed class TranscodeSpecResolverTests
     public void Falls_back_to_mkv_when_an_mp4_target_meets_copied_mp4_incompatible_audio()
     {
         // A TrueHD track copied (no audio re-encode) into MP4 aborts the encode, so go to MKV.
+        var rules = Hevc with { VideoAudioCodec = null };
         var spec = TranscodeSpecResolver.Resolve(
-            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
             workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
             kind: MediaKind.Video, sourceHasMp4IncompatibleAudio: true);
 
@@ -174,13 +175,13 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
-    public void A_video_job_copies_audio_by_default()
+    public void A_compatibility_video_job_re_encodes_audio_to_aac_by_default()
     {
         var spec = TranscodeSpecResolver.Resolve(
             Hevc, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
 
-        Assert.Null(spec.AudioEncoder);
-        Assert.Null(spec.AudioBitrateKbps);
+        Assert.Equal("aac", spec.AudioEncoder);
+        Assert.Equal(160, spec.AudioBitrateKbps);
     }
 
     [Fact]
@@ -254,7 +255,7 @@ public sealed class TranscodeSpecResolverTests
         // Downmix requires an audio re-encode; with audio copied (no video-audio codec) the
         // flag is not set, so a copied track keeps its layout.
         var copyAudio = TranscodeSpecResolver.Resolve(
-            Hevc with { DownmixToStereo = true },
+            Hevc with { DownmixToStereo = true, VideoAudioCodec = null },
             "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
         Assert.False(copyAudio.DownmixToStereo);
 

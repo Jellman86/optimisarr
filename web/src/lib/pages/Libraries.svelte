@@ -991,7 +991,8 @@
           <div>
             <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip text={i18n.m.libraries.audio_track_tip} /></label>
             <select id="lib-video-audio-codec" class="input" bind:value={form.videoAudioCodec}>
-              <option value={null}>{i18n.m.libraries.audio_copy}</option>
+              <option value={null}>{i18n.m.libraries.audio_profile_default}</option>
+              <option value="copy">{i18n.m.libraries.audio_copy}</option>
               {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
             </select>
           </div>
@@ -1004,7 +1005,7 @@
               min="32"
               max="512"
               placeholder={i18n.m.libraries.audio_bitrate_ph}
-              disabled={!form.videoAudioCodec}
+              disabled={!form.videoAudioCodec || form.videoAudioCodec === 'copy'}
               bind:value={form.videoAudioBitrateKbps}
             />
           </div>

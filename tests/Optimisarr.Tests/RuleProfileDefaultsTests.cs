@@ -63,6 +63,18 @@ public sealed class RuleProfileDefaultsTests
         Assert.Equal(HdrHandling.Exclude, RuleProfileDefaults.For(RuleProfile.CompatibilityH264).Hdr);
     }
 
+    [Theory]
+    [InlineData(RuleProfile.ConservativeHevc)]
+    [InlineData(RuleProfile.CompatibilityH264)]
+    public void Mp4_compatibility_profiles_include_channel_aware_aac(RuleProfile profile)
+    {
+        var settings = RuleProfileDefaults.For(profile);
+
+        Assert.Equal("aac", settings.VideoAudioCodec);
+        Assert.Equal(160, settings.VideoAudioBitrateKbps);
+        Assert.False(settings.DownmixToStereo);
+    }
+
     [Fact]
     public void Scotts_settings_preserves_hdr_and_bundles_aac_96kbps_stereo_downmix()
     {

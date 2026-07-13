@@ -146,6 +146,12 @@
   that a clean decode or good VMAF score cannot prove. ffprobe profiles are persisted via
   `TrackVideoProfile`, unit tests cover each failure class, and container CI probes the real HEVC
   output's dimensions, format, and profile.
+- **Compatibility video profiles now include compatible audio by default.** Balanced HEVC/MP4 and
+  Compatibility H.264/MP4 re-encode audio to channel-aware AAC at a 160 kbps stereo baseline, so
+  “plays everywhere” describes the whole file rather than only its video stream. Surround layout is
+  retained with scaled bitrate; there is no implicit downmix. Advanced now distinguishes “Profile
+  default” from an explicit “Copy” override, which remains available for operators who require
+  bit-exact source audio. AV1/MKV and remux profiles continue to copy by default.
 
 - **MP4 falls back to MKV when the audio can't be muxed.** Copying a Blu-ray audio format MP4 has no
   tag for (Dolby TrueHD, Blu-ray/DVD LPCM) into an MP4 target aborts the encode. The resolver now
