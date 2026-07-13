@@ -18,13 +18,13 @@ decisions, not just the changes:
   in the library form, carried in config backups) re-enables it, and changing the profile makes such
   files eligible again automatically. A hard exclusion would wrongly persist past a settings change.
   Migration `AddDolbyVisionHandling`.
-- **MP4 re-encodes forced to CFR.** A variable-frame-rate source drifts out of A/V sync in the MP4
-  timeline (the MP4/MOV-only timebase problem), the cause of the live job 3334 A/V-sync failure. A
-  video re-encode to an MP4-family container now sets `-fps_mode cfr`; Matroska carries VFR natively
-  and is untouched, and a remux is never re-timed. **Decision: fix the VFR class, don't chase the
-  residual start-offset with blind flags** — a pure start-offset desync is rare and the A/V-sync gate
-  already catches it safely (original untouched, job retryable), so injecting timestamp-shifting flags
-  we couldn't validate against the real file would have risked regressing other content for little gain.
+- **VFR timing correction after the pipeline audit.** The initial response to live job 3334 forced
+  every MP4 re-encode to CFR. FFmpeg documents that CFR achieves this by duplicating and dropping
+  frames, so the blanket workaround traded sync risk for cadence damage. The corrected policy stores
+  positive VFR evidence from nominal-versus-average probe rates, then uses `-fps_mode vfr` with the
+  demuxer encoder timebase only for those re-encodes. CFR/unknown sources receive no timing override,
+  remuxes are untouched, and the relative A/V-sync, timestamp, tail, and duration gates remain the
+  authority on whether an output is safe. Migration `TrackVariableFrameRate`.
 - **MP4 → MKV fallback for unmuxable audio.** Copying a Blu-ray audio format MP4 has no tag for aborts
   the encode. The resolver now falls back to MKV — the same pattern as image-based subtitles — but only
   when the audio is *copied*; re-encoding it to a compatible codec keeps the MP4 target. **Decision:

@@ -25,6 +25,7 @@ public sealed record TranscodeSpec(
     int? ImageQuality = null,
     string? ImageScaleFilter = null,
     bool ImageLossless = false,
+    bool SourceIsVariableFrameRate = false,
     int? ClipSeconds = null,
     int? ClipStartSeconds = null);
 
@@ -236,14 +237,15 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
-        // MP4/MOV expect a constant frame rate: a variable-frame-rate source (whose timebase is not
-        // cleanly divisible by the frame rate) drifts out of audio/video sync in the MP4 timeline,
-        // which the A/V-sync verification gate then rejects. Normalise the re-encoded video to CFR for
-        // MP4-family outputs only — Matroska carries VFR natively, so it is left untouched.
-        if (IsMp4Family(spec.OutputPath))
+        // Preserve a source that ffprobe positively identified as VFR. MP4 supports variable frame
+        // durations; forcing CFR duplicates/drops frames and changes motion cadence. Demux timebase
+        // keeps encoder timestamps anchored to the source. CFR and unknown sources need no override.
+        if (spec.SourceIsVariableFrameRate)
         {
             args.Add("-fps_mode");
-            args.Add("cfr");
+            args.Add("vfr");
+            args.Add("-enc_time_base:v:0");
+            args.Add("demux");
         }
 
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV

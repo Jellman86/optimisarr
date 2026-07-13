@@ -132,11 +132,13 @@
   setting unless a per-library **Optimise Dolby Vision** opt-in is enabled (off by default; settable
   in the library form and preserved across config backup/restore). Migration `AddDolbyVisionHandling`.
 
-- **MP4 re-encodes are normalised to a constant frame rate.** A variable-frame-rate source whose
-  timebase isn't cleanly divisible by the frame rate drifts out of A/V sync in the MP4 timeline (the
-  cause of the live A/V-sync verification failure), which the gate then rejects after a wasted encode.
-  A video re-encode to an MP4-family container now forces CFR (`-fps_mode cfr`); Matroska carries VFR
-  natively and is left untouched, and a remux (stream copy) is never re-timed.
+- **Video timing now follows probe evidence instead of forcing MP4 to CFR.** The earlier blanket
+  `-fps_mode cfr` response to live job 3334 could duplicate/drop frames and alter motion cadence.
+  Probing now compares nominal and average frame rate (with a rounding tolerance) and persists a
+  nullable VFR decision. Positively identified VFR re-encodes use `-fps_mode vfr` plus the demuxer
+  encoder timebase in every container; CFR and unknown sources receive no frame-rate override, and
+  remuxes are never re-timed. Timestamp-integrity, tail, duration, and relative A/V-sync verification
+  remain the fail-closed backstops. Migration `TrackVariableFrameRate`.
 
 - **MP4 falls back to MKV when the audio can't be muxed.** Copying a Blu-ray audio format MP4 has no
   tag for (Dolby TrueHD, Blu-ray/DVD LPCM) into an MP4 target aborts the encode. The resolver now

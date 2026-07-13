@@ -56,6 +56,9 @@ public sealed class MediaFile
     /// <summary>Number of frames in the picture/video stream. >1 marks an animated image.</summary>
     public int? FrameCount { get; set; }
 
+    /// <summary>Whether ffprobe found material divergence between nominal and average frame rate.</summary>
+    public bool? IsVariableFrameRate { get; set; }
+
     /// <summary>Decoded pixel format used to prevent alpha or high-bit-depth image loss.</summary>
     public string? PixelFormat { get; set; }
 

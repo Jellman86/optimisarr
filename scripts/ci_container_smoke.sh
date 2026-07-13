@@ -111,13 +111,31 @@ for _ in {1..30}; do
         -map 0:v -map 1:a -c:v libx264 -pix_fmt yuv420p -c:a aac "$fixture/source.mp4"
       "$transcode" -nostdin -v error -y -fflags +genpts -i "$fixture/source.mp4" \
         -map 0 -map -0:t -map -0:d -c copy -c:v:0 libx265 -crf 24 -preset ultrafast \
-        -fps_mode cfr -c:a copy -c:s mov_text \
+        -c:a copy -c:s mov_text \
         -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.mp4"
       test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = hevc
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = aac
       "$transcode" -nostdin -v error -i "$fixture/output.mp4" -f null -
+
+      # VFR policy: create irregular presentation intervals, then run the production evidence-based
+      # timing options and prove the MP4 output still advertises distinct nominal/average rates.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "testsrc2=size=64x64:rate=12:duration=2" \
+        -vf "select=eq(mod(n\,5)\,0)+eq(mod(n\,5)\,1)+eq(mod(n\,5)\,3)" \
+        -fps_mode vfr -c:v libx264 -pix_fmt yuv420p "$fixture/source-vfr.mkv"
+      "$transcode" -nostdin -v error -y -fflags +genpts -i "$fixture/source-vfr.mkv" \
+        -map 0 -map -0:t -map -0:d -c copy -c:v:0 libx265 -crf 24 -preset ultrafast \
+        -fps_mode vfr -enc_time_base:v:0 demux -c:a copy -c:s mov_text \
+        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output-vfr.mp4"
+      nominal="$("$probe" -v error -select_streams v:0 -show_entries stream=r_frame_rate \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output-vfr.mp4")"
+      average="$("$probe" -v error -select_streams v:0 -show_entries stream=avg_frame_rate \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output-vfr.mp4")"
+      test -n "$nominal"
+      test "$nominal" != "$average"
+      "$transcode" -nostdin -v error -i "$fixture/output-vfr.mp4" -f null -
       rm -rf "$fixture"
     '
     exit 0

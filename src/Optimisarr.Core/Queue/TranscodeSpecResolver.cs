@@ -22,7 +22,8 @@ public static class TranscodeSpecResolver
         bool sourceHasImageSubtitles = false,
         bool sourceHasMp4IncompatibleAudio = false,
         string? sourceImageCodec = null,
-        int sourceMaxAudioChannels = 0)
+        int sourceMaxAudioChannels = 0,
+        bool sourceIsVariableFrameRate = false)
     {
         if (kind == MediaKind.Image)
         {
@@ -94,6 +95,7 @@ public static class TranscodeSpecResolver
                 ? null
                 : AudioTarget.EffectiveBitrateKbps(
                     rules.VideoAudioBitrateKbps, sourceMaxAudioChannels, rules.DownmixToStereo),
+            SourceIsVariableFrameRate: sourceIsVariableFrameRate,
             // A downmix needs an audio re-encode; a copied track keeps its layout.
             DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo);
     }

@@ -34,12 +34,13 @@ public sealed record MediaProbeResult(
     int? BitsPerRawSample,
     int AttachedPictureCount,
     IReadOnlyDictionary<string, string> FormatTags,
+    bool? IsVariableFrameRate,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), error);
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, error);
 }
 
 /// <summary>
@@ -173,6 +174,7 @@ public sealed class MediaProbeService
         string? pixelFormat = null;
         int? bitsPerRawSample = null;
         var attachedPictureCount = 0;
+        bool? isVariableFrameRate = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -224,6 +226,7 @@ public sealed class MediaProbeService
                         colorSpace = ReadString(stream, "color_space");
                         pixelFormat = ReadString(stream, "pix_fmt");
                         bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
+                        isVariableFrameRate = DetectVariableFrameRate(stream);
                         videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
@@ -306,6 +309,7 @@ public sealed class MediaProbeService
             bitsPerRawSample,
             attachedPictureCount,
             formatTags,
+            isVariableFrameRate,
             null);
     }
 
@@ -413,6 +417,40 @@ public sealed class MediaProbeService
         && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+
+    private static bool? DetectVariableFrameRate(JsonElement stream)
+    {
+        var nominal = ReadRational(stream, "r_frame_rate");
+        var average = ReadRational(stream, "avg_frame_rate");
+        if (nominal is not > 0 || average is not > 0)
+        {
+            return null;
+        }
+
+        // r_frame_rate and avg_frame_rate can differ minutely because of duration rounding.
+        // Require a 0.1% divergence before treating it as positive VFR evidence.
+        return Math.Abs(nominal.Value - average.Value) / nominal.Value > 0.001;
+    }
+
+    private static double? ReadRational(JsonElement element, string property)
+    {
+        var value = ReadString(element, property);
+        if (value is null)
+        {
+            return null;
+        }
+
+        var parts = value.Split('/', 2);
+        if (parts.Length != 2
+            || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var numerator)
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var denominator)
+            || denominator == 0)
+        {
+            return null;
+        }
+
+        return numerator / denominator;
+    }
 
     // ffprobe reports bit_rate as a string of bits per second on both streams and the format.
     // Convert to whole kbps; a missing or non-numeric value (some VBR sources omit it) is absent.

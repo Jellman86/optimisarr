@@ -205,6 +205,35 @@ public sealed class MediaProbeParseTests
         Assert.Equal(16, result.BitsPerRawSample);
     }
 
+    [Theory]
+    [InlineData("30000/1001", "30000/1001", false)]
+    [InlineData("30/1", "24/1", true)]
+    public void Parse_detects_variable_frame_rate_from_nominal_and_average_rates(
+        string nominal, string average, bool expected)
+    {
+        var json = $$"""
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+            "r_frame_rate": "{{nominal}}", "avg_frame_rate": "{{average}}"
+          }],
+          "format": { "format_name": "mov,mp4" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp4");
+
+        Assert.Equal(expected, result.IsVariableFrameRate);
+    }
+
+    [Fact]
+    public void Parse_leaves_frame_rate_unknown_when_evidence_is_missing()
+    {
+        var result = MediaProbeService.Parse(SampleJson);
+
+        Assert.Null(result.IsVariableFrameRate);
+    }
+
     [Fact]
     public void Parse_reads_the_optimisarr_marker_from_format_tags()
     {

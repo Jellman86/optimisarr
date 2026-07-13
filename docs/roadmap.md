@@ -118,11 +118,12 @@ the replacement workflow is trustworthy.
         default, settable in the library form, preserved across config backup). This closes the gap
         where a DV Profile 5 source could be re-encoded to green/pink and still pass verification with
         VMAF off. Migration `AddDolbyVisionHandling`. (HandBrake #5597, FFmpeg HDR/DoVi notes.)
-     2. **VFR → A/V-sync drift in MP4: done.** A video re-encode to an MP4-family container now forces
-        a constant frame rate (`-fps_mode cfr`), the documented fix for the MP4/MOV-only VFR drift that
-        caused the live job 3334 failure; Matroska carries VFR natively and is left untouched, and a
-        remux is never re-timed. The A/V-sync gate remains the backstop for any residual start-offset
-        cases. (VideoHelp, EncodeX.)
+     2. **VFR → A/V-sync drift: done, corrected by audit.** The first job-3334 workaround forced every
+        MP4 re-encode to CFR, which FFmpeg implements by duplicating/dropping frames. The final policy
+        persists positive VFR evidence from nominal and average probe rates, applies `-fps_mode vfr`
+        with the demuxer encoder timebase only to identified VFR re-encodes, and leaves CFR/unknown
+        sources and all remuxes unmodified. Relative A/V-sync, timestamps, duration, and tail checks
+        remain the replacement backstops. Migration `TrackVariableFrameRate`. (FFmpeg documentation.)
      3. **MP4 + MP4-incompatible audio copied → mux failure: done.** The resolver now falls back
         MP4→MKV when a source carries audio MP4 cannot mux (Dolby TrueHD, Blu-ray/DVD LPCM) and that
         audio is being copied rather than re-encoded to a compatible codec — the same pattern already

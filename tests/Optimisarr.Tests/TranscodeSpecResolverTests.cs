@@ -164,6 +164,16 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void Carries_positive_vfr_evidence_into_the_transcode_spec()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23,
+            preset: "medium", sourceIsVariableFrameRate: true);
+
+        Assert.True(spec.SourceIsVariableFrameRate);
+    }
+
+    [Fact]
     public void A_video_job_copies_audio_by_default()
     {
         var spec = TranscodeSpecResolver.Resolve(
