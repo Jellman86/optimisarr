@@ -82,8 +82,8 @@ for _ in {1..30}; do
       rm -rf "$fixture"
       mkdir -p "$fixture"
 
-      # Music: FLAC + JPEG cover + tags -> the default AAC/M4A policy. The output must contain
-      # AAC, the attached picture, and the exact source artist tag.
+      # Music artwork: FLAC + JPEG cover + tags -> MP3, the selectable target whose APIC path the
+      # shipped FFmpeg supports. The output must contain MP3, the attached picture, and exact tag.
       "$transcode" -nostdin -v error -y -f lavfi \
         -i "color=c=blue:size=48x48:rate=1:duration=1" -frames:v 1 "$fixture/cover.jpg"
       "$transcode" -nostdin -v error -y \
@@ -95,12 +95,21 @@ for _ in {1..30}; do
         -of default=noprint_wrappers=1:nokey=1 "$fixture/source.flac")" = 1
       "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
         -map_metadata 0 -map 0:v? -c:v:0 mjpeg -disposition:v:0 attached_pic \
-        -map 0:a -c:a aac -b:a 128k -map 0:s? -c:s mov_text \
+        -map 0:a -c:a libmp3lame -b:a 128k -metadata optimisarr=ci-smoke "$fixture/output.mp3"
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = mp3
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = 1
+      test "$("$probe" -v error -show_entries format_tags=artist \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = "Optimisarr Smoke Artist"
+
+      # Default AAC/M4A remains safe for art-free music and retains ordinary metadata. Sources
+      # with attached art are rejected by candidate evaluation before this command can be built.
+      "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
+        -map_metadata 0 -map 0:a -c:a aac -b:a 128k -map 0:s? -c:s mov_text \
         -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
-      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = 1
       test "$("$probe" -v error -show_entries format_tags=artist \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = "Optimisarr Smoke Artist"
 

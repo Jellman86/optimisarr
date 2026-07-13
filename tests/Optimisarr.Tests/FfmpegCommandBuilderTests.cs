@@ -30,25 +30,35 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_audio_job_does_not_re_encode_video_and_preserves_cover_art_and_metadata()
+    public void An_aac_audio_job_maps_metadata_and_timed_lyrics_but_not_unsafe_artwork()
     {
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
-        // Cover art is normalised to a broadly supported embedded JPEG; metadata is carried over.
-        var videoCodecIndex = IndexOf(args, "-c:v:0");
-        Assert.Equal("mjpeg", args[videoCodecIndex + 1]);
+        Assert.DoesNotContain("0:v?", args);
+        Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
         var metaMapIndex = IndexOf(args, "-map_metadata");
         Assert.Equal("0", args[metaMapIndex + 1]);
         Assert.Contains("0:s?", args);
         Assert.Equal("mov_text", args[IndexOf(args, "-c:s") + 1]);
-        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v:0") + 1]);
-        Assert.True(IndexOf(args, "0:v?") < IndexOf(args, "0:a"));
     }
 
     [Fact]
-    public void An_opus_audio_job_maps_only_audio_so_attached_art_cannot_break_the_ogg_muxer()
+    public void An_mp3_audio_job_normalises_and_marks_cover_art_before_mapping_audio()
+    {
+        var spec = AudioReencode() with { OutputPath = "/work/Track.mp3", AudioEncoder = "libmp3lame" };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.Equal("mjpeg", args[IndexOf(args, "-c:v:0") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v:0") + 1]);
+        Assert.True(IndexOf(args, "0:v?") < IndexOf(args, "0:a"));
+        Assert.DoesNotContain("0:s?", args);
+    }
+
+    [Fact]
+    public void An_opus_audio_job_maps_only_audio()
     {
         var spec = AudioReencode() with { OutputPath = "/work/Track.opus", AudioEncoder = "libopus" };
 

@@ -296,13 +296,11 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
-        // MP3 and M4A can carry JPEG/PNG attached pictures. Ogg Opus cannot mux those video
-        // streams (its standard artwork representation is a Vorbis-comment picture block), so
-        // Opus candidates with art are rejected before dispatch and the command maps audio only.
-        // Map the picture before the audio and target its output-stream index explicitly. The
-        // M4A/ipod muxer otherwise silently omits an attached picture inherited from containers
-        // such as FLAC in some FFmpeg builds, despite accepting the same codec and disposition.
-        if (!Path.GetExtension(spec.OutputPath).Equals(".opus", StringComparison.OrdinalIgnoreCase))
+        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg.
+        // AAC and Opus candidates with attached pictures are rejected before dispatch because
+        // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
+        // Map MP3's picture before the audio and target its output stream explicitly.
+        if (Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
         {
             args.Add("-map");
             args.Add("0:v?");

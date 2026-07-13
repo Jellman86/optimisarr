@@ -120,23 +120,37 @@ public sealed class CandidateEvaluatorTests
         Assert.Contains("Already", decision.Reason);
     }
 
-    [Fact]
-    public void Opus_target_rejects_attached_cover_art_before_queueing()
+    [Theory]
+    [InlineData("aac")]
+    [InlineData("opus")]
+    public void Unsafe_audio_targets_reject_attached_cover_art_before_queueing(string targetCodec)
     {
-        var rules = Hevc with { TargetAudioCodec = "opus" };
+        var rules = Hevc with { TargetAudioCodec = targetCodec };
 
         var decision = CandidateEvaluator.Evaluate(
             AudioFile("flac", attachedPictureCount: 1), rules);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("cover art", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MP3", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Aac_target_accepts_attached_cover_art_and_timed_lyrics()
+    public void Aac_target_accepts_timed_lyrics_when_the_source_has_no_artwork()
     {
         var decision = CandidateEvaluator.Evaluate(
-            AudioFile("flac", attachedPictureCount: 1, subtitleTrackCount: 1), Hevc);
+            AudioFile("flac", subtitleTrackCount: 1), Hevc);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Mp3_target_accepts_attached_cover_art()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", attachedPictureCount: 1), rules);
 
         Assert.True(decision.IsEligible);
     }

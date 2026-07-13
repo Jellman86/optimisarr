@@ -76,14 +76,16 @@
   genuinely lossless mode. Pixel format and raw bit depth are persisted via a schema migration so
   rescans and queue dispatch make the same decision.
 - **Music conversion now treats artwork, tags, and lyrics as replacement-critical data.** AAC in
-  M4A is the new compatibility-first default because FFmpeg can preserve common attached JPEG/PNG
-  artwork and timed-text lyrics there. Opus remains available for art-free music, but a source with
-  attached art is rejected before queueing instead of failing in the Ogg muxer or losing its cover;
-  MP3/Opus likewise reject timed-lyrics streams they cannot contain. Verification now compares
+  M4A is the compatibility-first default for art-free music and can retain timed-text lyrics. The
+  shipped Jellyfin FFmpeg silently drops inherited M4A cover streams, while Opus needs a picture-
+  comment translation it cannot safely perform, so both targets reject attached-art candidates
+  before queueing with guidance to choose MP3. MP3/Opus likewise reject timed-lyrics streams they
+  cannot contain. Verification now compares
   source/output format tags and embedded-picture counts, and probing persists artwork counts for
-  deterministic candidate decisions. Mapped M4A/MP3 covers are normalised to broadly supported
-  embedded JPEG and explicitly marked `attached_pic` so JPEG and PNG sources have a deterministic
-  cross-player representation. The UI explains the default consistently in every language.
+  deterministic candidate decisions. Mapped MP3 covers are normalised to broadly supported JPEG
+  APIC artwork and explicitly marked `attached_pic`; the final-container smoke test proves this
+  against the exact FFmpeg build that performs production transcodes. The UI explains the default
+  consistently in every language.
 - **Audio bitrate policy is now channel-aware.** The configured value is a stereo baseline;
   retained 5.1/7.1 layouts automatically receive the same budget for each channel pair, while an
   explicit stereo downmix keeps the configured bitrate. Candidate size-saving decisions use that

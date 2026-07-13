@@ -75,7 +75,8 @@ the replacement workflow is trustworthy.
 
    - **Cross-media pipeline standards audit: done.** The video, music, and still-image paths were
      rechecked against the repository's fail-closed replacement standard and the shipped FFmpeg
-     capabilities. Music now preserves tags/artwork or refuses an unsafe container, audio bitrate
+     capabilities. Music now preserves tags/artwork or refuses an unsafe container (including the
+     shipped FFmpeg's demonstrated M4A attached-picture limitation), audio bitrate
      scales with retained channels, compatibility presets include compatible AAC, images guard
      animation/alpha/bit depth and default to SSIM plus metadata verification, and video timing and
      encoded signal structure are evidence-checked. Probing, decode checks, and transcoding use one
