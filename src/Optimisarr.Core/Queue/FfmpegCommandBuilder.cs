@@ -296,6 +296,24 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
+        // MP3 and M4A can carry JPEG/PNG attached pictures. Ogg Opus cannot mux those video
+        // streams (its standard artwork representation is a Vorbis-comment picture block), so
+        // Opus candidates with art are rejected before dispatch and the command maps audio only.
+        // Map the picture before the audio and target its output-stream index explicitly. The
+        // M4A/ipod muxer otherwise silently omits an attached picture inherited from containers
+        // such as FLAC in some FFmpeg builds, despite accepting the same codec and disposition.
+        if (!Path.GetExtension(spec.OutputPath).Equals(".opus", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("-map");
+            args.Add("0:v?");
+            args.Add("-c:v:0");
+            // Normalise artwork to the universally supported APIC/MP4 cover codec so both JPEG
+            // and PNG source pictures have one deterministic representation across players.
+            args.Add("mjpeg");
+            args.Add("-disposition:v:0");
+            args.Add("attached_pic");
+        }
+
         args.Add("-map");
         args.Add("0:a");
         args.Add("-c:a");
@@ -308,21 +326,6 @@ public static class FfmpegCommandBuilder
         }
 
         AppendDownmix(args, spec);
-
-        // MP3 and M4A can carry JPEG/PNG attached pictures. Ogg Opus cannot mux those video
-        // streams (its standard artwork representation is a Vorbis-comment picture block), so
-        // Opus candidates with art are rejected before dispatch and the command maps audio only.
-        if (!Path.GetExtension(spec.OutputPath).Equals(".opus", StringComparison.OrdinalIgnoreCase))
-        {
-            args.Add("-map");
-            args.Add("0:v?");
-            args.Add("-c:v");
-            // Normalise artwork to the universally supported APIC/MP4 cover codec so both JPEG
-            // and PNG source pictures have one deterministic representation across players.
-            args.Add("mjpeg");
-            args.Add("-disposition:v");
-            args.Add("attached_pic");
-        }
 
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.

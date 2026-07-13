@@ -35,7 +35,7 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
         // Cover art is normalised to a broadly supported embedded JPEG; metadata is carried over.
-        var videoCodecIndex = IndexOf(args, "-c:v");
+        var videoCodecIndex = IndexOf(args, "-c:v:0");
         Assert.Equal("mjpeg", args[videoCodecIndex + 1]);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
@@ -43,7 +43,8 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("0", args[metaMapIndex + 1]);
         Assert.Contains("0:s?", args);
         Assert.Equal("mov_text", args[IndexOf(args, "-c:s") + 1]);
-        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v:0") + 1]);
+        Assert.True(IndexOf(args, "0:v?") < IndexOf(args, "0:a"));
     }
 
     [Fact]
@@ -54,7 +55,7 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(spec);
 
         Assert.DoesNotContain("0:v?", args);
-        Assert.DoesNotContain("-c:v", args);
+        Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("0:s?", args);
     }
 

@@ -94,8 +94,8 @@ for _ in {1..30}; do
       test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/source.flac")" = 1
       "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
-        -map_metadata 0 -map 0:a -c:a aac -b:a 128k \
-        -map 0:v? -c:v mjpeg -disposition:v attached_pic -map 0:s? -c:s mov_text \
+        -map_metadata 0 -map 0:v? -c:v:0 mjpeg -disposition:v:0 attached_pic \
+        -map 0:a -c:a aac -b:a 128k -map 0:s? -c:s mov_text \
         -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
