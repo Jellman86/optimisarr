@@ -8,7 +8,8 @@ public sealed record QualityMeasurementContext(
     int ReferenceHeight,
     bool ReferenceIsHdr,
     bool HdrConvertedToSdr,
-    int? ReferenceStartSeconds = null);
+    int? ReferenceStartSeconds = null,
+    double? ReferenceDurationSeconds = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -75,6 +76,9 @@ public static class QualityScoreCommandBuilder
         {
             "-nostdin",
             "-v", "error",
+            // -stats forces ffmpeg to print per-frame "time=" progress to stderr even at the error
+            // log level, so verification can report real progress without any other noise.
+            "-stats",
             // libvmaf requires distorted first and reference second.
             "-i", distortedPath
         };

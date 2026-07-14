@@ -493,7 +493,14 @@
                 />
               </div>
             {:else}
-              <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
+              {#if job.status === 'Verifying' && job.progress > 0}
+                <div class="mt-3 flex items-center gap-3">
+                  <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
+                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
+                </div>
+              {:else}
+                <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
+              {/if}
               <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.probing_source : i18n.m.queue.verifying_output}</div>
             {/if}
           </div>
@@ -626,7 +633,14 @@
                 </div>
               {:else if job.status === 'Probing' || job.status === 'Verifying'}
                 <div class="space-y-1">
-                  <div class="progress-track"><div class="progress-indeterminate"></div></div>
+                  {#if job.status === 'Verifying' && job.progress > 0}
+                    <div class="flex items-center gap-2">
+                      <div class="progress-track"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
+                      <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
+                    </div>
+                  {:else}
+                    <div class="progress-track"><div class="progress-indeterminate"></div></div>
+                  {/if}
                   <div class="text-[11px] text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.stage_probing : i18n.m.queue.stage_verifying}</div>
                 </div>
               {:else if job.status === 'Queued'}

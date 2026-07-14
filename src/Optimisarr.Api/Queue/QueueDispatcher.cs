@@ -887,6 +887,9 @@ public sealed class QueueDispatcher(
         await WithJobAsync(jobId, job =>
         {
             job.Status = JobStatus.Verifying;
+            // The transcode left progress at ~100%; reset it so the verification (VMAF) pass
+            // reports its own 0..100% rather than appearing already finished.
+            job.Progress = 0;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         await NotifyAsync();
@@ -900,8 +903,16 @@ public sealed class QueueDispatcher(
                 work.Spec.ClipStartSeconds,
                 Path.Combine(Path.GetDirectoryName(outputPath)!, ".optimisarr-preview-reference.mkv"))
             : null;
+        // The VMAF pass is the long part of verification; surface its live progress on the same
+        // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%
+        // steps, and both helpers serialise (job lock / hub), so fire-and-forget is safe here.
+        var qualityProgress = new Progress<double>(fraction =>
+        {
+            _ = UpdateProgressAsync(jobId, fraction);
+            _ = BroadcastProgressAsync(jobId, fraction, null, null, null);
+        });
         var outcome = await verification.VerifyAsync(
-            work.Original, outputPath, policy, cancellationToken, clip);
+            work.Original, outputPath, policy, cancellationToken, clip, qualityProgress);
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>

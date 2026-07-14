@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
 
@@ -28,7 +30,8 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
         string referencePath,
         string distortedPath,
         QualityMeasurementContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<double>? progress = null)
     {
         if (!File.Exists(referencePath))
         {
@@ -80,7 +83,8 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
                 process.Start();
 
                 var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-                var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+                var stderrTask = ReadStderrWithProgressAsync(
+                    process.StandardError, context.ReferenceDurationSeconds, progress, cancellationToken);
 
                 try
                 {
@@ -130,6 +134,44 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
         {
             DeleteQuietly(logPath);
         }
+    }
+
+    // libvmaf prints per-frame "time=" stats to stderr (enabled with -stats). Translate that into a
+    // 0..1 fraction of the reference runtime so the queue can show real verification progress, while
+    // still collecting the non-progress lines so a failure keeps its readable ffmpeg reason.
+    private static async Task<string> ReadStderrWithProgressAsync(
+        StreamReader reader,
+        double? durationSeconds,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        var builder = new StringBuilder();
+        var lastReported = 0.0;
+
+        string? line;
+        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
+        {
+            var sample = FfmpegProgressParser.Parse(line);
+            if (sample.ElapsedSeconds is { } elapsed)
+            {
+                if (progress is not null && durationSeconds is > 0)
+                {
+                    var fraction = Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999);
+                    if (fraction - lastReported >= 0.01)
+                    {
+                        lastReported = fraction;
+                        progress.Report(fraction);
+                    }
+                }
+
+                // Progress frames are the bulk of stderr and are not part of a failure reason.
+                continue;
+            }
+
+            builder.AppendLine(line);
+        }
+
+        return builder.ToString();
     }
 
     private static void KillQuietly(Process process)

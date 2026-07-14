@@ -48,7 +48,8 @@ public sealed class VerificationService(
         string outputPath,
         VerificationPolicy policy,
         CancellationToken cancellationToken,
-        VerificationClip? clip = null)
+        VerificationClip? clip = null,
+        IProgress<double>? qualityProgress = null)
     {
         var reference = clip is null
             ? original
@@ -82,6 +83,7 @@ public sealed class VerificationService(
                     // exact preview start instead, keeping its frames aligned with the encode.
                     clip is null ? reference.Path : original.Path,
                     clip?.StartSeconds,
+                    qualityProgress,
                     cancellationToken)
                 : null;
 
@@ -226,6 +228,7 @@ public sealed class VerificationService(
         QualityScoreService quality,
         string qualityReferencePath,
         int? referenceStartSeconds,
+        IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
         if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
@@ -239,8 +242,9 @@ public sealed class VerificationService(
             originalProbe.Height.Value,
             reference.IsHdr,
             reference.HdrConvertedToSdr,
-            referenceStartSeconds);
-        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken);
+            referenceStartSeconds,
+            originalProbe.DurationSeconds);
+        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
     }
 
     private async Task<OriginalSnapshot> CreateReferenceClipAsync(

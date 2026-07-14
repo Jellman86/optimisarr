@@ -28,6 +28,19 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Measurement_requests_progress_stats_for_the_queue()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            threads: 4);
+
+        // -stats makes ffmpeg emit per-frame "time=" progress even at the error log level, which
+        // the verification service turns into live queue progress.
+        Assert.Contains("-stats", command.Arguments);
+    }
+
+    [Fact]
     public void Uhd_measurement_selects_the_4k_model_automatically()
     {
         var command = QualityScoreCommandBuilder.Build(
