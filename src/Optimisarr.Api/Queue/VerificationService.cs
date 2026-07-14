@@ -25,7 +25,10 @@ public sealed record OriginalSnapshot(
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
-public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
+public sealed record VerificationOutcome(
+    VerificationReport Report,
+    long OutputSizeBytes,
+    string? VmafSampling = null);
 
 /// <summary>The preview clip window to use when building a verification reference segment.</summary>
 public sealed record VerificationClip(int Seconds, int? StartSeconds, string ReferencePath);
@@ -46,14 +49,6 @@ public sealed class VerificationService(
     ImageMetadataService imageMetadata,
     TranscodeOptions transcodeOptions)
 {
-    // Clip-VMAF scores a centred window of this length instead of the whole file. 120s samples
-    // enough motion and detail to be representative while cutting VMAF time on a long file
-    // enormously — the difference between usable and unusable on low-power hosts.
-    private const int ClipVmafSeconds = 120;
-
-    // Don't bother clipping a file only a little longer than the clip; the saving is negligible.
-    private const int ClipVmafMinHeadroomSeconds = 30;
-
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
         string outputPath,
@@ -91,37 +86,42 @@ public sealed class VerificationService(
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
             // audio and image jobs have their own applicable verification gates.
             QualityResult? qualityResult = null;
+            string? vmafSampling = null;
             if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
-                // Clip-VMAF (a real full-file job, not a preview) scores a centred representative
-                // window instead of the whole runtime — much faster on modest hardware, at the cost
-                // of sampling only part of the file. Skip it when the source is already short.
-                (int Start, int Duration)? vmafClip = null;
-                if (clip is null
-                    && policy.ClipVmafEnabled
-                    && reference.DurationSeconds is { } total
-                    && total > ClipVmafSeconds + ClipVmafMinHeadroomSeconds)
+                var windows = clip is null && reference.DurationSeconds is { } total
+                    ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)
+                    : [VmafWindow.Full];
+                vmafSampling = windows.Count == 1 && windows[0] == VmafWindow.Full
+                    ? "Full file"
+                    : "Three 40-second samples (early, middle and late)";
+
+                var measurements = new List<QualityResult>(windows.Count);
+                for (var index = 0; index < windows.Count; index++)
                 {
-                    var start = (int)Math.Max(0, (total - ClipVmafSeconds) / 2.0);
-                    vmafClip = (start, ClipVmafSeconds);
+                    var window = windows[index];
+                    var progress = qualityProgress is null
+                        ? null
+                        : new WindowProgress(qualityProgress, index, windows.Count);
+                    measurements.Add(await MeasureQualityAsync(
+                        reference,
+                        outputPath,
+                        originalProbe,
+                        quality,
+                        // A preview's cheap stream-copy clip is suitable for duration/stream checks,
+                        // but can retain keyframe pre-roll. VMAF decodes the full original from the
+                        // exact preview start instead, keeping its frames aligned with the encode.
+                        clip is null ? reference.Path : original.Path,
+                        clip?.StartSeconds,
+                        window.StartSeconds,
+                        window.DurationSeconds,
+                        policy.VmafFrameSubsample,
+                        vmafAcceleration,
+                        progress,
+                        cancellationToken));
                 }
 
-                qualityResult = await MeasureQualityAsync(
-                    reference,
-                    outputPath,
-                    originalProbe,
-                    quality,
-                    // A preview's cheap stream-copy clip is suitable for duration/stream checks,
-                    // but can retain keyframe pre-roll. VMAF decodes the full original from the
-                    // exact preview start instead, keeping its frames aligned with the encode.
-                    clip is null ? reference.Path : original.Path,
-                    clip?.StartSeconds,
-                    vmafClip?.Start,
-                    vmafClip?.Duration,
-                    policy.VmafFrameSubsample,
-                    vmafAcceleration,
-                    qualityProgress,
-                    cancellationToken);
+                qualityResult = QualityScoreAggregator.Combine(measurements, vmafSampling);
             }
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
@@ -252,7 +252,10 @@ public sealed class VerificationService(
                 OriginalVideoProfile: originalProbe.VideoProfile,
                 OutputVideoProfile: outputProbe.VideoProfile);
 
-            return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
+            return new VerificationOutcome(
+                VerificationEvaluator.Evaluate(input, policy),
+                outputSize,
+                vmafSampling);
         }
         finally
         {
@@ -314,6 +317,12 @@ public sealed class VerificationService(
             FrameSubsample: frameSubsample,
             Acceleration: acceleration);
         return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
+    }
+
+    private sealed class WindowProgress(IProgress<double> target, int index, int count) : IProgress<double>
+    {
+        public void Report(double value) =>
+            target.Report(Math.Clamp((index + value) / count, 0, 0.999));
     }
 
     private async Task<OriginalSnapshot> CreateReferenceClipAsync(

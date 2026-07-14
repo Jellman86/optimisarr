@@ -65,7 +65,8 @@ internal static class SettingsEndpoints
             }
 
             if (request.VerificationMinimumVmafHarmonicMean is < 0 or > 100
-                || request.VerificationMinimumVmafMin is < 0 or > 100)
+                || request.VerificationMinimumVmafMin is < 0 or > 100
+                || request.VerificationMinimumVmafCatastrophicMin is < 0 or > 100)
             {
                 return ApiErrors.BadRequest("settings.vmaf.range", "VMAF thresholds must be between 0 and 100.");
             }
@@ -117,6 +118,7 @@ internal static class SettingsEndpoints
                     request.VerificationQualityGateEnabled,
                     request.VerificationMinimumVmafHarmonicMean,
                     request.VerificationMinimumVmafMin,
+                    request.VerificationMinimumVmafCatastrophicMin,
                     request.VerificationAudioLoudnessGateEnabled,
                     request.VerificationMaxLoudnessDriftLufs,
                     request.VerificationAudioClippingGateEnabled,

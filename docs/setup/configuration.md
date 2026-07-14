@@ -88,7 +88,7 @@ requested codec or signal structure was retained. The configurable gates make re
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video re-encodes | Off by default; a quality slider picks a tier (Space-saver 80/60 → Visually lossless 93/80 → Archival 96/90) |
+| Perceptual quality (VMAF) | Video re-encodes | Off by default; a quality slider picks harmonic / fifth-percentile / catastrophic-frame floors |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |
@@ -99,12 +99,13 @@ VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
 the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because it
 fully decodes both files and scores every frame, roughly doubling verification time and dominating a
-run on modest hardware; a quality slider in Settings turns it on and prefills both floors from named
+run on modest hardware; a quality slider in Settings turns it on and prefills all three floors from named
 tiers (Space-saver through Archival). Existing installations retain their saved choice, and while the
 gate is off the structural, duration and size gates plus quarantine rollback still guard every
-replacement. When enabled, **Score a sample clip** limits VMAF to a centred two-minute window for
-long files. **Frame sampling** can score every Nth frame from 1–10; 1 is the conservative default,
-because skipped frames cannot participate in the worst-frame floor. Image SSIM and EXIF/ICC
+replacement. When enabled, **Score three representative samples** measures deterministic 40-second
+windows near the beginning, middle and end of long files. The weakest window controls the tail
+floors. **Frame sampling** can score every Nth frame from 1–10; 1 is the conservative default,
+because skipped frames cannot participate in the percentile or catastrophic floor. Image SSIM and EXIF/ICC
 retention are enabled for new installations; existing saved
 opt-outs remain unchanged. SSIM uses
 explicit reference dimensions, aligned timebases, full-range planar RGB/RGBA, and includes alpha
@@ -125,7 +126,7 @@ software on failure, and HDR always uses the established software colour pipelin
 requested during this gate; the older incidental PSNR/SSIM report fields remain nullable. The model,
 sampling interval, and preparation used are recorded in the result.
 
-The 93 harmonic-mean and 80 worst-frame floors are Optimisarr's conservative
+The 93 harmonic-mean, 80 fifth-percentile and 50 catastrophic-frame floors are Optimisarr's conservative
 replacement guardrails, not universal scores promised by Netflix. VMAF is most
 useful for compression and scaling damage; the independent decode, duration,
 stream, HDR-signal, colour, timestamp, and A/V-sync checks remain equally important.
@@ -134,6 +135,12 @@ compares both streams in the same HDR transfer domain, which remains a useful
 full-reference compression check, but its absolute threshold is less formally
 calibrated than the SDR viewing models. The default general-purpose profiles exclude
 HDR; preserving or tone-mapping it is an explicit library-profile choice.
+
+Encoder quality values are not assumed to be portable between implementations. Software uses the
+profile CRF directly; QSV ICQ, NVENC CQ and VA-API QP receive conservative family-specific headroom.
+The requested and effective values are stored with each job. When VMAF is the only failed gate,
+Optimisarr makes one automatic higher-quality retry; a remaining failure is shown in Queue with
+explicit higher-quality and same-settings retry actions.
 
 ## Rule profiles (presets)
 

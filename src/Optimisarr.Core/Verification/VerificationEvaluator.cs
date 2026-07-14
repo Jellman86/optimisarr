@@ -430,7 +430,13 @@ public static class VerificationEvaluator
         }
 
         var detail = DescribeScores(scores, policy);
-        return harmonic >= policy.MinimumVmafHarmonicMean && min >= policy.MinimumVmafMin
+        // Netflix documents percentile pooling as a way to stop easy content hiding difficult
+        // frames. New measurements carry a fifth percentile; older persisted reports fall back to
+        // their minimum so they remain conservative and readable after upgrade.
+        var lowFrames = scores.VmafFifthPercentile ?? min;
+        return harmonic >= policy.MinimumVmafHarmonicMean
+            && lowFrames >= policy.MinimumVmafMin
+            && min >= policy.MinimumVmafCatastrophicMin
             ? Pass("Perceptual quality (VMAF)", detail)
             : Fail("Perceptual quality (VMAF)", $"{detail} Below the quality gate.");
     }
@@ -501,9 +507,10 @@ public static class VerificationEvaluator
         {
             string.Format(
                 CultureInfo.InvariantCulture,
-                "VMAF harmonic mean {0:0.##} (gate {1:0.##}), lowest frame {2:0.##} (gate {3:0.##})",
+                "VMAF harmonic mean {0:0.##} (gate {1:0.##}), fifth percentile {2:0.##} (gate {3:0.##}), lowest frame {4:0.##} (catastrophic floor {5:0.##})",
                 scores.VmafHarmonicMean, policy.MinimumVmafHarmonicMean,
-                scores.VmafMin, policy.MinimumVmafMin)
+                scores.VmafFifthPercentile ?? scores.VmafMin, policy.MinimumVmafMin,
+                scores.VmafMin, policy.MinimumVmafCatastrophicMin)
         };
 
         if (scores.VmafMean is { } mean)

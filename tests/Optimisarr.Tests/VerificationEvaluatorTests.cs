@@ -493,7 +493,9 @@ public sealed class VerificationEvaluatorTests
         OriginalVideoProfile: "High",
         OutputVideoProfile: "Main",
         QualityMeasured: true,
-        QualityScores: new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99));
+        QualityScores: new QualityScores(
+            95.0, 94.5, 88.0, 45.0, 0.99,
+            VmafFifthPercentile: 90.0, FrameCount: 2400));
 
     private static CheckOutcome Outcome(VerificationReport report, string name) =>
         report.Checks.Single(check => check.Name == name).Outcome;
@@ -1208,9 +1210,11 @@ public sealed class VerificationEvaluatorTests
         {
             QualityMeasured = true,
             QualityScores = new QualityScores(
-                95.0, 94.5, 88.0, 45.0, 0.99,
+                95.0, 94.5, 55.0, 45.0, 0.99,
                 ModelVersion: "vmaf_v0.6.1",
-                Preprocessing: "SDR")
+                Preprocessing: "SDR",
+                VmafFifthPercentile: 88.0,
+                FrameCount: 2400)
         };
 
         var report = VerificationEvaluator.Evaluate(input, QualityGate);
@@ -1223,13 +1227,30 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
-    public void Quality_gate_fails_when_a_bad_frame_drops_below_the_min_floor()
+    public void Quality_gate_fails_when_the_low_frame_percentile_drops_below_its_floor()
     {
         // Healthy harmonic mean, but one stretch of frames falls to 70 — under the 80 floor.
         var input = Healthy() with
         {
             QualityMeasured = true,
-            QualityScores = new QualityScores(94.0, 93.5, 70.0, 44.0, 0.98)
+            QualityScores = new QualityScores(
+                94.0, 93.5, 60.0, 44.0, 0.98,
+                VmafFifthPercentile: 70.0, FrameCount: 2400)
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, QualityGate);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, QualityCheck));
+    }
+
+    [Fact]
+    public void Quality_gate_fails_when_one_frame_crosses_the_catastrophic_floor()
+    {
+        var input = Healthy() with
+        {
+            QualityScores = new QualityScores(
+                95.0, 94.0, 40.0, 44.0, 0.98,
+                VmafFifthPercentile: 88.0, FrameCount: 2400)
         };
 
         var report = VerificationEvaluator.Evaluate(input, QualityGate);

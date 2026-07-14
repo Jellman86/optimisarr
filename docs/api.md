@@ -213,6 +213,7 @@ Settings fields include:
   "verificationQualityGateEnabled": false,
   "verificationMinimumVmafHarmonicMean": 93,
   "verificationMinimumVmafMin": 80,
+  "verificationMinimumVmafCatastrophicMin": 50,
   "verificationAudioLoudnessGateEnabled": false,
   "verificationMaxLoudnessDriftLufs": 1,
   "verificationAudioClippingGateEnabled": false,
@@ -220,6 +221,8 @@ Settings fields include:
   "verificationImageQualityGateEnabled": true,
   "verificationMinimumImageSsim": 0.95,
   "verificationImageMetadataGateEnabled": true,
+  "verificationClipVmafEnabled": false,
+  "verificationVmafFrameSubsample": 1,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0

@@ -176,8 +176,9 @@ failure retries in software. VMAF verification is off by default for video re-en
 for remuxes; enable it under **Settings → Verification gates** when the safeguard is worth the cost.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
-tone-mapping require no libvmaf expertise. Optional clip scoring and 1–10 frame subsampling reduce
-runtime; every-frame scoring remains the safest default. The report records the chosen model and preparation.
+tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame
+subsampling reduce runtime; every-frame scoring remains the safest default. VMAF-only failures get
+one encoder-aware higher-quality retry, and the report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the

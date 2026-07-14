@@ -465,7 +465,8 @@ internal static class MediaAndQueueEndpoints
             int id,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            bool higherQuality = false) =>
         {
             var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
             if (job is null)
@@ -480,6 +481,12 @@ internal static class MediaAndQueueEndpoints
 
             job.Status = JobStatus.Queued;
             job.ErrorMessage = null;
+            job.FailureCategory = null;
+            job.ProcessLog = null;
+            if (higherQuality)
+            {
+                job.QualityRetryCount += 1;
+            }
             job.Progress = 0;
             job.StartedAt = null;
             job.FinishedAt = null;

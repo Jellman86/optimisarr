@@ -47,6 +47,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationQualityGateEnabled,
         SettingKeys.VerificationMinimumVmafHarmonicMean,
         SettingKeys.VerificationMinimumVmafMin,
+        SettingKeys.VerificationMinimumVmafCatastrophicMin,
         SettingKeys.VerificationAudioLoudnessGateEnabled,
         SettingKeys.VerificationMaxLoudnessDriftLufs,
         SettingKeys.VerificationAudioClippingGateEnabled,
@@ -102,6 +103,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationQualityGateEnabled
                 || setting.Key == SettingKeys.VerificationMinimumVmafHarmonicMean
                 || setting.Key == SettingKeys.VerificationMinimumVmafMin
+                || setting.Key == SettingKeys.VerificationMinimumVmafCatastrophicMin
                 || setting.Key == SettingKeys.VerificationAudioLoudnessGateEnabled
                 || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
                 || setting.Key == SettingKeys.VerificationAudioClippingGateEnabled
@@ -150,6 +152,13 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
                     VerificationPolicy.Default.MinimumVmafMin,
+                    min: 0),
+                ParseDouble(
+                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafCatastrophicMin),
+                    Math.Max(0, ParseDouble(
+                        settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
+                        VerificationPolicy.Default.MinimumVmafMin,
+                        min: 0) - 30),
                     min: 0),
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationAudioLoudnessGateEnabled),
@@ -237,6 +246,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 Math.Max(0, settings.VerificationPolicy.MinimumVmafHarmonicMean).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMinimumVmafMin] =
                 Math.Max(0, settings.VerificationPolicy.MinimumVmafMin).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationMinimumVmafCatastrophicMin] =
+                Math.Max(0, settings.VerificationPolicy.MinimumVmafCatastrophicMin).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationAudioLoudnessGateEnabled] =
                 settings.VerificationPolicy.AudioLoudnessGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMaxLoudnessDriftLufs] =

@@ -30,6 +30,7 @@ public static class QualityScoreParser
             var vmafMean = ReadMetric(pooled, "vmaf", "mean");
             var vmafHarmonicMean = ReadMetric(pooled, "vmaf", "harmonic_mean");
             var vmafMin = ReadMetric(pooled, "vmaf", "min");
+            var frameScores = ReadFrameScores(document.RootElement);
 
             // Without any VMAF aggregate the log isn't a usable quality measurement.
             if (vmafMean is null && vmafHarmonicMean is null && vmafMin is null)
@@ -42,12 +43,60 @@ public static class QualityScoreParser
                 vmafHarmonicMean,
                 vmafMin,
                 ReadMetric(pooled, "psnr_y", "mean"),
-                ReadMetric(pooled, "float_ssim", "mean"));
+                ReadMetric(pooled, "float_ssim", "mean"),
+                VmafFifthPercentile: Percentile(frameScores, 0.05),
+                FrameCount: frameScores.Count > 0 ? frameScores.Count : null);
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    private static List<double> ReadFrameScores(JsonElement root)
+    {
+        var scores = new List<double>();
+        if (!root.TryGetProperty("frames", out var frames) || frames.ValueKind != JsonValueKind.Array)
+        {
+            return scores;
+        }
+
+        foreach (var frame in frames.EnumerateArray())
+        {
+            if (frame.TryGetProperty("metrics", out var metrics)
+                && metrics.ValueKind == JsonValueKind.Object
+                && metrics.TryGetProperty("vmaf", out var vmaf)
+                && vmaf.ValueKind == JsonValueKind.Number
+                && vmaf.TryGetDouble(out var score)
+                && double.IsFinite(score))
+            {
+                scores.Add(score);
+            }
+        }
+
+        scores.Sort();
+        return scores;
+    }
+
+    // Linear interpolation matches the percentile convention used by common numerical tools and
+    // keeps the value stable as clip length or frame rate changes.
+    private static double? Percentile(IReadOnlyList<double> sorted, double percentile)
+    {
+        if (sorted.Count == 0)
+        {
+            return null;
+        }
+
+        var rank = (sorted.Count - 1) * percentile;
+        var lower = (int)Math.Floor(rank);
+        var upper = (int)Math.Ceiling(rank);
+        if (lower == upper)
+        {
+            return sorted[lower];
+        }
+
+        var fraction = rank - lower;
+        return sorted[lower] + ((sorted[upper] - sorted[lower]) * fraction);
     }
 
     private static double? ReadMetric(JsonElement pooled, string metric, string statistic)

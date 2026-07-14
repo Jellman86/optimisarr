@@ -39,6 +39,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(settings.VerificationPolicy.QualityGateEnabled);
         Assert.Equal(93.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
         Assert.Equal(80.0, settings.VerificationPolicy.MinimumVmafMin);
+        Assert.Equal(50.0, settings.VerificationPolicy.MinimumVmafCatastrophicMin);
         Assert.False(settings.VerificationPolicy.AudioLoudnessGateEnabled);
         Assert.Equal(1.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
         Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
@@ -71,6 +72,7 @@ public sealed class SettingsStoreTests : IDisposable
                     QualityGateEnabled: true,
                     MinimumVmafHarmonicMean: 92.0,
                     MinimumVmafMin: 75.0,
+                    MinimumVmafCatastrophicMin: 45.0,
                     AudioLoudnessGateEnabled: true,
                     MaxLoudnessDriftLufs: 2.0,
                     AudioClippingGateEnabled: true,
@@ -101,6 +103,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.QualityGateEnabled);
         Assert.Equal(92.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
         Assert.Equal(75.0, settings.VerificationPolicy.MinimumVmafMin);
+        Assert.Equal(45.0, settings.VerificationPolicy.MinimumVmafCatastrophicMin);
         Assert.True(settings.VerificationPolicy.AudioLoudnessGateEnabled);
         Assert.Equal(2.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
         Assert.True(settings.VerificationPolicy.AudioClippingGateEnabled);

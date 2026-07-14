@@ -355,6 +355,7 @@
     verificationQualityGateEnabled: false,
     verificationMinimumVmafHarmonicMean: 93,
     verificationMinimumVmafMin: 80,
+    verificationMinimumVmafCatastrophicMin: 50,
     verificationAudioLoudnessGateEnabled: false,
     verificationMaxLoudnessDriftLufs: 1,
     verificationAudioClippingGateEnabled: false,
@@ -374,12 +375,12 @@
   // VMAF's 0-100 scale (~6 points ≈ one just-noticeable difference; ~93 is the commonly-cited
   // "visually lossless" mark for HD). Higher stops are stricter and keep larger files.
   const vmafPresets = [
-    { enabled: false, harmonicMean: 93, min: 80 }, // Off
-    { enabled: true, harmonicMean: 80, min: 60 }, // Space-saver
-    { enabled: true, harmonicMean: 85, min: 70 }, // Balanced
-    { enabled: true, harmonicMean: 90, min: 75 }, // High
-    { enabled: true, harmonicMean: 93, min: 80 }, // Visually lossless
-    { enabled: true, harmonicMean: 96, min: 90 }, // Archival
+    { enabled: false, harmonicMean: 93, min: 80, catastrophic: 50 }, // Off
+    { enabled: true, harmonicMean: 80, min: 60, catastrophic: 30 }, // Space-saver
+    { enabled: true, harmonicMean: 85, min: 70, catastrophic: 40 }, // Balanced
+    { enabled: true, harmonicMean: 90, min: 75, catastrophic: 45 }, // High
+    { enabled: true, harmonicMean: 93, min: 80, catastrophic: 50 }, // Visually lossless
+    { enabled: true, harmonicMean: 96, min: 90, catastrophic: 70 }, // Archival
   ] as const
 
   function vmafPresetLabel(index: number): string {
@@ -417,6 +418,7 @@
     if (preset.enabled) {
       settings.verificationMinimumVmafHarmonicMean = preset.harmonicMean
       settings.verificationMinimumVmafMin = preset.min
+      settings.verificationMinimumVmafCatastrophicMin = preset.catastrophic
     }
   }
 
@@ -459,6 +461,7 @@
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
         verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
         verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
+        verificationMinimumVmafCatastrophicMin: clamp01to100(settings.verificationMinimumVmafCatastrophicMin),
         verificationVmafFrameSubsample: Math.min(10, Math.max(1, Number(settings.verificationVmafFrameSubsample) || 1)),
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
@@ -672,7 +675,8 @@
           {#if settings.verificationQualityGateEnabled}
             <span class="text-slate-500 dark:text-slate-400">
               — {i18n.m.settings.vmaf_harmonic} {settings.verificationMinimumVmafHarmonicMean} ·
-              {i18n.m.settings.vmaf_min} {settings.verificationMinimumVmafMin}
+              {i18n.m.settings.vmaf_min} {settings.verificationMinimumVmafMin} ·
+              {i18n.m.settings.vmaf_catastrophic} {settings.verificationMinimumVmafCatastrophicMin}
             </span>
           {:else}
             <span class="text-slate-500 dark:text-slate-400">— {i18n.m.settings.vmaf_off_desc}</span>

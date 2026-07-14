@@ -51,8 +51,11 @@ public static class SettingKeys
     /// <summary>Minimum harmonic-mean VMAF an output must reach when the quality gate is on.</summary>
     public const string VerificationMinimumVmafHarmonicMean = "verification.minimumVmafHarmonicMean";
 
-    /// <summary>Minimum single-frame VMAF an output must reach when the quality gate is on.</summary>
+    /// <summary>Minimum fifth-percentile VMAF an output must reach when the quality gate is on.</summary>
     public const string VerificationMinimumVmafMin = "verification.minimumVmafMin";
+
+    /// <summary>Minimum single-frame VMAF used as a catastrophic-artifact floor.</summary>
+    public const string VerificationMinimumVmafCatastrophicMin = "verification.minimumVmafCatastrophicMin";
 
     /// <summary>Whether the opt-in EBU R128 audio-loudness drift gate is enforced.</summary>
     public const string VerificationAudioLoudnessGateEnabled = "verification.audioLoudnessGateEnabled";

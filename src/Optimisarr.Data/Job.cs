@@ -68,6 +68,18 @@ public sealed class Job
     /// </summary>
     public string? VideoEncoder { get; set; }
 
+    /// <summary>Library/profile quality number requested before encoder-specific calibration.</summary>
+    public int? RequestedVideoQuality { get; set; }
+
+    /// <summary>Encoder-specific quality value passed to FFmpeg for the current attempt.</summary>
+    public int? EffectiveVideoQuality { get; set; }
+
+    /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
+    public string? VideoQualityMode { get; set; }
+
+    /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
+    public int QualityRetryCount { get; set; }
+
     /// <summary>Transcode progress in the range 0..1, parsed from ffmpeg.</summary>
     public double Progress { get; set; }
 

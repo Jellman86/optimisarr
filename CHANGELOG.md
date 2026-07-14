@@ -4,6 +4,14 @@
 
 ### Added
 
+- **Encoder-aware VMAF recovery and safer temporal pooling.** Hardware quality controls now receive
+  conservative encoder-family calibration (QSV ICQ, NVENC CQ, VA-API QP) instead of treating their
+  numeric values as interchangeable with software CRF. Verification pools harmonic mean, fifth
+  percentile, and a catastrophic single-frame floor; optional fast scoring uses deterministic
+  early/middle/late windows. If VMAF is the only failed gate, Optimisarr automatically retries once
+  at a higher encoder-specific quality. The Queue persists and displays the requested/effective
+  quality and sampling context, offers explicit same-settings and higher-quality recovery actions,
+  and container shutdown now drains active jobs for up to two hours before safe cancellation.
 - **Hardware-assisted and subsampled VMAF with automatic software fallback.** SDR verification now
   follows the job's selected NVIDIA/QSV/VA-API hardware path when Hardware decoding is enabled:
   NVIDIA can keep both inputs on the GPU through NVDEC, bicubic `scale_cuda`, and `libvmaf_cuda`,
@@ -14,13 +22,13 @@
   Frame sampling control scores every 1st–10th frame (default 1/every frame) with a warning that
   skipped frames weaken the worst-frame floor. Incidental PSNR/SSIM features are no longer computed
   during the VMAF gate, avoiding work that does not affect replacement safety.
-- **Optional clip-based VMAF (faster quality gate on modest hardware).** A new Settings toggle under
-  the quality slider measures VMAF on a representative ~2-minute clip from the middle of the file
+- **Optional sampled VMAF (faster quality gate on modest hardware).** A Settings toggle under
+  the quality slider measures VMAF across three 40-second windows near the beginning, middle and end
   instead of the whole runtime, which cuts VMAF time dramatically on low-power hosts (e.g. an Intel
-  N100) where full-file scoring is impractical. Both the output and the original are seeked to the
-  same window so their frames stay aligned, and progress is reported against the clip. The other
+  N100) where full-file scoring is impractical. Both the output and original are sought to each
+  matching window, and progress is reported across all three samples. The other
   gates (decode health, duration, structure, size) still check the whole output. Off by default, and
-  skipped for files barely longer than the clip. VMAF's scoring acceleration remains NVIDIA-only;
+  skipped for short files where full scoring is comparable. VMAF's scoring acceleration remains NVIDIA-only;
   Intel/AMD hardware can offload decode but not the metric itself.
 - **Per-library "Keep audio languages" removes unwanted audio tracks.** A library can list the
   ISO 639 codes to keep (e.g. `eng, jpn`); when a video is optimised or remuxed, audio tracks in

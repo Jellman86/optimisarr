@@ -1057,6 +1057,14 @@
               "string"
             ]
           },
+          "verificationMinimumVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
           "verificationMinimumVmafHarmonicMean": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
@@ -1108,6 +1116,7 @@
           "verificationQualityGateEnabled",
           "verificationMinimumVmafHarmonicMean",
           "verificationMinimumVmafMin",
+          "verificationMinimumVmafCatastrophicMin",
           "verificationAudioLoudnessGateEnabled",
           "verificationMaxLoudnessDriftLufs",
           "verificationAudioClippingGateEnabled",
@@ -2061,6 +2070,14 @@
               "format": "int32",
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "higherQuality",
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],

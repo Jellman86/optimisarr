@@ -13,6 +13,8 @@ namespace Optimisarr.Core.Verification;
 /// <param name="SsimMean">Mean SSIM (0–1), when computed.</param>
 /// <param name="ModelVersion">The libvmaf model selected for the source resolution.</param>
 /// <param name="Preprocessing">The colour-domain preparation applied before measurement.</param>
+/// <param name="VmafFifthPercentile">The fifth-percentile frame score, representing sustained difficult content.</param>
+/// <param name="FrameCount">The number of frames included in the measurement.</param>
 public sealed record QualityScores(
     double? VmafMean,
     double? VmafHarmonicMean,
@@ -20,4 +22,6 @@ public sealed record QualityScores(
     double? PsnrYMean,
     double? SsimMean,
     string? ModelVersion = null,
-    string? Preprocessing = null);
+    string? Preprocessing = null,
+    double? VmafFifthPercentile = null,
+    int? FrameCount = null);

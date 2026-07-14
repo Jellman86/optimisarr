@@ -27,6 +27,10 @@ var adminToken = Environment.GetEnvironmentVariable(AdminTokenAuth.EnvironmentVa
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<OptimisarrOpenApiTransformer>());
 builder.Services.AddSignalR();
+// Long encodes should survive a routine container update. QueueDispatcher drains active work and
+// only cancels it when this bounded shutdown window is exhausted.
+builder.Services.Configure<HostOptions>(options =>
+    options.ShutdownTimeout = TimeSpan.FromHours(2));
 // The transcoding/detection ffmpeg. Defaults to "ffmpeg" on PATH, but can be pointed at a
 // hardware-capable build (e.g. jellyfin-ffmpeg, which bundles Intel iHD + oneVPL and NVENC)
 // via OPTIMISARR_FFMPEG. Detection and transcode share it so the encoder list never lies
@@ -229,6 +233,7 @@ internal sealed record SettingsDto(
     bool VerificationQualityGateEnabled,
     double VerificationMinimumVmafHarmonicMean,
     double VerificationMinimumVmafMin,
+    double VerificationMinimumVmafCatastrophicMin,
     bool VerificationAudioLoudnessGateEnabled,
     double VerificationMaxLoudnessDriftLufs,
     bool VerificationAudioClippingGateEnabled,
@@ -256,6 +261,7 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.QualityGateEnabled,
         settings.VerificationPolicy.MinimumVmafHarmonicMean,
         settings.VerificationPolicy.MinimumVmafMin,
+        settings.VerificationPolicy.MinimumVmafCatastrophicMin,
         settings.VerificationPolicy.AudioLoudnessGateEnabled,
         settings.VerificationPolicy.MaxLoudnessDriftLufs,
         settings.VerificationPolicy.AudioClippingGateEnabled,

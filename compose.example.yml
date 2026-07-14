@@ -3,6 +3,7 @@ services:
     image: ghcr.io/jellman86/optimisarr:dev
     container_name: optimisarr
     restart: unless-stopped
+    stop_grace_period: 2h5m
     ports:
       - "${OPTIMISARR_PORT:-8787}:8787"
     environment:

@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-13)
+## Up next (priority order, updated 2026-07-14)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -153,14 +153,72 @@ the replacement workflow is trustworthy.
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
         of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
-2. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
+2. **Gold-standard first-run setup wizard** — turn a new, empty installation into a safe,
+   understandable first library without hiding Docker-level mistakes or weakening Optimisarr's
+   fail-closed defaults. This is the next independently actionable product item while the hardware
+   validation matrix remains gated on access to non-Intel GPUs.
+
+   - **Trigger, resume, and ownership.** Show the wizard only when a versioned `SetupState` has not
+     been completed; never force it on upgraded installations. Persist each completed step so a
+     refresh, container restart, or browser change resumes safely. Back must retain entered values,
+     Skip must explain its consequence, and Settings must offer an explicit **Run setup again** action.
+     Every write is idempotent, and completion is recorded only after the final confirmation.
+   - **Five stable, task-oriented steps.** Use one explicit heading and one primary action per step:
+     (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) first
+     library and optimisation intent; (4) verification, scheduling, quarantine, and replacement
+     safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
+     skippable sub-step, so Plex/Jellyfin/Sonarr/Radarr availability can never block first use. A
+     stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
+     separate Back/Continue controls—the [USWDS step-indicator guidance](https://designsystem.digital.gov/components/step-indicator/)
+     recommends this pattern for linear processes with three or more high-level sections.
+   - **Prove the environment instead of merely collecting fields.** The readiness step runs the
+     existing tool/capability checks and non-destructive probes for `/config`, `/work`, `/trash`, and
+     the chosen media root: existence, effective read/write permissions, available space, and whether
+     media/quarantine share a filesystem for atomic replacement. It detects encoder support with the
+     same real test encode used by Tools. A container cannot create a missing bind mount, change host
+     permissions, or securely retrofit an admin-token environment variable, so those failures must
+     produce exact Compose/Unraid/TrueNAS remediation and a re-test action—not a pretend-successful
+     toggle. Docker documents that mounts must be explicitly granted to a service and recommends
+     [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
+   - **Safe recommendations, not silent automation.** Start in dry-run mode, one concurrent job,
+     auto-replace off, conservative free-space/quarantine settings, and no auto-enqueue until the
+     user reviews them. Explain encoder-specific quality, preview one representative candidate when
+     possible, and show the estimated effect before saving. The wizard may recommend hardware decode,
+     a VMAF tier, and a schedule from detected capabilities, but every recommendation remains visible
+     and reversible. It never scans, enqueues, transcodes, replaces, or deletes an original until the
+     user confirms the review screen.
+   - **Review before commitment.** The last step groups security, storage, library, quality,
+     scheduling, integration, and replacement choices; each section has an accessible Change action
+     that returns directly to that step with values pre-populated. GOV.UK's
+     [check-answers pattern](https://design-system.service.gov.uk/patterns/check-answers/) uses this
+     review to raise confidence and reduce submission errors. Applying the plan uses one validated
+     transaction where possible, returns a clear success receipt, and links directly to the first
+     scan/candidate review rather than starting destructive work.
+   - **Accessible recovery is a release criterion.** Validate when Continue is pressed, preserve all
+     user input, place a concise error summary at the top, move focus to it, and associate inline
+     errors with their fields. W3C requires logical
+     [keyboard focus order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) and recommends
+     concise, actionable [form notifications](https://www.w3.org/WAI/tutorials/forms/notifications/);
+     WCAG 2.2 also adds minimum target size, unobscured focus, redundant-entry, and accessible-
+     authentication criteria. Status from readiness tests uses a polite live region without stealing
+     focus, and progress never relies on colour alone.
+   - **Gold-standard acceptance matrix.** Ship only with API/domain tests for state transitions,
+     idempotency, rollback, and upgrade bypass; real-host integration tests for fresh/resumed/completed
+     setup; and browser tests for Back/Continue/Change/Skip/Re-test across light/dark mode, all nine
+     locales, keyboard-only and screen-reader semantics, 400% zoom, and 390px mobile width. Exercise
+     read-only media, unwritable/missing work or quarantine, low disk, absent VMAF/ExifTool, unavailable
+     selected GPU, unreachable optional integration, invalid admin token, refresh/restart mid-step,
+     double-submit, and a failure during final apply. The invariant is explicit: wizard tests may
+     create disposable files under `/work` but must prove no source file is modified or removed.
+
+3. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration
   coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
   notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
   and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
   paid external services.
 
-3. **First-class diagnostics & observability API** — make "why did this fail?" answerable
+4. **First-class diagnostics & observability API** — make "why did this fail?" answerable
    from the API alone, without SSH-ing the host or reading container logs. Today failed-job
    detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
    verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
@@ -192,7 +250,7 @@ the replacement workflow is trustworthy.
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.
 
-4. **Full translation parity with YA-WAMF: done.** The Optimisarr UI and
+5. **Full translation parity with YA-WAMF: done.** The Optimisarr UI and
    user-facing API/status strings, then provide complete translations for the same language
    set currently carried by YA-WAMF: English, German, Spanish, French, Italian, Japanese,
    Portuguese, Russian, and Chinese (`en`, `de`, `es`, `fr`, `it`, `ja`, `pt`, `ru`, `zh`).
@@ -226,7 +284,7 @@ the replacement workflow is trustworthy.
      initial application chunk until selected. Native-speaker refinements remain welcome through
      normal issue reports, but no language is navigation-only or structurally incomplete.
 
-5. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
+6. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
    install where Docker media-stack users already look. Keep the Docker contract stable and
    make every template expose the same core surface: image tag, web port, admin token,
    `/config`, work/output, quarantine, media-library paths, health check, optional hardware
@@ -266,7 +324,7 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
-6. **Blind quality calibration ("placebo panel")** — help a user pick the lowest quality preset
+7. **Blind quality calibration ("placebo panel")** — help a user pick the lowest quality preset
    that is transparent *to them*, without the "higher must be better" bias that wastes storage.
    Per library, choose a representative file (video, audio, or image) and encode a short
    representative segment at each preset tier. Present the candidates unlabelled and in randomised
@@ -287,7 +345,7 @@ the replacement workflow is trustworthy.
    - **Honest results.** Showing the VMAF/SSIM score at reveal lets a user correlate what they can
      actually perceive with the metric — the whole justification for trusting a lower default floor.
 
-7. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
+8. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
    low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why
    the gate ships off by default. Make it fast enough to actually turn on.
 

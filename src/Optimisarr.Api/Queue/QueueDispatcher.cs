@@ -58,6 +58,7 @@ public sealed class QueueDispatcher(
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
     private readonly SemaphoreSlim _dbLock = new(1, 1);
     private readonly SemaphoreSlim _wake = new(0, 1);
+    private int _draining;
 
     /// <summary>Nudges the loop to dispatch immediately (e.g. right after enqueue).</summary>
     public void Wake()
@@ -73,6 +74,45 @@ public sealed class QueueDispatcher(
         {
             cts.Cancel();
         }
+    }
+
+    /// <summary>
+    /// Stops accepting work, then lets active transcodes and verification passes finish within the
+    /// host's shutdown budget. If the orchestrator exhausts that budget, cancel the remaining work
+    /// so normal crash recovery can safely re-queue it on the next start.
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        Interlocked.Exchange(ref _draining, 1);
+        Wake();
+        logger.LogInformation(
+            "Queue is draining {Count} active job(s) before shutdown; no new jobs will start.",
+            _running.Count);
+
+        try
+        {
+            while (!_running.IsEmpty && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The bounded host shutdown window elapsed; cancel below.
+        }
+
+        if (!_running.IsEmpty)
+        {
+            logger.LogWarning(
+                "Shutdown drain window elapsed; cancelling {Count} active job(s) for safe recovery.",
+                _running.Count);
+            foreach (var source in _running.Values)
+            {
+                source.Cancel();
+            }
+        }
+
+        await base.StopAsync(CancellationToken.None);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -255,6 +295,11 @@ public sealed class QueueDispatcher(
 
     private async Task DispatchAsync(CancellationToken stoppingToken)
     {
+        if (Volatile.Read(ref _draining) != 0)
+        {
+            return;
+        }
+
         var settings = await GetQueueSettingsAsync(stoppingToken);
         var activity = await activityMonitor.GetActivityAsync(stoppingToken);
         var policy = EvaluateDispatchPolicy(settings, activity);
@@ -303,12 +348,14 @@ public sealed class QueueDispatcher(
         var toStart = JobScheduler.SelectJobsToStart(runnable, _running.Count, maxConcurrent);
         foreach (var jobId in toStart)
         {
-            if (_running.ContainsKey(jobId) || !await TryClaimAsync(jobId, stoppingToken))
+            if (Volatile.Read(ref _draining) != 0
+                || _running.ContainsKey(jobId)
+                || !await TryClaimAsync(jobId, stoppingToken))
             {
                 continue;
             }
 
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            var cts = new CancellationTokenSource();
             _running[jobId] = cts;
             _ = Task.Run(() => RunJobAsync(jobId, cts.Token), CancellationToken.None);
         }
@@ -384,7 +431,13 @@ public sealed class QueueDispatcher(
             var (spec, arguments) = work.Value;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
             Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
-            await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
+            await BeginTranscodeAsync(
+                jobId,
+                spec.OutputPath,
+                arguments,
+                work.Value.VideoEncoder,
+                work.Value.VideoQuality,
+                cancellationToken);
             await NotifyAsync();
 
             // A clipped preview only encodes the clip window, so progress is measured against that,
@@ -406,7 +459,13 @@ public sealed class QueueDispatcher(
                     jobId, run.Error);
                 DeleteWorkOutput(spec.OutputPath);
                 arguments = softwareArguments;
-                await BeginTranscodeAsync(jobId, spec.OutputPath, arguments, work.Value.VideoEncoder, cancellationToken);
+                await BeginTranscodeAsync(
+                    jobId,
+                    spec.OutputPath,
+                    arguments,
+                    work.Value.VideoEncoder,
+                    work.Value.VideoQuality,
+                    cancellationToken);
                 run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
             }
 
@@ -473,6 +532,7 @@ public sealed class QueueDispatcher(
         TranscodeSpec Spec,
         IReadOnlyList<string> Arguments,
         string? VideoEncoder,
+        EncoderQuality? VideoQuality,
         bool IsPreview,
         double? DurationSeconds,
         bool MoveOnComplete,
@@ -621,6 +681,7 @@ public sealed class QueueDispatcher(
         // MediaKind, so a video classified Unknown still gets the selected GPU encoder
         // instead of silently falling back to the CPU library encoder.
         string? videoEncoderName = null;
+        EncoderQuality? videoQuality = null;
         if (spec.VideoCodec is not null)
         {
             var videoEncoder = await ResolveVideoEncoderAsync(
@@ -633,9 +694,23 @@ public sealed class QueueDispatcher(
             }
 
             videoEncoderName = videoEncoder.EncoderName;
+            if (spec.Crf is { } requestedQuality)
+            {
+                videoQuality = EncoderQualityPolicy.Resolve(
+                    videoEncoderName,
+                    requestedQuality,
+                    job.QualityRetryCount);
+                spec = spec with { Crf = videoQuality.Effective };
+            }
             logger.LogInformation(
-                "Job {JobId} will encode video with '{Encoder}' (mode {Mode})",
-                jobId, videoEncoderName, queueSettings.EncoderMode);
+                "Job {JobId} will encode video with '{Encoder}' (mode {Mode}, quality {QualityMode} {Effective}; requested {Requested}, retry {Retry})",
+                jobId,
+                videoEncoderName,
+                queueSettings.EncoderMode,
+                videoQuality?.Mode,
+                videoQuality?.Effective,
+                videoQuality?.Requested,
+                videoQuality?.RetryCount);
         }
 
         // The primary command honours the hardware-decode setting; the builder only applies it
@@ -652,6 +727,7 @@ public sealed class QueueDispatcher(
             spec,
             primaryArguments,
             videoEncoderName,
+            videoQuality,
             isPreview,
             media.DurationSeconds,
             library?.MoveOnComplete ?? false,
@@ -773,13 +849,21 @@ public sealed class QueueDispatcher(
     }
 
     private async Task BeginTranscodeAsync(
-        int jobId, string outputPath, IReadOnlyList<string> arguments, string? videoEncoder, CancellationToken cancellationToken)
+        int jobId,
+        string outputPath,
+        IReadOnlyList<string> arguments,
+        string? videoEncoder,
+        EncoderQuality? videoQuality,
+        CancellationToken cancellationToken)
     {
         await WithJobAsync(jobId, job =>
         {
             job.WorkOutputPath = outputPath;
             job.FfmpegArguments = string.Join(' ', arguments);
             job.VideoEncoder = videoEncoder;
+            job.RequestedVideoQuality = videoQuality?.Requested;
+            job.EffectiveVideoQuality = videoQuality?.Effective;
+            job.VideoQualityMode = videoQuality?.Mode;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
     }
@@ -945,6 +1029,22 @@ public sealed class QueueDispatcher(
                 qualityProgress,
                 vmafAcceleration);
         }
+        outcome = outcome with
+        {
+            Report = outcome.Report with
+            {
+                Context = new VerificationContext(
+                    work.VideoEncoder,
+                    work.VideoQuality?.Requested,
+                    work.VideoQuality?.Effective,
+                    work.VideoQuality?.Mode,
+                    work.VideoQuality?.RetryCount ?? 0,
+                    outcome.VmafSampling,
+                    policy.MinimumVmafHarmonicMean,
+                    policy.MinimumVmafMin,
+                    policy.MinimumVmafCatastrophicMin)
+            }
+        };
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>
@@ -958,6 +1058,15 @@ public sealed class QueueDispatcher(
 
         if (!outcome.Report.Passed)
         {
+            if (!work.IsPreview && VmafRetryPolicy.ShouldRetry(
+                    outcome.Report,
+                    work.VideoQuality?.RetryCount ?? 0,
+                    work.VideoQuality?.Effective))
+            {
+                await QueueHigherQualityRetryAsync(jobId, outputPath);
+                return;
+            }
+
             var failed = outcome.Report.Checks.Where(check => check.Outcome == CheckOutcome.Failed);
             var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
             await CompleteAsync(jobId, JobStatus.Failed, error: summary);
@@ -972,6 +1081,32 @@ public sealed class QueueDispatcher(
         }
 
         await FinishSuccessfulJobAsync(jobId, outputPath, work, settings.DryRunMode);
+    }
+
+    private async Task QueueHigherQualityRetryAsync(int jobId, string outputPath)
+    {
+        DeleteWorkOutput(outputPath);
+        await WithJobAsync(jobId, job =>
+        {
+            job.Status = JobStatus.Queued;
+            job.QualityRetryCount += 1;
+            job.Progress = 0;
+            job.ErrorMessage = null;
+            job.FailureCategory = null;
+            job.ProcessLog = null;
+            job.WorkOutputPath = null;
+            job.OutputSizeBytes = null;
+            job.VerificationPassed = null;
+            job.VerificationReportJson = null;
+            job.VerifiedAt = null;
+            job.FinishedAt = null;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, CancellationToken.None);
+        logger.LogInformation(
+            "Job {JobId}: VMAF was the only failed gate; queued one deterministic higher-quality retry.",
+            jobId);
+        await NotifyAsync();
+        Wake();
     }
 
     // On success the original is never touched. If the library collects outputs in a

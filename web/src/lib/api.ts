@@ -165,6 +165,7 @@ export type Settings = {
   verificationQualityGateEnabled: boolean
   verificationMinimumVmafHarmonicMean: number
   verificationMinimumVmafMin: number
+  verificationMinimumVmafCatastrophicMin: number
   verificationAudioLoudnessGateEnabled: boolean
   verificationMaxLoudnessDriftLufs: number
   verificationAudioClippingGateEnabled: boolean
@@ -241,6 +242,19 @@ export type VerificationCheck = {
 
 export type VerificationReport = {
   checks: VerificationCheck[]
+  context?: VerificationContext | null
+}
+
+export type VerificationContext = {
+  videoEncoder: string | null
+  requestedVideoQuality: number | null
+  effectiveVideoQuality: number | null
+  videoQualityMode: string | null
+  qualityRetryCount: number
+  vmafSampling: string | null
+  minimumVmafHarmonicMean: number
+  minimumVmafFifthPercentile: number
+  minimumVmafCatastrophicMin: number
 }
 
 export type MediaSideStats = {
@@ -282,6 +296,10 @@ export type Job = {
   failureCategory: string | null
   ffmpegArguments: string | null
   videoEncoder: string | null
+  requestedVideoQuality: number | null
+  effectiveVideoQuality: number | null
+  videoQualityMode: string | null
+  qualityRetryCount: number
   outputSizeBytes: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
@@ -715,7 +733,8 @@ export const api = {
   },
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
-  retryJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),
+  retryJob: (id: number, higherQuality = false) =>
+    request<{ id: number; status: string }>(`/api/jobs/${id}/retry?higherQuality=${higherQuality}`, { method: 'POST' }),
   clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
     request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
   clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),

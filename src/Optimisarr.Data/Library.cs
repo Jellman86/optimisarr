@@ -142,6 +142,7 @@ public sealed class Library
     /// </summary>
     public double? MinVmafHarmonicMean { get; set; }
 
+    /// <summary>Legacy property name retained for config/database compatibility; now the fifth-percentile floor.</summary>
     public double? MinVmafMin { get; set; }
 
     /// <summary>
