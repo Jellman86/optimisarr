@@ -1003,6 +1003,9 @@
           "verificationAudioLoudnessGateEnabled": {
             "type": "boolean"
           },
+          "verificationClipVmafEnabled": {
+            "type": "boolean"
+          },
           "verificationDurationTolerancePercent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
@@ -1091,6 +1094,7 @@
           "verificationImageQualityGateEnabled",
           "verificationMinimumImageSsim",
           "verificationImageMetadataGateEnabled",
+          "verificationClipVmafEnabled",
           "replacementAllowCrossFilesystem",
           "dryRunMode",
           "replacementQuarantineRetentionDays"
