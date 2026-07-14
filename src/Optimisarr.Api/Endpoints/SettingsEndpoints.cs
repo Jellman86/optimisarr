@@ -70,6 +70,13 @@ internal static class SettingsEndpoints
                 return ApiErrors.BadRequest("settings.vmaf.range", "VMAF thresholds must be between 0 and 100.");
             }
 
+            if (request.VerificationVmafFrameSubsample is < 1 or > QualityScoreCommandBuilder.MaximumFrameSubsample)
+            {
+                return ApiErrors.BadRequest(
+                    "settings.vmafFrameSubsample.range",
+                    $"VMAF frame subsampling must be between 1 and {QualityScoreCommandBuilder.MaximumFrameSubsample}.");
+            }
+
             if (request.VerificationMaxLoudnessDriftLufs < 0)
             {
                 return ApiErrors.BadRequest("settings.loudnessDrift.nonNegative", "Loudness drift tolerance cannot be negative.");
@@ -115,9 +122,10 @@ internal static class SettingsEndpoints
                     request.VerificationAudioClippingGateEnabled,
                     request.VerificationMaxTruePeakDbtp,
                     request.VerificationImageQualityGateEnabled,
-                request.VerificationMinimumImageSsim,
-                request.VerificationImageMetadataGateEnabled,
-                request.VerificationClipVmafEnabled),
+                    request.VerificationMinimumImageSsim,
+                    request.VerificationImageMetadataGateEnabled,
+                    request.VerificationClipVmafEnabled,
+                    request.VerificationVmafFrameSubsample),
                 request.ReplacementAllowCrossFilesystem,
                 request.DryRunMode,
                 request.ReplacementQuarantineRetentionDays), cancellationToken);

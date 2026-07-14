@@ -62,9 +62,11 @@ curl -fsS -H "Authorization: Bearer change-this-long-random-token" \
   http://localhost:8787/api/settings
 ```
 
-The SignalR hub at `/hubs/jobs` accepts the same bearer token. Browser media
-content endpoints also accept `?access_token=<token>` because native media
-requests cannot attach custom headers.
+The SignalR hub at `/hubs/jobs` accepts the same token through its WebSocket
+`access_token` query parameter. Ordinary `/api` routes reject query tokens. A
+successful bearer-authenticated API request also establishes a derived HttpOnly,
+same-site session cookie so native browser media requests can authenticate
+without placing the admin token in their URLs.
 
 ## Common Recipes
 
@@ -169,7 +171,7 @@ exists in quarantine.
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
 | `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/diagnostics` | Admin support snapshot: version, environment, settings, library and integration summaries, stats, and the failure summary. Assembled from non-secret data only (no tokens, API keys, or webhook URLs). Protected by the admin token when one is set. |
-| `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks and optional VMAF-FFmpeg capability; each result includes `required`. |
+| `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
 

@@ -236,6 +236,75 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_records_the_rollback_path_before_the_first_file_move()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var pendingWasRecorded = false;
+
+        var result = await ReplaceAsync(jobId, moveFile: (_, _) =>
+        {
+            using var readDb = new OptimisarrDbContext(_options);
+            pendingWasRecorded = readDb.Replacements.Any(replacement =>
+                replacement.JobId == jobId && replacement.Status == ReplacementStatus.Pending);
+            throw new IOException("stop after checking the durable rollback record");
+        });
+
+        Assert.True(pendingWasRecorded);
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.Empty(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    [Fact]
+    public async Task Recovery_restores_a_pending_original_quarantined_before_a_crash()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var quarantinePath = Path.Combine(_trashDir, "pending-job", "Movie.avi");
+        var finalPath = Path.Combine(_dataDir, "Movie.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantinePath)!);
+        File.Move(originalPath, quarantinePath);
+        await SeedPendingReplacementAsync(jobId, originalPath, finalPath, quarantinePath);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var service = NewService(db);
+        await service.RecoverPendingAsync(CancellationToken.None);
+        Assert.Equal(0, await service.RecoverPendingAsync(CancellationToken.None));
+
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.Equal("NEW", File.ReadAllText(outputPath));
+        Assert.False(File.Exists(quarantinePath));
+        Assert.Empty(await db.Replacements.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Recovery_finalizes_a_pending_replacement_whose_file_moves_completed_before_a_crash()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var quarantinePath = Path.Combine(_trashDir, "pending-job", "Movie.avi");
+        var finalPath = Path.Combine(_dataDir, "Movie.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(quarantinePath)!);
+        File.Move(originalPath, quarantinePath);
+        File.Move(outputPath, finalPath);
+        await SeedPendingReplacementAsync(jobId, originalPath, finalPath, quarantinePath);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var service = NewService(db);
+        await service.RecoverPendingAsync(CancellationToken.None);
+        Assert.Equal(0, await service.RecoverPendingAsync(CancellationToken.None));
+
+        var replacement = await db.Replacements.SingleAsync();
+        Assert.Equal(ReplacementStatus.Replaced, replacement.Status);
+        Assert.Equal("ORIGINAL", File.ReadAllText(quarantinePath));
+        Assert.Equal("NEW", File.ReadAllText(finalPath));
+        Assert.Equal(JobStatus.Completed, (await db.Jobs.SingleAsync()).Status);
+        Assert.Equal(finalPath, (await db.MediaFiles.SingleAsync()).Path);
+        Assert.Equal(1, (await ReadLifetimeAsync()).FilesOptimised);
+    }
+
+    [Fact]
     public async Task Replace_fails_without_touching_the_original_when_the_verified_output_is_missing()
     {
         // The verified output vanished from /work (the exact condition that left job 3327 looping).
@@ -370,6 +439,122 @@ public sealed class ReplacementServiceTests : IDisposable
         Assert.Null(replacement.RolledBackAt);
     }
 
+    [Fact]
+    public async Task Rollback_restores_the_optimised_file_when_restoring_the_original_fails()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        var replacement = replaced.Replacement!;
+
+        var result = await RollbackAsync(replacement.Id, (source, destination) =>
+        {
+            if (string.Equals(source, replacement.QuarantinePath, StringComparison.Ordinal))
+            {
+                throw new IOException("simulated restore failure");
+            }
+
+            return FileMover.Move(source, destination);
+        });
+
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("NEW", File.ReadAllText(replacement.FinalPath));
+        Assert.Equal("ORIGINAL", File.ReadAllText(replacement.QuarantinePath));
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(ReplacementStatus.Replaced, (await db.Replacements.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Rollback_records_its_intent_before_staging_the_optimised_file()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        var replacement = replaced.Replacement!;
+        var rollbackWasRecorded = false;
+
+        var result = await RollbackAsync(replacement.Id, (_, _) =>
+        {
+            using var readDb = new OptimisarrDbContext(_options);
+            rollbackWasRecorded = readDb.Replacements.Any(row =>
+                row.Id == replacement.Id && row.Status == ReplacementStatus.RollbackPending);
+            throw new IOException("stop after checking rollback intent");
+        });
+
+        Assert.True(rollbackWasRecorded);
+        Assert.Equal(ReplacementResultKind.Failed, result.Kind);
+        Assert.Equal("NEW", File.ReadAllText(replacement.FinalPath));
+        Assert.Equal(ReplacementStatus.Replaced, (await new OptimisarrDbContext(_options).Replacements.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Rollback_serialises_concurrent_attempts_for_the_same_job()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        var replacement = replaced.Replacement!;
+        var coordinator = new ReplacementCoordinator();
+        var firstMoveEntered = new TaskCompletionSource();
+        var releaseFirstMove = new TaskCompletionSource();
+
+        FileMoveResult BlockingMove(string source, string destination)
+        {
+            firstMoveEntered.TrySetResult();
+            releaseFirstMove.Task.GetAwaiter().GetResult();
+            return FileMover.Move(source, destination);
+        }
+
+        var first = Task.Run(() => RollbackAsync(replacement.Id, BlockingMove, coordinator));
+        await firstMoveEntered.Task;
+        var second = await RollbackAsync(replacement.Id, coordinator: coordinator);
+        releaseFirstMove.SetResult();
+
+        Assert.Equal(ReplacementResultKind.Invalid, second.Kind);
+        Assert.Contains("already in progress", second.Message);
+        Assert.Equal(ReplacementResultKind.Success, (await first).Kind);
+    }
+
+    [Fact]
+    public async Task Recovery_restores_a_staged_output_after_an_interrupted_rollback()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        var replacement = replaced.Replacement!;
+        var stagedPath = replacement.FinalPath + $".optimisarr-rollback-{replacement.Id}.tmp";
+        File.Move(replacement.FinalPath, stagedPath);
+        await SetReplacementStatusAsync(replacement.Id, ReplacementStatus.RollbackPending);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        Assert.Equal("NEW", File.ReadAllText(replacement.FinalPath));
+        Assert.False(File.Exists(stagedPath));
+        Assert.Equal(ReplacementStatus.Replaced, (await db.Replacements.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Recovery_finalizes_a_rollback_when_the_original_was_already_restored()
+    {
+        var (originalPath, outputPath) = WriteFiles("Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        var replacement = replaced.Replacement!;
+        var stagedPath = replacement.FinalPath + $".optimisarr-rollback-{replacement.Id}.tmp";
+        File.Move(replacement.FinalPath, stagedPath);
+        File.Move(replacement.QuarantinePath, replacement.OriginalPath);
+        await SetReplacementStatusAsync(replacement.Id, ReplacementStatus.RollbackPending);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(1, await NewService(db).RecoverPendingAsync(CancellationToken.None));
+
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.False(File.Exists(stagedPath));
+        Assert.Equal(ReplacementStatus.RolledBack, (await db.Replacements.SingleAsync()).Status);
+        Assert.Equal(LifetimeStats.Empty, await ReadLifetimeAsync());
+    }
+
     private (string OriginalPath, string OutputPath) WriteFiles(
         string originalName, string outputName, string originalContent, string outputContent)
     {
@@ -424,11 +609,44 @@ public sealed class ReplacementServiceTests : IDisposable
         return await new LifetimeStatsStore(db).GetAsync(CancellationToken.None);
     }
 
-    private async Task<ReplacementActionResult> RollbackAsync(int replacementId)
+    private async Task<ReplacementActionResult> RollbackAsync(
+        int replacementId,
+        Func<string, string, FileMoveResult>? moveFile = null,
+        ReplacementCoordinator? coordinator = null)
     {
         await using var db = new OptimisarrDbContext(_options);
-        var service = NewService(db);
+        var service = NewService(db, moveFile: moveFile, coordinator: coordinator);
         return await service.RollbackAsync(replacementId, CancellationToken.None);
+    }
+
+    private async Task SeedPendingReplacementAsync(
+        int jobId,
+        string originalPath,
+        string finalPath,
+        string quarantinePath)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var job = await db.Jobs.SingleAsync(job => job.Id == jobId);
+        db.Replacements.Add(new Replacement
+        {
+            JobId = jobId,
+            MediaFileId = job.MediaFileId,
+            OriginalPath = originalPath,
+            FinalPath = finalPath,
+            QuarantinePath = quarantinePath,
+            OriginalSizeBytes = "ORIGINAL".Length,
+            NewSizeBytes = "NEW".Length,
+            Status = ReplacementStatus.Pending
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SetReplacementStatusAsync(int replacementId, ReplacementStatus status)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var replacement = await db.Replacements.SingleAsync(row => row.Id == replacementId);
+        replacement.Status = status;
+        await db.SaveChangesAsync();
     }
 
     private ReplacementService NewService(

@@ -53,7 +53,8 @@ public sealed record VerificationPolicy(
     bool ImageQualityGateEnabled,
     double MinimumImageSsim,
     bool ImageMetadataGateEnabled = false,
-    bool ClipVmafEnabled = false)
+    bool ClipVmafEnabled = false,
+    int VmafFrameSubsample = 1)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -70,7 +71,8 @@ public sealed record VerificationPolicy(
         ImageQualityGateEnabled: true,
         MinimumImageSsim: 0.95,
         ImageMetadataGateEnabled: true,
-        ClipVmafEnabled: false);
+        ClipVmafEnabled: false,
+        VmafFrameSubsample: 1);
 
     public bool RequiresVmaf(MediaKind kind, bool videoReencoded) =>
         QualityGateEnabled && kind == MediaKind.Video && videoReencoded;

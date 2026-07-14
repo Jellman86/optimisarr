@@ -411,6 +411,7 @@ export const en = {
     validation_scan_interval: 'Library scan interval must be at least 1 hour.',
     validation_duration: 'Verification duration tolerance cannot be negative.',
     validation_vmaf: 'VMAF thresholds must be between 0 and 100.',
+    validation_vmaf_subsample: 'VMAF frame sampling must be between 1 and 10.',
     validation_loudness: 'Loudness drift tolerance cannot be negative.',
     validation_true_peak: 'True-peak ceiling must be a finite dBTP value.',
     validation_ssim: 'Image SSIM threshold must be between 0 and 1.',
@@ -477,6 +478,10 @@ export const en = {
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
     vmaf_clip_label: 'Score a sample clip (faster)',
+    vmaf_subsample_label: 'Frame sampling',
+    vmaf_subsample_hint: 'Score every Nth frame. Values above 1 are faster, but a skipped frame cannot trigger the worst-frame quality floor. Keep 1 for the strongest protection.',
+    vmaf_every_frame: 'Every frame (strongest protection)',
+    vmaf_every_nth_frame: 'Every {interval}th frame',
     vmaf_clip_hint:
       'Measure VMAF on a representative ~2-minute clip from the middle of the file instead of the whole runtime. Dramatically faster on low-power hardware (e.g. an Intel N100) where full-file VMAF is impractical, at the cost of sampling only part of the file. The other gates still check the whole output.',
     loudness_label: 'Audio loudness drift (EBU R128)',

@@ -44,6 +44,8 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
         Assert.Equal(0.95, settings.VerificationPolicy.MinimumImageSsim);
         Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
+        Assert.False(settings.VerificationPolicy.ClipVmafEnabled);
+        Assert.Equal(1, settings.VerificationPolicy.VmafFrameSubsample);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
         Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
@@ -75,7 +77,9 @@ public sealed class SettingsStoreTests : IDisposable
                     MaxTruePeakDbtp: -1.0,
                     ImageQualityGateEnabled: true,
                     MinimumImageSsim: 0.97,
-                    ImageMetadataGateEnabled: true),
+                    ImageMetadataGateEnabled: true,
+                    ClipVmafEnabled: true,
+                    VmafFrameSubsample: 4),
                 ReplacementAllowCrossFilesystem: true,
                 DryRunMode: true,
                 ReplacementQuarantineRetentionDays: 30), CancellationToken.None);
@@ -104,6 +108,8 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
         Assert.Equal(0.97, settings.VerificationPolicy.MinimumImageSsim);
         Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
+        Assert.True(settings.VerificationPolicy.ClipVmafEnabled);
+        Assert.Equal(4, settings.VerificationPolicy.VmafFrameSubsample);
         Assert.True(settings.ReplacementAllowCrossFilesystem);
         Assert.True(settings.DryRunMode);
         Assert.Equal(30, settings.ReplacementQuarantineRetentionDays);
@@ -123,6 +129,7 @@ public sealed class SettingsStoreTests : IDisposable
                 new AppSetting { Key = SettingKeys.VerificationRequireAudioRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSubtitlesRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSizeReduction, Value = "maybe" },
+                new AppSetting { Key = SettingKeys.VerificationVmafFrameSubsample, Value = "11" },
                 new AppSetting { Key = SettingKeys.ReplacementAllowCrossFilesystem, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.DryRunMode, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.ReplacementQuarantineRetentionDays, Value = "-3" });
@@ -142,6 +149,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
         Assert.True(settings.VerificationPolicy.RequireSizeReduction);
+        Assert.Equal(1, settings.VerificationPolicy.VmafFrameSubsample);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
         Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);

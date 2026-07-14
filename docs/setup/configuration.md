@@ -41,7 +41,7 @@ The Inventory explains why every file is eligible or skipped.
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
-| Hardware decoding | Uses GPU decode with hardware encoders when possible, then falls back to CPU decode for sources the GPU cannot decode. |
+| Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes, then falls back to CPU decode for sources the GPU cannot decode. |
 
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
@@ -52,19 +52,24 @@ The published container configures a matched Jellyfin FFmpeg/ffprobe pair automa
 installations can select the production transcoder with `OPTIMISARR_FFMPEG`; Optimisarr derives a
 sibling `ffprobe` from an absolute FFmpeg path so probing and verification interpret streams with
 the same build. Set `OPTIMISARR_FFPROBE` only when the paired probe lives elsewhere. The independent
-`OPTIMISARR_FFMPEG_VMAF` command supplies libvmaf, loudness, and image-SSIM measurement, while
-`OPTIMISARR_EXIFTOOL` can select a non-PATH ExifTool binary.
+`OPTIMISARR_FFMPEG_VMAF` command supplies libvmaf, loudness, and image-SSIM measurement.
+`OPTIMISARR_FFMPEG_VMAF_CUDA` may point at a purpose-built NVIDIA binary that exposes
+`libvmaf_cuda`; when unset, the normal VMAF binary is checked for that filter. The CUDA binary is
+optional and every unsupported build, GPU, driver, or source falls back to the normal software
+measurement. `OPTIMISARR_EXIFTOOL` can select a non-PATH ExifTool binary.
 
 ```yaml
 environment:
   OPTIMISARR_FFMPEG: /opt/media/ffmpeg
   OPTIMISARR_FFPROBE: /opt/media/ffprobe
   OPTIMISARR_FFMPEG_VMAF: /opt/media/ffmpeg-vmaf
+  OPTIMISARR_FFMPEG_VMAF_CUDA: /opt/media/ffmpeg-vmaf-cuda
   OPTIMISARR_EXIFTOOL: /opt/media/exiftool
 ```
 
-The standard image already provides these values; do not override them unless supplying a complete,
-tested replacement toolchain.
+The standard image already provides the normal FFmpeg, ffprobe, VMAF, and ExifTool values. The CUDA
+VMAF override is optional; leave it unset unless supplying a compatible NVIDIA build. Do not
+override the standard values unless supplying a complete, tested replacement toolchain.
 
 ## Verification gates
 
@@ -97,7 +102,10 @@ fully decodes both files and scores every frame, roughly doubling verification t
 run on modest hardware; a quality slider in Settings turns it on and prefills both floors from named
 tiers (Space-saver through Archival). Existing installations retain their saved choice, and while the
 gate is off the structural, duration and size gates plus quarantine rollback still guard every
-replacement. Image SSIM and EXIF/ICC retention are enabled for new installations; existing saved
+replacement. When enabled, **Score a sample clip** limits VMAF to a centred two-minute window for
+long files. **Frame sampling** can score every Nth frame from 1–10; 1 is the conservative default,
+because skipped frames cannot participate in the worst-frame floor. Image SSIM and EXIF/ICC
+retention are enabled for new installations; existing saved
 opt-outs remain unchanged. SSIM uses
 explicit reference dimensions, aligned timebases, full-range planar RGB/RGBA, and includes alpha
 when the source may carry it. Before verification, ExifTool copies EXIF and ICC while deliberately
@@ -110,7 +118,12 @@ uses bounded automatic threading. It selects Netflix's `vmaf_v0.6.1` HDTV model
 for HD material and `vmaf_4k_v0.6.1` when either source axis reaches UHD. If a job
 intentionally converts HDR to SDR, the reference receives the same production
 tone-map before comparison; HDR-preserving jobs keep both streams in the matching
-HDR transfer domain. The model and preparation used are recorded in the result.
+HDR transfer domain. SDR jobs follow the selected encoder's hardware decode path when Hardware
+decoding is enabled: QSV/VA-API download decoded frames for CPU VMAF, while a compatible NVIDIA
+build can use NVDEC, `scale_cuda`, and `libvmaf_cuda` end to end. Hardware attempts always retry in
+software on failure, and HDR always uses the established software colour pipeline. Only VMAF is
+requested during this gate; the older incidental PSNR/SSIM report fields remain nullable. The model,
+sampling interval, and preparation used are recorded in the result.
 
 The 93 harmonic-mean and 80 worst-frame floors are Optimisarr's conservative
 replacement guardrails, not universal scores promised by Netflix. VMAF is most

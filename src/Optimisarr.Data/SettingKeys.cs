@@ -78,6 +78,9 @@ public static class SettingKeys
     /// <summary>Whether the VMAF gate scores a representative clip instead of the whole file (faster).</summary>
     public const string VerificationClipVmafEnabled = "verification.clipVmafEnabled";
 
+    /// <summary>Score every Nth frame during VMAF measurement; 1 scores every frame.</summary>
+    public const string VerificationVmafFrameSubsample = "verification.vmafFrameSubsample";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

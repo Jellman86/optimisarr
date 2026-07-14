@@ -4,15 +4,24 @@
 
 ### Added
 
+- **Hardware-assisted and subsampled VMAF with automatic software fallback.** SDR verification now
+  follows the job's selected NVIDIA/QSV/VA-API hardware path when Hardware decoding is enabled:
+  NVIDIA can keep both inputs on the GPU through NVDEC, bicubic `scale_cuda`, and `libvmaf_cuda`,
+  while QSV/VA-API can offload both decodes before downloading frames for CPU VMAF. CUDA is enabled
+  only when the configured binary exposes the exact filter (`OPTIMISARR_FFMPEG_VMAF_CUDA` can point
+  at a purpose-built binary), and every accelerated runtime failure is discarded and retried through
+  the established software graph. HDR deliberately stays on the colour-accurate software path. A new
+  Frame sampling control scores every 1st–10th frame (default 1/every frame) with a warning that
+  skipped frames weaken the worst-frame floor. Incidental PSNR/SSIM features are no longer computed
+  during the VMAF gate, avoiding work that does not affect replacement safety.
 - **Optional clip-based VMAF (faster quality gate on modest hardware).** A new Settings toggle under
   the quality slider measures VMAF on a representative ~2-minute clip from the middle of the file
   instead of the whole runtime, which cuts VMAF time dramatically on low-power hosts (e.g. an Intel
   N100) where full-file scoring is impractical. Both the output and the original are seeked to the
   same window so their frames stay aligned, and progress is reported against the clip. The other
   gates (decode health, duration, structure, size) still check the whole output. Off by default, and
-  skipped for files barely longer than the clip. VMAF's only true hardware acceleration remains
-  NVIDIA-only (`libvmaf_cuda`); there is no Intel GPU/NPU path for the scoring itself, so this
-  CPU-side sampling is the practical win on Intel hardware.
+  skipped for files barely longer than the clip. VMAF's scoring acceleration remains NVIDIA-only;
+  Intel/AMD hardware can offload decode but not the metric itself.
 
 ## 0.2.3 — 2026-07-14
 
@@ -76,6 +85,23 @@
 
 ### Fixed
 
+- **Replacement and rollback are crash-safe end to end.** Optimisarr now commits a `Pending`
+  rollback record before moving the original, then finalizes it only after the verified output is
+  in place. Startup reconciles interrupted records idempotently: it restores a quarantined original
+  when the verified output remains in `/work`, or completes the database transition when both file
+  moves had already finished. Rollback stages the current optimised file and restores it if moving
+  the quarantined original fails, so a failed rollback never leaves the library path empty.
+  Quarantine folders also include the job id, preventing concurrent same-named replacements from
+  colliding within the same millisecond.
+- **Clip-VMAF configuration and translations are complete.** Config export/import now preserves
+  the clip-scoring preference. All VMAF settings and presets are translated across the eight
+  non-English locales, stale claims that VMAF is enabled by default are corrected, and the locale
+  audit now rejects long English prose copied unchanged into a translation.
+- **Admin tokens no longer leak through ordinary API query strings.** The `access_token` query
+  fallback is limited to SignalR hub paths, where WebSocket clients require it; REST API calls must
+  use the bearer header so reverse-proxy logs and browser history do not capture the token. A
+  successful bearer request establishes a derived HttpOnly, same-site cookie for native browser
+  media elements, keeping authenticated previews working without exposing the configured secret.
 - **A retried job no longer keeps a stale failure category.** Starting a new attempt now clears the
   previous attempt's error message and failure classification, so a job that failed once (e.g. a
   verification-gate rejection) and then succeeded on retry is reported as the success it is, instead

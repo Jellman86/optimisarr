@@ -57,7 +57,8 @@ public sealed class VerificationService(
         VerificationPolicy policy,
         CancellationToken cancellationToken,
         VerificationClip? clip = null,
-        IProgress<double>? qualityProgress = null)
+        IProgress<double>? qualityProgress = null,
+        VmafAcceleration vmafAcceleration = VmafAcceleration.None)
     {
         var reference = clip is null
             ? original
@@ -108,6 +109,8 @@ public sealed class VerificationService(
                     clip?.StartSeconds,
                     vmafClip?.Start,
                     vmafClip?.Duration,
+                    policy.VmafFrameSubsample,
+                    vmafAcceleration,
                     qualityProgress,
                     cancellationToken);
             }
@@ -255,6 +258,8 @@ public sealed class VerificationService(
         int? referenceStartSeconds,
         int? clipStartSeconds,
         int? clipDurationSeconds,
+        int frameSubsample,
+        VmafAcceleration acceleration,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
@@ -274,7 +279,9 @@ public sealed class VerificationService(
             ReferenceStartSeconds: clipStartSeconds ?? referenceStartSeconds,
             ReferenceDurationSeconds: originalProbe.DurationSeconds,
             DistortedStartSeconds: clipStartSeconds,
-            MeasureDurationSeconds: clipDurationSeconds);
+            MeasureDurationSeconds: clipDurationSeconds,
+            FrameSubsample: frameSubsample,
+            Acceleration: acceleration);
         return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
     }
 

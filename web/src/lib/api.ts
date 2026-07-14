@@ -172,6 +172,7 @@ export type Settings = {
   verificationMinimumImageSsim: number
   verificationImageMetadataGateEnabled: boolean
   verificationClipVmafEnabled: boolean
+  verificationVmafFrameSubsample: number
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number
@@ -502,13 +503,6 @@ function authorizedHeaders(init?: RequestInit): Headers {
   return headers
 }
 
-function authenticatedUrl(url: string): string {
-  const token = getAdminToken()
-  if (!token) return url
-  const separator = url.includes('?') ? '&' : '?'
-  return `${url}${separator}access_token=${encodeURIComponent(token)}`
-}
-
 function handleAuthRequired(): never {
   clearAdminToken()
   authRequiredHandler?.()
@@ -574,6 +568,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.libraryScanIntervalHours.minimum': return i18n.m.settings.validation_scan_interval
     case 'settings.verificationDurationTolerance.nonNegative': return i18n.m.settings.validation_duration
     case 'settings.vmaf.range': return i18n.m.settings.validation_vmaf
+    case 'settings.vmafFrameSubsample.range': return i18n.m.settings.validation_vmaf_subsample
     case 'settings.loudnessDrift.nonNegative': return i18n.m.settings.validation_loudness
     case 'settings.truePeak.finite': return i18n.m.settings.validation_true_peak
     case 'settings.imageSsim.range': return i18n.m.settings.validation_ssim
@@ -636,8 +631,8 @@ export const api = {
     request<{ jobId: number }>(`/api/media/${mediaFileId}/preview`, { method: 'POST' }),
   getPreview: (jobId: number) => request<PreviewComparison>(`/api/preview/${jobId}`),
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
-  mediaContentUrl: (mediaFileId: number) => authenticatedUrl(`/api/media/${mediaFileId}/content`),
-  previewContentUrl: (jobId: number) => authenticatedUrl(`/api/preview/${jobId}/content`),
+  mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
+  previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
@@ -728,8 +723,8 @@ export const api = {
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
-  replacementOriginalContentUrl: (id: number) => authenticatedUrl(`/api/replacements/${id}/original/content`),
-  replacementReplacementContentUrl: (id: number) => authenticatedUrl(`/api/replacements/${id}/replacement/content`),
+  replacementOriginalContentUrl: (id: number) => `/api/replacements/${id}/original/content`,
+  replacementReplacementContentUrl: (id: number) => `/api/replacements/${id}/replacement/content`,
   rollbackReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
   approveReplacement: (id: number) =>

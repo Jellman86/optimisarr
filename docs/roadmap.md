@@ -287,27 +287,28 @@ the replacement workflow is trustworthy.
    - **Honest results.** Showing the VMAF/SSIM score at reveal lets a user correlate what they can
      actually perceive with the metric — the whole justification for trusting a lower default floor.
 
-7. **VMAF performance on modest hardware** — VMAF is the slow part of verification, and on a
+7. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
    low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why
    the gate ships off by default. Make it fast enough to actually turn on.
 
-   - **The honest hardware picture.** The only GPU acceleration for the VMAF computation itself is
+   - **The honest hardware picture: done.** The only GPU acceleration for the VMAF computation itself is
      **VMAF-CUDA** (`libvmaf_cuda`, part of VMAF 3.0 / FFmpeg 6.1) — **NVIDIA only**. There is no
      Intel (QSV/VAAPI), AMD, Vulkan, OpenCL, or NPU/OpenVINO backend for the VMAF feature
      extractors; Intel/AMD silicon can hardware-accelerate decode and scaling but not the scoring.
      Document this plainly so users don't expect QSV/VAAPI/NPU VMAF that does not exist.
-   - **Optional CUDA VMAF when an NVIDIA GPU is present.** Detect the GPU and switch to NVDEC
+   - **Optional CUDA VMAF when an NVIDIA GPU is present: done.** Detect the filter and switch to NVDEC
      decode + `scale_cuda` + `libvmaf_cuda` (CUDA frames end to end), falling back to the CPU path
-     otherwise. Reported ~4.4× throughput. Needs an ffmpeg built with `--enable-libvmaf`
-     `--enable-ffnvcodec` (and the CUDA VMAF library), so it is a build/runtime capability check,
+     otherwise. Reported ~4.4× throughput. Needs an ffmpeg built with `--enable-nonfree`
+     `--enable-libvmaf` and `--enable-ffnvcodec` (and the CUDA VMAF library), so it is a build/runtime capability check,
      not an assumption.
-   - **CPU-side wins for everyone else (the N100 case).** In impact order: score a short
+   - **CPU-side wins for everyone else (the N100 case): done.** In impact order: score a short
      representative **clip** instead of the whole file (reuse the preview-clip mechanism — the
      biggest single win); optionally **hardware-decode the two inputs** with QSV/VAAPI to offload
-     decode while VMAF stays on the CPU; expose an `n_subsample` setting (N× faster by scoring every
+     decode while VMAF stays on the CPU; expose an `n_subsample` setting (less scoring work by measuring every
      Nth frame, with the caveat that it can step over the single bad frame the per-frame-minimum
      floor exists to catch); and drop the incidental PSNR/SSIM report features when only the gate
-     decision is needed. `n_threads` is already bounded to the core count.
+     decision is needed. All accelerated paths fall back to software, HDR stays on its established
+     software colour pipeline, and `n_threads` remains bounded to the core count.
 
 
 ## Guiding principles

@@ -169,16 +169,19 @@ work without installing host driver packages. The encoder is picked by the globa
 mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
-with `libvmaf`; the Tools page reports that optional capability independently.
-VMAF verification is enabled by default for video re-encodes and skipped for remuxes;
-it can be disabled under **Settings → Verification gates** when throughput is preferred.
+with `libvmaf`; the Tools page reports that optional capability independently. An optional
+`OPTIMISARR_FFMPEG_VMAF_CUDA` binary enables NVIDIA `libvmaf_cuda` when the build and runtime GPU
+support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
+failure retries in software. VMAF verification is off by default for video re-encodes and skipped
+for remuxes; enable it under **Settings → Verification gates** when the safeguard is worth the cost.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
-tone-mapping require no libvmaf expertise. The report records the chosen model and preparation.
+tone-mapping require no libvmaf expertise. Optional clip scoring and 1–10 frame subsampling reduce
+runtime; every-frame scoring remains the safest default. The report records the chosen model and preparation.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
-(Settings → *Hardware decoding*, on by default), so frames never round-trip through system
-memory. If the GPU can't decode a particular source, the job automatically retries with software
+(Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the
+encoder supports it. If the GPU can't decode a particular source, the job automatically retries with software
 decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
 runs — GPU stats are read **without any elevated privileges** (per-process DRM fdinfo for
 Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is

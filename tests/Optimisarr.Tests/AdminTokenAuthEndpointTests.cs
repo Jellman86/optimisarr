@@ -71,6 +71,26 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     }
 
     [Fact]
+    public async Task A_valid_bearer_request_establishes_an_httponly_media_session()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using var login = await client.GetAsync("/api/settings");
+        var setCookie = login.Headers.GetValues("Set-Cookie").Single();
+        var cookiePair = setCookie.Split(';', 2)[0];
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/settings");
+        request.Headers.Add("Cookie", cookiePair);
+        client.DefaultRequestHeaders.Authorization = null;
+        using var response = await client.SendAsync(request);
+
+        Assert.DoesNotContain(TokenedApi.Token, setCookie);
+        Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task A_wrong_token_is_rejected()
     {
         var client = _api.CreateClient();

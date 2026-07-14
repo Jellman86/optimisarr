@@ -193,7 +193,10 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     {
         await using (var db = CreateDb())
         {
-            db.AppSettings.Add(new AppSetting { Key = SettingKeys.EncoderMode, Value = "NvidiaNvenc" });
+            db.AppSettings.AddRange(
+                new AppSetting { Key = SettingKeys.EncoderMode, Value = "NvidiaNvenc" },
+                new AppSetting { Key = SettingKeys.VerificationClipVmafEnabled, Value = "True" },
+                new AppSetting { Key = SettingKeys.VerificationVmafFrameSubsample, Value = "4" });
             db.Libraries.Add(new Library
             {
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
@@ -240,6 +243,8 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
         Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);
         Assert.Equal(EncoderMode.NvidiaNvenc, (await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).EncoderMode);
+        Assert.True((await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).VerificationPolicy.ClipVmafEnabled);
+        Assert.Equal(4, (await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).VerificationPolicy.VmafFrameSubsample);
         Assert.Equal("plex-secret", (await db2.ActivityWatchers.SingleAsync()).ApiToken);
         Assert.Equal("notify-secret", (await db2.NotificationTargets.SingleAsync()).Token);
         Assert.Equal("arr-secret", (await db2.ArrConnections.SingleAsync()).ApiKey);

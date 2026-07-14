@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Tools;
 
 namespace Optimisarr.Core.Verification;
 
@@ -20,11 +21,16 @@ public sealed record QualityResult(bool Measured, QualityScores? Scores, string?
 /// colour range, model, and HDR-to-SDR handling are deterministic. FFmpeg is
 /// invoked through an explicit argument list, never a shell string.
 /// </summary>
-public sealed class QualityScoreService(string? ffmpegCommand = null)
+public sealed class QualityScoreService(
+    string? ffmpegCommand = null,
+    string? cudaFfmpegCommand = null)
 {
     // VMAF needs an ffmpeg built with libvmaf, which may differ from the transcoding
     // binary; the composition layer can point this at one (e.g. jellyfin-ffmpeg).
     private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
+    private readonly string _cudaFfmpeg = string.IsNullOrWhiteSpace(cudaFfmpegCommand)
+        ? string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand
+        : cudaFfmpegCommand;
 
     public async Task<QualityResult> MeasureAsync(
         string referencePath,
@@ -44,98 +50,213 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
 
         // A unique log path with no special characters keeps the filtergraph valid.
         var logPath = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
-        QualityScoreCommand command;
         try
         {
             // Keep measurement useful without monopolising a small home server. Four
             // libvmaf workers scale well while leaving capacity for the API and disk I/O.
             var threads = Math.Clamp(Environment.ProcessorCount, 1, 4);
-            command = QualityScoreCommandBuilder.Build(
-                distortedPath, referencePath, logPath, context, threads);
+            var requestedAcceleration = context.ReferenceIsHdr
+                ? VmafAcceleration.None
+                : context.Acceleration;
+
+            if (requestedAcceleration == VmafAcceleration.Cuda
+                && !await HasFilterAsync(_cudaFfmpeg, "libvmaf_cuda", cancellationToken))
+            {
+                requestedAcceleration = VmafAcceleration.None;
+            }
+
+            var effectiveContext = context with { Acceleration = requestedAcceleration };
+            var command = BuildCommand(
+                distortedPath,
+                referencePath,
+                logPath,
+                effectiveContext,
+                threads);
+            var executable = requestedAcceleration == VmafAcceleration.Cuda
+                ? _cudaFfmpeg
+                : _ffmpeg;
+            var result = await RunMeasurementAsync(
+                executable,
+                command,
+                logPath,
+                effectiveContext,
+                cancellationToken,
+                progress);
+
+            if (result.Measured || requestedAcceleration == VmafAcceleration.None)
+            {
+                return result;
+            }
+
+            // Hardware decode is codec/profile/driver dependent, and CUDA VMAF also requires a
+            // compatible GPU at runtime. Acceleration is only an optimisation: discard its log and
+            // rerun the canonical software graph so a hardware limitation cannot fail verification.
+            DeleteQuietly(logPath);
+            var fallbackContext = context with { Acceleration = VmafAcceleration.None };
+            var fallbackCommand = BuildCommand(
+                distortedPath,
+                referencePath,
+                logPath,
+                fallbackContext,
+                threads);
+            var fallback = await RunMeasurementAsync(
+                _ffmpeg,
+                fallbackCommand,
+                logPath,
+                fallbackContext,
+                cancellationToken,
+                progress);
+
+            if (!fallback.Measured)
+            {
+                return QualityResult.Failed(
+                    $"Accelerated VMAF failed ({result.Error}); software fallback failed: {fallback.Error}");
+            }
+
+            return fallback;
         }
         catch (ArgumentException ex)
         {
             return QualityResult.Failed($"Could not prepare VMAF measurement: {ex.Message}");
         }
-
-        try
-        {
-            string stderr;
-            int exitCode;
-
-            try
-            {
-                using var process = new Process();
-                process.StartInfo = new ProcessStartInfo
-                {
-                    FileName = _ffmpeg,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                foreach (var argument in command.Arguments)
-                {
-                    process.StartInfo.ArgumentList.Add(argument);
-                }
-
-                process.Start();
-
-                var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-                // When clip-VMAF caps the measurement, progress is a fraction of the clip, not the file.
-                var measuredSeconds = (double?)context.MeasureDurationSeconds ?? context.ReferenceDurationSeconds;
-                var stderrTask = ReadStderrWithProgressAsync(
-                    process.StandardError, measuredSeconds, progress, cancellationToken);
-
-                try
-                {
-                    await process.WaitForExitAsync(cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    KillQuietly(process);
-                    throw;
-                }
-
-                await stdoutTask;
-                stderr = await stderrTask;
-                exitCode = process.ExitCode;
-            }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-            {
-                return QualityResult.Failed($"Could not run ffmpeg libvmaf: {ex.Message}");
-            }
-
-            if (exitCode != 0)
-            {
-                var message = FirstLine(stderr) ?? $"ffmpeg libvmaf exited with code {exitCode}";
-                return QualityResult.Failed(message);
-            }
-
-            if (!File.Exists(logPath))
-            {
-                return QualityResult.Failed("libvmaf produced no log; this ffmpeg build may lack libvmaf support.");
-            }
-
-            var json = await File.ReadAllTextAsync(logPath, cancellationToken);
-            var scores = QualityScoreParser.Parse(json);
-            if (scores is not null)
-            {
-                scores = scores with
-                {
-                    ModelVersion = command.ModelVersion,
-                    Preprocessing = command.Preprocessing
-                };
-            }
-            return scores is null
-                ? QualityResult.Failed("libvmaf log contained no usable VMAF score.")
-                : QualityResult.Ok(scores);
-        }
         finally
         {
             DeleteQuietly(logPath);
         }
+    }
+
+    private static QualityScoreCommand BuildCommand(
+        string distortedPath,
+        string referencePath,
+        string logPath,
+        QualityMeasurementContext context,
+        int threads) =>
+        QualityScoreCommandBuilder.Build(
+            distortedPath,
+            referencePath,
+            logPath,
+            context,
+            threads);
+
+    private static async Task<QualityResult> RunMeasurementAsync(
+        string executable,
+        QualityScoreCommand command,
+        string logPath,
+        QualityMeasurementContext context,
+        CancellationToken cancellationToken,
+        IProgress<double>? progress)
+    {
+        string stderr;
+        int exitCode;
+
+        try
+        {
+            using var process = CreateProcess(executable, command.Arguments);
+            process.Start();
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            // When clip-VMAF caps the measurement, progress is a fraction of the clip, not the file.
+            var measuredSeconds = (double?)context.MeasureDurationSeconds ?? context.ReferenceDurationSeconds;
+            var stderrTask = ReadStderrWithProgressAsync(
+                process.StandardError,
+                measuredSeconds,
+                progress,
+                cancellationToken);
+
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                KillQuietly(process);
+                throw;
+            }
+
+            await stdoutTask;
+            stderr = await stderrTask;
+            exitCode = process.ExitCode;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return QualityResult.Failed($"Could not run ffmpeg libvmaf: {ex.Message}");
+        }
+
+        if (exitCode != 0)
+        {
+            var message = FirstLine(stderr) ?? $"ffmpeg libvmaf exited with code {exitCode}";
+            return QualityResult.Failed(message);
+        }
+
+        if (!File.Exists(logPath))
+        {
+            return QualityResult.Failed("libvmaf produced no log; this ffmpeg build may lack libvmaf support.");
+        }
+
+        var json = await File.ReadAllTextAsync(logPath, cancellationToken);
+        var scores = QualityScoreParser.Parse(json);
+        if (scores is not null)
+        {
+            scores = scores with
+            {
+                ModelVersion = command.ModelVersion,
+                Preprocessing = command.Preprocessing
+            };
+        }
+
+        return scores is null
+            ? QualityResult.Failed("libvmaf log contained no usable VMAF score.")
+            : QualityResult.Ok(scores);
+    }
+
+    private static async Task<bool> HasFilterAsync(
+        string executable,
+        string filter,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var process = CreateProcess(executable, ["-hide_banner", "-filters"]);
+            process.Start();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                KillQuietly(process);
+                throw;
+            }
+            var stdout = await stdoutTask;
+            await stderrTask;
+            return process.ExitCode == 0 && FfmpegFilterParser.Contains(stdout, filter);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static Process CreateProcess(string executable, IReadOnlyList<string> arguments)
+    {
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+        return process;
     }
 
     // libvmaf prints per-frame "time=" stats to stderr (enabled with -stats). Translate that into a

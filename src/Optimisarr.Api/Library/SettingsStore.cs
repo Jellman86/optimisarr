@@ -54,6 +54,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationImageQualityGateEnabled,
         SettingKeys.VerificationMinimumImageSsim,
         SettingKeys.VerificationImageMetadataGateEnabled,
+        SettingKeys.VerificationClipVmafEnabled,
+        SettingKeys.VerificationVmafFrameSubsample,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays
@@ -108,6 +110,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationMinimumImageSsim
                 || setting.Key == SettingKeys.VerificationImageMetadataGateEnabled
                 || setting.Key == SettingKeys.VerificationClipVmafEnabled
+                || setting.Key == SettingKeys.VerificationVmafFrameSubsample
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
@@ -173,7 +176,12 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                     VerificationPolicy.Default.ImageMetadataGateEnabled),
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationClipVmafEnabled),
-                    VerificationPolicy.Default.ClipVmafEnabled)),
+                    VerificationPolicy.Default.ClipVmafEnabled),
+                ParseInt(
+                    settings.GetValueOrDefault(SettingKeys.VerificationVmafFrameSubsample),
+                    VerificationPolicy.Default.VmafFrameSubsample,
+                    min: 1,
+                    max: QualityScoreCommandBuilder.MaximumFrameSubsample)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
@@ -245,6 +253,11 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.ImageMetadataGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationClipVmafEnabled] =
                 settings.VerificationPolicy.ClipVmafEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationVmafFrameSubsample] =
+                Math.Clamp(
+                    settings.VerificationPolicy.VmafFrameSubsample,
+                    1,
+                    QualityScoreCommandBuilder.MaximumFrameSubsample).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.DryRunMode] =
@@ -325,8 +338,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static int ParseInt(string? value, int fallback, int min) =>
-        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= min
+    private static int ParseInt(string? value, int fallback, int min, int max = int.MaxValue) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            && parsed >= min
+            && parsed <= max
             ? parsed
             : fallback;
 

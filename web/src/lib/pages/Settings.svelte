@@ -363,6 +363,7 @@
     verificationMinimumImageSsim: 0.95,
     verificationImageMetadataGateEnabled: true,
     verificationClipVmafEnabled: false,
+    verificationVmafFrameSubsample: 1,
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
@@ -458,6 +459,7 @@
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
         verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
         verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
+        verificationVmafFrameSubsample: Math.min(10, Math.max(1, Number(settings.verificationVmafFrameSubsample) || 1)),
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
         verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
@@ -684,6 +686,18 @@
               label={i18n.m.settings.vmaf_clip_label}
               hint={i18n.m.settings.vmaf_clip_hint}
             />
+          </div>
+          <div class="mt-3 max-w-[16rem]">
+            <label class="label" for="vmaf-frame-subsample">
+              {i18n.m.settings.vmaf_subsample_label}
+              <InfoTip text={i18n.m.settings.vmaf_subsample_hint} />
+            </label>
+            <select id="vmaf-frame-subsample" class="input" bind:value={settings.verificationVmafFrameSubsample}>
+              <option value={1}>{i18n.m.settings.vmaf_every_frame}</option>
+              {#each [2, 3, 4, 5, 10] as interval}
+                <option value={interval}>{tr(i18n.m.settings.vmaf_every_nth_frame, { interval })}</option>
+              {/each}
+            </select>
           </div>
         {/if}
       </div>

@@ -916,8 +916,17 @@ public sealed class QueueDispatcher(
         VerificationOutcome outcome;
         using (encodes.TrackVerification())
         {
+            var vmafAcceleration = VmafAccelerationSelector.Select(
+                work.VideoEncoder,
+                settings.HardwareDecode);
             outcome = await verification.VerifyAsync(
-                work.Original, outputPath, policy, cancellationToken, clip, qualityProgress);
+                work.Original,
+                outputPath,
+                policy,
+                cancellationToken,
+                clip,
+                qualityProgress,
+                vmafAcceleration);
         }
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 

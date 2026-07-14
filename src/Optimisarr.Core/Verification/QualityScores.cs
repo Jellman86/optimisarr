@@ -2,8 +2,9 @@ namespace Optimisarr.Core.Verification;
 
 /// <summary>
 /// Perceptual/structural quality of an output measured against its original by
-/// libvmaf. VMAF is the gate metric; PSNR and SSIM are corroborating signals and
-/// may be absent depending on the libvmaf build, so every field is nullable.
+/// libvmaf. VMAF is the gate metric; PSNR and SSIM are retained for compatibility
+/// with older reports but are not requested by the performance-oriented measurement
+/// path, so every field is nullable.
 /// </summary>
 /// <param name="VmafMean">Arithmetic mean VMAF across frames (0–100).</param>
 /// <param name="VmafHarmonicMean">Harmonic-mean VMAF — penalises bad frames more than the plain mean.</param>

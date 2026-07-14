@@ -43,10 +43,12 @@ builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
 // different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
-// OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH.
+// OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH. A purpose-built CUDA variant may be
+// supplied separately; QualityScoreService checks its filter and falls back to this CPU binary.
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
-builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe));
-builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg));
+var cudaVmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF_CUDA");
+builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe, cudaVmafFfmpeg));
+builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
@@ -113,6 +115,11 @@ using (var scope = app.Services.CreateScope())
 
     // One-time: re-probe files left as Unknown by databases predating media-kind classification.
     await MediaKindBackfill.ResetUnknownProbedFilesAsync(db, CancellationToken.None);
+
+    // Replacement and rollback intent is recorded before the first filesystem move. Reconcile any
+    // interrupted operation before queue workers start so no job can race its own recovery.
+    var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
+    await replacement.RecoverPendingAsync(CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())
@@ -153,6 +160,19 @@ app.Use(async (context, next) =>
 
     if (AdminTokenAuth.IsAuthorized(context.Request, adminToken!))
     {
+        if (AdminTokenAuth.HasBearerToken(context.Request))
+        {
+            // Media elements cannot attach an Authorization header. Establish an HttpOnly,
+            // same-site cookie from a successful bearer request so their plain content URLs stay
+            // authenticated without putting the admin token in query strings or browser history.
+            var forwardedScheme = context.Request.Headers["X-Forwarded-Proto"]
+                .ToString()
+                .Split(',', 2)[0]
+                .Trim();
+            var secureCookie = context.Request.IsHttps
+                || string.Equals(forwardedScheme, "https", StringComparison.OrdinalIgnoreCase);
+            AdminTokenAuth.SetSessionCookie(context.Response, adminToken!, secureCookie);
+        }
         await next();
         return;
     }
@@ -217,6 +237,7 @@ internal sealed record SettingsDto(
     double VerificationMinimumImageSsim,
     bool VerificationImageMetadataGateEnabled,
     bool VerificationClipVmafEnabled,
+    int VerificationVmafFrameSubsample,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays)
@@ -243,6 +264,7 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.MinimumImageSsim,
         settings.VerificationPolicy.ImageMetadataGateEnabled,
         settings.VerificationPolicy.ClipVmafEnabled,
+        settings.VerificationPolicy.VmafFrameSubsample,
         settings.ReplacementAllowCrossFilesystem,
         settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays);

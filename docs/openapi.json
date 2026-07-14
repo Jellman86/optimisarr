@@ -1071,6 +1071,14 @@
           },
           "verificationRequireSubtitlesRetained": {
             "type": "boolean"
+          },
+          "verificationVmafFrameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
           }
         },
         "required": [
@@ -1095,6 +1103,7 @@
           "verificationMinimumImageSsim",
           "verificationImageMetadataGateEnabled",
           "verificationClipVmafEnabled",
+          "verificationVmafFrameSubsample",
           "replacementAllowCrossFilesystem",
           "dryRunMode",
           "replacementQuarantineRetentionDays"
