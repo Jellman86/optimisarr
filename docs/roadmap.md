@@ -266,6 +266,49 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
+6. **Blind quality calibration ("placebo panel")** — help a user pick the lowest quality preset
+   that is transparent *to them*, without the "higher must be better" bias that wastes storage.
+   Per library, choose a representative file (video, audio, or image) and encode a short
+   representative segment at each preset tier. Present the candidates unlabelled and in randomised
+   order alongside the untouched original; the user judges them — ideally an ABX trial ("is X the
+   original or the encode?") repeated a few times, which is far more defensible than a single guess
+   — then a Reveal button shows the true tiers and each candidate's VMAF/SSIM score. The outcome
+   feeds straight back into the library's quality slider ("use this tier for this library").
+
+   - **Bias controls are the point.** Randomise order per session, hide size/bitrate and labels
+     until reveal, and loudness-match audio candidates (a louder encode always sounds "better").
+     Video and image candidates share one viewport, zoom, and playback position.
+   - **Per media kind.** Video reuses the frame-synced compare panel ("Play both") and the
+     preview-clip mechanism so only a short segment is encoded, not the whole file; audio uses
+     instant, level-matched switching; images use a synced zoom/pan toggle.
+   - **Cheap and safe by construction.** Candidates are short, on-demand encodes written to `/work`
+     and cleaned up afterwards; the original is only ever read. Nothing here can replace or delete
+     a file, so it sits entirely outside the safety-critical path.
+   - **Honest results.** Showing the VMAF/SSIM score at reveal lets a user correlate what they can
+     actually perceive with the metric — the whole justification for trusting a lower default floor.
+
+7. **VMAF performance on modest hardware** — VMAF is the slow part of verification, and on a
+   low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why
+   the gate ships off by default. Make it fast enough to actually turn on.
+
+   - **The honest hardware picture.** The only GPU acceleration for the VMAF computation itself is
+     **VMAF-CUDA** (`libvmaf_cuda`, part of VMAF 3.0 / FFmpeg 6.1) — **NVIDIA only**. There is no
+     Intel (QSV/VAAPI), AMD, Vulkan, OpenCL, or NPU/OpenVINO backend for the VMAF feature
+     extractors; Intel/AMD silicon can hardware-accelerate decode and scaling but not the scoring.
+     Document this plainly so users don't expect QSV/VAAPI/NPU VMAF that does not exist.
+   - **Optional CUDA VMAF when an NVIDIA GPU is present.** Detect the GPU and switch to NVDEC
+     decode + `scale_cuda` + `libvmaf_cuda` (CUDA frames end to end), falling back to the CPU path
+     otherwise. Reported ~4.4× throughput. Needs an ffmpeg built with `--enable-libvmaf`
+     `--enable-ffnvcodec` (and the CUDA VMAF library), so it is a build/runtime capability check,
+     not an assumption.
+   - **CPU-side wins for everyone else (the N100 case).** In impact order: score a short
+     representative **clip** instead of the whole file (reuse the preview-clip mechanism — the
+     biggest single win); optionally **hardware-decode the two inputs** with QSV/VAAPI to offload
+     decode while VMAF stays on the CPU; expose an `n_subsample` setting (N× faster by scoring every
+     Nth frame, with the caveat that it can step over the single bad frame the per-frame-minimum
+     floor exists to catch); and drop the incidental PSNR/SSIM report features when only the gate
+     decision is needed. `n_threads` is already bounded to the core count.
+
 
 ## Guiding principles
 
