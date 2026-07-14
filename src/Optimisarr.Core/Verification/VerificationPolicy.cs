@@ -1,3 +1,5 @@
+using Optimisarr.Core.Domain;
+
 namespace Optimisarr.Core.Verification;
 
 /// <summary>
@@ -7,25 +9,29 @@ namespace Optimisarr.Core.Verification;
 /// than the original. Subtitle retention is not required by default because some
 /// rule profiles intentionally drop image-based subtitles.
 ///
-/// The perceptual-quality (VMAF) gate is opt-in: measuring it requires an ffmpeg
-/// built with libvmaf and roughly doubles verification time, so it is off by
-/// default. When enabled, the output must clear both a harmonic-mean VMAF floor
-/// (which penalises bad frames) and a per-frame minimum floor (which catches short
-/// artifact bursts a healthy average would hide).
+/// The perceptual-quality (VMAF) gate is off by default: measuring it fully decodes
+/// both files and scores every frame, which roughly doubles verification time and can
+/// dominate a run on modest hardware. An operator opts in (via the quality slider in
+/// Settings) when the extra safeguard is worth the cost; the structural, duration and
+/// size gates plus quarantine rollback still protect every replacement while it is off.
+/// It is skipped for remuxes and non-video media, where VMAF has no useful work to do.
+/// When enabled, the output must clear both a harmonic-mean VMAF floor (which penalises
+/// bad frames) and a per-frame minimum floor (which catches short artifact bursts a
+/// healthy average would hide).
 ///
 /// The audio loudness and clipping gates are opt-in too and share one
 /// <c>ebur128</c> decode pass: the loudness gate bounds EBU R128 drift, and the
 /// clipping gate fails an output whose true peak rises above the ceiling when the
 /// original sat below it — i.e. the re-encode introduced clipping.
 ///
-/// The image-quality gate is the still-image counterpart of VMAF: it is opt-in
+/// The image-quality gate is the still-image counterpart of VMAF: it is on by default
 /// (measuring it runs ffmpeg's <c>ssim</c> filter over the original and output
 /// pictures) and, when enabled, blocks replacement when the structural similarity
 /// of the re-encoded still falls below a floor. SSIM (not VMAF) is the image metric
 /// because VMAF is tuned for moving video, while SSIM is a well-understood
 /// structural measure for a single frame.
 ///
-/// The image-metadata gate is also opt-in: when enabled it fails an image whose
+/// The image-metadata gate is also on by default: when enabled it fails an image whose
 /// re-encode silently dropped the source's embedded ICC colour profile or its EXIF
 /// metadata. Some encoders/containers discard these by default, which can shift
 /// colours or lose capture data, so a colour-sensitive library can demand they
@@ -60,7 +66,10 @@ public sealed record VerificationPolicy(
         MaxLoudnessDriftLufs: 1.0,
         AudioClippingGateEnabled: false,
         MaxTruePeakDbtp: 0.0,
-        ImageQualityGateEnabled: false,
+        ImageQualityGateEnabled: true,
         MinimumImageSsim: 0.95,
-        ImageMetadataGateEnabled: false);
+        ImageMetadataGateEnabled: true);
+
+    public bool RequiresVmaf(MediaKind kind, bool videoReencoded) =>
+        QualityGateEnabled && kind == MediaKind.Video && videoReencoded;
 }

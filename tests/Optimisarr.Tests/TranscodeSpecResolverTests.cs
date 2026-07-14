@@ -65,8 +65,9 @@ public sealed class TranscodeSpecResolverTests
     public void Falls_back_to_mkv_when_an_mp4_target_meets_copied_mp4_incompatible_audio()
     {
         // A TrueHD track copied (no audio re-encode) into MP4 aborts the encode, so go to MKV.
+        var rules = Hevc with { VideoAudioCodec = null };
         var spec = TranscodeSpecResolver.Resolve(
-            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
             workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
             kind: MediaKind.Video, sourceHasMp4IncompatibleAudio: true);
 
@@ -95,8 +96,8 @@ public sealed class TranscodeSpecResolverTests
             workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium", kind: MediaKind.Audio);
 
         Assert.Equal(MediaKind.Audio, spec.Kind);
-        Assert.Equal("/work/Album/Track.opus", spec.OutputPath);
-        Assert.Equal("libopus", spec.AudioEncoder);
+        Assert.Equal("/work/Album/Track.m4a", spec.OutputPath);
+        Assert.Equal("aac", spec.AudioEncoder);
         Assert.Equal(128, spec.AudioBitrateKbps);
         // The video fields stay empty for an audio job.
         Assert.Null(spec.VideoCodec);
@@ -164,13 +165,23 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
-    public void A_video_job_copies_audio_by_default()
+    public void Carries_positive_vfr_evidence_into_the_transcode_spec()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23,
+            preset: "medium", sourceIsVariableFrameRate: true);
+
+        Assert.True(spec.SourceIsVariableFrameRate);
+    }
+
+    [Fact]
+    public void A_compatibility_video_job_re_encodes_audio_to_aac_by_default()
     {
         var spec = TranscodeSpecResolver.Resolve(
             Hevc, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
 
-        Assert.Null(spec.AudioEncoder);
-        Assert.Null(spec.AudioBitrateKbps);
+        Assert.Equal("aac", spec.AudioEncoder);
+        Assert.Equal(160, spec.AudioBitrateKbps);
     }
 
     [Fact]
@@ -201,12 +212,50 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void An_audio_job_scales_the_stereo_bitrate_budget_for_retained_surround()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, "/data/music/Track.flac", "Track.flac", "/work",
+            sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Audio,
+            sourceMaxAudioChannels: 6);
+
+        Assert.Equal(384, spec.AudioBitrateKbps);
+        Assert.False(spec.DownmixToStereo);
+    }
+
+    [Fact]
+    public void An_audio_downmix_keeps_the_configured_stereo_bitrate()
+    {
+        var rules = Hevc with { DownmixToStereo = true };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, "/data/music/Track.flac", "Track.flac", "/work",
+            sourceIsHdr: false, crf: null, preset: null, kind: MediaKind.Audio,
+            sourceMaxAudioChannels: 6);
+
+        Assert.Equal(128, spec.AudioBitrateKbps);
+        Assert.True(spec.DownmixToStereo);
+    }
+
+    [Fact]
+    public void A_video_audio_reencode_scales_its_bitrate_for_retained_surround()
+    {
+        var rules = Hevc with { VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23,
+            preset: "medium", sourceMaxAudioChannels: 6);
+
+        Assert.Equal(480, spec.AudioBitrateKbps);
+    }
+
+    [Fact]
     public void A_video_downmix_only_applies_when_its_audio_is_re_encoded()
     {
         // Downmix requires an audio re-encode; with audio copied (no video-audio codec) the
         // flag is not set, so a copied track keeps its layout.
         var copyAudio = TranscodeSpecResolver.Resolve(
-            Hevc with { DownmixToStereo = true },
+            Hevc with { DownmixToStereo = true, VideoAudioCodec = null },
             "/data/a.mkv", "a.mkv", "/work", sourceIsHdr: false, crf: 23, preset: "medium");
         Assert.False(copyAudio.DownmixToStereo);
 

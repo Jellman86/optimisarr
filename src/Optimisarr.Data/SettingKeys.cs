@@ -45,7 +45,7 @@ public static class SettingKeys
     /// <summary>Whether verification requires the output to be smaller than the original.</summary>
     public const string VerificationRequireSizeReduction = "verification.requireSizeReduction";
 
-    /// <summary>Whether the opt-in perceptual-quality (VMAF) gate is enforced.</summary>
+    /// <summary>Whether the default-on perceptual-quality (VMAF) gate is enforced for video re-encodes.</summary>
     public const string VerificationQualityGateEnabled = "verification.qualityGateEnabled";
 
     /// <summary>Minimum harmonic-mean VMAF an output must reach when the quality gate is on.</summary>

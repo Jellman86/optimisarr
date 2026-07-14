@@ -328,10 +328,7 @@ public sealed class QueueDispatcher(
                 return false;
             }
 
-            job.Status = JobStatus.Transcoding;
-            job.Attempt += 1;
-            job.StartedAt = DateTimeOffset.UtcNow;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
+            PrepareForAttempt(job, DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -419,12 +416,22 @@ public sealed class QueueDispatcher(
                 // verified and replaced is the final, marked file. ffmpeg drops -metadata for
                 // stills, so this is done out-of-band with exiftool; a failure only loses marker
                 // portability (the DB history still prevents re-optimisation), so it never blocks.
-                if (spec.Kind == MediaKind.Image
-                    && !await imageMarker.WriteAsync(spec.OutputPath, OptimisedMarkerValue, cancellationToken))
+                if (spec.Kind == MediaKind.Image)
                 {
-                    logger.LogWarning(
-                        "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
-                        "re-optimisation is still prevented by the database.", jobId);
+                    if (!await imageMarker.CopyMetadataAsync(
+                            work.Value.Original.Path, spec.OutputPath, cancellationToken))
+                    {
+                        logger.LogWarning(
+                            "Job {JobId}: could not copy source EXIF/ICC metadata; the default metadata " +
+                            "verification gate will reject the output if the source carried either.", jobId);
+                    }
+
+                    if (!await imageMarker.WriteAsync(spec.OutputPath, OptimisedMarkerValue, cancellationToken))
+                    {
+                        logger.LogWarning(
+                            "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
+                            "re-optimisation is still prevented by the database.", jobId);
+                    }
                 }
 
                 await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
@@ -550,7 +557,10 @@ public sealed class QueueDispatcher(
             library?.EncoderPreset,
             media.MediaKind,
             sourceHasImageSubtitles,
-            sourceHasMp4IncompatibleAudio);
+            sourceHasMp4IncompatibleAudio,
+            media.VideoCodec,
+            media.MaxAudioChannels,
+            media.IsVariableFrameRate == true);
 
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an
@@ -582,7 +592,11 @@ public sealed class QueueDispatcher(
             // An operator-requested stereo downmix is an intentional channel reduction.
             AudioDownmixed: spec.DownmixToStereo,
             // A requested image downscale is an intentional dimension reduction, not corruption.
-            ImageDownscaleRequested: spec.ImageScaleFilter is not null);
+            ImageDownscaleRequested: spec.ImageScaleFilter is not null,
+            // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
+            // would add a full decode pass without providing another safety signal.
+            VideoReencoded: spec.VideoCodec is not null,
+            ExpectedVideoCodec: spec.VideoCodec);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,
@@ -811,6 +825,20 @@ public sealed class QueueDispatcher(
         }
     }
 
+    // Begin a fresh attempt on a claimed job. A retry must not carry the previous attempt's
+    // failure state: clearing the error and its classification means a job that later succeeds is
+    // no longer grouped as a failure (the stale-category bug), and a retry in flight never shows a
+    // reason from the run before it. Internal so the pure field reset can be unit tested.
+    internal static void PrepareForAttempt(Job job, DateTimeOffset nowUtc)
+    {
+        job.Status = JobStatus.Transcoding;
+        job.Attempt += 1;
+        job.StartedAt = nowUtc;
+        job.UpdatedAt = nowUtc;
+        job.ErrorMessage = null;
+        job.FailureCategory = null;
+    }
+
     // Keep a durable per-file failure tally so a file that keeps failing is excluded automatically
     // (and shown on the Excluded tab) rather than offered forever; a successful encode clears the
     // streak. Excluding here never touches the original — it only stops the file being re-offered.
@@ -859,6 +887,9 @@ public sealed class QueueDispatcher(
         await WithJobAsync(jobId, job =>
         {
             job.Status = JobStatus.Verifying;
+            // The transcode left progress at ~100%; reset it so the verification (VMAF) pass
+            // reports its own 0..100% rather than appearing already finished.
+            job.Progress = 0;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         await NotifyAsync();
@@ -872,8 +903,22 @@ public sealed class QueueDispatcher(
                 work.Spec.ClipStartSeconds,
                 Path.Combine(Path.GetDirectoryName(outputPath)!, ".optimisarr-preview-reference.mkv"))
             : null;
-        var outcome = await verification.VerifyAsync(
-            work.Original, outputPath, policy, cancellationToken, clip);
+        // The VMAF pass is the long part of verification; surface its live progress on the same
+        // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%
+        // steps, and both helpers serialise (job lock / hub), so fire-and-forget is safe here.
+        var qualityProgress = new Progress<double>(fraction =>
+        {
+            _ = UpdateProgressAsync(jobId, fraction);
+            _ = BroadcastProgressAsync(jobId, fraction, null, null, null);
+        });
+        // Mark verification as active work so the metrics broadcaster keeps sampling CPU load
+        // (the VMAF pass runs its own ffmpeg outside the encode registry).
+        VerificationOutcome outcome;
+        using (encodes.TrackVerification())
+        {
+            outcome = await verification.VerifyAsync(
+                work.Original, outputPath, policy, cancellationToken, clip, qualityProgress);
+        }
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>

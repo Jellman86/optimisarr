@@ -21,4 +21,9 @@ public sealed record MediaProperties(
     int? AudioBitrateKbps = null,
     int? FrameCount = null,
     double? DurationSeconds = null,
-    bool IsDolbyVision = false);
+    bool IsDolbyVision = false,
+    string? PixelFormat = null,
+    int? BitsPerRawSample = null,
+    int AttachedPictureCount = 0,
+    int SubtitleTrackCount = 0,
+    int MaxAudioChannels = 0);

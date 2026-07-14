@@ -2,22 +2,55 @@ using System.Diagnostics;
 
 namespace Optimisarr.Core.Tools;
 
-public sealed class ToolDetectionService
+public sealed class ToolDetectionService(
+    string? ffmpegCommand = null,
+    string? vmafFfmpegCommand = null,
+    string? ffprobeCommand = null)
 {
+    private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
+    private readonly string _vmafFfmpeg = string.IsNullOrWhiteSpace(vmafFfmpegCommand) ? "ffmpeg" : vmafFfmpegCommand;
+    private readonly string _ffprobe = string.IsNullOrWhiteSpace(ffprobeCommand) ? "ffprobe" : ffprobeCommand;
+
     public async Task<IReadOnlyList<ToolCheckResult>> DetectAsync(CancellationToken cancellationToken)
     {
         var checks = new[]
         {
-            DetectToolAsync("FFmpeg", "ffmpeg", cancellationToken),
-            DetectToolAsync("ffprobe", "ffprobe", cancellationToken)
+            DetectVersionAsync("FFmpeg", _ffmpeg, required: true, cancellationToken),
+            DetectVmafAsync(_vmafFfmpeg, cancellationToken),
+            DetectVersionAsync("ffprobe", _ffprobe, required: true, cancellationToken)
         };
 
         return await Task.WhenAll(checks);
     }
 
-    private static async Task<ToolCheckResult> DetectToolAsync(
+    private static async Task<ToolCheckResult> DetectVersionAsync(
         string name,
         string command,
+        bool required,
+        CancellationToken cancellationToken)
+    {
+        return await RunAsync(name, command, required, ["-version"], output =>
+            new ToolCheckResult(name, command, true, required, FirstLine(output), null), cancellationToken);
+    }
+
+    private static async Task<ToolCheckResult> DetectVmafAsync(
+        string command,
+        CancellationToken cancellationToken)
+    {
+        const string name = "FFmpeg (VMAF)";
+        return await RunAsync(name, command, required: false, ["-hide_banner", "-filters"], output =>
+            FfmpegFilterParser.Contains(output, "libvmaf")
+                ? new ToolCheckResult(name, command, true, false, "libvmaf filter available", null)
+                : new ToolCheckResult(name, command, false, false, null, "libvmaf filter is not available"),
+            cancellationToken);
+    }
+
+    private static async Task<ToolCheckResult> RunAsync(
+        string name,
+        string command,
+        bool required,
+        IReadOnlyList<string> arguments,
+        Func<string, ToolCheckResult> success,
         CancellationToken cancellationToken)
     {
         try
@@ -26,12 +59,15 @@ public sealed class ToolDetectionService
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = command,
-                ArgumentList = { "-version" },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            foreach (var argument in arguments)
+            {
+                process.StartInfo.ArgumentList.Add(argument);
+            }
 
             process.Start();
 
@@ -41,14 +77,14 @@ public sealed class ToolDetectionService
 
             if (process.ExitCode != 0)
             {
-                return new ToolCheckResult(name, command, false, null, FirstLine(stderr) ?? $"Exited with code {process.ExitCode}");
+                return new ToolCheckResult(name, command, false, required, null, FirstLine(stderr) ?? $"Exited with code {process.ExitCode}");
             }
 
-            return new ToolCheckResult(name, command, true, FirstLine(stdout), null);
+            return success(stdout);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return new ToolCheckResult(name, command, false, null, ex.Message);
+            return new ToolCheckResult(name, command, false, required, null, ex.Message);
         }
     }
 

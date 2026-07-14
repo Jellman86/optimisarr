@@ -136,9 +136,11 @@ internal static class LibraryRequestParser
         }
 
         var videoAudioCodec = Trim(request.VideoAudioCodec);
-        if (videoAudioCodec is not null && !AudioTarget.IsSupportedTarget(videoAudioCodec))
+        if (videoAudioCodec is not null
+            && !videoAudioCodec.Equals("copy", StringComparison.OrdinalIgnoreCase)
+            && !AudioTarget.IsSupportedTarget(videoAudioCodec))
         {
-            error = $"Unknown video audio codec: {videoAudioCodec}. Expected one of {string.Join(", ", AudioTarget.SupportedCodecs)}.";
+            error = $"Unknown video audio codec: {videoAudioCodec}. Expected copy or one of {string.Join(", ", AudioTarget.SupportedCodecs)}.";
             return false;
         }
 

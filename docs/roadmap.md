@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-06-28)
+## Up next (priority order, updated 2026-07-13)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -16,6 +16,25 @@ the replacement workflow is trustworthy.
    robustness pass, endpoint modularization, large-library paging, the diagnostics
    bundle, and the roadmap/docs split are all done. The **hardware validation matrix**
    below is the remaining open item, gated on access to non-Intel GPUs.
+
+   - **Adaptive language selector: done.** The sidebar language menu now measures the available
+     viewport space and opens upward or downward as appropriate, with keyboard navigation and
+     accessible listbox semantics retained in either direction.
+
+   - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
+     re-encodes at selectable floors — a single Settings slider offers Off (the default), Space-saver
+     (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
+     off by default because it fully decodes both files and scores every frame, roughly doubling
+     verification time; while off, the structural, duration and size gates plus quarantine rollback
+     still guard every replacement. Remux and non-video work skip the inapplicable extra decode, and
+     existing saved choices remain unchanged. The long VMAF pass now reports real 0–100% progress in
+     the queue (hero and rows), is named explicitly as the VMAF stage, and shows a live CPU-usage
+     graph so the load is visible. Measurement is self-configuring: deterministic
+     timebase/timestamp/range/pixel-format alignment, reference-size bicubic scaling, bounded
+     threading, automatic HDTV/4K model selection, and like-for-like HDR→SDR reference tone-mapping.
+     The report records the selected model and preparation. Unit tests own the exact production graph,
+     while CI executes that graph at mismatched resolutions and separately proves the bundled 4K model
+     and HDR-reference tone-map run inside the final image.
 
    - **Optional admin-token auth: done.** `OPTIMISARR_ADMIN_TOKEN`
      now gates the administrative API and SignalR hub with bearer-token authentication
@@ -59,6 +78,18 @@ the replacement workflow is trustworthy.
      is skipped — marked `Cancelled` with the reason — rather than wasting an encode the
      size-saving gate would only reject. The skip is a soft, reversible rule decision, not a
      blacklist entry, so the file becomes eligible again automatically if the profile changes.
+
+   - **Cross-media pipeline standards audit: done.** The video, music, and still-image paths were
+     rechecked against the repository's fail-closed replacement standard and the shipped FFmpeg
+     capabilities. Music now preserves tags/artwork or refuses an unsafe container (including the
+     shipped FFmpeg's demonstrated M4A attached-picture limitation), audio bitrate
+     scales with retained channels, compatibility presets include compatible AAC, images guard
+     animation/alpha/bit depth, expose only the shipped encoders (JPEG/WebP), and default to SSIM
+     plus metadata verification, while video timing and
+     encoded signal structure are evidence-checked. Probing, decode checks, and transcoding use one
+     configured FFmpeg/ffprobe pair. Final-container CI now runs real representative music, JPEG,
+     WebP, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and
+     decode assertions.
 
    - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
@@ -105,11 +136,12 @@ the replacement workflow is trustworthy.
         default, settable in the library form, preserved across config backup). This closes the gap
         where a DV Profile 5 source could be re-encoded to green/pink and still pass verification with
         VMAF off. Migration `AddDolbyVisionHandling`. (HandBrake #5597, FFmpeg HDR/DoVi notes.)
-     2. **VFR → A/V-sync drift in MP4: done.** A video re-encode to an MP4-family container now forces
-        a constant frame rate (`-fps_mode cfr`), the documented fix for the MP4/MOV-only VFR drift that
-        caused the live job 3334 failure; Matroska carries VFR natively and is left untouched, and a
-        remux is never re-timed. The A/V-sync gate remains the backstop for any residual start-offset
-        cases. (VideoHelp, EncodeX.)
+     2. **VFR → A/V-sync drift: done, corrected by audit.** The first job-3334 workaround forced every
+        MP4 re-encode to CFR, which FFmpeg implements by duplicating/dropping frames. The final policy
+        persists positive VFR evidence from nominal and average probe rates, applies `-fps_mode vfr`
+        with the demuxer encoder timebase only to identified VFR re-encodes, and leaves CFR/unknown
+        sources and all remuxes unmodified. Relative A/V-sync, timestamps, duration, and tail checks
+        remain the replacement backstops. Migration `TrackVariableFrameRate`. (FFmpeg documentation.)
      3. **MP4 + MP4-incompatible audio copied → mux failure: done.** The resolver now falls back
         MP4→MKV when a source carries audio MP4 cannot mux (Dolby TrueHD, Blu-ray/DVD LPCM) and that
         audio is being copied rather than re-encoded to a compatible codec — the same pattern already
@@ -159,6 +191,80 @@ the replacement workflow is trustworthy.
    The classification then feeds back into the dashboards and reports rather than the eligibility
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.
+
+4. **Full translation parity with YA-WAMF: done.** The Optimisarr UI and
+   user-facing API/status strings, then provide complete translations for the same language
+   set currently carried by YA-WAMF: English, German, Spanish, French, Italian, Japanese,
+   Portuguese, Russian, and Chinese (`en`, `de`, `es`, `fr`, `it`, `ja`, `pt`, `ru`, `zh`).
+
+   - **Foundation and completeness gate: done.** A typed locale system under `web/src/lib/i18n/`
+     with English as the source of truth (`type Messages = typeof en`) and every other locale typed
+     against it, so a missing or misspelled key fails `npm run check` — translation completeness is a
+     compile-time CI gate, not something that can silently rot. A Svelte 5 runes store exposes the
+     active locale's messages with a `t()` interpolation helper and a `plural()` helper; the choice
+     is persisted to `localStorage` and falls back to the browser language, then English. A language
+     selector lives in the sidebar footer.
+   - **Every page migrated: done.** The app shell and navigation, plus Dashboard, Schedule,
+     Quarantine, Inventory, Queue, Settings, and Libraries — including confirm dialogs, InfoTip help
+     text, preset/profile/HDR label maps, empty states, and count-aware/pluralised strings. **German**
+     ships complete across all of it as the first translated locale.
+   - **Shared components: done.** `MediaCompare`, `FolderPicker`, `BottomSheet`,
+     `FailuresPanel`, `ToolsPanel`, and `CandidateTable` now use the typed locale contract.
+     `VerificationChecks` owns no prose (its names/details come from the backend), and
+     `PreviewCompare` now translates its progress, errors, safety copy, comparison labels, stats,
+     and verification summary too.
+   - **Backend-originated UI messages and language parity: done.** JSON endpoint failures now
+     carry stable machine-readable codes plus an English compatibility fallback; the web client
+     resolves those codes through the same typed locale contract. This covers settings and query
+     validation, filesystem/library/media/job errors, exclusions, replacements, and integrations.
+     Persisted job failure categories likewise drive translated queue and diagnostics summaries,
+     while raw encoder/backend output remains available only as explicitly labelled technical
+     detail. **German, Spanish, French, Italian, Japanese, Portuguese, Russian, and Simplified
+     Chinese are complete** across the same 832-message typed contract. CI audits interpolation
+     placeholders across all eight translations so tokens such as `{count}` and `{path}` cannot be
+     dropped silently. Locale modules remain lazy-loaded, keeping every translation out of the
+     initial application chunk until selected. Native-speaker refinements remain welcome through
+     normal issue reports, but no language is navigation-only or structurally incomplete.
+
+5. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
+   install where Docker media-stack users already look. Keep the Docker contract stable and
+   make every template expose the same core surface: image tag, web port, admin token,
+   `/config`, work/output, quarantine, media-library paths, health check, optional hardware
+   acceleration, update-channel guidance, and a smoke-test checklist.
+
+   - **Unraid Community Applications template: template shipped; discovery listing remains.**
+     `unraid/optimisarr.xml` (volume mappings for config, media, work, and quarantine, the `8787`
+     port, optional `OPTIMISARR_ADMIN_TOKEN`, PUID/PGID/UMASK, and an optional `/dev/dri` device),
+     a repository-root `ca_profile.xml`, and `docs/setup/unraid.md` are shipped. Remaining: promote
+     the template + profile to the default branch at release and pursue the Community Applications
+     discovery listing so users don't need to paste the raw template URL.
+
+   - **TrueNAS custom-app docs, then catalog submission.** First document the low-friction
+     TrueNAS Custom App path so users can deploy the existing container before catalog
+     acceptance. Then submit a community-train app to `truenas/apps` with the expected
+     Docker Compose catalog files: `app.yaml`, `ix_values.yaml`, `questions.yaml`, a Jinja2
+     `templates/docker-compose.yaml`, `README.md`, and `templates/test_values/basic-values.yaml`.
+     The TrueNAS wizard should expose the web port, private admin token, storage mappings,
+     optional GPU/device settings, CPU/memory limits, a portal link, and a health check against
+     `/api/ready` or `/api/health`. Validate with the TrueNAS apps CI render/deploy workflow
+     before opening the PR, and open a draft PR early to catch catalog-review issues.
+
+   - **Container registry discoverability.** Continue publishing GHCR images and add Docker Hub
+     publishing once release tags are stable, with matching descriptions, labels, README text,
+     supported architectures, and examples. Keep image names, environment variables, health
+     checks, and permissions in sync across docs and templates.
+
+   - **Additional self-hosting templates.** Add a Portainer app-template/stack example and
+     evaluate CasaOS/ZimaOS packaging after the Unraid and TrueNAS paths settle. Consider YunoHost
+     only if the install and upgrade model can be made appliance-like enough to avoid fragile
+     maintenance.
+
+   - **Project directories and community launch points.** Submit or announce Optimisarr in the
+     places media-stack and self-hosting users already discover tools: Awesome Selfhosted,
+     selfh.st/apps, AlternativeTo, the Unraid and TrueNAS forums, and relevant communities such
+     as r/selfhosted, r/unRAID, r/truenas, r/radarr, and r/sonarr. Prioritise a short, honest
+     positioning statement, screenshots, quickstart links, and clear safety guarantees over
+     generic promotion.
 
 
 ## Guiding principles

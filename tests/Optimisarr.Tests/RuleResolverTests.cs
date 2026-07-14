@@ -16,34 +16,36 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
-    public void Audio_target_defaults_to_opus_and_can_be_overridden()
+    public void Audio_target_defaults_to_aac_and_can_be_overridden()
     {
         var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
-        Assert.Equal("opus", defaults.TargetAudioCodec);
+        Assert.Equal("aac", defaults.TargetAudioCodec);
         Assert.Equal(128, defaults.AudioBitrateKbps);
 
         var overridden = RuleResolver.Resolve(
             RuleProfile.ConservativeHevc,
-            new RuleOverrides { TargetAudioCodec = "aac", AudioBitrateKbps = 192 });
+            new RuleOverrides { TargetAudioCodec = "opus", AudioBitrateKbps = 192 });
 
-        Assert.Equal("aac", overridden.TargetAudioCodec);
+        Assert.Equal("opus", overridden.TargetAudioCodec);
         Assert.Equal(192, overridden.AudioBitrateKbps);
     }
 
     [Fact]
-    public void Video_audio_defaults_to_copy_and_can_be_overridden()
+    public void Compatibility_video_audio_defaults_to_aac_and_can_be_explicitly_copied()
     {
         var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
-        // Null video-audio codec means "copy untouched"; the bitrate default is only used
-        // once a codec is chosen.
-        Assert.Null(defaults.VideoAudioCodec);
+        Assert.Equal("aac", defaults.VideoAudioCodec);
         Assert.Equal(160, defaults.VideoAudioBitrateKbps);
+
+        var copied = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { VideoAudioCodec = "copy" });
+
+        Assert.Null(copied.VideoAudioCodec);
 
         var overridden = RuleResolver.Resolve(
             RuleProfile.ConservativeHevc,
             new RuleOverrides { VideoAudioCodec = "aac", VideoAudioBitrateKbps = 192 });
-
-        Assert.Equal("aac", overridden.VideoAudioCodec);
         Assert.Equal(192, overridden.VideoAudioBitrateKbps);
     }
 
@@ -84,14 +86,14 @@ public sealed class RuleResolverTests
             RuleProfile.ConservativeHevc,
             new RuleOverrides
             {
-                TargetImageFormat = "avif",
+                TargetImageFormat = "webp",
                 ImageQuality = 65,
                 ReencodeLossyImages = true,
                 ImageDownscaleMode = ImageDownscaleMode.MaxLongEdge,
                 ImageDownscaleValue = 1920
             });
 
-        Assert.Equal("avif", overridden.TargetImageFormat);
+        Assert.Equal("webp", overridden.TargetImageFormat);
         Assert.Equal(65, overridden.ImageQuality);
         Assert.True(overridden.ReencodeLossyImages);
         Assert.Equal(ImageDownscaleMode.MaxLongEdge, overridden.ImageDownscaleMode);

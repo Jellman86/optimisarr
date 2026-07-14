@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Replacement, type ReplacementDetail, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize } from '../format'
+  import { i18n, t, plural } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
   import Icon from '../components/Icon.svelte'
   import BottomSheet from '../components/BottomSheet.svelte'
@@ -33,7 +34,7 @@
       replacements = await api.replacements()
       error = null
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load replacements'
+      error = err instanceof Error ? err.message : i18n.m.quarantine.error_load
     } finally {
       loading = false
     }
@@ -56,7 +57,7 @@
       try {
         details[r.id] = await api.replacement(r.id)
       } catch (err) {
-        detailError = err instanceof Error ? err.message : 'Unable to load the comparison'
+        detailError = err instanceof Error ? err.message : i18n.m.quarantine.error_comparison
       } finally {
         detailLoading = false
       }
@@ -64,11 +65,7 @@
   }
 
   async function approve(r: Replacement) {
-    if (
-      !confirm(
-        `Approve this replacement?\n\nThis permanently deletes the quarantined original:\n${r.quarantinePath}\n\nThe replacement is kept, but it can no longer be rolled back.`,
-      )
-    ) {
+    if (!confirm(t(i18n.m.quarantine.confirm_approve, { path: r.quarantinePath }))) {
       return
     }
     busyId = r.id
@@ -78,14 +75,14 @@
       selectedId = null
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Approve failed'
+      error = err instanceof Error ? err.message : i18n.m.quarantine.error_approve
     } finally {
       busyId = null
     }
   }
 
   async function reject(r: Replacement) {
-    if (!confirm(`Roll back — restore the original and remove the replacement for:\n\n${r.originalPath}`)) {
+    if (!confirm(t(i18n.m.quarantine.confirm_reject, { path: r.originalPath }))) {
       return
     }
     busyId = r.id
@@ -95,14 +92,14 @@
       selectedId = null
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Rollback failed'
+      error = err instanceof Error ? err.message : i18n.m.quarantine.error_rollback
     } finally {
       busyId = null
     }
   }
 
   async function approveAll() {
-    if (!confirm(`Approve all ${activeCount} quarantined replacements?\n\nThis permanently deletes every quarantined original shown as Replaced. None of these replacements can be rolled back afterward.`)) return
+    if (!confirm(t(i18n.m.quarantine.confirm_approve_all, { count: activeCount }))) return
     bulkAction = 'approve'
     let failed = 0
     for (const replacement of replacements.filter((r) => r.status === 'Replaced')) {
@@ -112,14 +109,15 @@
         failed++
       }
     }
-    if (failed > 0) error = `${failed} replacement${failed === 1 ? '' : 's'} could not be approved. Review the remaining rows.`
+    if (failed > 0)
+      error = plural(failed, i18n.m.quarantine.bulk_approve_failed_one, i18n.m.quarantine.bulk_approve_failed_other)
     selectedId = null
     await load()
     bulkAction = null
   }
 
   async function rejectAll() {
-    if (!confirm(`Roll back all ${activeCount} quarantined replacements?\n\nEach original will be restored and its replacement removed.`)) return
+    if (!confirm(t(i18n.m.quarantine.confirm_reject_all, { count: activeCount }))) return
     bulkAction = 'reject'
     let failed = 0
     for (const replacement of replacements.filter((r) => r.status === 'Replaced')) {
@@ -129,20 +127,26 @@
         failed++
       }
     }
-    if (failed > 0) error = `${failed} replacement${failed === 1 ? '' : 's'} could not be rolled back. Review the remaining rows.`
+    if (failed > 0)
+      error = plural(failed, i18n.m.quarantine.bulk_reject_failed_one, i18n.m.quarantine.bulk_reject_failed_other)
     selectedId = null
     await load()
     bulkAction = null
   }
 
   async function clearSpent() {
-    if (!confirm(`Clear ${spentCount} finished quarantine ${spentCount === 1 ? 'entry' : 'entries'} (rolled back + purged) from the list?\n\nThese are history with no rollback left — no files are touched.`)) return
+    if (
+      !confirm(
+        plural(spentCount, i18n.m.quarantine.confirm_clear_one, i18n.m.quarantine.confirm_clear_other),
+      )
+    )
+      return
     clearing = true
     try {
       await api.clearReplacements()
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Clear failed'
+      error = err instanceof Error ? err.message : i18n.m.quarantine.error_clear
     } finally {
       clearing = false
     }
@@ -194,12 +198,10 @@
 </script>
 
 <header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Quarantine</h1>
+  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.quarantine}</h1>
   <p class="text-sm text-slate-500 dark:text-slate-400">
-    Replaced originals are kept here, not deleted. Compare a replacement against its original, then
-    <strong>approve</strong> to keep it and free the space now, or <strong>reject</strong> to roll back and restore the original.
-    Once a retention window is set in Settings, originals past it are purged automatically and can no longer be rolled back.
-    {#if activeCount > 0}<span class="text-slate-400"> · {activeCount} in quarantine</span>{/if}
+    {i18n.m.quarantine.subtitle_1}<strong>{i18n.m.quarantine.approve_word}</strong>{i18n.m.quarantine.subtitle_2}<strong>{i18n.m.quarantine.reject_word}</strong>{i18n.m.quarantine.subtitle_3}
+    {#if activeCount > 0}<span class="text-slate-400">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
   </p>
 </header>
 
@@ -212,35 +214,35 @@
     {#if activeCount > 0}
       <button class="btn btn-primary px-3 py-1.5 text-sm" onclick={approveAll} disabled={bulkAction !== null}>
         <Icon name="check" class="h-4 w-4" />
-        {bulkAction === 'approve' ? 'Approving all…' : `Approve all (${activeCount})`}
+        {bulkAction === 'approve' ? i18n.m.quarantine.approving_all : t(i18n.m.quarantine.approve_all, { count: activeCount })}
       </button>
       <button class="btn btn-danger px-3 py-1.5 text-sm" onclick={rejectAll} disabled={bulkAction !== null}>
         <Icon name="rotate" class="h-4 w-4" />
-        {bulkAction === 'reject' ? 'Rolling back all…' : `Reject all (${activeCount})`}
+        {bulkAction === 'reject' ? i18n.m.quarantine.rolling_back_all : t(i18n.m.quarantine.reject_all, { count: activeCount })}
       </button>
     {/if}
     {#if spentCount > 0}
       <button class="btn btn-ghost px-3 py-1.5 text-sm" onclick={clearSpent} disabled={clearing}>
         <Icon name="trash" class="h-4 w-4" />
-        {clearing ? 'Clearing…' : `Clear finished (${spentCount})`}
+        {clearing ? i18n.m.quarantine.clearing : t(i18n.m.quarantine.clear_finished, { count: spentCount })}
       </button>
     {/if}
-    <span class="text-xs text-slate-400">Bulk actions affect only active quarantine entries and require confirmation.</span>
+    <span class="text-xs text-slate-400">{i18n.m.quarantine.bulk_note}</span>
   </div>
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">Loading…</div>
+  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else if replacements.length > 0}
   <div class="card overflow-hidden">
     <div bind:this={tableScrollEl} class="overflow-auto" style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;">
       <table class="w-full text-sm">
         <thead class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
           <tr>
-            <th class="px-4 py-3">Status</th>
-            <th class="px-4 py-3">Replaced file</th>
-            <th class="hidden px-4 py-3 sm:table-cell">Saving</th>
-            <th class="hidden px-4 py-3 md:table-cell">Replaced</th>
+            <th class="px-4 py-3">{i18n.m.quarantine.col_status}</th>
+            <th class="px-4 py-3">{i18n.m.quarantine.col_replaced_file}</th>
+            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.quarantine.col_saving}</th>
+            <th class="hidden px-4 py-3 md:table-cell">{i18n.m.quarantine.col_replaced}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -251,22 +253,22 @@
             >
               <td class="px-4 py-2">
                 {#if r.status === 'Replaced'}
-                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Replaced</span>
+                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.quarantine.status_replaced}</span>
                 {:else if r.status === 'Purged'}
-                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="The quarantined original was deleted (retention expired or approved). This replacement can no longer be rolled back.">Purged</span>
+                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title={i18n.m.quarantine.status_purged_title}>{i18n.m.quarantine.status_purged}</span>
                 {:else}
-                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">Rolled back</span>
+                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.quarantine.status_rolled_back}</span>
                 {/if}
                 {#if r.crossFilesystem}
-                  <span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title="Different filesystem: a verified copy-plus-delete was used instead of an atomic move.">copied</span>
+                  <span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
                 {/if}
               </td>
               <td class="px-4 py-2">
                 <div class="max-w-md truncate font-mono text-xs" title={r.finalPath}>{r.finalPath}</div>
                 {#if r.status === 'Purged'}
-                  <div class="text-[11px] text-slate-400">↳ original purged</div>
+                  <div class="text-[11px] text-slate-400">{i18n.m.quarantine.original_purged}</div>
                 {:else if r.status === 'Replaced'}
-                  <div class="max-w-md truncate font-mono text-[11px] text-slate-400" title={r.quarantinePath}>↳ original in {r.quarantinePath}</div>
+                  <div class="max-w-md truncate font-mono text-[11px] text-slate-400" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
                 {/if}
               </td>
               <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
@@ -280,10 +282,10 @@
       </table>
     </div>
   </div>
-  <p class="mt-2 text-xs text-slate-400">{replacements.length.toLocaleString()} replacements · click a Replaced row to compare and approve</p>
+  <p class="mt-2 text-xs text-slate-400">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
-    Nothing in quarantine. When you replace a verified job from the Queue, its original is kept here for review.
+    {i18n.m.quarantine.empty}
   </div>
 {/if}
 
@@ -291,7 +293,7 @@
   {#snippet header()}
     {#if selected}
       <div class="flex min-w-0 items-center gap-2">
-        <span class="badge flex-shrink-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Replaced</span>
+        <span class="badge flex-shrink-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.quarantine.status_replaced}</span>
         <p class="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={selected.finalPath}>
           {selected.finalPath}
         </p>
@@ -305,21 +307,21 @@
         <Banner kind="error" class="mb-3">{detailError}</Banner>
       {/if}
       {#if detailLoading && !details[r.id]}
-        <div class="text-center text-sm text-slate-400">Loading comparison…</div>
+        <div class="text-center text-sm text-slate-400">{i18n.m.quarantine.loading_comparison}</div>
       {:else}
         {@const detail = details[r.id]}
         {@const checks = parseChecks(detail)}
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <div class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Original (quarantined)</div>
+            <div class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{i18n.m.quarantine.original_quarantined}</div>
             <div class="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">{formatSize(r.originalSizeBytes)}</div>
             <div class="mt-1 break-all font-mono text-[11px] text-slate-400" title={r.quarantinePath}>{r.quarantinePath}</div>
           </div>
           <div>
-            <div class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Replacement (in place)</div>
+            <div class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{i18n.m.quarantine.replacement_in_place}</div>
             <div class="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">
               {formatSize(r.newSizeBytes)}
-              <span class="text-emerald-600 dark:text-emerald-400">(−{savingPercent(r)}%, saved {formatSize(r.originalSizeBytes - r.newSizeBytes)})</span>
+              <span class="text-emerald-600 dark:text-emerald-400">{t(i18n.m.quarantine.saved_detail, { percent: savingPercent(r), size: formatSize(r.originalSizeBytes - r.newSizeBytes) })}</span>
             </div>
             <div class="mt-1 break-all font-mono text-[11px] text-slate-400" title={r.finalPath}>{r.finalPath}</div>
           </div>
@@ -331,38 +333,38 @@
           <div class="mt-4">
             <MediaCompare
               mediaKind={detail.mediaKind}
-              left={{ label: 'Original (quarantined)', url: api.replacementOriginalContentUrl(r.id), sizeBytes: r.originalSizeBytes }}
-              right={{ label: 'Replacement (in place)', url: api.replacementReplacementContentUrl(r.id), sizeBytes: r.newSizeBytes }}
+              left={{ label: i18n.m.quarantine.original_quarantined, url: api.replacementOriginalContentUrl(r.id), sizeBytes: r.originalSizeBytes }}
+              right={{ label: i18n.m.quarantine.replacement_in_place, url: api.replacementReplacementContentUrl(r.id), sizeBytes: r.newSizeBytes }}
             />
           </div>
         {/if}
 
         <div class="mt-4">
           <div class="mb-1.5 flex items-center gap-2">
-            <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Verification</span>
+            <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{i18n.m.quarantine.verification}</span>
             {#if detail?.verificationPassed === true}
-              <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Passed</span>
+              <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.quarantine.passed}</span>
             {:else if detail?.verificationPassed === false}
-              <span class="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">Failed</span>
+              <span class="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">{i18n.m.quarantine.failed}</span>
             {/if}
           </div>
           {#if checks}
             <VerificationChecks {checks} />
           {:else}
-            <p class="text-xs text-slate-400">No verification report was recorded for this replacement.</p>
+            <p class="text-xs text-slate-400">{i18n.m.quarantine.no_report}</p>
           {/if}
         </div>
 
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <button class="btn btn-primary px-3 py-1.5 text-sm" onclick={() => approve(r)} disabled={busyId === r.id}>
             <Icon name="check" class="h-4 w-4" />
-            {busyId === r.id ? 'Working' : 'Approve & free space'}
+            {busyId === r.id ? i18n.m.quarantine.working : i18n.m.quarantine.approve_free_space}
           </button>
           <button class="btn btn-danger px-3 py-1.5 text-sm" onclick={() => reject(r)} disabled={busyId === r.id}>
             <Icon name="rotate" class="h-4 w-4" />
-            Reject (roll back)
+            {i18n.m.quarantine.reject_roll_back}
           </button>
-          <span class="text-xs text-slate-400">Approve deletes the quarantined original now; rolling back is then no longer possible.</span>
+          <span class="text-xs text-slate-400">{i18n.m.quarantine.action_note}</span>
         </div>
       {/if}
     {/if}

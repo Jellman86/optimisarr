@@ -41,9 +41,9 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(80.0, settings.VerificationPolicy.MinimumVmafMin);
         Assert.False(settings.VerificationPolicy.AudioLoudnessGateEnabled);
         Assert.Equal(1.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
-        Assert.False(settings.VerificationPolicy.ImageQualityGateEnabled);
+        Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
         Assert.Equal(0.95, settings.VerificationPolicy.MinimumImageSsim);
-        Assert.False(settings.VerificationPolicy.ImageMetadataGateEnabled);
+        Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.False(settings.ReplacementAllowCrossFilesystem);
         Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);

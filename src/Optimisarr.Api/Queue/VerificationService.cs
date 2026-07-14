@@ -17,7 +17,9 @@ public sealed record OriginalSnapshot(
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
     bool AudioDownmixed = false,
-    bool ImageDownscaleRequested = false);
+    bool ImageDownscaleRequested = false,
+    bool VideoReencoded = true,
+    string? ExpectedVideoCodec = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -46,7 +48,8 @@ public sealed class VerificationService(
         string outputPath,
         VerificationPolicy policy,
         CancellationToken cancellationToken,
-        VerificationClip? clip = null)
+        VerificationClip? clip = null,
+        IProgress<double>? qualityProgress = null)
     {
         var reference = clip is null
             ? original
@@ -66,20 +69,39 @@ public sealed class VerificationService(
             // catch a silent downmix or sample-rate drop in the output.
             var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
 
-            // VMAF is expensive (a second full decode of both files), so only measure it
-            // when the user has opted into the quality gate.
-            var qualityResult = policy.QualityGateEnabled
-                ? await quality.MeasureAsync(reference.Path, outputPath, cancellationToken)
+            // VMAF is expensive (a second full decode of both files), so run it only for
+            // video that was actually re-encoded. Remuxes preserve the encoded frames, while
+            // audio and image jobs have their own applicable verification gates.
+            var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
+                ? await MeasureQualityAsync(
+                    reference,
+                    outputPath,
+                    originalProbe,
+                    quality,
+                    // A preview's cheap stream-copy clip is suitable for duration/stream checks,
+                    // but can retain keyframe pre-roll. VMAF decodes the full original from the
+                    // exact preview start instead, keeping its frames aligned with the encode.
+                    clip is null ? reference.Path : original.Path,
+                    clip?.StartSeconds,
+                    qualityProgress,
+                    cancellationToken)
                 : null;
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
-            // image job and only when the user opted in, since it runs an extra ffmpeg pass.
+            // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
             var imageQualityResult = policy.ImageQualityGateEnabled && reference.Kind == MediaKind.Image
-                ? await imageQuality.MeasureAsync(reference.Path, outputPath, cancellationToken)
+                ? await imageQuality.MeasureAsync(
+                    reference.Path,
+                    outputPath,
+                    new ImageQualityMeasurementContext(
+                        originalProbe.Width ?? 0,
+                        originalProbe.Height ?? 0,
+                        Optimisarr.Core.Rules.ImageSafety.MayContainAlpha(originalProbe.PixelFormat)),
+                    cancellationToken)
                 : null;
 
             // The EXIF/ICC-retention gate reads both files' metadata with exiftool; image-only and
-            // opt-in, since it spawns two extra processes.
+            // enabled by default, since it spawns two extra processes.
             ImageMetadataResult? originalMetadata = null;
             ImageMetadataResult? outputMetadata = null;
             if (policy.ImageMetadataGateEnabled && reference.Kind == MediaKind.Image)
@@ -149,6 +171,8 @@ public sealed class VerificationService(
                 OutputColorTransfer: outputProbe.ColorTransfer,
                 OriginalColorSpace: originalProbe.ColorSpace,
                 OutputColorSpace: outputProbe.ColorSpace,
+                OriginalVideoStartSeconds: originalProbe.VideoStartSeconds,
+                OriginalAudioStartSeconds: originalProbe.AudioStartSeconds,
                 OutputVideoStartSeconds: outputProbe.VideoStartSeconds,
                 OutputAudioStartSeconds: outputProbe.AudioStartSeconds,
                 TimestampsMeasured: timestampResult.Measured,
@@ -171,7 +195,20 @@ public sealed class VerificationService(
                 OriginalHasIccProfile: originalMetadata?.Metadata.HasIccProfile ?? false,
                 OutputHasIccProfile: outputMetadata?.Metadata.HasIccProfile ?? false,
                 OriginalHasExif: originalMetadata?.Metadata.HasExif ?? false,
-                OutputHasExif: outputMetadata?.Metadata.HasExif ?? false);
+                OutputHasExif: outputMetadata?.Metadata.HasExif ?? false,
+                VideoReencoded: reference.VideoReencoded,
+                OriginalAttachedPictureCount: originalProbe.AttachedPictureCount,
+                OutputAttachedPictureCount: outputProbe.AttachedPictureCount,
+                OriginalFormatTags: originalProbe.FormatTags,
+                OutputFormatTags: outputProbe.FormatTags,
+                OriginalVideoCodec: originalProbe.VideoCodec,
+                ExpectedVideoCodec: reference.ExpectedVideoCodec,
+                OriginalPixelFormat: originalProbe.PixelFormat,
+                OutputPixelFormat: outputProbe.PixelFormat,
+                OriginalBitsPerRawSample: originalProbe.BitsPerRawSample,
+                OutputBitsPerRawSample: outputProbe.BitsPerRawSample,
+                OriginalVideoProfile: originalProbe.VideoProfile,
+                OutputVideoProfile: outputProbe.VideoProfile);
 
             return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
         }
@@ -182,6 +219,32 @@ public sealed class VerificationService(
                 TryDelete(reference.Path);
             }
         }
+    }
+
+    private static Task<QualityResult> MeasureQualityAsync(
+        OriginalSnapshot reference,
+        string outputPath,
+        MediaProbeResult originalProbe,
+        QualityScoreService quality,
+        string qualityReferencePath,
+        int? referenceStartSeconds,
+        IProgress<double>? qualityProgress,
+        CancellationToken cancellationToken)
+    {
+        if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
+        {
+            return Task.FromResult(QualityResult.Failed(
+                "Could not determine the original video dimensions required for VMAF."));
+        }
+
+        var context = new QualityMeasurementContext(
+            originalProbe.Width.Value,
+            originalProbe.Height.Value,
+            reference.IsHdr,
+            reference.HdrConvertedToSdr,
+            referenceStartSeconds,
+            originalProbe.DurationSeconds);
+        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
     }
 
     private async Task<OriginalSnapshot> CreateReferenceClipAsync(

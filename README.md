@@ -50,7 +50,7 @@ no support SLA or promise of a release schedule.
   with **automatic background probing** of newly discovered files. Enabled libraries
   are rescanned on a configurable global interval (one hour by default).
 - **ffprobe** inspection (codec, resolution, duration, tracks, media kind).
-- Optimisation for **video, audio, and still images** (images → WebP), each through
+- Optimisation for **video, audio, and still images**, each through
   the same candidate → transcode → verify → quarantine/rollback pipeline.
 - FFmpeg/ffprobe **tool detection**, liveness, and readiness endpoints. Docker
   health checks verify database access, required writable paths, and media tools.
@@ -76,6 +76,11 @@ no support SLA or promise of a release schedule.
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
   as segment-only; audio and image previews run in full.
+- Video replacement verifies the resolved codec, exact resolution, pixel bit depth, chroma sampling,
+  and encoder profile in addition to full decode, timing, HDR/colour, stream, size, and VMAF gates.
+- Music defaults to **AAC 128 kbps in M4A**, preserving common attached cover art, tags, and timed
+  lyrics. Opus remains an efficient option for art-free libraries; incompatible artwork/lyrics
+  combinations are rejected before queueing rather than being dropped or failing during muxing.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
   NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.
@@ -163,7 +168,13 @@ iHD driver and oneVPL runtime — so NVIDIA, Intel (incl. iGPUs like the N100), 
 work without installing host driver packages. The encoder is picked by the global **encoder
 mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
-the **GPU** or **CPU**.
+the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
+with `libvmaf`; the Tools page reports that optional capability independently.
+VMAF verification is enabled by default for video re-encodes and skipped for remuxes;
+it can be disabled under **Settings → Verification gates** when throughput is preferred.
+Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
+bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
+tone-mapping require no libvmaf expertise. The report records the chosen model and preparation.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so frames never round-trip through system
@@ -207,8 +218,9 @@ cd web && npm run dev             # frontend dev server (proxies /api to :8787)
 ## License
 
 Optimisarr is licensed under the [GNU General Public License v3.0](LICENSE). The
-published Docker image also bundles GPL-licensed FFmpeg (jellyfin-ffmpeg), which
-remains under its own license.
+published Docker image also bundles GPL-licensed FFmpeg distributions
+([jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg) and
+[static-ffmpeg](https://github.com/wader/static-ffmpeg)), which remain under their own licenses.
 
 ## Project references
 

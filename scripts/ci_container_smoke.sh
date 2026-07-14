@@ -19,6 +19,190 @@ docker run -d --name "$name" -p 127.0.0.1::8787 \
 for _ in {1..30}; do
   port="$(docker port "$name" 8787/tcp | awk -F: '{print $NF}')"
   if curl --fail --silent "http://127.0.0.1:$port/api/ready" >/dev/null; then
+    # Trace the synthetic commands: all inputs are fixed test fixtures and contain no secrets,
+    # while a bare `sh -e` otherwise reports only exit 1 and hides which safety assertion failed.
+    docker exec "$name" sh -exc '
+      vmaf_log=/tmp/optimisarr-ci-vmaf.json
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -f lavfi -i "testsrc2=size=48x48:rate=2:duration=1" \
+        -f lavfi -i "testsrc2=size=64x64:rate=2:duration=1" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:feature=name=psnr\|name=float_ssim:n_threads=1:n_subsample=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -f null -
+      grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
+
+      # The automatic UHD plan depends on this bundled model. Loading it against
+      # the same tiny frames keeps the smoke quick while proving the final image
+      # contains a usable 4K model, not merely the libvmaf filter symbol.
+      rm -f "$vmaf_log"
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" \
+        -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS[ref];[dist][ref]libvmaf=model=version=vmaf_4k_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -f null -
+      grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
+
+      # Exercise the HDR-reference preparation too. The synthetic pixels are not
+      # intended to produce a meaningful score; their BT.2020/PQ tags force the
+      # exact production zscale/Hable/Rec.709 chain to initialise and emit a log.
+      rm -f "$vmaf_log"
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" \
+        -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1,setparams=range=limited:color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -f null -
+      grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
+      rm -f "$vmaf_log"
+
+      # Preview VMAF must compare the encoded sample with the same decoded source window. A
+      # stream-copied reference can retain the previous keyframe and produce near-zero nonsense;
+      # seeking the second (reference) input before decode must score this ordinary CRF encode high.
+      "$OPTIMISARR_FFMPEG" -nostdin -v error -y -f lavfi \
+        -i "testsrc2=size=64x64:rate=12:duration=4" \
+        -c:v libx264 -g 48 -keyint_min 48 -sc_threshold 0 -pix_fmt yuv420p \
+        /tmp/optimisarr-vmaf-source.mkv
+      "$OPTIMISARR_FFMPEG" -nostdin -v error -y -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
+        -t 2 -c:v libx265 -crf 24 -preset ultrafast /tmp/optimisarr-vmaf-preview.mkv
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -i /tmp/optimisarr-vmaf-preview.mkv -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -f null -
+      vmaf_mean="$(awk -F: "/\"pooled_metrics\"[[:space:]]*:/ { pooled=1; next } pooled && /\"vmaf\"[[:space:]]*:/ { in_vmaf=1; next } in_vmaf && /\"mean\"[[:space:]]*:/ { gsub(/[,[:space:]]/, \"\", \$2); print \$2; exit }" "$vmaf_log")"
+      test -n "$vmaf_mean"
+      awk -v score="$vmaf_mean" "BEGIN { exit !(score >= 90) }"
+      rm -f "$vmaf_log" /tmp/optimisarr-vmaf-source.mkv /tmp/optimisarr-vmaf-preview.mkv
+
+      # Exercise representative production transcode argument shapes with the FFmpeg that ships
+      # for real jobs. These are deliberately small synthetic fixtures, but unlike unit tests they
+      # prove the selected encoders, muxers, stream maps, metadata, and artwork dispositions work
+      # together in the final image.
+      transcode="$OPTIMISARR_FFMPEG"
+      # Production probing and verification use the ffprobe paired with the transcode build.
+      probe="$OPTIMISARR_FFPROBE"
+      fixture=/tmp/optimisarr-pipeline-smoke
+      rm -rf "$fixture"
+      mkdir -p "$fixture"
+
+      # Music artwork: FLAC + JPEG cover + tags -> MP3, the selectable target whose APIC path the
+      # shipped FFmpeg supports. The output must contain MP3, the attached picture, and exact tag.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "color=c=blue:size=48x48:rate=1:duration=1" -frames:v 1 "$fixture/cover.jpg"
+      "$transcode" -nostdin -v error -y \
+        -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
+        -i "$fixture/cover.jpg" \
+        -map 0:a -map 1:v -c:a flac -c:v copy -disposition:v attached_pic \
+        -metadata artist="Optimisarr Smoke Artist" "$fixture/source.flac"
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/source.flac")" = 1
+      "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
+        -map_metadata 0 -map 0:v? -c:v:0 mjpeg -disposition:v:0 attached_pic \
+        -map 0:a -c:a libmp3lame -b:a 128k -metadata optimisarr=ci-smoke "$fixture/output.mp3"
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = mp3
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = 1
+      test "$("$probe" -v error -show_entries format_tags=artist \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = "Optimisarr Smoke Artist"
+
+      # Default AAC/M4A remains safe for art-free music and retains ordinary metadata. Sources
+      # with attached art are rejected by candidate evaluation before this command can be built.
+      "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
+        -map_metadata 0 -map 0:a -c:a aac -b:a 128k -map 0:s? -c:s mov_text \
+        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
+      test "$("$probe" -v error -show_entries format_tags=artist \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = "Optimisarr Smoke Artist"
+
+      # Still image: an RGBA PNG -> production lossless-WebP policy. Compare decoded RGBA frame
+      # hashes, so a nominally successful encoder invocation cannot hide alpha or pixel loss.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "color=c=red@0.5:size=48x48:rate=1:duration=1,format=rgba" \
+        -frames:v 1 "$fixture/source.png"
+      exiftool -overwrite_original -EXIF:Artist="Optimisarr Smoke Artist" "$fixture/source.png" >/dev/null
+      "$transcode" -nostdin -v error -y -i "$fixture/source.png" \
+        -map_metadata 0 -map 0:v:0 -c:v libwebp -lossless 1 -quality 80 "$fixture/output.webp"
+      exiftool -overwrite_original -TagsFromFile "$fixture/source.png" \
+        -EXIF:all -ICC_Profile:all --Orientation --ThumbnailImage --PreviewImage --JpgFromRaw \
+        --ImageWidth --ImageHeight --ExifImageWidth --ExifImageHeight "$fixture/output.webp" >/dev/null
+      test "$(exiftool -s3 -EXIF:Artist "$fixture/output.webp")" = "Optimisarr Smoke Artist"
+      "$transcode" -nostdin -v error -i "$fixture/source.png" -pix_fmt rgba \
+        -f framemd5 "$fixture/source.framemd5"
+      "$transcode" -nostdin -v error -i "$fixture/output.webp" -pix_fmt rgba \
+        -f framemd5 "$fixture/output.framemd5"
+      source_rgba_hash="$(tail -n 1 "$fixture/source.framemd5" | cut -d, -f6 | tr -d "[:space:]")"
+      output_rgba_hash="$(tail -n 1 "$fixture/output.framemd5" | cut -d, -f6 | tr -d "[:space:]")"
+      test -n "$source_rgba_hash"
+      test "$source_rgba_hash" = "$output_rgba_hash"
+      image_ssim_log="$fixture/image-ssim.log"
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -i "$fixture/output.webp" -i "$fixture/source.png" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=48:48:flags=bicubic:in_range=auto:out_range=full,format=gbrap[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=48:48:flags=bicubic:in_range=auto:out_range=full,format=gbrap[ref];[dist][ref]ssim=stats_file=$image_ssim_log:shortest=1:repeatlast=0" \
+        -f null -
+      grep -Eq "All:[[:space:]]*(1|0\\.9)" "$image_ssim_log"
+
+      # Exercise the other two selectable image targets with their exact production quality
+      # mappings. These fixtures are opaque because JPEG and the current AVIF path intentionally
+      # reject alpha before queueing.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "color=c=blue:size=48x48:rate=1:duration=1" -frames:v 1 "$fixture/source-opaque.png"
+      exiftool -overwrite_original -EXIF:Artist="Optimisarr Smoke Artist" \
+        "$fixture/source-opaque.png" >/dev/null
+      "$transcode" -nostdin -v error -y -i "$fixture/source-opaque.png" \
+        -map_metadata 0 -map 0:v:0 -c:v mjpeg -q:v 8 "$fixture/output.jpg"
+      exiftool -overwrite_original -TagsFromFile "$fixture/source-opaque.png" \
+        -EXIF:all -ICC_Profile:all --Orientation --ThumbnailImage --PreviewImage --JpgFromRaw \
+        --ImageWidth --ImageHeight --ExifImageWidth --ExifImageHeight "$fixture/output.jpg" >/dev/null
+      test "$(exiftool -s3 -EXIF:Artist "$fixture/output.jpg")" = "Optimisarr Smoke Artist"
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.jpg")" = mjpeg
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=width \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.jpg")" = 48
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=height \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.jpg")" = 48
+      "$transcode" -nostdin -v error -i "$fixture/output.jpg" -f null -
+
+      # Video: H.264/AAC MP4 -> the current production HEVC MP4 stream-map and codec policy.
+      "$transcode" -nostdin -v error -y \
+        -f lavfi -i "testsrc2=size=64x64:rate=12:duration=1" \
+        -f lavfi -i "sine=frequency=880:sample_rate=48000:duration=1" \
+        -map 0:v -map 1:a -c:v libx264 -pix_fmt yuv420p -c:a aac "$fixture/source.mp4"
+      "$transcode" -nostdin -v error -y -fflags +genpts -i "$fixture/source.mp4" \
+        -map 0 -map -0:t -map -0:d -c copy -c:v:0 libx265 -crf 24 -preset ultrafast \
+        -c:a copy -c:s mov_text \
+        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.mp4"
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = hevc
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=width \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = 64
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=height \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = 64
+      test "$("$probe" -v error -select_streams v:0 -show_entries stream=pix_fmt \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = yuv420p
+      test -n "$("$probe" -v error -select_streams v:0 -show_entries stream=profile \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")"
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp4")" = aac
+      "$transcode" -nostdin -v error -i "$fixture/output.mp4" -f null -
+
+      # VFR policy: create irregular presentation intervals, then run the production evidence-based
+      # timing options and prove the MP4 output still advertises distinct nominal/average rates.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "testsrc2=size=64x64:rate=12:duration=2" \
+        -vf "select=eq(mod(n\,5)\,0)+eq(mod(n\,5)\,1)+eq(mod(n\,5)\,3)" \
+        -fps_mode vfr -c:v libx264 -pix_fmt yuv420p "$fixture/source-vfr.mkv"
+      "$transcode" -nostdin -v error -y -fflags +genpts -i "$fixture/source-vfr.mkv" \
+        -map 0 -map -0:t -map -0:d -c copy -c:v:0 libx265 -crf 24 -preset ultrafast \
+        -fps_mode vfr -enc_time_base:v:0 demux -c:a copy -c:s mov_text \
+        -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output-vfr.mp4"
+      nominal="$("$probe" -v error -select_streams v:0 -show_entries stream=r_frame_rate \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output-vfr.mp4")"
+      average="$("$probe" -v error -select_streams v:0 -show_entries stream=avg_frame_rate \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output-vfr.mp4")"
+      test -n "$nominal"
+      test "$nominal" != "$average"
+      "$transcode" -nostdin -v error -i "$fixture/output-vfr.mp4" -f null -
+      rm -rf "$fixture"
+    '
     exit 0
   fi
   sleep 1

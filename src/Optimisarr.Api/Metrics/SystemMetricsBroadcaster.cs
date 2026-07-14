@@ -34,15 +34,18 @@ public sealed class SystemMetricsBroadcaster(
             try
             {
                 // Keep the CPU baseline current every tick so the first reading after work
-                // starts is already meaningful; only broadcast while something is encoding.
+                // starts is already meaningful; broadcast while something is encoding or being
+                // verified (the VMAF pass is CPU-heavy and worth showing even with no encode).
                 var cpuPercent = UpdateCpu();
-                if (encodes.Count == 0)
+                if (encodes.Count == 0 && !encodes.VerificationInProgress)
                 {
                     _previousDrm.Clear();
                     continue;
                 }
 
-                var gpu = SampleGpu(encodes.Pids);
+                // Verification (VMAF) is CPU-only and registers no encode process, so there are no
+                // per-process GPU counters to read; sample the GPU only when an encode is running.
+                var gpu = encodes.Count == 0 ? null : SampleGpu(encodes.Pids);
                 await hub.Clients.All.SendAsync(
                     "systemMetrics",
                     new

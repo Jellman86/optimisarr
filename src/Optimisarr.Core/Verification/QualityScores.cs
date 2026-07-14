@@ -10,9 +10,13 @@ namespace Optimisarr.Core.Verification;
 /// <param name="VmafMin">The lowest single-frame VMAF, used to catch short artifact bursts.</param>
 /// <param name="PsnrYMean">Mean luma PSNR in dB, when computed.</param>
 /// <param name="SsimMean">Mean SSIM (0–1), when computed.</param>
+/// <param name="ModelVersion">The libvmaf model selected for the source resolution.</param>
+/// <param name="Preprocessing">The colour-domain preparation applied before measurement.</param>
 public sealed record QualityScores(
     double? VmafMean,
     double? VmafHarmonicMean,
     double? VmafMin,
     double? PsnrYMean,
-    double? SsimMean);
+    double? SsimMean,
+    string? ModelVersion = null,
+    string? Preprocessing = null);

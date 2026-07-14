@@ -30,11 +30,18 @@ public sealed record MediaProbeResult(
     double? AudioStartSeconds,
     string? OptimisedMarker,
     MediaKind MediaKind,
+    string? PixelFormat,
+    int? BitsPerRawSample,
+    int AttachedPictureCount,
+    IReadOnlyDictionary<string, string> FormatTags,
+    bool? IsVariableFrameRate,
+    string? VideoProfile,
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, Array.Empty<string>(), 0, 0, false, false, false, 0, 0, null,
-            null, null, null, null, null, null, MediaKind.Unknown, error);
+            null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, null, error);
 }
 
 /// <summary>
@@ -43,7 +50,12 @@ public sealed record MediaProbeResult(
 /// </summary>
 public sealed class MediaProbeService
 {
-    private const string FfprobeCommand = "ffprobe";
+    private readonly string _ffprobe;
+
+    public MediaProbeService(string? ffprobeCommand = null)
+    {
+        _ffprobe = string.IsNullOrWhiteSpace(ffprobeCommand) ? "ffprobe" : ffprobeCommand;
+    }
 
     public async Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken)
     {
@@ -61,7 +73,7 @@ public sealed class MediaProbeService
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
-                FileName = FfprobeCommand,
+                FileName = _ffprobe,
                 ArgumentList =
                 {
                     "-v", "error",
@@ -116,6 +128,7 @@ public sealed class MediaProbeService
         double? duration = null;
         string? optimisedMarker = null;
         int? formatBitrateKbps = null;
+        var formatTags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (root.TryGetProperty("format", out var format))
         {
@@ -134,6 +147,16 @@ public sealed class MediaProbeService
             }
 
             optimisedMarker = ReadOptimisedMarker(format);
+            if (format.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var tag in tags.EnumerateObject())
+                {
+                    if (tag.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(tag.Value.GetString()))
+                    {
+                        formatTags[tag.Name] = tag.Value.GetString()!;
+                    }
+                }
+            }
         }
 
         string? videoCodec = null;
@@ -154,6 +177,11 @@ public sealed class MediaProbeService
         string? colorSpace = null;
         double? videoStart = null;
         double? audioStart = null;
+        string? pixelFormat = null;
+        int? bitsPerRawSample = null;
+        var attachedPictureCount = 0;
+        bool? isVariableFrameRate = null;
+        string? videoProfile = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -172,6 +200,7 @@ public sealed class MediaProbeService
                     // video stream but not real video; skip it so audio files aren't mistaken
                     // for movies and the captured video codec is the actual picture track.
                     case "video" when IsAttachedPicture(stream):
+                        attachedPictureCount++;
                         break;
                     case "video":
                         hasRealVideoStream = true;
@@ -202,10 +231,29 @@ public sealed class MediaProbeService
                         colorPrimaries = ReadString(stream, "color_primaries");
                         colorTransfer = ReadString(stream, "color_transfer");
                         colorSpace = ReadString(stream, "color_space");
+                        pixelFormat = ReadString(stream, "pix_fmt");
+                        bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
+                        isVariableFrameRate = DetectVariableFrameRate(stream);
+                        videoProfile = ReadString(stream, "profile");
                         videoStart = ReadStartTime(stream);
                         break;
                     case "audio":
                         audioCodecs.Add(codecName ?? "unknown");
+                        // Vorbis/Opus commonly expose music tags on the audio stream rather than
+                        // format.tags. Merge them into the verification view without overriding a
+                        // container-level value when both are present.
+                        if (stream.TryGetProperty("tags", out var audioTags)
+                            && audioTags.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var tag in audioTags.EnumerateObject())
+                            {
+                                if (tag.Value.ValueKind == JsonValueKind.String
+                                    && !string.IsNullOrWhiteSpace(tag.Value.GetString()))
+                                {
+                                    formatTags.TryAdd(tag.Name, tag.Value.GetString()!);
+                                }
+                            }
+                        }
                         audioStart ??= ReadStartTime(stream);
                         if (stream.TryGetProperty("channels", out var ch) && ch.TryGetInt32(out var channels))
                         {
@@ -265,6 +313,12 @@ public sealed class MediaProbeService
             audioStart,
             optimisedMarker,
             MediaKindClassifier.Classify(extension, hasRealVideoStream, audioCodecs.Count > 0),
+            pixelFormat,
+            bitsPerRawSample,
+            attachedPictureCount,
+            formatTags,
+            isVariableFrameRate,
+            videoProfile,
             null);
     }
 
@@ -364,6 +418,47 @@ public sealed class MediaProbeService
         }
 
         return null;
+    }
+
+    private static int? ReadIntegerString(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+
+    private static bool? DetectVariableFrameRate(JsonElement stream)
+    {
+        var nominal = ReadRational(stream, "r_frame_rate");
+        var average = ReadRational(stream, "avg_frame_rate");
+        if (nominal is not > 0 || average is not > 0)
+        {
+            return null;
+        }
+
+        // r_frame_rate and avg_frame_rate can differ minutely because of duration rounding.
+        // Require a 0.1% divergence before treating it as positive VFR evidence.
+        return Math.Abs(nominal.Value - average.Value) / nominal.Value > 0.001;
+    }
+
+    private static double? ReadRational(JsonElement element, string property)
+    {
+        var value = ReadString(element, property);
+        if (value is null)
+        {
+            return null;
+        }
+
+        var parts = value.Split('/', 2);
+        if (parts.Length != 2
+            || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var numerator)
+            || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var denominator)
+            || denominator == 0)
+        {
+            return null;
+        }
+
+        return numerator / denominator;
     }
 
     // ffprobe reports bit_rate as a string of bits per second on both streams and the format.

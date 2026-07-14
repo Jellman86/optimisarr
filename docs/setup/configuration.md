@@ -46,12 +46,36 @@ The Inventory explains why every file is eligible or skipped.
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
 
+## Media toolchain overrides
+
+The published container configures a matched Jellyfin FFmpeg/ffprobe pair automatically. Custom
+installations can select the production transcoder with `OPTIMISARR_FFMPEG`; Optimisarr derives a
+sibling `ffprobe` from an absolute FFmpeg path so probing and verification interpret streams with
+the same build. Set `OPTIMISARR_FFPROBE` only when the paired probe lives elsewhere. The independent
+`OPTIMISARR_FFMPEG_VMAF` command supplies libvmaf, loudness, and image-SSIM measurement, while
+`OPTIMISARR_EXIFTOOL` can select a non-PATH ExifTool binary.
+
+```yaml
+environment:
+  OPTIMISARR_FFMPEG: /opt/media/ffmpeg
+  OPTIMISARR_FFPROBE: /opt/media/ffprobe
+  OPTIMISARR_FFMPEG_VMAF: /opt/media/ffmpeg-vmaf
+  OPTIMISARR_EXIFTOOL: /opt/media/exiftool
+```
+
+The standard image already provides these values; do not override them unless supplying a complete,
+tested replacement toolchain.
+
 ## Verification gates
 
 Every job must pass decode health, output readability, and the media-kind checks
-that apply to it. The configurable gates make replacement stricter:
+that apply to it. Video jobs also have an always-on structural comparison: the output codec must
+match the resolved target (or the source for a remux), resolution must not change without a resize
+policy, bit depth and chroma sampling may not be reduced, and ffprobe must report a coherent output
+profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
+requested codec or signal structure was retained. The configurable gates make replacement stricter:
 
-![Verification gates panel showing always-on checks, VMAF, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
+![Verification gates panel showing always-on checks, the VMAF quality slider, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
 
 | Gate | Applies to | Default |
 |---|---|---|
@@ -59,15 +83,44 @@ that apply to it. The configurable gates make replacement stricter:
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video | Off |
+| Perceptual quality (VMAF) | Video re-encodes | Off by default; a quality slider picks a tier (Space-saver 80/60 → Visually lossless 93/80 → Archival 96/90) |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
-| Image SSIM | Images | Off |
-| Image metadata | Images | Off |
+| Image SSIM | Images | On, 0.95 |
+| Image metadata | Images | On |
 
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
-becoming replaceable.
+becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
+the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because it
+fully decodes both files and scores every frame, roughly doubling verification time and dominating a
+run on modest hardware; a quality slider in Settings turns it on and prefills both floors from named
+tiers (Space-saver through Archival). Existing installations retain their saved choice, and while the
+gate is off the structural, duration and size gates plus quarantine rollback still guard every
+replacement. Image SSIM and EXIF/ICC retention are enabled for new installations; existing saved
+opt-outs remain unchanged. SSIM uses
+explicit reference dimensions, aligned timebases, full-range planar RGB/RGBA, and includes alpha
+when the source may carry it. Before verification, ExifTool copies EXIF and ICC while deliberately
+excluding orientation, embedded previews, and stale raster dimensions from the old image.
+
+No libvmaf model or filter configuration is required in the UI. Optimisarr prepares
+both streams at the original's resolution with bicubic scaling, aligns their
+timebases and starting timestamps, normalises colour range and pixel format, and
+uses bounded automatic threading. It selects Netflix's `vmaf_v0.6.1` HDTV model
+for HD material and `vmaf_4k_v0.6.1` when either source axis reaches UHD. If a job
+intentionally converts HDR to SDR, the reference receives the same production
+tone-map before comparison; HDR-preserving jobs keep both streams in the matching
+HDR transfer domain. The model and preparation used are recorded in the result.
+
+The 93 harmonic-mean and 80 worst-frame floors are Optimisarr's conservative
+replacement guardrails, not universal scores promised by Netflix. VMAF is most
+useful for compression and scaling damage; the independent decode, duration,
+stream, HDR-signal, colour, timestamp, and A/V-sync checks remain equally important.
+Netflix does not publish a general HDR VMAF model: for HDR-preserving work Optimisarr
+compares both streams in the same HDR transfer domain, which remains a useful
+full-reference compression check, but its absolute threshold is less formally
+calibrated than the SDR viewing models. The default general-purpose profiles exclude
+HDR; preserving or tone-mapping it is an explicit library-profile choice.
 
 ## Rule profiles (presets)
 
@@ -76,8 +129,8 @@ researched quality target; anything can be fine-tuned under **Advanced options**
 
 | Preset | Targets |
 |---|---|
-| Compatibility (H.264) | H.264 / MP4 — plays everywhere, larger files. |
-| Balanced (HEVC) | HEVC (H.265) / MP4 at CRF 24 — a good default. |
+| Compatibility (H.264) | H.264 / MP4 with channel-aware AAC — plays everywhere, larger files. |
+| Balanced (HEVC) | HEVC (H.265) / MP4 at CRF 24 with channel-aware AAC — a good default. |
 | Efficiency (AV1) | AV1 / MKV — smallest files, slower to encode. |
 | **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR preserved**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; the same AAC 96 kbps stereo target applies to a music library. |
 | Remux / cleanup | No re-encode — repackage into a clean container only. |
@@ -87,6 +140,17 @@ files already in the target codec"** (Advanced options) to also re-encode oversi
 same-codec files above a size you set (default 20 GB) — useful for shrinking a huge
 HEVC remux under an HEVC preset. The size-saving verification gate still rejects an
 output that does not get smaller, so the original is never lost.
+
+### Audio channel and bitrate policy
+
+For music and any opted-in video-audio re-encode, the configured bitrate is the budget for a
+mono/stereo programme. When Optimisarr retains surround audio it applies that budget per channel
+pair: for example, a 128 kbps baseline becomes 384 kbps for 5.1 and 512 kbps for 7.1. Enabling the
+explicit stereo downmix keeps the configured value. This conservative scaling prevents a setting
+chosen for stereo from starving retained surround channels, and the candidate saving calculation
+uses the same effective value. MP3 requires stereo downmix for sources above two channels; AAC and
+Opus accept up to eight retained channels. Post-encode verification independently rejects any
+unrequested channel loss.
 
 ## Per-library automation
 

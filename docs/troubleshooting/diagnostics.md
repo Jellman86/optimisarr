@@ -15,9 +15,9 @@ docker compose logs --tail=200 optimisarr
 work. Check the reported path ownership/mount, database, or missing tool before
 placing jobs in the queue. Docker's health check uses this readiness endpoint.
 
-Use **Settings → Tools** to verify the FFmpeg/ffprobe executable and the actual
-encoder test result. For a failed job, open Queue details and read the FFmpeg
-error and verification report before retrying.
+Use **Settings → Tools** to verify the required FFmpeg/ffprobe executables, the optional
+`libvmaf` measurement capability, and the actual encoder test result. For a failed job,
+open Queue details and read the FFmpeg error and verification report before retrying.
 
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
@@ -51,8 +51,9 @@ sheet before retrying:
   policy.
 - **Size reduction** failure means the output was not smaller than the original.
   Either leave the file alone or change the library rules deliberately.
-- **VMAF** and **image SSIM/metadata** failures are opt-in quality gates. If
-  enabled, missing measurements fail closed.
+- **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled
+  via the quality slider in Settings); image **SSIM/metadata** failures come from the default-on
+  image gates. When a gate is enabled, a missing measurement fails closed.
 
 Use **Retry** only after changing the underlying cause: preset, hardware mode,
 source file, mount access, or verification policy. Use **Exclude** for files you

@@ -8,13 +8,13 @@ public sealed class FfmpegCommandBuilderTests
     private static TranscodeSpec AudioReencode() =>
         new(
             InputPath: "/data/music/Track.flac",
-            OutputPath: "/work/Track.opus",
+            OutputPath: "/work/Track.m4a",
             VideoCodec: null,
             Crf: null,
             Preset: null,
             TonemapToSdr: false,
             Kind: MediaKind.Audio,
-            AudioEncoder: "libopus",
+            AudioEncoder: "aac",
             AudioBitrateKbps: 128);
 
     [Fact]
@@ -23,24 +23,50 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
         var audioCodecIndex = IndexOf(args, "-c:a");
-        Assert.Equal("libopus", args[audioCodecIndex + 1]);
+        Assert.Equal("aac", args[audioCodecIndex + 1]);
         var bitrateIndex = IndexOf(args, "-b:a");
         Assert.Equal("128k", args[bitrateIndex + 1]);
-        Assert.Equal("/work/Track.opus", args[^1]);
+        Assert.Equal("/work/Track.m4a", args[^1]);
     }
 
     [Fact]
-    public void An_audio_job_does_not_re_encode_video_and_preserves_cover_art_and_metadata()
+    public void An_aac_audio_job_maps_metadata_and_timed_lyrics_but_not_unsafe_artwork()
     {
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
-        // Cover art is copied, not re-encoded; metadata is carried over.
-        var videoCodecIndex = IndexOf(args, "-c:v");
-        Assert.Equal("copy", args[videoCodecIndex + 1]);
+        Assert.DoesNotContain("0:v?", args);
+        Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
         var metaMapIndex = IndexOf(args, "-map_metadata");
         Assert.Equal("0", args[metaMapIndex + 1]);
+        Assert.Contains("0:s?", args);
+        Assert.Equal("mov_text", args[IndexOf(args, "-c:s") + 1]);
+    }
+
+    [Fact]
+    public void An_mp3_audio_job_normalises_and_marks_cover_art_before_mapping_audio()
+    {
+        var spec = AudioReencode() with { OutputPath = "/work/Track.mp3", AudioEncoder = "libmp3lame" };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.Equal("mjpeg", args[IndexOf(args, "-c:v:0") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v:0") + 1]);
+        Assert.True(IndexOf(args, "0:v?") < IndexOf(args, "0:a"));
+        Assert.DoesNotContain("0:s?", args);
+    }
+
+    [Fact]
+    public void An_opus_audio_job_maps_only_audio()
+    {
+        var spec = AudioReencode() with { OutputPath = "/work/Track.opus", AudioEncoder = "libopus" };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.DoesNotContain("0:v?", args);
+        Assert.DoesNotContain("-c:v:0", args);
+        Assert.DoesNotContain("0:s?", args);
     }
 
     [Fact]
@@ -103,16 +129,11 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_avif_image_job_uses_constant_quality_crf_and_still_picture()
+    public void A_lossless_webp_image_job_uses_the_lossless_encoder_mode()
     {
-        var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1", quality: 100));
+        var args = FfmpegCommandBuilder.Build(ImageReencode() with { ImageLossless = true });
 
-        Assert.Equal("libaom-av1", args[IndexOf(args, "-c:v") + 1]);
-        // Best quality (100) maps to CRF 0 with a zero target bitrate (constant-quality mode).
-        Assert.Equal("0", args[IndexOf(args, "-crf") + 1]);
-        Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
-        Assert.Equal("1", args[IndexOf(args, "-still-picture") + 1]);
-        Assert.Equal("yuv420p", args[IndexOf(args, "-pix_fmt") + 1]);
+        Assert.Equal("1", args[IndexOf(args, "-lossless") + 1]);
     }
 
     [Fact]
@@ -120,6 +141,8 @@ public sealed class FfmpegCommandBuilderTests
     {
         Assert.Throws<NotSupportedException>(() =>
             FfmpegCommandBuilder.Build(ImageReencode(encoder: "libjxl")));
+        Assert.Throws<NotSupportedException>(() =>
+            FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1")));
     }
 
     [Fact]
@@ -507,23 +530,26 @@ public sealed class FfmpegCommandBuilderTests
 
     [Theory]
     [InlineData(".mp4")]
-    [InlineData(".m4v")]
-    [InlineData(".mov")]
-    public void Forces_constant_frame_rate_for_mp4_family_re_encodes(string extension)
+    [InlineData(".mkv")]
+    public void Preserves_variable_timing_when_the_source_was_identified_as_vfr(string extension)
     {
-        // MP4/MOV need CFR or a VFR source drifts out of A/V sync; normalise the re-encode.
-        var args = FfmpegCommandBuilder.Build(Reencode() with { OutputPath = $"/work/Movie.opt{extension}" });
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            OutputPath = $"/work/Movie.opt{extension}",
+            SourceIsVariableFrameRate = true
+        });
 
         var index = IndexOf(args, "-fps_mode");
-        Assert.True(index >= 0);
-        Assert.Equal("cfr", args[index + 1]);
+        Assert.Equal("vfr", args[index + 1]);
+        Assert.Equal("demux", args[IndexOf(args, "-enc_time_base:v:0") + 1]);
     }
 
     [Fact]
-    public void Keeps_source_frame_timing_for_a_matroska_re_encode()
+    public void Does_not_retime_a_cfr_or_unknown_source()
     {
-        // Matroska carries variable frame rate natively, so no CFR normalisation is forced.
-        Assert.DoesNotContain("-fps_mode", FfmpegCommandBuilder.Build(Reencode()));
+        Assert.DoesNotContain("-fps_mode",
+            FfmpegCommandBuilder.Build(Reencode() with { OutputPath = "/work/Movie.opt.mp4" }));
+        Assert.DoesNotContain("-enc_time_base:v:0", FfmpegCommandBuilder.Build(Reencode()));
     }
 
     [Fact]
@@ -531,7 +557,11 @@ public sealed class FfmpegCommandBuilderTests
     {
         // A remux copies the video stream untouched, so frame timing is never rewritten.
         Assert.DoesNotContain("-fps_mode",
-            FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { OutputPath = "/work/Movie.opt.mp4" }));
+            FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with
+            {
+                OutputPath = "/work/Movie.opt.mp4",
+                SourceIsVariableFrameRate = true
+            }));
     }
 
     [Fact]

@@ -7,18 +7,19 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales",
+    "check:locales": "node scripts/check-locales.mjs"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "@tailwindcss/vite": "^4.3.1",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@tailwindcss/vite": "^4.3.2",
     "@tsconfig/svelte": "^5.0.8",
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.1.1",
     "svelte": "^5.56.3",
-    "svelte-check": "^4.7.1",
+    "svelte-check": "^4.7.2",
     "tailwindcss": "^4.3.1",
     "typescript": "~6.0.2",
-    "vite": "^8.1.0"
+    "vite": "^8.1.4"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0"

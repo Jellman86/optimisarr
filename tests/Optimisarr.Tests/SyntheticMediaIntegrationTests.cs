@@ -97,7 +97,8 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
                 Name = "Synthetic photos",
                 Path = Path.Combine(_root, "Photos"),
                 MediaType = MediaType.Photo,
-                RuleProfile = RuleProfile.ConservativeHevc
+                RuleProfile = RuleProfile.ConservativeHevc,
+                TargetImageFormat = "webp"
             };
             db.Libraries.AddRange(music, photos);
             await db.SaveChangesAsync();
@@ -128,14 +129,14 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
         Assert.Equal("Audio", audioCandidate.MediaKind);
         Assert.Equal("flac", audioCandidate.Codec);
         Assert.Contains("flac", audioCandidate.Reason);
-        Assert.Contains("opus", audioCandidate.Reason);
+        Assert.Contains("aac", audioCandidate.Reason);
 
         var imageCandidate = candidates.Single(candidate => candidate.LibraryId == photoId);
         Assert.True(imageCandidate.Eligible);
         Assert.Equal("Image", imageCandidate.MediaKind);
         Assert.Equal("png", imageCandidate.Codec);
         Assert.Contains("png", imageCandidate.Reason);
-        Assert.Contains("jpeg", imageCandidate.Reason);
+        Assert.Contains("webp", imageCandidate.Reason);
     }
 
     private string WriteSparseFile(string relativePath, long sizeBytes)
@@ -165,6 +166,8 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
         file.Width = probe.Width;
         file.Height = probe.Height;
         file.FrameCount = probe.FrameCount;
+        file.PixelFormat = probe.PixelFormat;
+        file.BitsPerRawSample = probe.BitsPerRawSample;
         file.AudioCodecs = probe.AudioCodecs.Count > 0 ? string.Join(", ", probe.AudioCodecs) : null;
         file.AudioTrackCount = probe.AudioTrackCount;
         file.AudioBitrateKbps = probe.AudioBitrateKbps;
@@ -198,7 +201,10 @@ public sealed class SyntheticMediaIntegrationTests : IDisposable
     private static string ImageProbeJson(string codec) => $$"""
         {
           "streams": [
-            { "codec_type": "video", "codec_name": "{{codec}}", "width": 4000, "height": 3000, "nb_frames": "1" }
+            {
+              "codec_type": "video", "codec_name": "{{codec}}", "width": 4000, "height": 3000,
+              "nb_frames": "1", "pix_fmt": "rgb24", "bits_per_raw_sample": "8"
+            }
           ],
           "format": { "format_name": "{{codec}}_pipe" }
         }

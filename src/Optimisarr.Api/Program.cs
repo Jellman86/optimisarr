@@ -27,23 +27,25 @@ var adminToken = Environment.GetEnvironmentVariable(AdminTokenAuth.EnvironmentVa
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<OptimisarrOpenApiTransformer>());
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<ToolDetectionService>();
 // The transcoding/detection ffmpeg. Defaults to "ffmpeg" on PATH, but can be pointed at a
 // hardware-capable build (e.g. jellyfin-ffmpeg, which bundles Intel iHD + oneVPL and NVENC)
 // via OPTIMISARR_FFMPEG. Detection and transcode share it so the encoder list never lies
 // about what the encoder actually is.
-var transcodeFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG");
-builder.Services.AddSingleton(new TranscodeOptions(
-    string.IsNullOrWhiteSpace(transcodeFfmpeg) ? "ffmpeg" : transcodeFfmpeg));
+var transcodeFfmpeg = MediaToolCommands.ResolveFfmpeg(
+    Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG"));
+var ffprobe = MediaToolCommands.ResolveFfprobe(
+    Environment.GetEnvironmentVariable("OPTIMISARR_FFPROBE"), transcodeFfmpeg);
+builder.Services.AddSingleton(new TranscodeOptions(transcodeFfmpeg));
 builder.Services.AddSingleton(new HardwareCapabilityService(transcodeFfmpeg));
 builder.Services.AddSingleton<LibraryScanner>();
-builder.Services.AddSingleton<MediaProbeService>();
-builder.Services.AddSingleton<DecodeHealthCheck>();
-builder.Services.AddSingleton<TimestampIntegrityCheck>();
+builder.Services.AddSingleton(new MediaProbeService(ffprobe));
+builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
+builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
 // different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
 // OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH.
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
+builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe));
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
@@ -156,7 +158,9 @@ app.Use(async (context, next) =>
     }
 
     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-    await context.Response.WriteAsJsonAsync(new { error = "Admin token required." }, context.RequestAborted);
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("auth.required", "Admin token required."),
+        context.RequestAborted);
 });
 
 app.MapHealthEndpoints(adminToken, configDirectory);

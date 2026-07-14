@@ -28,7 +28,12 @@ public sealed record TimestampCheckResult(
 /// </summary>
 public sealed class TimestampIntegrityCheck
 {
-    private const string FfprobeCommand = "ffprobe";
+    private readonly string _ffprobe;
+
+    public TimestampIntegrityCheck(string? ffprobeCommand = null)
+    {
+        _ffprobe = string.IsNullOrWhiteSpace(ffprobeCommand) ? "ffprobe" : ffprobeCommand;
+    }
 
     public async Task<TimestampCheckResult> CheckAsync(string path, CancellationToken cancellationToken)
     {
@@ -45,7 +50,7 @@ public sealed class TimestampIntegrityCheck
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
-                FileName = FfprobeCommand,
+                FileName = _ffprobe,
                 ArgumentList =
                 {
                     "-v", "error",

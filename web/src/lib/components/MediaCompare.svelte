@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { i18n } from '../i18n/i18n.svelte'
   // Side-by-side viewers for an original vs an encoded variant, chosen by media kind
   // (image ↔ image, video ↔ video, audio ↔ audio). Streamed from URLs the caller provides;
   // shared by the settings Preview and the Quarantine compare-to-approve panel.
@@ -49,7 +50,7 @@
 {#if playable}
   <div class="mb-2 flex justify-end">
     <button type="button" class="btn px-2 py-1 text-xs" onclick={toggleBoth}>
-      {anyPlaying ? 'Pause both' : 'Play both'}
+      {anyPlaying ? i18n.m.shared.pause_both : i18n.m.shared.play_both}
     </button>
   </div>
 {/if}
@@ -60,7 +61,7 @@
         <span>{side.label}</span>
         <span class="flex items-center gap-2">
           <span>{side.sizeBytes != null ? formatSize(side.sizeBytes) : ''}</span>
-          <a class="btn px-2 py-1 text-xs" href={side.url} download>Download</a>
+          <a class="btn px-2 py-1 text-xs" href={side.url} download>{i18n.m.shared.download}</a>
         </span>
       </div>
       {#if mediaKind === 'Image'}
@@ -74,5 +75,5 @@
   {/each}
 </div>
 {#if mediaKind !== 'Image' && mediaKind !== 'Audio'}
-  <p class="mt-2 text-xs text-slate-400">Playback uses the original streams. Some browsers cannot play MKV, HEVC, AV1, or E-AC-3; use Download to inspect either exact file locally. The stats and verification below still apply.</p>
+  <p class="mt-2 text-xs text-slate-400">{i18n.m.shared.playback_note}</p>
 {/if}

@@ -401,6 +401,9 @@ namespace Optimisarr.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("AttachedPictureCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("AudioBitrateKbps")
                         .HasColumnType("INTEGER");
 
@@ -409,6 +412,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("AudioTrackCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("BitsPerRawSample")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Container")
@@ -436,7 +442,13 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("IsHdr")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool?>("IsVariableFrameRate")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("LibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxAudioChannels")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("MediaKind")
@@ -453,6 +465,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("Path")
                         .IsRequired()
                         .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PixelFormat")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProbeError")
@@ -481,6 +497,10 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("VideoCodec")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VideoProfile")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 

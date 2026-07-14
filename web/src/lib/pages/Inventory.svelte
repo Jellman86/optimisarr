@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type InventoryCounts, type InventoryFilter, type InventoryRow, type Library, type MediaFile } from '../api'
   import { formatSize, formatDuration } from '../format'
+  import { i18n, t } from '../i18n/i18n.svelte'
   import Banner from '../components/Banner.svelte'
   import BottomSheet from '../components/BottomSheet.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
@@ -50,7 +51,7 @@
     try {
       libraries = await api.libraries()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load libraries'
+      error = err instanceof Error ? err.message : i18n.m.inventory.error_load_libraries
     }
   }
 
@@ -68,7 +69,7 @@
       total = result.total
       counts = result.counts
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load inventory'
+      error = err instanceof Error ? err.message : i18n.m.inventory.error_load
     } finally {
       loading = false
     }
@@ -82,7 +83,7 @@
       // A freshly probed file now has a verdict — reload the current page to pick it up.
       await loadInventory(selectedLibrary, show, page)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Probe failed'
+      error = err instanceof Error ? err.message : i18n.m.inventory.error_probe
     } finally {
       probingId = null
     }
@@ -162,15 +163,15 @@
 
 <header class="mb-4 flex flex-wrap items-end justify-between gap-4">
   <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Inventory</h1>
+    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.inventory}</h1>
     <p class="text-sm text-slate-500 dark:text-slate-400">
-      Discovered media and what the rules would do with it. Click a row to inspect it.
+      {i18n.m.inventory.subtitle}
     </p>
   </div>
   <div>
-    <label class="label" for="lib-filter">Library</label>
+    <label class="label" for="lib-filter">{i18n.m.inventory.library_label}</label>
     <select id="lib-filter" class="input min-w-48" value={selectedLibrary} onchange={selectLibrary}>
-      <option value="all">All libraries</option>
+      <option value="all">{i18n.m.inventory.all_libraries}</option>
       {#each libraries as library}<option value={library.id}>{library.name}</option>{/each}
     </select>
   </div>
@@ -181,7 +182,7 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">Loading…</div>
+  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else if counts.all > 0}
   <!-- Filter tabs and pagination on the same row so both are always visible. -->
   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -191,53 +192,54 @@
         class:btn-primary={show === 'all'}
         onclick={() => selectFilter('all')}
       >
-        All ({counts.all.toLocaleString()})
+        {t(i18n.m.inventory.filter_all, { count: counts.all.toLocaleString() })}
       </button>
       <button
         class="btn px-3 py-1 text-xs"
         class:btn-primary={show === 'eligible'}
         onclick={() => selectFilter('eligible')}
       >
-        Eligible ({eligibleCount.toLocaleString()})
+        {t(i18n.m.inventory.filter_eligible, { count: eligibleCount.toLocaleString() })}
       </button>
       <button
         class="btn px-3 py-1 text-xs"
         class:btn-primary={show === 'skipped'}
         onclick={() => selectFilter('skipped')}
       >
-        Skipped ({skippedCount.toLocaleString()})
+        {t(i18n.m.inventory.filter_skipped, { count: skippedCount.toLocaleString() })}
       </button>
       <button
         class="btn px-3 py-1 text-xs"
         class:btn-primary={show === 'unprobed'}
         onclick={() => selectFilter('unprobed')}
       >
-        Not probed ({unprobedCount.toLocaleString()})
+        {t(i18n.m.inventory.filter_unprobed, { count: unprobedCount.toLocaleString() })}
       </button>
     </div>
 
     <!-- Compact pagination: always visible above the table. -->
     <div class="flex items-center gap-2 text-xs text-slate-400">
       <span>
-        {total === 0 ? '0' : (pageStart + 1).toLocaleString()}–{Math.min(
-          pageStart + pageSize,
-          total,
-        ).toLocaleString()} of {total.toLocaleString()}
+        {t(i18n.m.inventory.range, {
+          start: total === 0 ? '0' : (pageStart + 1).toLocaleString(),
+          end: Math.min(pageStart + pageSize, total).toLocaleString(),
+          total: total.toLocaleString(),
+        })}
       </span>
       <button
         class="btn px-2 py-1 text-xs"
         onclick={() => goToPage(page - 1)}
         disabled={page <= 1}
-        aria-label="Previous page"
+        aria-label={i18n.m.inventory.prev_page}
       >
         ‹
       </button>
-      <span>p.{Math.min(page, pageCount)}/{pageCount}</span>
+      <span>{t(i18n.m.inventory.page_of, { page: Math.min(page, pageCount), count: pageCount })}</span>
       <button
         class="btn px-2 py-1 text-xs"
         onclick={() => goToPage(page + 1)}
         disabled={page >= pageCount}
-        aria-label="Next page"
+        aria-label={i18n.m.inventory.next_page}
       >
         ›
       </button>
@@ -258,12 +260,12 @@
           class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
         >
           <tr>
-            <th class="px-4 py-3">Optimise?</th>
-            <th class="px-4 py-3">File</th>
-            <th class="hidden px-4 py-3 lg:table-cell">Kind</th>
-            <th class="px-4 py-3">Size</th>
-            <th class="hidden px-4 py-3 sm:table-cell">Video</th>
-            <th class="hidden px-4 py-3 sm:table-cell">Resolution</th>
+            <th class="px-4 py-3">{i18n.m.inventory.col_optimise}</th>
+            <th class="px-4 py-3">{i18n.m.inventory.col_file}</th>
+            <th class="hidden px-4 py-3 lg:table-cell">{i18n.m.inventory.col_kind}</th>
+            <th class="px-4 py-3">{i18n.m.inventory.col_size}</th>
+            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.inventory.col_video}</th>
+            <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.inventory.col_resolution}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -280,16 +282,16 @@
                 {#if verdict?.eligible}
                   <span
                     class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-                    >Eligible</span
+                    >{i18n.m.inventory.badge_eligible}</span
                   >
                 {:else if verdict}
                   <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                    >Skipped</span
+                    >{i18n.m.inventory.badge_skipped}</span
                   >
                 {:else}
                   <span
                     class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
-                    title="Probe this file to evaluate it against the rules">Not probed</span
+                    title={i18n.m.inventory.unprobed_title}>{i18n.m.inventory.badge_unprobed}</span
                   >
                 {/if}
               </td>
@@ -321,7 +323,7 @@
   </div>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
-    No media here yet. Add a library and scan it from the Libraries page.
+    {i18n.m.inventory.empty}
   </div>
 {/if}
 
@@ -353,49 +355,49 @@
     {#if selectedFile}
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Status</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_status}</dt>
             <dd>{selectedFile.status}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Size</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_size}</dt>
             <dd>{formatSize(selectedFile.sizeBytes)}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Container</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_container}</dt>
             <dd>{selectedFile.container ?? '—'}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Video</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_video}</dt>
             <dd>{selectedFile.videoCodec ?? '—'} {resolution(selectedFile)}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Audio</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_audio}</dt>
             <dd class="text-right">
               {selectedFile.audioCodecs ?? '—'}{selectedFile.audioTrackCount
-                ? ` · ${selectedFile.audioTrackCount} tracks`
+                ? t(i18n.m.inventory.audio_tracks, { count: selectedFile.audioTrackCount })
                 : ''}
             </dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Subtitles</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_subtitles}</dt>
             <dd>{selectedFile.subtitleTrackCount ?? '—'}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">Duration</dt>
+            <dt class="text-slate-500">{i18n.m.inventory.detail_duration}</dt>
             <dd>{formatDuration(selectedFile.durationSeconds)}</dd>
           </div>
         </dl>
 
         <div class="mt-4 border-t border-slate-100 pt-4 text-sm dark:border-slate-800">
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Rule verdict</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{i18n.m.inventory.rule_verdict}</p>
           <p class="mt-2 text-slate-600 dark:text-slate-300">
-            {selectedVerdict?.reason ?? 'Probe this file to evaluate it against the library rules.'}
+            {selectedVerdict?.reason ?? i18n.m.inventory.verdict_probe_hint}
           </p>
         </div>
 
         {#if selectedFile.probeError}
           <p class="mt-3 text-xs text-red-600" title={selectedFile.probeError}>
-            Probe failed: {selectedFile.probeError}
+            {t(i18n.m.inventory.probe_failed, { error: selectedFile.probeError })}
           </p>
         {/if}
 
@@ -406,14 +408,14 @@
             disabled={probingId === selectedFile.id}
           >
             {probingId === selectedFile.id
-              ? 'Probing…'
+              ? i18n.m.inventory.probing
               : selectedFile.status === 'Discovered'
-                ? 'Probe'
-                : 'Re-probe'}
+                ? i18n.m.inventory.probe
+                : i18n.m.inventory.reprobe}
           </button>
           {#if selectedVerdict?.eligible}
             <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = selectedFile)}>
-              Preview
+              {i18n.m.inventory.preview}
             </button>
           {/if}
         </div>

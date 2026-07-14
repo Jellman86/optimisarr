@@ -6,6 +6,8 @@
   import Banner from './Banner.svelte'
   import EmptyState from './EmptyState.svelte'
   import Icon from './Icon.svelte'
+  import { i18n, plural, t } from '../i18n/i18n.svelte'
+  import { jobFailureDescription } from '../i18n/jobErrors'
 
   let groups = $state<FailureGroup[]>([])
   let loading = $state(true)
@@ -26,7 +28,7 @@
       groups = await api.jobFailures()
       error = null
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load failures'
+      error = err instanceof Error ? err.message : i18n.m.shared.failures_load_error
     } finally {
       loading = false
     }
@@ -63,14 +65,14 @@
 <div class="mb-4 flex items-center justify-between">
   <p class="text-sm text-slate-500 dark:text-slate-400">
     {#if !loading && totalFailures > 0}
-      {totalFailures.toLocaleString()} failed job{totalFailures === 1 ? '' : 's'}, grouped by reason. Originals were never touched.
+      {plural(totalFailures, i18n.m.shared.failures_summary_one, i18n.m.shared.failures_summary_other, totalFailures.toLocaleString())}
     {:else}
-      Failed jobs grouped by reason, with the captured ffmpeg log for each.
+      {i18n.m.shared.failures_intro}
     {/if}
   </p>
   <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={load} disabled={loading}>
     <Icon name="retry" class="h-4 w-4" />
-    Refresh
+    {i18n.m.shared.refresh}
   </button>
 </div>
 
@@ -79,9 +81,9 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">Loading…</div>
+  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else if groups.length === 0}
-  <EmptyState icon="check" title="No failed jobs" hint="Every job so far has completed or is still in progress." />
+  <EmptyState icon="check" title={i18n.m.shared.failures_empty_title} hint={i18n.m.shared.failures_empty_hint} />
 {:else}
   <div class="space-y-4">
     {#each groups as group (group.category)}
@@ -90,7 +92,7 @@
           <Icon name="warning" class="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h3 class="font-medium text-slate-800 dark:text-slate-100">{group.description}</h3>
+              <h3 class="font-medium text-slate-800 dark:text-slate-100">{jobFailureDescription(group.category, i18n.m, group.description)}</h3>
               <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300">{group.count}</span>
             </div>
             <p class="text-xs text-slate-400 dark:text-slate-500">{group.category}</p>
@@ -106,9 +108,10 @@
                     {fileName(sample.relativePath)}
                   </div>
                   {#if sample.errorMessage}
-                    <p class="mt-0.5 line-clamp-2 whitespace-pre-line text-xs text-red-600 dark:text-red-400" title={sample.errorMessage}>
-                      {sample.errorMessage}
-                    </p>
+                    <details class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
+                      <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-red-600 dark:text-red-400">{sample.errorMessage}</p>
+                    </details>
                   {/if}
                 </div>
                 <button
@@ -116,18 +119,18 @@
                   onclick={() => toggleLog(sample.jobId)}
                 >
                   <Icon name="chevron" class="h-3.5 w-3.5 transition-transform {openLogJobId === sample.jobId ? 'rotate-180' : ''}" />
-                  {openLogJobId === sample.jobId ? 'Hide log' : 'View log'}
+                  {openLogJobId === sample.jobId ? i18n.m.shared.hide_log : i18n.m.shared.view_log}
                 </button>
               </div>
 
               {#if openLogJobId === sample.jobId}
                 <div class="mt-2">
                   {#if logLoadingId === sample.jobId}
-                    <p class="text-xs text-slate-400">Loading log…</p>
+                    <p class="text-xs text-slate-400">{i18n.m.shared.loading_log}</p>
                   {:else if logs[sample.jobId]}
                     <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">{logs[sample.jobId]}</pre>
                   {:else}
-                    <p class="text-xs text-slate-400">No ffmpeg log was captured for this job (it failed before or after the encode).</p>
+                    <p class="text-xs text-slate-400">{i18n.m.shared.no_log}</p>
                   {/if}
                 </div>
               {/if}
@@ -137,7 +140,7 @@
 
         {#if group.count > group.samples.length}
           <div class="border-t border-slate-100 px-4 py-2 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
-            Showing {group.samples.length} of {group.count}. Use the Queue tab's “Failed” filter to see them all.
+            {t(i18n.m.shared.failures_showing, { shown: group.samples.length, total: group.count })}
           </div>
         {/if}
       </div>

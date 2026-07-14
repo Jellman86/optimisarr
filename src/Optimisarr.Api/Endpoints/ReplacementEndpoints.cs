@@ -52,7 +52,9 @@ internal static class ReplacementEndpoints
             CancellationToken cancellationToken) =>
         {
             var detail = await ReplacementQueries.GetAsync(db, id, cancellationToken);
-            return detail is null ? Results.NotFound(new { error = $"No replacement with id {id}." }) : Results.Ok(detail);
+            return detail is null
+                ? ApiErrors.NotFound("replacement.notFound", $"No replacement with id {id}.", new { id })
+                : Results.Ok(detail);
         })
         .WithName("GetReplacement");
 

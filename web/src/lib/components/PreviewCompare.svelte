@@ -9,6 +9,7 @@
   import VerificationChecks from './VerificationChecks.svelte'
   import MediaCompare from './MediaCompare.svelte'
   import Icon from './Icon.svelte'
+  import { i18n, t } from '../i18n/i18n.svelte'
 
   let { mediaFileId, mediaKind, relativePath, onClose }: {
     mediaFileId: number
@@ -37,7 +38,7 @@
       jobId = id
       void poll()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Could not start preview'
+      error = err instanceof Error ? err.message : i18n.m.shared.preview_start_error
     }
   }
 
@@ -49,7 +50,7 @@
         timer = setTimeout(poll, 1500)
       }
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Could not load preview'
+      error = err instanceof Error ? err.message : i18n.m.shared.preview_load_error
     }
   }
 
@@ -102,16 +103,16 @@
   // Short status line for the minimised widget.
   let statusLabel = $derived(
     error
-      ? 'Error'
+      ? i18n.m.shared.status_error
       : !preview || preview.status === 'Queued'
-        ? 'Queuing…'
+        ? i18n.m.shared.status_queuing
         : preview.status === 'Transcoding'
-          ? `Encoding ${Math.round(preview.progress * 100)}%`
+          ? t(i18n.m.shared.status_encoding, { percent: Math.round(preview.progress * 100) })
           : preview.status === 'Verifying'
-            ? 'Verifying sample'
+            ? i18n.m.shared.status_verifying
             : preview.status === 'Failed'
-              ? 'Failed'
-              : 'Ready',
+              ? i18n.m.shared.status_failed
+              : i18n.m.shared.status_ready,
   )
 </script>
 
@@ -121,12 +122,12 @@
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
         <div class="truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={title}>{title}</div>
-        <div class="text-[11px] text-slate-400">Preview · {statusLabel}</div>
+        <div class="text-[11px] text-slate-400">{t(i18n.m.shared.preview_status, { status: statusLabel })}</div>
       </div>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={() => (minimized = false)} title="Expand" aria-label="Expand">
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1" onclick={() => (minimized = false)} title={i18n.m.shared.expand} aria-label={i18n.m.shared.expand}>
         <Icon name="chevron" class="h-4 w-4 rotate-180" />
       </button>
-      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-red-600 dark:text-red-400" onclick={close} title="Close and discard the preview" aria-label="Close">
+      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-red-600 dark:text-red-400" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
         <Icon name="x" class="h-4 w-4" />
       </button>
     </div>
@@ -135,7 +136,7 @@
     {:else if isRunning || !preview}
       <div class="progress-track mt-2"><div class="progress-indeterminate"></div></div>
     {:else if preview.status === 'Completed'}
-      <p class="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">✓ Ready — Expand to compare.</p>
+      <p class="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400">{i18n.m.shared.ready_expand}</p>
     {/if}
   </div>
 {:else}
@@ -155,15 +156,15 @@
   >
     <div class="mb-4 flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">Preview optimisation</div>
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">{i18n.m.shared.preview_optimisation}</div>
         <h2 class="truncate text-lg font-semibold" title={title}>{title}</h2>
         <p class="truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={relativePath}>{relativePath}</p>
       </div>
       <div class="flex flex-shrink-0 items-center gap-1">
-        <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title="Minimise — keep running in the background" aria-label="Minimise">
+        <button class="btn btn-ghost px-2" onclick={() => (minimized = true)} title={i18n.m.shared.minimise_preview} aria-label={i18n.m.shared.minimise}>
           <Icon name="minus" class="h-4 w-4" />
         </button>
-        <button class="btn btn-ghost px-2" onclick={close} title="Close and discard the preview" aria-label="Close">
+        <button class="btn btn-ghost px-2" onclick={close} title={i18n.m.shared.discard_preview} aria-label={i18n.m.shared.close}>
           <Icon name="x" class="h-4 w-4" />
         </button>
       </div>
@@ -175,17 +176,17 @@
       <div class="flex flex-col items-center gap-3 py-10 text-slate-500 dark:text-slate-400">
         <div class="progress-track w-64"><div class="progress-indeterminate"></div></div>
         <p class="text-sm">
-          {#if !preview || preview.status === 'Queued'}Queuing preview…
-          {:else if preview.status === 'Transcoding'}Encoding… {Math.round(preview.progress * 100)}%
-          {:else if preview.status === 'Verifying'}Verifying sample…
+          {#if !preview || preview.status === 'Queued'}{i18n.m.shared.queuing_preview}
+          {:else if preview.status === 'Transcoding'}{t(i18n.m.shared.encoding_progress, { percent: Math.round(preview.progress * 100) })}
+          {:else if preview.status === 'Verifying'}{i18n.m.shared.verifying_sample}
           {:else}{preview.status}…{/if}
         </p>
-        <p class="text-xs">This runs a real transcode of this one file; it never touches the original.</p>
+        <p class="text-xs">{i18n.m.shared.preview_safety}</p>
       </div>
     {:else}
       {#if preview.status === 'Failed'}
         <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
-          The preview did not complete: {preview.errorMessage ?? 'unknown error'}. The original is untouched.
+          {t(i18n.m.shared.preview_failed, { error: preview.errorMessage ?? i18n.m.shared.unknown_error })}
         </div>
       {/if}
 
@@ -194,12 +195,12 @@
         <div class="mb-5">
           <MediaCompare
             {mediaKind}
-            left={{ label: 'Original', url: api.mediaContentUrl(mediaFileId), sizeBytes: preview.original?.sizeBytes }}
-            right={{ label: preview.clipped ? 'Encoded (sample)' : 'Encoded', url: api.previewContentUrl(preview.jobId), sizeBytes: preview.encoded?.sizeBytes }}
+            left={{ label: i18n.m.shared.original, url: api.mediaContentUrl(mediaFileId), sizeBytes: preview.original?.sizeBytes }}
+            right={{ label: preview.clipped ? i18n.m.shared.encoded_sample : i18n.m.shared.encoded, url: api.previewContentUrl(preview.jobId), sizeBytes: preview.encoded?.sizeBytes }}
           />
           {#if preview.clipped}
             <p class="mt-2 text-xs text-slate-400">
-              The encoded side is a {Math.round(preview.encoded?.durationSeconds ?? 0)}s sample from the middle of the file. Saving and verification are calculated from that same segment; a full optimise encodes the whole file.
+              {t(i18n.m.shared.sample_note, { seconds: Math.round(preview.encoded?.durationSeconds ?? 0) })}
             </p>
           {/if}
         </div>
@@ -209,11 +210,11 @@
       <div class="card mb-4 overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            <tr><th class="px-4 py-2"></th><th class="px-4 py-2">Original</th><th class="px-4 py-2">Encoded</th></tr>
+            <tr><th class="px-4 py-2"></th><th class="px-4 py-2">{i18n.m.shared.original}</th><th class="px-4 py-2">{i18n.m.shared.encoded}</th></tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
             <tr>
-              <td class="px-4 py-2 text-slate-500">Size</td>
+              <td class="px-4 py-2 text-slate-500">{i18n.m.shared.col_size}</td>
               <td class="px-4 py-2">{preview.original?.sizeBytes != null ? formatSize(preview.original.sizeBytes) : '—'}</td>
               <td class="px-4 py-2">
                 {preview.encoded?.sizeBytes != null ? formatSize(preview.encoded.sizeBytes) : '—'}
@@ -224,14 +225,14 @@
                 {/if}
               </td>
             </tr>
-            <tr><td class="px-4 py-2 text-slate-500">Container</td><td class="px-4 py-2">{preview.original?.container ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.container ?? '—'}</td></tr>
+            <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.container}</td><td class="px-4 py-2">{preview.original?.container ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.container ?? '—'}</td></tr>
             {#if mediaKind !== 'Audio'}
-              <tr><td class="px-4 py-2 text-slate-500">Video codec</td><td class="px-4 py-2">{preview.original?.videoCodec ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.videoCodec ?? '—'}</td></tr>
-              <tr><td class="px-4 py-2 text-slate-500">Resolution</td><td class="px-4 py-2">{resolution(preview.original)}</td><td class="px-4 py-2">{resolution(preview.encoded)}</td></tr>
+              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.video_codec}</td><td class="px-4 py-2">{preview.original?.videoCodec ?? '—'}</td><td class="px-4 py-2">{preview.encoded?.videoCodec ?? '—'}</td></tr>
+              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.resolution}</td><td class="px-4 py-2">{resolution(preview.original)}</td><td class="px-4 py-2">{resolution(preview.encoded)}</td></tr>
             {/if}
             {#if mediaKind !== 'Image'}
-              <tr><td class="px-4 py-2 text-slate-500">Duration</td><td class="px-4 py-2">{formatDuration(preview.original?.durationSeconds ?? null)}</td><td class="px-4 py-2">{formatDuration(preview.encoded?.durationSeconds ?? null)}</td></tr>
-              <tr><td class="px-4 py-2 text-slate-500">Audio</td><td class="px-4 py-2">{audio(preview.original)}</td><td class="px-4 py-2">{audio(preview.encoded)}</td></tr>
+              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.duration}</td><td class="px-4 py-2">{formatDuration(preview.original?.durationSeconds ?? null)}</td><td class="px-4 py-2">{formatDuration(preview.encoded?.durationSeconds ?? null)}</td></tr>
+              <tr><td class="px-4 py-2 text-slate-500">{i18n.m.shared.audio}</td><td class="px-4 py-2">{audio(preview.original)}</td><td class="px-4 py-2">{audio(preview.encoded)}</td></tr>
             {/if}
           </tbody>
         </table>
@@ -240,7 +241,7 @@
       {#if checks}
         <div>
           <div class="mb-2 text-xs font-medium uppercase text-slate-500 dark:text-slate-400">
-            Verification {preview.verificationPassed ? '✓ passed' : '✗ failed'}{preview.clipped ? ' · segment only' : ''}
+            {preview.verificationPassed ? i18n.m.shared.verification_passed : i18n.m.shared.verification_failed}{preview.clipped ? ` · ${i18n.m.shared.segment_only}` : ''}
           </div>
           <VerificationChecks {checks} />
         </div>

@@ -39,8 +39,13 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("No image data detected");
         }
 
-        // An animated image (e.g. an animated GIF or WebP) is really a short video; the still
-        // pipeline would flatten it to a broken single-frame output, so leave it untouched.
+        // Animated-capable formats must have a proven single frame. ffprobe can omit nb_frames
+        // for animated WebP, and treating "unknown" as a still would flatten it silently.
+        if (ImageSafety.RequiresKnownFrameCount(media.VideoCodec) && media.FrameCount is null)
+        {
+            return CandidateDecision.Skipped("Frame count could not be proven for an animated-capable image");
+        }
+
         if (media.FrameCount is > 1)
         {
             return CandidateDecision.Skipped($"Animated image ({media.FrameCount} frames) — not optimised");
@@ -56,18 +61,39 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetImageFormat} (no expected saving)");
         }
 
-        // Lossless sources (PNG/BMP/TIFF/GIF) are always worth re-encoding: a large saving with no
-        // quality loss.
-        if (ImageTarget.IsLossless(media.VideoCodec))
+        if (ImageSafety.MayContainMultiplePages(media.VideoCodec))
         {
-            return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
+            return CandidateDecision.Skipped("TIFF multi-page status cannot be proven safely");
         }
 
-        // The source is already a lossy/efficient image (e.g. a JPEG). By default it is left
-        // untouched, since re-encoding adds generational loss for a smaller gain.
-        if (!rules.ReencodeLossyImages)
+        var sourceIsLossless = ImageTarget.IsLossless(media.VideoCodec);
+        if (!sourceIsLossless && !rules.ReencodeLossyImages)
         {
-            return CandidateDecision.Skipped($"{media.VideoCodec} is already a compressed (lossy) image — left untouched");
+            return CandidateDecision.Skipped(
+                $"{media.VideoCodec} is already a compressed (lossy) image — left untouched");
+        }
+
+        if (ImageSafety.TargetDropsAlpha(rules.TargetImageFormat)
+            && ImageSafety.MayContainAlpha(media.PixelFormat))
+        {
+            return CandidateDecision.Skipped("Target format cannot safely preserve the source alpha channel");
+        }
+
+        if (ImageSafety.TargetDropsHighBitDepth(rules.TargetImageFormat)
+            && ImageSafety.IsHighBitDepth(media.PixelFormat, media.BitsPerRawSample))
+        {
+            return CandidateDecision.Skipped("Target format cannot safely preserve the source bit depth");
+        }
+
+        if (sourceIsLossless)
+        {
+            if (ImageSafety.TargetIsLossy(rules.TargetImageFormat) && !rules.ReencodeLossyImages)
+            {
+                return CandidateDecision.Skipped(
+                    $"{media.VideoCodec} → {rules.TargetImageFormat} is a lossy conversion; explicit opt-in required");
+            }
+
+            return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
         }
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetImageFormat}");
@@ -90,6 +116,34 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetAudioCodec} (no expected saving)");
         }
 
+        // MP3 is the only supported target for which the FFmpeg build shipped in our final image
+        // demonstrably retains an attached picture. Ogg Opus needs METADATA_BLOCK_PICTURE comment
+        // translation, while the M4A/ipod muxer silently drops inherited FLAC art. Fail before
+        // queueing instead of relying on the later verification gate to catch predictable loss.
+        if (!rules.TargetAudioCodec.Equals("mp3", StringComparison.OrdinalIgnoreCase)
+            && media.AttachedPictureCount > 0)
+        {
+            return CandidateDecision.Skipped(
+                $"{rules.TargetAudioCodec} cannot safely preserve embedded cover art with the shipped FFmpeg; choose MP3 for this library");
+        }
+
+        if (!rules.TargetAudioCodec.Equals("aac", StringComparison.OrdinalIgnoreCase)
+            && media.SubtitleTrackCount > 0)
+        {
+            return CandidateDecision.Skipped(
+                $"{rules.TargetAudioCodec} cannot preserve the embedded timed lyrics/subtitle stream");
+        }
+
+        if (!AudioTarget.CanEncodeChannels(
+                rules.TargetAudioCodec, media.MaxAudioChannels, rules.DownmixToStereo))
+        {
+            return CandidateDecision.Skipped(
+                $"{rules.TargetAudioCodec} cannot safely encode the {media.MaxAudioChannels}-channel layout; enable stereo downmix or choose another codec");
+        }
+
+        var targetBitrate = AudioTarget.EffectiveBitrateKbps(
+            rules.AudioBitrateKbps, media.MaxAudioChannels, rules.DownmixToStereo);
+
         // Lossless sources are always worth re-encoding: a large saving with no audible loss.
         if (AudioTarget.IsLossless(media.AudioCodec))
         {
@@ -110,14 +164,14 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"{media.AudioCodec} source bitrate unknown — cannot confirm a saving, left untouched");
         }
 
-        if (!AudioTarget.LossyReencodeSaves(sourceKbps, rules.AudioBitrateKbps))
+        if (!AudioTarget.LossyReencodeSaves(sourceKbps, targetBitrate))
         {
             return CandidateDecision.Skipped(
-                $"{media.AudioCodec} at {sourceKbps} kbps is not far enough above the {rules.AudioBitrateKbps} kbps target to save space — left untouched");
+                $"{media.AudioCodec} at {sourceKbps} kbps is not far enough above the {targetBitrate} kbps target to save space — left untouched");
         }
 
         return CandidateDecision.Eligible(
-            $"{media.AudioCodec} {sourceKbps} kbps → {rules.TargetAudioCodec} {rules.AudioBitrateKbps} kbps");
+            $"{media.AudioCodec} {sourceKbps} kbps → {rules.TargetAudioCodec} {targetBitrate} kbps");
     }
 
     private static CandidateDecision EvaluateVideo(MediaProperties media, RuleSettings rules)

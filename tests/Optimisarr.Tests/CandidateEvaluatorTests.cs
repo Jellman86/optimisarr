@@ -24,24 +24,35 @@ public sealed class CandidateEvaluatorTests
             audioCodec, DurationSeconds: durationSeconds, IsDolbyVision: isDolbyVision);
 
     private static MediaProperties AudioFile(
-        string audioCodec, long sizeBytes = 40L * 1024 * 1024, int? audioBitrateKbps = null) =>
+        string audioCodec,
+        long sizeBytes = 40L * 1024 * 1024,
+        int? audioBitrateKbps = null,
+        int attachedPictureCount = 0,
+        int subtitleTrackCount = 0,
+        int maxAudioChannels = 2) =>
         new(null, null, null, null, sizeBytes, false, "Music/Album/Track.flac", null,
-            MediaKind.Audio, audioCodec, audioBitrateKbps);
+            MediaKind.Audio, audioCodec, audioBitrateKbps, AttachedPictureCount: attachedPictureCount,
+            SubtitleTrackCount: subtitleTrackCount, MaxAudioChannels: maxAudioChannels);
 
     // An image's still-picture codec is captured as the file's VideoCodec by the probe.
     private static MediaProperties ImageFile(
-        string imageCodec, long sizeBytes = 4L * 1024 * 1024, int? frameCount = null) =>
+        string imageCodec,
+        long sizeBytes = 4L * 1024 * 1024,
+        int? frameCount = null,
+        string? pixelFormat = null,
+        int? bitsPerRawSample = null) =>
         new("image2", imageCodec, 4000, 3000, sizeBytes, false, "Photos/2024/IMG_0001.jpg", null,
-            MediaKind.Image, FrameCount: frameCount);
+            MediaKind.Image, FrameCount: frameCount, PixelFormat: pixelFormat,
+            BitsPerRawSample: bitsPerRawSample);
 
     [Fact]
-    public void A_lossless_audio_file_is_eligible_for_re_encode_to_opus()
+    public void A_lossless_audio_file_is_eligible_for_re_encode_to_aac()
     {
         var decision = CandidateEvaluator.Evaluate(AudioFile("flac"), Hevc);
 
         Assert.True(decision.IsEligible);
         Assert.Contains("flac", decision.Reason);
-        Assert.Contains("opus", decision.Reason);
+        Assert.Contains("aac", decision.Reason);
     }
 
     [Fact]
@@ -58,12 +69,12 @@ public sealed class CandidateEvaluatorTests
     {
         var rules = Hevc with { ReencodeLossyAudio = true };
 
-        // 320 kbps MP3 well above the 128 kbps Opus target — re-encoding genuinely saves space.
+        // 320 kbps MP3 is well above the 128 kbps AAC target, so conversion genuinely saves space.
         var decision = CandidateEvaluator.Evaluate(AudioFile("mp3", audioBitrateKbps: 320), rules);
 
         Assert.True(decision.IsEligible);
         Assert.Contains("320", decision.Reason);
-        Assert.Contains("opus", decision.Reason);
+        Assert.Contains("aac", decision.Reason);
     }
 
     [Fact]
@@ -101,12 +112,92 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void An_audio_file_already_in_opus_is_skipped()
+    public void An_audio_file_already_in_aac_is_skipped()
     {
-        var decision = CandidateEvaluator.Evaluate(AudioFile("opus"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(AudioFile("aac"), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("Already", decision.Reason);
+    }
+
+    [Theory]
+    [InlineData("aac")]
+    [InlineData("opus")]
+    public void Unsafe_audio_targets_reject_attached_cover_art_before_queueing(string targetCodec)
+    {
+        var rules = Hevc with { TargetAudioCodec = targetCodec };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", attachedPictureCount: 1), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("cover art", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MP3", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Aac_target_accepts_timed_lyrics_when_the_source_has_no_artwork()
+    {
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", subtitleTrackCount: 1), Hevc);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Mp3_target_accepts_attached_cover_art()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", attachedPictureCount: 1), rules);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Mp3_target_rejects_timed_lyrics_before_queueing()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("flac", subtitleTrackCount: 1), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("timed lyrics", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Multichannel_mp3_is_rejected_without_an_explicit_downmix()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3" };
+
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", maxAudioChannels: 6), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("6-channel", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Multichannel_mp3_is_eligible_with_an_explicit_stereo_downmix()
+    {
+        var rules = Hevc with { TargetAudioCodec = "mp3", DownmixToStereo = true };
+
+        var decision = CandidateEvaluator.Evaluate(AudioFile("flac", maxAudioChannels: 6), rules);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void Lossy_surround_reencode_uses_the_channel_aware_bitrate_for_saving_decisions()
+    {
+        var rules = Hevc with { ReencodeLossyAudio = true, AudioBitrateKbps = 128 };
+
+        var decision = CandidateEvaluator.Evaluate(
+            AudioFile("ac3", audioBitrateKbps: 384, maxAudioChannels: 6), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("384 kbps target", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -119,13 +210,12 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void A_lossless_image_is_eligible_for_re_encode_to_the_target_format()
+    public void A_lossless_image_is_not_silently_converted_to_lossy_jpeg()
     {
-        var decision = CandidateEvaluator.Evaluate(ImageFile("png"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(ImageFile("png", pixelFormat: "rgb24", bitsPerRawSample: 8), Hevc);
 
-        Assert.True(decision.IsEligible);
-        // The default image target is JPEG (max compatibility).
-        Assert.Contains("jpeg", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(decision.IsEligible);
+        Assert.Contains("lossy", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -139,11 +229,62 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
-    public void A_single_frame_image_is_still_eligible()
+    public void A_single_frame_lossless_image_is_eligible_for_lossless_webp()
     {
-        var decision = CandidateEvaluator.Evaluate(ImageFile("png", frameCount: 1), Hevc);
+        var rules = Hevc with { TargetImageFormat = "webp" };
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("png", frameCount: 1, pixelFormat: "rgba", bitsPerRawSample: 8), rules);
 
         Assert.True(decision.IsEligible);
+    }
+
+    [Fact]
+    public void An_animated_capable_image_with_unknown_frame_count_is_left_untouched()
+    {
+        var rules = Hevc with { ReencodeLossyImages = true };
+
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp", frameCount: null), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("frame count", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("rgba", 8, "alpha")]
+    [InlineData("rgb48be", 16, "bit depth")]
+    public void Jpeg_conversion_rejects_structural_image_loss_even_with_lossy_opt_in(
+        string pixelFormat, int bitsPerRawSample, string expectedReason)
+    {
+        var rules = Hevc with { ReencodeLossyImages = true };
+
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("png", pixelFormat: pixelFormat, bitsPerRawSample: bitsPerRawSample), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains(expectedReason, decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Webp_conversion_rejects_a_high_bit_depth_source()
+    {
+        var rules = Hevc with { TargetImageFormat = "webp" };
+
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("png", frameCount: 1, pixelFormat: "rgb48be", bitsPerRawSample: 16), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("bit depth", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Tiff_is_left_untouched_when_page_count_cannot_be_proven()
+    {
+        var rules = Hevc with { TargetImageFormat = "webp" };
+
+        var decision = CandidateEvaluator.Evaluate(ImageFile("tiff", pixelFormat: "rgb24"), rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("multi-page", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -151,7 +292,7 @@ public sealed class CandidateEvaluatorTests
     {
         // A WebP source is lossy and not the (JPEG) target, so re-encoding it risks generational
         // loss; the conservative default leaves it alone.
-        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), Hevc);
+        var decision = CandidateEvaluator.Evaluate(ImageFile("webp", frameCount: 1), Hevc);
 
         Assert.False(decision.IsEligible);
         Assert.Contains("left untouched", decision.Reason, StringComparison.OrdinalIgnoreCase);
@@ -162,7 +303,8 @@ public sealed class CandidateEvaluatorTests
     {
         var rules = Hevc with { ReencodeLossyImages = true };
 
-        var decision = CandidateEvaluator.Evaluate(ImageFile("webp"), rules);
+        var decision = CandidateEvaluator.Evaluate(
+            ImageFile("webp", frameCount: 1, pixelFormat: "yuv420p", bitsPerRawSample: 8), rules);
 
         Assert.True(decision.IsEligible);
         Assert.Contains("jpeg", decision.Reason, StringComparison.OrdinalIgnoreCase);

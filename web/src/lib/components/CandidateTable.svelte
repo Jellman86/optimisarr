@@ -6,6 +6,7 @@
   import { formatSize } from '../format'
   import PreviewCompare from './PreviewCompare.svelte'
   import Thumbnail from './Thumbnail.svelte'
+  import { i18n, t } from '../i18n/i18n.svelte'
 
   let { candidates, scoped = false }: { candidates: Candidate[]; scoped?: boolean } = $props()
 
@@ -46,13 +47,13 @@
 {#if candidates.length > 0}
   <div class="mb-4 flex flex-wrap gap-2">
     <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'all'} onclick={() => selectShow('all')}>
-      All ({candidates.length})
+      {t(i18n.m.shared.all_count, { count: candidates.length })}
     </button>
     <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'eligible'} onclick={() => selectShow('eligible')}>
-      Eligible ({eligibleCount})
+      {t(i18n.m.shared.eligible_count, { count: eligibleCount })}
     </button>
     <button class="btn px-3 py-1 text-xs" class:btn-primary={show === 'skipped'} onclick={() => selectShow('skipped')}>
-      Skipped ({skippedCount})
+      {t(i18n.m.shared.skipped_count, { count: skippedCount })}
     </button>
   </div>
 
@@ -60,13 +61,13 @@
     <table class="w-full text-sm">
       <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
         <tr>
-          <th class="px-4 py-3">Status</th>
-          <th class="px-4 py-3">File</th>
-          <th class="hidden px-4 py-3 sm:table-cell">Size</th>
-          <th class="hidden px-4 py-3 md:table-cell">Codec</th>
+          <th class="px-4 py-3">{i18n.m.shared.col_status}</th>
+          <th class="px-4 py-3">{i18n.m.shared.col_file}</th>
+          <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.shared.col_size}</th>
+          <th class="hidden px-4 py-3 md:table-cell">{i18n.m.shared.col_codec}</th>
           <!-- The rule profile is constant within one library, so the column is redundant when scoped. -->
-          {#if !scoped}<th class="hidden px-4 py-3 lg:table-cell">Profile</th>{/if}
-          <th class="px-4 py-3">Reason</th>
+          {#if !scoped}<th class="hidden px-4 py-3 lg:table-cell">{i18n.m.shared.col_profile}</th>{/if}
+          <th class="px-4 py-3">{i18n.m.shared.col_reason}</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
@@ -75,9 +76,9 @@
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2">
               {#if candidate.eligible}
-                <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Eligible</span>
+                <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.shared.eligible}</span>
               {:else}
-                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">Skipped</span>
+                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.shared.skipped}</span>
               {/if}
             </td>
             <td class="px-4 py-2">
@@ -85,7 +86,7 @@
                 <Thumbnail mediaFileId={candidate.mediaFileId} alt={candidate.relativePath} />
                 <span class="max-w-[44vw] truncate font-mono text-xs sm:max-w-xs" title={candidate.relativePath}>
                   {#if candidate.mediaKind === 'Audio' || candidate.mediaKind === 'Image'}
-                    <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind}</span>
+                    <span class="badge mr-1 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{candidate.mediaKind === 'Audio' ? i18n.m.shared.media_audio : i18n.m.shared.media_image}</span>
                   {/if}{candidate.relativePath}
                 </span>
               </div>
@@ -102,7 +103,7 @@
             <td class="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{candidate.reason}</td>
             <td class="px-4 py-2 text-right">
               {#if candidate.eligible}
-                <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = candidate)}>Preview</button>
+                <button class="btn px-3 py-1 text-xs" onclick={() => (previewing = candidate)}>{i18n.m.shared.preview}</button>
               {/if}
             </td>
           </tr>
@@ -122,23 +123,23 @@
   <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
     <span>
       {#if visible.length > 0}
-        {(pageStart + 1).toLocaleString()}–{Math.min(pageStart + CANDIDATE_PAGE_SIZE, visible.length).toLocaleString()}
-        of {visible.length.toLocaleString()}
+        {visible.length === candidates.length
+          ? t(i18n.m.shared.candidate_range_all, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + CANDIDATE_PAGE_SIZE, visible.length).toLocaleString(), total: visible.length.toLocaleString() })
+          : t(i18n.m.shared.candidate_range_filtered, { start: (pageStart + 1).toLocaleString(), end: Math.min(pageStart + CANDIDATE_PAGE_SIZE, visible.length).toLocaleString(), visible: visible.length.toLocaleString(), total: candidates.length.toLocaleString() })}
       {:else}
         0
       {/if}
-      {visible.length === candidates.length ? 'probed files' : `of ${candidates.length.toLocaleString()} probed files`}
     </span>
     {#if pageCount > 1}
       <span class="flex items-center gap-2">
-        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label="Previous page">‹</button>
-        <span>Page {Math.min(page, pageCount).toLocaleString()} of {pageCount.toLocaleString()}</span>
-        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label="Next page">›</button>
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={i18n.m.shared.previous_page}>‹</button>
+        <span>{t(i18n.m.shared.page_of, { page: Math.min(page, pageCount).toLocaleString(), count: pageCount.toLocaleString() })}</span>
+        <button class="btn px-2 py-1 text-xs" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={i18n.m.shared.next_page}>›</button>
       </span>
     {/if}
   </div>
 {:else}
   <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
-    No candidates yet. Probe some files on the Inventory page first — candidates are evaluated from probed media.
+    {i18n.m.shared.candidates_empty}
   </div>
 {/if}

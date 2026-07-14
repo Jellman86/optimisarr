@@ -18,8 +18,8 @@ public enum ImageDownscaleMode
 /// <summary>
 /// Pure construction of the ffmpeg <c>scale</c> filter expression that downscales a still.
 /// Every mode keeps the original aspect ratio and <em>never upscales</em> (the output is
-/// capped at the source dimensions), and every result is forced to even dimensions so the
-/// 4:2:0 encoders (AVIF) accept it. Returns <c>null</c> when no resize is requested.
+/// capped at the source dimensions), and every result is forced to even dimensions for broad
+/// encoder/decoder compatibility. Returns <c>null</c> when no resize is requested.
 /// </summary>
 public static class ImageScale
 {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { i18n } from '../i18n/i18n.svelte'
   import { api, type BrowseResponse } from '../api'
 
   let { initialPath = '', onSelect, onClose }: {
@@ -21,7 +22,7 @@
     try {
       listing = await api.browse(path)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to browse'
+      error = err instanceof Error ? err.message : i18n.m.shared.browse_failed
     } finally {
       loading = false
     }
@@ -45,8 +46,8 @@
     onkeydown={(e) => e.stopPropagation()}
   >
     <div class="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
-      <h2 class="font-semibold text-slate-800 dark:text-slate-100">Choose a folder</h2>
-      <button class="btn btn-ghost px-2" onclick={onClose} aria-label="Close">✕</button>
+      <h2 class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.shared.choose_folder}</h2>
+      <button class="btn btn-ghost px-2" onclick={onClose} aria-label={i18n.m.shared.close}>✕</button>
     </div>
 
     <div class="border-b border-slate-200 p-3 dark:border-slate-700">
@@ -55,7 +56,7 @@
           class="btn px-2 py-1 text-xs"
           disabled={!listing?.parent}
           onclick={() => listing?.parent && navigate(listing.parent)}
-          title="Up one level"
+          title={i18n.m.shared.up_one_level}
         >
           ↑ Up
         </button>
@@ -67,7 +68,7 @@
 
     <div class="flex-1 overflow-y-auto p-2">
       {#if loading}
-        <p class="p-4 text-center text-sm text-slate-400">Loading…</p>
+        <p class="p-4 text-center text-sm text-slate-400">{i18n.m.common.loading_short}</p>
       {:else if error}
         <p class="p-4 text-center text-sm text-red-600">{error}</p>
       {:else if listing && listing.directories.length > 0}
@@ -83,16 +84,16 @@
           </button>
         {/each}
       {:else}
-        <p class="p-4 text-center text-sm text-slate-400">No subfolders here.</p>
+        <p class="p-4 text-center text-sm text-slate-400">{i18n.m.shared.no_subfolders}</p>
       {/if}
     </div>
 
     <div class="flex items-center justify-between gap-2 border-t border-slate-200 p-3 dark:border-slate-700">
-      <span class="truncate text-xs text-slate-500 dark:text-slate-400">Select the highlighted folder above</span>
+      <span class="truncate text-xs text-slate-500 dark:text-slate-400">{i18n.m.shared.select_highlighted}</span>
       <div class="flex gap-2">
-        <button class="btn" onclick={onClose}>Cancel</button>
+        <button class="btn" onclick={onClose}>{i18n.m.common.cancel}</button>
         <button class="btn btn-primary" disabled={!listing} onclick={() => listing && onSelect(listing.path)}>
-          Use this folder
+          {i18n.m.shared.select_folder}
         </button>
       </div>
     </div>

@@ -18,13 +18,13 @@ decisions, not just the changes:
   in the library form, carried in config backups) re-enables it, and changing the profile makes such
   files eligible again automatically. A hard exclusion would wrongly persist past a settings change.
   Migration `AddDolbyVisionHandling`.
-- **MP4 re-encodes forced to CFR.** A variable-frame-rate source drifts out of A/V sync in the MP4
-  timeline (the MP4/MOV-only timebase problem), the cause of the live job 3334 A/V-sync failure. A
-  video re-encode to an MP4-family container now sets `-fps_mode cfr`; Matroska carries VFR natively
-  and is untouched, and a remux is never re-timed. **Decision: fix the VFR class, don't chase the
-  residual start-offset with blind flags** — a pure start-offset desync is rare and the A/V-sync gate
-  already catches it safely (original untouched, job retryable), so injecting timestamp-shifting flags
-  we couldn't validate against the real file would have risked regressing other content for little gain.
+- **VFR timing correction after the pipeline audit.** The initial response to live job 3334 forced
+  every MP4 re-encode to CFR. FFmpeg documents that CFR achieves this by duplicating and dropping
+  frames, so the blanket workaround traded sync risk for cadence damage. The corrected policy stores
+  positive VFR evidence from nominal-versus-average probe rates, then uses `-fps_mode vfr` with the
+  demuxer encoder timebase only for those re-encodes. CFR/unknown sources receive no timing override,
+  remuxes are untouched, and the relative A/V-sync, timestamp, tail, and duration gates remain the
+  authority on whether an output is safe. Migration `TrackVariableFrameRate`.
 - **MP4 → MKV fallback for unmuxable audio.** Copying a Blu-ray audio format MP4 has no tag for aborts
   the encode. The resolver now falls back to MKV — the same pattern as image-based subtitles — but only
   when the audio is *copied*; re-encoding it to a compatible codec keeps the MP4 target. **Decision:
@@ -272,11 +272,11 @@ See the Phase 12 section for the remaining optional polish.
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/
   Apprise); config-and-secrets backup/import.
-- **Phase 9 (Gold-Standard Verification): feature-complete.** Opt-in VMAF gate (plus PSNR/SSIM
+- **Phase 9 (Gold-Standard Verification): feature-complete.** Default-on VMAF gate (plus PSNR/SSIM
   signals), always-on HDR/colour/A-V-sync/timestamp/tail integrity gates, audio channel/
   sample-rate retention, opt-in EBU R128 loudness + true-peak clipping gates, per-library VMAF
   overrides. All gate logic pure and unit tested.
-- **Phase 10 (Multi-Media Optimisation): in progress.** Done so far: media-kind detection;
+- **Phase 10 (Multi-Media Optimisation): feature-complete.** Media-kind detection;
   lossless-audio optimisation with per-library audio codec/bitrate; **audio-codec selection for
   video transcodes** (AAC default); **stereo downmix** across both pipelines; **any-source
   (lossy) audio re-encoding** gated on a proven bitrate saving; and **media-type-scoped library
@@ -284,16 +284,17 @@ See the Phase 12 section for the remaining optional polish.
   end-to-end**: candidate rules, command building, kind-aware verification, per-library overrides,
   a `Photo` media type, animated-image skipping, and the UI — verified in a container (still
   PNG/BMP/TIFF → WebP with large savings, dimensions retained, verification passing). **Image
-  optimisation is now broadly complete:** three output formats on a compatibility→efficiency slider
-  (**JPEG** default for max compatibility incl. Plex, **WebP**, **AVIF** — all wired in the command
-  builder), per-library **downscaling** (named 4K/1080p caps, custom max long-edge, or percentage —
-  aspect-preserving, never upscaling, with a downscale-aware Dimensions gate), an opt-in **image
+  optimisation is now broadly complete:** proven output formats on a compatibility→efficiency slider
+  (**JPEG** default for max compatibility incl. Plex and **WebP** for modern clients), per-library
+  **downscaling** (named 4K/1080p caps, custom max long-edge, or percentage —
+  aspect-preserving, never upscaling, with a downscale-aware Dimensions gate), a default-on **image
   SSIM quality gate**, and a **portable optimisation marker** for every image format via exiftool
-  (EXIF/XMP `Software`), closing the marker round-trip gap, an opt-in **EXIF/ICC-retention gate**
+  (EXIF/XMP `Software`), closing the marker round-trip gap, a default-on **EXIF/ICC-retention gate**
   (an image that drops the original's ICC colour profile or EXIF on re-encode fails verification;
   reads both with exiftool, fails closed, flags loss only), and the **output-filename collision fix**
   (work output is namespaced per media file, and a replacement whose destination is already occupied
-  fails safely). Still to come: in-container validation of the AVIF quality mapping.
+  fails safely). The final-container smoke suite validates the production JPEG and WebP
+  encoder/quality mappings, metadata round trips, structural probes, and decodes.
 
 
 ## Phase 0: Project Foundation
@@ -573,9 +574,9 @@ needs to be — so replacing an original is a decision the user can fully trust.
 This deepens Phase 4 rather than replacing it; every existing gate stays.
 
 Status: feature-complete. The output is scored against the original with `libvmaf`
-(opt-in, fail-closed VMAF gate with harmonic-mean and per-frame-minimum floors, plus
-PSNR/SSIM as corroborating signals), and the image bundles a libvmaf-enabled ffmpeg
-(jellyfin-ffmpeg) so the gate can run without disturbing the transcode path. Always-on
+(default-on, fail-closed VMAF gate with harmonic-mean and per-frame-minimum floors, plus
+PSNR/SSIM as corroborating signals), and the image bundles a dedicated libvmaf-enabled static
+FFmpeg alongside Jellyfin FFmpeg so the gate can run without disturbing the transcode path. Always-on
 gates cover **HDR preservation** (an HDR original whose library preserves HDR must keep
 its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR passes),
 **colour primaries/transfer/matrix** preservation, **A/V sync**, **monotonic decode
@@ -592,9 +593,9 @@ Deliverables:
   VMAF (with model selection), plus SSIM and PSNR as corroborating signals,
   computed by FFmpeg's `libvmaf`/filters and parsed by a pure, unit-tested
   evaluator. A configurable minimum VMAF gate (conservative default) blocks
-  replacement when quality drops too far. **VMAF gate done** (harmonic-mean +
-  per-frame minimum floors); PSNR/SSIM corroboration and VMAF model selection still
-  to come.
+  replacement when quality drops too far. **Done:** harmonic-mean and per-frame minimum floors,
+  PSNR/SSIM corroboration, automatic HDTV/UHD model selection, deterministic stream alignment,
+  and HDR-to-SDR reference preparation are implemented and exercised in final-container CI.
 - **Per-frame decode integrity**, not just a single full-decode pass: count and
   surface decoder errors/corrupt frames, dropped/duplicated frames, and any
   packet-level read errors over the whole file.
@@ -627,16 +628,16 @@ Goal: extend the same safe pipeline — candidate rules, transcode, gold-standar
 verification, quarantine/rollback — from video to **audio-only files and
 images**, so a library of music or photos benefits from the same guarantees.
 
-Status: in progress. **Media-kind detection, audio optimisation, per-library audio
-rules, audio-codec selection for video transcodes, stereo downmix, any-source (lossy) audio
-re-encoding, and media-type-scoped Advanced options are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
+Status: feature-complete. **Media-kind detection, audio and image optimisation, per-library rules,
+channel-aware codec/bitrate selection, metadata verification, and media-type-scoped Advanced
+options are done.** A pure, unit-tested `MediaKindClassifier` classifies every probed file as
 video, audio, or image (cover-art-aware, so an album-art picture never makes an audio file
 look like video), stored on `MediaFile.MediaKind` and surfaced as a Kind column in the
 Inventory. Lossless audio is re-encoded through the full pipeline — candidate rules,
 transcode (cover art + metadata + the same optimisation marker as video, so audio files are
 never re-optimised either), kind-aware verification, and the usual reversible replacement.
-Each library can override the audio target codec (Opus/AAC/MP3) and bitrate. Image
-optimisation is next.
+Each library can override the audio target codec (Opus/AAC/MP3), stereo bitrate baseline, image
+target (JPEG/WebP), quality, and downscale policy.
 
 Deliverables:
 
@@ -645,8 +646,10 @@ Deliverables:
 - **Audio optimisation**: target codec/bitrate/sample-rate rules (e.g. lossless →
   efficient lossy or re-pack), with verification on loudness, channel layout,
   duration, and decode health. Tag/metadata and embedded-art preservation. **Done**
-  (lossless → configurable codec/bitrate, default Opus 128 kbps; outputs carry the
-  optimisation marker like video).
+  (lossless → configurable codec/bitrate, compatibility-first AAC 128 kbps default;
+  outputs carry the optimisation marker like video). Attached-art counts and source tags are
+  replacement gates. Opus sources with attached pictures are rejected because FFmpeg cannot
+  translate an attached video stream into Ogg's picture-comment representation safely.
 - **Transcode from any audio source, not just lossless.** A per-library "re-encode lossy audio"
   opt-in now also makes already-lossy sources eligible, but only when re-encoding would
   genuinely save space: probing records the source audio bitrate, and a lossy file is eligible
@@ -657,8 +660,9 @@ Deliverables:
   tracks untouched (`-c:a copy`). A per-library option now also transcodes the audio of a
   video to a chosen codec/bitrate (AAC — the broadly compatible default — Opus, or MP3),
   reusing the audio-target encoder mapping so the audio rules are shared between audio-only
-  jobs and video jobs. The default stays "copy" so nothing changes unless the operator opts
-  in; the audio-fidelity gate understands the intentional re-encode and allows sample-rate
+  jobs and video jobs. Compatibility H.264/HEVC profiles default to channel-aware AAC so their MP4
+  playback promise covers the whole file; AV1/MKV and remux profiles copy, and every profile offers
+  an explicit Copy override. The audio-fidelity gate understands an intentional re-encode and allows sample-rate
   normalisation while still catching a silent downmix or a dropped rate on a copied track.
   **Done.**
 - **Stereo downmix (channel reduction) across the audio *and* video pipelines.** A
@@ -674,40 +678,24 @@ Deliverables:
   **Compatibility H.264 → MP4 + AAC, CRF 20** for older clients; **Experimental AV1 → MKV + Opus,
   CRF 30** for maximum efficiency; Remux/Cleanup unchanged. A new profile-level `DefaultCrf`
   replaces the encoder's arbitrary built-in default; per-library overrides still layer on top.
-  Audio defaults to copy (the recommended codec is documented, not forced) so a re-encode never
-  silently downgrades the original. The preset is now picked via a simple compatibility↔efficiency
+  The two MP4 compatibility profiles now use channel-aware AAC by default so their playback promise
+  covers the whole file; Advanced retains an explicit Copy override, with no implicit downmix.
+  AV1/MKV and remux profiles continue to copy audio. The preset is now picked via a simple compatibility↔efficiency
   **slider** (with a separate "no re-encode" toggle for Remux/Cleanup), keeping every exact knob
   behind Advanced options. **Done.**
-- **Image optimisation**: modern formats (WebP/AVIF/JXL) and lossless re-encode,
-  with quality scoring (SSIM/Butteraugli-style) and EXIF/ICC-profile preservation
-  as verification gates; configurable max-dimension downscaling. **Candidate rules done**
-  (pure `ImageTarget` + image branch in `CandidateEvaluator`: lossless PNG/BMP/TIFF/GIF eligible,
-  lossy JPEG behind a per-library opt-in, already-target-format and too-small skipped, with
-  WebP/AVIF/JXL targets and conservative defaults). **WebP command building is done** (pure
-  `TranscodeSpecResolver`/`FfmpegCommandBuilder` image path: `libwebp` encode, source EXIF/ICC
-  preserved via `-map_metadata 0`, output stamped with the optimisation marker, and the
-  dispatcher no longer resolves a video encoder for image jobs; AVIF/JXL throw a clear
-  not-implemented error until their quality mapping is validated). **Kind-aware verification is
-  done** (a still is judged on decode health, readability, a present picture, retained
-  dimensions, and a size reduction; the time-based/stream gates that don't apply to an image are
-  skipped rather than failed). **Per-library image overrides are done** (target format, quality,
-  and a re-encode-lossy toggle — three nullable `Library` columns via migration, wired through
-  `RuleOverrides`/resolver/DTO/parser/config-snapshot, with an Images section in Advanced scoped to
-  Other libraries; the format picker is gated to encodable formats so only WebP is offered until
-  AVIF/JXL encode lands). **Animated images are skipped** (a multi-frame GIF/WebP is detected via
-  the probed frame count and left untouched rather than flattened into a broken still). Verified
-  end-to-end in a container: still PNG/BMP/TIFF optimise to WebP with large savings, dimensions
-  retained, and verification passing. **Per-image SSIM quality scoring and the opt-in EXIF/ICC-retention
-  gate are now done** (the latter fails an image that drops the original's ICC profile or EXIF).
-- **Image re-optimisation marker.** The intent is for image outputs to carry the same
-  `OptimisationMarker` as video/audio. In-container testing showed ffmpeg's `libwebp` encoder
-  **silently drops `-metadata`**, so a WebP output carries no container tag — writing it needs an
-  EXIF/XMP tool (e.g. `exiftool`) ffmpeg lacks. Until then, re-optimisation is prevented by the
-  database optimisation history and the "already in the target format" check; the portable marker
-  for images is tracked in [`KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md).
+- **Image optimisation: done.** JPEG and WebP form the selectable
+  compatibility-to-efficiency range with validated quality mappings and configurable,
+  aspect-preserving downscaling. Candidate rules fail closed on unknown animation/multipage state,
+  alpha loss, high-bit-depth loss, and unapproved lossless-to-lossy conversion. Replacement requires
+  decode/readability, intended dimensions, size saving, default-on SSIM, and EXIF/ICC retention;
+  ExifTool copies safe metadata and writes the portable optimisation marker that FFmpeg's still
+  encoders cannot retain themselves. Container CI encodes, probes, metadata-checks, and decodes all
+  production targets, including lossless RGBA WebP comparison. AVIF was withdrawn after final-image
+  testing proved the production Jellyfin FFmpeg does not ship an AVIF encoder; persisted AVIF
+  overrides migrate safely to WebP.
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
-  stereo downmix done**; image rules to follow.
+  stereo downmix, image target/quality/downscale, and loss-policy controls done.**
 - **Scope the library Advanced-options UI to the library's media type.** The form now shows
   only the controls that apply to the library's `MediaType` — video settings (codec/container,
   CRF, encoder preset, max resolution, HDR handling, VMAF, and the video-audio codec/bitrate)
@@ -716,7 +704,7 @@ Deliverables:
   (it applies wherever audio is re-encoded). Purely a UI refinement; the underlying per-library
   overrides are unchanged. **Done.**
 - Pure, unit-tested resolvers/evaluators per kind; the worker dispatches by media
-  kind to the right command builder and verifier.
+  kind to the right command builder and verifier. **Done.**
 
 Exit criteria:
 
@@ -733,8 +721,9 @@ with the library's resolved settings — that never moves or replaces anything, 
 restart. The compare panel shows the original next to the encoded result with a per-media-type
 viewer (image/video/audio, range-streamed), a size/codec/resolution/audio stats table with the %
 size saving, and the full Phase 9 verification report. Long video previews use a 60-second sample
-from the middle of the source and verify against a temporary clipped reference from that same window,
-so segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
+from the middle; VMAF seeks and decodes the full original at that exact sample start, rather than
+judging against a stream-copied clip that may retain pre-roll from the preceding keyframe, so
+segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
 previewing then enqueuing already works). The Quarantine compare-to-approve half was delivered
 earlier.
 

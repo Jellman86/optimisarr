@@ -8,7 +8,7 @@ public sealed class MediaProbeParseTests
     private const string SampleJson = """
     {
       "streams": [
-        { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080 },
+        { "codec_type": "video", "codec_name": "h264", "profile": "High", "width": 1920, "height": 1080 },
         { "codec_type": "audio", "codec_name": "eac3" },
         { "codec_type": "audio", "codec_name": "aac" },
         { "codec_type": "subtitle", "codec_name": "subrip" }
@@ -28,6 +28,7 @@ public sealed class MediaProbeParseTests
         Assert.Equal("h264", result.VideoCodec);
         Assert.Equal(1920, result.Width);
         Assert.Equal(1080, result.Height);
+        Assert.Equal("High", result.VideoProfile);
         Assert.Equal(new[] { "eac3", "aac" }, result.AudioCodecs);
         Assert.Equal(2, result.AudioTrackCount);
         Assert.Equal(1, result.SubtitleTrackCount);
@@ -144,6 +145,31 @@ public sealed class MediaProbeParseTests
 
         Assert.Equal(MediaKind.Audio, result.MediaKind);
         Assert.Null(result.VideoCodec);
+        Assert.Equal(1, result.AttachedPictureCount);
+    }
+
+    [Fact]
+    public void Parse_records_format_tags_for_audio_metadata_verification()
+    {
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "audio", "codec_name": "flac",
+            "tags": { "LYRICS": "Example lyrics" }
+          }],
+          "format": {
+            "format_name": "flac",
+            "tags": { "ARTIST": "Example Artist", "album": "Example Album", "empty": "" }
+          }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".flac");
+
+        Assert.Equal("Example Artist", result.FormatTags["artist"]);
+        Assert.Equal("Example Album", result.FormatTags["ALBUM"]);
+        Assert.Equal("Example lyrics", result.FormatTags["lyrics"]);
+        Assert.False(result.FormatTags.ContainsKey("empty"));
     }
 
     [Fact]
@@ -159,6 +185,54 @@ public sealed class MediaProbeParseTests
         var result = MediaProbeService.Parse(json, ".png");
 
         Assert.Equal(MediaKind.Image, result.MediaKind);
+    }
+
+    [Fact]
+    public void Parse_records_pixel_format_and_bit_depth_for_image_safety_rules()
+    {
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "png", "width": 800, "height": 600,
+            "pix_fmt": "rgba64be", "bits_per_raw_sample": "16", "nb_frames": "1"
+          }],
+          "format": { "format_name": "png_pipe" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".png");
+
+        Assert.Equal("rgba64be", result.PixelFormat);
+        Assert.Equal(16, result.BitsPerRawSample);
+    }
+
+    [Theory]
+    [InlineData("30000/1001", "30000/1001", false)]
+    [InlineData("30/1", "24/1", true)]
+    public void Parse_detects_variable_frame_rate_from_nominal_and_average_rates(
+        string nominal, string average, bool expected)
+    {
+        var json = $$"""
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+            "r_frame_rate": "{{nominal}}", "avg_frame_rate": "{{average}}"
+          }],
+          "format": { "format_name": "mov,mp4" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp4");
+
+        Assert.Equal(expected, result.IsVariableFrameRate);
+    }
+
+    [Fact]
+    public void Parse_leaves_frame_rate_unknown_when_evidence_is_missing()
+    {
+        var result = MediaProbeService.Parse(SampleJson);
+
+        Assert.Null(result.IsVariableFrameRate);
     }
 
     [Fact]

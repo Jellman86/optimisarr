@@ -24,6 +24,8 @@ public sealed record TranscodeSpec(
     string? ImageEncoder = null,
     int? ImageQuality = null,
     string? ImageScaleFilter = null,
+    bool ImageLossless = false,
+    bool SourceIsVariableFrameRate = false,
     int? ClipSeconds = null,
     int? ClipStartSeconds = null);
 
@@ -36,9 +38,7 @@ public sealed record TranscodeSpec(
 public static class FfmpegCommandBuilder
 {
     // A conservative Rec.709 tone-map chain for HDR (PQ/HLG) -> SDR.
-    private const string TonemapFilter =
-        "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable," +
-        "zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
+    private const string TonemapFilter = HdrToneMap.Filter;
 
     /// <param name="threads">
     /// CPU thread cap for encoding; <c>0</c> (or less) lets ffmpeg decide. Surfaced
@@ -237,14 +237,15 @@ public static class FfmpegCommandBuilder
             args.Add(spec.Preset);
         }
 
-        // MP4/MOV expect a constant frame rate: a variable-frame-rate source (whose timebase is not
-        // cleanly divisible by the frame rate) drifts out of audio/video sync in the MP4 timeline,
-        // which the A/V-sync verification gate then rejects. Normalise the re-encoded video to CFR for
-        // MP4-family outputs only — Matroska carries VFR natively, so it is left untouched.
-        if (IsMp4Family(spec.OutputPath))
+        // Preserve a source that ffprobe positively identified as VFR. MP4 supports variable frame
+        // durations; forcing CFR duplicates/drops frames and changes motion cadence. Demux timebase
+        // keeps encoder timestamps anchored to the source. CFR and unknown sources need no override.
+        if (spec.SourceIsVariableFrameRate)
         {
             args.Add("-fps_mode");
-            args.Add("cfr");
+            args.Add("vfr");
+            args.Add("-enc_time_base:v:0");
+            args.Add("demux");
         }
 
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
@@ -295,6 +296,22 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
+        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg.
+        // AAC and Opus candidates with attached pictures are rejected before dispatch because
+        // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
+        // Map MP3's picture before the audio and target its output stream explicitly.
+        if (Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("-map");
+            args.Add("0:v?");
+            args.Add("-c:v:0");
+            // Normalise artwork to the universally supported APIC/MP4 cover codec so both JPEG
+            // and PNG source pictures have one deterministic representation across players.
+            args.Add("mjpeg");
+            args.Add("-disposition:v:0");
+            args.Add("attached_pic");
+        }
+
         args.Add("-map");
         args.Add("0:a");
         args.Add("-c:a");
@@ -308,11 +325,15 @@ public static class FfmpegCommandBuilder
 
         AppendDownmix(args, spec);
 
-        // "?" makes the cover-art stream optional so audio with no embedded art still works.
-        args.Add("-map");
-        args.Add("0:v?");
-        args.Add("-c:v");
-        args.Add("copy");
+        // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
+        // containers cannot, and their candidates are rejected when such a stream exists.
+        if (Path.GetExtension(spec.OutputPath).Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("-map");
+            args.Add("0:s?");
+            args.Add("-c:s");
+            args.Add("mov_text");
+        }
     }
 
     private static void AppendImageArguments(List<string> args, TranscodeSpec spec)
@@ -344,13 +365,10 @@ public static class FfmpegCommandBuilder
         args.Add("-c:v");
         args.Add(encoder);
 
-        // A still is a single frame; tell the AV1 encoder so, and give it a 4:2:0 pixel format.
-        if (encoder == "libaom-av1")
+        if (encoder == "libwebp" && spec.ImageLossless)
         {
-            args.Add("-still-picture");
+            args.Add("-lossless");
             args.Add("1");
-            args.Add("-pix_fmt");
-            args.Add("yuv420p");
         }
 
         args.AddRange(qualityArgs);
@@ -367,8 +385,6 @@ public static class FfmpegCommandBuilder
             "libwebp" => new[] { "-quality", q.ToString() },
             // mjpeg uses -q:v 2 (best) … 31 (worst); invert and scale our 0–100 onto that range.
             "mjpeg" => new[] { "-q:v", MapToRange(q, bestAt100: 2, worstAt0: 31).ToString() },
-            // libaom-av1 still image uses constant-quality CRF 0 (best) … 63 (worst) with -b:v 0.
-            "libaom-av1" => new[] { "-crf", MapToRange(q, bestAt100: 0, worstAt0: 63).ToString(), "-b:v", "0" },
             _ => throw new NotSupportedException(
                 $"Image encoding for encoder '{encoder}' is not implemented yet.")
         };

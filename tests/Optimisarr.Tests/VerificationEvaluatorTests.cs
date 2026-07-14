@@ -59,7 +59,10 @@ public sealed class VerificationEvaluatorTests
         OriginalWidth = 4000,
         OriginalHeight = 3000,
         OutputWidth = 4000,
-        OutputHeight = 3000
+        OutputHeight = 3000,
+        ImageQualityMeasured = true,
+        ImageSsim = 0.99,
+        ImageMetadataMeasured = true
     };
 
     [Fact]
@@ -187,9 +190,10 @@ public sealed class VerificationEvaluatorTests
     private const string ImageMetadataCheck = "Image metadata (EXIF/ICC)";
 
     [Fact]
-    public void Image_metadata_gate_is_absent_unless_enabled()
+    public void Image_metadata_gate_is_absent_when_explicitly_disabled()
     {
-        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+        var policy = VerificationPolicy.Default with { ImageMetadataGateEnabled = false };
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), policy);
 
         Assert.DoesNotContain(report.Checks, check => check.Name == ImageMetadataCheck);
     }
@@ -206,7 +210,8 @@ public sealed class VerificationEvaluatorTests
     public void Image_metadata_gate_fails_closed_when_it_could_not_be_measured()
     {
         // The gate is enabled but exiftool produced nothing; fail rather than assume retention.
-        var report = VerificationEvaluator.Evaluate(HealthyImage(), ImageMetadataGate);
+        var report = VerificationEvaluator.Evaluate(
+            HealthyImage() with { ImageMetadataMeasured = false }, ImageMetadataGate);
 
         Assert.False(report.Passed);
         Assert.Equal(CheckOutcome.Failed, Outcome(report, ImageMetadataCheck));
@@ -289,9 +294,10 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
-    public void Image_quality_gate_is_absent_unless_enabled()
+    public void Image_quality_gate_is_absent_when_explicitly_disabled()
     {
-        var report = VerificationEvaluator.Evaluate(HealthyImage(), VerificationPolicy.Default);
+        var policy = VerificationPolicy.Default with { ImageQualityGateEnabled = false };
+        var report = VerificationEvaluator.Evaluate(HealthyImage(), policy);
 
         Assert.DoesNotContain(report.Checks, check => check.Name == ImageQualityCheck);
     }
@@ -403,6 +409,60 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
         Assert.False(report.Passed);
     }
+
+    [Fact]
+    public void An_audio_output_that_loses_cover_art_fails()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalAttachedPictureCount = 1,
+            OutputAttachedPictureCount = 0
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio metadata and artwork"));
+    }
+
+    [Fact]
+    public void An_audio_output_that_loses_or_changes_a_source_tag_fails()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalFormatTags = new Dictionary<string, string> { ["ARTIST"] = "Example", ["album"] = "First" },
+            OutputFormatTags = new Dictionary<string, string> { ["artist"] = "Example", ["album"] = "Second" }
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio metadata and artwork"));
+    }
+
+    [Fact]
+    public void Audio_tag_aliases_and_regenerated_container_tags_are_handled_safely()
+    {
+        var input = HealthyAudio() with
+        {
+            OriginalAttachedPictureCount = 1,
+            OutputAttachedPictureCount = 1,
+            OriginalFormatTags = new Dictionary<string, string>
+            {
+                ["ALBUMARTIST"] = "Example",
+                ["YEAR"] = "2026",
+                ["encoder"] = "source encoder"
+            },
+            OutputFormatTags = new Dictionary<string, string>
+            {
+                ["album_artist"] = "Example",
+                ["date"] = "2026",
+                ["encoder"] = "Lavf"
+            }
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio metadata and artwork"));
+    }
     // A converted output that passes every default gate: decodes cleanly, probes,
     // keeps duration and audio, and is meaningfully smaller than the original.
     private static VerificationInput Healthy() => new(
@@ -419,7 +479,21 @@ public sealed class VerificationEvaluatorTests
         OriginalAudioTrackCount: 2,
         OutputAudioTrackCount: 2,
         OriginalSubtitleTrackCount: 1,
-        OutputSubtitleTrackCount: 1);
+        OutputSubtitleTrackCount: 1,
+        OriginalWidth: 1920,
+        OriginalHeight: 1080,
+        OutputWidth: 1920,
+        OutputHeight: 1080,
+        OriginalVideoCodec: "h264",
+        ExpectedVideoCodec: "hevc",
+        OriginalPixelFormat: "yuv420p",
+        OutputPixelFormat: "yuv420p",
+        OriginalBitsPerRawSample: 8,
+        OutputBitsPerRawSample: 8,
+        OriginalVideoProfile: "High",
+        OutputVideoProfile: "Main",
+        QualityMeasured: true,
+        QualityScores: new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99));
 
     private static CheckOutcome Outcome(VerificationReport report, string name) =>
         report.Checks.Single(check => check.Name == name).Outcome;
@@ -463,6 +537,75 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video stream"));
+    }
+
+    [Fact]
+    public void Unexpected_output_video_codec_fails_structural_verification()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OutputVideoCodec = "h264" }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Unrequested_video_resolution_change_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OutputWidth = 1280, OutputHeight = 720 }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Video_bit_depth_reduction_fails()
+    {
+        var input = Healthy() with
+        {
+            OriginalPixelFormat = "yuv420p10le",
+            OriginalBitsPerRawSample = 10,
+            OutputPixelFormat = "yuv420p",
+            OutputBitsPerRawSample = 8
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Video_chroma_subsampling_reduction_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OriginalPixelFormat = "yuv444p", OutputPixelFormat = "yuv420p" },
+            VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Missing_output_video_profile_fails()
+    {
+        var report = VerificationEvaluator.Evaluate(
+            Healthy() with { OutputVideoProfile = null }, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
+    }
+
+    [Fact]
+    public void Remux_must_preserve_codec_and_profile()
+    {
+        var input = Healthy() with
+        {
+            VideoReencoded = false,
+            ExpectedVideoCodec = null,
+            OutputVideoCodec = "h264",
+            OutputVideoProfile = "Main"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Video structure"));
     }
 
     [Fact]
@@ -791,6 +934,49 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Intentional_hdr_to_sdr_accepts_the_expected_rec709_metadata_change()
+    {
+        var input = Healthy() with
+        {
+            OriginalIsHdr = true,
+            HdrConvertedToSdr = true,
+            OutputIsHdr = false,
+            OriginalColorPrimaries = "bt2020",
+            OutputColorPrimaries = "bt709",
+            OriginalColorTransfer = "smpte2084",
+            OutputColorTransfer = "bt709",
+            OriginalColorSpace = "bt2020nc",
+            OutputColorSpace = "bt709"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
+    public void Intentional_hdr_to_sdr_rejects_metadata_that_still_claims_bt2020()
+    {
+        var input = Healthy() with
+        {
+            OriginalIsHdr = true,
+            HdrConvertedToSdr = true,
+            OutputIsHdr = false,
+            OriginalColorPrimaries = "bt2020",
+            OutputColorPrimaries = "bt2020",
+            OriginalColorTransfer = "smpte2084",
+            OutputColorTransfer = "bt709",
+            OriginalColorSpace = "bt2020nc",
+            OutputColorSpace = "bt709"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
     public void Aligned_audio_and_video_starts_pass_sync()
     {
         var input = Healthy() with { OutputVideoStartSeconds = 0.0, OutputAudioStartSeconds = 0.02 };
@@ -804,6 +990,58 @@ public sealed class VerificationEvaluatorTests
     public void Gross_av_desync_fails()
     {
         var input = Healthy() with { OutputVideoStartSeconds = 0.0, OutputAudioStartSeconds = 1.5 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, SyncCheck));
+    }
+
+    [Fact]
+    public void An_inherent_source_av_offset_faithfully_preserved_passes_sync()
+    {
+        // The source already carries a ~1s audio start delay; the transcode preserves it.
+        // That is not a desync the transcode introduced, so the gate must pass.
+        var input = Healthy() with
+        {
+            OriginalVideoStartSeconds = 0.0,
+            OriginalAudioStartSeconds = 0.996,
+            OutputVideoStartSeconds = 0.0,
+            OutputAudioStartSeconds = 0.996,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, SyncCheck));
+    }
+
+    [Fact]
+    public void A_transcode_that_shifts_the_av_offset_beyond_tolerance_fails_sync()
+    {
+        // Source audio/video aligned, but the output pushed them apart — a real regression.
+        var input = Healthy() with
+        {
+            OriginalVideoStartSeconds = 0.0,
+            OriginalAudioStartSeconds = 0.0,
+            OutputVideoStartSeconds = 0.0,
+            OutputAudioStartSeconds = 0.8,
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, SyncCheck));
+    }
+
+    [Fact]
+    public void A_transcode_that_drops_an_inherent_audio_delay_fails_sync()
+    {
+        // The source had a 1s audio delay; the output removed it, which would desync playback.
+        var input = Healthy() with
+        {
+            OriginalVideoStartSeconds = 0.0,
+            OriginalAudioStartSeconds = 1.0,
+            OutputVideoStartSeconds = 0.0,
+            OutputAudioStartSeconds = 0.0,
+        };
 
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
@@ -858,10 +1096,30 @@ public sealed class VerificationEvaluatorTests
     private const string QualityCheck = "Perceptual quality (VMAF)";
 
     [Fact]
-    public void Quality_gate_is_absent_unless_enabled()
+    public void Quality_gate_is_absent_after_explicit_opt_out()
     {
-        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = false };
 
+        var report = VerificationEvaluator.Evaluate(Healthy(), policy);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == QualityCheck);
+    }
+
+    [Fact]
+    public void Quality_gate_is_absent_for_a_remux()
+    {
+        var input = Healthy() with
+        {
+            VideoReencoded = false,
+            OutputVideoCodec = "h264",
+            OutputVideoProfile = "High",
+            QualityMeasured = false,
+            QualityScores = null
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
         Assert.DoesNotContain(report.Checks, check => check.Name == QualityCheck);
     }
 
@@ -871,13 +1129,19 @@ public sealed class VerificationEvaluatorTests
         var input = Healthy() with
         {
             QualityMeasured = true,
-            QualityScores = new QualityScores(95.0, 94.5, 88.0, 45.0, 0.99)
+            QualityScores = new QualityScores(
+                95.0, 94.5, 88.0, 45.0, 0.99,
+                ModelVersion: "vmaf_v0.6.1",
+                Preprocessing: "SDR")
         };
 
         var report = VerificationEvaluator.Evaluate(input, QualityGate);
 
         Assert.True(report.Passed);
         Assert.Equal(CheckOutcome.Passed, Outcome(report, QualityCheck));
+        var detail = Assert.Single(report.Checks, check => check.Name == QualityCheck).Detail;
+        Assert.Contains("model vmaf_v0.6.1", detail);
+        Assert.Contains("SDR", detail);
     }
 
     [Fact]

@@ -49,6 +49,8 @@ public sealed class MediaFile
 
     public string? VideoCodec { get; set; }
 
+    public string? VideoProfile { get; set; }
+
     public int? Width { get; set; }
 
     public int? Height { get; set; }
@@ -56,10 +58,24 @@ public sealed class MediaFile
     /// <summary>Number of frames in the picture/video stream. >1 marks an animated image.</summary>
     public int? FrameCount { get; set; }
 
+    /// <summary>Whether ffprobe found material divergence between nominal and average frame rate.</summary>
+    public bool? IsVariableFrameRate { get; set; }
+
+    /// <summary>Decoded pixel format used to prevent alpha or high-bit-depth image loss.</summary>
+    public string? PixelFormat { get; set; }
+
+    public int? BitsPerRawSample { get; set; }
+
+    /// <summary>Embedded album-art streams reported with the attached-picture disposition.</summary>
+    public int AttachedPictureCount { get; set; }
+
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 
     public int? AudioTrackCount { get; set; }
+
+    /// <summary>Largest channel count among the source audio streams.</summary>
+    public int MaxAudioChannels { get; set; }
 
     /// <summary>
     /// The source audio bitrate in kbps (the highest audio stream, or the container bitrate for

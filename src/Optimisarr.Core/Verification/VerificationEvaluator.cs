@@ -32,6 +32,13 @@ public static class VerificationEvaluator
             checks.Add(SubtitlesRetained(input, policy));
         }
 
+        // Music metadata and embedded artwork are part of the media, not decoration. Audio-only
+        // jobs must prove both survived before their source can be replaced.
+        if (input.Kind == MediaKind.Audio)
+        {
+            checks.Add(AudioMetadataPreserved(input));
+        }
+
         checks.Add(SizeReduced(input, policy));
 
         // A still is verified as an image: it must contain a picture and keep its dimensions.
@@ -42,14 +49,14 @@ public static class VerificationEvaluator
             checks.Add(DimensionsRetained(input));
 
             // The structural-quality (SSIM) gate is the still-image counterpart of VMAF and
-            // only contributes when the user has opted in; otherwise the report is unchanged.
+            // contributes when enabled (the safe default); otherwise the report is unchanged.
             if (policy.ImageQualityGateEnabled)
             {
                 checks.Add(ImageQuality(input, policy));
             }
 
             // The metadata gate fails an image whose re-encode silently dropped the source's
-            // ICC colour profile or EXIF; opt-in, and only flags loss (never a gain).
+            // ICC colour profile or EXIF; enabled by default, and only flags loss (never a gain).
             if (policy.ImageMetadataGateEnabled)
             {
                 checks.Add(ImageMetadataPreserved(input));
@@ -59,6 +66,7 @@ public static class VerificationEvaluator
         if (isVideo)
         {
             checks.Add(VideoStreamPresent(input));
+            checks.Add(VideoStructurePreserved(input));
         }
 
         // HDR preservation only matters when the original carries an HDR signal, so
@@ -108,9 +116,9 @@ public static class VerificationEvaluator
             checks.Add(TailComplete(input));
         }
 
-        // The perceptual-quality (VMAF) gate is a video measure, and only contributes when
-        // the user has opted in; otherwise the report and its cost are unchanged.
-        if (isVideo && policy.QualityGateEnabled)
+        // Remuxes copy the encoded frames unchanged, so VMAF is both redundant and expensive.
+        // Non-video media use their applicable audio/image gates instead.
+        if (policy.RequiresVmaf(input.Kind, input.VideoReencoded))
         {
             checks.Add(PerceptualQuality(input, policy));
         }
@@ -126,6 +134,69 @@ public static class VerificationEvaluator
         }
 
         return new VerificationReport(checks);
+    }
+
+    private static VerificationCheck AudioMetadataPreserved(VerificationInput input)
+    {
+        const string name = "Audio metadata and artwork";
+        if (input.OutputAttachedPictureCount < input.OriginalAttachedPictureCount)
+        {
+            return Fail(name,
+                $"Embedded artwork dropped from {input.OriginalAttachedPictureCount} to {input.OutputAttachedPictureCount} picture(s).");
+        }
+
+        var original = NormaliseAudioTags(input.OriginalFormatTags);
+        var output = NormaliseAudioTags(input.OutputFormatTags);
+        foreach (var (key, value) in original)
+        {
+            if (!output.TryGetValue(key, out var outputValue))
+            {
+                return Fail(name, $"Audio metadata tag '{key}' was lost.");
+            }
+
+            if (!string.Equals(value, outputValue, StringComparison.Ordinal))
+            {
+                return Fail(name, $"Audio metadata tag '{key}' changed during conversion.");
+            }
+        }
+
+        return Pass(name,
+            $"Retained {original.Count} source metadata tag(s) and {input.OriginalAttachedPictureCount} embedded picture(s).");
+    }
+
+    private static IReadOnlyDictionary<string, string> NormaliseAudioTags(
+        IReadOnlyDictionary<string, string>? tags)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (tags is null)
+        {
+            return result;
+        }
+
+        foreach (var (rawKey, rawValue) in tags)
+        {
+            var key = rawKey.Trim().ToLowerInvariant() switch
+            {
+                "albumartist" => "album_artist",
+                "year" => "date",
+                var other => other
+            };
+
+            // Technical container fields are regenerated legitimately and are not music tags.
+            if (key is "encoder" or "vendor_id" or "major_brand" or "minor_version"
+                or "compatible_brands" or "handler_name" or "duration" or "language"
+                or "optimisarr")
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rawValue))
+            {
+                result[key] = rawValue.Trim();
+            }
+        }
+
+        return result;
     }
 
     private static VerificationCheck NoClippingIntroduced(VerificationInput input, VerificationPolicy policy)
@@ -174,6 +245,22 @@ public static class VerificationEvaluator
 
     private static VerificationCheck ColorMetadataPreserved(VerificationInput input)
     {
+        if (input.HdrConvertedToSdr)
+        {
+            // The shared production tone-map deliberately converts BT.2020/PQ or
+            // HLG into limited-range Rec.709. Comparing output tags with the HDR
+            // source would reject the intended conversion; validate the declared
+            // SDR domain instead so stale HDR tags still fail safely.
+            var unexpected = new List<string>();
+            AddUnexpectedToneMapValue(unexpected, "primaries", input.OutputColorPrimaries);
+            AddUnexpectedToneMapValue(unexpected, "transfer", input.OutputColorTransfer);
+            AddUnexpectedToneMapValue(unexpected, "matrix", input.OutputColorSpace);
+
+            return unexpected.Count == 0
+                ? Pass("Colour metadata", "Intentional HDR-to-SDR output is tagged as Rec.709.")
+                : Fail("Colour metadata", $"Tone-mapped SDR metadata is invalid: {string.Join("; ", unexpected)}.");
+        }
+
         // Only a definite change is a failure: the original and output both declare a
         // value and they differ (e.g. BT.709 re-tagged as BT.601). A dropped tag on the
         // output is treated as benign, since absence usually means "container default".
@@ -185,6 +272,14 @@ public static class VerificationEvaluator
         return mismatches.Count == 0
             ? Pass("Colour metadata", "Colour primaries, transfer, and matrix preserved.")
             : Fail("Colour metadata", $"Colour metadata changed: {string.Join("; ", mismatches)}.");
+    }
+
+    private static void AddUnexpectedToneMapValue(List<string> unexpected, string label, string? output)
+    {
+        if (output is not null && !string.Equals(output, "bt709", StringComparison.OrdinalIgnoreCase))
+        {
+            unexpected.Add($"{label} is {output}, expected bt709");
+        }
     }
 
     private static void AddMismatch(List<string> mismatches, string label, string? original, string? output)
@@ -239,18 +334,38 @@ public static class VerificationEvaluator
 
     private static VerificationCheck AvSync(VerificationInput input)
     {
-        // A small start offset (audio priming, container quirks) is normal; only a gross
-        // divergence indicates the output's audio and video are out of sync.
+        // A source can legitimately carry an inherent A/V start offset (audio priming, an
+        // authored audio delay, container quirks) that plays fine. Faithfully preserving that
+        // offset is not a desync — so when the original's start times are known, judge the
+        // *change* the transcode made to the A/V relationship, not the output's absolute offset.
         const double toleranceSeconds = 0.5;
-        var drift = Math.Abs(input.OutputVideoStartSeconds!.Value - input.OutputAudioStartSeconds!.Value);
-        var detail = string.Format(
+        var outputOffset = input.OutputVideoStartSeconds!.Value - input.OutputAudioStartSeconds!.Value;
+
+        if (input.OriginalVideoStartSeconds is { } originalVideo
+            && input.OriginalAudioStartSeconds is { } originalAudio)
+        {
+            var originalOffset = originalVideo - originalAudio;
+            var drift = Math.Abs(outputOffset - originalOffset);
+            var detail = string.Format(
+                CultureInfo.InvariantCulture,
+                "Original A/V start offset {0:0.###}s, output {1:0.###}s ({2:0.###}s change, tolerance {3:0.###}s).",
+                originalOffset, outputOffset, drift, toleranceSeconds);
+
+            return drift <= toleranceSeconds
+                ? Pass("A/V sync", detail)
+                : Fail("A/V sync", detail);
+        }
+
+        // Original start times unknown: fall back to the output's absolute A/V start divergence.
+        var absoluteDrift = Math.Abs(outputOffset);
+        var absoluteDetail = string.Format(
             CultureInfo.InvariantCulture,
             "Video starts at {0:0.###}s, audio at {1:0.###}s ({2:0.###}s offset, tolerance {3:0.###}s).",
-            input.OutputVideoStartSeconds.Value, input.OutputAudioStartSeconds.Value, drift, toleranceSeconds);
+            input.OutputVideoStartSeconds.Value, input.OutputAudioStartSeconds.Value, absoluteDrift, toleranceSeconds);
 
-        return drift <= toleranceSeconds
-            ? Pass("A/V sync", detail)
-            : Fail("A/V sync", detail);
+        return absoluteDrift <= toleranceSeconds
+            ? Pass("A/V sync", absoluteDetail)
+            : Fail("A/V sync", absoluteDetail);
     }
 
     private static VerificationCheck AudioFidelity(VerificationInput input)
@@ -403,6 +518,14 @@ public static class VerificationEvaluator
         {
             parts.Add(string.Format(CultureInfo.InvariantCulture, "SSIM {0:0.####}", ssim));
         }
+        if (!string.IsNullOrWhiteSpace(scores.ModelVersion))
+        {
+            parts.Add($"model {scores.ModelVersion}");
+        }
+        if (!string.IsNullOrWhiteSpace(scores.Preprocessing))
+        {
+            parts.Add(scores.Preprocessing);
+        }
 
         return string.Join("; ", parts) + ".";
     }
@@ -468,6 +591,74 @@ public static class VerificationEvaluator
         !string.IsNullOrWhiteSpace(input.OutputVideoCodec)
             ? Pass("Video stream", $"Output has a video stream ({input.OutputVideoCodec}).")
             : Fail("Video stream", "Output has no video stream.");
+
+    private static VerificationCheck VideoStructurePreserved(VerificationInput input)
+    {
+        const string name = "Video structure";
+        var requiredCodec = input.VideoReencoded ? input.ExpectedVideoCodec : input.OriginalVideoCodec;
+        if (string.IsNullOrWhiteSpace(requiredCodec)
+            || !string.Equals(requiredCodec, input.OutputVideoCodec, StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(name,
+                $"Expected codec {Describe(requiredCodec)}, output codec {Describe(input.OutputVideoCodec)}.");
+        }
+
+        if (input.OriginalWidth is not { } originalWidth || input.OriginalHeight is not { } originalHeight
+            || input.OutputWidth is not { } outputWidth || input.OutputHeight is not { } outputHeight)
+        {
+            return Fail(name, "Source/output video dimensions could not be compared.");
+        }
+
+        if (originalWidth != outputWidth || originalHeight != outputHeight)
+        {
+            return Fail(name,
+                $"Video resolution changed from {originalWidth}x{originalHeight} to {outputWidth}x{outputHeight} without a resize policy.");
+        }
+
+        var originalFormat = PixelFormatInfo.Parse(input.OriginalPixelFormat, input.OriginalBitsPerRawSample);
+        var outputFormat = PixelFormatInfo.Parse(input.OutputPixelFormat, input.OutputBitsPerRawSample);
+        if (originalFormat is null || outputFormat is null)
+        {
+            return Fail(name,
+                $"Pixel format could not be compared (source {Describe(input.OriginalPixelFormat)}, output {Describe(input.OutputPixelFormat)}).");
+        }
+
+        if (outputFormat.Value.BitDepth < originalFormat.Value.BitDepth)
+        {
+            return Fail(name,
+                $"Video bit depth dropped from {originalFormat.Value.BitDepth}-bit to {outputFormat.Value.BitDepth}-bit.");
+        }
+
+        if (outputFormat.Value.ChromaRank < originalFormat.Value.ChromaRank)
+        {
+            return Fail(name,
+                $"Chroma sampling was reduced ({input.OriginalPixelFormat} → {input.OutputPixelFormat}).");
+        }
+
+        if (string.IsNullOrWhiteSpace(input.OutputVideoProfile))
+        {
+            return Fail(name, "Output video profile was not reported.");
+        }
+
+        if (!input.VideoReencoded
+            && !string.Equals(input.OriginalVideoProfile, input.OutputVideoProfile, StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(name,
+                $"Remux changed the video profile from {Describe(input.OriginalVideoProfile)} to {input.OutputVideoProfile}.");
+        }
+
+        if (outputFormat.Value.BitDepth > 8
+            && !input.OutputVideoProfile.Contains("10", StringComparison.OrdinalIgnoreCase)
+            && !input.OutputVideoProfile.Contains("12", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(input.OutputVideoCodec, "av1", StringComparison.OrdinalIgnoreCase))
+        {
+            return Fail(name,
+                $"Output profile '{input.OutputVideoProfile}' does not describe its {outputFormat.Value.BitDepth}-bit signal.");
+        }
+
+        return Pass(name,
+            $"{outputWidth}x{outputHeight}, {input.OutputPixelFormat}, profile {input.OutputVideoProfile}, codec {input.OutputVideoCodec}.");
+    }
 
     private static VerificationCheck DurationWithinTolerance(VerificationInput input, VerificationPolicy policy)
     {

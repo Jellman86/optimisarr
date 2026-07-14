@@ -23,7 +23,7 @@ public static class RuleResolver
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
             TargetAudioCodec = Normalise(overrides.TargetAudioCodec) ?? settings.TargetAudioCodec,
             AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps,
-            VideoAudioCodec = Normalise(overrides.VideoAudioCodec) ?? settings.VideoAudioCodec,
+            VideoAudioCodec = ResolveVideoAudioCodec(overrides.VideoAudioCodec, settings.VideoAudioCodec),
             VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
             DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo,
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,
@@ -39,5 +39,15 @@ public static class RuleResolver
     {
         var trimmed = value?.Trim();
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
+    private static string? ResolveVideoAudioCodec(string? value, string? profileDefault)
+    {
+        var normalised = Normalise(value);
+        return value is null
+            ? profileDefault
+            : string.Equals(normalised, "copy", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : normalised ?? profileDefault;
     }
 }

@@ -8,7 +8,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
     <!-- EF Core 10 transitively resolves the vulnerable 2.1.11 native SQLite bundle. Pin the
          current SQLitePCLRaw native library until EF Core ships a newer stable dependency. -->
-    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
 
   <PropertyGroup>

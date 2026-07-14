@@ -7,10 +7,10 @@ namespace Optimisarr.Core.Rules;
 /// pairings are opinionated and researched (see the notes on each profile) so an operator can
 /// pick a profile and trust it without tuning; per-library overrides still layer on top.
 ///
-/// Audio defaults to <em>copy</em> (the source track is preserved bit-exact) on every profile;
-/// the comments record the recommended audio codec to opt into, but a video re-encode never
-/// silently downgrades the original audio. CRF values target visually-transparent quality for
-/// each codec rather than the encoder's arbitrary built-in default.
+/// The MP4 compatibility profiles pair video with channel-aware AAC so their playback promise
+/// covers the complete file, not only its picture stream. Efficiency/remux profiles retain audio;
+/// an explicit per-library <c>copy</c> override is always available. CRF values target
+/// visually-transparent quality rather than the encoder's arbitrary built-in default.
 /// </summary>
 public static class RuleProfileDefaults
 {
@@ -40,7 +40,9 @@ public static class RuleProfileDefaults
             DefaultCrf = 24,
             MinFileSizeBytes = DefaultMinReencodeSize,
             MinSourceBitsPerPixelSecond = HevcEfficiencyFloor,
-            Hdr = HdrHandling.Exclude
+            Hdr = HdrHandling.Exclude,
+            VideoAudioCodec = "aac",
+            VideoAudioBitrateKbps = 160
         },
         // Maximum compatibility: H.264 + AAC in MP4 plays literally everywhere, at the cost of
         // larger files. x264 CRF 20 is visually transparent at 1080p.
@@ -52,7 +54,9 @@ public static class RuleProfileDefaults
             DefaultCrf = 20,
             MinFileSizeBytes = DefaultMinReencodeSize,
             MinSourceBitsPerPixelSecond = H264EfficiencyFloor,
-            Hdr = HdrHandling.Exclude
+            Hdr = HdrHandling.Exclude,
+            VideoAudioCodec = "aac",
+            VideoAudioBitrateKbps = 160
         },
         // Maximum efficiency: AV1 (30–50% smaller than HEVC, royalty-free, slower to encode) with
         // Opus audio in MKV — MP4 + Opus has spotty player support, so MKV is the right home.

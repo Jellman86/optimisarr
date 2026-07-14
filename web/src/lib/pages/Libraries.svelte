@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
+  import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -22,22 +23,22 @@
   })
 
   // Named queue-priority levels, so the card uses a dropdown instead of a raw number.
-  const priorityLevels = [
-    { value: 2, label: 'Highest' },
-    { value: 1, label: 'High' },
-    { value: 0, label: 'Normal' },
-    { value: -1, label: 'Low' },
-    { value: -2, label: 'Lowest' },
-  ]
+  const priorityLevels = $derived([
+    { value: 2, label: i18n.m.libraries.priority_highest },
+    { value: 1, label: i18n.m.libraries.priority_high },
+    { value: 0, label: i18n.m.libraries.priority_normal },
+    { value: -1, label: i18n.m.libraries.priority_low },
+    { value: -2, label: i18n.m.libraries.priority_lowest },
+  ])
 
-  const resolutionLimits = [
-    { value: null, label: 'No limit' },
+  const resolutionLimits = $derived([
+    { value: null, label: i18n.m.libraries.resolution_no_limit },
     { value: 2160, label: '2160p (4K)' },
     { value: 1440, label: '1440p' },
     { value: 1080, label: '1080p' },
     { value: 720, label: '720p' },
     { value: 480, label: '480p' },
-  ]
+  ])
 
   const DEFAULT_CRF = 23
   const DEFAULT_VMAF_HARMONIC = 93
@@ -46,13 +47,13 @@
 
   // Plain-language summary of each preset, shown under the picker so a first-time
   // user can choose without knowing codecs.
-  const presetSummaries: Record<string, string> = {
-    ConservativeHevc: 'Space-saving HEVC (H.265) in MP4 — plays on virtually all phones, TVs, and Apple devices. A good default. (AAC audio recommended; audio is kept as-is unless you choose otherwise in Advanced.)',
-    CompatibilityH264: 'H.264 in MP4 — plays literally everywhere, at the cost of larger files. (AAC audio recommended.)',
-    ExperimentalAv1: 'Smallest files using AV1 in MKV, where hardware allows. Slower to encode. (Opus audio recommended.)',
-    RemuxCleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
-    ScottsSettings: "Scott's Settings — HEVC (H.265) in MP4 at CRF 24, HDR preserved, and audio re-encoded to AAC 96 kbps downmixed to stereo. A compatibility-first, space-saving bundle that avoids CPU-heavy HDR-to-SDR tone mapping (the same AAC 96 kbps stereo target applies to a music library).",
-  }
+  const presetSummaries: Record<string, string> = $derived({
+    ConservativeHevc: i18n.m.libraries.preset_conservative_hevc,
+    CompatibilityH264: i18n.m.libraries.preset_compatibility_h264,
+    ExperimentalAv1: i18n.m.libraries.preset_experimental_av1,
+    RemuxCleanup: i18n.m.libraries.preset_remux_cleanup,
+    ScottsSettings: i18n.m.libraries.preset_scotts_settings,
+  })
 
   // The re-encode profiles form a single compatibility→efficiency axis, shown as a slider so the
   // common case is one simple choice; "Scott's Settings" rides along as a named all-in-one preset
@@ -62,18 +63,24 @@
   const encodeProfiles = ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings']
   // "Custom" is one stop past the real presets — selecting it hands the codec/container/quality to
   // the operator (set in Advanced) instead of following a preset, so it stays on the same control.
-  const encodeStopLabels = ['Compatibility', 'Balanced', 'Efficiency', "Scott's", 'Custom']
+  const encodeStopLabels = $derived([
+    i18n.m.libraries.stop_compatibility,
+    i18n.m.libraries.stop_balanced,
+    i18n.m.libraries.stop_efficiency,
+    i18n.m.libraries.stop_scotts,
+    i18n.m.libraries.stop_custom,
+  ])
   const customStopIndex = encodeProfiles.length
 
   // Friendly display names for raw rule-profile ids so a badge reads "Scott's Settings", not the
   // PascalCase enum name "ScottsSettings".
-  const profileLabels: Record<string, string> = {
-    ConservativeHevc: 'Conservative HEVC',
-    CompatibilityH264: 'Compatibility H.264',
-    ExperimentalAv1: 'Experimental AV1',
-    RemuxCleanup: 'Remux / cleanup',
-    ScottsSettings: "Scott's Settings",
-  }
+  const profileLabels: Record<string, string> = $derived({
+    ConservativeHevc: i18n.m.libraries.profile_conservative_hevc,
+    CompatibilityH264: i18n.m.libraries.profile_compatibility_h264,
+    ExperimentalAv1: i18n.m.libraries.profile_experimental_av1,
+    RemuxCleanup: i18n.m.libraries.profile_remux_cleanup,
+    ScottsSettings: i18n.m.libraries.profile_scotts_settings,
+  })
   function profileLabel(profile: string): string {
     return profileLabels[profile] ?? profile
   }
@@ -81,7 +88,7 @@
   // Friendly display names for raw codec ids so a badge reads "HEVC (H.265)", not "hevc".
   const codecLabels: Record<string, string> = { h264: 'H.264', hevc: 'HEVC (H.265)', av1: 'AV1' }
   function prettyCodec(codec: string | null): string {
-    if (!codec) return 'No re-encode'
+    if (!codec) return i18n.m.libraries.codec_none
     return codecLabels[codec.toLowerCase()] ?? codec.toUpperCase()
   }
   type PresetSpec = { codec: string; container: string; crf: number | null }
@@ -128,14 +135,14 @@
   }
 
   function priorityLabel(value: number): string {
-    return priorityLevels.find((level) => level.value === value)?.label ?? 'Normal'
+    return priorityLevels.find((level) => level.value === value)?.label ?? i18n.m.libraries.priority_normal
   }
 
 
   function hdrLabel(hdr: string): string {
-    if (hdr === 'TonemapToSdr') return 'Tonemap to SDR'
-    if (hdr === 'Exclude') return 'Exclude (skip HDR)'
-    if (hdr === 'Preserve') return 'Preserve HDR'
+    if (hdr === 'TonemapToSdr') return i18n.m.libraries.hdr_tonemap
+    if (hdr === 'Exclude') return i18n.m.libraries.hdr_exclude
+    if (hdr === 'Preserve') return i18n.m.libraries.hdr_preserve
     return hdr
   }
   let error = $state<string | null>(null)
@@ -185,7 +192,7 @@
   // Returns true if it is safe to leave the current form (nothing open, no edits, or the user
   // confirmed losing them). Called before opening a different form or closing the editor.
   function confirmDiscardIfDirty(): boolean {
-    return editingId === null || !isDirty || confirm('You have unsaved changes. Discard them?')
+    return editingId === null || !isDirty || confirm(i18n.m.libraries.confirm_discard)
   }
 
   const BYTES_PER_MB = 1024 * 1024
@@ -280,9 +287,9 @@
 
   function overrideSummary(): string {
     const parts: string[] = []
-    if (form.targetVideoCodec) parts.push(`codec (${form.targetVideoCodec.toUpperCase()})`)
-    if (form.targetContainer) parts.push(`container (.${form.targetContainer})`)
-    return parts.join(' and ')
+    if (form.targetVideoCodec) parts.push(t(i18n.m.libraries.override_codec, { codec: form.targetVideoCodec.toUpperCase() }))
+    if (form.targetContainer) parts.push(t(i18n.m.libraries.override_container, { container: form.targetContainer }))
+    return parts.join(i18n.m.libraries.override_join)
   }
 
   function resetToPreset() {
@@ -291,19 +298,18 @@
   }
 
   // A photo library gets its own compatibility→efficiency slider — the image counterpart of the
-  // video preset — mapping a single choice onto JPEG / WebP / AVIF. It is shown only for Photo
+  // video preset — mapping a single choice onto JPEG / WebP. It is shown only for Photo
   // libraries (a mixed "Other" library keeps the video slider and sets the format in Advanced).
-  const imageFormats = ['jpeg', 'webp', 'avif'] as const
+  const imageFormats = ['jpeg', 'webp'] as const
   const showImagePreset = $derived(isImageType(form.mediaType) && !isVideoType(form.mediaType))
   const imageStop = $derived(Math.max(0, imageFormats.indexOf((form.targetImageFormat ?? 'jpeg') as (typeof imageFormats)[number])))
   function setImageStop(value: string) {
     form.targetImageFormat = imageFormats[Number(value)] ?? 'jpeg'
   }
-  const imagePresetSummaries: Record<string, string> = {
-    jpeg: 'JPEG — maximum compatibility. Displays on every media server and client, including Plex. The safe default; the smallest savings.',
-    webp: 'WebP — a good balance. Smaller than JPEG with broad support (Jellyfin, modern browsers and apps), but Plex does not display WebP photos.',
-    avif: 'AVIF — maximum efficiency. The smallest files, but only newer clients (e.g. recent Jellyfin) render it; not supported by Plex.',
-  }
+  const imagePresetSummaries: Record<string, string> = $derived({
+    jpeg: i18n.m.libraries.image_preset_jpeg,
+    webp: i18n.m.libraries.image_preset_webp,
+  })
 
   // Downscale UI: a friendly mode picker maps onto the stored (mode, value) pair. The named caps
   // are MaxLongEdge with a fixed pixel value; "custom" exposes the raw long-edge field.
@@ -407,7 +413,7 @@
     try {
       ;[libraries, options] = await Promise.all([api.libraries(), api.libraryOptions()])
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load libraries'
+      error = err instanceof Error ? err.message : i18n.m.libraries.error_load
     }
     // Tallies are a best-effort enhancement of the list; a failure here must not blank the page.
     void loadSummaries()
@@ -417,6 +423,13 @@
 
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
   let access = $state<Record<number, LibraryAccess>>({})
+
+  function accessMessage(value: LibraryAccess): string {
+    if (!value.exists) return i18n.m.libraries.access_missing_detail
+    if (!value.readable) return i18n.m.libraries.access_unreadable_detail
+    if (!value.writable) return i18n.m.libraries.access_unwritable_detail
+    return i18n.m.libraries.access_ok_detail
+  }
   async function checkAllAccess() {
     for (const library of libraries) {
       try {
@@ -448,7 +461,7 @@
     try {
       editorCandidates = await api.candidates(libraryId)
     } catch (err) {
-      editorCandidatesError = err instanceof Error ? err.message : 'Unable to load candidates'
+      editorCandidatesError = err instanceof Error ? err.message : i18n.m.libraries.error_load_candidates
     } finally {
       editorCandidatesLoading = false
     }
@@ -460,7 +473,7 @@
     try {
       editorExclusions = await api.exclusions(libraryId)
     } catch (err) {
-      editorExclusionsError = err instanceof Error ? err.message : 'Unable to load excluded files'
+      editorExclusionsError = err instanceof Error ? err.message : i18n.m.libraries.error_load_exclusions
     } finally {
       editorExclusionsLoading = false
     }
@@ -475,7 +488,7 @@
         await loadEditorCandidates(editingId)
       }
     } catch (err) {
-      editorExclusionsError = err instanceof Error ? err.message : 'Unable to remove exclusion'
+      editorExclusionsError = err instanceof Error ? err.message : i18n.m.libraries.error_remove_exclusion
     }
   }
 
@@ -602,10 +615,10 @@
         // Keep the workspace open on the just-created library so its Candidates tab is reachable.
         const created = await api.createLibrary(payload())
         editingId = created.id
-        message = `Added library "${form.name}".`
+        message = t(i18n.m.libraries.added, { name: form.name })
       } else if (editingId) {
         await api.updateLibrary(editingId, payload())
-        message = `Updated library "${form.name}".`
+        message = t(i18n.m.libraries.updated, { name: form.name })
       }
       // The saved values are now the baseline, so the form is no longer dirty.
       markPristine()
@@ -613,7 +626,7 @@
       // Re-resolve what the now-saved rules select, so the Candidates tab reflects this Save.
       if (editingId) await loadEditorCandidates(editingId)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to save library'
+      error = err instanceof Error ? err.message : i18n.m.libraries.error_save
     }
   }
 
@@ -623,12 +636,18 @@
     message = null
     try {
       const summary = await api.scanLibrary(library.id)
-      message = `"${library.name}": ${summary.discovered} found, ${summary.added} new, ${summary.updated} updated, ${summary.skippedUnsettled} settling.`
+      message = t(i18n.m.libraries.scan_result, {
+        name: library.name,
+        discovered: summary.discovered,
+        added: summary.added,
+        updated: summary.updated,
+        settling: summary.skippedUnsettled,
+      })
       await load()
       // A scan changes what's probed, so refresh the open library's candidate list too.
       if (editingId === library.id) await loadEditorCandidates(library.id)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Scan failed'
+      error = err instanceof Error ? err.message : i18n.m.libraries.error_scan
     } finally {
       busyId = null
     }
@@ -640,31 +659,36 @@
     message = null
     try {
       const result = await api.enqueueLibrary(library.id)
-      message = `"${library.name}": queued ${result.enqueued} job(s) (${result.alreadyQueued} already queued, ${result.ineligible} not eligible`
-      if (result.importing > 0) message += `, ${result.importing} held back while Sonarr/Radarr imports`
-      message += ').'
-      if (result.enqueued > 0) message += ' See the Queue page.'
+      message = t(i18n.m.libraries.enqueue_result, {
+        name: library.name,
+        enqueued: result.enqueued,
+        alreadyQueued: result.alreadyQueued,
+        ineligible: result.ineligible,
+      })
+      if (result.importing > 0) message += t(i18n.m.libraries.enqueue_importing, { importing: result.importing })
+      message += i18n.m.libraries.enqueue_close
+      if (result.enqueued > 0) message += i18n.m.libraries.enqueue_see_queue
       // Enqueued files are no longer offered, so refresh the open library's candidate list.
       if (editingId === library.id) await loadEditorCandidates(library.id)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Enqueue failed'
+      error = err instanceof Error ? err.message : i18n.m.libraries.error_enqueue
     } finally {
       busyId = null
     }
   }
 
   async function remove(library: Library) {
-    if (!confirm(`Delete "${library.name}"? This removes its ${library.fileCount} inventory entries (your media files are not touched).`)) {
+    if (!confirm(t(i18n.m.libraries.confirm_delete, { name: library.name, count: library.fileCount }))) {
       return
     }
     busyId = library.id
     error = null
     try {
       await api.deleteLibrary(library.id)
-      message = `Deleted library "${library.name}".`
+      message = t(i18n.m.libraries.deleted, { name: library.name })
       await load()
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Delete failed'
+      error = err instanceof Error ? err.message : i18n.m.libraries.error_delete
     } finally {
       busyId = null
     }
@@ -673,15 +697,15 @@
 
 <header class="mb-6 flex items-start justify-between">
   <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Libraries</h1>
+    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.libraries}</h1>
     <p class="text-sm text-slate-500 dark:text-slate-400">
-      One library per content type. Pick a preset and you're done — or open Advanced options to fine-tune the codec, quality, and limits.
+      {i18n.m.libraries.subtitle}
     </p>
   </div>
   {#if editingId !== 0}
     <button class="btn btn-primary" onclick={startAdd}>
       <Icon name="plus" class="h-4 w-4" />
-      Add library
+      {i18n.m.libraries.add_library}
     </button>
   {/if}
 </header>
@@ -717,18 +741,18 @@
 {#snippet configForm()}
   <div class="grid gap-4 sm:grid-cols-2">
     <div>
-      <label class="label" for="lib-name">Name</label>
-      <input id="lib-name" class="input" placeholder="Films" bind:value={form.name} />
+      <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
+      <input id="lib-name" class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
     </div>
     <div>
-      <label class="label" for="lib-path">Path</label>
+      <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
       <div class="flex gap-2">
-        <input id="lib-path" class="input" readonly placeholder="Choose a folder…" value={form.path} />
-        <button type="button" class="btn flex-shrink-0" onclick={() => (pickerOpen = true)}>Browse</button>
+        <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
+        <button type="button" class="btn flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
       </div>
     </div>
     <div>
-      <label class="label" for="lib-type">Media type</label>
+      <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
       <select id="lib-type" class="input" bind:value={form.mediaType}>
         {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
       </select>
@@ -741,7 +765,7 @@
        knobs live under Advanced options. -->
   <div class="mt-4">
     <div class="flex items-center gap-2">
-      <span class="label mb-0">Optimisation preset <InfoTip text="One slider from most-compatible to most-efficient, ending in Custom for a hand-tuned config. Each preset stop picks a researched codec, container, and quality; Scott's Settings preserves HDR and re-encodes audio to AAC 96 kbps stereo. Fine-tune anything in Advanced options." /></span>
+      <span class="label mb-0">{i18n.m.libraries.preset_label} <InfoTip text={i18n.m.libraries.preset_tip} /></span>
     </div>
 
     {#if showVideoOptions}
@@ -753,9 +777,9 @@
           onchange={(e) => toggleRemux(e.currentTarget.checked)}
         />
         <span>
-          Just clean up containers — no re-encode
+          {i18n.m.libraries.remux_label}
           <span class="mt-0.5 block text-xs font-normal text-slate-400">
-            Fast and lossless: remux into a clean container without touching the video or audio.
+            {i18n.m.libraries.remux_hint}
           </span>
         </span>
       </label>
@@ -767,7 +791,7 @@
           max={encodeStopLabels.length - 1}
           step="1"
           class="w-full"
-          aria-label="Compatibility to efficiency"
+          aria-label={i18n.m.libraries.slider_aria}
           value={encodeStop}
           disabled={isRemuxProfile}
           oninput={(e) => setEncodeStop(e.currentTarget.value)}
@@ -787,21 +811,21 @@
 
       <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
         {isCustom
-          ? 'Custom configuration — set the codec, container, and quality yourself in Advanced options. The slider above only sets the baseline for anything left on “Profile default.”'
-          : (presetSummaries[form.ruleProfile] ?? 'Custom preset.')}
+          ? i18n.m.libraries.custom_config_summary
+          : (presetSummaries[form.ruleProfile] ?? i18n.m.libraries.custom_preset_fallback)}
       </p>
 
       <!-- Explicit, concrete selection so the slider isn't a mystery. -->
       <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-        <span class="text-slate-400">Selects:</span>
+        <span class="text-slate-400">{i18n.m.libraries.selects}</span>
         <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.codec}</span>
         {#if !isRemuxProfile}
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container}</span>
           {#if effectiveVideoSpec.crf != null}
-            <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">CRF {effectiveVideoSpec.crf}</span>
+            <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.crf_badge, { crf: effectiveVideoSpec.crf })}</span>
           {/if}
         {:else}
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container} container</span>
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.container_badge, { container: effectiveVideoSpec.container })}</span>
         {/if}
       </div>
 
@@ -809,15 +833,15 @@
         <!-- Neutral, not amber: a custom config is a deliberate choice, not a warning. -->
         <div class="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
           {#if presetOverridden}
-            <span>Custom — the {overrideSummary()} {form.targetVideoCodec && form.targetContainer ? 'are' : 'is'} set in Advanced options. The slider sets the baseline for everything you haven't overridden.</span>
+            <span>{t(i18n.m.libraries.custom_overridden, { summary: overrideSummary(), verb: form.targetVideoCodec && form.targetContainer ? i18n.m.libraries.custom_overridden_are : i18n.m.libraries.custom_overridden_is })}</span>
           {:else}
-            <span>Custom — set the codec, container, and quality in Advanced options. The slider sets the baseline for anything left on “Profile default.”</span>
+            <span>{i18n.m.libraries.custom_plain}</span>
           {/if}
-          <button type="button" class="ml-1 font-medium underline" onclick={selectPresetMode}>Use a preset instead</button>
+          <button type="button" class="ml-1 font-medium underline" onclick={selectPresetMode}>{i18n.m.libraries.use_preset_instead}</button>
         </div>
       {/if}
     {:else if showImagePreset}
-      <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP → AVIF. -->
+      <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP. -->
       <div class="mt-1">
         <input
           class="w-full accent-cyan-600"
@@ -827,28 +851,27 @@
           step="1"
           value={imageStop}
           oninput={(e) => setImageStop(e.currentTarget.value)}
-          aria-label="Image compatibility to efficiency"
+          aria-label={i18n.m.libraries.image_slider_aria}
         />
         <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-          {#each ['JPEG', 'WebP', 'AVIF'] as stop, i}
-            <span class={imageStop === i ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+          {#each imageFormats as stop, i}
+            <span class={imageStop === i ? 'font-semibold uppercase text-slate-700 dark:text-slate-200' : 'uppercase'}>{stop}</span>
           {/each}
         </div>
         <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-slate-400">
-          <span>Most compatible</span>
-          <span>Most efficient</span>
+          <span>{i18n.m.libraries.most_compatible}</span>
+          <span>{i18n.m.libraries.most_efficient}</span>
         </div>
         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{imagePresetSummaries[form.targetImageFormat ?? 'jpeg']}</p>
         <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-          <span class="text-slate-400">Selects:</span>
+          <span class="text-slate-400">{i18n.m.libraries.selects}</span>
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{(form.targetImageFormat ?? 'jpeg').toUpperCase()} (.{(form.targetImageFormat ?? 'jpeg') === 'jpeg' ? 'jpg' : form.targetImageFormat})</span>
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Quality {form.imageQuality ?? 80}</span>
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.quality_badge, { quality: form.imageQuality ?? 80 })}</span>
         </div>
       </div>
     {:else}
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Music library — the compatibility/efficiency video preset doesn't apply. Lossless audio is
-        re-encoded to Opus 128&nbsp;kbps by default; fine-tune the codec and bitrate in Advanced options.
+        {i18n.m.libraries.music_note}
       </p>
     {/if}
   </div>
@@ -856,33 +879,33 @@
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
   <div class="mt-5 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
-    <Toggle bind:checked={form.enabled} label="Library enabled" hint="Included in scans and eligible for the queue." />
+    <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />
 
     <Toggle
       bind:checked={form.autoEnqueueEnabled}
-      label="Optimise automatically"
-      hint="Inside the window below, this library's eligible files are queued and run automatically. Scanning is global (Settings → Library scan interval); jobs still obey the concurrency limit and disk/activity gates."
+      label={i18n.m.libraries.auto_optimise_label}
+      hint={i18n.m.libraries.auto_optimise_hint}
     />
     {#if form.autoEnqueueEnabled}
       <div class="flex flex-wrap items-end gap-4 pl-1">
         <div>
-          <label class="label" for="lib-auto-start">Window start</label>
+          <label class="label" for="lib-auto-start">{i18n.m.libraries.window_start}</label>
           <input id="lib-auto-start" class="input w-32" type="time" bind:value={form.autoEnqueueWindowStart} />
         </div>
         <div>
-          <label class="label" for="lib-auto-end">Window end</label>
+          <label class="label" for="lib-auto-end">{i18n.m.libraries.window_end}</label>
           <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
         </div>
         <p class="max-w-xs text-xs text-slate-500 dark:text-slate-400">
-          Equal times = any time. Eligible files are queued and run while inside the window.
+          {i18n.m.libraries.window_hint}
         </p>
       </div>
     {/if}
 
     <Toggle
       bind:checked={form.autoReplace}
-      label="Replace automatically when verified"
-      hint="When a job passes every verification gate, replace the original without waiting for a manual Replace. The original is still quarantined first and can be rolled back (kept for the quarantine-retention period). Off by default."
+      label={i18n.m.libraries.auto_replace_label}
+      hint={i18n.m.libraries.auto_replace_hint}
     />
   </div>
 
@@ -897,8 +920,8 @@
       aria-expanded={showAdvanced}
     >
       <Icon name="sliders" class="h-4 w-4 text-slate-400" />
-      <span>Advanced options</span>
-      <span class="text-xs font-normal text-slate-400">codec, quality, limits</span>
+      <span>{i18n.m.libraries.advanced}</span>
+      <span class="text-xs font-normal text-slate-400">{i18n.m.libraries.advanced_hint}</span>
       <Icon name="chevron" class="ml-auto h-4 w-4 text-slate-400 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
     </button>
 
@@ -909,35 +932,35 @@
       {#if showVideoOptions}
       <!-- VIDEO — scoped to Film/TV/Other libraries. -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Video</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">How video files are re-encoded. Leave a control on “Profile default” to follow the preset.</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.video}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.video_desc}</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-codec">Target codec <InfoTip text="The video codec a re-encode targets. Leave on “Profile default” to follow the preset (HEVC for Balanced/Scott's, H.264 for Compatibility, AV1 for Efficiency)." /></label>
+            <label class="label" for="lib-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.target_codec_tip} /></label>
             <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
-              <option value={null}>Profile default</option>
+              <option value={null}>{i18n.m.libraries.profile_default}</option>
               {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-container">Container <InfoTip text="The output container the file is muxed into. MP4 is the most compatible; MKV carries image-based subtitles (Blu-ray/DVD) that MP4 can't. Leave on “Profile default” to follow the preset." /></label>
+            <label class="label" for="lib-container">{i18n.m.libraries.container} <InfoTip text={i18n.m.libraries.container_tip} /></label>
             <select id="lib-container" class="input" bind:value={form.targetContainer}>
-              <option value={null}>Profile default</option>
+              <option value={null}>{i18n.m.libraries.profile_default}</option>
               {#each options.containers as container}<option value={container}>.{container}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-hdr">HDR / Dolby Vision <InfoTip text="What to do with HDR sources. Exclude skips them; Preserve keeps the HDR signal; Tonemap to SDR converts to SDR for maximum playback compatibility (the tonemap runs on CPU)." /></label>
+            <label class="label" for="lib-hdr">{i18n.m.libraries.hdr_dv} <InfoTip text={i18n.m.libraries.hdr_dv_tip} /></label>
             <select id="lib-hdr" class="input" bind:value={form.hdrHandling}>
-              <option value={null}>Profile default</option>
+              <option value={null}>{i18n.m.libraries.profile_default}</option>
               {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-preset">Encoder preset <InfoTip text="The encoder speed/quality trade-off (x264/x265 only). Slower presets produce smaller files for the same quality but take longer to encode. “Encoder default” lets the encoder choose." /></label>
+            <label class="label" for="lib-preset">{i18n.m.libraries.encoder_preset} <InfoTip text={i18n.m.libraries.encoder_preset_tip} /></label>
             <select id="lib-preset" class="input" bind:value={form.encoderPreset}>
-              <option value={null}>Encoder default</option>
+              <option value={null}>{i18n.m.libraries.encoder_default}</option>
               {#each options.encoderPresets as preset}<option value={preset}>{preset}</option>{/each}
             </select>
           </div>
@@ -945,42 +968,43 @@
 
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
-            <label class="label mb-0" for="lib-crf">Quality (CRF) <InfoTip text="Constant Rate Factor: lower = higher quality and larger files, higher = smaller files. 18–24 is a good transparent range. Leave unticked to use the preset's quality." /></label>
+            <label class="label mb-0" for="lib-crf">{i18n.m.libraries.quality_crf} <InfoTip text={i18n.m.libraries.quality_crf_tip} /></label>
             <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
               <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
-              Customise
+              {i18n.m.libraries.customise}
             </label>
           </div>
           {#if form.qualityCrf != null}
             <div class="flex items-center gap-3">
-              <span class="text-xs text-slate-400">Smaller</span>
+              <span class="text-xs text-slate-400">{i18n.m.libraries.sharper}</span>
               <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
-              <span class="text-xs text-slate-400">Sharper</span>
+              <span class="text-xs text-slate-400">{i18n.m.libraries.smaller}</span>
               <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
             </div>
           {:else}
-            <p class="text-xs text-slate-400">Using the preset's quality.</p>
+            <p class="text-xs text-slate-400">{i18n.m.libraries.using_preset_quality}</p>
           {/if}
         </div>
 
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-video-audio-codec">Audio track <InfoTip text="When re-encoding video, optionally transcode its audio too. “Copy” leaves the audio untouched; AAC is the most compatible re-encode target. Scott's Settings uses AAC here." /></label>
+            <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip text={i18n.m.libraries.audio_track_tip} /></label>
             <select id="lib-video-audio-codec" class="input" bind:value={form.videoAudioCodec}>
-              <option value={null}>Copy (leave audio untouched)</option>
-              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>Re-encode to {codec}</option>{/each}
+              <option value={null}>{i18n.m.libraries.audio_profile_default}</option>
+              <option value="copy">{i18n.m.libraries.audio_copy}</option>
+              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-video-audio-bitrate">Audio bitrate (kbps) <InfoTip text="Target bitrate for the audio re-encode (32–512 kbps). Only applies when the audio track is re-encoded above. 96 kbps stereo AAC is transparent for most listening." /></label>
+            <label class="label" for="lib-video-audio-bitrate">{i18n.m.libraries.audio_bitrate} <InfoTip text={i18n.m.libraries.audio_bitrate_tip} /></label>
             <input
               id="lib-video-audio-bitrate"
               class="input"
               type="number"
               min="32"
               max="512"
-              placeholder="Default (160)"
-              disabled={!form.videoAudioCodec}
+              placeholder={i18n.m.libraries.audio_bitrate_ph}
+              disabled={!form.videoAudioCodec || form.videoAudioCodec === 'copy'}
               bind:value={form.videoAudioBitrateKbps}
             />
           </div>
@@ -988,27 +1012,27 @@
 
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
-            <span class="label mb-0">Quality-gate thresholds (VMAF) <InfoTip text="Per-library override for the perceptual-quality gate. Only used when that gate is enabled in Settings. Higher = stricter (near-lossless): an output scoring below these is rejected and the original kept." /></span>
+            <span class="label mb-0">{i18n.m.libraries.vmaf_thresholds} <InfoTip text={i18n.m.libraries.vmaf_thresholds_tip} /></span>
             <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
               <input type="checkbox" class="checkbox" checked={form.minVmafHarmonicMean != null || form.minVmafMin != null} onchange={(e) => toggleVmafOverride(e.currentTarget.checked)} />
-              Override
+              {i18n.m.libraries.override}
             </label>
           </div>
           {#if form.minVmafHarmonicMean != null || form.minVmafMin != null}
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="flex items-center gap-3">
-                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">Average</span>
+                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.average}</span>
                 <input class="flex-1 accent-cyan-600" type="range" min="0" max="100" step="0.5" bind:value={form.minVmafHarmonicMean} />
                 <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafHarmonicMean}</span>
               </div>
               <div class="flex items-center gap-3">
-                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">Worst frame</span>
+                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.worst_frame}</span>
                 <input class="flex-1 accent-cyan-600" type="range" min="0" max="100" step="0.5" bind:value={form.minVmafMin} />
                 <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafMin}</span>
               </div>
             </div>
           {:else}
-            <p class="text-xs text-slate-400">Using the global thresholds from Settings.</p>
+            <p class="text-xs text-slate-400">{i18n.m.libraries.using_global_thresholds}</p>
           {/if}
         </div>
 
@@ -1018,18 +1042,18 @@
           <label class="flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" class="checkbox mt-0.5" checked={sameCodecGb !== ''} onchange={(e) => toggleSameCodec(e.currentTarget.checked)} />
             <span>
-              Re-encode large files already in the target codec
-              <InfoTip text="Normally a file already in the target codec (e.g. HEVC under an HEVC preset) is skipped. Enable this to re-encode the big ones anyway — useful for shrinking oversized same-codec remuxes. Verification still rejects any output that doesn't actually get smaller, so the original is never lost." />
+              {i18n.m.libraries.same_codec_label}
+              <InfoTip text={i18n.m.libraries.same_codec_tip} />
               <span class="mt-0.5 block text-xs font-normal text-slate-400">
-                Targets oversized same-codec files; smaller ones are still left untouched.
+                {i18n.m.libraries.same_codec_hint}
               </span>
             </span>
           </label>
           {#if sameCodecGb !== ''}
             <div class="mt-2 flex items-center gap-2 pl-6 text-sm">
-              <span class="text-slate-500 dark:text-slate-400">Re-encode when larger than</span>
+              <span class="text-slate-500 dark:text-slate-400">{i18n.m.libraries.same_codec_when}</span>
               <input class="input w-24" type="number" min="1" step="1" bind:value={sameCodecGb} />
-              <span class="text-slate-500 dark:text-slate-400">GB</span>
+              <span class="text-slate-500 dark:text-slate-400">{i18n.m.libraries.gb}</span>
             </div>
           {/if}
         </div>
@@ -1040,10 +1064,10 @@
           <label class="flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.skipEfficientSources} />
             <span>
-              Skip already-efficient sources
-              <InfoTip text="A file already encoded at a very low bitrate for its resolution can't be made meaningfully smaller, so it's skipped before transcoding instead of wasting an encode that the size-saving gate would reject. Turn this off to send every eligible file to the encoder anyway." />
+              {i18n.m.libraries.skip_efficient_label}
+              <InfoTip text={i18n.m.libraries.skip_efficient_tip} />
               <span class="mt-0.5 block text-xs font-normal text-slate-400">
-                Avoids wasted encodes on files that can't shrink. Turn off to re-encode everything.
+                {i18n.m.libraries.skip_efficient_hint}
               </span>
             </span>
           </label>
@@ -1055,10 +1079,10 @@
           <label class="flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.optimiseDolbyVision} />
             <span>
-              Optimise Dolby Vision sources
-              <InfoTip text="Dolby Vision needs its dynamic-metadata RPU to render correctly, and that can't survive a re-encode — the file degrades to HDR10/SDR, and a Profile 5 source comes out green/pink. Off by default, so DV files are left untouched whatever the HDR setting. Turn on only if losing the Dolby Vision presentation is acceptable for this library." />
+              {i18n.m.libraries.dolby_vision_label}
+              <InfoTip text={i18n.m.libraries.dolby_vision_tip} />
               <span class="mt-0.5 block text-xs font-normal text-slate-400">
-                Off by default — DV sources are skipped to avoid colour shifts. Turn on to re-encode them anyway.
+                {i18n.m.libraries.dolby_vision_hint}
               </span>
             </span>
           </label>
@@ -1069,26 +1093,26 @@
       {#if showAudioOptions}
       <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Audio</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">How audio-only files (music) are re-encoded.</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.audio_desc}</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <label class="label" for="lib-audio-codec">Target codec <InfoTip text="The codec lossless audio (e.g. FLAC) is re-encoded to. Opus is the most efficient; AAC and MP3 trade some efficiency for broader player compatibility." /></label>
+            <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
             <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>Default (Opus)</option>
+              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
               {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
             </select>
           </div>
           <div>
-            <label class="label" for="lib-audio-bitrate">Bitrate (kbps) <InfoTip text="Target bitrate for the audio re-encode (32–512 kbps). 128 is transparent for most stereo; 96 is a good space-saver." /></label>
+            <label class="label" for="lib-audio-bitrate">{i18n.m.libraries.bitrate} <InfoTip text={i18n.m.libraries.bitrate_tip} /></label>
             <input
               id="lib-audio-bitrate"
               class="input"
               type="number"
               min="32"
               max="512"
-              placeholder="Default (128)"
+              placeholder={i18n.m.libraries.bitrate_ph}
               bind:value={form.audioBitrateKbps}
             />
           </div>
@@ -1097,9 +1121,9 @@
         <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
           <span>
-            Re-encode lossy audio too
+            {i18n.m.libraries.reencode_lossy_audio}
             <span class="mt-0.5 block text-xs font-normal text-slate-400">
-              By default only lossless audio (e.g. FLAC) is re-encoded. Enable to also re-encode lossy sources (e.g. a 320 kbps MP3) — but only when their bitrate is high enough above the target to genuinely save space.
+              {i18n.m.libraries.reencode_lossy_audio_hint}
             </span>
           </span>
         </label>
@@ -1109,36 +1133,36 @@
       {#if showImageOptions}
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Images</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">How still images are re-encoded. Lossless sources (PNG/BMP/TIFF/GIF) are converted to a modern format.</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.images}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.images_desc}</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
           {#if !showImagePreset}
           <div>
-            <label class="label" for="lib-image-format">Target format <InfoTip text="JPEG plays everywhere (incl. Plex); WebP is smaller and works on Jellyfin/modern clients; AVIF is smallest but needs newer clients." /></label>
+            <label class="label" for="lib-image-format">{i18n.m.libraries.target_format} <InfoTip text={i18n.m.libraries.target_format_tip} /></label>
             <select id="lib-image-format" class="input" bind:value={form.targetImageFormat}>
-              <option value={null}>Default (JPEG)</option>
+              <option value={null}>{i18n.m.libraries.image_default_jpeg}</option>
               {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
             </select>
           </div>
           {/if}
           <div>
             <div class="mb-1 flex items-center justify-between">
-              <label class="label mb-0" for="lib-image-quality">Quality <InfoTip text="Encoder quality 1–100: higher = better quality and larger files. 80 is visually transparent. Leave unticked to use the default (80)." /></label>
+              <label class="label mb-0" for="lib-image-quality">{i18n.m.libraries.quality} <InfoTip text={i18n.m.libraries.image_quality_tip} /></label>
               <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
                 <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
-                Customise
+                {i18n.m.libraries.customise}
               </label>
             </div>
             {#if form.imageQuality != null}
               <div class="flex items-center gap-3">
-                <span class="text-xs text-slate-400">Smaller</span>
+                <span class="text-xs text-slate-400">{i18n.m.libraries.smaller}</span>
                 <input id="lib-image-quality" class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
-                <span class="text-xs text-slate-400">Sharper</span>
+                <span class="text-xs text-slate-400">{i18n.m.libraries.sharper}</span>
                 <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.imageQuality}</span>
               </div>
             {:else}
-              <p class="text-xs text-slate-400">Using the default (80).</p>
+              <p class="text-xs text-slate-400">{i18n.m.libraries.using_default_80}</p>
             {/if}
           </div>
         </div>
@@ -1146,9 +1170,9 @@
         <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyImages} />
           <span>
-            Re-encode lossy images too
+            {i18n.m.libraries.reencode_lossy_images}
             <span class="mt-0.5 block text-xs font-normal text-slate-400">
-              By default only lossless images (PNG/BMP/TIFF/GIF) are re-encoded. Enable to also re-encode already-compressed sources (e.g. a JPEG) — this trades a little quality for a smaller file.
+              {i18n.m.libraries.reencode_lossy_images_hint}
             </span>
           </span>
         </label>
@@ -1158,26 +1182,26 @@
         <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
-              <label class="label" for="lib-image-downscale">Downscale <InfoTip text="Optionally shrink large images on re-encode. Aspect ratio is always kept and images are never enlarged; an intentional downscale passes verification." /></label>
+              <label class="label" for="lib-image-downscale">{i18n.m.libraries.downscale} <InfoTip text={i18n.m.libraries.downscale_tip} /></label>
               <select id="lib-image-downscale" class="input" value={downscaleChoice} onchange={(e) => setDownscaleChoice(e.currentTarget.value as DownscaleChoice)}>
-                <option value="none">None (keep original size)</option>
-                <option value="4k">Fit within 4K (3840 px long edge)</option>
-                <option value="1080p">Fit within 1080p (1920 px long edge)</option>
-                <option value="longedge">Custom max long edge…</option>
-                <option value="percent">Percentage of original…</option>
+                <option value="none">{i18n.m.libraries.downscale_none}</option>
+                <option value="4k">{i18n.m.libraries.downscale_4k}</option>
+                <option value="1080p">{i18n.m.libraries.downscale_1080p}</option>
+                <option value="longedge">{i18n.m.libraries.downscale_longedge}</option>
+                <option value="percent">{i18n.m.libraries.downscale_percent}</option>
               </select>
             </div>
             {#if downscaleChoice === 'longedge'}
               <div>
-                <label class="label" for="lib-image-longedge">Max long edge (px)</label>
+                <label class="label" for="lib-image-longedge">{i18n.m.libraries.max_long_edge}</label>
                 <input id="lib-image-longedge" class="input" type="number" min="16" max="100000" step="1" bind:value={form.imageDownscaleValue} />
-                <p class="mt-1 text-xs text-slate-400">The longer side is capped to this; the shorter side scales to match.</p>
+                <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.max_long_edge_hint}</p>
               </div>
             {:else if downscaleChoice === 'percent'}
               <div>
-                <label class="label" for="lib-image-percent">Scale to (%)</label>
+                <label class="label" for="lib-image-percent">{i18n.m.libraries.scale_to}</label>
                 <input id="lib-image-percent" class="input" type="number" min="1" max="99" step="1" bind:value={form.imageDownscaleValue} />
-                <p class="mt-1 text-xs text-slate-400">Both dimensions scale to this percentage of the original.</p>
+                <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.scale_to_hint}</p>
               </div>
             {/if}
           </div>
@@ -1189,14 +1213,14 @@
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Audio channels</h3>
-        <p class="mt-0.5 mb-3 text-xs text-slate-400">Applies wherever audio is re-encoded; copied tracks keep their layout.</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio_channels}</h3>
+        <p class="mt-0.5 mb-3 text-xs text-slate-400">{i18n.m.libraries.audio_channels_desc}</p>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
           <span>
-            Downmix surround to stereo (2.0)
+            {i18n.m.libraries.downmix_label}
             <span class="mt-0.5 block text-xs font-normal text-slate-400">
-              Reduces multichannel audio (e.g. 5.1) to stereo, saving space where surround isn't needed.
+              {i18n.m.libraries.downmix_hint}
             </span>
           </span>
         </label>
@@ -1205,60 +1229,58 @@
 
       <!-- ELIGIBILITY & QUEUE -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Eligibility &amp; queue</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">Which files this library picks up, and how its jobs are prioritised.</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.eligibility_queue}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.eligibility_queue_desc}</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <div class="mb-1 flex items-center justify-between">
-              <label class="label mb-0" for="lib-priority">Queue priority <InfoTip text="Higher-priority libraries run their jobs sooner when the queue is busy. Leave at Normal unless one library should jump ahead." /></label>
+              <label class="label mb-0" for="lib-priority">{i18n.m.libraries.queue_priority} <InfoTip text={i18n.m.libraries.queue_priority_tip} /></label>
               <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{priorityLabel(form.priority)}</span>
             </div>
             <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
           </div>
           {#if showVideoOptions}
           <div>
-            <label class="label" for="lib-maxheight">Skip files above <InfoTip text="Files taller than this resolution are left untouched — handy to leave 4K masters alone while optimising everything below them." /></label>
+            <label class="label" for="lib-maxheight">{i18n.m.libraries.skip_above} <InfoTip text={i18n.m.libraries.skip_above_tip} /></label>
             <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
               {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
             </select>
           </div>
           {/if}
           <div>
-            <label class="label" for="lib-minsize">Minimum file size (MB) <InfoTip text="Files smaller than this are skipped — they rarely save enough to be worth a re-encode. Blank uses the preset's default." /></label>
-            <input id="lib-minsize" class="input" type="number" min="0" placeholder="Profile default" bind:value={minSizeMb} />
+            <label class="label" for="lib-minsize">{i18n.m.libraries.min_file_size} <InfoTip text={i18n.m.libraries.min_file_size_tip} /></label>
+            <input id="lib-minsize" class="input" type="number" min="0" placeholder={i18n.m.libraries.profile_default_ph} bind:value={minSizeMb} />
           </div>
         </div>
         <div class="mt-4">
-          <label class="label" for="lib-exclude">Exclude paths (one per line) <InfoTip text="Any file whose path contains one of these substrings is skipped — e.g. Extras, Featurettes, Samples. Case-insensitive." /></label>
+          <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip text={i18n.m.libraries.exclude_paths_tip} /></label>
           <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
         </div>
       </section>
 
       <!-- COMPLETED OUTPUT -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Completed output</h3>
-        <p class="mt-0.5 mb-3 text-xs text-slate-400">What happens to a finished file. Your originals are never touched either way.</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output}</h3>
+        <p class="mt-0.5 mb-3 text-xs text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
         <Toggle
           bind:checked={form.moveOnComplete}
-          label="Move output to a target folder instead of replacing"
-          hint="Off: outputs stay in the work directory as “ready to replace”. On: the finished file is moved to the folder below — useful for testing without re-copying source files."
+          label={i18n.m.libraries.move_label}
+          hint={i18n.m.libraries.move_hint}
         />
         {#if form.moveOnComplete}
           <div class="mt-3 max-w-xl">
-            <label class="label" for="lib-target">Target folder</label>
+            <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
             <div class="flex gap-2">
-              <input id="lib-target" class="input" readonly placeholder="Choose a folder…" value={form.targetFolder ?? ''} />
-              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>Browse</button>
+              <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
+              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
             </div>
           </div>
           <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
             <span>
-              Overwrite an existing converted file
+              {i18n.m.libraries.overwrite_label}
               <span class="mt-0.5 block text-xs font-normal text-slate-400">
-                On: if a converted file is already in the target folder, replace it. Off (default): the
-                job fails with a clear reason instead of overwriting, leaving the new output in the work
-                directory. Your originals are never affected either way.
+                {i18n.m.libraries.overwrite_hint}
               </span>
             </span>
           </label>
@@ -1270,21 +1292,21 @@
   <div class="mt-5 flex items-center gap-2">
     <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty}>
       <Icon name="check" class="h-4 w-4" />
-      Save
+      {i18n.m.libraries.save}
     </button>
     <button class="btn" onclick={cancelEdit}>
       <Icon name="x" class="h-4 w-4" />
-      Cancel
+      {i18n.m.libraries.cancel}
     </button>
     {#if isDirty}
-      <span class="ml-1 text-xs text-amber-600 dark:text-amber-400">Unsaved changes</span>
+      <span class="ml-1 text-xs text-amber-600 dark:text-amber-400">{i18n.m.libraries.unsaved}</span>
     {/if}
   </div>
 {/snippet}
 
 {#if editingId === 0}
   <div class="card mb-6 p-5">
-    <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">Add library</h2>
+    <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.add_library_heading}</h2>
     {@render configForm()}
   </div>
 {/if}
@@ -1304,66 +1326,66 @@
                 <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(library.ruleProfile)}</span>
               {/if}
               {#if library.priority !== 0}
-                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">priority {library.priority}</span>
+                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
               {/if}
               {#if !library.enabled}
-                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">disabled</span>
+                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.libraries.badge_disabled}</span>
               {/if}
               {#if library.autoEnqueueEnabled}
-                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title="Eligible files are queued automatically while inside this window">
-                  auto-optimise {library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? 'any time' : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`}
+                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title={i18n.m.libraries.auto_optimise_title}>
+                  {t(i18n.m.libraries.badge_auto_optimise, { window: library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? i18n.m.libraries.any_time : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}` })}
                 </span>
               {/if}
               {#if library.autoReplace}
-                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" title="Verified outputs replace the original automatically">auto-replace</span>
+                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" title={i18n.m.libraries.auto_replace_title}>{i18n.m.libraries.badge_auto_replace}</span>
               {/if}
               {#if access[library.id]}
                 {@const a = access[library.id]}
                 {#if a.ok}
-                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={a.message}>access ok</span>
+                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={accessMessage(a)}>{i18n.m.libraries.access_ok}</span>
                 {:else if !a.exists}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={a.message}>path missing</span>
+                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
                 {:else if !a.readable}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={a.message}>can't read</span>
+                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
                 {:else}
-                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={a.message}>not writable — replace will fail</span>
+                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
                 {/if}
               {/if}
             </div>
             <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{library.path}</div>
             <div class="mt-1 text-xs text-slate-400">
-              {library.fileCount.toLocaleString()} files discovered
+              {t(i18n.m.libraries.files_discovered, { count: library.fileCount.toLocaleString() })}
               {#if summaries[library.id]}
-                · <span class="text-emerald-600 dark:text-emerald-400">{summaries[library.id].eligible.toLocaleString()} eligible</span>
-                · {summaries[library.id].skipped.toLocaleString()} skipped
+                · <span class="text-emerald-600 dark:text-emerald-400">{t(i18n.m.libraries.eligible_count, { count: summaries[library.id].eligible.toLocaleString() })}</span>
+                · {t(i18n.m.libraries.skipped_count, { count: summaries[library.id].skipped.toLocaleString() })}
               {/if}
               {#if library.autoEnqueueEnabled && library.lastAutoEnqueueAt}
-                · last auto-run {new Date(library.lastAutoEnqueueAt).toLocaleString()}
+                · {t(i18n.m.libraries.last_auto_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}
               {/if}
             </div>
             {#if access[library.id] && !access[library.id].ok}
               <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
                 <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <span>{access[library.id].message}</span>
+                <span>{accessMessage(access[library.id])}</span>
               </div>
             {/if}
           </div>
           <div class="flex flex-wrap gap-2">
             <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
               <Icon name={busyId === library.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === library.id ? 'animate-spin' : ''}" />
-              {busyId === library.id ? 'Working' : 'Scan'}
+              {busyId === library.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
             </button>
-            <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title="Queue this library's eligible files">
+            <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title={i18n.m.libraries.enqueue_title}>
               <Icon name="plus" class="h-4 w-4" />
-              Enqueue
+              {i18n.m.libraries.enqueue}
             </button>
             <button class="btn" onclick={() => (editingId === library.id ? cancelEdit() : startEdit(library))} disabled={busyId === library.id}>
               <Icon name={editingId === library.id ? 'x' : 'sliders'} class="h-4 w-4" />
-              {editingId === library.id ? 'Close' : 'Configure'}
+              {editingId === library.id ? i18n.m.libraries.close : i18n.m.libraries.configure}
             </button>
             <button class="btn btn-danger" onclick={() => remove(library)} disabled={busyId === library.id}>
               <Icon name="trash" class="h-4 w-4" />
-              Delete
+              {i18n.m.libraries.delete}
             </button>
           </div>
         </div>
@@ -1378,8 +1400,8 @@
                   : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
                 onclick={() => (activeTab = 'rules')}
               >
-                Rules
-                {#if isDirty}<span class="ml-1 text-amber-500" title="Unsaved changes">●</span>{/if}
+                {i18n.m.libraries.tab_rules}
+                {#if isDirty}<span class="ml-1 text-amber-500" title={i18n.m.libraries.unsaved_title}>●</span>{/if}
               </button>
               <button
                 class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'candidates'
@@ -1387,7 +1409,7 @@
                   : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
                 onclick={() => (activeTab = 'candidates')}
               >
-                Candidates{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}
+                {i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}
               </button>
               <button
                 class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'excluded'
@@ -1395,7 +1417,7 @@
                   : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
                 onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}
               >
-                Excluded{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}
+                {i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}
               </button>
             </div>
 
@@ -1406,10 +1428,10 @@
                 <Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>
               {/if}
               <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                What this library's <strong>saved</strong> rules select right now — it updates after you Save on the Rules tab. Enqueue these from the Enqueue button above; nothing here changes a file.
+                {i18n.m.libraries.candidates_desc_1}<strong>{i18n.m.libraries.candidates_desc_saved}</strong>{i18n.m.libraries.candidates_desc_2}
               </p>
               {#if editorCandidatesLoading}
-                <div class="card p-8 text-center text-slate-400">Loading…</div>
+                <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
               {:else}
                 <CandidateTable candidates={editorCandidates} scoped />
               {/if}
@@ -1418,13 +1440,13 @@
                 <Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>
               {/if}
               <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                Files you've told Optimisarr to never optimise (from here or the Queue's <strong>Exclude</strong> action). They're skipped by scans, candidates, and auto-optimise until you remove them here. Your original files are untouched.
+                {i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}
               </p>
               {#if editorExclusionsLoading}
-                <div class="card p-8 text-center text-slate-400">Loading…</div>
+                <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
               {:else if editorExclusions.length === 0}
                 <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400 dark:border-slate-700">
-                  No excluded files. Use <strong>Exclude</strong> on a stuck job in the Queue to add one.
+                  {i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}
                 </div>
               {:else}
                 <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
@@ -1438,21 +1460,21 @@
                           class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full {auto
                             ? 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400'
                             : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}"
-                          title={auto ? 'Excluded automatically after repeated failures' : 'Excluded manually'}
+                          title={auto ? i18n.m.libraries.excluded_auto_title : i18n.m.libraries.excluded_manual_title}
                         >
                           <Icon name={auto ? 'warning' : 'ban'} class="h-4 w-4" />
                         </span>
                         <div class="min-w-0">
                           <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{ex.relativePath ?? ex.path}</div>
                           <div class="mt-0.5 text-xs text-slate-400">
-                            <span class={auto ? 'text-amber-600 dark:text-amber-400' : ''}>{auto ? 'Auto-excluded — repeated failures' : 'Manually excluded'}</span>
+                            <span class={auto ? 'text-amber-600 dark:text-amber-400' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>
                             {#if ex.reason} · {ex.reason}{/if}
                             · {new Date(ex.createdAt).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
-                      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs" onclick={() => unexclude(ex.id)} title="Remove from the exclusion list — the file becomes eligible again">
-                        Remove
+                      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs" onclick={() => unexclude(ex.id)} title={i18n.m.libraries.unexclude_title}>
+                        {i18n.m.libraries.remove}
                       </button>
                     </div>
                   {/each}
@@ -1465,10 +1487,10 @@
     {/each}
   </div>
 {:else if editingId !== 0}
-  <EmptyState icon="folder" title="No libraries yet" hint="Add one to start discovering media.">
+  <EmptyState icon="folder" title={i18n.m.libraries.empty_title} hint={i18n.m.libraries.empty_hint}>
     <button class="btn btn-primary" onclick={startAdd}>
       <Icon name="plus" class="h-4 w-4" />
-      Add library
+      {i18n.m.libraries.add_library}
     </button>
   </EmptyState>
 {/if}

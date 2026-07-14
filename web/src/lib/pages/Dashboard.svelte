@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type Health, type ToolCheck, type Stats } from '../api'
   import { formatSize } from '../format'
+  import { i18n, t, plural } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
   import Banner from '../components/Banner.svelte'
@@ -29,7 +30,7 @@
     try {
       ;[health, tools, stats] = await Promise.all([api.health(), api.tools(), api.stats()])
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to load status'
+      error = err instanceof Error ? err.message : i18n.m.dashboard.error_load
     }
   }
 
@@ -40,26 +41,26 @@
       stats = await api.clearStats()
       confirmingReset = false
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Unable to reset the savings total'
+      error = err instanceof Error ? err.message : i18n.m.dashboard.error_reset
     } finally {
       resetting = false
     }
   }
 
-  let toolsReady = $derived(tools.length > 0 && tools.every((t) => t.available))
+  let toolsReady = $derived(tools.length > 0 && tools.filter((t) => t.required).every((t) => t.available))
   let healthy = $derived(health?.status === 'healthy' && toolsReady)
   let activeWork = $derived((stats?.running ?? 0) + (stats?.queued ?? 0))
 
   // Mirror the Queue view: GPU stats are only meaningful when the host can expose them
   // without elevation; otherwise the broadcaster reports the GPU unsupported.
   let gpuUnavailable = $derived(
-    activity.metrics && !activity.metrics.gpuSupported ? 'GPU stats unavailable on this host' : null,
+    activity.metrics && !activity.metrics.gpuSupported ? i18n.m.dashboard.gpu_unavailable : null,
   )
 </script>
 
 <header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400">What Optimisarr has saved, and what's in flight.</p>
+  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.dashboard}</h1>
+  <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.dashboard.subtitle}</p>
 </header>
 
 {#if error}
@@ -70,21 +71,21 @@
      survives restarts, quarantine purges, and history clearing — reset only on request. -->
 <div class="card mb-4 p-6">
   <div class="flex items-start justify-between gap-3">
-    <div class="label">Total space saved <span class="ml-1 font-normal normal-case tracking-normal text-slate-400">· lifetime</span></div>
+    <div class="label">{i18n.m.dashboard.total_saved} <span class="ml-1 font-normal normal-case tracking-normal text-slate-400">· {i18n.m.dashboard.lifetime}</span></div>
     {#if stats && stats.filesOptimised > 0}
       {#if confirmingReset}
         <div class="flex items-center gap-2 text-sm">
-          <span class="text-slate-500 dark:text-slate-400">Reset the lifetime total?</span>
-          <button class="btn btn-danger px-2 py-1 text-xs" onclick={resetSavings} disabled={resetting}>{resetting ? 'Resetting…' : 'Reset'}</button>
-          <button class="btn px-2 py-1 text-xs" onclick={() => (confirmingReset = false)} disabled={resetting}>Cancel</button>
+          <span class="text-slate-500 dark:text-slate-400">{i18n.m.dashboard.reset_confirm}</span>
+          <button class="btn btn-danger px-2 py-1 text-xs" onclick={resetSavings} disabled={resetting}>{resetting ? i18n.m.dashboard.resetting : i18n.m.dashboard.reset}</button>
+          <button class="btn px-2 py-1 text-xs" onclick={() => (confirmingReset = false)} disabled={resetting}>{i18n.m.common.cancel}</button>
         </div>
       {:else}
         <button
           class="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
-          title="Reset the lifetime space-saved total"
+          title={i18n.m.dashboard.reset_title}
           onclick={() => (confirmingReset = true)}
         >
-          <Icon name="trash" class="h-3.5 w-3.5" /> Reset
+          <Icon name="trash" class="h-3.5 w-3.5" /> {i18n.m.dashboard.reset}
         </button>
       {/if}
     {/if}
@@ -93,14 +94,17 @@
     <div class="mt-1 text-4xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatSize(stats.bytesSaved)}</div>
     {#if stats.filesOptimised > 0}
       <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        {stats.filesOptimised.toLocaleString()} file{stats.filesOptimised === 1 ? '' : 's'} optimised ·
-        {formatSize(stats.originalBytes)} → {formatSize(stats.optimisedBytes)}
-        ({Math.round(stats.averageSavingPercent)}% smaller on average)
+        {t(stats.filesOptimised === 1 ? i18n.m.dashboard.files_optimised_one : i18n.m.dashboard.files_optimised_other, {
+          count: stats.filesOptimised.toLocaleString(),
+          from: formatSize(stats.originalBytes),
+          to: formatSize(stats.optimisedBytes),
+          percent: Math.round(stats.averageSavingPercent),
+        })}
       </div>
     {:else}
       <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Nothing optimised yet. Add a library and queue some work to start saving space.
-        <button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>Add a library →</button>
+        {i18n.m.dashboard.empty}
+        <button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.dashboard.add_library}</button>
       </div>
     {/if}
   {:else}
@@ -111,35 +115,35 @@
 <div class="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
   <!-- In flight -->
   <button class="card p-4 text-left transition hover:border-cyan-300 dark:hover:border-cyan-800" onclick={() => router.go('/queue')}>
-    <div class="label">Queue</div>
-    <div class="text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{(stats?.running ?? 0).toLocaleString()} <span class="text-base font-normal text-slate-400">running</span></div>
+    <div class="label">{i18n.m.nav.queue}</div>
+    <div class="text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{(stats?.running ?? 0).toLocaleString()} <span class="text-base font-normal text-slate-400">{i18n.m.dashboard.running}</span></div>
     <div class="text-sm text-slate-400">
-      {(stats?.queued ?? 0).toLocaleString()} queued{#if (stats?.failed ?? 0) > 0} · <span class="text-red-600 dark:text-red-400">{stats?.failed} failed</span>{/if}
+      {t(i18n.m.dashboard.queued, { count: (stats?.queued ?? 0).toLocaleString() })}{#if (stats?.failed ?? 0) > 0} · <span class="text-red-600 dark:text-red-400">{t(i18n.m.dashboard.failed, { count: (stats?.failed ?? 0).toLocaleString() })}</span>{/if}
     </div>
   </button>
 
   <!-- Awaiting review (quarantine) -->
   <button class="card p-4 text-left transition hover:border-cyan-300 dark:hover:border-cyan-800" onclick={() => router.go('/quarantine')}>
-    <div class="label">Awaiting review</div>
+    <div class="label">{i18n.m.dashboard.awaiting_review}</div>
     <div class="text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{(stats?.inQuarantine ?? 0).toLocaleString()}</div>
     <div class="text-sm text-slate-400">
-      {#if (stats?.inQuarantine ?? 0) > 0}reclaim {formatSize(stats?.quarantineReclaimableBytes ?? 0)} on approve{:else}in quarantine{/if}
+      {#if (stats?.inQuarantine ?? 0) > 0}{t(i18n.m.dashboard.reclaim_on_approve, { size: formatSize(stats?.quarantineReclaimableBytes ?? 0) })}{:else}{i18n.m.dashboard.in_quarantine}{/if}
     </div>
   </button>
 
   <!-- Ready to replace -->
   <button class="card p-4 text-left transition hover:border-cyan-300 dark:hover:border-cyan-800" onclick={() => router.go('/queue')}>
-    <div class="label">Ready to replace</div>
+    <div class="label">{i18n.m.dashboard.ready_to_replace}</div>
     <div class="text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{(stats?.readyToReplace ?? 0).toLocaleString()}</div>
-    <div class="text-sm text-slate-400">verified, awaiting replace</div>
+    <div class="text-sm text-slate-400">{i18n.m.dashboard.verified_awaiting}</div>
   </button>
 
   <!-- Libraries -->
   <button class="card p-4 text-left transition hover:border-cyan-300 dark:hover:border-cyan-800" onclick={() => router.go('/libraries')}>
-    <div class="label">Libraries</div>
+    <div class="label">{i18n.m.nav.libraries}</div>
     <div class="text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{(stats?.libraries ?? 0).toLocaleString()}</div>
     <div class="text-sm text-slate-400">
-      {(stats?.enabledLibraries ?? 0).toLocaleString()} enabled · {(stats?.discoveredFiles ?? 0).toLocaleString()} files
+      {t(i18n.m.dashboard.libraries_detail, { enabled: (stats?.enabledLibraries ?? 0).toLocaleString(), files: (stats?.discoveredFiles ?? 0).toLocaleString() })}
     </div>
   </button>
 </div>
@@ -150,10 +154,10 @@
   <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-2">
       <Icon name="gpu" class="h-4 w-4 text-slate-400" />
-      <div class="label">Live system usage</div>
+      <div class="label">{i18n.m.dashboard.live_usage}</div>
     </div>
     {#if activity.activeJobs > 0}
-      <span class="text-xs text-slate-400">{activity.activeJobs.toLocaleString()} job{activity.activeJobs === 1 ? '' : 's'} running</span>
+      <span class="text-xs text-slate-400">{plural(activity.activeJobs, i18n.m.dashboard.jobs_running_one, i18n.m.dashboard.jobs_running_other, activity.activeJobs.toLocaleString())}</span>
     {/if}
   </div>
   {#if activity.metrics}
@@ -169,7 +173,7 @@
       />
     </div>
   {:else}
-    <p class="mt-2 text-sm text-slate-400">Live CPU and GPU usage appear here while a job is encoding.</p>
+    <p class="mt-2 text-sm text-slate-400">{i18n.m.dashboard.usage_hint}</p>
   {/if}
 </div>
 
@@ -181,12 +185,15 @@
         <Icon name={healthy ? 'check' : 'warning'} class="h-5 w-5" />
       </span>
       <div>
-        <div class="font-semibold text-slate-800 dark:text-slate-100">{healthy ? 'All systems healthy' : 'Needs attention'}</div>
+        <div class="font-semibold text-slate-800 dark:text-slate-100">{healthy ? i18n.m.dashboard.healthy : i18n.m.dashboard.needs_attention}</div>
         <div class="text-sm text-slate-400">
-          Service {health?.status ?? 'unknown'} · media tools {toolsReady ? 'ready' : 'not detected'}{#if activeWork > 0} · {activeWork.toLocaleString()} job{activeWork === 1 ? '' : 's'} in flight{/if}
+          {t(i18n.m.dashboard.health_detail, {
+            status: health?.status ?? i18n.m.dashboard.unknown_status,
+            tools: toolsReady ? i18n.m.dashboard.tools_ready : i18n.m.dashboard.tools_not_detected,
+          })}{#if activeWork > 0} · {plural(activeWork, i18n.m.dashboard.jobs_in_flight_one, i18n.m.dashboard.jobs_in_flight_other, activeWork.toLocaleString())}{/if}
         </div>
       </div>
     </div>
-    <button class="btn" onclick={() => router.go('/settings')}>Settings &amp; tools</button>
+    <button class="btn" onclick={() => router.go('/settings')}>{i18n.m.dashboard.settings_tools}</button>
   </div>
 </div>

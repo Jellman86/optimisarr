@@ -13,10 +13,10 @@ public sealed record ImageQualityResult(bool Measured, double? Ssim, string? Err
 /// <summary>
 /// Measures the structural similarity (SSIM) of a re-encoded still against its
 /// original with FFmpeg's <c>ssim</c> filter, writing a per-frame stats file that the
-/// pure <see cref="ImageSsimParser"/> turns into a score. The output is scaled to the
-/// reference with <c>scale2ref</c> so the two pictures compare like-for-like even if a
-/// future downscale changes dimensions. FFmpeg is invoked through an explicit argument
-/// list, never a shell string.
+/// pure <see cref="ImageSsimParser"/> turns into a score. Both inputs are independently
+/// normalised to explicit reference dimensions, timebase, range, and planar RGB/RGBA. This avoids
+/// deprecated two-input scaling behavior and makes alpha participate in the score when applicable.
+/// FFmpeg is invoked through an explicit argument list, never a shell string.
 /// </summary>
 public sealed class ImageQualityService(string? ffmpegCommand = null)
 {
@@ -25,6 +25,7 @@ public sealed class ImageQualityService(string? ffmpegCommand = null)
     public async Task<ImageQualityResult> MeasureAsync(
         string referencePath,
         string distortedPath,
+        ImageQualityMeasurementContext context,
         CancellationToken cancellationToken)
     {
         if (!File.Exists(referencePath))
@@ -35,15 +36,14 @@ public sealed class ImageQualityService(string? ffmpegCommand = null)
         {
             return ImageQualityResult.Failed($"Output file does not exist: {distortedPath}");
         }
+        if (context.ReferenceWidth <= 0 || context.ReferenceHeight <= 0)
+        {
+            return ImageQualityResult.Failed("Original image dimensions could not be measured.");
+        }
 
         // A unique log path with no special characters keeps the filtergraph valid.
         var logPath = Path.Combine(Path.GetTempPath(), $"optimisarr-ssim-{Guid.NewGuid():N}.log");
-        // Input 0 is the distorted (output) still, input 1 the reference (original).
-        // scale2ref scales the distorted picture to the reference so SSIM compares
-        // matching dimensions; ssim writes its per-frame All-channel score to the log.
-        var filter =
-            "[0:v][1:v]scale2ref[dist][ref];" +
-            $"[dist][ref]ssim=stats_file={logPath}";
+        var command = ImageQualityCommandBuilder.Build(distortedPath, referencePath, logPath, context);
 
         try
         {
@@ -56,21 +56,15 @@ public sealed class ImageQualityService(string? ffmpegCommand = null)
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = _ffmpeg,
-                    ArgumentList =
-                    {
-                        "-nostdin",
-                        "-v", "error",
-                        "-i", distortedPath,
-                        "-i", referencePath,
-                        "-lavfi", filter,
-                        "-f", "null",
-                        "-"
-                    },
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                foreach (var argument in command.Arguments)
+                {
+                    process.StartInfo.ArgumentList.Add(argument);
+                }
 
                 process.Start();
 

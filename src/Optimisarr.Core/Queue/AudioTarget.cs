@@ -10,7 +10,11 @@ public sealed record AudioCodecSpec(string Encoder, string Container);
 public static class AudioTarget
 {
     /// <summary>The default target codec (ffprobe name) when a library sets no override.</summary>
-    public const string DefaultCodec = "opus";
+    // AAC in M4A is the conservative music default for art-free sources: it is broadly playable,
+    // efficient, supports retained channel layouts, and can carry timed-text lyrics. The shipped
+    // FFmpeg cannot reliably transfer attached pictures into M4A, so those candidates fail closed
+    // with guidance to select MP3 instead.
+    public const string DefaultCodec = "aac";
 
     public const int DefaultBitrateKbps = 128;
 
@@ -76,4 +80,31 @@ public static class AudioTarget
     /// </summary>
     public static bool LossyReencodeSaves(int sourceKbps, int targetKbps) =>
         sourceKbps >= targetKbps * (1 + LossyReencodeMinSavingRatio);
+
+    /// <summary>
+    /// Treat the configured value as a stereo-programme bitrate. Retaining surround needs one
+    /// such budget per channel pair; an intentional stereo downmix keeps the configured value.
+    /// Unknown channel layouts retain the configured value for compatibility with legacy probe
+    /// rows and are still protected by post-encode channel verification.
+    /// </summary>
+    public static int EffectiveBitrateKbps(int configuredKbps, int sourceChannels, bool downmixToStereo) =>
+        downmixToStereo || sourceChannels <= 2
+            ? configuredKbps
+            : configuredKbps * (int)Math.Ceiling(sourceChannels / 2.0);
+
+    public static bool CanEncodeChannels(string codec, int sourceChannels, bool downmixToStereo)
+    {
+        var outputChannels = downmixToStereo ? Math.Min(sourceChannels, 2) : sourceChannels;
+        if (outputChannels <= 0)
+        {
+            return true;
+        }
+
+        return codec.ToLowerInvariant() switch
+        {
+            "mp3" => outputChannels <= 2,
+            "aac" or "opus" => outputChannels <= 8,
+            _ => false
+        };
+    }
 }
