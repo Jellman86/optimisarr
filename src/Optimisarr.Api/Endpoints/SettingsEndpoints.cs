@@ -116,7 +116,8 @@ internal static class SettingsEndpoints
                     request.VerificationMaxTruePeakDbtp,
                     request.VerificationImageQualityGateEnabled,
                 request.VerificationMinimumImageSsim,
-                request.VerificationImageMetadataGateEnabled),
+                request.VerificationImageMetadataGateEnabled,
+                request.VerificationClipVmafEnabled),
                 request.ReplacementAllowCrossFilesystem,
                 request.DryRunMode,
                 request.ReplacementQuarantineRetentionDays), cancellationToken);

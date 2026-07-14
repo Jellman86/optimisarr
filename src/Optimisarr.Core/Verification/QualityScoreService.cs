@@ -83,8 +83,10 @@ public sealed class QualityScoreService(string? ffmpegCommand = null)
                 process.Start();
 
                 var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                // When clip-VMAF caps the measurement, progress is a fraction of the clip, not the file.
+                var measuredSeconds = (double?)context.MeasureDurationSeconds ?? context.ReferenceDurationSeconds;
                 var stderrTask = ReadStderrWithProgressAsync(
-                    process.StandardError, context.ReferenceDurationSeconds, progress, cancellationToken);
+                    process.StandardError, measuredSeconds, progress, cancellationToken);
 
                 try
                 {

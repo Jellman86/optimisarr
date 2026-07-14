@@ -216,6 +216,7 @@ internal sealed record SettingsDto(
     bool VerificationImageQualityGateEnabled,
     double VerificationMinimumImageSsim,
     bool VerificationImageMetadataGateEnabled,
+    bool VerificationClipVmafEnabled,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays)
@@ -241,6 +242,7 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.ImageQualityGateEnabled,
         settings.VerificationPolicy.MinimumImageSsim,
         settings.VerificationPolicy.ImageMetadataGateEnabled,
+        settings.VerificationPolicy.ClipVmafEnabled,
         settings.ReplacementAllowCrossFilesystem,
         settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays);

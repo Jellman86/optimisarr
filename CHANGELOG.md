@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Optional clip-based VMAF (faster quality gate on modest hardware).** A new Settings toggle under
+  the quality slider measures VMAF on a representative ~2-minute clip from the middle of the file
+  instead of the whole runtime, which cuts VMAF time dramatically on low-power hosts (e.g. an Intel
+  N100) where full-file scoring is impractical. Both the output and the original are seeked to the
+  same window so their frames stay aligned, and progress is reported against the clip. The other
+  gates (decode health, duration, structure, size) still check the whole output. Off by default, and
+  skipped for files barely longer than the clip. VMAF's only true hardware acceleration remains
+  NVIDIA-only (`libvmaf_cuda`); there is no Intel GPU/NPU path for the scoring itself, so this
+  CPU-side sampling is the practical win on Intel hardware.
+
 ## 0.2.3 — 2026-07-14
 
 ### Added

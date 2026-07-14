@@ -107,6 +107,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationImageQualityGateEnabled
                 || setting.Key == SettingKeys.VerificationMinimumImageSsim
                 || setting.Key == SettingKeys.VerificationImageMetadataGateEnabled
+                || setting.Key == SettingKeys.VerificationClipVmafEnabled
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
@@ -169,7 +170,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                     min: 0),
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationImageMetadataGateEnabled),
-                    VerificationPolicy.Default.ImageMetadataGateEnabled)),
+                    VerificationPolicy.Default.ImageMetadataGateEnabled),
+                ParseBool(
+                    settings.GetValueOrDefault(SettingKeys.VerificationClipVmafEnabled),
+                    VerificationPolicy.Default.ClipVmafEnabled)),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
@@ -239,6 +243,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 Math.Max(0, settings.VerificationPolicy.MinimumImageSsim).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationImageMetadataGateEnabled] =
                 settings.VerificationPolicy.ImageMetadataGateEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.VerificationClipVmafEnabled] =
+                settings.VerificationPolicy.ClipVmafEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.DryRunMode] =

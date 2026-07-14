@@ -75,6 +75,9 @@ public static class SettingKeys
     /// <summary>Whether the opt-in image EXIF/ICC-retention gate is enabled.</summary>
     public const string VerificationImageMetadataGateEnabled = "verification.imageMetadataGateEnabled";
 
+    /// <summary>Whether the VMAF gate scores a representative clip instead of the whole file (faster).</summary>
+    public const string VerificationClipVmafEnabled = "verification.clipVmafEnabled";
+
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";
 

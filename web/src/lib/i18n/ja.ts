@@ -450,6 +450,9 @@ export const ja: Messages = {
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
+    vmaf_clip_label: 'Score a sample clip (faster)',
+    vmaf_clip_hint:
+      'Measure VMAF on a representative ~2-minute clip from the middle of the file instead of the whole runtime. Dramatically faster on low-power hardware (e.g. an Intel N100) where full-file VMAF is impractical, at the cost of sampling only part of the file. The other gates still check the whole output.',
     loudness_label: "オーディオラウドネスドリフト (EBU R128)",
     loudness_hint: "FFmpeg の ebur128 フィルターを使用してオリジナルと出力の統合ラウドネスを測定し、差が大きすぎる場合は処理タスクを失敗します。デコード パスを追加するため、デフォルトではオフになっています。プロファイルがオーディオを再エンコードする場合に最も役立ちます。",
     loudness_max: "最大ラウドネスドリフト",

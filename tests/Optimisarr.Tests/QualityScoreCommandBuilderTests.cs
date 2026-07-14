@@ -41,6 +41,38 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Clip_measurement_seeks_both_inputs_and_caps_the_duration()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 300, ReferenceStartSeconds: 300, MeasureDurationSeconds: 120),
+            threads: 4);
+
+        var args = command.Arguments;
+        // Both inputs are seeked to the clip start so their frames stay aligned, and the output is
+        // capped to the clip length so only that window is scored.
+        Assert.Equal("300", ValueAfter(args, "-ss", occurrence: 1));
+        Assert.Equal("/work/output.mkv", ValueAfter(args, "-i", occurrence: 1));
+        Assert.Equal("300", ValueAfter(args, "-ss", occurrence: 2));
+        Assert.Equal("/data/original.mkv", ValueAfter(args, "-i", occurrence: 2));
+        Assert.Equal("120", ValueAfter(args, "-t", occurrence: 1));
+    }
+
+    [Fact]
+    public void Full_file_measurement_has_no_seek_or_duration_cap()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            threads: 4);
+
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.DoesNotContain("-t", command.Arguments);
+    }
+
+    [Fact]
     public void Uhd_measurement_selects_the_4k_model_automatically()
     {
         var command = QualityScoreCommandBuilder.Build(

@@ -362,6 +362,7 @@
     verificationImageQualityGateEnabled: true,
     verificationMinimumImageSsim: 0.95,
     verificationImageMetadataGateEnabled: true,
+    verificationClipVmafEnabled: false,
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
@@ -677,6 +678,13 @@
         </p>
         {#if settings.verificationQualityGateEnabled}
           <p class="mt-1 text-xs text-amber-600 dark:text-amber-500">{i18n.m.settings.vmaf_cost_warning}</p>
+          <div class="mt-3">
+            <Toggle
+              bind:checked={settings.verificationClipVmafEnabled}
+              label={i18n.m.settings.vmaf_clip_label}
+              hint={i18n.m.settings.vmaf_clip_hint}
+            />
+          </div>
         {/if}
       </div>
 

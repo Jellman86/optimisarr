@@ -450,6 +450,9 @@ export const pt: Messages = {
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
+    vmaf_clip_label: 'Score a sample clip (faster)',
+    vmaf_clip_hint:
+      'Measure VMAF on a representative ~2-minute clip from the middle of the file instead of the whole runtime. Dramatically faster on low-power hardware (e.g. an Intel N100) where full-file VMAF is impractical, at the cost of sampling only part of the file. The other gates still check the whole output.',
     loudness_label: "Desvio de volume de áudio (EBU R128)",
     loudness_hint: "Mede o volume integrado do original e da saída com o filtro ebur128 do FFmpeg e falha na tarefa de processamento se eles diferirem muito. Adiciona uma passagem de decodificação, portanto fica desativada por padrão; mais útil quando um perfil recodifica o áudio.",
     loudness_max: "Desvio máximo de volume",

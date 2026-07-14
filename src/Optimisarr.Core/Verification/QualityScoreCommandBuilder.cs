@@ -9,7 +9,12 @@ public sealed record QualityMeasurementContext(
     bool ReferenceIsHdr,
     bool HdrConvertedToSdr,
     int? ReferenceStartSeconds = null,
-    double? ReferenceDurationSeconds = null);
+    double? ReferenceDurationSeconds = null,
+    // Clip-VMAF: seek the distorted (output) input too, and cap the measurement to a window, so a
+    // full-file job can score just a representative segment. ReferenceStartSeconds carries the same
+    // seek for the reference input.
+    int? DistortedStartSeconds = null,
+    int? MeasureDurationSeconds = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -79,9 +84,18 @@ public static class QualityScoreCommandBuilder
             // -stats forces ffmpeg to print per-frame "time=" progress to stderr even at the error
             // log level, so verification can report real progress without any other noise.
             "-stats",
-            // libvmaf requires distorted first and reference second.
-            "-i", distortedPath
         };
+        // Clip-VMAF seeks the distorted (output) input into the same window as the reference so a
+        // full-file job can score only a representative segment. An accurate seek before -i decodes
+        // to the point, keeping the two streams frame-aligned.
+        if (context.DistortedStartSeconds is > 0)
+        {
+            arguments.Add("-ss");
+            arguments.Add(context.DistortedStartSeconds.Value.ToString());
+        }
+        // libvmaf requires distorted first and reference second.
+        arguments.Add("-i");
+        arguments.Add(distortedPath);
         // Preview outputs begin at zero after an accurate decode seek into the source. Seek the
         // full reference as its own decoded input so FFmpeg discards keyframe pre-roll before
         // libvmaf; comparing against a stream-copied clip can start on an earlier keyframe.
@@ -92,12 +106,14 @@ public static class QualityScoreCommandBuilder
         }
         arguments.Add("-i");
         arguments.Add(referencePath);
-        arguments.AddRange(
-        [
-            "-lavfi", filter,
-            "-f", "null",
-            "-"
-        ]);
+        arguments.AddRange(["-lavfi", filter]);
+        // Cap the measurement to the clip length (clip-VMAF); without it the whole file is scored.
+        if (context.MeasureDurationSeconds is > 0)
+        {
+            arguments.Add("-t");
+            arguments.Add(context.MeasureDurationSeconds.Value.ToString());
+        }
+        arguments.AddRange(["-f", "null", "-"]);
 
         return new QualityScoreCommand(arguments, filter, model, preprocessing);
     }

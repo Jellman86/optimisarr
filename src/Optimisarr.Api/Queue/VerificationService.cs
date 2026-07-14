@@ -43,6 +43,14 @@ public sealed class VerificationService(
     ImageMetadataService imageMetadata,
     TranscodeOptions transcodeOptions)
 {
+    // Clip-VMAF scores a centred window of this length instead of the whole file. 120s samples
+    // enough motion and detail to be representative while cutting VMAF time on a long file
+    // enormously — the difference between usable and unusable on low-power hosts.
+    private const int ClipVmafSeconds = 120;
+
+    // Don't bother clipping a file only a little longer than the clip; the saving is negligible.
+    private const int ClipVmafMinHeadroomSeconds = 30;
+
     public async Task<VerificationOutcome> VerifyAsync(
         OriginalSnapshot original,
         string outputPath,
@@ -72,8 +80,23 @@ public sealed class VerificationService(
             // VMAF is expensive (a second full decode of both files), so run it only for
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
             // audio and image jobs have their own applicable verification gates.
-            var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
-                ? await MeasureQualityAsync(
+            QualityResult? qualityResult = null;
+            if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            {
+                // Clip-VMAF (a real full-file job, not a preview) scores a centred representative
+                // window instead of the whole runtime — much faster on modest hardware, at the cost
+                // of sampling only part of the file. Skip it when the source is already short.
+                (int Start, int Duration)? vmafClip = null;
+                if (clip is null
+                    && policy.ClipVmafEnabled
+                    && reference.DurationSeconds is { } total
+                    && total > ClipVmafSeconds + ClipVmafMinHeadroomSeconds)
+                {
+                    var start = (int)Math.Max(0, (total - ClipVmafSeconds) / 2.0);
+                    vmafClip = (start, ClipVmafSeconds);
+                }
+
+                qualityResult = await MeasureQualityAsync(
                     reference,
                     outputPath,
                     originalProbe,
@@ -83,9 +106,11 @@ public sealed class VerificationService(
                     // exact preview start instead, keeping its frames aligned with the encode.
                     clip is null ? reference.Path : original.Path,
                     clip?.StartSeconds,
+                    vmafClip?.Start,
+                    vmafClip?.Duration,
                     qualityProgress,
-                    cancellationToken)
-                : null;
+                    cancellationToken);
+            }
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
             // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
@@ -228,6 +253,8 @@ public sealed class VerificationService(
         QualityScoreService quality,
         string qualityReferencePath,
         int? referenceStartSeconds,
+        int? clipStartSeconds,
+        int? clipDurationSeconds,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
@@ -242,8 +269,12 @@ public sealed class VerificationService(
             originalProbe.Height.Value,
             reference.IsHdr,
             reference.HdrConvertedToSdr,
-            referenceStartSeconds,
-            originalProbe.DurationSeconds);
+            // A clip-VMAF window seeks both inputs to its start; otherwise only the reference seek
+            // (a preview) applies to the reference input.
+            ReferenceStartSeconds: clipStartSeconds ?? referenceStartSeconds,
+            ReferenceDurationSeconds: originalProbe.DurationSeconds,
+            DistortedStartSeconds: clipStartSeconds,
+            MeasureDurationSeconds: clipDurationSeconds);
         return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
     }
 

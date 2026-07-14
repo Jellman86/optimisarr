@@ -474,6 +474,9 @@ vmaf_min_tip: 'Détecte les brèves dégradations que la moyenne globale pourrai
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
+    vmaf_clip_label: 'Score a sample clip (faster)',
+    vmaf_clip_hint:
+      'Measure VMAF on a representative ~2-minute clip from the middle of the file instead of the whole runtime. Dramatically faster on low-power hardware (e.g. an Intel N100) where full-file VMAF is impractical, at the cost of sampling only part of the file. The other gates still check the whole output.',
 loudness_label: 'Dérive du niveau sonore (EBU R128)',
 loudness_hint:
   "Mesure le niveau sonore intégré de l’original et de la sortie avec le filtre ebur128 de FFmpeg et fait échouer la tâche si la différence est trop grande. Ajoute un passage de décodage et est donc désactivé par défaut ; utile surtout lors du ré-encodage audio.",

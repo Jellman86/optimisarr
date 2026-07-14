@@ -171,6 +171,7 @@ export type Settings = {
   verificationImageQualityGateEnabled: boolean
   verificationMinimumImageSsim: number
   verificationImageMetadataGateEnabled: boolean
+  verificationClipVmafEnabled: boolean
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number
