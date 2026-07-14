@@ -101,6 +101,19 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
+    public void Kept_audio_languages_default_to_empty_and_can_be_overridden()
+    {
+        var defaults = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+        Assert.Empty(defaults.KeepAudioLanguages);
+
+        var overridden = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { KeepAudioLanguages = new[] { "eng", "jpn" } });
+
+        Assert.Equal(new[] { "eng", "jpn" }, overridden.KeepAudioLanguages);
+    }
+
+    [Fact]
     public void Overrides_replace_only_the_values_that_are_set()
     {
         var overrides = new RuleOverrides { MaxHeight = 1080, Hdr = HdrHandling.TonemapToSdr };

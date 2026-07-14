@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 using Optimisarr.Data;
 
@@ -191,7 +192,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             file.BitsPerRawSample,
             file.AttachedPictureCount,
             file.SubtitleTrackCount ?? 0,
-            file.MaxAudioChannels);
+            file.MaxAudioChannels,
+            AudioTrackSelection.ParseTrackLanguages(file.AudioLanguages));
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }

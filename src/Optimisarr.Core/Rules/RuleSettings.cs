@@ -98,6 +98,14 @@ public sealed record RuleSettings
     public bool DownmixToStereo { get; init; }
 
     /// <summary>
+    /// The audio languages a video job keeps (ISO 639 codes, e.g. "eng"); tracks in any other
+    /// language are removed from the output. Empty (the default) keeps every track. Tracks
+    /// whose language is unknown are always kept, and when no track matches a kept language
+    /// nothing is removed — see <see cref="Queue.AudioTrackSelection"/>.
+    /// </summary>
+    public IReadOnlyList<string> KeepAudioLanguages { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// When <c>true</c>, already-lossy audio (e.g. a 320 kbps MP3) is also eligible for
     /// re-encoding to the target codec, but only when its source bitrate is known to exceed
     /// the target enough to genuinely save space. Defaults to <c>false</c>: the conservative

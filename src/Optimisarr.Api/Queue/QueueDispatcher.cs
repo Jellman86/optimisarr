@@ -519,25 +519,38 @@ public sealed class QueueDispatcher(
 
         var isPreview = job.Type == JobType.Preview;
 
-        // MP4 can't store image-based subtitles (Blu-ray PGS / DVD VobSub). When a video job
-        // targets MP4 and the file has subtitle tracks, probe the source: if any are bitmap, the
-        // resolver falls back to MKV so they're preserved instead of failing the encode. Gated so
-        // the extra ffprobe only runs when it could matter.
-        var sourceHasImageSubtitles = false;
-        if (media.MediaKind is not (MediaKind.Audio or MediaKind.Image)
+        var isVideoJob = media.MediaKind is not (MediaKind.Audio or MediaKind.Image);
+
+        // Two conditions warrant one extra ffprobe of the source, gated so it only runs when it
+        // could matter. MP4 can't store image-based subtitles (Blu-ray PGS / DVD VobSub): when a
+        // video job targets MP4 and the file has subtitle tracks, a bitmap subtitle makes the
+        // resolver fall back to MKV so it is preserved instead of failing the encode. And a
+        // kept-languages rule needs per-track languages: rows probed before languages were
+        // captured lack them, so read them from the file now rather than silently skipping the rule.
+        var needsSubtitleProbe = isVideoJob
             && (media.SubtitleTrackCount ?? 0) > 0
-            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer))
+            && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer);
+        var sourceAudioLanguages = AudioTrackSelection.ParseTrackLanguages(media.AudioLanguages);
+        var needsLanguageProbe = isVideoJob
+            && rules.KeepAudioLanguages.Count > 0
+            && sourceAudioLanguages is null
+            && (media.AudioTrackCount ?? 0) > 0;
+        var sourceHasImageSubtitles = false;
+        if (needsSubtitleProbe || needsLanguageProbe)
         {
             var probe = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
             var probeResult = await probe.ProbeAsync(media.Path, cancellationToken);
             sourceHasImageSubtitles = probeResult.HasImageSubtitles;
+            if (needsLanguageProbe && probeResult.Success)
+            {
+                sourceAudioLanguages = probeResult.AudioTracks.Select(track => track.Language).ToList();
+            }
         }
 
         // MP4/MOV has no tag for some Blu-ray audio (TrueHD, LPCM); copying one into an MP4 target
         // aborts the encode. The inventory already recorded the source's audio codecs, so this needs
         // no extra probe — the resolver falls back to MKV when such audio would be copied.
-        var sourceHasMp4IncompatibleAudio =
-            media.MediaKind is not (MediaKind.Audio or MediaKind.Image)
+        var sourceHasMp4IncompatibleAudio = isVideoJob
             && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer)
             && AudioContainerCompatibility.ContainsMp4Incompatible(media.AudioCodecs);
 
@@ -560,7 +573,8 @@ public sealed class QueueDispatcher(
             sourceHasMp4IncompatibleAudio,
             media.VideoCodec,
             media.MaxAudioChannels,
-            media.IsVariableFrameRate == true);
+            media.IsVariableFrameRate == true,
+            sourceAudioLanguages);
 
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an
@@ -596,7 +610,10 @@ public sealed class QueueDispatcher(
             // Remux-only work copies encoded video frames unchanged, so a perceptual comparison
             // would add a full decode pass without providing another safety signal.
             VideoReencoded: spec.VideoCodec is not null,
-            ExpectedVideoCodec: spec.VideoCodec);
+            ExpectedVideoCodec: spec.VideoCodec,
+            // The audio tracks the kept-languages rule removes on purpose; verification holds
+            // the output to exactly this plan and judges fidelity against the kept tracks.
+            RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,

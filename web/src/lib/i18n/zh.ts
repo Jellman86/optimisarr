@@ -661,6 +661,11 @@ export const zh: Messages = {
     audio_bitrate: "音频比特率 (kbps)",
     audio_bitrate_tip: "音频重新编码的立体声基准比特率 (32–512 kbps)。保留环绕声时，每对声道会自动获得该比特率预算；明确下混为立体声时则保持此值。96 kbps 立体声 AAC 对于大多数聆听来说都是透明的。",
     audio_bitrate_ph: "默认 (160)",
+    keep_audio_langs: "保留的音频语言",
+    keep_audio_langs_tip:
+      "以逗号分隔的 ISO 639 代码（例如 \"chi, eng\"）。优化或重新封装视频时，其他语言的音轨将从输出中移除。没有语言标签的音轨始终保留；如果没有任何音轨匹配，则不会移除任何内容——输出始终至少保留一条音轨。在通过所有验证之前，原始文件不会被改动。",
+    keep_audio_langs_ph: "所有语言（例如 chi, eng）",
+    keep_audio_langs_hint: "留空则保留所有音轨。未知语言的音轨绝不会被移除。",
     vmaf_thresholds: "质量门阈值 (VMAF)",
     vmaf_thresholds_tip: "感知质量门的每个媒体库覆盖。仅当在“设置”中启用该门时才使用。更高=更严格（接近无损）：低于这些的输出分数将被拒绝并保留原始分数。",
     override: "覆盖",

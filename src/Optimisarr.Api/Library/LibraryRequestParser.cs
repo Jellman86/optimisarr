@@ -26,6 +26,7 @@ internal readonly record struct ParsedLibrary(
     string? VideoAudioCodec,
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
+    string? KeepAudioLanguages,
     bool ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -150,6 +151,12 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (!TryParseKeepAudioLanguages(request.KeepAudioLanguages, out var keepAudioLanguages))
+        {
+            error = "Audio languages must be comma-separated ISO 639 codes of 2–3 letters (e.g. \"eng, jpn\").";
+            return false;
+        }
+
         var targetImageFormat = Trim(request.TargetImageFormat);
         if (targetImageFormat is not null && !ImageTarget.IsEncodable(targetImageFormat))
         {
@@ -235,6 +242,7 @@ internal static class LibraryRequestParser
             videoAudioCodec is null ? null : videoAudioCodec.ToLowerInvariant(),
             request.VideoAudioBitrateKbps,
             request.DownmixToStereo ?? false,
+            keepAudioLanguages,
             request.ReencodeLossyAudio ?? false,
             targetImageFormat is null ? null : targetImageFormat.ToLowerInvariant(),
             request.ImageQuality,
@@ -258,6 +266,26 @@ internal static class LibraryRequestParser
     {
         var trimmed = value?.Trim();
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+    }
+
+    // Kept audio languages are stored as a canonical comma-separated list of lower-case ISO 639
+    // codes ("eng, jpn"). Blank input means "keep every track" and stores null.
+    private static bool TryParseKeepAudioLanguages(string? value, out string? normalised)
+    {
+        normalised = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var codes = AudioTrackSelection.ParseLanguageList(value);
+        if (codes.Count == 0 || codes.Any(code => code.Length is < 2 or > 3 || !code.All(char.IsAsciiLetter)))
+        {
+            return false;
+        }
+
+        normalised = string.Join(", ", codes);
+        return true;
     }
 
     // An omitted window time defaults to 00:00; start == end means the window is open

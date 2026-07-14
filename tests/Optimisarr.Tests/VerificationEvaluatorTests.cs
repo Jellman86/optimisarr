@@ -751,6 +751,53 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Audio_tracks_removed_by_the_language_rule_pass_retention()
+    {
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 3,
+            OutputAudioTrackCount = 1,
+            AudioTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
+    public void Losing_more_audio_tracks_than_the_language_rule_removed_fails()
+    {
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 3,
+            OutputAudioTrackCount = 1,
+            AudioTracksRemoved = 1
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
+    public void A_language_rule_removal_never_excuses_an_output_with_no_audio_at_all()
+    {
+        // The selection logic guarantees at least one kept track; if the output still has
+        // none, something went wrong and the replacement must not proceed.
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 2,
+            OutputAudioTrackCount = 0,
+            AudioTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
     public void Lost_subtitles_pass_by_default_but_fail_when_required()
     {
         var input = Healthy() with { OutputSubtitleTrackCount = 0 };

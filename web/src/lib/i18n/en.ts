@@ -699,6 +699,11 @@ export const en = {
     audio_bitrate: 'Audio bitrate (kbps)',
     audio_bitrate_tip: 'Stereo baseline bitrate for the audio re-encode (32–512 kbps). Retained surround automatically receives this budget per channel pair; an explicit stereo downmix keeps this value. 96 kbps stereo AAC is transparent for most listening.',
     audio_bitrate_ph: 'Default (160)',
+    keep_audio_langs: 'Keep audio languages',
+    keep_audio_langs_tip:
+      'Comma-separated ISO 639 codes (e.g. "eng, jpn"). When a video is optimised or remuxed, audio tracks in any other language are removed from the output. Tracks with no language tag are always kept, and if no track matches, nothing is removed — the output always keeps at least one audio track. The original is untouched until every verification gate passes.',
+    keep_audio_langs_ph: 'All languages (e.g. eng, jpn)',
+    keep_audio_langs_hint: 'Leave empty to keep every track. Unknown-language tracks are never removed.',
     vmaf_thresholds: 'Quality-gate thresholds (VMAF)',
     vmaf_thresholds_tip: 'Per-library override for the perceptual-quality gate. Only used when that gate is enabled in Settings. Higher = stricter (near-lossless): an output scoring below these is rejected and the original kept.',
     override: 'Override',

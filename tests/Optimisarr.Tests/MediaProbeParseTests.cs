@@ -108,6 +108,53 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_captures_each_audio_track_in_stream_order()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "width": 1920, "height": 1080 },
+            { "codec_type": "audio", "codec_name": "truehd", "channels": 8, "sample_rate": "48000", "tags": { "language": "fra" } },
+            { "codec_type": "audio", "codec_name": "aac", "channels": 2, "sample_rate": "44100", "tags": { "language": "ENG" } },
+            { "codec_type": "audio", "codec_name": "ac3", "channels": 6 }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(3, result.AudioTracks.Count);
+        Assert.Equal(new AudioTrackInfo("fra", 8, 48000, "truehd"), result.AudioTracks[0]);
+        // Tags are normalised to lower case so language comparisons are stable.
+        Assert.Equal(new AudioTrackInfo("eng", 2, 44100, "aac"), result.AudioTracks[1]);
+        // A track with no language tag has an unknown language, not an empty string.
+        Assert.Equal(new AudioTrackInfo(null, 6, 0, "ac3"), result.AudioTracks[2]);
+
+        // The aggregate fields stay consistent with the per-track capture.
+        Assert.Equal(new[] { "truehd", "aac", "ac3" }, result.AudioCodecs);
+        Assert.Equal(8, result.MaxAudioChannels);
+        Assert.Equal(48000, result.MaxAudioSampleRate);
+    }
+
+    [Fact]
+    public void Parse_treats_a_blank_language_tag_as_unknown()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "audio", "codec_name": "aac", "channels": 2, "tags": { "language": "   " } }
+          ],
+          "format": { "format_name": "mp4" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".m4a");
+
+        Assert.Null(result.AudioTracks[0].Language);
+    }
+
+    [Fact]
     public void Parse_classifies_a_video_file_as_video()
     {
         const string json = """

@@ -699,6 +699,11 @@ export const de: Messages = {
     audio_bitrate: 'Audio-Bitrate (kbps)',
     audio_bitrate_tip: 'Stereo-Basisbitrate für die Audio-Neukodierung (32–512 kbps). Beibehaltener Surround-Ton erhält dieses Budget automatisch pro Kanalpaar; ein ausdrücklicher Stereo-Downmix behält diesen Wert. 96 kbps Stereo-AAC ist für die meisten Hörsituationen transparent.',
     audio_bitrate_ph: 'Standard (160)',
+    keep_audio_langs: 'Audiosprachen behalten',
+    keep_audio_langs_tip:
+      'Kommagetrennte ISO-639-Codes (z. B. "deu, eng"). Beim Optimieren oder Remuxen eines Videos werden Audiospuren in anderen Sprachen aus der Ausgabe entfernt. Spuren ohne Sprachkennzeichnung bleiben immer erhalten, und wenn keine Spur passt, wird nichts entfernt — die Ausgabe behält immer mindestens eine Audiospur. Das Original bleibt unangetastet, bis alle Prüfschritte bestanden sind.',
+    keep_audio_langs_ph: 'Alle Sprachen (z. B. deu, eng)',
+    keep_audio_langs_hint: 'Leer lassen, um alle Spuren zu behalten. Spuren mit unbekannter Sprache werden nie entfernt.',
     vmaf_thresholds: 'Qualitäts-Gate-Schwellenwerte (VMAF)',
     vmaf_thresholds_tip: 'Bibliotheksspezifische Überschreibung für das Wahrnehmungsqualitäts-Gate. Wird nur verwendet, wenn dieses Gate in den Einstellungen aktiviert ist. Höher = strenger (nahezu verlustfrei): eine Ausgabe, die darunter liegt, wird abgelehnt und das Original behalten.',
     override: 'Überschreiben',

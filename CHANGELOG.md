@@ -27,6 +27,20 @@
 
 ### Added
 
+- **Per-library "Keep audio languages" removes unwanted audio tracks.** A library can list the
+  ISO 639 codes to keep (e.g. `eng, jpn`); when a video is optimised or remuxed, audio tracks in
+  any other language are dropped from the output via explicit `-map -0:a:N` exclusions. The
+  behaviour is conservative by design: a track with no language tag (`und`/`zxx`/`mul` or missing)
+  is never removed, and when no track matches a kept language nothing is removed — so an output
+  never loses all its audio. Common ISO 639-1/-2 spellings of the same language match each other
+  (`de`/`deu`/`ger`). Verification is tightened, not relaxed: the audio-track gate expects exactly
+  the planned retention (and never zero tracks when the source had audio), and the channel/sample-
+  rate fidelity gate is judged against the *kept* tracks, so removing a foreign 7.1 track cannot
+  mask a silent downmix of the kept one. The probe now records each audio track's language
+  (visible in the inventory detail), files probed before this upgrade are re-probed at job time,
+  and under the Remux/cleanup profile a container-clean file with removable foreign tracks becomes
+  eligible for a fast stream-copy cleanup. Setting is in the library form (all locales), carried in
+  config backup/restore. Migration `AddKeepAudioLanguages`.
 - **Live verification progress in the queue.** The perceptual-quality (VMAF) pass is the long part
   of verification, so it now reports real 0–100% progress on the same job-progress and live-update
   channel the transcode uses (ffmpeg `-stats` parsed against the source runtime). The Queue hero and

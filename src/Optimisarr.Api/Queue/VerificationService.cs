@@ -19,7 +19,10 @@ public sealed record OriginalSnapshot(
     bool AudioDownmixed = false,
     bool ImageDownscaleRequested = false,
     bool VideoReencoded = true,
-    string? ExpectedVideoCodec = null);
+    string? ExpectedVideoCodec = null,
+    // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
+    // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
+    IReadOnlyList<int>? RemovedAudioStreamIndexes = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -77,6 +80,12 @@ public sealed class VerificationService(
             // A quick re-probe of the original (no decode) gives its audio shape so we can
             // catch a silent downmix or sample-rate drop in the output.
             var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
+
+            // When the job removed tracks by language, the audio the output promised to retain
+            // is the kept tracks — so channel/sample-rate expectations come from those, not from
+            // a removed track (e.g. dropping a foreign 7.1 track must not excuse downmixing the
+            // kept one, and must not demand 8 channels the output was never meant to have).
+            var keptAudioTracks = KeptAudioTracks(originalProbe, reference.RemovedAudioStreamIndexes);
 
             // VMAF is expensive (a second full decode of both files), so run it only for
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
@@ -178,9 +187,13 @@ public sealed class VerificationService(
                 OriginalIsHdr: reference.IsHdr,
                 OutputIsHdr: outputProbe.IsHdr,
                 HdrConvertedToSdr: reference.HdrConvertedToSdr,
-                OriginalMaxAudioChannels: originalProbe.MaxAudioChannels,
+                OriginalMaxAudioChannels: keptAudioTracks.Count == 0
+                    ? originalProbe.MaxAudioChannels
+                    : keptAudioTracks.Max(track => track.Channels),
                 OutputMaxAudioChannels: outputProbe.MaxAudioChannels,
-                OriginalMaxAudioSampleRate: originalProbe.MaxAudioSampleRate,
+                OriginalMaxAudioSampleRate: keptAudioTracks.Count == 0
+                    ? originalProbe.MaxAudioSampleRate
+                    : keptAudioTracks.Max(track => track.SampleRate),
                 OutputMaxAudioSampleRate: outputProbe.MaxAudioSampleRate,
                 QualityMeasured: qualityResult?.Measured ?? false,
                 QualityError: qualityResult?.Error,
@@ -210,6 +223,7 @@ public sealed class VerificationService(
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,
+                AudioTracksRemoved: reference.RemovedAudioStreamIndexes?.Count ?? 0,
                 OriginalWidth: originalProbe.Width,
                 OriginalHeight: originalProbe.Height,
                 OutputWidth: outputProbe.Width,
@@ -247,6 +261,23 @@ public sealed class VerificationService(
                 TryDelete(reference.Path);
             }
         }
+    }
+
+    // The original's audio tracks minus the ones the job removed on purpose. Falls back to
+    // every track when nothing was removed (or the probe saw no audio, e.g. an unreadable
+    // original — the aggregate fields then keep their existing conservative behaviour).
+    private static IReadOnlyList<AudioTrackInfo> KeptAudioTracks(
+        MediaProbeResult originalProbe,
+        IReadOnlyList<int>? removedIndexes)
+    {
+        if (removedIndexes is not { Count: > 0 })
+        {
+            return originalProbe.AudioTracks;
+        }
+
+        return originalProbe.AudioTracks
+            .Where((_, index) => !removedIndexes.Contains(index))
+            .ToList();
     }
 
     private static Task<QualityResult> MeasureQualityAsync(

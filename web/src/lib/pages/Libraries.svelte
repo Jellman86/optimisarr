@@ -390,6 +390,7 @@
       videoAudioCodec: null,
       videoAudioBitrateKbps: null,
       downmixToStereo: false,
+      keepAudioLanguages: null,
       reencodeLossyAudio: false,
       targetImageFormat: null,
       imageQuality: null,
@@ -532,6 +533,7 @@
       videoAudioCodec: library.videoAudioCodec,
       videoAudioBitrateKbps: library.videoAudioBitrateKbps,
       downmixToStereo: library.downmixToStereo,
+      keepAudioLanguages: library.keepAudioLanguages,
       reencodeLossyAudio: library.reencodeLossyAudio,
       targetImageFormat: library.targetImageFormat,
       imageQuality: library.imageQuality,
@@ -592,6 +594,7 @@
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
       videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
+      keepAudioLanguages: emptyToNull(form.keepAudioLanguages),
       targetImageFormat: emptyToNull(form.targetImageFormat),
       imageQuality: toNullableNumber(form.imageQuality),
       imageDownscaleValue: Number(form.imageDownscaleValue) || 0,
@@ -1008,6 +1011,21 @@
               bind:value={form.videoAudioBitrateKbps}
             />
           </div>
+        </div>
+
+        <!-- Keep-languages track removal applies to copied and re-encoded audio alike; tracks
+             with no language tag are never removed, and a file where nothing matches is left
+             untouched, so the output always keeps at least one audio track. -->
+        <div class="mt-4">
+          <label class="label" for="lib-keep-audio-languages">{i18n.m.libraries.keep_audio_langs} <InfoTip text={i18n.m.libraries.keep_audio_langs_tip} /></label>
+          <input
+            id="lib-keep-audio-languages"
+            class="input"
+            type="text"
+            placeholder={i18n.m.libraries.keep_audio_langs_ph}
+            bind:value={form.keepAudioLanguages}
+          />
+          <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
         </div>
 
         <div class="mt-4">
