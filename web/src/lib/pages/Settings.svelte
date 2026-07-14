@@ -352,7 +352,7 @@
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
     verificationRequireSizeReduction: true,
-    verificationQualityGateEnabled: true,
+    verificationQualityGateEnabled: false,
     verificationMinimumVmafHarmonicMean: 93,
     verificationMinimumVmafMin: 80,
     verificationAudioLoudnessGateEnabled: false,
@@ -366,6 +366,58 @@
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
   })
+
+  // Perceptual-quality (VMAF) presets exposed as a single slider: the leftmost stop turns the
+  // gate off (the default) and each remaining stop prefills both VMAF floors. Values follow
+  // VMAF's 0-100 scale (~6 points ≈ one just-noticeable difference; ~93 is the commonly-cited
+  // "visually lossless" mark for HD). Higher stops are stricter and keep larger files.
+  const vmafPresets = [
+    { enabled: false, harmonicMean: 93, min: 80 }, // Off
+    { enabled: true, harmonicMean: 80, min: 60 }, // Space-saver
+    { enabled: true, harmonicMean: 85, min: 70 }, // Balanced
+    { enabled: true, harmonicMean: 90, min: 75 }, // High
+    { enabled: true, harmonicMean: 93, min: 80 }, // Visually lossless
+    { enabled: true, harmonicMean: 96, min: 90 }, // Archival
+  ] as const
+
+  function vmafPresetLabel(index: number): string {
+    const s = i18n.m.settings
+    return [
+      s.vmaf_preset_off,
+      s.vmaf_preset_space_saver,
+      s.vmaf_preset_balanced,
+      s.vmaf_preset_high,
+      s.vmaf_preset_lossless,
+      s.vmaf_preset_archival,
+    ][index]
+  }
+
+  // Map the saved policy onto a slider stop: off when the gate is disabled, otherwise the stop
+  // whose harmonic-mean floor is closest to the saved value, so an older config with custom
+  // numbers snaps to the nearest tier instead of dropping off the slider.
+  let vmafIndex = $derived.by(() => {
+    if (!settings.verificationQualityGateEnabled) return 0
+    let best = 1
+    let bestDistance = Infinity
+    for (let i = 1; i < vmafPresets.length; i++) {
+      const distance = Math.abs(vmafPresets[i].harmonicMean - settings.verificationMinimumVmafHarmonicMean)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        best = i
+      }
+    }
+    return best
+  })
+
+  function applyVmafPreset(index: number) {
+    const preset = vmafPresets[index]
+    settings.verificationQualityGateEnabled = preset.enabled
+    if (preset.enabled) {
+      settings.verificationMinimumVmafHarmonicMean = preset.harmonicMean
+      settings.verificationMinimumVmafMin = preset.min
+    }
+  }
+
   let minFreeDiskGiB = $state('10')
   let loading = $state(true)
   let saving = $state(false)
@@ -594,21 +646,35 @@
       </div>
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationQualityGateEnabled}
-          label={i18n.m.settings.vmaf_label}
-          hint={i18n.m.settings.vmaf_hint}
-        />
-        <div class="mt-4 grid gap-4 sm:grid-cols-2" class:opacity-50={!settings.verificationQualityGateEnabled}>
-          <div>
-            <label class="label" for="vmaf-harmonic">{i18n.m.settings.vmaf_harmonic} <InfoTip text={i18n.m.settings.vmaf_harmonic_tip} /></label>
-            <input id="vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafHarmonicMean} disabled={!settings.verificationQualityGateEnabled} />
-          </div>
-          <div>
-            <label class="label" for="vmaf-min">{i18n.m.settings.vmaf_min} <InfoTip text={i18n.m.settings.vmaf_min_tip} /></label>
-            <input id="vmaf-min" class="input" type="number" min="0" max="100" step="0.5" bind:value={settings.verificationMinimumVmafMin} disabled={!settings.verificationQualityGateEnabled} />
-          </div>
+        <div class="label flex items-center gap-1">
+          {i18n.m.settings.vmaf_label}
+          <InfoTip text={i18n.m.settings.vmaf_hint} />
         </div>
+        <input
+          class="mt-3 w-full"
+          type="range"
+          min="0"
+          max="5"
+          step="1"
+          value={vmafIndex}
+          oninput={(event) => applyVmafPreset(Number(event.currentTarget.value))}
+          aria-label={i18n.m.settings.vmaf_label}
+        />
+        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span>{i18n.m.settings.vmaf_preset_off}</span>
+          <span>{i18n.m.settings.vmaf_preset_archival}</span>
+        </div>
+        <p class="mt-3 text-sm">
+          <span class="font-medium text-slate-700 dark:text-slate-200">{vmafPresetLabel(vmafIndex)}</span>
+          {#if settings.verificationQualityGateEnabled}
+            <span class="text-slate-500 dark:text-slate-400">
+              — {i18n.m.settings.vmaf_harmonic} {settings.verificationMinimumVmafHarmonicMean} ·
+              {i18n.m.settings.vmaf_min} {settings.verificationMinimumVmafMin}
+            </span>
+          {:else}
+            <span class="text-slate-500 dark:text-slate-400">— {i18n.m.settings.vmaf_off_desc}</span>
+          {/if}
+        </p>
       </div>
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">

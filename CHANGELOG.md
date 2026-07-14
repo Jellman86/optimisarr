@@ -55,20 +55,27 @@
 
 ### Fixed
 
+- **A retried job no longer keeps a stale failure category.** Starting a new attempt now clears the
+  previous attempt's error message and failure classification, so a job that failed once (e.g. a
+  verification-gate rejection) and then succeeded on retry is reported as the success it is, instead
+  of lingering in the "why jobs fail" diagnostics as a verification failure.
 - **The language selector can open in either direction.** Its accessible custom menu measures the
   available viewport space and opens upward near the bottom of the sidebar, while retaining a
   downward menu where there is room. It supports outside-click/Escape dismissal and arrow-key,
   Home, and End navigation. Shared toggle checkboxes now also expose their visible labels to
-  assistive technology, including the default-on VMAF control.
-- **VMAF is now a default safety gate for video re-encodes.** New installations compare every
-  re-encoded video with its original at the existing conservative floors (93 harmonic mean / 80
-  worst frame), while existing installations retain their explicitly saved choice. Remux, audio,
-  and image work skip VMAF because it is either redundant or inapplicable. The Settings UI now
-  explains the safety/performance trade-off in every supported language, and the final-container
-  smoke test performs a real synthetic `libvmaf` comparison rather than trusting the filter list.
-  Model choice and stream preparation are automatic: HDTV/4K selection, reference-resolution
-  bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR-to-SDR
-  reference tone-mapping require no libvmaf expertise; reports record the selected policy.
+  assistive technology.
+- **VMAF is an opt-in perceptual-quality gate, chosen with a quality slider.** It is off by default
+  because it fully decodes both files and scores every frame, which roughly doubles verification
+  time and can dominate a run on modest hardware. A single Settings slider turns it on and prefills
+  both floors from five tiers — Space-saver (80/60), Balanced (85/70), High (90/75), Visually
+  lossless (93/80), and Archival (96/90) — with "Off" as the default leftmost stop; existing
+  installations retain their explicitly saved choice. While it is off the structural, duration and
+  size gates plus quarantine rollback still guard every replacement. Remux, audio, and image work
+  skip VMAF because it is either redundant or inapplicable, and the final-container smoke test still
+  performs a real synthetic `libvmaf` comparison rather than trusting the filter list. Model choice
+  and stream preparation are automatic: HDTV/4K selection, reference-resolution bicubic scaling,
+  timestamp/timebase and colour-range alignment, and like-for-like HDR-to-SDR reference tone-mapping
+  require no libvmaf expertise; reports record the selected policy.
 - **Still-image conversion now fails closed around structural loss.** Animated GIF/WebP inputs
   require a proven single frame, TIFF is left untouched while multi-page status cannot be proved,
   and the JPEG target rejects alpha or high-bit-depth inputs. Lossless-to-lossy conversion now

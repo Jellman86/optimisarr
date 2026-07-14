@@ -465,6 +465,14 @@ quarantine: {
     vmaf_harmonic_tip: 'Livello minimo di qualità generale. La media armonica penalizza i frame peggiori più della media semplice.',
     vmaf_min: 'VMAF minimo (peggior frame)',
     vmaf_min_tip: 'Individua brevi burst di artefatti che una media sana nasconderebbe.',
+    vmaf_preset_off: 'Off',
+    vmaf_preset_space_saver: 'Space-saver',
+    vmaf_preset_balanced: 'Balanced',
+    vmaf_preset_high: 'High',
+    vmaf_preset_lossless: 'Visually lossless',
+    vmaf_preset_archival: 'Archival',
+    vmaf_off_desc:
+      'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     loudness_label: 'Drift volume audio (EBU R128)',
     loudness_hint:
       "Misura il volume integrato originale e dell’output con il filtro ebur128 di FFmpeg e fallisce il lavoro se differiscono troppo. Aggiunge una passata di decodifica, quindi è disattivata di default; è utile soprattutto quando un profilo ricodifica l’audio.",

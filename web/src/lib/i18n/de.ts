@@ -467,6 +467,14 @@ export const de: Messages = {
     vmaf_harmonic_tip: 'Untergrenze der Gesamtqualität. Das harmonische Mittel bestraft schlechte Frames stärker als ein einfacher Durchschnitt.',
     vmaf_min: 'Min. VMAF (schlechtestes Frame)',
     vmaf_min_tip: 'Erkennt kurze Artefakt-Ausbrüche, die ein gesunder Durchschnitt verbergen würde.',
+    vmaf_preset_off: 'Off',
+    vmaf_preset_space_saver: 'Space-saver',
+    vmaf_preset_balanced: 'Balanced',
+    vmaf_preset_high: 'High',
+    vmaf_preset_lossless: 'Visually lossless',
+    vmaf_preset_archival: 'Archival',
+    vmaf_off_desc:
+      'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     loudness_label: 'Audio-Lautheitsdrift (EBU R128)',
     loudness_hint:
       'Misst die integrierte Lautheit von Original und Ausgabe mit FFmpegs ebur128-Filter und lässt die Aufgabe fehlschlagen, wenn sie zu stark abweichen. Fügt einen Dekodierdurchlauf hinzu, daher standardmäßig deaktiviert; am nützlichsten, wenn ein Profil das Audio neu kodiert.',

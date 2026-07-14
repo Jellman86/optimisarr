@@ -328,10 +328,7 @@ public sealed class QueueDispatcher(
                 return false;
             }
 
-            job.Status = JobStatus.Transcoding;
-            job.Attempt += 1;
-            job.StartedAt = DateTimeOffset.UtcNow;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
+            PrepareForAttempt(job, DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -826,6 +823,20 @@ public sealed class QueueDispatcher(
         {
             _dbLock.Release();
         }
+    }
+
+    // Begin a fresh attempt on a claimed job. A retry must not carry the previous attempt's
+    // failure state: clearing the error and its classification means a job that later succeeds is
+    // no longer grouped as a failure (the stale-category bug), and a retry in flight never shows a
+    // reason from the run before it. Internal so the pure field reset can be unit tested.
+    internal static void PrepareForAttempt(Job job, DateTimeOffset nowUtc)
+    {
+        job.Status = JobStatus.Transcoding;
+        job.Attempt += 1;
+        job.StartedAt = nowUtc;
+        job.UpdatedAt = nowUtc;
+        job.ErrorMessage = null;
+        job.FailureCategory = null;
     }
 
     // Keep a durable per-file failure tally so a file that keeps failing is excluded automatically

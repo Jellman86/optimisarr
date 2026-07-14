@@ -1,10 +1,33 @@
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
 
 public sealed class JobClearingTests
 {
+    [Fact]
+    public void A_new_attempt_clears_the_previous_attempts_failure_state()
+    {
+        var job = new Job
+        {
+            Id = 1,
+            Status = JobStatus.Queued,
+            Attempt = 1,
+            ErrorMessage = "Verification failed: Perceptual quality (VMAF)",
+            FailureCategory = FailureCategory.Verification,
+        };
+        var now = DateTimeOffset.UtcNow;
+
+        QueueDispatcher.PrepareForAttempt(job, now);
+
+        Assert.Equal(JobStatus.Transcoding, job.Status);
+        Assert.Equal(2, job.Attempt);
+        Assert.Equal(now, job.StartedAt);
+        Assert.Null(job.ErrorMessage);
+        Assert.Null(job.FailureCategory);
+    }
+
     private static readonly HashSet<int> NoLiveRollbacks = new();
 
     private static Job Job(int id, JobStatus status) => new() { Id = id, Status = status };

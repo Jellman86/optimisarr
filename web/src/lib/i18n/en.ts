@@ -462,11 +462,19 @@ export const en = {
     require_smaller: 'Require output to be smaller than the original',
     vmaf_label: 'Perceptual quality (VMAF)',
     vmaf_hint:
-      "Compares video re-encodes with the original using FFmpeg's libvmaf. Optimisarr automatically selects the HDTV or 4K model and handles scaling, timing, colour range, and HDR-to-SDR reference preparation. Enabled by default because it catches visible quality loss that structural checks cannot; it roughly doubles verification time.",
+      "Compares video re-encodes with the original using FFmpeg's libvmaf and rejects an output that scores below the chosen floor. Optimisarr automatically selects the HDTV or 4K model and handles scaling, timing, colour range, and HDR-to-SDR reference preparation. Off by default because it is CPU-intensive: it fully decodes both files and scores every frame, often using most of a CPU core for several minutes per file and roughly doubling verification time. Higher stops are stricter; Archival is close to lossless.",
     vmaf_harmonic: 'Min VMAF (harmonic mean)',
     vmaf_harmonic_tip: 'Overall quality floor. The harmonic mean penalises bad frames more than a plain average.',
     vmaf_min: 'Min VMAF (worst frame)',
     vmaf_min_tip: 'Catches short artifact bursts a healthy average would hide.',
+    vmaf_preset_off: 'Off',
+    vmaf_preset_space_saver: 'Space-saver',
+    vmaf_preset_balanced: 'Balanced',
+    vmaf_preset_high: 'High',
+    vmaf_preset_lossless: 'Visually lossless',
+    vmaf_preset_archival: 'Archival',
+    vmaf_off_desc:
+      'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
     loudness_label: 'Audio loudness drift (EBU R128)',
     loudness_hint:
       "Measures integrated loudness of original and output with FFmpeg's ebur128 filter and fails the job if they differ too much. Adds a decode pass, so it's off by default; most useful when a profile re-encodes audio.",
