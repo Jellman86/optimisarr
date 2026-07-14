@@ -75,7 +75,7 @@ policy, bit depth and chroma sampling may not be reduced, and ffprobe must repor
 profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
 requested codec or signal structure was retained. The configurable gates make replacement stricter:
 
-![Verification gates panel showing always-on checks, VMAF, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
+![Verification gates panel showing always-on checks, the VMAF quality slider, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
 
 | Gate | Applies to | Default |
 |---|---|---|
@@ -83,7 +83,7 @@ requested codec or signal structure was retained. The configurable gates make re
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video re-encodes | On, harmonic mean 93 / worst frame 80 |
+| Perceptual quality (VMAF) | Video re-encodes | Off by default; a quality slider picks a tier (Space-saver 80/60 → Visually lossless 93/80 → Archival 96/90) |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |
@@ -92,9 +92,13 @@ requested codec or signal structure was retained. The configurable gates make re
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
-the encoded video frames unchanged. Existing installations retain their saved VMAF
-choice; a new installation starts with the safer gate enabled. Image SSIM and EXIF/ICC retention
-are likewise enabled for new installations; existing saved opt-outs remain unchanged. SSIM uses
+the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because it
+fully decodes both files and scores every frame, roughly doubling verification time and dominating a
+run on modest hardware; a quality slider in Settings turns it on and prefills both floors from named
+tiers (Space-saver through Archival). Existing installations retain their saved choice, and while the
+gate is off the structural, duration and size gates plus quarantine rollback still guard every
+replacement. Image SSIM and EXIF/ICC retention are enabled for new installations; existing saved
+opt-outs remain unchanged. SSIM uses
 explicit reference dimensions, aligned timebases, full-range planar RGB/RGBA, and includes alpha
 when the source may carry it. Before verification, ExifTool copies EXIF and ICC while deliberately
 excluding orientation, embedded previews, and stale raster dimensions from the old image.

@@ -51,9 +51,9 @@ sheet before retrying:
   policy.
 - **Size reduction** failure means the output was not smaller than the original.
   Either leave the file alone or change the library rules deliberately.
-- **VMAF** failures come from the default-on video re-encode quality gate; image
-  **SSIM/metadata** failures come from opt-in image gates. When a gate is enabled,
-  a missing measurement fails closed.
+- **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled
+  via the quality slider in Settings); image **SSIM/metadata** failures come from the default-on
+  image gates. When a gate is enabled, a missing measurement fails closed.
 
 Use **Retry** only after changing the underlying cause: preset, hardware mode,
 source file, mount access, or verification policy. Use **Exclude** for files you
