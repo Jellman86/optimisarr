@@ -9,7 +9,8 @@
   channel the transcode uses (ffmpeg `-stats` parsed against the source runtime). The Queue hero and
   job rows show a determinate bar and percentage during verification and name the stage explicitly
   ("Scoring perceptual quality (VMAF)…"), so a job scoring for several minutes reads as active work
-  rather than a stall.
+  rather than a stall. The hero also shows a live CPU-usage graph during verification — VMAF is
+  CPU-only, so it surfaces just the CPU load (no GPU), making the heavy load visible at a glance.
 - **Internationalisation (i18n) foundation.** The web UI now resolves user-facing text through a
   typed locale system (`web/src/lib/i18n/`): English is the source of truth, and every other locale
   is typed against it, so a missing or misspelled key fails `npm run check` — making translation

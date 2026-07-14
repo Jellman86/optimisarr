@@ -911,8 +911,14 @@ public sealed class QueueDispatcher(
             _ = UpdateProgressAsync(jobId, fraction);
             _ = BroadcastProgressAsync(jobId, fraction, null, null, null);
         });
-        var outcome = await verification.VerifyAsync(
-            work.Original, outputPath, policy, cancellationToken, clip, qualityProgress);
+        // Mark verification as active work so the metrics broadcaster keeps sampling CPU load
+        // (the VMAF pass runs its own ffmpeg outside the encode registry).
+        VerificationOutcome outcome;
+        using (encodes.TrackVerification())
+        {
+            outcome = await verification.VerifyAsync(
+                work.Original, outputPath, policy, cancellationToken, clip, qualityProgress);
+        }
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
 
         await WithJobAsync(jobId, job =>

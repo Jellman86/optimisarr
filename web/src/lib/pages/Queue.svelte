@@ -502,6 +502,12 @@
                 <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
               {/if}
               <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.probing_source : i18n.m.queue.verifying_output}</div>
+              {#if job.status === 'Verifying'}
+                <!-- VMAF scoring is CPU-only, so show just the CPU graph to convey the high load. -->
+                <div class="mt-3">
+                  <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
+                </div>
+              {/if}
             {/if}
           </div>
         {/each}
