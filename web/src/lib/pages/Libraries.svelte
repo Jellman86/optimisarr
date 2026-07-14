@@ -168,6 +168,48 @@
   // Per-library eligible/skipped tallies for the list cards (counts only — see /api/candidates/summary).
   let summaries = $state<Record<number, { eligible: number; skipped: number }>>({})
   let form = $state<SaveLibrary>(blankForm())
+
+  const MAX_AUDIO_LANGUAGE_LIST_LENGTH = 256
+  type AudioLanguageInput = {
+    codes: string[]
+    normalised: string | null
+    syntaxValid: boolean
+    tooLong: boolean
+  }
+
+  // Mirrors the backend's storage validation so the form can explain a bad value before Save.
+  // The API remains authoritative; this is immediate, accessible operator feedback.
+  function parseAudioLanguageInput(value: string | null): AudioLanguageInput {
+    const raw = value?.trim() ?? ''
+    if (!raw) return { codes: [], normalised: null, syntaxValid: true, tooLong: false }
+
+    const entries = raw.split(',').map((entry) => entry.trim()).filter(Boolean)
+    if (entries.length === 0 || entries.some((entry) => !/^[A-Za-z]{2,3}$/.test(entry))) {
+      return { codes: [], normalised: null, syntaxValid: false, tooLong: false }
+    }
+
+    const codes = [...new Set(entries.map((entry) => entry.toLowerCase()))]
+    const normalised = codes.join(', ')
+    return {
+      codes,
+      normalised,
+      syntaxValid: true,
+      tooLong: normalised.length > MAX_AUDIO_LANGUAGE_LIST_LENGTH,
+    }
+  }
+
+  const audioLanguageInput = $derived(parseAudioLanguageInput(form.keepAudioLanguages))
+  const audioLanguageError = $derived(
+    !audioLanguageInput.syntaxValid
+      ? i18n.m.libraries.keep_audio_langs_invalid
+      : audioLanguageInput.tooLong
+        ? i18n.m.libraries.keep_audio_langs_too_long
+        : null,
+  )
+
+  function normaliseAudioLanguageInput() {
+    if (!audioLanguageError) form.keepAudioLanguages = audioLanguageInput.normalised
+  }
   // Advanced (encoding/eligibility) settings are collapsed by default to keep the
   // common case simple; opened automatically when editing a library that uses them.
   let showAdvanced = $state(false)
@@ -594,7 +636,7 @@
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
       videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
-      keepAudioLanguages: emptyToNull(form.keepAudioLanguages),
+      keepAudioLanguages: audioLanguageInput.normalised,
       targetImageFormat: emptyToNull(form.targetImageFormat),
       imageQuality: toNullableNumber(form.imageQuality),
       imageDownscaleValue: Number(form.imageDownscaleValue) || 0,
@@ -613,6 +655,7 @@
   async function save() {
     error = null
     message = null
+    if (audioLanguageError) return
     try {
       if (editingId === 0) {
         // Keep the workspace open on the just-created library so its Candidates tab is reachable.
@@ -1022,10 +1065,28 @@
             id="lib-keep-audio-languages"
             class="input"
             type="text"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck={false}
+            maxlength={MAX_AUDIO_LANGUAGE_LIST_LENGTH}
             placeholder={i18n.m.libraries.keep_audio_langs_ph}
+            aria-invalid={audioLanguageError ? 'true' : 'false'}
+            aria-describedby="lib-keep-audio-languages-hint{audioLanguageError ? ' lib-keep-audio-languages-error' : ''}"
+            aria-errormessage={audioLanguageError ? 'lib-keep-audio-languages-error' : undefined}
             bind:value={form.keepAudioLanguages}
+            onblur={normaliseAudioLanguageInput}
           />
-          <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
+          <p id="lib-keep-audio-languages-hint" class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
+          {#if audioLanguageError}
+            <p id="lib-keep-audio-languages-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{audioLanguageError}</p>
+          {:else if audioLanguageInput.codes.length > 0}
+            <div class="mt-2 flex flex-wrap items-center gap-1.5">
+              <span class="text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_selected}</span>
+              {#each audioLanguageInput.codes as code (code)}
+                <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
+              {/each}
+            </div>
+          {/if}
         </div>
 
         <div class="mt-4">
@@ -1308,7 +1369,7 @@
   {/if}
   </div>
   <div class="mt-5 flex items-center gap-2">
-    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty}>
+    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
     </button>

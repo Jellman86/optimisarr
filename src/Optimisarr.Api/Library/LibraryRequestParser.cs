@@ -153,7 +153,9 @@ internal static class LibraryRequestParser
 
         if (!TryParseKeepAudioLanguages(request.KeepAudioLanguages, out var keepAudioLanguages))
         {
-            error = "Audio languages must be comma-separated ISO 639 codes of 2–3 letters (e.g. \"eng, jpn\").";
+            error =
+                $"Audio languages must be comma-separated ISO 639 codes of 2–3 letters " +
+                $"and at most {AudioTrackSelection.MaxLanguageListLength} characters (e.g. \"eng, jpn\").";
             return false;
         }
 
@@ -271,22 +273,7 @@ internal static class LibraryRequestParser
     // Kept audio languages are stored as a canonical comma-separated list of lower-case ISO 639
     // codes ("eng, jpn"). Blank input means "keep every track" and stores null.
     private static bool TryParseKeepAudioLanguages(string? value, out string? normalised)
-    {
-        normalised = null;
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return true;
-        }
-
-        var codes = AudioTrackSelection.ParseLanguageList(value);
-        if (codes.Count == 0 || codes.Any(code => code.Length is < 2 or > 3 || !code.All(char.IsAsciiLetter)))
-        {
-            return false;
-        }
-
-        normalised = string.Join(", ", codes);
-        return true;
-    }
+        => AudioTrackSelection.TryNormaliseLanguageList(value, out normalised);
 
     // An omitted window time defaults to 00:00; start == end means the window is open
     // all day (resolved by AutoEnqueueScheduleEvaluator), i.e. "auto-enqueue once a day".

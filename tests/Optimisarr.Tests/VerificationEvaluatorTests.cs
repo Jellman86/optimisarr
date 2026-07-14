@@ -781,6 +781,21 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Retaining_a_track_the_language_rule_planned_to_remove_fails()
+    {
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 3,
+            OutputAudioTrackCount = 2,
+            AudioTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
     public void A_language_rule_removal_never_excuses_an_output_with_no_audio_at_all()
     {
         // The selection logic guarantees at least one kept track; if the output still has
@@ -793,6 +808,22 @@ public sealed class VerificationEvaluatorTests
         };
 
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
+    }
+
+    [Fact]
+    public void A_language_rule_removal_still_requires_exact_nonzero_audio_when_general_retention_is_disabled()
+    {
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 2,
+            OutputAudioTrackCount = 0,
+            AudioTracksRemoved = 1
+        };
+        var policy = VerificationPolicy.Default with { RequireAudioRetained = false };
+
+        var report = VerificationEvaluator.Evaluate(input, policy);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio tracks"));
     }

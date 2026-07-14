@@ -127,7 +127,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.VideoAudioCodec = snapshot.VideoAudioCodec;
             library.VideoAudioBitrateKbps = snapshot.VideoAudioBitrateKbps;
             library.DownmixToStereo = snapshot.DownmixToStereo;
-            library.KeepAudioLanguages = snapshot.KeepAudioLanguages;
+            // Validation has already accepted the list; store the same lower-case, de-duplicated
+            // representation as the library API so imports cannot create a second shape.
+            _ = AudioTrackSelection.TryNormaliseLanguageList(snapshot.KeepAudioLanguages, out var keepAudioLanguages);
+            library.KeepAudioLanguages = keepAudioLanguages;
             library.ReencodeLossyAudio = snapshot.ReencodeLossyAudio;
             // Configs exported before AVIF was withdrawn remain importable; move the stale target
             // to the same proven WebP fallback as the database migration.

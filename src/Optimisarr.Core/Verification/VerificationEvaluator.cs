@@ -687,26 +687,31 @@ public static class VerificationEvaluator
     private static VerificationCheck AudioRetained(VerificationInput input, VerificationPolicy policy)
     {
         var detail = $"Original {input.OriginalAudioTrackCount} audio track(s), output {input.OutputAudioTrackCount}.";
+        // Tracks the kept-languages rule removed are intentional, so expect exactly that many
+        // fewer — but a source that had audio must never verify with none at all, even if the
+        // planned removal claims otherwise (the selection logic forbids removing every track).
+        if (input.AudioTracksRemoved > 0)
+        {
+            var expected = input.OriginalAudioTrackCount - input.AudioTracksRemoved;
+            if (input.OriginalAudioTrackCount > 0)
+            {
+                expected = Math.Max(expected, 1);
+            }
+
+            detail += $" {input.AudioTracksRemoved} track(s) intentionally removed by the kept-languages rule.";
+            return input.OutputAudioTrackCount == expected
+                ? Pass("Audio tracks", detail)
+                : Fail(
+                    "Audio tracks",
+                    $"{detail} Expected exactly {expected} track(s) after the planned removal.");
+        }
+
         if (!policy.RequireAudioRetained)
         {
             return Pass("Audio tracks", $"{detail} Retention not required by policy.");
         }
 
-        // Tracks the kept-languages rule removed are intentional, so expect exactly that many
-        // fewer — but a source that had audio must never verify with none at all, even if the
-        // planned removal claims otherwise (the selection logic forbids removing every track).
-        var expected = input.OriginalAudioTrackCount - input.AudioTracksRemoved;
-        if (input.OriginalAudioTrackCount > 0)
-        {
-            expected = Math.Max(expected, 1);
-        }
-
-        if (input.AudioTracksRemoved > 0)
-        {
-            detail += $" {input.AudioTracksRemoved} track(s) intentionally removed by the kept-languages rule.";
-        }
-
-        return input.OutputAudioTrackCount >= expected
+        return input.OutputAudioTrackCount >= input.OriginalAudioTrackCount
             ? Pass("Audio tracks", detail)
             : Fail("Audio tracks", $"{detail} Audio tracks were lost.");
     }

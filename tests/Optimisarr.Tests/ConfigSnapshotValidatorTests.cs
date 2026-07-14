@@ -103,6 +103,26 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.True(result.IsValid, string.Join("; ", result.Errors));
     }
 
+    [Fact]
+    public void A_library_with_malformed_kept_audio_languages_is_rejected()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    KeepAudioLanguages: "english")
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("kept audio languages"));
+    }
+
     private static ConfigSnapshot Empty() => new(
         ConfigSnapshot.CurrentVersion,
         DateTimeOffset.UnixEpoch,

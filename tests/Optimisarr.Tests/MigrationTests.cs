@@ -39,7 +39,9 @@ public sealed class MigrationTests : IDisposable
 
         await using var db = new OptimisarrDbContext(options);
         var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
-        await migrator.MigrateAsync("20260713210047_TrackVideoProfile");
+        // The current model includes KeepAudioLanguages, so migrate through its schema addition
+        // before inserting the fixture. The AVIF data correction remains the next migration.
+        await migrator.MigrateAsync("20260713212602_AddKeepAudioLanguages");
 
         db.Libraries.Add(new Library
         {
@@ -53,6 +55,56 @@ public sealed class MigrationTests : IDisposable
         db.ChangeTracker.Clear();
 
         Assert.Equal("webp", (await db.Libraries.SingleAsync()).TargetImageFormat);
+    }
+
+    [Fact]
+    public async Task Existing_probed_videos_with_audio_are_queued_for_language_reprobe()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath}")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260713212602_AddKeepAudioLanguages");
+
+        var library = new Library { Name = "Mixed", Path = "/data/mixed" };
+        db.Libraries.Add(library);
+        db.MediaFiles.AddRange(
+            new MediaFile
+            {
+                Library = library,
+                Path = "/data/mixed/movie.mkv",
+                RelativePath = "movie.mkv",
+                MediaKind = Optimisarr.Core.Domain.MediaKind.Video,
+                Status = MediaFileStatus.Probed,
+                AudioTrackCount = 2,
+                AudioLanguages = "eng, fra"
+            },
+            new MediaFile
+            {
+                Library = library,
+                Path = "/data/mixed/song.flac",
+                RelativePath = "song.flac",
+                MediaKind = Optimisarr.Core.Domain.MediaKind.Audio,
+                Status = MediaFileStatus.Probed,
+                AudioTrackCount = 1,
+                AudioLanguages = "eng"
+            });
+        await db.SaveChangesAsync();
+
+        // Recreate the real upgrade boundary: the legacy schema has no AudioLanguages column,
+        // then the migration adds it and marks only relevant video rows for the probe worker.
+        await migrator.MigrateAsync("20260713210047_TrackVideoProfile");
+        db.ChangeTracker.Clear();
+        await migrator.MigrateAsync("20260713212602_AddKeepAudioLanguages");
+        db.ChangeTracker.Clear();
+
+        var files = await db.MediaFiles.OrderBy(file => file.RelativePath).ToListAsync();
+        Assert.Equal(MediaFileStatus.Discovered, files.Single(file => file.MediaKind == Optimisarr.Core.Domain.MediaKind.Video).Status);
+        Assert.Equal(MediaFileStatus.Probed, files.Single(file => file.MediaKind == Optimisarr.Core.Domain.MediaKind.Audio).Status);
+        Assert.All(files, file => Assert.Null(file.AudioLanguages));
     }
 
     public void Dispose()

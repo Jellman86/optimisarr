@@ -295,6 +295,12 @@
               "string"
             ]
           },
+          "keepAudioLanguages": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -683,6 +689,12 @@
               "string"
             ]
           },
+          "keepAudioLanguages": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -869,6 +881,7 @@
           "videoAudioCodec",
           "videoAudioBitrateKbps",
           "downmixToStereo",
+          "keepAudioLanguages",
           "reencodeLossyAudio",
           "targetImageFormat",
           "imageQuality",

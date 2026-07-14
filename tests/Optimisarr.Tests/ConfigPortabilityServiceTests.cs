@@ -202,7 +202,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
                 RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080,
                 VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160, DownmixToStereo = true,
-                KeepAudioLanguages = "eng, jpn",
+                KeepAudioLanguages = " ENG, jpn, eng ",
                 ReencodeLossyAudio = true,
                 AutoEnqueueEnabled = true,
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
