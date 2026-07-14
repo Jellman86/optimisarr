@@ -86,14 +86,14 @@ public sealed class RuleResolverTests
             RuleProfile.ConservativeHevc,
             new RuleOverrides
             {
-                TargetImageFormat = "avif",
+                TargetImageFormat = "webp",
                 ImageQuality = 65,
                 ReencodeLossyImages = true,
                 ImageDownscaleMode = ImageDownscaleMode.MaxLongEdge,
                 ImageDownscaleValue = 1920
             });
 
-        Assert.Equal("avif", overridden.TargetImageFormat);
+        Assert.Equal("webp", overridden.TargetImageFormat);
         Assert.Equal(65, overridden.ImageQuality);
         Assert.True(overridden.ReencodeLossyImages);
         Assert.Equal(ImageDownscaleMode.MaxLongEdge, overridden.ImageDownscaleMode);

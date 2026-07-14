@@ -51,7 +51,8 @@ public sealed class VerificationService(
         string outputPath,
         VerificationPolicy policy,
         CancellationToken cancellationToken,
-        VerificationClip? clip = null)
+        VerificationClip? clip = null,
+        IProgress<double>? qualityProgress = null)
     {
         var reference = clip is null
             ? original
@@ -81,7 +82,18 @@ public sealed class VerificationService(
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
             // audio and image jobs have their own applicable verification gates.
             var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
-                ? await MeasureQualityAsync(reference, outputPath, originalProbe, quality, cancellationToken)
+                ? await MeasureQualityAsync(
+                    reference,
+                    outputPath,
+                    originalProbe,
+                    quality,
+                    // A preview's cheap stream-copy clip is suitable for duration/stream checks,
+                    // but can retain keyframe pre-roll. VMAF decodes the full original from the
+                    // exact preview start instead, keeping its frames aligned with the encode.
+                    clip is null ? reference.Path : original.Path,
+                    clip?.StartSeconds,
+                    qualityProgress,
+                    cancellationToken)
                 : null;
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
@@ -245,6 +257,9 @@ public sealed class VerificationService(
         string outputPath,
         MediaProbeResult originalProbe,
         QualityScoreService quality,
+        string qualityReferencePath,
+        int? referenceStartSeconds,
+        IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
         if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
@@ -257,8 +272,10 @@ public sealed class VerificationService(
             originalProbe.Width.Value,
             originalProbe.Height.Value,
             reference.IsHdr,
-            reference.HdrConvertedToSdr);
-        return quality.MeasureAsync(reference.Path, outputPath, context, cancellationToken);
+            reference.HdrConvertedToSdr,
+            referenceStartSeconds,
+            originalProbe.DurationSeconds);
+        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
     }
 
     private async Task<OriginalSnapshot> CreateReferenceClipAsync(

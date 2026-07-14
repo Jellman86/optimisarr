@@ -169,6 +169,26 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_migrates_a_legacy_avif_target_to_webp()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot("Photos", "/data/photos", "Photo", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    TargetImageFormat: "AVIF")
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.True(result.Applied);
+        await using var db = CreateDb();
+        Assert.Equal("webp", (await db.Libraries.SingleAsync()).TargetImageFormat);
+    }
+
+    [Fact]
     public async Task Exported_config_round_trips_back_through_import()
     {
         await using (var db = CreateDb())

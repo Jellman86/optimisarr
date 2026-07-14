@@ -19,7 +19,9 @@ docker run -d --name "$name" -p 127.0.0.1::8787 \
 for _ in {1..30}; do
   port="$(docker port "$name" 8787/tcp | awk -F: '{print $NF}')"
   if curl --fail --silent "http://127.0.0.1:$port/api/ready" >/dev/null; then
-    docker exec "$name" sh -ec '
+    # Trace the synthetic commands: all inputs are fixed test fixtures and contain no secrets,
+    # while a bare `sh -e` otherwise reports only exit 1 and hides which safety assertion failed.
+    docker exec "$name" sh -exc '
       vmaf_log=/tmp/optimisarr-ci-vmaf.json
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=48x48:rate=2:duration=1" \
@@ -51,6 +53,24 @@ for _ in {1..30}; do
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
       rm -f "$vmaf_log"
 
+      # Preview VMAF must compare the encoded sample with the same decoded source window. A
+      # stream-copied reference can retain the previous keyframe and produce near-zero nonsense;
+      # seeking the second (reference) input before decode must score this ordinary CRF encode high.
+      "$OPTIMISARR_FFMPEG" -nostdin -v error -y -f lavfi \
+        -i "testsrc2=size=64x64:rate=12:duration=4" \
+        -c:v libx264 -g 48 -keyint_min 48 -sc_threshold 0 -pix_fmt yuv420p \
+        /tmp/optimisarr-vmaf-source.mkv
+      "$OPTIMISARR_FFMPEG" -nostdin -v error -y -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
+        -t 2 -c:v libx265 -crf 24 -preset ultrafast /tmp/optimisarr-vmaf-preview.mkv
+      "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
+        -i /tmp/optimisarr-vmaf-preview.mkv -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -f null -
+      vmaf_mean="$(awk -F: "/\"pooled_metrics\"[[:space:]]*:/ { pooled=1; next } pooled && /\"vmaf\"[[:space:]]*:/ { in_vmaf=1; next } in_vmaf && /\"mean\"[[:space:]]*:/ { gsub(/[,[:space:]]/, \"\", \$2); print \$2; exit }" "$vmaf_log")"
+      test -n "$vmaf_mean"
+      awk -v score="$vmaf_mean" "BEGIN { exit !(score >= 90) }"
+      rm -f "$vmaf_log" /tmp/optimisarr-vmaf-source.mkv /tmp/optimisarr-vmaf-preview.mkv
+
       # Exercise representative production transcode argument shapes with the FFmpeg that ships
       # for real jobs. These are deliberately small synthetic fixtures, but unlike unit tests they
       # prove the selected encoders, muxers, stream maps, metadata, and artwork dispositions work
@@ -62,21 +82,34 @@ for _ in {1..30}; do
       rm -rf "$fixture"
       mkdir -p "$fixture"
 
-      # Music: FLAC + JPEG cover + tags -> the default AAC/M4A policy. The output must contain
-      # AAC, the attached picture, and the exact source artist tag.
+      # Music artwork: FLAC + JPEG cover + tags -> MP3, the selectable target whose APIC path the
+      # shipped FFmpeg supports. The output must contain MP3, the attached picture, and exact tag.
+      "$transcode" -nostdin -v error -y -f lavfi \
+        -i "color=c=blue:size=48x48:rate=1:duration=1" -frames:v 1 "$fixture/cover.jpg"
       "$transcode" -nostdin -v error -y \
         -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
-        -f lavfi -i "color=c=blue:size=48x48:rate=1:duration=1" \
-        -map 0:a -map 1:v -c:a flac -c:v mjpeg -frames:v 1 -disposition:v attached_pic \
+        -i "$fixture/cover.jpg" \
+        -map 0:a -map 1:v -c:a flac -c:v copy -disposition:v attached_pic \
         -metadata artist="Optimisarr Smoke Artist" "$fixture/source.flac"
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/source.flac")" = 1
       "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
-        -map_metadata 0 -map 0:a -c:a aac -b:a 128k \
-        -map 0:v? -c:v copy -map 0:s? -c:s mov_text \
+        -map_metadata 0 -map 0:v? -c:v:0 mjpeg -disposition:v:0 attached_pic \
+        -map 0:a -c:a libmp3lame -b:a 128k -metadata optimisarr=ci-smoke "$fixture/output.mp3"
+      test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = mp3
+      test "$("$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = 1
+      test "$("$probe" -v error -show_entries format_tags=artist \
+        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.mp3")" = "Optimisarr Smoke Artist"
+
+      # Default AAC/M4A remains safe for art-free music and retains ordinary metadata. Sources
+      # with attached art are rejected by candidate evaluation before this command can be built.
+      "$transcode" -nostdin -v error -y -i "$fixture/source.flac" \
+        -map_metadata 0 -map 0:a -c:a aac -b:a 128k -map 0:s? -c:s mov_text \
         -metadata optimisarr=ci-smoke -movflags use_metadata_tags "$fixture/output.m4a"
       test "$("$probe" -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = aac
-      "$probe" -v error -select_streams v -show_entries stream_disposition=attached_pic \
-        -of default=noprint_wrappers=1 "$fixture/output.m4a" | grep -qx "attached_pic=1"
       test "$("$probe" -v error -show_entries format_tags=artist \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.m4a")" = "Optimisarr Smoke Artist"
 
@@ -96,7 +129,10 @@ for _ in {1..30}; do
         -f framemd5 "$fixture/source.framemd5"
       "$transcode" -nostdin -v error -i "$fixture/output.webp" -pix_fmt rgba \
         -f framemd5 "$fixture/output.framemd5"
-      diff -u "$fixture/source.framemd5" "$fixture/output.framemd5"
+      source_rgba_hash="$(tail -n 1 "$fixture/source.framemd5" | cut -d, -f6 | tr -d "[:space:]")"
+      output_rgba_hash="$(tail -n 1 "$fixture/output.framemd5" | cut -d, -f6 | tr -d "[:space:]")"
+      test -n "$source_rgba_hash"
+      test "$source_rgba_hash" = "$output_rgba_hash"
       image_ssim_log="$fixture/image-ssim.log"
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -i "$fixture/output.webp" -i "$fixture/source.png" \
@@ -124,21 +160,6 @@ for _ in {1..30}; do
       test "$("$probe" -v error -select_streams v:0 -show_entries stream=height \
         -of default=noprint_wrappers=1:nokey=1 "$fixture/output.jpg")" = 48
       "$transcode" -nostdin -v error -i "$fixture/output.jpg" -f null -
-
-      "$transcode" -nostdin -v error -y -i "$fixture/source-opaque.png" \
-        -map_metadata 0 -map 0:v:0 -c:v libaom-av1 -still-picture 1 -pix_fmt yuv420p \
-        -crf 13 -b:v 0 "$fixture/output.avif"
-      exiftool -overwrite_original -TagsFromFile "$fixture/source-opaque.png" \
-        -EXIF:all -ICC_Profile:all --Orientation --ThumbnailImage --PreviewImage --JpgFromRaw \
-        --ImageWidth --ImageHeight --ExifImageWidth --ExifImageHeight "$fixture/output.avif" >/dev/null
-      test "$(exiftool -s3 -EXIF:Artist "$fixture/output.avif")" = "Optimisarr Smoke Artist"
-      test "$("$probe" -v error -select_streams v:0 -show_entries stream=codec_name \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.avif")" = av1
-      test "$("$probe" -v error -select_streams v:0 -show_entries stream=width \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.avif")" = 48
-      test "$("$probe" -v error -select_streams v:0 -show_entries stream=height \
-        -of default=noprint_wrappers=1:nokey=1 "$fixture/output.avif")" = 48
-      "$transcode" -nostdin -v error -i "$fixture/output.avif" -f null -
 
       # Video: H.264/AAC MP4 -> the current production HEVC MP4 stream-map and codec policy.
       "$transcode" -nostdin -v error -y \

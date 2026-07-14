@@ -116,14 +116,15 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Already {rules.TargetAudioCodec} (no expected saving)");
         }
 
-        // Ogg Opus represents album art as a METADATA_BLOCK_PICTURE comment rather than an
-        // attached video stream. FFmpeg cannot translate the latter safely during this encode;
-        // fail before queueing instead of either dropping the artwork or failing at the muxer.
-        if (rules.TargetAudioCodec.Equals("opus", StringComparison.OrdinalIgnoreCase)
+        // MP3 is the only supported target for which the FFmpeg build shipped in our final image
+        // demonstrably retains an attached picture. Ogg Opus needs METADATA_BLOCK_PICTURE comment
+        // translation, while the M4A/ipod muxer silently drops inherited FLAC art. Fail before
+        // queueing instead of relying on the later verification gate to catch predictable loss.
+        if (!rules.TargetAudioCodec.Equals("mp3", StringComparison.OrdinalIgnoreCase)
             && media.AttachedPictureCount > 0)
         {
             return CandidateDecision.Skipped(
-                "Opus cannot safely preserve the embedded cover art; choose AAC or MP3 for this library");
+                $"{rules.TargetAudioCodec} cannot safely preserve embedded cover art with the shipped FFmpeg; choose MP3 for this library");
         }
 
         if (!rules.TargetAudioCodec.Equals("aac", StringComparison.OrdinalIgnoreCase)

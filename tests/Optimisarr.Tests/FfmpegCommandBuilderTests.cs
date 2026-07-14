@@ -30,13 +30,12 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_audio_job_does_not_re_encode_video_and_preserves_cover_art_and_metadata()
+    public void An_aac_audio_job_maps_metadata_and_timed_lyrics_but_not_unsafe_artwork()
     {
         var args = FfmpegCommandBuilder.Build(AudioReencode());
 
-        // Cover art is copied, not re-encoded; metadata is carried over.
-        var videoCodecIndex = IndexOf(args, "-c:v");
-        Assert.Equal("copy", args[videoCodecIndex + 1]);
+        Assert.DoesNotContain("0:v?", args);
+        Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("libx265", args);
         Assert.DoesNotContain("-crf", args);
         var metaMapIndex = IndexOf(args, "-map_metadata");
@@ -46,14 +45,27 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_opus_audio_job_maps_only_audio_so_attached_art_cannot_break_the_ogg_muxer()
+    public void An_mp3_audio_job_normalises_and_marks_cover_art_before_mapping_audio()
+    {
+        var spec = AudioReencode() with { OutputPath = "/work/Track.mp3", AudioEncoder = "libmp3lame" };
+
+        var args = FfmpegCommandBuilder.Build(spec);
+
+        Assert.Equal("mjpeg", args[IndexOf(args, "-c:v:0") + 1]);
+        Assert.Equal("attached_pic", args[IndexOf(args, "-disposition:v:0") + 1]);
+        Assert.True(IndexOf(args, "0:v?") < IndexOf(args, "0:a"));
+        Assert.DoesNotContain("0:s?", args);
+    }
+
+    [Fact]
+    public void An_opus_audio_job_maps_only_audio()
     {
         var spec = AudioReencode() with { OutputPath = "/work/Track.opus", AudioEncoder = "libopus" };
 
         var args = FfmpegCommandBuilder.Build(spec);
 
         Assert.DoesNotContain("0:v?", args);
-        Assert.DoesNotContain("-c:v", args);
+        Assert.DoesNotContain("-c:v:0", args);
         Assert.DoesNotContain("0:s?", args);
     }
 
@@ -125,23 +137,12 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void An_avif_image_job_uses_constant_quality_crf_and_still_picture()
-    {
-        var args = FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1", quality: 100));
-
-        Assert.Equal("libaom-av1", args[IndexOf(args, "-c:v") + 1]);
-        // Best quality (100) maps to CRF 0 with a zero target bitrate (constant-quality mode).
-        Assert.Equal("0", args[IndexOf(args, "-crf") + 1]);
-        Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
-        Assert.Equal("1", args[IndexOf(args, "-still-picture") + 1]);
-        Assert.Equal("yuv420p", args[IndexOf(args, "-pix_fmt") + 1]);
-    }
-
-    [Fact]
     public void Image_encoding_for_an_unknown_encoder_still_throws()
     {
         Assert.Throws<NotSupportedException>(() =>
             FfmpegCommandBuilder.Build(ImageReencode(encoder: "libjxl")));
+        Assert.Throws<NotSupportedException>(() =>
+            FfmpegCommandBuilder.Build(ImageReencode(encoder: "libaom-av1")));
     }
 
     [Fact]

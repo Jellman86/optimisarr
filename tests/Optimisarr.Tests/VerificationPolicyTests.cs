@@ -6,10 +6,18 @@ namespace Optimisarr.Tests;
 public sealed class VerificationPolicyTests
 {
     [Fact]
-    public void Default_requires_vmaf_for_video_reencodes()
+    public void Vmaf_gate_is_off_by_default()
     {
-        Assert.True(VerificationPolicy.Default.QualityGateEnabled);
-        Assert.True(VerificationPolicy.Default.RequiresVmaf(MediaKind.Video, videoReencoded: true));
+        Assert.False(VerificationPolicy.Default.QualityGateEnabled);
+        Assert.False(VerificationPolicy.Default.RequiresVmaf(MediaKind.Video, videoReencoded: true));
+    }
+
+    [Fact]
+    public void Explicit_opt_in_requires_vmaf_for_video_reencodes()
+    {
+        var policy = VerificationPolicy.Default with { QualityGateEnabled = true };
+
+        Assert.True(policy.RequiresVmaf(MediaKind.Video, videoReencoded: true));
     }
 
     [Theory]

@@ -113,7 +113,7 @@ internal static class SystemEndpoints
             hdrHandlings = Enum.GetNames<HdrHandling>(),
             videoCodecs = new[] { "hevc", "h264", "av1" },
             containers = new[] { "mkv", "mp4" },
-            // Image targets whose encode is wired today (WebP); AVIF/JXL follow once their encode lands.
+            // Image targets proven against the exact FFmpeg build used for production jobs.
             imageFormats = ImageTarget.EncodableFormats,
             // x264/x265 speed presets; slower = smaller files for the same quality.
             encoderPresets = new[]

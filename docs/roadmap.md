@@ -21,14 +21,20 @@ the replacement workflow is trustworthy.
      viewport space and opens upward or downward as appropriate, with keyboard navigation and
      accessible listbox semantics retained in either direction.
 
-   - **Default-on perceptual quality safety: done.** VMAF now protects video re-encodes by default
-     at the existing 93 harmonic-mean / 80 worst-frame floors, while remux and non-video work skip
-     the inapplicable extra decode. Existing saved opt-outs remain unchanged. Measurement is
-     self-configuring: deterministic timebase/timestamp/range/pixel-format alignment, reference-size
-     bicubic scaling, bounded threading, automatic HDTV/4K model selection, and like-for-like
-     HDR→SDR reference tone-mapping. The report records the selected model and preparation. Unit
-     tests own the exact production graph, while CI executes that graph at mismatched resolutions
-     and separately proves the bundled 4K model and HDR-reference tone-map run inside the final image.
+   - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
+     re-encodes at selectable floors — a single Settings slider offers Off (the default), Space-saver
+     (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
+     off by default because it fully decodes both files and scores every frame, roughly doubling
+     verification time; while off, the structural, duration and size gates plus quarantine rollback
+     still guard every replacement. Remux and non-video work skip the inapplicable extra decode, and
+     existing saved choices remain unchanged. The long VMAF pass now reports real 0–100% progress in
+     the queue (hero and rows), is named explicitly as the VMAF stage, and shows a live CPU-usage
+     graph so the load is visible. Measurement is self-configuring: deterministic
+     timebase/timestamp/range/pixel-format alignment, reference-size bicubic scaling, bounded
+     threading, automatic HDTV/4K model selection, and like-for-like HDR→SDR reference tone-mapping.
+     The report records the selected model and preparation. Unit tests own the exact production graph,
+     while CI executes that graph at mismatched resolutions and separately proves the bundled 4K model
+     and HDR-reference tone-map run inside the final image.
 
    - **Optional admin-token auth: done.** `OPTIMISARR_ADMIN_TOKEN`
      now gates the administrative API and SignalR hub with bearer-token authentication
@@ -75,12 +81,15 @@ the replacement workflow is trustworthy.
 
    - **Cross-media pipeline standards audit: done.** The video, music, and still-image paths were
      rechecked against the repository's fail-closed replacement standard and the shipped FFmpeg
-     capabilities. Music now preserves tags/artwork or refuses an unsafe container, audio bitrate
+     capabilities. Music now preserves tags/artwork or refuses an unsafe container (including the
+     shipped FFmpeg's demonstrated M4A attached-picture limitation), audio bitrate
      scales with retained channels, compatibility presets include compatible AAC, images guard
-     animation/alpha/bit depth and default to SSIM plus metadata verification, and video timing and
+     animation/alpha/bit depth, expose only the shipped encoders (JPEG/WebP), and default to SSIM
+     plus metadata verification, while video timing and
      encoded signal structure are evidence-checked. Probing, decode checks, and transcoding use one
      configured FFmpeg/ffprobe pair. Final-container CI now runs real representative music, JPEG,
-     WebP, AVIF, CFR/VFR video, metadata, quality, stream-structure, and decode assertions.
+     WebP, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and
+     decode assertions.
 
    - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,

@@ -311,6 +311,22 @@ public static class FfmpegCommandBuilder
         args.Add("-map_metadata");
         args.Add("0");
 
+        // The final-image smoke test proves MP3/APIC artwork retention with the shipped FFmpeg.
+        // AAC and Opus candidates with attached pictures are rejected before dispatch because
+        // their muxers cannot safely translate inherited FLAC/MP3 picture streams in this build.
+        // Map MP3's picture before the audio and target its output stream explicitly.
+        if (Path.GetExtension(spec.OutputPath).Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("-map");
+            args.Add("0:v?");
+            args.Add("-c:v:0");
+            // Normalise artwork to the universally supported APIC/MP4 cover codec so both JPEG
+            // and PNG source pictures have one deterministic representation across players.
+            args.Add("mjpeg");
+            args.Add("-disposition:v:0");
+            args.Add("attached_pic");
+        }
+
         args.Add("-map");
         args.Add("0:a");
         args.Add("-c:a");
@@ -323,17 +339,6 @@ public static class FfmpegCommandBuilder
         }
 
         AppendDownmix(args, spec);
-
-        // MP3 and M4A can carry JPEG/PNG attached pictures. Ogg Opus cannot mux those video
-        // streams (its standard artwork representation is a Vorbis-comment picture block), so
-        // Opus candidates with art are rejected before dispatch and the command maps audio only.
-        if (!Path.GetExtension(spec.OutputPath).Equals(".opus", StringComparison.OrdinalIgnoreCase))
-        {
-            args.Add("-map");
-            args.Add("0:v?");
-            args.Add("-c:v");
-            args.Add("copy");
-        }
 
         // M4A can retain a timed-lyrics/subtitle stream as mov_text. The other supported audio
         // containers cannot, and their candidates are rejected when such a stream exists.
@@ -381,15 +386,6 @@ public static class FfmpegCommandBuilder
             args.Add("1");
         }
 
-        // A still is a single frame; tell the AV1 encoder so, and give it a 4:2:0 pixel format.
-        if (encoder == "libaom-av1")
-        {
-            args.Add("-still-picture");
-            args.Add("1");
-            args.Add("-pix_fmt");
-            args.Add("yuv420p");
-        }
-
         args.AddRange(qualityArgs);
     }
 
@@ -404,8 +400,6 @@ public static class FfmpegCommandBuilder
             "libwebp" => new[] { "-quality", q.ToString() },
             // mjpeg uses -q:v 2 (best) … 31 (worst); invert and scale our 0–100 onto that range.
             "mjpeg" => new[] { "-q:v", MapToRange(q, bestAt100: 2, worstAt0: 31).ToString() },
-            // libaom-av1 still image uses constant-quality CRF 0 (best) … 63 (worst) with -b:v 0.
-            "libaom-av1" => new[] { "-crf", MapToRange(q, bestAt100: 0, worstAt0: 63).ToString(), "-b:v", "0" },
             _ => throw new NotSupportedException(
                 $"Image encoding for encoder '{encoder}' is not implemented yet.")
         };

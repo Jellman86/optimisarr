@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 — 2026-07-14
 
 ### Added
 
@@ -18,6 +18,13 @@
   and under the Remux/cleanup profile a container-clean file with removable foreign tracks becomes
   eligible for a fast stream-copy cleanup. Setting is in the library form (all locales), carried in
   config backup/restore. Migration `AddKeepAudioLanguages`.
+- **Live verification progress in the queue.** The perceptual-quality (VMAF) pass is the long part
+  of verification, so it now reports real 0–100% progress on the same job-progress and live-update
+  channel the transcode uses (ffmpeg `-stats` parsed against the source runtime). The Queue hero and
+  job rows show a determinate bar and percentage during verification and name the stage explicitly
+  ("Scoring perceptual quality (VMAF)…"), so a job scoring for several minutes reads as active work
+  rather than a stall. The hero also shows a live CPU-usage graph during verification — VMAF is
+  CPU-only, so it surfaces just the CPU load (no GPU), making the heavy load visible at a glance.
 - **Internationalisation (i18n) foundation.** The web UI now resolves user-facing text through a
   typed locale system (`web/src/lib/i18n/`): English is the source of truth, and every other locale
   is typed against it, so a missing or misspelled key fails `npm run check` — making translation
@@ -69,33 +76,46 @@
 
 ### Fixed
 
+- **A retried job no longer keeps a stale failure category.** Starting a new attempt now clears the
+  previous attempt's error message and failure classification, so a job that failed once (e.g. a
+  verification-gate rejection) and then succeeded on retry is reported as the success it is, instead
+  of lingering in the "why jobs fail" diagnostics as a verification failure.
 - **The language selector can open in either direction.** Its accessible custom menu measures the
   available viewport space and opens upward near the bottom of the sidebar, while retaining a
   downward menu where there is room. It supports outside-click/Escape dismissal and arrow-key,
   Home, and End navigation. Shared toggle checkboxes now also expose their visible labels to
-  assistive technology, including the default-on VMAF control.
-- **VMAF is now a default safety gate for video re-encodes.** New installations compare every
-  re-encoded video with its original at the existing conservative floors (93 harmonic mean / 80
-  worst frame), while existing installations retain their explicitly saved choice. Remux, audio,
-  and image work skip VMAF because it is either redundant or inapplicable. The Settings UI now
-  explains the safety/performance trade-off in every supported language, and the final-container
-  smoke test performs a real synthetic `libvmaf` comparison rather than trusting the filter list.
-  Model choice and stream preparation are automatic: HDTV/4K selection, reference-resolution
-  bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR-to-SDR
-  reference tone-mapping require no libvmaf expertise; reports record the selected policy.
+  assistive technology.
+- **VMAF is an opt-in perceptual-quality gate, chosen with a quality slider.** It is off by default
+  because it fully decodes both files and scores every frame, which roughly doubles verification
+  time and can dominate a run on modest hardware. A single Settings slider turns it on and prefills
+  both floors from five tiers — Space-saver (80/60), Balanced (85/70), High (90/75), Visually
+  lossless (93/80), and Archival (96/90) — with "Off" as the default leftmost stop; existing
+  installations retain their explicitly saved choice. While it is off the structural, duration and
+  size gates plus quarantine rollback still guard every replacement. Remux, audio, and image work
+  skip VMAF because it is either redundant or inapplicable, and the final-container smoke test still
+  performs a real synthetic `libvmaf` comparison rather than trusting the filter list. Model choice
+  and stream preparation are automatic: HDTV/4K selection, reference-resolution bicubic scaling,
+  timestamp/timebase and colour-range alignment, and like-for-like HDR-to-SDR reference tone-mapping
+  require no libvmaf expertise; reports record the selected policy.
 - **Still-image conversion now fails closed around structural loss.** Animated GIF/WebP inputs
   require a proven single frame, TIFF is left untouched while multi-page status cannot be proved,
-  and JPEG/AVIF targets reject alpha or high-bit-depth inputs. Lossless-to-lossy conversion now
+  and the JPEG target rejects alpha or high-bit-depth inputs. Lossless-to-lossy conversion now
   requires the existing explicit lossy-image opt-in, while PNG/BMP/GIF to WebP uses the encoder's
   genuinely lossless mode. Pixel format and raw bit depth are persisted via a schema migration so
-  rescans and queue dispatch make the same decision.
+  rescans and queue dispatch make the same decision. AVIF has been withdrawn as an output choice
+  because the shipped Jellyfin FFmpeg contains no AVIF encoder (`libaom-av1`); existing AVIF library
+  overrides migrate to the proven WebP target, and API/UI choices expose only JPEG and WebP.
 - **Music conversion now treats artwork, tags, and lyrics as replacement-critical data.** AAC in
-  M4A is the new compatibility-first default because FFmpeg can preserve common attached JPEG/PNG
-  artwork and timed-text lyrics there. Opus remains available for art-free music, but a source with
-  attached art is rejected before queueing instead of failing in the Ogg muxer or losing its cover;
-  MP3/Opus likewise reject timed-lyrics streams they cannot contain. Verification now compares
+  M4A is the compatibility-first default for art-free music and can retain timed-text lyrics. The
+  shipped Jellyfin FFmpeg silently drops inherited M4A cover streams, while Opus needs a picture-
+  comment translation it cannot safely perform, so both targets reject attached-art candidates
+  before queueing with guidance to choose MP3. MP3/Opus likewise reject timed-lyrics streams they
+  cannot contain. Verification now compares
   source/output format tags and embedded-picture counts, and probing persists artwork counts for
-  deterministic candidate decisions. The UI explains the default consistently in every language.
+  deterministic candidate decisions. Mapped MP3 covers are normalised to broadly supported JPEG
+  APIC artwork and explicitly marked `attached_pic`; the final-container smoke test proves this
+  against the exact FFmpeg build that performs production transcodes. The UI explains the default
+  consistently in every language.
 - **Audio bitrate policy is now channel-aware.** The configured value is a stereo baseline;
   retained 5.1/7.1 layouts automatically receive the same budget for each channel pair, while an
   explicit stereo downmix keeps the configured bitrate. Candidate size-saving decisions use that
@@ -104,7 +124,7 @@
   supported eight-channel ceiling before FFmpeg runs. Channel counts are persisted by migration.
 - **Container CI now exercises the actual media pipelines.** The final image creates and converts
   real synthetic H.264/AAC video, FLAC music with tags and attached JPEG artwork, and opaque/alpha
-  PNG fixtures across the production JPEG, WebP, and AVIF targets.
+  PNG fixtures across the production JPEG and WebP targets.
   It runs the production stream-map/codec argument shapes with the shipped Jellyfin FFmpeg, fully
   decodes the video, probes codec/art/tag retention, and byte-compares decoded RGBA frame hashes for
   lossless WebP, and probes and decodes every selectable still format. This complements pure
@@ -134,6 +154,12 @@
   (or drops an inherent delay) still fails. Falls back to the previous absolute check when the
   original's start times can't be read. `VerificationInput` gains `OriginalVideoStartSeconds` /
   `OriginalAudioStartSeconds`, populated from the original probe.
+- **Preview VMAF now compares the same source window frame-for-frame.** The encoded preview used an
+  accurate decode seek, while its stream-copied reference could retain frames from the preceding
+  keyframe; libvmaf then compared different moments and reported near-zero, CRF-insensitive scores.
+  Preview measurement now seeks and decodes the full original as libvmaf's reference input, while
+  `shortest` bounds it to the encoded sample. Final-container CI starts deliberately between
+  keyframes and requires the resulting ordinary CRF encode to score at least 90.
 - **Video timing now follows probe evidence instead of forcing MP4 to CFR.** The earlier blanket
   `-fps_mode cfr` response to live job 3334 could duplicate/drop frames and alter motion cadence.
   Probing now compares nominal and average frame rate (with a rounding tolerance) and persists a
@@ -1170,7 +1196,7 @@ everywhere.
   get their own one-choice slider (the image counterpart of the video preset): **JPEG** (max
   compatibility — every server/client incl. Plex), **WebP** (smaller; Jellyfin/modern), **AVIF**
   (smallest; newer clients only). All three are genuinely wired in the command builder — JPEG via
-  `mjpeg -q:v`, AVIF via `libaom-av1` constant-quality CRF with `-still-picture` — with a single
+  `mjpeg -q:v`, AVIF via `libaom-av1` constant-quality CRF — with a single
   0–100 quality mapped onto each encoder's native scale. JXL is detected as a *source* but is no
   longer an encode target (no media server displays it).
 - **New default for Photo libraries is JPEG**, not WebP — safety/compatibility beats savings, and a

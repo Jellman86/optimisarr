@@ -284,16 +284,16 @@ See the Phase 12 section for the remaining optional polish.
   end-to-end**: candidate rules, command building, kind-aware verification, per-library overrides,
   a `Photo` media type, animated-image skipping, and the UI — verified in a container (still
   PNG/BMP/TIFF → WebP with large savings, dimensions retained, verification passing). **Image
-  optimisation is now broadly complete:** three output formats on a compatibility→efficiency slider
-  (**JPEG** default for max compatibility incl. Plex, **WebP**, **AVIF** — all wired in the command
-  builder), per-library **downscaling** (named 4K/1080p caps, custom max long-edge, or percentage —
+  optimisation is now broadly complete:** proven output formats on a compatibility→efficiency slider
+  (**JPEG** default for max compatibility incl. Plex and **WebP** for modern clients), per-library
+  **downscaling** (named 4K/1080p caps, custom max long-edge, or percentage —
   aspect-preserving, never upscaling, with a downscale-aware Dimensions gate), a default-on **image
   SSIM quality gate**, and a **portable optimisation marker** for every image format via exiftool
   (EXIF/XMP `Software`), closing the marker round-trip gap, a default-on **EXIF/ICC-retention gate**
   (an image that drops the original's ICC colour profile or EXIF on re-encode fails verification;
   reads both with exiftool, fails closed, flags loss only), and the **output-filename collision fix**
   (work output is namespaced per media file, and a replacement whose destination is already occupied
-  fails safely). The final-container smoke suite validates the production JPEG, WebP, and AVIF
+  fails safely). The final-container smoke suite validates the production JPEG and WebP
   encoder/quality mappings, metadata round trips, structural probes, and decodes.
 
 
@@ -637,7 +637,7 @@ Inventory. Lossless audio is re-encoded through the full pipeline — candidate 
 transcode (cover art + metadata + the same optimisation marker as video, so audio files are
 never re-optimised either), kind-aware verification, and the usual reversible replacement.
 Each library can override the audio target codec (Opus/AAC/MP3), stereo bitrate baseline, image
-target (JPEG/WebP/AVIF), quality, and downscale policy.
+target (JPEG/WebP), quality, and downscale policy.
 
 Deliverables:
 
@@ -683,14 +683,16 @@ Deliverables:
   AV1/MKV and remux profiles continue to copy audio. The preset is now picked via a simple compatibility↔efficiency
   **slider** (with a separate "no re-encode" toggle for Remux/Cleanup), keeping every exact knob
   behind Advanced options. **Done.**
-- **Image optimisation: done.** JPEG, WebP, and AVIF form the selectable
+- **Image optimisation: done.** JPEG and WebP form the selectable
   compatibility-to-efficiency range with validated quality mappings and configurable,
   aspect-preserving downscaling. Candidate rules fail closed on unknown animation/multipage state,
   alpha loss, high-bit-depth loss, and unapproved lossless-to-lossy conversion. Replacement requires
   decode/readability, intended dimensions, size saving, default-on SSIM, and EXIF/ICC retention;
   ExifTool copies safe metadata and writes the portable optimisation marker that FFmpeg's still
   encoders cannot retain themselves. Container CI encodes, probes, metadata-checks, and decodes all
-  three production targets, including lossless RGBA WebP comparison.
+  production targets, including lossless RGBA WebP comparison. AVIF was withdrawn after final-image
+  testing proved the production Jellyfin FFmpeg does not ship an AVIF encoder; persisted AVIF
+  overrides migrate safely to WebP.
 - **Per-kind rule profiles and encoder settings**, reusing the existing
   per-library override model. **Audio target codec/bitrate, video audio codec/bitrate, and
   stereo downmix, image target/quality/downscale, and loss-policy controls done.**
@@ -719,8 +721,9 @@ with the library's resolved settings — that never moves or replaces anything, 
 restart. The compare panel shows the original next to the encoded result with a per-media-type
 viewer (image/video/audio, range-streamed), a size/codec/resolution/audio stats table with the %
 size saving, and the full Phase 9 verification report. Long video previews use a 60-second sample
-from the middle of the source and verify against a temporary clipped reference from that same window,
-so segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
+from the middle; VMAF seeks and decodes the full original at that exact sample start, rather than
+judging against a stream-copied clip that may retain pre-roll from the preceding keyframe, so
+segment-only scores stay meaningful. Deferred: apply-from-preview (settings are already saved, so
 previewing then enqueuing already works). The Quarantine compare-to-approve half was delivered
 earlier.
 
