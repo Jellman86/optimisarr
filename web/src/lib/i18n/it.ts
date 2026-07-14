@@ -473,6 +473,7 @@ quarantine: {
     vmaf_preset_archival: 'Archival',
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
+    vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
     loudness_label: 'Drift volume audio (EBU R128)',
     loudness_hint:
       "Misura il volume integrato originale e dell’output con il filtro ebur128 di FFmpeg e fallisce il lavoro se differiscono troppo. Aggiunge una passata di decodifica, quindi è disattivata di default; è utile soprattutto quando un profilo ricodifica l’audio.",

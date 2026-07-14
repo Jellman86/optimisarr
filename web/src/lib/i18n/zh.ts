@@ -449,6 +449,7 @@ export const zh: Messages = {
     vmaf_preset_archival: 'Archival',
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
+    vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
     loudness_label: "音频响度漂移 (EBU R128)",
     loudness_hint: "使用 FFmpeg 的 ebur128 滤波器测量原始和输出的综合响度，如果差异太大，则处理任务失败。添加解码通道，所以默认关闭；当配置文件重新编码音频时最有用。",
     loudness_max: "最大响度漂移",

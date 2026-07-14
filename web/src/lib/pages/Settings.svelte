@@ -675,6 +675,9 @@
             <span class="text-slate-500 dark:text-slate-400">— {i18n.m.settings.vmaf_off_desc}</span>
           {/if}
         </p>
+        {#if settings.verificationQualityGateEnabled}
+          <p class="mt-1 text-xs text-amber-600 dark:text-amber-500">{i18n.m.settings.vmaf_cost_warning}</p>
+        {/if}
       </div>
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">

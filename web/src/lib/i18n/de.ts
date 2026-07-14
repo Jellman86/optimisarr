@@ -475,6 +475,7 @@ export const de: Messages = {
     vmaf_preset_archival: 'Archival',
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
+    vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
     loudness_label: 'Audio-Lautheitsdrift (EBU R128)',
     loudness_hint:
       'Misst die integrierte Lautheit von Original und Ausgabe mit FFmpegs ebur128-Filter und lässt die Aufgabe fehlschlagen, wenn sie zu stark abweichen. Fügt einen Dekodierdurchlauf hinzu, daher standardmäßig deaktiviert; am nützlichsten, wenn ein Profil das Audio neu kodiert.',

@@ -475,6 +475,7 @@ export const en = {
     vmaf_preset_archival: 'Archival',
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
+    vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
     loudness_label: 'Audio loudness drift (EBU R128)',
     loudness_hint:
       "Measures integrated loudness of original and output with FFmpeg's ebur128 filter and fails the job if they differ too much. Adds a decode pass, so it's off by default; most useful when a profile re-encodes audio.",

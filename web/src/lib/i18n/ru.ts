@@ -449,6 +449,7 @@ export const ru: Messages = {
     vmaf_preset_archival: 'Archival',
     vmaf_off_desc:
       'No perceptual-quality check — fastest. The structural, duration and size gates plus quarantine rollback still guard every replacement.',
+    vmaf_cost_warning: 'Scores every frame and is CPU-intensive — expect several minutes per file and roughly double the verification time.',
     loudness_label: "Дрейф громкости звука (EBU R128)",
     loudness_hint: "Измеряет общую громкость оригинала и вывода с помощью фильтра ebur128 FFmpeg и не выполняет задачу обработки, если они слишком сильно различаются. Добавляет проход декодирования, поэтому по умолчанию он отключен; наиболее полезно, когда профиль перекодирует звук.",
     loudness_max: "Дрейф максимальной громкости",
