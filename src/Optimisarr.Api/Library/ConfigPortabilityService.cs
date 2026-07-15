@@ -67,7 +67,13 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
     public async Task<ConfigImportResult> ImportAsync(ConfigSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var validation = ConfigSnapshotValidator.Validate(snapshot, SettingsStore.RecognizedImportSettingKeys);
+        var legacyVmafPolicy = ReadLegacyVmafPolicy(snapshot.Settings);
+        var materialisedLibraries = snapshot.Libraries
+            .Select(library => MaterialiseVmafPolicy(library, legacyVmafPolicy))
+            .ToList();
+        var validation = ConfigSnapshotValidator.Validate(
+            snapshot with { Libraries = materialisedLibraries },
+            SettingsStore.RecognizedImportSettingKeys);
         if (!validation.IsValid)
         {
             return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -75,9 +81,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-        var legacyVmafPolicy = ReadLegacyVmafPolicy(snapshot.Settings);
         var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(
-            snapshot.Libraries,
+            materialisedLibraries,
             legacyVmafPolicy,
             cancellationToken);
         var (watchersCreated, watchersUpdated) = await ImportWatchersAsync(snapshot.ActivityWatchers, cancellationToken);
@@ -200,6 +205,19 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             && parsed is >= 0 and <= 100
                 ? parsed
                 : fallback;
+
+    private static LibrarySnapshot MaterialiseVmafPolicy(
+        LibrarySnapshot library,
+        LegacyVmafPolicy policy) =>
+        library with
+        {
+            VmafQualityGateEnabled = library.VmafQualityGateEnabled ?? policy.Enabled,
+            MinVmafHarmonicMean = library.MinVmafHarmonicMean ?? policy.HarmonicMean,
+            MinVmafMin = library.MinVmafMin ?? policy.FifthPercentile,
+            MinVmafCatastrophicMin = library.MinVmafCatastrophicMin ?? policy.Catastrophic,
+            ClipVmafEnabled = library.ClipVmafEnabled ?? policy.ClipEnabled,
+            VmafFrameSubsample = library.VmafFrameSubsample ?? policy.FrameSubsample
+        };
 
     private static int ParseInt(string? value, int fallback) =>
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)

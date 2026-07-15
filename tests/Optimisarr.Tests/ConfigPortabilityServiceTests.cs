@@ -241,6 +241,32 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_rejects_an_invalid_effective_legacy_vmaf_policy()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["verification.minimumVmafHarmonicMean"] = "50",
+                ["verification.minimumVmafMin"] = "80"
+            },
+            Libraries =
+            [
+                new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null)
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.False(result.Applied);
+        Assert.Contains(result.Errors, error => error.Contains("fifth-percentile", StringComparison.OrdinalIgnoreCase));
+        await using var db = CreateDb();
+        Assert.Empty(await db.Libraries.ToListAsync());
+        Assert.Empty(await db.AppSettings.ToListAsync());
+    }
+
+    [Fact]
     public async Task Exported_config_round_trips_back_through_import()
     {
         await using (var db = CreateDb())
