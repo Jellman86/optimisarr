@@ -69,7 +69,7 @@ public sealed class ReplacementService
         NotificationService notifications,
         ReplacementCoordinator coordinator,
         ILogger<ReplacementService> logger)
-        : this(db, inventory, settings, ResolveTrashRoot(environment), logger,
+        : this(db, inventory, settings, TrashPaths.Resolve(environment), logger,
             refresh: refresh, notifications: notifications, workRoot: WorkPaths.Resolve(environment),
             coordinator: coordinator)
     {
@@ -787,16 +787,4 @@ public sealed class ReplacementService
         }
     }
 
-    private static string ResolveTrashRoot(IHostEnvironment environment)
-    {
-        var configured = Environment.GetEnvironmentVariable("OPTIMISARR_TRASH_DIR");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            return configured;
-        }
-
-        return Directory.Exists("/trash")
-            ? "/trash"
-            : Path.Combine(environment.ContentRootPath, "trash");
-    }
 }

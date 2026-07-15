@@ -158,12 +158,13 @@ the replacement workflow is trustworthy.
    fail-closed defaults. This is the next independently actionable product item while the hardware
    validation matrix remains gated on access to non-Intel GPUs.
 
-   - **Trigger, resume, and ownership.** Show the wizard only when a versioned `SetupState` has not
-     been completed; never force it on upgraded installations. Persist each completed step so a
-     refresh, container restart, or browser change resumes safely. Back must retain entered values,
-     Skip must explain its consequence, and Settings must offer an explicit **Run setup again** action.
-     Every write is idempotent, and completion is recorded only after the final confirmation.
-   - **Five stable, task-oriented steps.** Use one explicit heading and one primary action per step:
+   - **Trigger, resume, and ownership: foundation shipped.** A versioned `SetupState` now distinguishes
+     a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
+     restart, accepts duplicate progress writes idempotently, and permits completion only from final
+     review. Upgraded installations are marked complete and never forced into onboarding. Back retains
+     applied choices, and Settings → Backup offers **Run setup again** without deleting configuration.
+     Remaining refinement: explicit optional-step Skip semantics as integrations join the flow.
+   - **Five stable, task-oriented steps: initial flow shipped.** One heading and primary action drive:
      (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) first
      library and optimisation intent; (4) verification, scheduling, quarantine, and replacement
      safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
@@ -171,23 +172,33 @@ the replacement workflow is trustworthy.
      stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
      separate Back/Continue controls—the [USWDS step-indicator guidance](https://designsystem.digital.gov/components/step-indicator/)
      recommends this pattern for linear processes with three or more high-level sections.
-   - **Prove the environment instead of merely collecting fields.** The readiness step runs the
-     existing tool/capability checks and non-destructive probes for `/config`, `/work`, `/trash`, and
-     the chosen media root: existence, effective read/write permissions, available space, and whether
-     media/quarantine share a filesystem for atomic replacement. It detects encoder support with the
-     same real test encode used by Tools. A container cannot create a missing bind mount, change host
-     permissions, or securely retrofit an admin-token environment variable, so those failures must
+   - **Prove the environment instead of merely collecting fields: partly shipped.** The readiness
+     step runs the existing tool/capability checks and non-destructive probes for `/config`, `/work`,
+     `/trash`, and the chosen media root: existence, effective read/write permissions, available
+     space, and whether media/quarantine share a filesystem for atomic replacement. It detects
+     encoder support with the same real test encode used by Tools. Database connectivity,
+     required/optional tools, detected hardware encoders, and effective read/write access for config,
+     work, quarantine, and the first library root are now visible and gate progress. Remaining:
+     filesystem identity/free-space evidence and platform-specific Compose/Unraid/TrueNAS remediation.
+     A container cannot create a missing bind mount, change host permissions, or securely retrofit an
+     admin-token environment variable, so those failures must
      produce exact Compose/Unraid/TrueNAS remediation and a re-test action—not a pretend-successful
      toggle. Docker documents that mounts must be explicitly granted to a service and recommends
      [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
-   - **Safe recommendations, not silent automation.** Start in dry-run mode, one concurrent job,
-     auto-replace off, conservative free-space/quarantine settings, and no auto-enqueue until the
-     user reviews them. Explain encoder-specific quality, preview one representative candidate when
-     possible, and show the estimated effect before saving. The wizard may recommend hardware decode,
-     a VMAF tier, and a schedule from detected capabilities, but every recommendation remains visible
-     and reversible. It never scans, enqueues, transcodes, replaces, or deletes an original until the
-     user confirms the review screen.
-   - **Review before commitment.** The last step groups security, storage, library, quality,
+   - **Safe recommendations, not silent automation: initial defaults shipped.** Start in dry-run
+     mode, one concurrent job, auto-replace off, conservative free-space/quarantine settings, and no
+     auto-enqueue until the user reviews them. Explain encoder-specific quality, preview one
+     representative candidate when possible, and show the estimated effect before saving. The wizard
+     may recommend hardware decode, a VMAF tier, and a schedule from detected capabilities, but every
+     recommendation remains visible and reversible. It never scans, enqueues, transcodes, replaces,
+     or deletes an original until the
+     user confirms the review screen. The current flow visibly applies dry-run/concurrency, creates
+     the first library with auto-enqueue, auto-replace, and VMAF off, and starts no work. Capability-
+     based encoder/VMAF/schedule recommendations and an in-wizard representative preview remain.
+   - **Review before commitment: initial receipt shipped.** The last step currently groups system,
+     library, replacement, and queue choices and states explicitly that completion starts no work.
+     Remaining: security, storage, quality, scheduling and integration Change links, plus a single
+     transactional plan apply. The intended final form groups security, storage, library, quality,
      scheduling, integration, and replacement choices; each section has an accessible Change action
      that returns directly to that step with values pre-populated. GOV.UK's
      [check-answers pattern](https://design-system.service.gov.uk/patterns/check-answers/) uses this

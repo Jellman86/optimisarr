@@ -6,6 +6,19 @@ run at startup.
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
+## First-run setup
+
+A genuinely new database opens a five-step setup workspace before the normal dashboard. It verifies
+database access, the config/work/quarantine paths, required media tools, and detected hardware; then
+creates one conservatively configured library and reviews the starting safety posture. Progress is
+saved after each step, so refreshing or restarting resumes at the first incomplete step. Finishing
+setup does not scan, enqueue, encode, replace, or delete a file.
+
+Fresh installations start in dry-run with one concurrent job. The first library has automatic
+enqueue, automatic replacement, and VMAF disabled. Existing installations upgraded from an older
+release never see the wizard automatically. To revisit it without deleting or resetting any
+configuration, use **Settings → Backup → Run setup again**.
+
 ![Settings General tab showing queue, encoder, scan interval, disk threshold, and hardware decode controls](../images/optimisarr-settings-general-dark.png)
 
 ## Admin token

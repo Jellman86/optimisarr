@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Settings;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Optimisarr.Api.Library;
 
@@ -97,6 +99,46 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             ? value
             : DefaultMaxConcurrentJobs;
     }
+
+    public async Task<SetupState> InitialiseSetupStateAsync(
+        bool databaseExistedBeforeStartup,
+        CancellationToken cancellationToken)
+    {
+        var setting = await db.AppSettings
+            .FirstOrDefaultAsync(candidate => candidate.Key == SettingKeys.SetupState, cancellationToken);
+        var existing = ParseSetupState(setting?.Value);
+        var state = SetupState.Initialise(existing, databaseExistedBeforeStartup);
+        if (existing is null)
+        {
+            var initialValues = new Dictionary<string, string>
+            {
+                [SettingKeys.SetupState] = JsonSerializer.Serialize(state)
+            };
+            if (!databaseExistedBeforeStartup)
+            {
+                initialValues[SettingKeys.DryRunMode] = bool.TrueString;
+            }
+
+            await UpsertManyAsync(initialValues, cancellationToken);
+        }
+
+        return state;
+    }
+
+    public async Task<SetupState> GetSetupStateAsync(CancellationToken cancellationToken)
+    {
+        var value = await db.AppSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == SettingKeys.SetupState)
+            .Select(setting => setting.Value)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Missing or malformed state must never force an upgraded installation into setup.
+        return ParseSetupState(value) ?? SetupState.CompletedUpgrade;
+    }
+
+    public Task SetSetupStateAsync(SetupState state, CancellationToken cancellationToken) =>
+        UpsertAsync(SettingKeys.SetupState, JsonSerializer.Serialize(state), cancellationToken);
 
     public async Task<QueueSettings> GetQueueSettingsAsync(CancellationToken cancellationToken)
     {
@@ -295,6 +337,33 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static SetupState? ParseSetupState(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        try
+        {
+            var state = JsonSerializer.Deserialize<SetupState>(value);
+            return state is
+            {
+                Version: SetupState.CurrentVersion,
+                CompletedStep: >= 0 and <= SetupState.StepCount
+            }
+                && (state.Completed
+                    ? state.CompletedStep == SetupState.StepCount
+                    : state.CompletedStep < SetupState.StepCount)
+                ? state
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task UpsertManyAsync(IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken)

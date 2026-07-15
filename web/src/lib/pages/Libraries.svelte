@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
+  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
@@ -481,50 +481,7 @@
   $effect(() => router.guardLeave(confirmDiscardIfDirty))
 
   function blankForm(): SaveLibrary {
-    return {
-      name: '',
-      path: '',
-      mediaType: 'Film',
-      ruleProfile: 'ConservativeHevc',
-      enabled: true,
-      priority: 0,
-      minFileSizeBytes: null,
-      maxHeight: null,
-      reencodeSameCodecAboveBytes: null,
-      skipEfficientSources: true,
-      targetVideoCodec: null,
-      targetContainer: null,
-      hdrHandling: null,
-      optimiseDolbyVision: false,
-      excludePaths: null,
-      qualityCrf: null,
-      encoderPreset: null,
-      audioTargetCodec: null,
-      audioBitrateKbps: null,
-      videoAudioCodec: null,
-      videoAudioBitrateKbps: null,
-      downmixToStereo: false,
-      keepAudioLanguages: null,
-      reencodeLossyAudio: false,
-      targetImageFormat: null,
-      imageQuality: null,
-      reencodeLossyImages: false,
-      imageDownscaleMode: 'None',
-      imageDownscaleValue: 0,
-      moveOnComplete: false,
-      targetFolder: null,
-      moveOverwrite: false,
-      minVmafHarmonicMean: null,
-      minVmafMin: null,
-      vmafQualityGateEnabled: false,
-      minVmafCatastrophicMin: null,
-      clipVmafEnabled: null,
-      vmafFrameSubsample: null,
-      autoEnqueueEnabled: false,
-      autoEnqueueWindowStart: '00:00',
-      autoEnqueueWindowEnd: '00:00',
-      autoReplace: false,
-    }
+    return newLibraryDefaults()
   }
 
   async function load() {

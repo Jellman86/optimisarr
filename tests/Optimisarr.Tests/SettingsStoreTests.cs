@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Settings;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -163,6 +164,72 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(settings.ReplacementAllowCrossFilesystem);
         Assert.False(settings.DryRunMode);
         Assert.Equal(0, settings.ReplacementQuarantineRetentionDays);
+    }
+
+    [Fact]
+    public async Task Setup_state_initialisation_distinguishes_a_fresh_install_from_an_upgrade()
+    {
+        await using (var freshDb = CreateDb())
+        {
+            var state = await new SettingsStore(freshDb).InitialiseSetupStateAsync(
+                databaseExistedBeforeStartup: false,
+                CancellationToken.None);
+            Assert.Equal(SetupState.Pending, state);
+            Assert.True((await new SettingsStore(freshDb).GetQueueSettingsAsync(CancellationToken.None)).DryRunMode);
+        }
+
+        await using (var retainedDb = CreateDb())
+        {
+            var retained = await new SettingsStore(retainedDb).InitialiseSetupStateAsync(
+                databaseExistedBeforeStartup: true,
+                CancellationToken.None);
+            Assert.Equal(SetupState.Pending, retained);
+        }
+
+        await using (var upgradeDb = CreateDb())
+        {
+            upgradeDb.AppSettings.RemoveRange(upgradeDb.AppSettings);
+            await upgradeDb.SaveChangesAsync();
+            var upgrade = await new SettingsStore(upgradeDb).InitialiseSetupStateAsync(
+                databaseExistedBeforeStartup: true,
+                CancellationToken.None);
+            Assert.Equal(SetupState.CompletedUpgrade, upgrade);
+            Assert.False((await new SettingsStore(upgradeDb).GetQueueSettingsAsync(CancellationToken.None)).DryRunMode);
+        }
+    }
+
+    [Fact]
+    public async Task Setup_progress_round_trips_and_can_be_restarted()
+    {
+        var progressed = SetupState.Pending.Advance(1).Advance(2);
+        await using (var db = CreateDb())
+        {
+            await new SettingsStore(db).SetSetupStateAsync(progressed, CancellationToken.None);
+        }
+
+        await using (var readDb = CreateDb())
+        {
+            var store = new SettingsStore(readDb);
+            Assert.Equal(progressed, await store.GetSetupStateAsync(CancellationToken.None));
+            await store.SetSetupStateAsync(progressed.Restart(), CancellationToken.None);
+        }
+
+        await using var restartedDb = CreateDb();
+        Assert.Equal(SetupState.Pending, await new SettingsStore(restartedDb).GetSetupStateAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Inconsistent_setup_state_fails_safe_as_an_already_running_installation()
+    {
+        await using var db = CreateDb();
+        db.AppSettings.Add(new AppSetting
+        {
+            Key = SettingKeys.SetupState,
+            Value = """{"Version":1,"CompletedStep":0,"Completed":true}"""
+        });
+        await db.SaveChangesAsync();
+
+        Assert.Equal(SetupState.CompletedUpgrade, await new SettingsStore(db).GetSetupStateAsync(CancellationToken.None));
     }
 
     private OptimisarrDbContext CreateDb() => new(_options);

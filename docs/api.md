@@ -175,6 +175,19 @@ exists in quarantine.
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
 
+## First-run setup
+
+Setup progress is admin-token protected and intentionally separate from configuration backup. It
+does not contain secrets and is not exported between installations.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/setup` | Read the versioned completed/current step and completion state. |
+| `GET` | `/api/setup/readiness` | Non-destructively check database, config/work/quarantine paths, and media tools. |
+| `PUT` | `/api/setup/progress` | Persist one completed step in order; repeated writes are idempotent. |
+| `POST` | `/api/setup/complete` | Complete setup from the final review step. Does not start work. |
+| `POST` | `/api/setup/restart` | Return to step one while preserving libraries and settings. |
+
 Health response:
 
 ```json

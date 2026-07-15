@@ -43,6 +43,29 @@ export type AuthStatus = {
   required: boolean
 }
 
+export type SetupState = {
+  version: number
+  completedStep: number
+  currentStep: number
+  stepCount: number
+  completed: boolean
+}
+
+export type SetupPath = {
+  name: string
+  path: string
+  exists: boolean
+  readable: boolean
+  writable: boolean
+}
+
+export type SetupReadiness = {
+  databaseAvailable: boolean
+  ready: boolean
+  paths: SetupPath[]
+  tools: ToolCheck[]
+}
+
 export type ToolCheck = {
   name: string
   command: string
@@ -135,6 +158,53 @@ export type SaveLibrary = LibraryRules & {
   mediaType: string
   ruleProfile: string
   enabled: boolean
+}
+
+export function newLibraryDefaults(): SaveLibrary {
+  return {
+    name: '',
+    path: '',
+    mediaType: 'Film',
+    ruleProfile: 'ConservativeHevc',
+    enabled: true,
+    priority: 0,
+    minFileSizeBytes: null,
+    maxHeight: null,
+    reencodeSameCodecAboveBytes: null,
+    skipEfficientSources: true,
+    targetVideoCodec: null,
+    targetContainer: null,
+    hdrHandling: null,
+    optimiseDolbyVision: false,
+    excludePaths: null,
+    qualityCrf: null,
+    encoderPreset: null,
+    audioTargetCodec: null,
+    audioBitrateKbps: null,
+    videoAudioCodec: null,
+    videoAudioBitrateKbps: null,
+    downmixToStereo: false,
+    keepAudioLanguages: null,
+    reencodeLossyAudio: false,
+    targetImageFormat: null,
+    imageQuality: null,
+    reencodeLossyImages: false,
+    imageDownscaleMode: 'None',
+    imageDownscaleValue: 0,
+    moveOnComplete: false,
+    targetFolder: null,
+    moveOverwrite: false,
+    minVmafHarmonicMean: null,
+    minVmafMin: null,
+    vmafQualityGateEnabled: false,
+    minVmafCatastrophicMin: null,
+    clipVmafEnabled: null,
+    vmafFrameSubsample: null,
+    autoEnqueueEnabled: false,
+    autoEnqueueWindowStart: '00:00',
+    autoEnqueueWindowEnd: '00:00',
+    autoReplace: false,
+  }
 }
 
 export type RuleProfileSpec = {
@@ -594,6 +664,8 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.quarantineRetention.nonNegative': return i18n.m.settings.validation_quarantine
     case 'settings.encoderMode.invalid': return i18n.m.settings.validation_encoder
     case 'settings.import.invalid': return i18n.m.settings.validation_import
+    case 'setup.step.invalid': return i18n.m.setup.error_save
+    case 'setup.completion.invalid': return i18n.m.setup.error_save
     default: return error
   }
 }
@@ -619,6 +691,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<Health>('/api/health'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
+  setup: () => request<SetupState>('/api/setup'),
+  setupReadiness: () => request<SetupReadiness>('/api/setup/readiness'),
+  advanceSetup: (completedStep: number) =>
+    request<SetupState>('/api/setup/progress', { method: 'PUT', body: JSON.stringify({ completedStep }) }),
+  completeSetup: () => request<SetupState>('/api/setup/complete', { method: 'POST' }),
+  restartSetup: () => request<SetupState>('/api/setup/restart', { method: 'POST' }),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
   hardware: (refresh = false) =>
     request<{ hardware: HardwareCapability }>(`/api/system/hardware${refresh ? '?refresh=true' : ''}`).then(

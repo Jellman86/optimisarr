@@ -93,6 +93,7 @@ var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
 
 var databasePath = Path.Combine(configDirectory, "optimisarr.db");
+var databaseExistedBeforeStartup = File.Exists(databasePath);
 builder.Services.AddDbContext<OptimisarrDbContext>(options =>
 {
     options.UseSqlite($"Data Source={databasePath}");
@@ -115,6 +116,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
 
     var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
+    await settings.InitialiseSetupStateAsync(databaseExistedBeforeStartup, CancellationToken.None);
     await LibrarySeeder.MigrateLegacyLibraryRootAsync(db, settings, CancellationToken.None);
 
     // One-time: re-probe files left as Unknown by databases predating media-kind classification.

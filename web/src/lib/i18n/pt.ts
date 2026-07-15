@@ -54,6 +54,35 @@ export const pt: Messages = {
     token_required: "É necessário token de administrador",
     token_label: "Token de administrador"
   },
+  setup: {
+    loading: "Verificando configuração…", retry: "Tentar novamente", progress_label: "Progresso da configuração",
+    step_of: "Passo {current} de {total}", status_current: "Atual", status_completed: "Concluído", status_pending: "Pendente",
+    step_welcome: "Boas-vindas", step_readiness: "Verificação do sistema", step_library: "Primeira biblioteca", step_safety: "Segurança", step_review: "Revisão",
+    back: "Voltar", saving: "Salvando…", finish: "Concluir configuração", error_heading: "A configuração precisa de atenção",
+    error_load: "Não foi possível carregar os detalhes da configuração.", error_save: "Não foi possível salvar o progresso.",
+    welcome_eyebrow: "Seguro por conceção", welcome_heading: "Configure uma biblioteca com as proteções visíveis.",
+    welcome_body: "O Optimisarr encontra ficheiros que podem ser reduzidos, cria uma saída separada, verifica-a e só depois propõe a substituição. Esta configuração curta mantém explícita cada escolha importante.",
+    safety_title: "Os originais ficam protegidos", safety_body: "Nenhum original é substituído até a saída passar em todas as verificações ativas. O modo simulação impede até uma saída verificada de substituir algo.",
+    network_title: "Mantenha o acesso privado", network_body: "Use o Optimisarr numa rede confiável ou atrás de um proxy reverso autenticado. O token de administrador é uma proteção adicional, não substitui uma implantação segura.",
+    readiness_heading: "Verifique as ferramentas multimédia", readiness_body: "As ferramentas obrigatórias devem estar disponíveis antes de analisar ou codificar. As opcionais acrescentam verificações de qualidade e metadados.",
+    required: "obrigatório", optional: "opcional", available: "Disponível", unavailable: "Indisponível", encoder_summary: "{count} codificador(es) de hardware passaram na verificação.",
+    path_ready: "Leitura/escrita prontas", path_unavailable: "Corrija montagem ou permissões",
+    retest: "Testar novamente", required_tools_error: "Instale ou corrija as ferramentas obrigatórias indisponíveis e teste novamente.",
+    library_heading: "Escolha uma primeira biblioteca pequena", library_body: "Comece com uma pasta fácil de inspecionar. O Optimisarr verifica o caminho antes de enfileirar trabalho; a configuração não analisa nem altera multimédia.",
+    library_name: "Nome da biblioteca", library_path: "Caminho no contentor", browse: "Procurar", media_type: "Tipo de multimédia", rule_profile: "Predefinição de otimização",
+    library_safe_defaults: "A biblioteca começa ativa, sem fila ou substituição automáticas. O VMAF fica desligado até escolher uma política.",
+    create_library: "Criar biblioteca", creating_library: "Criando…", library_create_error: "Não foi possível criar a primeira biblioteca.", library_required_error: "Crie ou selecione uma biblioteca antes de continuar.",
+    access_ready: "Acesso de leitura e escrita confirmado", access_checking: "Verificando acesso à pasta…",
+    safety_heading: "Escolha a postura de segurança inicial", safety_step_body: "São valores normais das Configurações, não modos ocultos do assistente. Pode alterá-los depois e nenhum trabalho começa durante a configuração.",
+    dry_run_title: "Manter o modo simulação ativo", dry_run_body: "Codifica e verifica normalmente, mas para em Pronto para substituir para poder inspecionar o resultado antes de mover o original.",
+    concurrent_title: "Trabalhos simultâneos", concurrent_body: "Comece com um. Aumente só depois de observar CPU, GPU, disco e temperaturas numa codificação real.",
+    automation_title: "A automação permanece desligada", automation_body: "A nova biblioteca não enfileira nem substitui automaticamente. Estas opções ficam na página de configuração da biblioteca.",
+    settings_required_error: "As configurações estão indisponíveis. Teste o sistema novamente.",
+    review_eyebrow: "Nenhum trabalho foi iniciado", review_heading: "Reveja o ponto de partida", review_body: "Concluir regista a configuração e abre o painel. Não analisa, enfileira, codifica, substitui ou elimina ficheiros.",
+    review_system: "Sistema", review_ready: "Ferramentas multimédia obrigatórias disponíveis", review_attention: "Precisa de atenção", review_library: "Biblioteca",
+    review_replacement: "Substituição", review_dry_run: "Simulação: rever cada saída verificada", review_live: "Substituição permitida após verificação",
+    review_queue: "Fila", review_jobs: "{count} trabalho(s) simultâneo(s)"
+  },
   nav: {
     dashboard: "Painel",
     libraries: "Bibliotecas de mídia",
@@ -557,7 +586,9 @@ export const pt: Messages = {
     importing: "Importando…",
     import_config: "Importar configuração",
     export_done: "Configuração exportada. Inclui segredos do provedor; armazene o arquivo com segurança e nunca o envie ou compartilhe.",
-    import_done: "Bibliotecas de mídia {libraries} importadas, observadores {watchers}, destinos {targets}, conexões {arrs} Sonarr/Radarr e configurações {settings}."
+    import_done: "Bibliotecas de mídia {libraries} importadas, observadores {watchers}, destinos {targets}, conexões {arrs} Sonarr/Radarr e configurações {settings}.",
+    restart_setup_title: "Configuração inicial", restart_setup_desc: "Execute novamente as verificações guiadas. Todas as configurações e bibliotecas atuais são mantidas; nada é analisado, enfileirado ou alterado sem a sua escolha.",
+    restart_setup: "Executar configuração novamente", restarting_setup: "Iniciando configuração…", restart_setup_confirm: "Executar a configuração novamente? As configurações e bibliotecas existentes serão mantidas."
   },
   libraries: {
     subtitle: "Uma biblioteca de mídia por tipo de conteúdo. Escolha uma predefinição e pronto – ou abra Opções avançadas para ajustar o codec, a qualidade e os limites.",

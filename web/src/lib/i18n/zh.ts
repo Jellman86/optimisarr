@@ -54,6 +54,35 @@ export const zh: Messages = {
     token_required: "需要管理员令牌",
     token_label: "管理员令牌"
   },
+  setup: {
+    loading: "正在检查设置…", retry: "重试", progress_label: "设置进度",
+    step_of: "第 {current} 步，共 {total} 步", status_current: "当前", status_completed: "已完成", status_pending: "待完成",
+    step_welcome: "欢迎", step_readiness: "系统检查", step_library: "第一个媒体库", step_safety: "安全", step_review: "复核",
+    back: "返回", saving: "正在保存…", finish: "完成设置", error_heading: "设置需要处理",
+    error_load: "无法加载设置详情。", error_save: "无法保存设置进度。",
+    welcome_eyebrow: "以安全为设计基础", welcome_heading: "设置一个媒体库，并清楚了解所有保护措施。",
+    welcome_body: "Optimisarr 会查找可缩小的文件，创建单独的输出并进行验证，之后才会提出替换原文件。这一简短流程会明确显示每个重要选择。",
+    safety_title: "原文件始终受保护", safety_body: "输出通过所有已启用的检查之前，不会覆盖原文件。模拟模式甚至不会让已验证的输出替换任何内容。",
+    network_title: "保持私有访问", network_body: "请在可信网络中或经过身份验证的反向代理后使用 Optimisarr。管理员令牌是额外保障，不能代替安全部署。",
+    readiness_heading: "检查媒体工具链", readiness_body: "Optimisarr 必须能使用必需工具才能探测或编码。可选工具会增加质量和元数据检查。",
+    required: "必需", optional: "可选", available: "可用", unavailable: "不可用", encoder_summary: "{count} 个硬件编码器通过了能力检查。",
+    path_ready: "可读写", path_unavailable: "修复挂载或权限",
+    retest: "重新检查系统", required_tools_error: "请安装或修复不可用的必需工具，然后重新检查。",
+    library_heading: "选择一个较小的首个媒体库", library_body: "从易于检查的文件夹开始。Optimisarr 会在排队前检查路径；设置过程不会扫描或更改媒体。",
+    library_name: "媒体库名称", library_path: "容器内路径", browse: "浏览", media_type: "媒体类型", rule_profile: "优化预设",
+    library_safe_defaults: "媒体库会启用，但自动排队和自动替换保持关闭。选择媒体库策略前，VMAF 保持关闭。",
+    create_library: "创建媒体库", creating_library: "正在创建…", library_create_error: "无法创建第一个媒体库。", library_required_error: "继续前请创建或选择媒体库。",
+    access_ready: "已确认读写权限", access_checking: "正在检查文件夹权限…",
+    safety_heading: "选择初始安全状态", safety_step_body: "这些是普通设置值，不是隐藏的向导模式。之后可以更改，设置过程中不会启动任何任务。",
+    dry_run_title: "保持模拟模式开启", dry_run_body: "正常编码和验证，但在“可以替换”处停止，以便在移动原文件前检查结果。",
+    concurrent_title: "并发任务", concurrent_body: "从一个开始。观察真实编码时的 CPU、GPU、磁盘和温度后再增加。",
+    automation_title: "自动化保持关闭", automation_body: "新媒体库不会自动排队或替换。这些选项会保留在媒体库配置页中。",
+    settings_required_error: "设置不可用。请重新检查系统。",
+    review_eyebrow: "尚未启动任何任务", review_heading: "复核初始状态", review_body: "完成后会记录设置并打开仪表板。它不会扫描、排队、编码、替换或删除任何文件。",
+    review_system: "系统", review_ready: "必需的媒体工具可用", review_attention: "需要处理", review_library: "媒体库",
+    review_replacement: "替换", review_dry_run: "模拟模式：复核每个已验证输出", review_live: "验证后允许替换",
+    review_queue: "队列", review_jobs: "{count} 个并发任务"
+  },
   nav: {
     dashboard: "仪表板",
     libraries: "媒体库",
@@ -557,7 +586,9 @@ export const zh: Messages = {
     importing: "输入…",
     import_config: "导入配置",
     export_done: "配置已导出。它包括提供商的秘密；安全地存储文件，切勿提交或共享它。",
-    import_done: "导入的{libraries}媒体库、{watchers}观察者、{targets}目标、{arrs} Sonarr/Radarr连接和{settings}设置。"
+    import_done: "导入的{libraries}媒体库、{watchers}观察者、{targets}目标、{arrs} Sonarr/Radarr连接和{settings}设置。",
+    restart_setup_title: "首次运行设置", restart_setup_desc: "重新运行引导检查。当前设置和媒体库都会保留；除非您主动选择，否则不会扫描、排队或更改任何内容。",
+    restart_setup: "再次运行设置", restarting_setup: "正在启动设置…", restart_setup_confirm: "再次运行设置？现有设置和媒体库将被保留。"
   },
   libraries: {
     subtitle: "每种内容类型一个媒体库。选择一个预设即可完成，或者打开“高级”选项来微调编解码器、质量和限制。",

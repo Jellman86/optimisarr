@@ -77,6 +77,8 @@ internal static class HealthEndpoints
 
         app.MapSettingsEndpoints();
 
+        app.MapSetupEndpoints(configDirectory);
+
         app.MapIntegrationEndpoints();
     }
 }

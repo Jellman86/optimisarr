@@ -54,6 +54,35 @@ export const ja: Messages = {
     token_required: "管理者トークンが必要です",
     token_label: "管理者トークン"
   },
+  setup: {
+    loading: "セットアップを確認中…", retry: "再試行", progress_label: "セットアップの進行状況",
+    step_of: "{total} ステップ中 {current}", status_current: "現在", status_completed: "完了", status_pending: "未完了",
+    step_welcome: "ようこそ", step_readiness: "システム確認", step_library: "最初のライブラリ", step_safety: "安全性", step_review: "確認",
+    back: "戻る", saving: "保存中…", finish: "セットアップを完了", error_heading: "セットアップを確認してください",
+    error_load: "セットアップ情報を読み込めませんでした。", error_save: "進行状況を保存できませんでした。",
+    welcome_eyebrow: "安全を前提に設計", welcome_heading: "保護機能を確認しながら、1つのライブラリを設定します。",
+    welcome_body: "Optimisarr は小さくできるファイルを見つけ、別の出力を作成して検証し、その後でのみ置換を提案します。この短いセットアップでは重要な選択をすべて明示します。",
+    safety_title: "オリジナルを保護", safety_body: "出力が有効なすべての検査に合格するまで、オリジナルは上書きされません。ドライランでは検証済みの出力も置換しません。",
+    network_title: "アクセスを非公開に", network_body: "信頼できるネットワークまたは認証済みリバースプロキシの背後で使用してください。管理者トークンは追加保護であり、安全な配置の代わりではありません。",
+    readiness_heading: "メディアツールを確認", readiness_body: "解析やエンコードには必須ツールが必要です。オプションのツールは品質とメタデータの検査を追加します。",
+    required: "必須", optional: "任意", available: "利用可能", unavailable: "利用不可", encoder_summary: "{count} 個のハードウェアエンコーダーが機能確認に合格しました。",
+    path_ready: "読み書き可能", path_unavailable: "マウントまたは権限を修正",
+    retest: "システムを再確認", required_tools_error: "利用できない必須ツールをインストールまたは修復してから、再確認してください。",
+    library_heading: "小さな最初のライブラリを選択", library_body: "確認しやすいフォルダーから始めてください。Optimisarr はキュー投入前にパスを確認し、セットアップ中にメディアをスキャンまたは変更しません。",
+    library_name: "ライブラリ名", library_path: "コンテナ内のパス", browse: "参照", media_type: "メディア種別", rule_profile: "最適化プリセット",
+    library_safe_defaults: "ライブラリは有効ですが、自動キューと自動置換は無効です。VMAF はポリシーを選ぶまで無効です。",
+    create_library: "ライブラリを作成", creating_library: "作成中…", library_create_error: "最初のライブラリを作成できませんでした。", library_required_error: "続行する前にライブラリを作成または選択してください。",
+    access_ready: "読み書きアクセスを確認済み", access_checking: "フォルダーアクセスを確認中…",
+    safety_heading: "初期の安全設定を選択", safety_step_body: "これは通常の設定値で、非表示のウィザードモードではありません。後で変更でき、セットアップ中にジョブは開始されません。",
+    dry_run_title: "ドライランを有効にする", dry_run_body: "通常どおりエンコードと検証を行い、置換準備完了で停止します。オリジナルを移動する前に結果を確認できます。",
+    concurrent_title: "同時ジョブ数", concurrent_body: "まず1件から始めます。実際のエンコードで CPU、GPU、ディスク、温度を確認してから増やしてください。",
+    automation_title: "自動化は無効のまま", automation_body: "新しいライブラリは自動でキュー投入や置換を行いません。候補確認後にライブラリ設定から変更できます。",
+    settings_required_error: "設定を利用できません。システムを再確認してください。",
+    review_eyebrow: "ジョブは開始されていません", review_heading: "開始状態を確認", review_body: "完了するとセットアップを記録してダッシュボードを開きます。ファイルのスキャン、キュー投入、エンコード、置換、削除は行いません。",
+    review_system: "システム", review_ready: "必須メディアツールを利用可能", review_attention: "確認が必要", review_library: "ライブラリ",
+    review_replacement: "置換", review_dry_run: "ドライラン：検証済み出力をすべて確認", review_live: "検証後の置換を許可",
+    review_queue: "キュー", review_jobs: "同時ジョブ {count} 件"
+  },
   nav: {
     dashboard: "ダッシュボード",
     libraries: "メディアライブラリ",
@@ -557,7 +586,9 @@ export const ja: Messages = {
     importing: "インポート中…",
     import_config: "構成をインポートする",
     export_done: "設定がエクスポートされました。これにはプロバイダーの秘密が含まれます。ファイルは安全に保存し、決してコミットしたり共有したりしないでください。",
-    import_done: "インポートされた {libraries} メディア ライブラリ、{watchers} ウォッチャー、{targets} ターゲット、{arrs} Sonarr/Radarr 接続、および {settings} 設定。"
+    import_done: "インポートされた {libraries} メディア ライブラリ、{watchers} ウォッチャー、{targets} ターゲット、{arrs} Sonarr/Radarr 接続、および {settings} 設定。",
+    restart_setup_title: "初回セットアップ", restart_setup_desc: "ガイド付き確認を再実行します。現在の設定とライブラリは保持され、選択しない限りスキャン、キュー投入、変更は行いません。",
+    restart_setup: "セットアップを再実行", restarting_setup: "セットアップを開始中…", restart_setup_confirm: "セットアップを再実行しますか？既存の設定とライブラリは保持されます。"
   },
   libraries: {
     subtitle: "コンテンツ タイプごとに 1 つのメディア ライブラリ。プリセットを選択すれば完了です。または、詳細オプションを開いてコーデック、品質、制限を微調整します。",

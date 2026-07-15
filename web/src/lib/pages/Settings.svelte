@@ -19,6 +19,7 @@
   // names for notification-target, connection, and watcher records.
   import { i18n, t as tr } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
+  import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
   import InfoTip from '../components/InfoTip.svelte'
   import Banner from '../components/Banner.svelte'
@@ -48,6 +49,7 @@
   let editingTargetId = $state<number | null>(null)
   let targetDraft = $state<SaveNotificationTarget>(emptyTarget())
   let savingTarget = $state(false)
+  let restartingSetup = $state(false)
 
   async function loadTargets() {
     try {
@@ -96,6 +98,18 @@
       await loadTargets()
     } catch (err) {
       targetError = err instanceof Error ? err.message : i18n.m.settings.error_remove_target
+    }
+  }
+
+  async function restartSetup() {
+    if (!confirm(i18n.m.settings.restart_setup_confirm)) return
+    restartingSetup = true
+    try {
+      await setup.restart()
+    } catch (err) {
+      error = err instanceof Error ? err.message : i18n.m.settings.error_save
+    } finally {
+      restartingSetup = false
     }
   }
 
@@ -1010,6 +1024,14 @@
         {importing ? i18n.m.settings.importing : i18n.m.settings.import_config}
       </button>
       <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
+    </div>
+
+    <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.restart_setup_title}</h3>
+      <p class="mt-1 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.settings.restart_setup_desc}</p>
+      <button class="btn mt-3" onclick={restartSetup} disabled={restartingSetup}>
+        {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
+      </button>
     </div>
   </div>
   {/if}

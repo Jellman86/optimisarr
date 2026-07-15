@@ -9,6 +9,17 @@
   distinguishes implemented/unit-tested paths from real-host validation. It records known gaps and
   an exact, non-secret evidence checklist; AMD VA-API and current CUDA VMAF remain honestly pending
   instead of being implied by device detection or command coverage.
+- **Resumable, safety-first first-run setup.** A genuinely new database now opens a five-step
+  setup workspace for deployment/tool checks, creation of one conservatively configured library,
+  dry-run/concurrency choices, and a final no-work-started review. Progress is versioned and
+  persisted after each completed step, duplicate submissions are idempotent, Back retains applied
+  choices, and completion is possible only from the review step. Upgraded installations are marked
+  complete and never forced through onboarding; Settings → Backup offers an explicit **Run setup
+  again** action that keeps every existing library and setting. Fresh installs start in dry-run,
+  automatic enqueue/replacement and VMAF remain off, and the readiness ledger reports database,
+  config/work/quarantine path access, required tools, and detected hardware encoders. The focused
+  responsive layout ships in all nine locales with text status alongside colour and keyboard focus
+  moved to actionable errors.
 - **Dedicated library configuration pages and library-owned VMAF policies.** Configure now
   opens a full-page Rules workspace instead of expanding an increasingly dense library card, while
   Candidates and Excluded remain adjacent tabs on the same canonical library URL. Each video

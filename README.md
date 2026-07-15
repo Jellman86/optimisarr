@@ -145,8 +145,10 @@ Wait for readiness, then open the UI:
 curl http://localhost:8787/api/ready
 ```
 
-Open `http://localhost:8787`, enable **Dry-run mode** in **Settings → General → Replacement**,
-add a library on the **Libraries** page, then scan and queue a small test set.
+Open `http://localhost:8787`. A new database opens the resumable five-step setup, verifies the
+mounted paths and media tools, creates one conservatively configured library, and starts in
+**Dry-run mode**. Completing setup never starts a scan or job; review the library’s Candidates,
+then scan and queue a small test set deliberately.
 Compose examples are available for every supported runtime:
 
 - [CPU only](compose.cpu.example.yml)
