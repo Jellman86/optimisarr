@@ -10,6 +10,18 @@
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
 
+  let {
+    embeddedEditorId = null,
+    onEmbeddedClose,
+    onEmbeddedSaved,
+  }: {
+    embeddedEditorId?: number | null
+    onEmbeddedClose?: () => void
+    onEmbeddedSaved?: (library: Library) => void
+  } = $props()
+
+  const embedded = $derived(embeddedEditorId !== null)
+
   let libraries = $state<Library[]>([])
   let options = $state<LibraryOptions>({
     mediaTypes: [],
@@ -507,6 +519,7 @@
   }
 
   function requestedEditorId(): number | null {
+    if (embeddedEditorId !== null) return embeddedEditorId
     if (router.path === '/libraries/new') return 0
     const match = router.path.match(/^\/libraries\/(\d+)\/configure$/)
     return match ? Number(match[1]) : null
@@ -663,7 +676,8 @@
   function cancelEdit() {
     if (!confirmDiscardIfDirty()) return
     markPristine()
-    router.go('/libraries')
+    if (embedded) onEmbeddedClose?.()
+    else router.go('/libraries')
   }
 
   function emptyToNull(value: string | null): string | null {
@@ -718,12 +732,21 @@
         const created = await api.createLibrary(payload())
         const success = t(i18n.m.libraries.added, { name: form.name })
         markPristine()
+        if (embedded) {
+          onEmbeddedSaved?.(created)
+          return
+        }
         sessionStorage.setItem(FLASH_KEY, success)
         router.replace(`/libraries/${created.id}/configure`)
         return
       } else if (editingId) {
-        await api.updateLibrary(editingId, payload())
+        const updated = await api.updateLibrary(editingId, payload())
         message = t(i18n.m.libraries.updated, { name: form.name })
+        if (embedded) {
+          markPristine()
+          onEmbeddedSaved?.(updated)
+          return
+        }
       }
       // The saved values are now the baseline, so the form is no longer dirty.
       markPristine()
@@ -1524,7 +1547,7 @@
 {/snippet}
 
 {#if editingId !== null}
-  {#if editingId !== 0}
+  {#if editingId !== 0 && !embedded}
     <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700" aria-label={i18n.m.libraries.configure}>
       <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-amber-500">●</span>{/if}</button>
       <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>

@@ -153,8 +153,8 @@ the replacement workflow is trustworthy.
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
         of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
-2. **Gold-standard first-run setup wizard** — turn a new, empty installation into a safe,
-   understandable first library without hiding Docker-level mistakes or weakening Optimisarr's
+2. **Gold-standard first-run setup wizard** — turn a new, empty installation into safe,
+   understandable libraries without hiding Docker-level mistakes or weakening Optimisarr's
    fail-closed defaults. This is the next independently actionable product item while the hardware
    validation matrix remains gated on access to non-Intel GPUs.
 
@@ -162,11 +162,11 @@ the replacement workflow is trustworthy.
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
-     applied choices, and Settings → Backup offers **Run setup again** without deleting configuration.
+     applied choices, and the Settings header offers **Run setup again** without deleting configuration.
      Remaining refinement: explicit optional-step Skip semantics as integrations join the flow.
    - **Five stable, task-oriented steps: initial flow shipped.** One heading and primary action drive:
-     (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) first
-     library and optimisation intent; (4) verification, scheduling, quarantine, and replacement
+     (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) any
+     number of libraries and their optimisation rules; (4) verification, scheduling, quarantine, and replacement
      safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
      skippable sub-step, so Plex/Jellyfin/Sonarr/Radarr availability can never block first use. A
      stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
@@ -178,7 +178,7 @@ the replacement workflow is trustworthy.
      space, and whether media/quarantine share a filesystem for atomic replacement. It detects
      encoder support with the same real test encode used by Tools. Database connectivity,
      required/optional tools, detected hardware encoders, and effective read/write access for config,
-     work, quarantine, and the first library root are now visible and gate progress. Remaining:
+     work, quarantine, and every configured library root are now visible and gate progress. Remaining:
      filesystem identity/free-space evidence and platform-specific Compose/Unraid/TrueNAS remediation.
      A container cannot create a missing bind mount, change host permissions, or securely retrofit an
      admin-token environment variable, so those failures must
@@ -193,7 +193,8 @@ the replacement workflow is trustworthy.
      recommendation remains visible and reversible. It never scans, enqueues, transcodes, replaces,
      or deletes an original until the
      user confirms the review screen. The current flow visibly applies dry-run/concurrency, creates
-     the first library with auto-enqueue, auto-replace, and VMAF off, and starts no work. Capability-
+     every new library with auto-enqueue, auto-replace, and VMAF off unless explicitly changed in the
+     full embedded rules editor, and starts no work. Capability-
      based encoder/VMAF/schedule recommendations and an in-wizard representative preview remain.
    - **Review before commitment: initial receipt shipped.** The last step currently groups system,
      library, replacement, and queue choices and states explicitly that completion starts no work.

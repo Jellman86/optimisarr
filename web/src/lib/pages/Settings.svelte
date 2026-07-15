@@ -22,6 +22,7 @@
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
   import InfoTip from '../components/InfoTip.svelte'
+  import Icon from '../components/Icon.svelte'
   import Banner from '../components/Banner.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
 
@@ -497,9 +498,15 @@
   }
 </script>
 
-<header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
+<header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+  <div class="min-w-0">
+    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
+  </div>
+  <button class="btn min-h-11 w-full flex-none sm:w-auto" onclick={restartSetup} disabled={restartingSetup}>
+    <Icon name="retry" class="h-4 w-4 {restartingSetup ? 'animate-spin' : ''}" />
+    {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
+  </button>
 </header>
 
 {#if error}
@@ -523,8 +530,8 @@
   </div>
 
   {#if activeTab === 'general'}
-  <div class="space-y-5">
-  <div class="card p-5">
+  <div class="min-w-0 space-y-5">
+  <div class="card p-4 sm:p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       {i18n.m.settings.queue_desc}
@@ -553,17 +560,17 @@
 
       <div>
         <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
-        <div class="flex items-center gap-2">
-          <input id="scan-interval" class="input" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
-          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
+          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
         </div>
       </div>
 
       <div>
         <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
-        <div class="flex items-center gap-2">
-          <input id="free-disk" class="input" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
-          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
+          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
         </div>
       </div>
     </div>
@@ -580,20 +587,20 @@
     </div>
   </div>
 
-  <div class="card p-5">
+  <div class="card p-4 sm:p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.gates_title}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       {i18n.m.settings.gates_desc}
     </p>
 
     <div class="grid gap-4 lg:grid-cols-2">
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">{i18n.m.settings.always_on}</h3>
         <div class="max-w-[16rem]">
           <label class="label" for="duration-tolerance">{i18n.m.settings.duration_tolerance} <InfoTip text={i18n.m.settings.duration_tolerance_tip} /></label>
-          <div class="flex items-center gap-2">
-            <input id="duration-tolerance" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">%</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <input id="duration-tolerance" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
+            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
           </div>
         </div>
         <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
@@ -603,7 +610,7 @@
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationAudioLoudnessGateEnabled}
           label={i18n.m.settings.loudness_label}
@@ -611,14 +618,14 @@
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
           <label class="label" for="loudness-drift">{i18n.m.settings.loudness_max}</label>
-          <div class="flex items-center gap-2">
-            <input id="loudness-drift" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <input id="loudness-drift" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
+            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
           </div>
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationAudioClippingGateEnabled}
           label={i18n.m.settings.clipping_label}
@@ -626,14 +633,14 @@
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
           <label class="label" for="true-peak-ceiling">{i18n.m.settings.true_peak} <InfoTip text={i18n.m.settings.true_peak_tip} /></label>
-          <div class="flex items-center gap-2">
-            <input id="true-peak-ceiling" class="input" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <input id="true-peak-ceiling" class="input min-w-0 flex-1" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
+            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
           </div>
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationImageQualityGateEnabled}
           label={i18n.m.settings.ssim_label}
@@ -645,7 +652,7 @@
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationImageMetadataGateEnabled}
           label={i18n.m.settings.exif_label}
@@ -656,7 +663,7 @@
     </div>
   </div>
 
-  <div class="card p-5">
+  <div class="card p-4 sm:p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.replacement_title}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       {i18n.m.settings.replacement_desc}
@@ -677,14 +684,14 @@
     </div>
     <div class="mt-5 max-w-[16rem] border-t border-slate-200 pt-5 dark:border-slate-800">
       <label class="label" for="quarantine-retention">{i18n.m.settings.quarantine_retention} <InfoTip text={i18n.m.settings.quarantine_retention_tip} /></label>
-      <div class="flex items-center gap-2">
-        <input id="quarantine-retention" class="input" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
-        <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
+      <div class="flex min-w-0 items-center gap-2">
+        <input id="quarantine-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
+        <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
       </div>
     </div>
   </div>
 
-  <div class="flex items-center gap-3">
+  <div class="flex flex-wrap items-center gap-3">
     <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
     <span class="text-xs text-slate-400">{i18n.m.settings.save_note}</span>
@@ -1018,7 +1025,7 @@
       <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{backupMessage}</div>
     {/if}
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button class="btn" onclick={exportConfig}>{i18n.m.settings.export_config}</button>
       <button class="btn" onclick={() => fileInput?.click()} disabled={importing}>
         {importing ? i18n.m.settings.importing : i18n.m.settings.import_config}
@@ -1026,13 +1033,6 @@
       <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
     </div>
 
-    <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
-      <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.restart_setup_title}</h3>
-      <p class="mt-1 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.settings.restart_setup_desc}</p>
-      <button class="btn mt-3" onclick={restartSetup} disabled={restartingSetup}>
-        {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
-      </button>
-    </div>
   </div>
   {/if}
 {/if}

@@ -146,9 +146,10 @@ curl http://localhost:8787/api/ready
 ```
 
 Open `http://localhost:8787`. A new database opens the resumable five-step setup, verifies the
-mounted paths and media tools, creates one conservatively configured library, and starts in
-**Dry-run mode**. Completing setup never starts a scan or job; review the library’s Candidates,
-then scan and queue a small test set deliberately.
+mounted paths and media tools, lets you fully configure as many libraries as needed, and starts in
+**Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
+then scan and queue a small test set deliberately. Use **Run setup again** in the Settings header to
+revisit the guided checks without deleting existing configuration.
 Compose examples are available for every supported runtime:
 
 - [CPU only](compose.cpu.example.yml)

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { i18n } from '../i18n/i18n.svelte'
   import { api, type BrowseResponse } from '../api'
+  import Icon from './Icon.svelte'
 
   let { initialPath = '', onSelect, onClose }: {
     initialPath?: string
@@ -47,18 +48,21 @@
   >
     <div class="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
       <h2 class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.shared.choose_folder}</h2>
-      <button class="btn btn-ghost px-2" onclick={onClose} aria-label={i18n.m.shared.close}>✕</button>
+      <button class="btn btn-ghost min-h-11 min-w-11 px-2" onclick={onClose} aria-label={i18n.m.shared.close}>
+        <Icon name="x" class="h-5 w-5" />
+      </button>
     </div>
 
     <div class="border-b border-slate-200 p-3 dark:border-slate-700">
       <div class="flex items-center gap-2">
         <button
-          class="btn px-2 py-1 text-xs"
+          class="btn min-h-11 px-3 text-xs"
           disabled={!listing?.parent}
           onclick={() => listing?.parent && navigate(listing.parent)}
           title={i18n.m.shared.up_one_level}
         >
-          ↑ Up
+          <Icon name="arrow-left" class="h-4 w-4 rotate-90" />
+          {i18n.m.shared.up_one_level}
         </button>
         <code class="flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
           {listing?.path ?? '…'}
@@ -74,7 +78,7 @@
       {:else if listing && listing.directories.length > 0}
         {#each listing.directories as dir}
           <button
-            class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            class="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             onclick={() => navigate(dir.path)}
           >
             <svg class="h-4 w-4 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
@@ -91,8 +95,8 @@
     <div class="flex items-center justify-between gap-2 border-t border-slate-200 p-3 dark:border-slate-700">
       <span class="truncate text-xs text-slate-500 dark:text-slate-400">{i18n.m.shared.select_highlighted}</span>
       <div class="flex gap-2">
-        <button class="btn" onclick={onClose}>{i18n.m.common.cancel}</button>
-        <button class="btn btn-primary" disabled={!listing} onclick={() => listing && onSelect(listing.path)}>
+        <button class="btn min-h-11" onclick={onClose}>{i18n.m.common.cancel}</button>
+        <button class="btn btn-primary min-h-11" disabled={!listing} onclick={() => listing && onSelect(listing.path)}>
           {i18n.m.shared.select_folder}
         </button>
       </div>

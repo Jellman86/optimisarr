@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { api, newLibraryDefaults, type HardwareCapability, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type Settings, type SetupPath, type ToolCheck } from '../api'
+  import { api, type HardwareCapability, type Library, type LibraryAccess, type Settings, type SetupPath, type ToolCheck } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
   import { setup } from '../stores/setup.svelte'
   import BrandMark from '../components/BrandMark.svelte'
-  import FolderPicker from '../components/FolderPicker.svelte'
+  import Icon from '../components/Icon.svelte'
+  import Libraries from './Libraries.svelte'
 
   let viewStep = $state(setup.state?.currentStep ?? 1)
   let busy = $state(false)
@@ -15,15 +17,13 @@
   let paths = $state<SetupPath[]>([])
   let databaseAvailable = $state(false)
   let libraries = $state<Library[]>([])
-  let options = $state<LibraryOptions | null>(null)
   let settings = $state<Settings | null>(null)
-  let libraryDraft = $state<SaveLibrary>(newLibraryDefaults())
-  let selectedLibrary = $state<Library | null>(null)
-  let access = $state<LibraryAccess | null>(null)
-  let pickerOpen = $state(false)
+  let libraryAccess = $state<Record<number, LibraryAccess | null>>({})
+  let configuringLibraryId = $state<number | null>(null)
 
   const requiredToolsReady = $derived(tools.length > 0 && tools.every((tool) => !tool.required || tool.available))
   const requiredPathsReady = $derived(paths.length > 0 && paths.every((path) => path.exists && path.readable && path.writable))
+  const libraryPathsReady = $derived(allLibraryPathsReady(libraries, libraryAccess))
   const stepNames = $derived([
     i18n.m.setup.step_welcome,
     i18n.m.setup.step_readiness,
@@ -39,22 +39,18 @@
   async function loadContext() {
     error = null
     try {
-      const [readiness, hardwareResult, libraryResults, libraryOptions, settingsResult] = await Promise.all([
+      const [readiness, hardwareResult, libraryResults, settingsResult] = await Promise.all([
         api.setupReadiness(),
         api.hardware().catch(() => null),
         api.libraries(),
-        api.libraryOptions(),
         api.settings(),
       ])
       tools = readiness.tools
       paths = readiness.paths
       databaseAvailable = readiness.databaseAvailable
       hardware = hardwareResult
-      libraries = libraryResults
-      options = libraryOptions
       settings = settingsResult
-      selectedLibrary = libraries[0] ?? null
-      if (selectedLibrary) await checkAccess(selectedLibrary)
+      await setLibraries(libraryResults)
     } catch (err) {
       await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
     }
@@ -66,25 +62,25 @@
     errorSummary?.focus()
   }
 
-  async function checkAccess(library: Library) {
-    try {
-      access = await api.libraryAccess(library.id)
-    } catch {
-      access = null
-    }
+  async function setLibraries(nextLibraries?: Library[]) {
+    const results = nextLibraries ?? await api.libraries()
+    const accessEntries = await Promise.all(results.map(async (library) => {
+      try {
+        return [library.id, await api.libraryAccess(library.id)] as const
+      } catch {
+        return [library.id, null] as const
+      }
+    }))
+    libraries = results
+    libraryAccess = Object.fromEntries(accessEntries)
   }
 
-  async function createLibrary() {
-    busy = true
-    error = null
+  async function librarySaved() {
+    configuringLibraryId = null
     try {
-      selectedLibrary = await api.createLibrary(libraryDraft)
-      libraries = [...libraries, selectedLibrary]
-      await checkAccess(selectedLibrary)
+      await setLibraries()
     } catch (err) {
-      await showError(err instanceof Error ? err.message : i18n.m.setup.library_create_error)
-    } finally {
-      busy = false
+      await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
     }
   }
 
@@ -92,16 +88,28 @@
     if (!setup.state) return
     error = null
 
+    if (viewStep === 3) {
+      try {
+        await setLibraries()
+      } catch (err) {
+        await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
+        return
+      }
+    }
+
     if (viewStep === 2 && (!databaseAvailable || !requiredToolsReady || !requiredPathsReady)) {
       await showError(i18n.m.setup.required_tools_error)
       return
     }
-    if (viewStep === 3 && !selectedLibrary) {
+    if (viewStep === 3 && libraries.length === 0) {
       await showError(i18n.m.setup.library_required_error)
       return
     }
-    if (viewStep === 3 && access && !access.ok) {
-      await showError(access.message)
+    if (viewStep === 3 && !libraryPathsReady) {
+      const unavailable = firstUnavailableLibrary(libraries, libraryAccess)
+      await showError(unavailable && libraryAccess[unavailable.id]
+        ? libraryAccess[unavailable.id]!.message
+        : i18n.m.setup.access_checking)
       return
     }
     if (viewStep === 4 && !settings) {
@@ -140,17 +148,6 @@
   }
 </script>
 
-{#if pickerOpen}
-  <FolderPicker
-    initialPath={libraryDraft.path}
-    onSelect={(path) => {
-      libraryDraft.path = path
-      pickerOpen = false
-    }}
-    onClose={() => (pickerOpen = false)}
-  />
-{/if}
-
 <div class="min-h-dvh bg-slate-100 px-4 py-5 text-slate-800 sm:px-6 sm:py-8 dark:bg-slate-950 dark:text-slate-200">
   <div class="mx-auto mb-5 flex max-w-5xl items-center gap-3">
     <BrandMark sizes="36px" class="h-9 w-9" />
@@ -160,7 +157,7 @@
     </div>
   </div>
 
-  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white md:grid-cols-[15rem_minmax(0,1fr)] dark:border-slate-800 dark:bg-slate-900">
+  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-200 bg-white md:grid-cols-[15rem_minmax(0,1fr)] dark:border-slate-800 dark:bg-slate-900">
     <aside class="border-b border-slate-200 bg-slate-50 px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7 dark:border-slate-800 dark:bg-slate-900/60">
       <p class="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-400">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
@@ -187,6 +184,13 @@
     </aside>
 
     <main class="flex min-w-0 flex-col px-5 py-6 sm:px-8 sm:py-8 md:px-10" id="setup-content">
+      {#if configuringLibraryId !== null}
+        <Libraries
+          embeddedEditorId={configuringLibraryId}
+          onEmbeddedClose={() => (configuringLibraryId = null)}
+          onEmbeddedSaved={() => void librarySaved()}
+        />
+      {:else}
       {#if error}
         <div bind:this={errorSummary} class="mb-5 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" role="alert" tabindex="-1">
           <div class="font-semibold">{i18n.m.setup.error_heading}</div>
@@ -250,47 +254,34 @@
           <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.library_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.library_body}</p>
 
-          {#if selectedLibrary}
-            <div class="mt-7 max-w-2xl border-y border-slate-200 py-4 dark:border-slate-800">
-              <div class="font-semibold text-slate-900 dark:text-slate-100">{selectedLibrary.name}</div>
-              <div class="mt-1 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{selectedLibrary.path}</div>
-              <div class="mt-3 flex flex-wrap gap-2 text-xs">
-                <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{selectedLibrary.mediaType}</span>
-                <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{selectedLibrary.ruleProfile}</span>
-                <span class="font-medium {access?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">{access?.ok ? i18n.m.setup.access_ready : access?.message ?? i18n.m.setup.access_checking}</span>
-              </div>
+          {#if libraries.length > 0}
+            <div class="mt-7 max-w-2xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+              {#each libraries as library (library.id)}
+                {@const access = libraryAccess[library.id]}
+                <article class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" aria-label={library.name}>
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-semibold text-slate-900 dark:text-slate-100">{library.name}</span>
+                      <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{library.mediaType}</span>
+                    </div>
+                    <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={library.path}>{library.path}</div>
+                    <div class="mt-2 text-xs font-medium {access?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
+                      {access?.ok ? i18n.m.setup.access_ready : access?.message ?? i18n.m.setup.access_checking}
+                    </div>
+                  </div>
+                  <button class="btn min-h-11 flex-none" onclick={() => (configuringLibraryId = library.id)}>
+                    <Icon name="sliders" class="h-4 w-4" />
+                    {i18n.m.libraries.configure}
+                  </button>
+                </article>
+              {/each}
             </div>
-          {:else}
-            <div class="mt-7 grid max-w-2xl gap-4 sm:grid-cols-2">
-              <div>
-                <label class="label" for="setup-library-name">{i18n.m.setup.library_name}</label>
-                <input id="setup-library-name" class="input" bind:value={libraryDraft.name} />
-              </div>
-              <div>
-                <label class="label" for="setup-library-path">{i18n.m.setup.library_path}</label>
-                <div class="flex gap-2">
-                  <input id="setup-library-path" class="input min-w-0" bind:value={libraryDraft.path} />
-                  <button class="btn flex-none" type="button" onclick={() => (pickerOpen = true)}>{i18n.m.setup.browse}</button>
-                </div>
-              </div>
-              <div>
-                <label class="label" for="setup-media-type">{i18n.m.setup.media_type}</label>
-                <select id="setup-media-type" class="input" bind:value={libraryDraft.mediaType}>
-                  {#each options?.mediaTypes ?? [] as mediaType}<option value={mediaType}>{mediaType}</option>{/each}
-                </select>
-              </div>
-              <div>
-                <label class="label" for="setup-rule-profile">{i18n.m.setup.rule_profile}</label>
-                <select id="setup-rule-profile" class="input" bind:value={libraryDraft.ruleProfile}>
-                  {#each options?.ruleProfiles ?? [] as profile}<option value={profile}>{profile}</option>{/each}
-                </select>
-              </div>
-            </div>
-            <p class="mt-4 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.library_safe_defaults}</p>
-            <button class="btn btn-primary mt-4" onclick={createLibrary} disabled={busy || !libraryDraft.name.trim() || !libraryDraft.path.trim()}>
-              {busy ? i18n.m.setup.creating_library : i18n.m.setup.create_library}
-            </button>
           {/if}
+          <p class="mt-4 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.library_safe_defaults}</p>
+          <button class="btn {libraries.length === 0 ? 'btn-primary' : ''} mt-4 min-h-11" onclick={() => (configuringLibraryId = 0)}>
+            <Icon name="plus" class="h-4 w-4" />
+            {libraries.length === 0 ? i18n.m.setup.create_library : i18n.m.setup.add_another_library}
+          </button>
         {:else if viewStep === 4}
           <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.safety_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.safety_step_body}</p>
@@ -318,7 +309,7 @@
 
           <dl class="mt-7 max-w-2xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
             <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_system}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd></div>
-            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{selectedLibrary?.name ?? '—'} · <span class="font-mono text-xs">{selectedLibrary?.path ?? '—'}</span></dd></div>
+            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd></div>
             <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd></div>
             <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_queue}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{t(i18n.m.setup.review_jobs, { count: settings?.maxConcurrentJobs ?? 1 })}</dd></div>
           </dl>
@@ -327,10 +318,11 @@
 
       <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
         <button class="btn min-h-11" onclick={() => (viewStep = Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy}>{i18n.m.setup.back}</button>
-        <button class="btn btn-primary min-h-11 px-5" onclick={continueStep} disabled={busy || viewStep === 3 && !selectedLibrary}>
+        <button class="btn btn-primary min-h-11 px-5" onclick={continueStep} disabled={busy || viewStep === 3 && libraries.length === 0}>
           {busy ? i18n.m.setup.saving : viewStep === 5 ? i18n.m.setup.finish : i18n.m.common.continue}
         </button>
       </div>
+      {/if}
     </main>
   </div>
 </div>
