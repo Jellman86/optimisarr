@@ -352,10 +352,6 @@
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
     verificationRequireSizeReduction: true,
-    verificationQualityGateEnabled: false,
-    verificationMinimumVmafHarmonicMean: 93,
-    verificationMinimumVmafMin: 80,
-    verificationMinimumVmafCatastrophicMin: 50,
     verificationAudioLoudnessGateEnabled: false,
     verificationMaxLoudnessDriftLufs: 1,
     verificationAudioClippingGateEnabled: false,
@@ -363,64 +359,10 @@
     verificationImageQualityGateEnabled: true,
     verificationMinimumImageSsim: 0.95,
     verificationImageMetadataGateEnabled: true,
-    verificationClipVmafEnabled: false,
-    verificationVmafFrameSubsample: 1,
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
   })
-
-  // Perceptual-quality (VMAF) presets exposed as a single slider: the leftmost stop turns the
-  // gate off (the default) and each remaining stop prefills both VMAF floors. Values follow
-  // VMAF's 0-100 scale (~6 points ≈ one just-noticeable difference; ~93 is the commonly-cited
-  // "visually lossless" mark for HD). Higher stops are stricter and keep larger files.
-  const vmafPresets = [
-    { enabled: false, harmonicMean: 93, min: 80, catastrophic: 50 }, // Off
-    { enabled: true, harmonicMean: 80, min: 60, catastrophic: 30 }, // Space-saver
-    { enabled: true, harmonicMean: 85, min: 70, catastrophic: 40 }, // Balanced
-    { enabled: true, harmonicMean: 90, min: 75, catastrophic: 45 }, // High
-    { enabled: true, harmonicMean: 93, min: 80, catastrophic: 50 }, // Visually lossless
-    { enabled: true, harmonicMean: 96, min: 90, catastrophic: 70 }, // Archival
-  ] as const
-
-  function vmafPresetLabel(index: number): string {
-    const s = i18n.m.settings
-    return [
-      s.vmaf_preset_off,
-      s.vmaf_preset_space_saver,
-      s.vmaf_preset_balanced,
-      s.vmaf_preset_high,
-      s.vmaf_preset_lossless,
-      s.vmaf_preset_archival,
-    ][index]
-  }
-
-  // Map the saved policy onto a slider stop: off when the gate is disabled, otherwise the stop
-  // whose harmonic-mean floor is closest to the saved value, so an older config with custom
-  // numbers snaps to the nearest tier instead of dropping off the slider.
-  let vmafIndex = $derived.by(() => {
-    if (!settings.verificationQualityGateEnabled) return 0
-    let best = 1
-    let bestDistance = Infinity
-    for (let i = 1; i < vmafPresets.length; i++) {
-      const distance = Math.abs(vmafPresets[i].harmonicMean - settings.verificationMinimumVmafHarmonicMean)
-      if (distance < bestDistance) {
-        bestDistance = distance
-        best = i
-      }
-    }
-    return best
-  })
-
-  function applyVmafPreset(index: number) {
-    const preset = vmafPresets[index]
-    settings.verificationQualityGateEnabled = preset.enabled
-    if (preset.enabled) {
-      settings.verificationMinimumVmafHarmonicMean = preset.harmonicMean
-      settings.verificationMinimumVmafMin = preset.min
-      settings.verificationMinimumVmafCatastrophicMin = preset.catastrophic
-    }
-  }
 
   let minFreeDiskGiB = $state('10')
   let loading = $state(true)
@@ -459,10 +401,6 @@
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
-        verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
-        verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
-        verificationMinimumVmafCatastrophicMin: clamp01to100(settings.verificationMinimumVmafCatastrophicMin),
-        verificationVmafFrameSubsample: Math.min(10, Math.max(1, Number(settings.verificationVmafFrameSubsample) || 1)),
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
         verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
@@ -649,61 +587,6 @@
           <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
           <Toggle bind:checked={settings.verificationRequireSizeReduction} label={i18n.m.settings.require_smaller} />
         </div>
-      </div>
-
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <div class="label flex items-center gap-1">
-          {i18n.m.settings.vmaf_label}
-          <InfoTip text={i18n.m.settings.vmaf_hint} />
-        </div>
-        <input
-          class="mt-3 w-full"
-          type="range"
-          min="0"
-          max="5"
-          step="1"
-          value={vmafIndex}
-          oninput={(event) => applyVmafPreset(Number(event.currentTarget.value))}
-          aria-label={i18n.m.settings.vmaf_label}
-        />
-        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-          <span>{i18n.m.settings.vmaf_preset_off}</span>
-          <span>{i18n.m.settings.vmaf_preset_archival}</span>
-        </div>
-        <p class="mt-3 text-sm">
-          <span class="font-medium text-slate-700 dark:text-slate-200">{vmafPresetLabel(vmafIndex)}</span>
-          {#if settings.verificationQualityGateEnabled}
-            <span class="text-slate-500 dark:text-slate-400">
-              — {i18n.m.settings.vmaf_harmonic} {settings.verificationMinimumVmafHarmonicMean} ·
-              {i18n.m.settings.vmaf_min} {settings.verificationMinimumVmafMin} ·
-              {i18n.m.settings.vmaf_catastrophic} {settings.verificationMinimumVmafCatastrophicMin}
-            </span>
-          {:else}
-            <span class="text-slate-500 dark:text-slate-400">— {i18n.m.settings.vmaf_off_desc}</span>
-          {/if}
-        </p>
-        {#if settings.verificationQualityGateEnabled}
-          <p class="mt-1 text-xs text-amber-600 dark:text-amber-500">{i18n.m.settings.vmaf_cost_warning}</p>
-          <div class="mt-3">
-            <Toggle
-              bind:checked={settings.verificationClipVmafEnabled}
-              label={i18n.m.settings.vmaf_clip_label}
-              hint={i18n.m.settings.vmaf_clip_hint}
-            />
-          </div>
-          <div class="mt-3 max-w-[16rem]">
-            <label class="label" for="vmaf-frame-subsample">
-              {i18n.m.settings.vmaf_subsample_label}
-              <InfoTip text={i18n.m.settings.vmaf_subsample_hint} />
-            </label>
-            <select id="vmaf-frame-subsample" class="input" bind:value={settings.verificationVmafFrameSubsample}>
-              <option value={1}>{i18n.m.settings.vmaf_every_frame}</option>
-              {#each [2, 3, 4, 5, 10] as interval}
-                <option value={interval}>{tr(i18n.m.settings.vmaf_every_nth_frame, { interval })}</option>
-              {/each}
-            </select>
-          </div>
-        {/if}
       </div>
 
       <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">

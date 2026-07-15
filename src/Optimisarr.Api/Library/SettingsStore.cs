@@ -21,6 +21,16 @@ public sealed record QueueSettings(
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db)
 {
+    private static readonly string[] LegacyVmafSettingKeys =
+    [
+        "verification.qualityGateEnabled",
+        "verification.minimumVmafHarmonicMean",
+        "verification.minimumVmafMin",
+        "verification.minimumVmafCatastrophicMin",
+        "verification.clipVmafEnabled",
+        "verification.vmafFrameSubsample"
+    ];
+
     /// <summary>Conservative default: process one job at a time until the user opts in to more.</summary>
     public const int DefaultMaxConcurrentJobs = 1;
 
@@ -44,10 +54,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationRequireAudioRetained,
         SettingKeys.VerificationRequireSubtitlesRetained,
         SettingKeys.VerificationRequireSizeReduction,
-        SettingKeys.VerificationQualityGateEnabled,
-        SettingKeys.VerificationMinimumVmafHarmonicMean,
-        SettingKeys.VerificationMinimumVmafMin,
-        SettingKeys.VerificationMinimumVmafCatastrophicMin,
         SettingKeys.VerificationAudioLoudnessGateEnabled,
         SettingKeys.VerificationMaxLoudnessDriftLufs,
         SettingKeys.VerificationAudioClippingGateEnabled,
@@ -55,12 +61,18 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationImageQualityGateEnabled,
         SettingKeys.VerificationMinimumImageSsim,
         SettingKeys.VerificationImageMetadataGateEnabled,
-        SettingKeys.VerificationClipVmafEnabled,
-        SettingKeys.VerificationVmafFrameSubsample,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
+
+    /// <summary>
+    /// Setting keys accepted while reading a backup. The legacy VMAF keys remain recognised so
+    /// backups made before VMAF became per-library can be upgraded during import, but they are
+    /// deliberately absent from <see cref="PortableSettingKeys"/> and are never persisted again.
+    /// </summary>
+    public static readonly IReadOnlySet<string> RecognizedImportSettingKeys = new HashSet<string>(
+        PortableSettingKeys.Concat(LegacyVmafSettingKeys));
 
     /// <summary>
     /// The legacy single library root, if one was configured before the
@@ -100,10 +112,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationRequireAudioRetained
                 || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
                 || setting.Key == SettingKeys.VerificationRequireSizeReduction
-                || setting.Key == SettingKeys.VerificationQualityGateEnabled
-                || setting.Key == SettingKeys.VerificationMinimumVmafHarmonicMean
-                || setting.Key == SettingKeys.VerificationMinimumVmafMin
-                || setting.Key == SettingKeys.VerificationMinimumVmafCatastrophicMin
                 || setting.Key == SettingKeys.VerificationAudioLoudnessGateEnabled
                 || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
                 || setting.Key == SettingKeys.VerificationAudioClippingGateEnabled
@@ -111,8 +119,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationImageQualityGateEnabled
                 || setting.Key == SettingKeys.VerificationMinimumImageSsim
                 || setting.Key == SettingKeys.VerificationImageMetadataGateEnabled
-                || setting.Key == SettingKeys.VerificationClipVmafEnabled
-                || setting.Key == SettingKeys.VerificationVmafFrameSubsample
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
@@ -142,24 +148,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationRequireSizeReduction),
                     VerificationPolicy.Default.RequireSizeReduction),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationQualityGateEnabled),
-                    VerificationPolicy.Default.QualityGateEnabled),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafHarmonicMean),
-                    VerificationPolicy.Default.MinimumVmafHarmonicMean,
-                    min: 0),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
-                    VerificationPolicy.Default.MinimumVmafMin,
-                    min: 0),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafCatastrophicMin),
-                    Math.Max(0, ParseDouble(
-                        settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
-                        VerificationPolicy.Default.MinimumVmafMin,
-                        min: 0) - 30),
-                    min: 0),
+                VerificationPolicy.Default.QualityGateEnabled,
+                VerificationPolicy.Default.MinimumVmafHarmonicMean,
+                VerificationPolicy.Default.MinimumVmafMin,
+                VerificationPolicy.Default.MinimumVmafCatastrophicMin,
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationAudioLoudnessGateEnabled),
                     VerificationPolicy.Default.AudioLoudnessGateEnabled),
@@ -183,14 +175,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationImageMetadataGateEnabled),
                     VerificationPolicy.Default.ImageMetadataGateEnabled),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationClipVmafEnabled),
-                    VerificationPolicy.Default.ClipVmafEnabled),
-                ParseInt(
-                    settings.GetValueOrDefault(SettingKeys.VerificationVmafFrameSubsample),
-                    VerificationPolicy.Default.VmafFrameSubsample,
-                    min: 1,
-                    max: QualityScoreCommandBuilder.MaximumFrameSubsample)),
+                VerificationPolicy.Default.ClipVmafEnabled,
+                VerificationPolicy.Default.VmafFrameSubsample),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
@@ -240,14 +226,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.RequireSubtitlesRetained.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationRequireSizeReduction] =
                 settings.VerificationPolicy.RequireSizeReduction.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationQualityGateEnabled] =
-                settings.VerificationPolicy.QualityGateEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMinimumVmafHarmonicMean] =
-                Math.Max(0, settings.VerificationPolicy.MinimumVmafHarmonicMean).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMinimumVmafMin] =
-                Math.Max(0, settings.VerificationPolicy.MinimumVmafMin).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMinimumVmafCatastrophicMin] =
-                Math.Max(0, settings.VerificationPolicy.MinimumVmafCatastrophicMin).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationAudioLoudnessGateEnabled] =
                 settings.VerificationPolicy.AudioLoudnessGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMaxLoudnessDriftLufs] =
@@ -262,13 +240,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 Math.Max(0, settings.VerificationPolicy.MinimumImageSsim).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationImageMetadataGateEnabled] =
                 settings.VerificationPolicy.ImageMetadataGateEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationClipVmafEnabled] =
-                settings.VerificationPolicy.ClipVmafEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationVmafFrameSubsample] =
-                Math.Clamp(
-                    settings.VerificationPolicy.VmafFrameSubsample,
-                    1,
-                    QualityScoreCommandBuilder.MaximumFrameSubsample).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.DryRunMode] =

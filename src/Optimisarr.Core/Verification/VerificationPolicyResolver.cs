@@ -1,11 +1,11 @@
 namespace Optimisarr.Core.Verification;
 
 /// <summary>
-/// Pure resolution of the effective verification policy for a single job. The global
-/// policy from settings is the baseline; a library may override the VMAF quality-gate
+/// Pure resolution of the effective verification policy for a single job. General
+/// verification settings provide the baseline, while each library owns its VMAF quality-gate
 /// state, thresholds, and sampling so different content can demand different quality
-/// (an archive library near-lossless, a space-saver more forgiving). Null inherits the
-/// corresponding global value; numeric overrides are clamped to their valid ranges.
+/// (an archive library near-lossless, a space-saver more forgiving). Null uses the built-in
+/// VMAF baseline for legacy/API compatibility; numeric values are clamped to valid ranges.
 /// </summary>
 public sealed record VerificationPolicyOverrides(
     bool? QualityGateEnabled,

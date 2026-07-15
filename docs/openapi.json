@@ -1080,9 +1080,6 @@
           "verificationAudioLoudnessGateEnabled": {
             "type": "boolean"
           },
-          "verificationClipVmafEnabled": {
-            "type": "boolean"
-          },
           "verificationDurationTolerancePercent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
@@ -1121,33 +1118,6 @@
               "string"
             ]
           },
-          "verificationMinimumVmafCatastrophicMin": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationMinimumVmafHarmonicMean": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationMinimumVmafMin": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationQualityGateEnabled": {
-            "type": "boolean"
-          },
           "verificationRequireAudioRetained": {
             "type": "boolean"
           },
@@ -1156,14 +1126,6 @@
           },
           "verificationRequireSubtitlesRetained": {
             "type": "boolean"
-          },
-          "verificationVmafFrameSubsample": {
-            "format": "int32",
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ]
           }
         },
         "required": [
@@ -1177,10 +1139,6 @@
           "verificationRequireAudioRetained",
           "verificationRequireSubtitlesRetained",
           "verificationRequireSizeReduction",
-          "verificationQualityGateEnabled",
-          "verificationMinimumVmafHarmonicMean",
-          "verificationMinimumVmafMin",
-          "verificationMinimumVmafCatastrophicMin",
           "verificationAudioLoudnessGateEnabled",
           "verificationMaxLoudnessDriftLufs",
           "verificationAudioClippingGateEnabled",
@@ -1188,8 +1146,6 @@
           "verificationImageQualityGateEnabled",
           "verificationMinimumImageSsim",
           "verificationImageMetadataGateEnabled",
-          "verificationClipVmafEnabled",
-          "verificationVmafFrameSubsample",
           "replacementAllowCrossFilesystem",
           "dryRunMode",
           "replacementQuarantineRetentionDays"

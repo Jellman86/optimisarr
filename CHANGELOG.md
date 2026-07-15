@@ -4,15 +4,16 @@
 
 ### Added
 
-- **Dedicated library configuration pages and complete per-library VMAF policies.** Configure now
+- **Dedicated library configuration pages and library-owned VMAF policies.** Configure now
   opens a full-page Rules workspace instead of expanding an increasingly dense library card, while
   Candidates and Excluded remain adjacent tabs on the same canonical library URL. Each video
-  library can inherit, disable, or override the global VMAF gate with the same Space-saver through
-  Archival quality tiers, or enter custom harmonic-mean, fifth-percentile, and catastrophic-frame
-  floors. Clip/full-file scoring and the 1st–10th-frame sampling interval can also be overridden per
-  library. Nullable overrides preserve existing behaviour, config backup/restore carries the full
-  policy, and API/import validation enforces safe ranges and ordered floors. The responsive editor
-  keeps primary choices visible, progressively discloses advanced encoding controls, warns before
+  library can disable its VMAF gate, select a Space-saver through Archival quality tier, or enter
+  custom harmonic-mean, fifth-percentile, and catastrophic-frame floors. Clip/full-file scoring and
+  the 1st–10th-frame sampling interval are also library-owned. The upgrade migration materialises
+  the former global policy onto existing libraries and removes its obsolete settings; older config
+  backups receive the same conversion during import. API/import validation enforces safe ranges and
+  ordered floors. The responsive editor keeps primary choices visible, uses a compact borderless
+  summary for effective floors, progressively discloses advanced encoding controls, warns before
   discarding changes, and exposes non-overlapping Save/Cancel actions on desktop and mobile.
 - **Encoder-aware VMAF recovery and safer temporal pooling.** Hardware quality controls now receive
   conservative encoder-family calibration (QSV ICQ, NVENC CQ, VA-API QP) instead of treating their
@@ -32,8 +33,8 @@
   Frame sampling control scores every 1st–10th frame (default 1/every frame) with a warning that
   skipped frames weaken the worst-frame floor. Incidental PSNR/SSIM features are no longer computed
   during the VMAF gate, avoiding work that does not affect replacement safety.
-- **Optional sampled VMAF (faster quality gate on modest hardware).** A Settings toggle under
-  the quality slider measures VMAF across three 40-second windows near the beginning, middle and end
+- **Optional sampled VMAF (faster quality gate on modest hardware).** A per-library control under
+  the quality policy measures VMAF across three 40-second windows near the beginning, middle and end
   instead of the whole runtime, which cuts VMAF time dramatically on low-power hosts (e.g. an Intel
   N100) where full-file scoring is impractical. Both the output and original are sought to each
   matching window, and progress is reported across all three samples. The other
@@ -148,10 +149,10 @@
   assistive technology.
 - **VMAF is an opt-in perceptual-quality gate, chosen with a quality slider.** It is off by default
   because it fully decodes both files and scores every frame, which roughly doubles verification
-  time and can dominate a run on modest hardware. A single Settings slider turns it on and prefills
-  both floors from five tiers — Space-saver (80/60), Balanced (85/70), High (90/75), Visually
-  lossless (93/80), and Archival (96/90) — with "Off" as the default leftmost stop; existing
-  installations retain their explicitly saved choice. While it is off the structural, duration and
+  time and can dominate a run on modest hardware. Each library's policy selector turns it on and
+  prefills all floors from five tiers — Space-saver (80/60/30), Balanced (85/70/40), High
+  (90/75/45), Visually lossless (93/80/50), and Archival (96/90/70) — with "Off" as the default;
+  existing installations retain their effective choice. While it is off the structural, duration and
   size gates plus quarantine rollback still guard every replacement. Remux, audio, and image work
   skip VMAF because it is either redundant or inapplicable, and the final-container smoke test still
   performs a real synthetic `libvmaf` comparison rather than trusting the filter list. Model choice

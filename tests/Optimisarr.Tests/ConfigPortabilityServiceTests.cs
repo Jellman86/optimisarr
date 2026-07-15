@@ -189,14 +189,64 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_materialises_legacy_global_vmaf_settings_without_persisting_them()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["verification.qualityGateEnabled"] = "True",
+                ["verification.minimumVmafHarmonicMean"] = "88",
+                ["verification.minimumVmafMin"] = "72",
+                ["verification.minimumVmafCatastrophicMin"] = "42",
+                ["verification.clipVmafEnabled"] = "True",
+                ["verification.vmafFrameSubsample"] = "3"
+            },
+            Libraries =
+            [
+                new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null),
+                new LibrarySnapshot("Archive", "/data/archive", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    VmafQualityGateEnabled: false,
+                    MinVmafHarmonicMean: 96,
+                    MinVmafMin: 90,
+                    MinVmafCatastrophicMin: 70,
+                    ClipVmafEnabled: false,
+                    VmafFrameSubsample: 1)
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.True(result.Applied);
+        Assert.Equal(0, result.SettingsApplied);
+        await using var db = CreateDb();
+        var films = await db.Libraries.SingleAsync(library => library.Path == "/data/films");
+        Assert.True(films.VmafQualityGateEnabled);
+        Assert.Equal(88, films.MinVmafHarmonicMean);
+        Assert.Equal(72, films.MinVmafMin);
+        Assert.Equal(42, films.MinVmafCatastrophicMin);
+        Assert.True(films.ClipVmafEnabled);
+        Assert.Equal(3, films.VmafFrameSubsample);
+
+        var archive = await db.Libraries.SingleAsync(library => library.Path == "/data/archive");
+        Assert.False(archive.VmafQualityGateEnabled);
+        Assert.Equal(96, archive.MinVmafHarmonicMean);
+        Assert.Equal(90, archive.MinVmafMin);
+        Assert.Equal(70, archive.MinVmafCatastrophicMin);
+        Assert.False(archive.ClipVmafEnabled);
+        Assert.Equal(1, archive.VmafFrameSubsample);
+        Assert.Empty(await db.AppSettings.ToListAsync());
+    }
+
+    [Fact]
     public async Task Exported_config_round_trips_back_through_import()
     {
         await using (var db = CreateDb())
         {
             db.AppSettings.AddRange(
-                new AppSetting { Key = SettingKeys.EncoderMode, Value = "NvidiaNvenc" },
-                new AppSetting { Key = SettingKeys.VerificationClipVmafEnabled, Value = "True" },
-                new AppSetting { Key = SettingKeys.VerificationVmafFrameSubsample, Value = "4" });
+                new AppSetting { Key = SettingKeys.EncoderMode, Value = "NvidiaNvenc" });
             db.Libraries.Add(new Library
             {
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
@@ -257,8 +307,6 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
         Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);
         Assert.Equal(EncoderMode.NvidiaNvenc, (await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).EncoderMode);
-        Assert.True((await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).VerificationPolicy.ClipVmafEnabled);
-        Assert.Equal(4, (await new SettingsStore(db2).GetQueueSettingsAsync(CancellationToken.None)).VerificationPolicy.VmafFrameSubsample);
         Assert.Equal("plex-secret", (await db2.ActivityWatchers.SingleAsync()).ApiToken);
         Assert.Equal("notify-secret", (await db2.NotificationTargets.SingleAsync()).Token);
         Assert.Equal("arr-secret", (await db2.ArrConnections.SingleAsync()).ApiKey);

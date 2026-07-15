@@ -31,14 +31,14 @@ curl -H "Authorization: Bearer change-this-long-random-token" \
 checks and startup detection. If the token is not set, Optimisarr behaves as it
 did before and logs a warning at startup.
 
-Each library has its own root, media type, rule profile, and optional overrides.
+Each library has its own root, media type, rule profile, and processing policy.
 The Inventory explains why every file is eligible or skipped.
 
-**Configure** opens a dedicated page for that library. Video libraries can inherit the global VMAF
-policy below, disable it, or select the same named quality tiers locally. **Custom** exposes the
+**Configure** opens a dedicated page for that library. Video libraries can disable VMAF or select a
+named quality tier. **Custom** exposes the
 harmonic-mean, fifth-percentile, and catastrophic-frame floors plus full/clip scoring and the frame
-sampling interval. All per-library VMAF values are nullable overrides, so upgraded libraries keep
-the global behaviour until an operator deliberately changes them.
+sampling interval. VMAF has no global setting: every video library owns its policy. Upgrades copy
+the former global policy into each existing library so behaviour does not change unexpectedly.
 
 | Control | Behaviour |
 |---|---|
@@ -86,15 +86,13 @@ policy, bit depth and chroma sampling may not be reduced, and ffprobe must repor
 profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
 requested codec or signal structure was retained. The configurable gates make replacement stricter:
 
-![Verification gates panel showing always-on checks, the VMAF quality slider, loudness, true peak, image SSIM, and metadata controls](../images/optimisarr-settings-verification-dark.png)
-
 | Gate | Applies to | Default |
 |---|---|---|
 | Duration tolerance | Video and audio | On, 1% |
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video re-encodes | Off by default; global and per-library quality tiers pick harmonic / fifth-percentile / catastrophic-frame floors |
+| Perceptual quality (VMAF) | Video re-encodes | Off per library by default; named or custom tiers pick harmonic / fifth-percentile / catastrophic-frame floors |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |
@@ -105,8 +103,8 @@ VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
 the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because it
 fully decodes both files and scores every frame, roughly doubling verification time and dominating a
-run on modest hardware; a quality slider in Settings turns it on and prefills all three floors from named
-tiers (Space-saver through Archival). Existing installations retain their saved choice, and while the
+run on modest hardware; each library configuration page can turn it on and prefill all three floors from
+named tiers (Space-saver through Archival). Existing installations retain their effective policy, and while the
 gate is off the structural, duration and size gates plus quarantine rollback still guard every
 replacement. When enabled, **Score three representative samples** measures deterministic 40-second
 windows near the beginning, middle and end of long files. The weakest window controls the tail

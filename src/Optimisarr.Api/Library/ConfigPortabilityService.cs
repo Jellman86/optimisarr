@@ -35,6 +35,13 @@ public sealed record ConfigImportResult(
 /// </summary>
 public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsStore settings, TimeProvider clock)
 {
+    private const string LegacyVmafEnabled = "verification.qualityGateEnabled";
+    private const string LegacyVmafHarmonic = "verification.minimumVmafHarmonicMean";
+    private const string LegacyVmafFifth = "verification.minimumVmafMin";
+    private const string LegacyVmafCatastrophic = "verification.minimumVmafCatastrophicMin";
+    private const string LegacyVmafClip = "verification.clipVmafEnabled";
+    private const string LegacyVmafFrameSubsample = "verification.vmafFrameSubsample";
+
     public async Task<ConfigSnapshot> ExportAsync(CancellationToken cancellationToken)
     {
         var settingsMap = await settings.ExportSettingsAsync(cancellationToken);
@@ -60,7 +67,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
     public async Task<ConfigImportResult> ImportAsync(ConfigSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var validation = ConfigSnapshotValidator.Validate(snapshot, SettingsStore.PortableSettingKeys);
+        var validation = ConfigSnapshotValidator.Validate(snapshot, SettingsStore.RecognizedImportSettingKeys);
         if (!validation.IsValid)
         {
             return new ConfigImportResult(false, validation.Errors, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -68,7 +75,11 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-        var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(snapshot.Libraries, cancellationToken);
+        var legacyVmafPolicy = ReadLegacyVmafPolicy(snapshot.Settings);
+        var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(
+            snapshot.Libraries,
+            legacyVmafPolicy,
+            cancellationToken);
         var (watchersCreated, watchersUpdated) = await ImportWatchersAsync(snapshot.ActivityWatchers, cancellationToken);
         var (targetsCreated, targetsUpdated) = await ImportTargetsAsync(snapshot.NotificationTargets, cancellationToken);
         var (arrCreated, arrUpdated) = await ImportArrConnectionsAsync(snapshot.ArrConnections, cancellationToken);
@@ -87,7 +98,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
     }
 
     private async Task<(int Created, int Updated)> ImportLibrariesAsync(
-        IReadOnlyList<LibrarySnapshot> snapshots, CancellationToken cancellationToken)
+        IReadOnlyList<LibrarySnapshot> snapshots,
+        LegacyVmafPolicy legacyVmafPolicy,
+        CancellationToken cancellationToken)
     {
         var created = 0;
         var updated = 0;
@@ -145,12 +158,15 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
             library.MoveOverwrite = snapshot.MoveOverwrite;
-            library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
-            library.MinVmafMin = snapshot.MinVmafMin;
-            library.VmafQualityGateEnabled = snapshot.VmafQualityGateEnabled;
-            library.MinVmafCatastrophicMin = snapshot.MinVmafCatastrophicMin;
-            library.ClipVmafEnabled = snapshot.ClipVmafEnabled;
-            library.VmafFrameSubsample = snapshot.VmafFrameSubsample;
+            // Version-one backups could express VMAF only through global settings. Materialise
+            // that effective policy for fields absent from the library snapshot, then discard the
+            // obsolete global keys when the remaining settings are imported.
+            library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean ?? legacyVmafPolicy.HarmonicMean;
+            library.MinVmafMin = snapshot.MinVmafMin ?? legacyVmafPolicy.FifthPercentile;
+            library.VmafQualityGateEnabled = snapshot.VmafQualityGateEnabled ?? legacyVmafPolicy.Enabled;
+            library.MinVmafCatastrophicMin = snapshot.MinVmafCatastrophicMin ?? legacyVmafPolicy.Catastrophic;
+            library.ClipVmafEnabled = snapshot.ClipVmafEnabled ?? legacyVmafPolicy.ClipEnabled;
+            library.VmafFrameSubsample = snapshot.VmafFrameSubsample ?? legacyVmafPolicy.FrameSubsample;
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
@@ -162,6 +178,42 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
     private static TimeOnly ParseWindowTime(string value) =>
         TimeOnly.ParseExact(value, "HH:mm", CultureInfo.InvariantCulture);
+
+    private static LegacyVmafPolicy ReadLegacyVmafPolicy(IReadOnlyDictionary<string, string> values)
+    {
+        var fifth = ParseDouble(values.GetValueOrDefault(LegacyVmafFifth), fallback: 80);
+        return new LegacyVmafPolicy(
+            ParseBool(values.GetValueOrDefault(LegacyVmafEnabled), fallback: false),
+            ParseDouble(values.GetValueOrDefault(LegacyVmafHarmonic), fallback: 93),
+            fifth,
+            ParseDouble(values.GetValueOrDefault(LegacyVmafCatastrophic), fallback: Math.Max(0, fifth - 30)),
+            ParseBool(values.GetValueOrDefault(LegacyVmafClip), fallback: false),
+            ParseInt(values.GetValueOrDefault(LegacyVmafFrameSubsample), fallback: 1));
+    }
+
+    private static bool ParseBool(string? value, bool fallback) =>
+        bool.TryParse(value, out var parsed) ? parsed : fallback;
+
+    private static double ParseDouble(string? value, double fallback) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            && double.IsFinite(parsed)
+            && parsed is >= 0 and <= 100
+                ? parsed
+                : fallback;
+
+    private static int ParseInt(string? value, int fallback) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            && parsed is >= 1 and <= 10
+                ? parsed
+                : fallback;
+
+    private sealed record LegacyVmafPolicy(
+        bool Enabled,
+        double HarmonicMean,
+        double FifthPercentile,
+        double Catastrophic,
+        bool ClipEnabled,
+        int FrameSubsample);
 
     private async Task<(int Created, int Updated)> ImportWatchersAsync(
         IReadOnlyList<ActivityWatcherSnapshot> snapshots, CancellationToken cancellationToken)

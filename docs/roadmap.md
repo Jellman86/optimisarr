@@ -22,7 +22,7 @@ the replacement workflow is trustworthy.
      accessible listbox semantics retained in either direction.
 
    - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
-     re-encodes at selectable floors — a single Settings slider offers Off (the default), Space-saver
+     re-encodes at selectable floors — each library offers Off (the default), Space-saver
      (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
      off by default because it fully decodes both files and scores every frame, roughly doubling
      verification time; while off, the structural, duration and size gates plus quarantine rollback

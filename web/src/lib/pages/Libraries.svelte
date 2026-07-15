@@ -130,7 +130,7 @@
     form.imageQuality = on ? (form.imageQuality ?? DEFAULT_IMAGE_QUALITY) : null
   }
 
-  type VmafMode = 'inherit' | 'off' | 'space-saver' | 'balanced' | 'high' | 'lossless' | 'archival' | 'custom'
+  type VmafMode = 'off' | 'space-saver' | 'balanced' | 'high' | 'lossless' | 'archival' | 'custom'
   const vmafPresets = [
     { mode: 'space-saver', harmonic: 80, fifth: 60, catastrophic: 30 },
     { mode: 'balanced', harmonic: 85, fifth: 70, catastrophic: 40 },
@@ -143,14 +143,7 @@
   let vmafCustomSelected = $state(false)
 
   const vmafMode = $derived.by<VmafMode>(() => {
-    const hasOverride = form.vmafQualityGateEnabled != null
-      || form.minVmafHarmonicMean != null
-      || form.minVmafMin != null
-      || form.minVmafCatastrophicMin != null
-      || form.clipVmafEnabled != null
-      || form.vmafFrameSubsample != null
-    if (!hasOverride) return 'inherit'
-    if (form.vmafQualityGateEnabled === false) return 'off'
+    if (form.vmafQualityGateEnabled !== true) return 'off'
     if (vmafCustomSelected) return 'custom'
     const preset = form.vmafQualityGateEnabled === true ? vmafPresets.find((candidate) =>
       candidate.harmonic === form.minVmafHarmonicMean
@@ -164,7 +157,7 @@
   }
 
   const vmafError = $derived.by<string | null>(() => {
-    if (vmafMode === 'inherit' || vmafMode === 'off') return null
+    if (vmafMode === 'off') return null
     if (!validVmafScore(form.minVmafHarmonicMean)
       || !validVmafScore(form.minVmafMin)
       || !validVmafScore(form.minVmafCatastrophicMin)) {
@@ -185,15 +178,6 @@
 
   function setVmafMode(mode: VmafMode) {
     vmafCustomSelected = mode === 'custom'
-    if (mode === 'inherit') {
-      form.vmafQualityGateEnabled = null
-      form.minVmafHarmonicMean = null
-      form.minVmafMin = null
-      form.minVmafCatastrophicMin = null
-      form.clipVmafEnabled = null
-      form.vmafFrameSubsample = null
-      return
-    }
     if (mode === 'off') {
       form.vmafQualityGateEnabled = false
       form.minVmafHarmonicMean = null
@@ -532,7 +516,7 @@
       moveOverwrite: false,
       minVmafHarmonicMean: null,
       minVmafMin: null,
-      vmafQualityGateEnabled: null,
+      vmafQualityGateEnabled: false,
       minVmafCatastrophicMin: null,
       clipVmafEnabled: null,
       vmafFrameSubsample: null,
@@ -1069,8 +1053,8 @@
   </div>
 
   {#if showVideoOptions && !isRemuxProfile}
-    <section class="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
-      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.7fr)] lg:items-start">
+    <section class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+      <div class="max-w-3xl">
         <div>
           <label class="label" for="lib-vmaf-policy">
             {i18n.m.settings.vmaf_label}
@@ -1082,7 +1066,6 @@
             value={vmafMode}
             onchange={(event) => setVmafMode(event.currentTarget.value as VmafMode)}
           >
-            <option value="inherit">{i18n.m.libraries.using_global_thresholds}</option>
             <option value="off">{i18n.m.settings.vmaf_preset_off}</option>
             <option value="space-saver">{i18n.m.settings.vmaf_preset_space_saver}</option>
             <option value="balanced">{i18n.m.settings.vmaf_preset_balanced}</option>
@@ -1094,18 +1077,13 @@
           <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.vmaf_thresholds_tip}</p>
         </div>
 
-        <div class="rounded-lg border-l-4 border-cyan-500 bg-white px-3 py-2 dark:bg-slate-900">
-          <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{i18n.m.libraries.selects}</div>
-          {#if vmafMode === 'inherit'}
-            <div class="mt-1 text-sm text-slate-600 dark:text-slate-300">{i18n.m.libraries.using_global_thresholds}</div>
-          {:else if vmafMode === 'off'}
-            <div class="mt-1 text-sm text-slate-600 dark:text-slate-300">{i18n.m.settings.vmaf_off_desc}</div>
+        <div class="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+          {#if vmafMode === 'off'}
+            <span class="text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_off_desc}</span>
           {:else}
-            <div class="mt-1 flex flex-wrap gap-1.5 text-xs">
-              <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{i18n.m.settings.vmaf_harmonic} {form.minVmafHarmonicMean}</span>
-              <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{i18n.m.settings.vmaf_min} {form.minVmafMin}</span>
-              <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{i18n.m.settings.vmaf_catastrophic} {form.minVmafCatastrophicMin}</span>
-            </div>
+            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{i18n.m.settings.vmaf_harmonic} {form.minVmafHarmonicMean}</span>
+            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{i18n.m.settings.vmaf_min} {form.minVmafMin}</span>
+            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{i18n.m.settings.vmaf_catastrophic} {form.minVmafCatastrophicMin}</span>
           {/if}
         </div>
       </div>
@@ -1127,7 +1105,7 @@
         </div>
       {/if}
 
-      {#if vmafMode !== 'inherit' && vmafMode !== 'off'}
+      {#if vmafMode !== 'off'}
         <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-700">
           <div>
             <label class="label" for="lib-vmaf-sampling">{i18n.m.settings.vmaf_clip_label}</label>

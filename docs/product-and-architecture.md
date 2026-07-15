@@ -151,8 +151,8 @@ Verification should use:
 - Decode health check with FFmpeg using `-v error -f null -`.
 - Duration tolerance checks.
 - Video/audio/subtitle stream policy checks.
-- Opt-in VMAF for video re-encodes (off by default, with a global policy and nullable per-library
-  policy overrides), with default-on SSIM for still-image re-encodes.
+- Opt-in VMAF for video re-encodes (off by default and configured per library), with default-on SSIM
+  for still-image re-encodes.
 
 ### Container shape
 

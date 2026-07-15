@@ -46,9 +46,8 @@ Do this:
 3. Use a path as the container sees it, usually below `/data`.
 4. Pick the media type.
 5. Pick a preset.
-6. Choose a perceptual-quality (VMAF) policy for video libraries. **Use global settings** preserves
-   the installation-wide policy; named tiers make the library stricter or more space-efficient;
-   **Custom** exposes all three quality floors, clip/full-file scoring, and frame sampling.
+6. Choose a perceptual-quality (VMAF) policy for video libraries. Leave it **Off**, select a named
+   tier, or use **Custom** for all three quality floors, clip/full-file scoring, and frame sampling.
 7. Leave advanced options closed unless you already know what you need.
 
 ![Library configuration panel showing path, media type, preset slider, automation window, auto-replace, and advanced options](../images/optimisarr-library-configure-dark.png)
@@ -67,7 +66,6 @@ VMAF policy guide:
 
 | Goal | Library policy |
 |---|---|
-| Keep the installation-wide behaviour | Use global settings |
 | Skip perceptual scoring for this library | Off |
 | Prefer smaller outputs | Space-saver or Balanced |
 | Protect high-value media more strictly | High, Visually lossless, or Archival |

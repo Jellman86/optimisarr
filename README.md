@@ -173,7 +173,7 @@ with `libvmaf`; the Tools page reports that optional capability independently. A
 `OPTIMISARR_FFMPEG_VMAF_CUDA` binary enables NVIDIA `libvmaf_cuda` when the build and runtime GPU
 support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
 failure retries in software. VMAF verification is off by default for video re-encodes and skipped
-for remuxes; enable it under **Settings → Verification gates** when the safeguard is worth the cost.
+for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame

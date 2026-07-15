@@ -100,10 +100,10 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.False(settings.VerificationPolicy.RequireAudioRetained);
         Assert.True(settings.VerificationPolicy.RequireSubtitlesRetained);
         Assert.False(settings.VerificationPolicy.RequireSizeReduction);
-        Assert.True(settings.VerificationPolicy.QualityGateEnabled);
-        Assert.Equal(92.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
-        Assert.Equal(75.0, settings.VerificationPolicy.MinimumVmafMin);
-        Assert.Equal(45.0, settings.VerificationPolicy.MinimumVmafCatastrophicMin);
+        Assert.False(settings.VerificationPolicy.QualityGateEnabled);
+        Assert.Equal(93.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
+        Assert.Equal(80.0, settings.VerificationPolicy.MinimumVmafMin);
+        Assert.Equal(50.0, settings.VerificationPolicy.MinimumVmafCatastrophicMin);
         Assert.True(settings.VerificationPolicy.AudioLoudnessGateEnabled);
         Assert.Equal(2.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
         Assert.True(settings.VerificationPolicy.AudioClippingGateEnabled);
@@ -111,11 +111,19 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
         Assert.Equal(0.97, settings.VerificationPolicy.MinimumImageSsim);
         Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
-        Assert.True(settings.VerificationPolicy.ClipVmafEnabled);
-        Assert.Equal(4, settings.VerificationPolicy.VmafFrameSubsample);
+        Assert.False(settings.VerificationPolicy.ClipVmafEnabled);
+        Assert.Equal(1, settings.VerificationPolicy.VmafFrameSubsample);
         Assert.True(settings.ReplacementAllowCrossFilesystem);
         Assert.True(settings.DryRunMode);
         Assert.Equal(30, settings.ReplacementQuarantineRetentionDays);
+        Assert.DoesNotContain(
+            await readDb.AppSettings.Select(setting => setting.Key).ToListAsync(),
+            key => key is "verification.qualityGateEnabled"
+                or "verification.minimumVmafHarmonicMean"
+                or "verification.minimumVmafMin"
+                or "verification.minimumVmafCatastrophicMin"
+                or "verification.clipVmafEnabled"
+                or "verification.vmafFrameSubsample");
     }
 
     [Fact]
@@ -132,7 +140,6 @@ public sealed class SettingsStoreTests : IDisposable
                 new AppSetting { Key = SettingKeys.VerificationRequireAudioRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSubtitlesRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSizeReduction, Value = "maybe" },
-                new AppSetting { Key = SettingKeys.VerificationVmafFrameSubsample, Value = "11" },
                 new AppSetting { Key = SettingKeys.ReplacementAllowCrossFilesystem, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.DryRunMode, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.ReplacementQuarantineRetentionDays, Value = "-3" });

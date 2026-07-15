@@ -45,18 +45,6 @@ public static class SettingKeys
     /// <summary>Whether verification requires the output to be smaller than the original.</summary>
     public const string VerificationRequireSizeReduction = "verification.requireSizeReduction";
 
-    /// <summary>Whether the default-on perceptual-quality (VMAF) gate is enforced for video re-encodes.</summary>
-    public const string VerificationQualityGateEnabled = "verification.qualityGateEnabled";
-
-    /// <summary>Minimum harmonic-mean VMAF an output must reach when the quality gate is on.</summary>
-    public const string VerificationMinimumVmafHarmonicMean = "verification.minimumVmafHarmonicMean";
-
-    /// <summary>Minimum fifth-percentile VMAF an output must reach when the quality gate is on.</summary>
-    public const string VerificationMinimumVmafMin = "verification.minimumVmafMin";
-
-    /// <summary>Minimum single-frame VMAF used as a catastrophic-artifact floor.</summary>
-    public const string VerificationMinimumVmafCatastrophicMin = "verification.minimumVmafCatastrophicMin";
-
     /// <summary>Whether the opt-in EBU R128 audio-loudness drift gate is enforced.</summary>
     public const string VerificationAudioLoudnessGateEnabled = "verification.audioLoudnessGateEnabled";
 
@@ -77,12 +65,6 @@ public static class SettingKeys
 
     /// <summary>Whether the opt-in image EXIF/ICC-retention gate is enabled.</summary>
     public const string VerificationImageMetadataGateEnabled = "verification.imageMetadataGateEnabled";
-
-    /// <summary>Whether the VMAF gate scores a representative clip instead of the whole file (faster).</summary>
-    public const string VerificationClipVmafEnabled = "verification.clipVmafEnabled";
-
-    /// <summary>Score every Nth frame during VMAF measurement; 1 scores every frame.</summary>
-    public const string VerificationVmafFrameSubsample = "verification.vmafFrameSubsample";
 
     /// <summary>Whether replacement may fall back to copy-plus-delete across filesystems.</summary>
     public const string ReplacementAllowCrossFilesystem = "replacement.allowCrossFilesystem";

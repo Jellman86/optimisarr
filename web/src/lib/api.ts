@@ -166,10 +166,6 @@ export type Settings = {
   verificationRequireAudioRetained: boolean
   verificationRequireSubtitlesRetained: boolean
   verificationRequireSizeReduction: boolean
-  verificationQualityGateEnabled: boolean
-  verificationMinimumVmafHarmonicMean: number
-  verificationMinimumVmafMin: number
-  verificationMinimumVmafCatastrophicMin: number
   verificationAudioLoudnessGateEnabled: boolean
   verificationMaxLoudnessDriftLufs: number
   verificationAudioClippingGateEnabled: boolean
@@ -177,8 +173,6 @@ export type Settings = {
   verificationImageQualityGateEnabled: boolean
   verificationMinimumImageSsim: number
   verificationImageMetadataGateEnabled: boolean
-  verificationClipVmafEnabled: boolean
-  verificationVmafFrameSubsample: number
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number
