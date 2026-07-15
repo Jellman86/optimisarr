@@ -1,5 +1,6 @@
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Api.Library;
 
@@ -38,6 +39,10 @@ internal readonly record struct ParsedLibrary(
     bool MoveOverwrite,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
+    bool? VmafQualityGateEnabled,
+    double? MinVmafCatastrophicMin,
+    bool? ClipVmafEnabled,
+    int? VmafFrameSubsample,
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
     TimeOnly AutoEnqueueWindowEnd,
@@ -117,9 +122,29 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        if (request.MinVmafHarmonicMean is < 0 or > 100 || request.MinVmafMin is < 0 or > 100)
+        if (request.MinVmafHarmonicMean is < 0 or > 100
+            || request.MinVmafMin is < 0 or > 100
+            || request.MinVmafCatastrophicMin is < 0 or > 100)
         {
             error = "VMAF overrides must be between 0 and 100.";
+            return false;
+        }
+
+        if (request.VmafFrameSubsample is < 1 or > QualityScoreCommandBuilder.MaximumFrameSubsample)
+        {
+            error = $"VMAF frame sampling must be between 1 and {QualityScoreCommandBuilder.MaximumFrameSubsample}.";
+            return false;
+        }
+
+        if ((request.MinVmafMin is { } fifth && request.MinVmafHarmonicMean is { } harmonic && fifth > harmonic)
+            || (request.MinVmafCatastrophicMin is { } catastrophic
+                && request.MinVmafMin is { } fifthFloor
+                && catastrophic > fifthFloor)
+            || (request.MinVmafCatastrophicMin is { } catastrophicFloor
+                && request.MinVmafHarmonicMean is { } harmonicFloor
+                && catastrophicFloor > harmonicFloor))
+        {
+            error = "VMAF floors must be ordered: catastrophic frame ≤ fifth percentile ≤ harmonic mean.";
             return false;
         }
 
@@ -256,6 +281,10 @@ internal static class LibraryRequestParser
             request.MoveOverwrite ?? false,
             request.MinVmafHarmonicMean,
             request.MinVmafMin,
+            request.VmafQualityGateEnabled,
+            request.MinVmafCatastrophicMin,
+            request.ClipVmafEnabled,
+            request.VmafFrameSubsample,
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,

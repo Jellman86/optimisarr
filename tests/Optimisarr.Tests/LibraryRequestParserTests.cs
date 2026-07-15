@@ -40,10 +40,52 @@ public sealed class LibraryRequestParserTests
         MoveOverwrite: null,
         MinVmafHarmonicMean: null,
         MinVmafMin: null,
+        VmafQualityGateEnabled: null,
+        MinVmafCatastrophicMin: null,
+        ClipVmafEnabled: null,
+        VmafFrameSubsample: null,
         AutoEnqueueEnabled: null,
         AutoEnqueueWindowStart: null,
         AutoEnqueueWindowEnd: null,
         AutoReplace: null);
+
+    [Fact]
+    public void Complete_vmaf_override_is_preserved()
+    {
+        var request = Request() with
+        {
+            VmafQualityGateEnabled = true,
+            MinVmafHarmonicMean = 90,
+            MinVmafMin = 75,
+            MinVmafCatastrophicMin = 45,
+            ClipVmafEnabled = true,
+            VmafFrameSubsample = 2
+        };
+
+        var ok = LibraryRequestParser.TryParse(request, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.True(parsed.VmafQualityGateEnabled);
+        Assert.Equal(45, parsed.MinVmafCatastrophicMin);
+        Assert.True(parsed.ClipVmafEnabled);
+        Assert.Equal(2, parsed.VmafFrameSubsample);
+    }
+
+    [Fact]
+    public void Vmaf_floors_must_be_ordered_from_catastrophic_to_overall()
+    {
+        var request = Request() with
+        {
+            MinVmafHarmonicMean = 80,
+            MinVmafMin = 85,
+            MinVmafCatastrophicMin = 90
+        };
+
+        var ok = LibraryRequestParser.TryParse(request, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("catastrophic", error, StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public void Kept_audio_languages_are_normalised_to_lower_case_codes()

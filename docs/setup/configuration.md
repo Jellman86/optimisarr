@@ -34,6 +34,12 @@ did before and logs a warning at startup.
 Each library has its own root, media type, rule profile, and optional overrides.
 The Inventory explains why every file is eligible or skipped.
 
+**Configure** opens a dedicated page for that library. Video libraries can inherit the global VMAF
+policy below, disable it, or select the same named quality tiers locally. **Custom** exposes the
+harmonic-mean, fifth-percentile, and catastrophic-frame floors plus full/clip scoring and the frame
+sampling interval. All per-library VMAF values are nullable overrides, so upgraded libraries keep
+the global behaviour until an operator deliberately changes them.
+
 | Control | Behaviour |
 |---|---|
 | Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. |
@@ -88,7 +94,7 @@ requested codec or signal structure was retained. The configurable gates make re
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video re-encodes | Off by default; a quality slider picks harmonic / fifth-percentile / catastrophic-frame floors |
+| Perceptual quality (VMAF) | Video re-encodes | Off by default; global and per-library quality tiers pick harmonic / fifth-percentile / catastrophic-frame floors |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |

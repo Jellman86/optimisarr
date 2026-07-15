@@ -97,6 +97,10 @@ export type LibraryRules = {
   moveOverwrite: boolean
   minVmafHarmonicMean: number | null
   minVmafMin: number | null
+  vmafQualityGateEnabled: boolean | null
+  minVmafCatastrophicMin: number | null
+  clipVmafEnabled: boolean | null
+  vmafFrameSubsample: number | null
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string

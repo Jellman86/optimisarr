@@ -147,6 +147,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MoveOverwrite = snapshot.MoveOverwrite;
             library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean;
             library.MinVmafMin = snapshot.MinVmafMin;
+            library.VmafQualityGateEnabled = snapshot.VmafQualityGateEnabled;
+            library.MinVmafCatastrophicMin = snapshot.MinVmafCatastrophicMin;
+            library.ClipVmafEnabled = snapshot.ClipVmafEnabled;
+            library.VmafFrameSubsample = snapshot.VmafFrameSubsample;
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
@@ -298,7 +302,11 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.AutoReplace,
         library.SkipEfficientSources,
         library.OptimiseDolbyVision,
-        library.KeepAudioLanguages);
+        library.KeepAudioLanguages,
+        library.VmafQualityGateEnabled,
+        library.MinVmafCatastrophicMin,
+        library.ClipVmafEnabled,
+        library.VmafFrameSubsample);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

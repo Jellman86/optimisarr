@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Dedicated library configuration pages and complete per-library VMAF policies.** Configure now
+  opens a full-page Rules workspace instead of expanding an increasingly dense library card, while
+  Candidates and Excluded remain adjacent tabs on the same canonical library URL. Each video
+  library can inherit, disable, or override the global VMAF gate with the same Space-saver through
+  Archival quality tiers, or enter custom harmonic-mean, fifth-percentile, and catastrophic-frame
+  floors. Clip/full-file scoring and the 1st–10th-frame sampling interval can also be overridden per
+  library. Nullable overrides preserve existing behaviour, config backup/restore carries the full
+  policy, and API/import validation enforces safe ranges and ordered floors. The responsive editor
+  keeps primary choices visible, progressively discloses advanced encoding controls, warns before
+  discarding changes, and exposes non-overlapping Save/Cancel actions on desktop and mobile.
 - **Encoder-aware VMAF recovery and safer temporal pooling.** Hardware quality controls now receive
   conservative encoder-family calibration (QSV ICQ, NVENC CQ, VA-API QP) instead of treating their
   numeric values as interchangeable with software CRF. Verification pools harmonic mean, fifth

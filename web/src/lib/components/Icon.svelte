@@ -11,6 +11,7 @@
     pause: 'M8 5v14M16 5v14',
     search: 'M21 21l-4.3-4.3M11 18a7 7 0 100-14 7 7 0 000 14z',
     plus: 'M12 5v14M5 12h14',
+    'arrow-left': 'M19 12H5m0 0l6-6m-6 6l6 6',
     minus: 'M5 12h14',
     download: 'M12 3v12m0 0l-4-4m4 4l4-4M4 21h16',
     upload: 'M12 21V9m0 0l-4 4m4-4l4 4M4 3h16',

@@ -39,17 +39,17 @@ public sealed class MigrationTests : IDisposable
 
         await using var db = new OptimisarrDbContext(options);
         var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
-        // The current model includes KeepAudioLanguages, so migrate through its schema addition
-        // before inserting the fixture. The AVIF data correction remains the next migration.
         await migrator.MigrateAsync("20260713212602_AddKeepAudioLanguages");
-
-        db.Libraries.Add(new Library
-        {
-            Name = "Photos",
-            Path = "/data/photos",
-            TargetImageFormat = "AVIF"
-        });
-        await db.SaveChangesAsync();
+        // Seed at the historical schema boundary without asking the current EF model to insert
+        // columns that did not exist in that build.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt, TargetImageFormat)
+            VALUES
+                ('Photos', '/data/photos', 'Photo', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 'AVIF');
+            """);
 
         await migrator.MigrateAsync();
         db.ChangeTracker.Clear();
@@ -67,37 +67,31 @@ public sealed class MigrationTests : IDisposable
 
         await using var db = new OptimisarrDbContext(options);
         var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
-        await migrator.MigrateAsync("20260713212602_AddKeepAudioLanguages");
-
-        var library = new Library { Name = "Mixed", Path = "/data/mixed" };
-        db.Libraries.Add(library);
-        db.MediaFiles.AddRange(
-            new MediaFile
-            {
-                Library = library,
-                Path = "/data/mixed/movie.mkv",
-                RelativePath = "movie.mkv",
-                MediaKind = Optimisarr.Core.Domain.MediaKind.Video,
-                Status = MediaFileStatus.Probed,
-                AudioTrackCount = 2,
-                AudioLanguages = "eng, fra"
-            },
-            new MediaFile
-            {
-                Library = library,
-                Path = "/data/mixed/song.flac",
-                RelativePath = "song.flac",
-                MediaKind = Optimisarr.Core.Domain.MediaKind.Audio,
-                Status = MediaFileStatus.Probed,
-                AudioTrackCount = 1,
-                AudioLanguages = "eng"
-            });
-        await db.SaveChangesAsync();
-
-        // Recreate the real upgrade boundary: the legacy schema has no AudioLanguages column,
-        // then the migration adds it and marks only relevant video rows for the probe worker.
         await migrator.MigrateAsync("20260713210047_TrackVideoProfile");
-        db.ChangeTracker.Clear();
+        // Recreate the real upgrade boundary: these rows were probed by a build whose schema had
+        // no AudioLanguages column. Raw SQL keeps this test independent of later model additions.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Mixed', '/data/mixed', 'Other', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+
+            INSERT INTO MediaFiles
+                (LibraryId, Path, RelativePath, SizeBytes, ModifiedAt, DiscoveredAt, UpdatedAt,
+                 Status, MediaKind, AudioTrackCount)
+            VALUES
+                ((SELECT Id FROM Libraries WHERE Path = '/data/mixed'),
+                 '/data/mixed/movie.mkv', 'movie.mkv', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00',
+                 '2026-01-01T00:00:00+00:00', 'Probed', 'Video', 2),
+                ((SELECT Id FROM Libraries WHERE Path = '/data/mixed'),
+                 '/data/mixed/song.flac', 'song.flac', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00',
+                 '2026-01-01T00:00:00+00:00', 'Probed', 'Audio', 1);
+            """);
+
         await migrator.MigrateAsync("20260713212602_AddKeepAudioLanguages");
         db.ChangeTracker.Clear();
 

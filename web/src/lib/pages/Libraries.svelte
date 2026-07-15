@@ -43,6 +43,7 @@
   const DEFAULT_CRF = 23
   const DEFAULT_VMAF_HARMONIC = 93
   const DEFAULT_VMAF_MIN = 80
+  const DEFAULT_VMAF_CATASTROPHIC = 50
   const DEFAULT_IMAGE_QUALITY = 80
 
   // Plain-language summary of each preset, shown under the picker so a first-time
@@ -129,9 +130,89 @@
     form.imageQuality = on ? (form.imageQuality ?? DEFAULT_IMAGE_QUALITY) : null
   }
 
-  function toggleVmafOverride(on: boolean) {
-    form.minVmafHarmonicMean = on ? (form.minVmafHarmonicMean ?? DEFAULT_VMAF_HARMONIC) : null
-    form.minVmafMin = on ? (form.minVmafMin ?? DEFAULT_VMAF_MIN) : null
+  type VmafMode = 'inherit' | 'off' | 'space-saver' | 'balanced' | 'high' | 'lossless' | 'archival' | 'custom'
+  const vmafPresets = [
+    { mode: 'space-saver', harmonic: 80, fifth: 60, catastrophic: 30 },
+    { mode: 'balanced', harmonic: 85, fifth: 70, catastrophic: 40 },
+    { mode: 'high', harmonic: 90, fifth: 75, catastrophic: 45 },
+    { mode: 'lossless', harmonic: 93, fifth: 80, catastrophic: 50 },
+    { mode: 'archival', harmonic: 96, fifth: 90, catastrophic: 70 },
+  ] as const
+  // Keep an explicitly selected Custom mode visible even while its initial values happen to match
+  // a named preset. Loaded libraries still derive Custom from any non-preset values.
+  let vmafCustomSelected = $state(false)
+
+  const vmafMode = $derived.by<VmafMode>(() => {
+    const hasOverride = form.vmafQualityGateEnabled != null
+      || form.minVmafHarmonicMean != null
+      || form.minVmafMin != null
+      || form.minVmafCatastrophicMin != null
+      || form.clipVmafEnabled != null
+      || form.vmafFrameSubsample != null
+    if (!hasOverride) return 'inherit'
+    if (form.vmafQualityGateEnabled === false) return 'off'
+    if (vmafCustomSelected) return 'custom'
+    const preset = form.vmafQualityGateEnabled === true ? vmafPresets.find((candidate) =>
+      candidate.harmonic === form.minVmafHarmonicMean
+      && candidate.fifth === form.minVmafMin
+      && candidate.catastrophic === form.minVmafCatastrophicMin) : undefined
+    return preset?.mode ?? 'custom'
+  })
+
+  function validVmafScore(value: number | null): value is number {
+    return value != null && Number.isFinite(value) && value >= 0 && value <= 100
+  }
+
+  const vmafError = $derived.by<string | null>(() => {
+    if (vmafMode === 'inherit' || vmafMode === 'off') return null
+    if (!validVmafScore(form.minVmafHarmonicMean)
+      || !validVmafScore(form.minVmafMin)
+      || !validVmafScore(form.minVmafCatastrophicMin)) {
+      return i18n.m.settings.validation_vmaf
+    }
+    if (form.minVmafCatastrophicMin > form.minVmafMin
+      || form.minVmafMin > form.minVmafHarmonicMean) {
+      return i18n.m.settings.validation_vmaf_order
+    }
+    if (form.vmafFrameSubsample == null
+      || !Number.isInteger(form.vmafFrameSubsample)
+      || form.vmafFrameSubsample < 1
+      || form.vmafFrameSubsample > 10) {
+      return i18n.m.settings.validation_vmaf_subsample
+    }
+    return null
+  })
+
+  function setVmafMode(mode: VmafMode) {
+    vmafCustomSelected = mode === 'custom'
+    if (mode === 'inherit') {
+      form.vmafQualityGateEnabled = null
+      form.minVmafHarmonicMean = null
+      form.minVmafMin = null
+      form.minVmafCatastrophicMin = null
+      form.clipVmafEnabled = null
+      form.vmafFrameSubsample = null
+      return
+    }
+    if (mode === 'off') {
+      form.vmafQualityGateEnabled = false
+      form.minVmafHarmonicMean = null
+      form.minVmafMin = null
+      form.minVmafCatastrophicMin = null
+      form.clipVmafEnabled = null
+      form.vmafFrameSubsample = null
+      return
+    }
+
+    const preset = vmafPresets.find((candidate) => candidate.mode === mode)
+    form.vmafQualityGateEnabled = true
+    form.minVmafHarmonicMean = preset?.harmonic ?? form.minVmafHarmonicMean ?? DEFAULT_VMAF_HARMONIC
+    form.minVmafMin = preset?.fifth ?? form.minVmafMin ?? DEFAULT_VMAF_MIN
+    form.minVmafCatastrophicMin = preset?.catastrophic
+      ?? form.minVmafCatastrophicMin
+      ?? DEFAULT_VMAF_CATASTROPHIC
+    form.clipVmafEnabled ??= true
+    form.vmafFrameSubsample ??= 1
   }
 
   function priorityLabel(value: number): string {
@@ -145,8 +226,15 @@
     if (hdr === 'Preserve') return i18n.m.libraries.hdr_preserve
     return hdr
   }
+  const FLASH_KEY = 'optimisarr.library.flash'
+  function takeFlashMessage(): string | null {
+    const value = sessionStorage.getItem(FLASH_KEY)
+    sessionStorage.removeItem(FLASH_KEY)
+    return value
+  }
+
   let error = $state<string | null>(null)
-  let message = $state<string | null>(null)
+  let message = $state<string | null>(takeFlashMessage())
   let busyId = $state<number | null>(null)
   let pickerOpen = $state(false)
   let targetPickerOpen = $state(false)
@@ -444,6 +532,10 @@
       moveOverwrite: false,
       minVmafHarmonicMean: null,
       minVmafMin: null,
+      vmafQualityGateEnabled: null,
+      minVmafCatastrophicMin: null,
+      clipVmafEnabled: null,
+      vmafFrameSubsample: null,
       autoEnqueueEnabled: false,
       autoEnqueueWindowStart: '00:00',
       autoEnqueueWindowEnd: '00:00',
@@ -462,6 +554,21 @@
     void loadSummaries()
     // Proactively flag any path Optimisarr can't reach/read/write before the user hits a failure.
     void checkAllAccess()
+
+    const routeEditor = requestedEditorId()
+    if (routeEditor === 0) {
+      startAdd()
+    } else if (routeEditor !== null) {
+      const library = libraries.find((candidate) => candidate.id === routeEditor)
+      if (library) startEdit(library)
+      else error = i18n.m.libraries.error_load
+    }
+  }
+
+  function requestedEditorId(): number | null {
+    if (router.path === '/libraries/new') return 0
+    const match = router.path.match(/^\/libraries\/(\d+)\/configure$/)
+    return match ? Number(match[1]) : null
   }
 
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
@@ -536,11 +643,11 @@
   }
 
   function startAdd() {
-    if (!confirmDiscardIfDirty()) return
     form = blankForm()
     if (options.mediaTypes.length) form.mediaType = options.mediaTypes[0]
     if (options.ruleProfiles.length) form.ruleProfile = options.ruleProfiles[0]
     customSelected = false
+    vmafCustomSelected = false
     minSizeMb = ''
     sameCodecGb = ''
     showAdvanced = false
@@ -551,7 +658,6 @@
   }
 
   function startEdit(library: Library) {
-    if (!confirmDiscardIfDirty()) return
     form = {
       name: library.name,
       path: library.path,
@@ -587,6 +693,10 @@
       moveOverwrite: library.moveOverwrite,
       minVmafHarmonicMean: library.minVmafHarmonicMean,
       minVmafMin: library.minVmafMin,
+      vmafQualityGateEnabled: library.vmafQualityGateEnabled,
+      minVmafCatastrophicMin: library.minVmafCatastrophicMin,
+      clipVmafEnabled: library.clipVmafEnabled,
+      vmafFrameSubsample: library.vmafFrameSubsample,
       autoEnqueueEnabled: library.autoEnqueueEnabled,
       autoEnqueueWindowStart: library.autoEnqueueWindowStart,
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
@@ -597,6 +707,7 @@
     // A loaded library reads as Custom only when it actually carries a codec/container override
     // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
     customSelected = false
+    vmafCustomSelected = false
     // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
     showAdvanced = false
     activeTab = 'rules'
@@ -610,7 +721,8 @@
 
   function cancelEdit() {
     if (!confirmDiscardIfDirty()) return
-    editingId = null
+    markPristine()
+    router.go('/libraries')
   }
 
   function emptyToNull(value: string | null): string | null {
@@ -643,6 +755,8 @@
       targetFolder: form.moveOnComplete ? emptyToNull(form.targetFolder) : null,
       minVmafHarmonicMean: toNullableNumber(form.minVmafHarmonicMean),
       minVmafMin: toNullableNumber(form.minVmafMin),
+      minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
+      vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
     }
   }
 
@@ -658,10 +772,14 @@
     if (audioLanguageError) return
     try {
       if (editingId === 0) {
-        // Keep the workspace open on the just-created library so its Candidates tab is reachable.
+        // Replace /new with the canonical editor URL so Back returns to the library list. The
+        // route change remounts this keyed page, so carry the success message across that boundary.
         const created = await api.createLibrary(payload())
-        editingId = created.id
-        message = t(i18n.m.libraries.added, { name: form.name })
+        const success = t(i18n.m.libraries.added, { name: form.name })
+        markPristine()
+        sessionStorage.setItem(FLASH_KEY, success)
+        router.replace(`/libraries/${created.id}/configure`)
+        return
       } else if (editingId) {
         await api.updateLibrary(editingId, payload())
         message = t(i18n.m.libraries.updated, { name: form.name })
@@ -741,20 +859,48 @@
   }
 </script>
 
-<header class="mb-6 flex items-start justify-between">
-  <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.libraries}</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">
-      {i18n.m.libraries.subtitle}
-    </p>
-  </div>
-  {#if editingId !== 0}
-    <button class="btn btn-primary" onclick={startAdd}>
+{#if editingId === null}
+  <header class="mb-6 flex items-start justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.libraries}</h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.libraries.subtitle}</p>
+    </div>
+    <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
       <Icon name="plus" class="h-4 w-4" />
       {i18n.m.libraries.add_library}
     </button>
-  {/if}
-</header>
+  </header>
+{:else}
+  <header class="mb-5 border-b border-slate-200 pb-4 dark:border-slate-800">
+    <button class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-cyan-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500 dark:text-slate-400 dark:hover:text-cyan-300" onclick={cancelEdit}>
+      <Icon name="arrow-left" class="h-4 w-4" />
+      {i18n.m.nav.libraries}
+    </button>
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">{i18n.m.libraries.configure}</div>
+        <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{editingId === 0 ? i18n.m.libraries.add_library_heading : form.name}</h1>
+        {#if form.path}<p class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{form.path}</p>{/if}
+      </div>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        {#if editingId !== 0}
+          <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{form.mediaType}</span>
+          {#if showVideoOptions}<span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(form.ruleProfile)}</span>{/if}
+        {/if}
+        <div class="hidden items-center gap-2 sm:flex">
+          <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!vmafError}>
+            <Icon name="check" class="h-4 w-4" />
+            {i18n.m.libraries.save}
+          </button>
+          <button class="btn" onclick={cancelEdit}>
+            <Icon name="x" class="h-4 w-4" />
+            {i18n.m.libraries.cancel}
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+{/if}
 
 {#if error}
   <Banner kind="error" class="mb-4">{error}</Banner>
@@ -922,6 +1068,91 @@
     {/if}
   </div>
 
+  {#if showVideoOptions && !isRemuxProfile}
+    <section class="mt-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+      <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.7fr)] lg:items-start">
+        <div>
+          <label class="label" for="lib-vmaf-policy">
+            {i18n.m.settings.vmaf_label}
+            <InfoTip text={i18n.m.settings.vmaf_hint} />
+          </label>
+          <select
+            id="lib-vmaf-policy"
+            class="input"
+            value={vmafMode}
+            onchange={(event) => setVmafMode(event.currentTarget.value as VmafMode)}
+          >
+            <option value="inherit">{i18n.m.libraries.using_global_thresholds}</option>
+            <option value="off">{i18n.m.settings.vmaf_preset_off}</option>
+            <option value="space-saver">{i18n.m.settings.vmaf_preset_space_saver}</option>
+            <option value="balanced">{i18n.m.settings.vmaf_preset_balanced}</option>
+            <option value="high">{i18n.m.settings.vmaf_preset_high}</option>
+            <option value="lossless">{i18n.m.settings.vmaf_preset_lossless}</option>
+            <option value="archival">{i18n.m.settings.vmaf_preset_archival}</option>
+            <option value="custom">{i18n.m.libraries.stop_custom}</option>
+          </select>
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.vmaf_thresholds_tip}</p>
+        </div>
+
+        <div class="rounded-lg border-l-4 border-cyan-500 bg-white px-3 py-2 dark:bg-slate-900">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{i18n.m.libraries.selects}</div>
+          {#if vmafMode === 'inherit'}
+            <div class="mt-1 text-sm text-slate-600 dark:text-slate-300">{i18n.m.libraries.using_global_thresholds}</div>
+          {:else if vmafMode === 'off'}
+            <div class="mt-1 text-sm text-slate-600 dark:text-slate-300">{i18n.m.settings.vmaf_off_desc}</div>
+          {:else}
+            <div class="mt-1 flex flex-wrap gap-1.5 text-xs">
+              <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{i18n.m.settings.vmaf_harmonic} {form.minVmafHarmonicMean}</span>
+              <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{i18n.m.settings.vmaf_min} {form.minVmafMin}</span>
+              <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{i18n.m.settings.vmaf_catastrophic} {form.minVmafCatastrophicMin}</span>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      {#if vmafMode === 'custom'}
+        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3 dark:border-slate-700">
+          <div>
+            <label class="label" for="lib-vmaf-harmonic">{i18n.m.settings.vmaf_harmonic}</label>
+            <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafHarmonicMean} />
+          </div>
+          <div>
+            <label class="label" for="lib-vmaf-fifth">{i18n.m.settings.vmaf_min}</label>
+            <input id="lib-vmaf-fifth" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafMin} />
+          </div>
+          <div>
+            <label class="label" for="lib-vmaf-catastrophic">{i18n.m.settings.vmaf_catastrophic}</label>
+            <input id="lib-vmaf-catastrophic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafCatastrophicMin} />
+          </div>
+        </div>
+      {/if}
+
+      {#if vmafMode !== 'inherit' && vmafMode !== 'off'}
+        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-700">
+          <div>
+            <label class="label" for="lib-vmaf-sampling">{i18n.m.settings.vmaf_clip_label}</label>
+            <select id="lib-vmaf-sampling" class="input" value={form.clipVmafEnabled ? 'samples' : 'full'} onchange={(event) => (form.clipVmafEnabled = event.currentTarget.value === 'samples')}>
+              <option value="samples">{i18n.m.queue.vmaf_sampling_three}</option>
+              <option value="full">{i18n.m.queue.vmaf_sampling_full}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-vmaf-frames">{i18n.m.settings.vmaf_subsample_label}</label>
+            <select id="lib-vmaf-frames" class="input" bind:value={form.vmafFrameSubsample}>
+              <option value={1}>{i18n.m.settings.vmaf_every_frame}</option>
+              {#each [2, 3, 4, 5, 10] as interval}
+                <option value={interval}>{t(i18n.m.settings.vmaf_every_nth_frame, { interval })}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
+      {#if vmafError}
+        <p id="lib-vmaf-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">{vmafError}</p>
+      {/if}
+    </section>
+  {/if}
+
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
   <div class="mt-5 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
@@ -1086,32 +1317,6 @@
                 <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
               {/each}
             </div>
-          {/if}
-        </div>
-
-        <div class="mt-4">
-          <div class="mb-1 flex items-center justify-between">
-            <span class="label mb-0">{i18n.m.libraries.vmaf_thresholds} <InfoTip text={i18n.m.libraries.vmaf_thresholds_tip} /></span>
-            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
-              <input type="checkbox" class="checkbox" checked={form.minVmafHarmonicMean != null || form.minVmafMin != null} onchange={(e) => toggleVmafOverride(e.currentTarget.checked)} />
-              {i18n.m.libraries.override}
-            </label>
-          </div>
-          {#if form.minVmafHarmonicMean != null || form.minVmafMin != null}
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div class="flex items-center gap-3">
-                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.average}</span>
-                <input class="flex-1 accent-cyan-600" type="range" min="0" max="100" step="0.5" bind:value={form.minVmafHarmonicMean} />
-                <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafHarmonicMean}</span>
-              </div>
-              <div class="flex items-center gap-3">
-                <span class="w-20 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.worst_frame}</span>
-                <input class="flex-1 accent-cyan-600" type="range" min="0" max="100" step="0.5" bind:value={form.minVmafMin} />
-                <span class="badge w-12 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.minVmafMin}</span>
-              </div>
-            </div>
-          {:else}
-            <p class="text-xs text-slate-400">{i18n.m.libraries.using_global_thresholds}</p>
           {/if}
         </div>
 
@@ -1368,8 +1573,8 @@
     </div>
   {/if}
   </div>
-  <div class="mt-5 flex items-center gap-2">
-    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError}>
+  <div class="-mx-5 mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!vmafError}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
     </button>
@@ -1383,14 +1588,50 @@
   </div>
 {/snippet}
 
-{#if editingId === 0}
-  <div class="card mb-6 p-5">
-    <h2 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.add_library_heading}</h2>
-    {@render configForm()}
-  </div>
-{/if}
+{#if editingId !== null}
+  {#if editingId !== 0}
+    <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700" aria-label={i18n.m.libraries.configure}>
+      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-amber-500">●</span>{/if}</button>
+      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
+      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'excluded' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
+    </nav>
+  {/if}
 
-{#if libraries.length > 0}
+  {#if activeTab === 'rules' || editingId === 0}
+    <div class="card p-5 sm:p-6">
+      {@render configForm()}
+    </div>
+  {:else if activeTab === 'candidates'}
+    {#if editorCandidatesError}<Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>{/if}
+    <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.candidates_desc_1}<strong>{i18n.m.libraries.candidates_desc_saved}</strong>{i18n.m.libraries.candidates_desc_2}</p>
+    {#if editorCandidatesLoading}
+      <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+    {:else}
+      <CandidateTable candidates={editorCandidates} scoped />
+    {/if}
+  {:else}
+    {#if editorExclusionsError}<Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>{/if}
+    <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}</p>
+    {#if editorExclusionsLoading}
+      <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+    {:else if editorExclusions.length === 0}
+      <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400 dark:border-slate-700">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
+    {:else}
+      <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+        {#each editorExclusions as ex (ex.id)}
+          {@const auto = ex.source === 'RepeatedFailures'}
+          <div class="flex items-center justify-between gap-3 px-3 py-2">
+            <div class="min-w-0">
+              <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{ex.relativePath ?? ex.path}</div>
+              <div class="mt-0.5 text-xs text-slate-400"><span class={auto ? 'text-amber-600 dark:text-amber-400' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason} · {ex.reason}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
+            </div>
+            <button class="btn btn-ghost min-h-11 flex-shrink-0 px-3 text-xs" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {/if}
+{:else if libraries.length > 0}
   <div class="grid gap-4">
     {#each libraries as library (library.id)}
       <div class="card p-4">
@@ -1458,9 +1699,9 @@
               <Icon name="plus" class="h-4 w-4" />
               {i18n.m.libraries.enqueue}
             </button>
-            <button class="btn" onclick={() => (editingId === library.id ? cancelEdit() : startEdit(library))} disabled={busyId === library.id}>
-              <Icon name={editingId === library.id ? 'x' : 'sliders'} class="h-4 w-4" />
-              {editingId === library.id ? i18n.m.libraries.close : i18n.m.libraries.configure}
+            <button class="btn" onclick={() => router.go(`/libraries/${library.id}/configure`)} disabled={busyId === library.id}>
+              <Icon name="sliders" class="h-4 w-4" />
+              {i18n.m.libraries.configure}
             </button>
             <button class="btn btn-danger" onclick={() => remove(library)} disabled={busyId === library.id}>
               <Icon name="trash" class="h-4 w-4" />
@@ -1469,105 +1710,12 @@
           </div>
         </div>
 
-        {#if editingId === library.id}
-          <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
-            <!-- Rules | Candidates: tune the rules and see what they select without leaving the library. -->
-            <div class="mb-5 flex gap-1 border-b border-slate-200 dark:border-slate-700">
-              <button
-                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'rules'
-                  ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-                onclick={() => (activeTab = 'rules')}
-              >
-                {i18n.m.libraries.tab_rules}
-                {#if isDirty}<span class="ml-1 text-amber-500" title={i18n.m.libraries.unsaved_title}>●</span>{/if}
-              </button>
-              <button
-                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'candidates'
-                  ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-                onclick={() => (activeTab = 'candidates')}
-              >
-                {i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}
-              </button>
-              <button
-                class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'excluded'
-                  ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-                onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}
-              >
-                {i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}
-              </button>
-            </div>
-
-            {#if activeTab === 'rules'}
-              {@render configForm()}
-            {:else if activeTab === 'candidates'}
-              {#if editorCandidatesError}
-                <Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>
-              {/if}
-              <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                {i18n.m.libraries.candidates_desc_1}<strong>{i18n.m.libraries.candidates_desc_saved}</strong>{i18n.m.libraries.candidates_desc_2}
-              </p>
-              {#if editorCandidatesLoading}
-                <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
-              {:else}
-                <CandidateTable candidates={editorCandidates} scoped />
-              {/if}
-            {:else}
-              {#if editorExclusionsError}
-                <Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>
-              {/if}
-              <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                {i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}
-              </p>
-              {#if editorExclusionsLoading}
-                <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
-              {:else if editorExclusions.length === 0}
-                <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400 dark:border-slate-700">
-                  {i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}
-                </div>
-              {:else}
-                <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
-                  {#each editorExclusions as ex (ex.id)}
-                    {@const auto = ex.source === 'RepeatedFailures'}
-                    <div class="flex items-center justify-between gap-3 px-3 py-2">
-                      <div class="flex min-w-0 items-center gap-3">
-                        <!-- An icon badge distinguishes an automatically-excluded file (kept failing)
-                             from one the operator excluded by hand. -->
-                        <span
-                          class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full {auto
-                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400'
-                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}"
-                          title={auto ? i18n.m.libraries.excluded_auto_title : i18n.m.libraries.excluded_manual_title}
-                        >
-                          <Icon name={auto ? 'warning' : 'ban'} class="h-4 w-4" />
-                        </span>
-                        <div class="min-w-0">
-                          <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{ex.relativePath ?? ex.path}</div>
-                          <div class="mt-0.5 text-xs text-slate-400">
-                            <span class={auto ? 'text-amber-600 dark:text-amber-400' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>
-                            {#if ex.reason} · {ex.reason}{/if}
-                            · {new Date(ex.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-                      <button class="btn btn-ghost flex-shrink-0 px-2 py-1 text-xs" onclick={() => unexclude(ex.id)} title={i18n.m.libraries.unexclude_title}>
-                        {i18n.m.libraries.remove}
-                      </button>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            {/if}
-          </div>
-        {/if}
       </div>
     {/each}
   </div>
-{:else if editingId !== 0}
+{:else}
   <EmptyState icon="folder" title={i18n.m.libraries.empty_title} hint={i18n.m.libraries.empty_hint}>
-    <button class="btn btn-primary" onclick={startAdd}>
+    <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
       <Icon name="plus" class="h-4 w-4" />
       {i18n.m.libraries.add_library}
     </button>

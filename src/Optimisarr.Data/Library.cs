@@ -145,6 +145,18 @@ public sealed class Library
     /// <summary>Legacy property name retained for config/database compatibility; now the fifth-percentile floor.</summary>
     public double? MinVmafMin { get; set; }
 
+    /// <summary>Null inherits the global gate state; otherwise explicitly enables or disables VMAF for this library.</summary>
+    public bool? VmafQualityGateEnabled { get; set; }
+
+    /// <summary>Per-library catastrophic single-frame floor. Null inherits the global floor.</summary>
+    public double? MinVmafCatastrophicMin { get; set; }
+
+    /// <summary>Null inherits the global sampling mode; true uses three representative windows.</summary>
+    public bool? ClipVmafEnabled { get; set; }
+
+    /// <summary>Null inherits the global frame interval; otherwise scores every Nth frame.</summary>
+    public int? VmafFrameSubsample { get; set; }
+
     /// <summary>
     /// When true, a completed output is moved into <see cref="TargetFolder"/> (mirroring
     /// the library's relative layout) and the job is marked Completed. The original is

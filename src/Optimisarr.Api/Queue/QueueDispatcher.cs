@@ -542,6 +542,10 @@ public sealed class QueueDispatcher(
         OriginalSnapshot Original,
         double? MinVmafHarmonicMean,
         double? MinVmafMin,
+        bool? VmafQualityGateEnabled,
+        double? MinVmafCatastrophicMin,
+        bool? ClipVmafEnabled,
+        int? VmafFrameSubsample,
         bool AutoReplace,
         // When the primary command hardware-decodes the source, this holds the equivalent
         // software-decode command so the dispatcher can transparently retry a source the GPU
@@ -737,6 +741,10 @@ public sealed class QueueDispatcher(
             original,
             library?.MinVmafHarmonicMean,
             library?.MinVmafMin,
+            library?.VmafQualityGateEnabled,
+            library?.MinVmafCatastrophicMin,
+            library?.ClipVmafEnabled,
+            library?.VmafFrameSubsample,
             library?.AutoReplace ?? false,
             usedHardwareDecode ? softwareArguments : null);
     }
@@ -997,7 +1005,14 @@ public sealed class QueueDispatcher(
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
         var policy = VerificationPolicyResolver.Resolve(
-            settings.VerificationPolicy, work.MinVmafHarmonicMean, work.MinVmafMin);
+            settings.VerificationPolicy,
+            new VerificationPolicyOverrides(
+                work.VmafQualityGateEnabled,
+                work.MinVmafHarmonicMean,
+                work.MinVmafMin,
+                work.MinVmafCatastrophicMin,
+                work.ClipVmafEnabled,
+                work.VmafFrameSubsample));
         var clip = work.IsPreview && work.Spec.ClipSeconds is { } seconds
             ? new VerificationClip(
                 seconds,

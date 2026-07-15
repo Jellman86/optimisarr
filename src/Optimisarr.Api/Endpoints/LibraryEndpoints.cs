@@ -116,6 +116,10 @@ internal static class LibraryEndpoints
                 MoveOverwrite = parsed.MoveOverwrite,
                 MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
                 MinVmafMin = parsed.MinVmafMin,
+                VmafQualityGateEnabled = parsed.VmafQualityGateEnabled,
+                MinVmafCatastrophicMin = parsed.MinVmafCatastrophicMin,
+                ClipVmafEnabled = parsed.ClipVmafEnabled,
+                VmafFrameSubsample = parsed.VmafFrameSubsample,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
                 AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd,
@@ -184,6 +188,10 @@ internal static class LibraryEndpoints
             library.MoveOverwrite = parsed.MoveOverwrite;
             library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
             library.MinVmafMin = parsed.MinVmafMin;
+            library.VmafQualityGateEnabled = parsed.VmafQualityGateEnabled;
+            library.MinVmafCatastrophicMin = parsed.MinVmafCatastrophicMin;
+            library.ClipVmafEnabled = parsed.ClipVmafEnabled;
+            library.VmafFrameSubsample = parsed.VmafFrameSubsample;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
             library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;

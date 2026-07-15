@@ -3,27 +3,34 @@ namespace Optimisarr.Core.Verification;
 /// <summary>
 /// Pure resolution of the effective verification policy for a single job. The global
 /// policy from settings is the baseline; a library may override the VMAF quality-gate
-/// thresholds so different content can demand different quality (an archive library
-/// near-lossless, a space-saver more forgiving). Overrides only matter when the gate
-/// is enabled and are clamped to the valid 0–100 VMAF range.
+/// state, thresholds, and sampling so different content can demand different quality
+/// (an archive library near-lossless, a space-saver more forgiving). Null inherits the
+/// corresponding global value; numeric overrides are clamped to their valid ranges.
 /// </summary>
+public sealed record VerificationPolicyOverrides(
+    bool? QualityGateEnabled,
+    double? MinimumVmafHarmonicMean,
+    double? MinimumVmafFifthPercentile,
+    double? MinimumVmafCatastrophicMin,
+    bool? ClipVmafEnabled,
+    int? VmafFrameSubsample);
+
 public static class VerificationPolicyResolver
 {
     public static VerificationPolicy Resolve(
         VerificationPolicy global,
-        double? minVmafHarmonicMeanOverride,
-        double? minVmafMinOverride)
+        VerificationPolicyOverrides overrides)
     {
-        if (!global.QualityGateEnabled
-            || (minVmafHarmonicMeanOverride is null && minVmafMinOverride is null))
-        {
-            return global;
-        }
-
         return global with
         {
-            MinimumVmafHarmonicMean = Clamp(minVmafHarmonicMeanOverride) ?? global.MinimumVmafHarmonicMean,
-            MinimumVmafMin = Clamp(minVmafMinOverride) ?? global.MinimumVmafMin
+            QualityGateEnabled = overrides.QualityGateEnabled ?? global.QualityGateEnabled,
+            MinimumVmafHarmonicMean = Clamp(overrides.MinimumVmafHarmonicMean) ?? global.MinimumVmafHarmonicMean,
+            MinimumVmafMin = Clamp(overrides.MinimumVmafFifthPercentile) ?? global.MinimumVmafMin,
+            MinimumVmafCatastrophicMin = Clamp(overrides.MinimumVmafCatastrophicMin) ?? global.MinimumVmafCatastrophicMin,
+            ClipVmafEnabled = overrides.ClipVmafEnabled ?? global.ClipVmafEnabled,
+            VmafFrameSubsample = overrides.VmafFrameSubsample is { } interval
+                ? Math.Clamp(interval, 1, QualityScoreCommandBuilder.MaximumFrameSubsample)
+                : global.VmafFrameSubsample
         };
     }
 

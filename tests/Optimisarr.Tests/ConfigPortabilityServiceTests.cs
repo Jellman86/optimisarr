@@ -204,6 +204,12 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160, DownmixToStereo = true,
                 KeepAudioLanguages = " ENG, jpn, eng ",
                 ReencodeLossyAudio = true,
+                VmafQualityGateEnabled = true,
+                MinVmafHarmonicMean = 91,
+                MinVmafMin = 78,
+                MinVmafCatastrophicMin = 48,
+                ClipVmafEnabled = true,
+                VmafFrameSubsample = 2,
                 AutoEnqueueEnabled = true,
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
                 AutoEnqueueWindowEnd = new TimeOnly(6, 30)
@@ -241,6 +247,12 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.True(library.DownmixToStereo);
         Assert.Equal("eng, jpn", library.KeepAudioLanguages);
         Assert.True(library.ReencodeLossyAudio);
+        Assert.True(library.VmafQualityGateEnabled);
+        Assert.Equal(91, library.MinVmafHarmonicMean);
+        Assert.Equal(78, library.MinVmafMin);
+        Assert.Equal(48, library.MinVmafCatastrophicMin);
+        Assert.True(library.ClipVmafEnabled);
+        Assert.Equal(2, library.VmafFrameSubsample);
         Assert.True(library.AutoEnqueueEnabled);
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
         Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);

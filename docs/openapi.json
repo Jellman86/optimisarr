@@ -248,6 +248,12 @@
             "default": false,
             "type": "boolean"
           },
+          "clipVmafEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
@@ -319,6 +325,15 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "minVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -430,6 +445,21 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "vmafFrameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "vmafQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         },
@@ -635,6 +665,12 @@
               "boolean"
             ]
           },
+          "clipVmafEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "type": [
               "null",
@@ -716,6 +752,15 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "minVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -856,6 +901,21 @@
               "null",
               "string"
             ]
+          },
+          "vmafFrameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "vmafQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         },
         "required": [
@@ -893,6 +953,10 @@
           "moveOverwrite",
           "minVmafHarmonicMean",
           "minVmafMin",
+          "vmafQualityGateEnabled",
+          "minVmafCatastrophicMin",
+          "clipVmafEnabled",
+          "vmafFrameSubsample",
           "autoEnqueueEnabled",
           "autoEnqueueWindowStart",
           "autoEnqueueWindowEnd",
