@@ -13,11 +13,12 @@ services:
       TZ: "${TZ:-Europe/London}"
       ASPNETCORE_URLS: "http://0.0.0.0:8787"
       OPTIMISARR_CONFIG_DIR: "${OPTIMISARR_CONFIG_DIR:-/config}"
+      OPTIMISARR_WORK_DIR: "${OPTIMISARR_WORK_DIR:-/data/.optimisarr/work}"
+      OPTIMISARR_TRASH_DIR: "${OPTIMISARR_TRASH_DIR:-/data/.optimisarr/trash}"
     volumes:
       - ./config:/config
-      - /path/to/media:/data
-      - /path/to/work:/work
-      - /path/to/trash:/trash
+      # Add libraries from /data/media; work and quarantine stay below this one mount.
+      - /path/to/storage:/data
     devices:
       - /dev/dri:/dev/dri
     group_add:

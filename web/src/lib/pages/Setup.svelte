@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { api, type HardwareCapability, type Library, type LibraryAccess, type Settings, type SetupPath, type ToolCheck } from '../api'
+  import { api, type HardwareCapability, type Library, type LibraryAccess, type Settings, type SetupPath, type SetupReadiness, type SetupStorageRelationship, type ToolCheck } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
+  import { formatSize } from '../format'
   import { setup } from '../stores/setup.svelte'
   import BrandMark from '../components/BrandMark.svelte'
   import Icon from '../components/Icon.svelte'
@@ -15,14 +16,20 @@
   let tools = $state<ToolCheck[]>([])
   let hardware = $state<HardwareCapability | null>(null)
   let paths = $state<SetupPath[]>([])
+  let storageRelationships = $state<SetupStorageRelationship[]>([])
+  let selectedPlatform = $state<SetupReadiness['platform']>('compose')
+  let detectedPlatform = $state<SetupReadiness['platform']>('compose')
+  let platformInitialised = false
   let databaseAvailable = $state(false)
   let libraries = $state<Library[]>([])
   let settings = $state<Settings | null>(null)
   let libraryAccess = $state<Record<number, LibraryAccess | null>>({})
   let configuringLibraryId = $state<number | null>(null)
+  let retesting = $state(false)
+  let retestMessage = $state<string | null>(null)
 
   const requiredToolsReady = $derived(tools.length > 0 && tools.every((tool) => !tool.required || tool.available))
-  const requiredPathsReady = $derived(paths.length > 0 && paths.every((path) => path.exists && path.readable && path.writable))
+  const requiredPathsReady = $derived(paths.length > 0 && paths.every((path) => path.issue === 'none'))
   const libraryPathsReady = $derived(allLibraryPathsReady(libraries, libraryAccess))
   const stepNames = $derived([
     i18n.m.setup.step_welcome,
@@ -36,7 +43,11 @@
     void loadContext()
   })
 
-  async function loadContext() {
+  async function loadContext(announce = false) {
+    if (announce) {
+      retesting = true
+      retestMessage = null
+    }
     error = null
     try {
       const [readiness, hardwareResult, libraryResults, settingsResult] = await Promise.all([
@@ -47,12 +58,21 @@
       ])
       tools = readiness.tools
       paths = readiness.paths
+      storageRelationships = readiness.storageRelationships
+      detectedPlatform = readiness.platform
+      if (!platformInitialised) {
+        selectedPlatform = readiness.platform
+        platformInitialised = true
+      }
       databaseAvailable = readiness.databaseAvailable
       hardware = hardwareResult
       settings = settingsResult
       await setLibraries(libraryResults)
+      if (announce) retestMessage = i18n.m.setup.retest_complete
     } catch (err) {
       await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
+    } finally {
+      retesting = false
     }
   }
 
@@ -146,6 +166,44 @@
     if (setup.state && step <= setup.state.completedStep) return i18n.m.setup.status_completed
     return i18n.m.setup.status_pending
   }
+
+  function issueMessage(path: SetupPath): string {
+    if (path.issue === 'missing') return i18n.m.setup.issue_missing
+    if (path.issue === 'unreadable') return i18n.m.setup.issue_unreadable
+    if (path.issue === 'unwritable') return i18n.m.setup.issue_unwritable
+    if (path.issue === 'lowSpace') return i18n.m.setup.issue_low_space
+    return i18n.m.setup.path_ready
+  }
+
+  function platformLabel(platform: SetupReadiness['platform']): string {
+    if (platform === 'local') return i18n.m.setup.platform_local
+    if (platform === 'unraid') return i18n.m.setup.platform_unraid
+    if (platform === 'truenas') return i18n.m.setup.platform_truenas
+    return i18n.m.setup.platform_compose
+  }
+
+  function recoverySteps(): string {
+    if (selectedPlatform === 'local') return i18n.m.setup.fix_local
+    if (selectedPlatform === 'unraid') return i18n.m.setup.fix_unraid
+    if (selectedPlatform === 'truenas') return i18n.m.setup.fix_truenas
+    return i18n.m.setup.fix_compose
+  }
+
+  function relationshipMessage(relationship: SetupStorageRelationship): string {
+    if (relationship.workAtomic === null || relationship.quarantineAtomic === null) return i18n.m.setup.atomic_unknown
+    if (relationship.workAtomic && relationship.quarantineAtomic) return i18n.m.setup.atomic_ready
+    if (!relationship.workAtomic && !relationship.quarantineAtomic) return i18n.m.setup.atomic_both_separate
+    return relationship.workAtomic ? i18n.m.setup.atomic_quarantine_separate : i18n.m.setup.atomic_work_separate
+  }
+
+  function libraryRelationshipMessage(access: LibraryAccess): string {
+    return relationshipMessage({
+      libraryId: 0,
+      libraryName: '',
+      workAtomic: access.atomicWithWork,
+      quarantineAtomic: access.atomicWithQuarantine,
+    })
+  }
 </script>
 
 <div class="min-h-dvh bg-slate-100 px-4 py-5 text-slate-800 sm:px-6 sm:py-8 dark:bg-slate-950 dark:text-slate-200">
@@ -218,20 +276,106 @@
           <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.readiness_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.readiness_body}</p>
 
-          <div class="mt-7 max-w-2xl border-y border-slate-200 dark:border-slate-800">
-            {#each paths as path}
-              <div class="flex items-start gap-3 border-b border-slate-200 py-3 dark:border-slate-800">
-                <span class="mt-0.5 text-sm font-bold {path.exists && path.readable && path.writable ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">{path.exists && path.readable && path.writable ? '✓' : '!'}</span>
-                <div class="min-w-0 flex-1">
-                  <div class="font-semibold text-slate-800 dark:text-slate-100">{path.name}</div>
-                  <div class="truncate font-mono text-xs text-slate-500 dark:text-slate-400">{path.path}</div>
-                </div>
-                <span class="text-xs font-medium {path.exists && path.readable && path.writable ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}">{path.exists && path.readable && path.writable ? i18n.m.setup.path_ready : i18n.m.setup.path_unavailable}</span>
+          <section class="mt-7 max-w-3xl" aria-labelledby="storage-heading">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 id="storage-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.storage_heading}</h2>
+                <p class="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.storage_body}</p>
               </div>
+              <div class="flex-none">
+                <div class="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.setup.deployment_label}</div>
+                <div class="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap" role="group" aria-label={i18n.m.setup.deployment_label}>
+                  {#each ['local', 'compose', 'unraid', 'truenas'] as platform}
+                    <button
+                      class="min-h-11 rounded-md border px-2.5 text-xs font-medium transition-colors {selectedPlatform === platform ? 'border-cyan-500 bg-cyan-50 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}"
+                      type="button"
+                      aria-pressed={selectedPlatform === platform}
+                      onclick={() => (selectedPlatform = platform as SetupReadiness['platform'])}
+                    >
+                      {platformLabel(platform as SetupReadiness['platform'])}
+                      {#if detectedPlatform === platform}<span class="block text-[10px] font-normal opacity-70">{i18n.m.setup.platform_detected}</span>{/if}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            {#each paths as path}
+              <article class="py-4">
+                <div class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {path.issue === 'none' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'}">
+                    <Icon name={path.issue === 'none' ? 'check' : 'warning'} class="h-3.5 w-3.5" />
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <div class="font-semibold text-slate-800 dark:text-slate-100">{path.role === 'library' ? `${i18n.m.setup.step_library}: ${path.name}` : path.name}</div>
+                      <span class="text-xs font-medium {path.issue === 'none' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}">{path.issue === 'none' ? i18n.m.setup.path_ready : i18n.m.setup.path_unavailable}</span>
+                    </div>
+                    <div class="mt-0.5 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{path.path}</div>
+                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      {#if path.availableBytes !== null && path.totalBytes !== null}
+                        <span>{t(i18n.m.setup.free_space, { free: formatSize(path.availableBytes), total: formatSize(path.totalBytes) })}</span>
+                      {:else if path.availableBytes !== null}
+                        <span>{t(i18n.m.setup.free_space_only, { free: formatSize(path.availableBytes) })}</span>
+                      {/if}
+                      {#if path.fileSystemId && path.mountId}
+                        <span class="break-all font-mono">{t(i18n.m.setup.mount_evidence, { type: path.fileSystemType ?? '—', filesystem: path.fileSystemId, mount: path.mountId })}</span>
+                      {:else}
+                        <span>{i18n.m.setup.mount_unknown}</span>
+                      {/if}
+                    </div>
+                    {#if path.issue !== 'none'}
+                      <div class="mt-3 border-l-2 border-red-300 pl-3 dark:border-red-800">
+                        <div class="text-sm font-medium text-red-800 dark:text-red-200">{issueMessage(path)}</div>
+                        {#if path.issue === 'lowSpace' && path.requiredFreeBytes !== null}
+                          <p class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{t(i18n.m.setup.space_requirement, { required: formatSize(path.requiredFreeBytes) })}</p>
+                        {/if}
+                        <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.setup.recovery_title}</div>
+                        <p class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{recoverySteps()}</p>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </article>
             {/each}
+            </div>
+          </section>
+
+          {#if storageRelationships.length > 0}
+            <section class="mt-7 max-w-3xl" aria-labelledby="atomic-heading">
+              <h2 id="atomic-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.atomic_heading}</h2>
+              <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.atomic_body}</p>
+              <div class="mt-3 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                {#each storageRelationships as relationship (relationship.libraryId)}
+                  {@const atomic = relationship.workAtomic === true && relationship.quarantineAtomic === true}
+                  <div class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <span class="font-medium text-slate-800 dark:text-slate-100">{relationship.libraryName}</span>
+                    <span class="flex items-center gap-2 text-xs font-medium {atomic ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
+                      <Icon name={atomic ? 'check' : 'warning'} class="h-4 w-4" />
+                      {relationshipMessage(relationship)}
+                    </span>
+                  </div>
+                  {#if !atomic}
+                    <div class="pb-4 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                      <p>{i18n.m.setup.atomic_fix}</p>
+                      <p class="mt-1 font-medium">{settings?.replacementAllowCrossFilesystem ? i18n.m.setup.fallback_enabled : i18n.m.setup.fallback_disabled}</p>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            </section>
+          {/if}
+
+          <section class="mt-7 max-w-3xl" aria-labelledby="toolchain-heading">
+            <h2 id="toolchain-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.toolchain_heading}</h2>
+            <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.toolchain_body}</p>
+            <div class="mt-3 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
             {#each tools as tool}
-              <div class="flex items-start gap-3 border-b border-slate-200 py-3 last:border-b-0 dark:border-slate-800">
-                <span class="mt-0.5 text-sm font-bold {tool.available ? 'text-emerald-600 dark:text-emerald-400' : tool.required ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}">{tool.available ? '✓' : tool.required ? '!' : '–'}</span>
+              <div class="flex items-start gap-3 py-3">
+                <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {tool.available ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : tool.required ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}">
+                  <Icon name={tool.available ? 'check' : 'warning'} class="h-3.5 w-3.5" />
+                </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="font-semibold text-slate-800 dark:text-slate-100">{tool.name}</span>
@@ -242,14 +386,21 @@
                 <span class="text-xs font-medium {tool.available ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}">{tool.available ? i18n.m.setup.available : i18n.m.setup.unavailable}</span>
               </div>
             {/each}
-          </div>
+            </div>
+          </section>
 
           {#if hardware}
-            <p class="mt-4 max-w-2xl text-xs text-slate-500 dark:text-slate-400">
+            <p class="mt-4 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
               {t(i18n.m.setup.encoder_summary, { count: hardware.encoders.filter((encoder) => encoder.available).length })}
             </p>
           {/if}
-          <button class="btn mt-5" onclick={loadContext} disabled={busy}>{i18n.m.setup.retest}</button>
+          <div class="mt-5 flex flex-wrap items-center gap-3" aria-live="polite">
+            <button class="btn min-h-11" onclick={() => void loadContext(true)} disabled={busy || retesting}>
+              <Icon name="retry" class="h-4 w-4 motion-reduce:animate-none {retesting ? 'animate-spin' : ''}" />
+              {retesting ? i18n.m.setup.retesting : i18n.m.setup.retest}
+            </button>
+            {#if retestMessage}<span class="text-sm text-emerald-700 dark:text-emerald-300">{retestMessage}</span>{/if}
+          </div>
         {:else if viewStep === 3}
           <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.library_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.library_body}</p>
@@ -268,6 +419,19 @@
                     <div class="mt-2 text-xs font-medium {access?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
                       {access?.ok ? i18n.m.setup.access_ready : access?.message ?? i18n.m.setup.access_checking}
                     </div>
+                    {#if access}
+                      <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        {#if access.availableBytes !== null}<span>{t(i18n.m.setup.free_space_only, { free: formatSize(access.availableBytes) })}</span>{/if}
+                        {#if access.fileSystemId && access.mountId}<span class="font-mono">{t(i18n.m.setup.mount_evidence, { type: access.fileSystemType ?? '—', filesystem: access.fileSystemId, mount: access.mountId })}</span>{/if}
+                      </div>
+                      <div class="mt-2 flex items-center gap-1.5 text-xs font-medium {access.atomicWithWork === true && access.atomicWithQuarantine === true ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
+                        <Icon name={access.atomicWithWork === true && access.atomicWithQuarantine === true ? 'check' : 'warning'} class="h-3.5 w-3.5" />
+                        {libraryRelationshipMessage(access)}
+                      </div>
+                      {#if !access.ok}
+                        <p class="mt-2 border-l-2 border-amber-300 pl-2 text-xs leading-5 text-slate-600 dark:border-amber-800 dark:text-slate-300">{recoverySteps()}</p>
+                      {/if}
+                    {/if}
                   </div>
                   <button class="btn min-h-11 flex-none" onclick={() => (configuringLibraryId = library.id)}>
                     <Icon name="sliders" class="h-4 w-4" />

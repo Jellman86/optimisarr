@@ -1,6 +1,7 @@
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Setup;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Data;
@@ -24,22 +25,55 @@ internal static class SetupEndpoints
         app.MapGet("/api/setup/readiness", async (
             OptimisarrDbContext db,
             ToolDetectionService tools,
+            SettingsStore settings,
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             var databaseAvailable = await db.Database.CanConnectAsync(cancellationToken);
             var toolResults = await tools.DetectAsync(cancellationToken);
-            var paths = new[]
+            var workPath = WorkPaths.Resolve(environment);
+            var quarantinePath = TrashPaths.Resolve(environment);
+            var minFreeDiskBytes = databaseAvailable
+                ? (await settings.GetQueueSettingsAsync(cancellationToken)).MinFreeDiskBytes
+                : SettingsStore.DefaultMinFreeDiskBytes;
+            var libraries = databaseAvailable
+                ? await db.Libraries
+                    .AsNoTracking()
+                    .OrderBy(library => library.Name)
+                    .Select(library => new { library.Id, library.Name, library.Path })
+                    .ToListAsync(cancellationToken)
+                : [];
+
+            var paths = new List<SetupPathDto>
             {
-                SetupPathDto.Probe("Config", configDirectory),
-                SetupPathDto.Probe("Work", WorkPaths.Resolve(environment)),
-                SetupPathDto.Probe("Quarantine", TrashPaths.Resolve(environment))
+                SetupPathDto.Probe("Config", "config", configDirectory),
+                SetupPathDto.Probe("Work", "work", workPath, minFreeDiskBytes),
+                SetupPathDto.Probe("Quarantine", "quarantine", quarantinePath)
             };
+            paths.AddRange(libraries.Select(library =>
+                SetupPathDto.Probe(library.Name, "library", library.Path, libraryId: library.Id)));
+
+            var work = paths.Single(path => path.Role == "work");
+            var quarantine = paths.Single(path => path.Role == "quarantine");
+            var storageRelationships = paths
+                .Where(path => path.Role == "library")
+                .Select(path => new SetupStorageRelationshipDto(
+                    path.LibraryId!.Value,
+                    path.Name,
+                    SetupPathDto.SharesAtomicBoundary(path, work),
+                    SetupPathDto.SharesAtomicBoundary(path, quarantine)))
+                .ToList();
             var ready = databaseAvailable
-                && paths.All(path => path.Exists && path.Readable && path.Writable)
+                && paths.All(path => path.Issue == "none")
                 && toolResults.All(tool => !tool.Required || tool.Available);
 
-            return Results.Ok(new SetupReadinessDto(databaseAvailable, ready, paths, toolResults));
+            return Results.Ok(new SetupReadinessDto(
+                databaseAvailable,
+                ready,
+                DeploymentPlatformDetector.ToWireValue(DeploymentPlatformDetector.DetectCurrent()),
+                paths,
+                storageRelationships,
+                toolResults));
         })
         .WithName("GetSetupReadiness");
 
@@ -99,22 +133,72 @@ internal sealed record SetupProgressDto(int CompletedStep);
 internal sealed record SetupReadinessDto(
     bool DatabaseAvailable,
     bool Ready,
+    string Platform,
     IReadOnlyList<SetupPathDto> Paths,
+    IReadOnlyList<SetupStorageRelationshipDto> StorageRelationships,
     IReadOnlyList<ToolCheckResult> Tools);
 
 internal sealed record SetupPathDto(
     string Name,
+    string Role,
+    int? LibraryId,
     string Path,
     bool Exists,
     bool Readable,
-    bool Writable)
+    bool Writable,
+    string Issue,
+    string? FileSystemId,
+    string? MountId,
+    string? MountPoint,
+    string? FileSystemType,
+    long? AvailableBytes,
+    long? TotalBytes,
+    long? RequiredFreeBytes)
 {
-    public static SetupPathDto Probe(string name, string path)
+    public static SetupPathDto Probe(
+        string name,
+        string role,
+        string path,
+        long? requiredFreeBytes = null,
+        int? libraryId = null)
     {
         var (exists, readable, writable) = PathAccessProbe.Probe(path);
-        return new SetupPathDto(name, path, exists, readable, writable);
+        var evidence = FileSystemEvidenceProbe.Probe(path);
+        var issue = SetupPathIssueClassifier.Classify(
+            exists,
+            readable,
+            writable,
+            evidence.AvailableBytes,
+            requiredFreeBytes);
+        return new SetupPathDto(
+            name,
+            role,
+            libraryId,
+            path,
+            exists,
+            readable,
+            writable,
+            SetupPathIssueClassifier.ToWireValue(issue),
+            evidence.FileSystemId,
+            evidence.MountId,
+            evidence.MountPoint,
+            evidence.FileSystemType,
+            evidence.AvailableBytes,
+            evidence.TotalBytes,
+            requiredFreeBytes);
     }
+
+    public static bool? SharesAtomicBoundary(SetupPathDto first, SetupPathDto second) =>
+        string.IsNullOrWhiteSpace(first.MountId) || string.IsNullOrWhiteSpace(second.MountId)
+            ? null
+            : string.Equals(first.MountId, second.MountId, StringComparison.Ordinal);
 }
+
+internal sealed record SetupStorageRelationshipDto(
+    int LibraryId,
+    string LibraryName,
+    bool? WorkAtomic,
+    bool? QuarantineAtomic);
 
 internal sealed record SetupStateDto(
     int Version,

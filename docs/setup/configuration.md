@@ -9,7 +9,12 @@ No copyrighted material is used.
 ## First-run setup
 
 A genuinely new database opens a five-step setup workspace before the normal dashboard. It verifies
-database access, the config/work/quarantine paths, required media tools, and detected hardware; then
+database access, the config/work/quarantine paths, required media tools, and detected hardware. The
+storage ledger shows effective read/write access, free and total capacity, filesystem and mount
+identity, the work-space reserve, and whether each existing library can move atomically to work and
+quarantine. A failed row explains the cause and offers local, Docker Compose, Unraid, or TrueNAS
+recovery steps. **Re-test system** reruns the actual probes and announces the refreshed result; it
+never claims to create a host mount or change host permissions. Setup then
 lets you add and fully configure as many libraries as needed before reviewing the starting safety
 posture. The same complete per-library rules editor is used inside and outside setup, and every
 configured path is rechecked before Continue. Progress is saved after each step, so refreshing or

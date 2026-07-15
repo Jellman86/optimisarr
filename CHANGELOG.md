@@ -20,7 +20,13 @@
   per-library rules editor, rechecks every configured path before Continue, and keeps Add/Configure
   actions available until the operator is ready. Fresh installs start in dry-run,
   automatic enqueue/replacement and VMAF remain off, and the readiness ledger reports database,
-  config/work/quarantine path access, required tools, and detected hardware encoders. The focused
+  config/work/quarantine/library path access, filesystem and container-mount identities, free and
+  total capacity, the configured work-space reserve, required tools, and detected hardware encoders.
+  It identifies whether each library can use atomic moves to work and quarantine, states when the
+  verified cross-filesystem fallback is disabled, and gives selectable, exact recovery steps for
+  local, Docker Compose, Unraid, and TrueNAS deployments. **Re-test system** reruns the real probes,
+  announces completion, and removes resolved guidance without pretending a container can repair its
+  own host mounts or permissions. The focused
   responsive layout ships in all nine locales with text status alongside colour and keyboard focus
   moved to actionable errors. Shared form sizing and unit-bearing fields now remain inside General
   Settings cards at phone widths, with long toggle labels wrapping instead of being truncated.

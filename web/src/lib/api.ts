@@ -53,16 +53,35 @@ export type SetupState = {
 
 export type SetupPath = {
   name: string
+  role: 'config' | 'work' | 'quarantine' | 'library'
+  libraryId: number | null
   path: string
   exists: boolean
   readable: boolean
   writable: boolean
+  issue: 'none' | 'missing' | 'unreadable' | 'unwritable' | 'lowSpace'
+  fileSystemId: string | null
+  mountId: string | null
+  mountPoint: string | null
+  fileSystemType: string | null
+  availableBytes: number | null
+  totalBytes: number | null
+  requiredFreeBytes: number | null
+}
+
+export type SetupStorageRelationship = {
+  libraryId: number
+  libraryName: string
+  workAtomic: boolean | null
+  quarantineAtomic: boolean | null
 }
 
 export type SetupReadiness = {
   databaseAvailable: boolean
   ready: boolean
+  platform: 'local' | 'compose' | 'unraid' | 'truenas'
   paths: SetupPath[]
+  storageRelationships: SetupStorageRelationship[]
   tools: ToolCheck[]
 }
 
@@ -137,6 +156,15 @@ export type LibraryAccess = {
   writable: boolean
   ok: boolean
   message: string
+  issue: 'none' | 'missing' | 'unreadable' | 'unwritable'
+  fileSystemId: string | null
+  mountId: string | null
+  mountPoint: string | null
+  fileSystemType: string | null
+  availableBytes: number | null
+  totalBytes: number | null
+  atomicWithWork: boolean | null
+  atomicWithQuarantine: boolean | null
 }
 
 export type Library = LibraryRules & {

@@ -10,6 +10,7 @@ using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Security;
+using Optimisarr.Api.Setup;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
@@ -44,6 +45,7 @@ internal static class LibraryEndpoints
         app.MapGet("/api/libraries/{id:int}/access", async (
             int id,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             var library = await db.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
@@ -53,6 +55,9 @@ internal static class LibraryEndpoints
             }
 
             var (exists, readable, writable) = PathAccessProbe.Probe(library.Path);
+            var evidence = FileSystemEvidenceProbe.Probe(library.Path);
+            var workEvidence = FileSystemEvidenceProbe.Probe(WorkPaths.Resolve(environment));
+            var quarantineEvidence = FileSystemEvidenceProbe.Probe(TrashPaths.Resolve(environment));
             return Results.Ok(new
             {
                 path = library.Path,
@@ -61,6 +66,20 @@ internal static class LibraryEndpoints
                 writable,
                 ok = LibraryAccessEvaluator.IsOk(exists, readable, writable),
                 message = LibraryAccessEvaluator.Describe(exists, readable, writable),
+                issue = SetupPathIssueClassifier.ToWireValue(SetupPathIssueClassifier.Classify(
+                    exists,
+                    readable,
+                    writable,
+                    evidence.AvailableBytes,
+                    requiredBytes: null)),
+                evidence.FileSystemId,
+                evidence.MountId,
+                evidence.MountPoint,
+                evidence.FileSystemType,
+                evidence.AvailableBytes,
+                evidence.TotalBytes,
+                atomicWithWork = AtomicRelationship(evidence, workEvidence),
+                atomicWithQuarantine = AtomicRelationship(evidence, quarantineEvidence)
             });
         })
         .WithName("CheckLibraryAccess");
@@ -252,4 +271,9 @@ internal static class LibraryEndpoints
         })
         .WithName("ScanAllLibraries");
     }
+
+    private static bool? AtomicRelationship(FileSystemEvidence first, FileSystemEvidence second) =>
+        string.IsNullOrWhiteSpace(first.MountId) || string.IsNullOrWhiteSpace(second.MountId)
+            ? null
+            : FileSystemEvidenceProbe.SharesAtomicBoundary(first, second);
 }

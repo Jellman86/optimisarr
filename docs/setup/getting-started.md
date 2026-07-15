@@ -1,8 +1,8 @@
 # Getting started
 
-Optimisarr runs as one container. It persists SQLite state in `/config`, reads
-libraries in `/data`, writes temporary results to `/work`, and quarantines
-originals in `/trash`.
+Optimisarr runs as one container. It persists SQLite state in `/config`. The supplied Compose files
+mount one storage root at `/data`, read libraries from `/data/media`, and keep work and quarantine
+under `/data/.optimisarr` so replacements can use atomic moves.
 
 Use a small test library first. Optimisarr is designed to avoid replacing an
 original unless a verified output exists, but it is still software operating on
@@ -25,8 +25,8 @@ Copy one to `compose.yml`, edit the host paths, then create the mounted folders
 with ownership matching the `PUID`/`PGID` you configured:
 
 ```bash
-mkdir -p ./config /path/to/work /path/to/trash
-sudo chown -R 1000:1000 ./config /path/to/work /path/to/trash
+mkdir -p ./config /path/to/storage/{media,.optimisarr/work,.optimisarr/trash}
+sudo chown -R 1000:1000 ./config /path/to/storage
 ```
 
 Start the container and wait for readiness:
@@ -41,9 +41,10 @@ The first command confirms the web process is alive. The readiness endpoint
 additionally confirms that the database, FFmpeg/ffprobe, and required writable
 paths are available; wait for it to succeed before using the queue.
 
-Keep `/data`, `/work`, and `/trash` on one filesystem when possible so
-replacement can use atomic moves. Ensure `PUID` and `PGID` can write all four
-mounts.
+Keep media, work, and quarantine below one container mount boundary when possible so replacement
+can use atomic moves. Separate bind mounts require the verified cross-filesystem replacement option.
+The setup wizard reports the effective relationship rather than inferring it from host path names.
+Ensure `PUID` and `PGID` can write every configured path.
 
 Do not publish `8787` directly to the internet. For remote access, put Optimisarr
 behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
@@ -53,7 +54,7 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 ## First workflow
 
 1. Enable **Dry-run mode** in **Settings → General → Replacement**.
-2. Add a library below `/data` and select its media type and rule profile.
+2. Add a library below `/data/media` and select its media type and rule profile.
 3. Scan it; newly found files are probed in the background.
 4. Review the explicit eligibility reason in **Inventory**.
 5. Use **Preview** on one representative file to compare the original with the encoded result.
@@ -73,5 +74,5 @@ For a page-by-page walkthrough with screenshots, see the [user workflow](../usag
 ## What to back up
 
 Back up `/config/optimisarr.db` for Optimisarr state and keep independent media
-backups for anything irreplaceable. `/trash` contains rollback originals after
+backups for anything irreplaceable. `/data/.optimisarr/trash` contains rollback originals after
 replacement, but entries can be approved or purged by retention policy.

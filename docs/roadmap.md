@@ -172,18 +172,20 @@ the replacement workflow is trustworthy.
      stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
      separate Back/Continue controls—the [USWDS step-indicator guidance](https://designsystem.digital.gov/components/step-indicator/)
      recommends this pattern for linear processes with three or more high-level sections.
-   - **Prove the environment instead of merely collecting fields: partly shipped.** The readiness
+   - **Prove the environment instead of merely collecting fields: shipped.** The readiness
      step runs the existing tool/capability checks and non-destructive probes for `/config`, `/work`,
      `/trash`, and the chosen media root: existence, effective read/write permissions, available
-     space, and whether media/quarantine share a filesystem for atomic replacement. It detects
+     space, and whether media, work, and quarantine remain below one container mount boundary for
+     atomic replacement. It detects
      encoder support with the same real test encode used by Tools. Database connectivity,
      required/optional tools, detected hardware encoders, and effective read/write access for config,
-     work, quarantine, and every configured library root are now visible and gate progress. Remaining:
-     filesystem identity/free-space evidence and platform-specific Compose/Unraid/TrueNAS remediation.
-     A container cannot create a missing bind mount, change host permissions, or securely retrofit an
-     admin-token environment variable, so those failures must
-     produce exact Compose/Unraid/TrueNAS remediation and a re-test action—not a pretend-successful
-     toggle. Docker documents that mounts must be explicitly granted to a service and recommends
+     work, quarantine, and every configured library root are visible and gate progress. Each row now
+     carries free/total capacity plus filesystem, mount, type, and boundary evidence; configured
+     libraries state whether work and quarantine moves are atomic. Missing, unreadable, unwritable,
+     and low-space states produce exact local, Compose, Unraid, and TrueNAS recovery steps. A
+     loading/announced **Re-test system** action reruns the real probes and clears resolved advice.
+     The container never pretends it can create a host bind mount or change host permissions. Docker
+     documents that mounts must be explicitly granted to a service and recommends
      [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
    - **Safe recommendations, not silent automation: initial defaults shipped.** Start in dry-run
      mode, one concurrent job, auto-replace off, conservative free-space/quarantine settings, and no

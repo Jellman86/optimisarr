@@ -113,8 +113,8 @@ for AMD VA-API. Intel QSV has been tested on real hardware for both encoding and
 
 - Docker Engine with the Compose plugin.
 - Read and write access to the media folders you mount into the container.
-- `/data`, `/work`, and `/trash` on the same filesystem if you want atomic
-  replacement moves.
+- One host storage root mounted at `/data`, with media, work, and quarantine beneath it, if you
+  want atomic replacement moves.
 - A backup of media that matters to you. Quarantine and rollback are useful,
   but they are not a backup strategy.
 
@@ -123,8 +123,8 @@ for AMD VA-API. Intel QSV has been tested on real hardware for both encoding and
 The image is published to GHCR on every push to `dev`:
 
 ```bash
-mkdir -p ./optimisarr-config /path/to/work /path/to/trash
-sudo chown -R 1000:1000 ./optimisarr-config /path/to/work /path/to/trash
+mkdir -p ./optimisarr-config /path/to/storage/{media,.optimisarr/work,.optimisarr/trash}
+sudo chown -R 1000:1000 ./optimisarr-config /path/to/storage
 ```
 
 ```bash
@@ -132,10 +132,10 @@ docker run -d --name optimisarr \
   -p 8787:8787 \
   -e PUID=1000 -e PGID=1000 -e TZ=Europe/London \
   -e OPTIMISARR_ADMIN_TOKEN='change-this-long-random-token' \
+  -e OPTIMISARR_WORK_DIR=/data/.optimisarr/work \
+  -e OPTIMISARR_TRASH_DIR=/data/.optimisarr/trash \
   -v ./optimisarr-config:/config \
-  -v /path/to/media:/data \
-  -v /path/to/work:/work \
-  -v /path/to/trash:/trash \
+  -v /path/to/storage:/data \
   ghcr.io/jellman86/optimisarr:dev
 ```
 
@@ -146,10 +146,14 @@ curl http://localhost:8787/api/ready
 ```
 
 Open `http://localhost:8787`. A new database opens the resumable five-step setup, verifies the
-mounted paths and media tools, lets you fully configure as many libraries as needed, and starts in
+mounted paths, free space, filesystem/mount relationships, permissions, and media tools. Missing
+or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
+a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
 **Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
 then scan and queue a small test set deliberately. Use **Run setup again** in the Settings header to
 revisit the guided checks without deleting existing configuration.
+Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
+container mount boundary.
 Compose examples are available for every supported runtime:
 
 - [CPU only](compose.cpu.example.yml)
@@ -158,8 +162,9 @@ Compose examples are available for every supported runtime:
 - [Intel or AMD VA-API](compose.vaapi.example.yml)
 - [combined reference file](compose.example.yml)
 
-Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the
-replacement pipeline can use atomic moves. Do not publish `8787` directly to the
+Keep media, work, and quarantine beneath one **container mount boundary** when possible so the
+replacement pipeline can use atomic moves; separate bind mounts require the verified
+cross-filesystem fallback. Do not publish `8787` directly to the
 internet; use an authenticated reverse proxy for remote access. Setting
 `OPTIMISARR_ADMIN_TOKEN` adds a built-in bearer-token backstop for the UI and API,
 but a reverse proxy remains the recommended public-access boundary.
