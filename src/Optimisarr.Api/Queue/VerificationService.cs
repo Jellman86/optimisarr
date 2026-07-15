@@ -117,6 +117,7 @@ public sealed class VerificationService(
                         window.DurationSeconds,
                         policy.VmafFrameSubsample,
                         vmafAcceleration,
+                        policy,
                         progress,
                         cancellationToken));
                 }
@@ -283,7 +284,7 @@ public sealed class VerificationService(
             .ToList();
     }
 
-    private static Task<QualityResult> MeasureQualityAsync(
+    private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
@@ -294,13 +295,14 @@ public sealed class VerificationService(
         int? clipDurationSeconds,
         int frameSubsample,
         VmafAcceleration acceleration,
+        VerificationPolicy policy,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
         if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
         {
-            return Task.FromResult(QualityResult.Failed(
-                "Could not determine the original video dimensions required for VMAF."));
+            return QualityResult.Failed(
+                "Could not determine the original video dimensions required for VMAF.");
         }
 
         var context = new QualityMeasurementContext(
@@ -316,7 +318,20 @@ public sealed class VerificationService(
             MeasureDurationSeconds: clipDurationSeconds,
             FrameSubsample: frameSubsample,
             Acceleration: acceleration);
-        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
+        var result = await quality.MeasureAsync(
+            qualityReferencePath,
+            outputPath,
+            context,
+            cancellationToken,
+            qualityProgress);
+        return await VmafSoftwareConfirmation.ConfirmAsync(
+            result,
+            policy,
+            () => quality.MeasureAsync(
+                qualityReferencePath,
+                outputPath,
+                context with { Acceleration = VmafAcceleration.None },
+                cancellationToken));
     }
 
     private sealed class WindowProgress(IProgress<double> target, int index, int count) : IProgress<double>

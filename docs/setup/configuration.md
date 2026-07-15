@@ -41,7 +41,7 @@ The Inventory explains why every file is eligible or skipped.
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
-| Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes, then falls back to CPU decode for sources the GPU cannot decode. |
+| Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes. Runtime failures fall back to CPU decode, and a below-floor accelerated VMAF result is confirmed in software before rejection. |
 
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.

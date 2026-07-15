@@ -424,7 +424,7 @@ public static class VerificationEvaluator
         }
 
         var scores = input.QualityScores;
-        if (scores.VmafHarmonicMean is not { } harmonic || scores.VmafMin is not { } min)
+        if (scores.VmafHarmonicMean is null || scores.VmafMin is null)
         {
             return Fail("Perceptual quality (VMAF)", "VMAF aggregates were missing from the measurement.");
         }
@@ -433,10 +433,7 @@ public static class VerificationEvaluator
         // Netflix documents percentile pooling as a way to stop easy content hiding difficult
         // frames. New measurements carry a fifth percentile; older persisted reports fall back to
         // their minimum so they remain conservative and readable after upgrade.
-        var lowFrames = scores.VmafFifthPercentile ?? min;
-        return harmonic >= policy.MinimumVmafHarmonicMean
-            && lowFrames >= policy.MinimumVmafMin
-            && min >= policy.MinimumVmafCatastrophicMin
+        return VmafSoftwareConfirmation.MeetsGate(scores, policy)
             ? Pass("Perceptual quality (VMAF)", detail)
             : Fail("Perceptual quality (VMAF)", $"{detail} Below the quality gate.");
     }

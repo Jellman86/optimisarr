@@ -136,7 +136,7 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
-    public void Clip_measurement_seeks_both_inputs_and_caps_the_duration()
+    public void Clip_measurement_seeks_before_the_window_and_trims_matching_decoder_preroll()
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
@@ -146,13 +146,28 @@ public sealed class QualityScoreCommandBuilderTests
             threads: 4);
 
         var args = command.Arguments;
-        // Both inputs are seeked to the clip start so their frames stay aligned, and the output is
-        // capped to the clip length so only that window is scored.
-        Assert.Equal("300", ValueAfter(args, "-ss", occurrence: 1));
+        // Decode five seconds of pre-roll on both independently encoded inputs, then trim the same
+        // interval after decode. This avoids scoring different keyframe/decoder startup regions.
+        Assert.Equal("295", ValueAfter(args, "-ss", occurrence: 1));
         Assert.Equal("/work/output.mkv", ValueAfter(args, "-i", occurrence: 1));
-        Assert.Equal("300", ValueAfter(args, "-ss", occurrence: 2));
+        Assert.Equal("295", ValueAfter(args, "-ss", occurrence: 2));
         Assert.Equal("/data/original.mkv", ValueAfter(args, "-i", occurrence: 2));
+        Assert.Equal(2, command.FilterGraph.Split("trim=start=5:duration=120").Length - 1);
         Assert.Equal("120", ValueAfter(args, "-t", occurrence: 1));
+    }
+
+    [Fact]
+    public void Clip_near_the_start_decodes_from_zero_and_trims_to_the_exact_window()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 3, ReferenceStartSeconds: 3, MeasureDurationSeconds: 40),
+            threads: 4);
+
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.Equal(2, command.FilterGraph.Split("trim=start=3:duration=40").Length - 1);
     }
 
     [Fact]

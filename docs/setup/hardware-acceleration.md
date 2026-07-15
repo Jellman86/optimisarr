@@ -13,7 +13,9 @@ Tools page is the source of truth for what this container can actually encode. A
 static FFmpeg supplies the optional `libvmaf` quality-measurement filter and appears as its
 own Tools entry. A configured `OPTIMISARR_FFMPEG_VMAF_CUDA` binary appears separately and is usable
 only when it exposes `libvmaf_cuda`; actual GPU/driver/source compatibility is checked by the first
-measurement and failures retry in software. The Queue shows the selected encoder on each job.
+measurement. Runtime failures fall back to software, and a measured hardware-decoded score below
+the selected quality floor is confirmed in software before the output is rejected. The Queue shows
+the selected encoder on each job.
 
 ## Intel and AMD
 

@@ -104,6 +104,12 @@
 
 ### Fixed
 
+- **Sampled VMAF no longer mistakes seek/decode startup frames for catastrophic quality loss.**
+  Each early/middle/late window now seeks both independently encoded inputs five seconds early and
+  trims identical decoded pre-roll before resetting timestamps and scoring the requested interval.
+  When a hardware-decoded measurement falls below any configured VMAF floor, Optimisarr confirms
+  that window through the authoritative software path before rejecting the output or spending time
+  on a higher-quality re-encode.
 - **Replacement and rollback are crash-safe end to end.** Optimisarr now commits a `Pending`
   rollback record before moving the original, then finalizes it only after the verified output is
   in place. Startup reconciles interrupted records idempotently: it restores a quarantined original

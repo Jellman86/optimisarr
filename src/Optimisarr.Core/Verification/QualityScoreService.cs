@@ -8,6 +8,8 @@ namespace Optimisarr.Core.Verification;
 /// <summary>The outcome of attempting a VMAF measurement: scores, or why it could not be measured.</summary>
 public sealed record QualityResult(bool Measured, QualityScores? Scores, string? Error)
 {
+    public VmafAcceleration Acceleration { get; init; } = VmafAcceleration.None;
+
     public static QualityResult Ok(QualityScores scores) => new(true, scores, null);
 
     public static QualityResult Failed(string error) => new(false, null, error);
@@ -206,7 +208,7 @@ public sealed class QualityScoreService(
 
         return scores is null
             ? QualityResult.Failed("libvmaf log contained no usable VMAF score.")
-            : QualityResult.Ok(scores);
+            : QualityResult.Ok(scores) with { Acceleration = context.Acceleration };
     }
 
     private static async Task<bool> HasFilterAsync(

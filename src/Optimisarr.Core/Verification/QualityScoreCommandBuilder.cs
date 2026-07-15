@@ -62,6 +62,7 @@ public static class QualityScoreCommandBuilder
     public const string HdModelVersion = "vmaf_v0.6.1";
     public const string UhdModelVersion = "vmaf_4k_v0.6.1";
     public const int MaximumFrameSubsample = 10;
+    private const int SampleSeekPrerollSeconds = 5;
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
     public static QualityScoreCommand Build(
@@ -108,13 +109,25 @@ public static class QualityScoreCommandBuilder
         var pixelFormat = context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
             : "yuv420p";
+        var distortedInputStart = InputSeek(context.DistortedStartSeconds, context.MeasureDurationSeconds);
+        var referenceInputStart = InputSeek(context.ReferenceStartSeconds, context.MeasureDurationSeconds);
+        var distortedTimeline = TimelinePreparation(
+            context.DistortedStartSeconds, distortedInputStart, context.MeasureDurationSeconds);
+        var referenceTimeline = TimelinePreparation(
+            context.ReferenceStartSeconds, referenceInputStart, context.MeasureDurationSeconds);
         var normalise = $"{scale},format={pixelFormat}";
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
             : normalise;
         var boundedThreads = Math.Max(1, threads);
         var filter = acceleration == VmafAcceleration.Cuda
-            ? BuildCudaFilter(context, logPath, model, boundedThreads)
+            ? BuildCudaFilter(
+                context,
+                logPath,
+                model,
+                boundedThreads,
+                distortedTimeline,
+                referenceTimeline)
             : BuildCpuFilter(
                 normalise,
                 referencePreparation,
@@ -122,7 +135,9 @@ public static class QualityScoreCommandBuilder
                 model,
                 boundedThreads,
                 context.FrameSubsample,
-                acceleration);
+                acceleration,
+                distortedTimeline,
+                referenceTimeline);
 
         var arguments = new List<string>
         {
@@ -133,13 +148,13 @@ public static class QualityScoreCommandBuilder
             "-stats",
         };
         AppendDeviceInitialisation(arguments, acceleration);
-        // Clip-VMAF seeks the distorted (output) input into the same window as the reference so a
-        // full-file job can score only a representative segment. An accurate seek before -i decodes
-        // to the point, keeping the two streams frame-aligned.
-        if (context.DistortedStartSeconds is > 0)
+        // Sampled VMAF seeks both independently encoded inputs just before the requested window.
+        // The filter graph trims matching decoded pre-roll so different GOP layouts and decoder
+        // startup frames cannot contaminate the scored interval.
+        if (distortedInputStart is > 0)
         {
             arguments.Add("-ss");
-            arguments.Add(context.DistortedStartSeconds.Value.ToString());
+            arguments.Add(distortedInputStart.Value.ToString());
         }
         AppendInputAcceleration(arguments, acceleration);
         // libvmaf requires distorted first and reference second.
@@ -148,10 +163,10 @@ public static class QualityScoreCommandBuilder
         // Preview outputs begin at zero after an accurate decode seek into the source. Seek the
         // full reference as its own decoded input so FFmpeg discards keyframe pre-roll before
         // libvmaf; comparing against a stream-copied clip can start on an earlier keyframe.
-        if (context.ReferenceStartSeconds is > 0)
+        if (referenceInputStart is > 0)
         {
             arguments.Add("-ss");
-            arguments.Add(context.ReferenceStartSeconds.Value.ToString());
+            arguments.Add(referenceInputStart.Value.ToString());
         }
         AppendInputAcceleration(arguments, acceleration);
         arguments.Add("-i");
@@ -175,14 +190,16 @@ public static class QualityScoreCommandBuilder
         string model,
         int threads,
         int frameSubsample,
-        VmafAcceleration acceleration)
+        VmafAcceleration acceleration,
+        string distortedTimeline,
+        string referenceTimeline)
     {
         var download = acceleration is VmafAcceleration.Qsv or VmafAcceleration.Vaapi
             ? "hwdownload,format=nv12,"
             : string.Empty;
         return
-            $"[0:v]{download}settb=AVTB,setpts=PTS-STARTPTS,{normalise}[dist];" +
-            $"[1:v]{download}settb=AVTB,setpts=PTS-STARTPTS,{referencePreparation}[ref];" +
+            $"[0:v]{download}{distortedTimeline},{normalise}[dist];" +
+            $"[1:v]{download}{referenceTimeline},{referencePreparation}[ref];" +
             "[dist][ref]libvmaf=" +
             $"model=version={model}:" +
             $"n_threads={threads}:n_subsample={frameSubsample}:" +
@@ -193,18 +210,38 @@ public static class QualityScoreCommandBuilder
         QualityMeasurementContext context,
         string logPath,
         string model,
-        int threads)
+        int threads,
+        string distortedTimeline,
+        string referenceTimeline)
     {
         var scale =
             $"scale_cuda={context.ReferenceWidth}:{context.ReferenceHeight}:" +
             "interp_algo=bicubic:format=yuv420p";
         return
-            $"[0:v]settb=AVTB,setpts=PTS-STARTPTS,{scale}[dist];" +
-            $"[1:v]settb=AVTB,setpts=PTS-STARTPTS,{scale}[ref];" +
+            $"[0:v]{distortedTimeline},{scale}[dist];" +
+            $"[1:v]{referenceTimeline},{scale}[ref];" +
             "[dist][ref]libvmaf_cuda=" +
             $"model=version={model}:" +
             $"n_threads={threads}:n_subsample={context.FrameSubsample}:" +
             $"log_fmt=json:log_path={logPath}:shortest=1:repeatlast=0";
+    }
+
+    private static int? InputSeek(int? windowStartSeconds, int? windowDurationSeconds) =>
+        windowStartSeconds is not { } start
+            ? null
+            : windowDurationSeconds is > 0
+                ? Math.Max(0, start - SampleSeekPrerollSeconds)
+                : start;
+
+    private static string TimelinePreparation(
+        int? windowStartSeconds,
+        int? inputStartSeconds,
+        int? windowDurationSeconds)
+    {
+        var alignment = windowStartSeconds is { } start && windowDurationSeconds is > 0
+            ? $"trim=start={start - (inputStartSeconds ?? 0)}:duration={windowDurationSeconds.Value},"
+            : string.Empty;
+        return $"{alignment}settb=AVTB,setpts=PTS-STARTPTS";
     }
 
     private static string DescribePreprocessing(
