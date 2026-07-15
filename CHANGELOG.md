@@ -4,6 +4,11 @@
 
 ### Added
 
+- **A maintained hardware validation matrix.** CPU, NVIDIA NVENC, Intel QSV, Intel/AMD VA-API,
+  hardware decode, VMAF acceleration, and live metrics now have one public evidence table that
+  distinguishes implemented/unit-tested paths from real-host validation. It records known gaps and
+  an exact, non-secret evidence checklist; AMD VA-API and current CUDA VMAF remain honestly pending
+  instead of being implied by device detection or command coverage.
 - **Dedicated library configuration pages and library-owned VMAF policies.** Configure now
   opens a full-page Rules workspace instead of expanding an increasingly dense library card, while
   Candidates and Excluded remain adjacent tabs on the same canonical library URL. Each video

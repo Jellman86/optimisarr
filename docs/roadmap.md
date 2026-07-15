@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-14)
+## Up next (priority order, updated 2026-07-15)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -14,8 +14,8 @@ the replacement workflow is trustworthy.
    and its peer response. Most of the phase has shipped — admin-token auth (with
    end-to-end coverage), the self-describing CI-checked OpenAPI contract, the pipeline
    robustness pass, endpoint modularization, large-library paging, the diagnostics
-   bundle, and the roadmap/docs split are all done. The **hardware validation matrix**
-   below is the remaining open item, gated on access to non-Intel GPUs.
+   bundle, the maintained hardware validation matrix, and the roadmap/docs split are all done.
+   **Real-host AMD VA-API validation** remains gated on access to suitable hardware.
 
    - **Adaptive language selector: done.** The sidebar language menu now measures the available
      viewport space and opens upward or downward as appropriate, with keyboard navigation and
@@ -116,11 +116,11 @@ the replacement workflow is trustworthy.
      capability and the most recent captured ffmpeg logs, so it is self-contained for a support
      ticket. Done.
 
-   - **Hardware validation matrix.** Create a maintained matrix that records CPU,
-     NVIDIA NVENC, Intel QSV, VA-API, hardware decode, and GPU metrics validation by
-     platform, with date, evidence, and known limits. AMD VA-API remains the important
-     open validation target. The matrix should distinguish "implemented and unit-tested"
-     from "validated on real hardware."
+   - **Hardware validation matrix: maintained; AMD evidence pending.** The public
+     [matrix](setup/hardware-validation-matrix.md) records CPU, NVIDIA NVENC, Intel QSV, VA-API,
+     hardware decode, VMAF, and GPU metrics by platform, with date, evidence, known limits, and a
+     repeatable evidence checklist. It distinguishes "implemented and unit-tested" from "validated
+     on real hardware." AMD VA-API remains the important open validation target.
 
    - **Roadmap/docs split: done.** The dense recently-shipped log, current status, and per-phase
      implementation detail moved to [`engineering/history.md`](engineering/history.md), so this

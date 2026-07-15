@@ -105,9 +105,9 @@ no support SLA or promise of a release schedule.
   integrations** (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions,
   notifications, config-and-secrets backup/import).
 
-Still planned (see the [roadmap](docs/roadmap.md)): real-hardware validation for
-AMD VA-API. Intel QSV has been tested on real hardware for both encoding and
-decoding.
+Still planned (see the [roadmap](docs/roadmap.md) and maintained
+[hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation
+for AMD VA-API. Intel QSV has been tested on real hardware for both encoding and decoding.
 
 ## Before you start
 

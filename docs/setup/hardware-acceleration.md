@@ -1,5 +1,8 @@
 # Hardware acceleration
 
+See the maintained [hardware validation matrix](hardware-validation-matrix.md) for the distinction
+between automated implementation coverage and paths proven on a physical GPU.
+
 Use **Settings → Tools** after deployment. Optimisarr verifies each available
 encoder with a real test encode; a GPU device node alone is not sufficient.
 
