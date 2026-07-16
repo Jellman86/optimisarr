@@ -50,6 +50,9 @@ HDR. Stop if the picture looks washed out or tone-mapped.
 
 Each trial asks whether X matches A or B. A/B/X assignments are randomised, and quality settings,
 encoder details, and estimated savings remain hidden until the check is complete.
+The counter always shows the session's 25-trial ceiling. Most checks finish sooner; if conflicting
+answers reach that ceiling, Optimisarr stops without recommending a setting rather than prolonging
+the test or treating uncertain evidence as a result.
 
 ![Cropped video comparison panel showing the shared timeline, A/B/X switcher, and answer controls](../images/optimisarr-personal-quality-video-dark.png)
 
@@ -80,10 +83,9 @@ or source rather than guessing.
 
 ## Reveal and apply the result
 
-After the screening and confirmation trials:
+After the screening and confirmation trials, Optimisarr reveals the result automatically:
 
-1. Select **Reveal result** to see the recommendation, actual setting, estimated saving, and answer
-   count.
+1. Review the recommendation, actual setting, estimated saving, and answer count.
 2. Read the result caveat. “No reliable difference” describes only this short test, source,
    equipment, observer, and environment.
 3. Select **Use this quality for the library** only when you want to replace that library's saved

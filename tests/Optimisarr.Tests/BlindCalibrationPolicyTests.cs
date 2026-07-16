@@ -136,4 +136,15 @@ public sealed class BlindCalibrationPolicyTests
     {
         Assert.Equal(expected, BlindCalibrationPolicy.JudgeConfirmation(correct, total));
     }
+
+    [Theory]
+    [InlineData(24, false)]
+    [InlineData(25, true)]
+    [InlineData(26, true)]
+    public void Session_trial_limit_bounds_repeated_inconclusive_quality_stages(
+        int total,
+        bool expected)
+    {
+        Assert.Equal(expected, BlindCalibrationPolicy.HasReachedTrialLimit(total));
+    }
 }

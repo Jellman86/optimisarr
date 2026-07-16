@@ -18,9 +18,9 @@ const library = {
 
 type CalibrationMediaKind = 'Video' | 'Audio' | 'Image'
 
-function session(mediaKind: CalibrationMediaKind = 'Video') {
+function session(mediaKind: CalibrationMediaKind = 'Video', trialNumber = 1) {
   const id = '11111111-1111-1111-1111-111111111111'
-  const trialId = '22222222-2222-2222-2222-222222222222'
+  const trialId = `22222222-2222-2222-2222-${String(trialNumber).padStart(12, '0')}`
   const content = (slot: string) => `/api/calibration/${id}/trials/${trialId}/content/${slot}`
   return {
     id,
@@ -31,7 +31,8 @@ function session(mediaKind: CalibrationMediaKind = 'Video') {
     status: 'Screening',
     preparationProgress: 1, preparationState: 'Working', error: null, result: null,
     trial: {
-      id: trialId, phase: 'Screening', number: 1, sampleNumber: 1, sampleCount: 3,
+      id: trialId, phase: 'Screening', number: trialNumber, maximumNumber: 25,
+      sampleNumber: ((trialNumber - 1) % 3) + 1, sampleCount: 3,
       durationSeconds: mediaKind === 'Image' ? 0 : 12,
       a: { name: 'A', url: content('A'), startSeconds: 0, gainDb: 0 },
       b: { name: 'B', url: content('B'), startSeconds: mediaKind === 'Video' ? 0.751 : 0, gainDb: 0 },
@@ -40,7 +41,12 @@ function session(mediaKind: CalibrationMediaKind = 'Video') {
   }
 }
 
-async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
+async function mockApp(
+  page: Page,
+  mediaKind: CalibrationMediaKind = 'Video',
+  completeOnAnswer = false,
+) {
+  let trialNumber = 1
   const currentLibrary = {
     ...library,
     mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film',
@@ -73,7 +79,26 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
       mediaKind,
       isHdr: false,
     }])
-    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, session(mediaKind))
+    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, session(mediaKind, trialNumber))
+    if (path.endsWith('/answers') && route.request().method() === 'POST') {
+      if (completeOnAnswer) {
+        return json(route, { ...session(mediaKind, trialNumber), status: 'Complete', trial: null })
+      }
+      trialNumber++
+      return json(route, session(mediaKind, trialNumber))
+    }
+    if (path.endsWith('/reveal') && route.request().method() === 'POST') {
+      return json(route, {
+        ...session(mediaKind, trialNumber),
+        status: 'Revealed',
+        trial: null,
+        result: {
+          recommendedQuality: 27, encoder: 'libx265', qualityMode: 'CRF', effectiveQuality: 27,
+          estimatedSavingPercent: 42.5, correctAnswers: 8, totalAnswers: 13,
+          outcome: 'NoReliableDifference', applied: false,
+        },
+      })
+    }
     if (path.includes('/content/')) return mediaKind === 'Image'
       ? route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') })
       : route.fulfill({ status: 200, contentType: 'video/mp4', body: '' })
@@ -84,6 +109,14 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
 
 function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+}
+
+async function suppressMockMediaErrors(page: Page) {
+  await page.addInitScript(() => {
+    document.addEventListener('error', (event) => {
+      if (event.target instanceof HTMLMediaElement) event.stopImmediatePropagation()
+    }, true)
+  })
 }
 
 test('blind calibration hides settings, supports keyboard switching, and traps focus on mobile', async ({ page }) => {
@@ -130,6 +163,80 @@ test('blind calibration hides settings, supports keyboard switching, and traps f
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toBeHidden()
   await expect(trigger).toBeFocused()
+})
+
+test('video controls remain connected when the next trial replaces the media', async ({ page }) => {
+  await suppressMockMediaErrors(page)
+  await mockApp(page)
+  await page.goto('/#/libraries/1/configure')
+
+  await page.getByRole('button', { name: 'Personal quality check' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Blind quality calibration' })
+  await dialog.getByRole('button', { name: 'Prepare blind samples' }).click()
+  const play = dialog.getByRole('button', { name: 'Play sample' })
+  await expect(play).toBeEnabled()
+
+  const answer = dialog.getByRole('button', { name: 'X matches A' })
+  await answer.click()
+
+  await expect(dialog.getByText('Trial 2 of 25')).toBeVisible()
+  await expect(play).toBeEnabled()
+  await expect(dialog.locator('video').first()).toHaveAttribute('src', /000000000002\/content\/A$/)
+})
+
+test('switching waits for the matching video frame before playback resumes', async ({ page }) => {
+  await mockApp(page)
+  await page.goto('/#/libraries/1/configure')
+
+  await page.getByRole('button', { name: 'Personal quality check' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Blind quality calibration' })
+  await dialog.getByRole('button', { name: 'Prepare blind samples' }).click()
+  const videos = dialog.locator('video')
+  await expect(videos).toHaveCount(3)
+  await videos.evaluateAll((elements) => {
+    elements.forEach((element, index) => {
+      const video = element as HTMLVideoElement
+      let currentTime = index === 0 ? 2 : 0
+      let paused = index !== 0
+      let seeking = false
+      Object.defineProperty(video, 'currentTime', {
+        configurable: true,
+        get: () => currentTime,
+        set: (value: number) => { currentTime = value; seeking = true },
+      })
+      Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
+      Object.defineProperty(video, 'seeking', { configurable: true, get: () => seeking })
+      video.pause = () => { paused = true }
+      video.play = async () => {
+        paused = false
+        video.dataset.playCalls = String(Number(video.dataset.playCalls ?? '0') + 1)
+      }
+      video.addEventListener('seeked', () => { seeking = false })
+    })
+  })
+
+  await dialog.getByRole('button', { name: 'B', exact: true }).click()
+
+  await expect(videos.nth(1)).toHaveJSProperty('currentTime', 2.751)
+  expect(await videos.nth(1).getAttribute('data-play-calls')).toBeNull()
+  await videos.nth(1).dispatchEvent('seeked')
+  await expect(videos.nth(1)).toHaveAttribute('data-play-calls', '1')
+})
+
+test('the final answer reveals the result without another hidden completion step', async ({ page }) => {
+  await suppressMockMediaErrors(page)
+  await mockApp(page, 'Video', true)
+  await page.goto('/#/libraries/1/configure')
+
+  await page.getByRole('button', { name: 'Personal quality check' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Blind quality calibration' })
+  await dialog.getByRole('button', { name: 'Prepare blind samples' }).click()
+  const answer = dialog.getByRole('button', { name: 'X matches A' })
+  await answer.click()
+
+  await expect(dialog.getByRole('heading', { name: 'Your calibration result' })).toBeVisible()
+  await expect(dialog.getByText('CRF/CQ 27')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Reveal result' })).toHaveCount(0)
 })
 
 test('image calibration keeps one zoomed viewport while switching on mobile', async ({ page }) => {

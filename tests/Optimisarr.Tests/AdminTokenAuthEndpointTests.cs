@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
+using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
 using Optimisarr.Data;
 
@@ -350,6 +351,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
         var initialTrial = session["trial"]!.AsObject();
+        Assert.Equal(BlindCalibrationPolicy.MaximumTrials, initialTrial["maximumNumber"]!.GetValue<int>());
         Assert.Equal(
             "candidate-clip",
             await client.GetStringAsync(initialTrial["a"]!["url"]!.GetValue<string>()));

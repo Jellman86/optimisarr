@@ -420,6 +420,7 @@ export type CalibrationTrial = {
   id: string
   phase: 'Screening' | 'Confirmation'
   number: number
+  maximumNumber: number
   sampleNumber: number
   sampleCount: number
   durationSeconds: number

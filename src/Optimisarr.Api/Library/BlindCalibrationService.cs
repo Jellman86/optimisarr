@@ -26,6 +26,7 @@ public sealed record CalibrationTrialDto(
     Guid Id,
     string Phase,
     int Number,
+    int MaximumNumber,
     int SampleNumber,
     int SampleCount,
     int DurationSeconds,
@@ -337,6 +338,14 @@ internal sealed class BlindCalibrationService(
                     session.StageAnswers.Count(answer => answer),
                     session.StageAnswers.Count);
             Advance(session, judgement);
+            if (session.Status is SessionStatus.Screening or SessionStatus.Confirming
+                && BlindCalibrationPolicy.HasReachedTrialLimit(session.AllAnswers.Count))
+            {
+                // Conflicting evidence can otherwise repeat the extended confirmation stage at
+                // several quality levels. End conservatively instead of exhausting the observer.
+                session.Status = SessionStatus.Complete;
+                session.StageAnswers.Clear();
+            }
             if (session.Status is SessionStatus.Screening or SessionStatus.Confirming)
             {
                 session.CurrentTrial = CreateTrial(session);
@@ -758,6 +767,7 @@ internal sealed class BlindCalibrationService(
             trial.Id,
             session.Status == SessionStatus.Screening ? "Screening" : "Confirmation",
             trial.Number,
+            BlindCalibrationPolicy.MaximumTrials,
             trial.Sample.Index + 1,
             session.Plan.Samples.Count,
             trial.Sample.DurationSeconds,

@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **Blind quality checks now stay playable, frame-aligned, and finite across trials.** Each new
+  answer remounts and reconnects its A/B/X media players, so video does not stop after the first
+  comparison. Switching now waits for the destination stream to seek to the same source frame
+  before resuming playback, removing the timing jump that could reveal the original. The adaptive
+  check shows a 25-trial ceiling and stops conservatively at that limit if repeated inconclusive
+  stages still cannot support a recommendation; a conclusive final answer reveals its result
+  immediately instead of requiring another hidden completion step.
 - **Personal quality checks now explain queue waits instead of appearing frozen at 0%.** If all
   processing slots are occupied, calibration preparation shows an indeterminate waiting state and
   says it will start automatically. Once a worker is available, the panel returns to real sample

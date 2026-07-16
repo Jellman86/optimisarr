@@ -355,7 +355,7 @@ the replacement workflow is trustworthy.
      10 trials (20 only when inconclusive). The one-sided decision thresholds are deliberately
      conservative; a miss is reported only as "no reliable difference found."
    - **Bias and interaction controls are shipped.** The setting, encoder and saving remain hidden
-     until Reveal. A/B/X share one viewport and relative playback position, support keyboard and
+     until the final answer. A/B/X share one viewport and relative playback position, support keyboard and
      touch switching, and native playback fails closed if any sample cannot be decoded. Applying
      the recommendation is a separate, explicit action and is refused if the library's relevant
      settings changed during the session.

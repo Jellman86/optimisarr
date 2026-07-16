@@ -22,6 +22,7 @@ public static class BlindCalibrationPolicy
 {
     public const int SampleSeconds = 12;
     public const int AudioSampleSeconds = 15;
+    public const int MaximumTrials = 25;
 
     public static bool CanCalibrateVideo(
         bool isHdr,
@@ -163,4 +164,6 @@ public static class BlindCalibrationPolicy
             ? CalibrationJudgement.Distinguishable
             : CalibrationJudgement.NoReliableDifference;
     }
+
+    public static bool HasReachedTrialLimit(int totalAnswers) => totalAnswers >= MaximumTrials;
 }

@@ -212,7 +212,7 @@ export const en = {
     failed: 'Calibration samples could not be prepared',
     screening: 'Finding your boundary',
     confirming: 'Confirming the result',
-    trial_progress: 'Trial {number}',
+    trial_progress: 'Trial {number} of {maximum}',
     sample_progress: 'scene {current} of {total}',
     playback_error: 'This browser could not play one of the native comparison streams. Nothing has been applied; try another browser or source.',
     switch_label: 'Blind comparison streams',

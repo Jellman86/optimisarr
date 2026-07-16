@@ -25,6 +25,8 @@
   let playbackError = $state(false)
   let playbackPosition = $state(0)
   let playing = $state(false)
+  let switching = $state(false)
+  let switchVersion = 0
   let hdrDisplaySupported = $state(false)
   let hdrViewingConfirmed = $state(false)
   let imageZoom = $state(1)
@@ -191,30 +193,67 @@
     return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, '0')}`
   }
 
-  function switchTo(next: 'A' | 'B' | 'X') {
+  function seekToMatchingFrame(player: HTMLMediaElement, targetSeconds: number): Promise<void> {
+    if (Math.abs(player.currentTime - targetSeconds) <= 0.02) return Promise.resolve()
+    return new Promise((resolve) => {
+      let timeout: ReturnType<typeof setTimeout> | null = null
+      const finish = () => {
+        player.removeEventListener('seeked', finish)
+        if (timeout) clearTimeout(timeout)
+        resolve()
+      }
+      player.addEventListener('seeked', finish)
+      player.currentTime = targetSeconds
+      if (!player.seeking && Math.abs(player.currentTime - targetSeconds) <= 0.05) {
+        queueMicrotask(finish)
+      } else {
+        timeout = setTimeout(finish, 2_000)
+      }
+    })
+  }
+
+  async function switchTo(next: 'A' | 'B' | 'X') {
     if (session?.mediaKind === 'Image') {
       activeSlot = next
       return
     }
+    if (next === activeSlot) {
+      if (switching) {
+        switchVersion++
+        switching = false
+      }
+      return
+    }
+    const version = ++switchVersion
     const currentPlayer = players[activeSlot]
     const currentSource = slot(activeSlot)
     const nextPlayer = players[next]
     const nextSource = slot(next)
     const wasPlaying = currentPlayer ? !currentPlayer.paused : false
     const relativeTime = currentPlayer && currentSource
-      ? Math.max(0, currentPlayer.currentTime - currentSource.startSeconds)
-      : 0
-    currentPlayer?.pause()
-    if (nextPlayer && nextSource) {
-      nextPlayer.currentTime = nextSource.startSeconds + relativeTime
-      if (wasPlaying) void nextPlayer.play().catch(() => {
-        playing = false
-        playbackError = true
-      })
-    }
+      ? Math.max(0, Math.min(
+          session?.trial?.durationSeconds ?? 0,
+          currentPlayer.currentTime - currentSource.startSeconds,
+        ))
+      : playbackPosition
+    for (const player of Object.values(players)) player?.pause()
     playbackPosition = relativeTime
-    playing = wasPlaying
-    activeSlot = next
+    playing = false
+    if (nextPlayer && nextSource) {
+      switching = true
+      await seekToMatchingFrame(nextPlayer, nextSource.startSeconds + relativeTime)
+      if (version !== switchVersion) return
+      activeSlot = next
+      switching = false
+      if (wasPlaying) {
+        await nextPlayer.play().catch(() => {
+          playing = false
+          playbackError = true
+        })
+      }
+    } else {
+      activeSlot = next
+    }
   }
 
   function setImageZoom(next: number) {
@@ -246,6 +285,8 @@
     if (!session?.trial || busy) return
     busy = true
     error = null
+    switchVersion++
+    switching = false
     for (const player of Object.values(players)) player?.pause()
     try {
       session = await api.answerCalibration(session.id, session.trial.id, choice)
@@ -257,6 +298,13 @@
       imagePanX = 0
       imagePanY = 0
       playbackError = false
+      if (session.status === 'Complete') {
+        try {
+          session = await api.revealCalibration(session.id)
+        } catch (err) {
+          error = err instanceof Error ? err.message : i18n.m.calibration.reveal_error
+        }
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.calibration.answer_error
     } finally {
@@ -306,6 +354,8 @@
       ))
     }
     for (const candidate of Object.values(players)) candidate?.pause()
+    switchVersion++
+    switching = false
     playing = false
     minimized = true
     document.body.style.overflow = previousOverflow
@@ -504,10 +554,11 @@
         </div>
       {:else if session.trial}
         {@const trial = session.trial}
+        {#key trial.id}
         <div class="mx-auto max-w-3xl">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <span class="font-medium">{trial.phase === 'Screening' ? i18n.m.calibration.screening : i18n.m.calibration.confirming}</span>
-            <span class="text-slate-500">{t(i18n.m.calibration.trial_progress, { number: trial.number })} · {t(i18n.m.calibration.sample_progress, { current: trial.sampleNumber, total: trial.sampleCount })}</span>
+            <span class="text-slate-500">{t(i18n.m.calibration.trial_progress, { number: trial.number, maximum: trial.maximumNumber })} · {t(i18n.m.calibration.sample_progress, { current: trial.sampleNumber, total: trial.sampleCount })}</span>
           </div>
           <div
             role="group"
@@ -577,7 +628,7 @@
               <button
                 class="btn min-h-11 min-w-11 p-2"
                 type="button"
-                disabled={playbackError || !players[activeSlot]}
+                disabled={playbackError || switching || !players[activeSlot]}
                 aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample}
                 aria-pressed={playing}
                 onclick={togglePlayback}
@@ -589,7 +640,7 @@
                 max={trial.durationSeconds}
                 step="0.01"
                 value={playbackPosition}
-                disabled={playbackError || !players[activeSlot]}
+                disabled={playbackError || switching || !players[activeSlot]}
                 aria-label={i18n.m.calibration.sample_position}
                 oninput={seekPlayback}
               />
@@ -623,11 +674,12 @@
           <div class="mt-6 border-t border-slate-200 pt-5 text-center dark:border-slate-700">
             <p class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.calibration.question}</p>
             <div class="mt-3 flex flex-col justify-center gap-2 sm:flex-row">
-              <button class="btn btn-primary min-h-11 min-w-40" type="button" disabled={busy || playbackError} onclick={() => answer('A')}>{i18n.m.calibration.matches_a}</button>
-              <button class="btn btn-primary min-h-11 min-w-40" type="button" disabled={busy || playbackError} onclick={() => answer('B')}>{i18n.m.calibration.matches_b}</button>
+              <button class="btn btn-primary min-h-11 min-w-40" type="button" disabled={busy || playbackError || switching} onclick={() => answer('A')}>{i18n.m.calibration.matches_a}</button>
+              <button class="btn btn-primary min-h-11 min-w-40" type="button" disabled={busy || playbackError || switching} onclick={() => answer('B')}>{i18n.m.calibration.matches_b}</button>
             </div>
           </div>
         </div>
+        {/key}
       {:else if session.status === 'Complete'}
         <div class="mx-auto max-w-xl py-10 text-center">
           <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">{i18n.m.calibration.complete}</h3>
