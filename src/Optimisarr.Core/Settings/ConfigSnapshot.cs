@@ -57,7 +57,8 @@ public sealed record LibrarySnapshot(
     bool AutoReplace = false,
     bool? SkipEfficientSources = null,
     bool? OptimiseDolbyVision = null,
-    string? KeepAudioLanguages = null);
+    string? KeepAudioLanguages = null,
+    string? KeepSubtitleLanguages = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

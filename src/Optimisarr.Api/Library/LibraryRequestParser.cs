@@ -27,6 +27,7 @@ internal readonly record struct ParsedLibrary(
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
     string? KeepAudioLanguages,
+    string? KeepSubtitleLanguages,
     bool ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -151,9 +152,15 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        if (!TryParseKeepAudioLanguages(request.KeepAudioLanguages, out var keepAudioLanguages))
+        if (!TryParseLanguageList(request.KeepAudioLanguages, out var keepAudioLanguages))
         {
             error = "Audio languages must be comma-separated ISO 639 codes of 2–3 letters (e.g. \"eng, jpn\").";
+            return false;
+        }
+
+        if (!TryParseLanguageList(request.KeepSubtitleLanguages, out var keepSubtitleLanguages))
+        {
+            error = "Subtitle languages must be comma-separated ISO 639 codes of 2–3 letters (e.g. \"eng, jpn\").";
             return false;
         }
 
@@ -243,6 +250,7 @@ internal static class LibraryRequestParser
             request.VideoAudioBitrateKbps,
             request.DownmixToStereo ?? false,
             keepAudioLanguages,
+            keepSubtitleLanguages,
             request.ReencodeLossyAudio ?? false,
             targetImageFormat is null ? null : targetImageFormat.ToLowerInvariant(),
             request.ImageQuality,
@@ -268,9 +276,9 @@ internal static class LibraryRequestParser
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
 
-    // Kept audio languages are stored as a canonical comma-separated list of lower-case ISO 639
-    // codes ("eng, jpn"). Blank input means "keep every track" and stores null.
-    private static bool TryParseKeepAudioLanguages(string? value, out string? normalised)
+    // Kept languages (audio and subtitle alike) are stored as a canonical comma-separated list
+    // of lower-case ISO 639 codes ("eng, jpn"). Blank input means "keep every track" and stores null.
+    private static bool TryParseLanguageList(string? value, out string? normalised)
     {
         normalised = null;
         if (string.IsNullOrWhiteSpace(value))

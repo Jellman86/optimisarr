@@ -54,4 +54,20 @@ public sealed class LibraryRuleResolutionTests
 
         Assert.Empty(rules.KeepAudioLanguages);
     }
+
+    [Fact]
+    public void Stored_kept_subtitle_languages_resolve_into_the_rules()
+    {
+        var library = new Library
+        {
+            Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc,
+            KeepSubtitleLanguages = "eng, jpn"
+        };
+
+        var rules = LibraryRuleResolution.Resolve(library);
+
+        Assert.Equal(new[] { "eng", "jpn" }, rules.KeepSubtitleLanguages);
+        Assert.Empty(LibraryRuleResolution.Resolve(
+            new Library { Name = "F", Path = "/f", RuleProfile = RuleProfile.ConservativeHevc }).KeepSubtitleLanguages);
+    }
 }
