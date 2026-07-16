@@ -24,8 +24,29 @@ public sealed class QualityScoreParserTests
         Assert.Equal(95.3, scores.VmafMean);
         Assert.Equal(94.8, scores.VmafHarmonicMean);
         Assert.Equal(80.2, scores.VmafMin);
+        Assert.Equal(96.0, scores.VmafFifthPercentile);
+        Assert.Equal(1, scores.FrameCount);
         Assert.Equal(45.1, scores.PsnrYMean);
         Assert.Equal(0.997, scores.SsimMean);
+    }
+
+    [Fact]
+    public void Calculates_the_fifth_percentile_from_per_frame_scores()
+    {
+        var frames = string.Join(",", Enumerable.Range(1, 100)
+            .Select(score => $$"""{ "frameNum": {{score - 1}}, "metrics": { "vmaf": {{score}} } }"""));
+        var json = $$"""
+        {
+          "frames": [{{frames}}],
+          "pooled_metrics": { "vmaf": { "min": 1, "mean": 50.5, "harmonic_mean": 19.27 } }
+        }
+        """;
+
+        var scores = QualityScoreParser.Parse(json);
+
+        Assert.NotNull(scores);
+        Assert.Equal(5.95, scores.VmafFifthPercentile!.Value, precision: 2);
+        Assert.Equal(100, scores.FrameCount);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -27,6 +28,9 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("PUT", "/api/settings")]
     [InlineData("GET", "/api/settings/export")]   // contains provider secrets
     [InlineData("POST", "/api/settings/import")]
+    [InlineData("GET", "/api/setup")]
+    [InlineData("GET", "/api/setup/readiness")]
+    [InlineData("POST", "/api/setup/restart")]
     [InlineData("POST", "/api/libraries")]
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
@@ -71,6 +75,26 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     }
 
     [Fact]
+    public async Task A_valid_bearer_request_establishes_an_httponly_media_session()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using var login = await client.GetAsync("/api/settings");
+        var setCookie = login.Headers.GetValues("Set-Cookie").Single();
+        var cookiePair = setCookie.Split(';', 2)[0];
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/settings");
+        request.Headers.Add("Cookie", cookiePair);
+        client.DefaultRequestHeaders.Authorization = null;
+        using var response = await client.SendAsync(request);
+
+        Assert.DoesNotContain(TokenedApi.Token, setCookie);
+        Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task A_wrong_token_is_rejected()
     {
         var client = _api.CreateClient();
@@ -90,6 +114,41 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"required\":true", body);
+    }
+
+    [Fact]
+    public async Task Setup_progress_is_resumable_ordered_idempotent_and_restartable()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        using var restartFirst = await client.PostAsync("/api/setup/restart", content: null);
+        Assert.Equal(HttpStatusCode.OK, restartFirst.StatusCode);
+
+        using var first = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep = 1 });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Contains("\"currentStep\":2", await first.Content.ReadAsStringAsync());
+
+        using var repeated = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep = 1 });
+        Assert.Equal(HttpStatusCode.OK, repeated.StatusCode);
+
+        using var skipped = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep = 3 });
+        Assert.Equal(HttpStatusCode.BadRequest, skipped.StatusCode);
+        Assert.Contains("setup.step.invalid", await skipped.Content.ReadAsStringAsync());
+
+        foreach (var completedStep in new[] { 2, 3, 4 })
+        {
+            using var progress = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep });
+            Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        }
+
+        using var completed = await client.PostAsync("/api/setup/complete", content: null);
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        Assert.Contains("\"completed\":true", await completed.Content.ReadAsStringAsync());
+
+        using var restart = await client.PostAsync("/api/setup/restart", content: null);
+        Assert.Equal(HttpStatusCode.OK, restart.StatusCode);
+        Assert.Contains("\"currentStep\":1", await restart.Content.ReadAsStringAsync());
     }
 
     /// <summary>

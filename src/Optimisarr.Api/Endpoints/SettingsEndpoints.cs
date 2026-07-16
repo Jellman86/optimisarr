@@ -64,12 +64,6 @@ internal static class SettingsEndpoints
                 return ApiErrors.BadRequest("settings.verificationDurationTolerance.nonNegative", "Verification duration tolerance cannot be negative.");
             }
 
-            if (request.VerificationMinimumVmafHarmonicMean is < 0 or > 100
-                || request.VerificationMinimumVmafMin is < 0 or > 100)
-            {
-                return ApiErrors.BadRequest("settings.vmaf.range", "VMAF thresholds must be between 0 and 100.");
-            }
-
             if (request.VerificationMaxLoudnessDriftLufs < 0)
             {
                 return ApiErrors.BadRequest("settings.loudnessDrift.nonNegative", "Loudness drift tolerance cannot be negative.");
@@ -107,16 +101,19 @@ internal static class SettingsEndpoints
                     request.VerificationRequireAudioRetained,
                     request.VerificationRequireSubtitlesRetained,
                     request.VerificationRequireSizeReduction,
-                    request.VerificationQualityGateEnabled,
-                    request.VerificationMinimumVmafHarmonicMean,
-                    request.VerificationMinimumVmafMin,
+                    VerificationPolicy.Default.QualityGateEnabled,
+                    VerificationPolicy.Default.MinimumVmafHarmonicMean,
+                    VerificationPolicy.Default.MinimumVmafMin,
+                    VerificationPolicy.Default.MinimumVmafCatastrophicMin,
                     request.VerificationAudioLoudnessGateEnabled,
                     request.VerificationMaxLoudnessDriftLufs,
                     request.VerificationAudioClippingGateEnabled,
                     request.VerificationMaxTruePeakDbtp,
                     request.VerificationImageQualityGateEnabled,
-                request.VerificationMinimumImageSsim,
-                request.VerificationImageMetadataGateEnabled),
+                    request.VerificationMinimumImageSsim,
+                    request.VerificationImageMetadataGateEnabled,
+                    VerificationPolicy.Default.ClipVmafEnabled,
+                    VerificationPolicy.Default.VmafFrameSubsample),
                 request.ReplacementAllowCrossFilesystem,
                 request.DryRunMode,
                 request.ReplacementQuarantineRetentionDays), cancellationToken);

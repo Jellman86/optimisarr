@@ -99,6 +99,14 @@ public sealed class Library
     public bool DownmixToStereo { get; set; }
 
     /// <summary>
+    /// Comma-separated ISO 639 codes of the audio languages a video job keeps (e.g. "eng, jpn");
+    /// tracks in any other language are removed from the output. Null (the default) keeps every
+    /// track. Tracks with an unknown language are always kept, and when no track matches a kept
+    /// language nothing is removed, so the output never loses all its audio.
+    /// </summary>
+    public string? KeepAudioLanguages { get; set; }
+
+    /// <summary>
     /// When true, already-lossy audio is also eligible for re-encoding to the target codec, but
     /// only when its source bitrate is known to exceed the target enough to save space. Defaults
     /// to false: the conservative behaviour re-encodes only lossless sources.
@@ -128,13 +136,26 @@ public sealed class Library
     public int ImageDownscaleValue { get; set; }
 
     /// <summary>
-    /// Per-library overrides for the perceptual-quality (VMAF) gate, letting an
+    /// Per-library policy for the perceptual-quality (VMAF) gate, letting an
     /// "archive" library demand near-lossless quality while a "space-saver" accepts
-    /// more. Null uses the global threshold; only applied when the gate is enabled.
+    /// more. Null uses the built-in default for legacy/API compatibility.
     /// </summary>
     public double? MinVmafHarmonicMean { get; set; }
 
+    /// <summary>Legacy property name retained for config/database compatibility; now the fifth-percentile floor.</summary>
     public double? MinVmafMin { get; set; }
+
+    /// <summary>Null uses the built-in off state; otherwise explicitly enables or disables VMAF for this library.</summary>
+    public bool? VmafQualityGateEnabled { get; set; }
+
+    /// <summary>Per-library catastrophic single-frame floor. Null uses the built-in default.</summary>
+    public double? MinVmafCatastrophicMin { get; set; }
+
+    /// <summary>Null uses full-file sampling; true uses three representative windows.</summary>
+    public bool? ClipVmafEnabled { get; set; }
+
+    /// <summary>Null scores every frame; otherwise scores every Nth frame.</summary>
+    public int? VmafFrameSubsample { get; set; }
 
     /// <summary>
     /// When true, a completed output is moved into <see cref="TargetFolder"/> (mirroring

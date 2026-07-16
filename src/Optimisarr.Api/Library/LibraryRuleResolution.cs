@@ -1,4 +1,5 @@
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 
 namespace Optimisarr.Api.Library;
@@ -46,6 +47,9 @@ internal static class LibraryRuleResolution
             VideoAudioCodec = library.VideoAudioCodec,
             VideoAudioBitrateKbps = library.VideoAudioBitrateKbps,
             DownmixToStereo = library.DownmixToStereo,
+            KeepAudioLanguages = string.IsNullOrWhiteSpace(library.KeepAudioLanguages)
+                ? null
+                : AudioTrackSelection.ParseLanguageList(library.KeepAudioLanguages),
             ReencodeLossyAudio = library.ReencodeLossyAudio,
             TargetImageFormat = library.TargetImageFormat,
             ImageQuality = library.ImageQuality,

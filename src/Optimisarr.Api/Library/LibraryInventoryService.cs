@@ -92,6 +92,7 @@ public sealed class LibraryInventoryService(
                 file.Width = null;
                 file.Height = null;
                 file.AudioCodecs = null;
+                file.AudioLanguages = null;
                 file.AudioTrackCount = null;
                 file.MaxAudioChannels = 0;
                 file.AudioBitrateKbps = null;
@@ -226,6 +227,11 @@ public sealed class LibraryInventoryService(
             file.BitsPerRawSample = result.BitsPerRawSample;
             file.AttachedPictureCount = result.AttachedPictureCount;
             file.AudioCodecs = result.AudioCodecs.Count > 0 ? string.Join(", ", result.AudioCodecs) : null;
+            // "und" stands in for an untagged track so the stored order still lines up with
+            // the file's audio-relative stream indexes.
+            file.AudioLanguages = result.AudioTracks.Count > 0
+                ? string.Join(", ", result.AudioTracks.Select(track => track.Language ?? "und"))
+                : null;
             file.AudioTrackCount = result.AudioTrackCount;
             file.MaxAudioChannels = result.MaxAudioChannels;
             file.AudioBitrateKbps = result.AudioBitrateKbps;

@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales",
-    "check:locales": "node scripts/check-locales.mjs"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales && npm run test:setup",
+    "check:locales": "node scripts/check-locales.mjs",
+    "test:setup": "node --test src/lib/setup-library-readiness.test.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.2.0",

@@ -5,22 +5,42 @@ namespace Optimisarr.Core.Tools;
 public sealed class ToolDetectionService(
     string? ffmpegCommand = null,
     string? vmafFfmpegCommand = null,
-    string? ffprobeCommand = null)
+    string? ffprobeCommand = null,
+    string? cudaVmafFfmpegCommand = null)
 {
     private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
     private readonly string _vmafFfmpeg = string.IsNullOrWhiteSpace(vmafFfmpegCommand) ? "ffmpeg" : vmafFfmpegCommand;
     private readonly string _ffprobe = string.IsNullOrWhiteSpace(ffprobeCommand) ? "ffprobe" : ffprobeCommand;
+    private readonly string? _cudaVmafFfmpeg = string.IsNullOrWhiteSpace(cudaVmafFfmpegCommand)
+        ? null
+        : cudaVmafFfmpegCommand;
 
     public async Task<IReadOnlyList<ToolCheckResult>> DetectAsync(CancellationToken cancellationToken)
     {
-        var checks = new[]
+        var checks = new List<Task<ToolCheckResult>>
         {
             DetectVersionAsync("FFmpeg", _ffmpeg, required: true, cancellationToken),
             DetectVmafAsync(_vmafFfmpeg, cancellationToken),
             DetectVersionAsync("ffprobe", _ffprobe, required: true, cancellationToken)
         };
+        if (_cudaVmafFfmpeg is not null)
+        {
+            checks.Add(DetectCudaVmafAsync(_cudaVmafFfmpeg, cancellationToken));
+        }
 
         return await Task.WhenAll(checks);
+    }
+
+    private static async Task<ToolCheckResult> DetectCudaVmafAsync(
+        string command,
+        CancellationToken cancellationToken)
+    {
+        const string name = "FFmpeg (CUDA VMAF)";
+        return await RunAsync(name, command, required: false, ["-hide_banner", "-filters"], output =>
+            FfmpegFilterParser.Contains(output, "libvmaf_cuda")
+                ? new ToolCheckResult(name, command, true, false, "libvmaf_cuda filter available; GPU checked at measurement time", null)
+                : new ToolCheckResult(name, command, false, false, null, "libvmaf_cuda filter is not available"),
+            cancellationToken);
     }
 
     private static async Task<ToolCheckResult> DetectVersionAsync(

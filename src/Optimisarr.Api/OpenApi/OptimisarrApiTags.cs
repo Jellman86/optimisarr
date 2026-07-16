@@ -9,13 +9,14 @@ namespace Optimisarr.Api.OpenApi;
 internal static class OptimisarrApiTags
 {
     public static readonly string[] AllTags =
-        ["System", "Settings", "Libraries", "Inventory", "Queue", "Replacements", "Integrations", "Realtime"];
+        ["System", "Setup", "Settings", "Libraries", "Inventory", "Queue", "Replacements", "Integrations", "Realtime"];
 
     public static string TagFor(string path)
     {
         var p = path.StartsWith('/') ? path : "/" + path;
 
         if (p.StartsWith("/hubs", StringComparison.OrdinalIgnoreCase)) return "Realtime";
+        if (p.StartsWith("/api/setup", StringComparison.OrdinalIgnoreCase)) return "Setup";
         if (p.StartsWith("/api/settings", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/queue", StringComparison.OrdinalIgnoreCase)) return "Settings";
         if (p.StartsWith("/api/libraries", StringComparison.OrdinalIgnoreCase)

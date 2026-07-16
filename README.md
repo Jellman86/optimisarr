@@ -105,16 +105,16 @@ no support SLA or promise of a release schedule.
   integrations** (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions,
   notifications, config-and-secrets backup/import).
 
-Still planned (see the [roadmap](docs/roadmap.md)): real-hardware validation for
-AMD VA-API. Intel QSV has been tested on real hardware for both encoding and
-decoding.
+Still planned (see the [roadmap](docs/roadmap.md) and maintained
+[hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation
+for AMD VA-API. Intel QSV has been tested on real hardware for both encoding and decoding.
 
 ## Before you start
 
 - Docker Engine with the Compose plugin.
 - Read and write access to the media folders you mount into the container.
-- `/data`, `/work`, and `/trash` on the same filesystem if you want atomic
-  replacement moves.
+- One host storage root mounted at `/data`, with media, work, and quarantine beneath it, if you
+  want atomic replacement moves.
 - A backup of media that matters to you. Quarantine and rollback are useful,
   but they are not a backup strategy.
 
@@ -123,8 +123,8 @@ decoding.
 The image is published to GHCR on every push to `dev`:
 
 ```bash
-mkdir -p ./optimisarr-config /path/to/work /path/to/trash
-sudo chown -R 1000:1000 ./optimisarr-config /path/to/work /path/to/trash
+mkdir -p ./optimisarr-config /path/to/storage/{media,.optimisarr/work,.optimisarr/trash}
+sudo chown -R 1000:1000 ./optimisarr-config /path/to/storage
 ```
 
 ```bash
@@ -132,10 +132,10 @@ docker run -d --name optimisarr \
   -p 8787:8787 \
   -e PUID=1000 -e PGID=1000 -e TZ=Europe/London \
   -e OPTIMISARR_ADMIN_TOKEN='change-this-long-random-token' \
+  -e OPTIMISARR_WORK_DIR=/data/.optimisarr/work \
+  -e OPTIMISARR_TRASH_DIR=/data/.optimisarr/trash \
   -v ./optimisarr-config:/config \
-  -v /path/to/media:/data \
-  -v /path/to/work:/work \
-  -v /path/to/trash:/trash \
+  -v /path/to/storage:/data \
   ghcr.io/jellman86/optimisarr:dev
 ```
 
@@ -145,8 +145,15 @@ Wait for readiness, then open the UI:
 curl http://localhost:8787/api/ready
 ```
 
-Open `http://localhost:8787`, enable **Dry-run mode** in **Settings → General → Replacement**,
-add a library on the **Libraries** page, then scan and queue a small test set.
+Open `http://localhost:8787`. A new database opens the resumable five-step setup, verifies the
+mounted paths, free space, filesystem/mount relationships, permissions, and media tools. Missing
+or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
+a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
+**Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
+then scan and queue a small test set deliberately. Use **Run setup again** in the Settings header to
+revisit the guided checks without deleting existing configuration.
+Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
+container mount boundary.
 Compose examples are available for every supported runtime:
 
 - [CPU only](compose.cpu.example.yml)
@@ -155,8 +162,9 @@ Compose examples are available for every supported runtime:
 - [Intel or AMD VA-API](compose.vaapi.example.yml)
 - [combined reference file](compose.example.yml)
 
-Keep `/data`, `/work`, and `/trash` on the **same filesystem** so the
-replacement pipeline can use atomic moves. Do not publish `8787` directly to the
+Keep media, work, and quarantine beneath one **container mount boundary** when possible so the
+replacement pipeline can use atomic moves; separate bind mounts require the verified
+cross-filesystem fallback. Do not publish `8787` directly to the
 internet; use an authenticated reverse proxy for remote access. Setting
 `OPTIMISARR_ADMIN_TOKEN` adds a built-in bearer-token backstop for the UI and API,
 but a reverse proxy remains the recommended public-access boundary.
@@ -169,16 +177,20 @@ work without installing host driver packages. The encoder is picked by the globa
 mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
-with `libvmaf`; the Tools page reports that optional capability independently.
-VMAF verification is enabled by default for video re-encodes and skipped for remuxes;
-it can be disabled under **Settings → Verification gates** when throughput is preferred.
+with `libvmaf`; the Tools page reports that optional capability independently. An optional
+`OPTIMISARR_FFMPEG_VMAF_CUDA` binary enables NVIDIA `libvmaf_cuda` when the build and runtime GPU
+support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
+failure retries in software. VMAF verification is off by default for video re-encodes and skipped
+for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
-tone-mapping require no libvmaf expertise. The report records the chosen model and preparation.
+tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame
+subsampling reduce runtime; every-frame scoring remains the safest default. VMAF-only failures get
+one encoder-aware higher-quality retry, and the report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
-(Settings → *Hardware decoding*, on by default), so frames never round-trip through system
-memory. If the GPU can't decode a particular source, the job automatically retries with software
+(Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the
+encoder supports it. If the GPU can't decode a particular source, the job automatically retries with software
 decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
 runs — GPU stats are read **without any elevated privileges** (per-process DRM fdinfo for
 Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is

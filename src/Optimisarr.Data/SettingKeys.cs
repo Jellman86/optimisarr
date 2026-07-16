@@ -3,6 +3,7 @@ namespace Optimisarr.Data;
 /// <summary>Well-known keys for rows in the <see cref="AppSetting"/> table.</summary>
 public static class SettingKeys
 {
+    public const string SetupState = "setup.state";
     /// <summary>Absolute path to the single configured media library root.</summary>
     public const string LibraryRoot = "library.root";
 
@@ -44,15 +45,6 @@ public static class SettingKeys
 
     /// <summary>Whether verification requires the output to be smaller than the original.</summary>
     public const string VerificationRequireSizeReduction = "verification.requireSizeReduction";
-
-    /// <summary>Whether the default-on perceptual-quality (VMAF) gate is enforced for video re-encodes.</summary>
-    public const string VerificationQualityGateEnabled = "verification.qualityGateEnabled";
-
-    /// <summary>Minimum harmonic-mean VMAF an output must reach when the quality gate is on.</summary>
-    public const string VerificationMinimumVmafHarmonicMean = "verification.minimumVmafHarmonicMean";
-
-    /// <summary>Minimum single-frame VMAF an output must reach when the quality gate is on.</summary>
-    public const string VerificationMinimumVmafMin = "verification.minimumVmafMin";
 
     /// <summary>Whether the opt-in EBU R128 audio-loudness drift gate is enforced.</summary>
     public const string VerificationAudioLoudnessGateEnabled = "verification.audioLoudnessGateEnabled";

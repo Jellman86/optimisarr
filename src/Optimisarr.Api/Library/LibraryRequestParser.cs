@@ -1,5 +1,6 @@
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Api.Library;
 
@@ -26,6 +27,7 @@ internal readonly record struct ParsedLibrary(
     string? VideoAudioCodec,
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
+    string? KeepAudioLanguages,
     bool ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -37,6 +39,10 @@ internal readonly record struct ParsedLibrary(
     bool MoveOverwrite,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
+    bool? VmafQualityGateEnabled,
+    double? MinVmafCatastrophicMin,
+    bool? ClipVmafEnabled,
+    int? VmafFrameSubsample,
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
     TimeOnly AutoEnqueueWindowEnd,
@@ -116,9 +122,29 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        if (request.MinVmafHarmonicMean is < 0 or > 100 || request.MinVmafMin is < 0 or > 100)
+        if (request.MinVmafHarmonicMean is < 0 or > 100
+            || request.MinVmafMin is < 0 or > 100
+            || request.MinVmafCatastrophicMin is < 0 or > 100)
         {
             error = "VMAF overrides must be between 0 and 100.";
+            return false;
+        }
+
+        if (request.VmafFrameSubsample is < 1 or > QualityScoreCommandBuilder.MaximumFrameSubsample)
+        {
+            error = $"VMAF frame sampling must be between 1 and {QualityScoreCommandBuilder.MaximumFrameSubsample}.";
+            return false;
+        }
+
+        if ((request.MinVmafMin is { } fifth && request.MinVmafHarmonicMean is { } harmonic && fifth > harmonic)
+            || (request.MinVmafCatastrophicMin is { } catastrophic
+                && request.MinVmafMin is { } fifthFloor
+                && catastrophic > fifthFloor)
+            || (request.MinVmafCatastrophicMin is { } catastrophicFloor
+                && request.MinVmafHarmonicMean is { } harmonicFloor
+                && catastrophicFloor > harmonicFloor))
+        {
+            error = "VMAF floors must be ordered: catastrophic frame ≤ fifth percentile ≤ harmonic mean.";
             return false;
         }
 
@@ -147,6 +173,14 @@ internal static class LibraryRequestParser
         if (request.VideoAudioBitrateKbps is < 32 or > 512)
         {
             error = "Video audio bitrate must be between 32 and 512 kbps.";
+            return false;
+        }
+
+        if (!TryParseKeepAudioLanguages(request.KeepAudioLanguages, out var keepAudioLanguages))
+        {
+            error =
+                $"Audio languages must be comma-separated ISO 639 codes of 2–3 letters " +
+                $"and at most {AudioTrackSelection.MaxLanguageListLength} characters (e.g. \"eng, jpn\").";
             return false;
         }
 
@@ -235,6 +269,7 @@ internal static class LibraryRequestParser
             videoAudioCodec is null ? null : videoAudioCodec.ToLowerInvariant(),
             request.VideoAudioBitrateKbps,
             request.DownmixToStereo ?? false,
+            keepAudioLanguages,
             request.ReencodeLossyAudio ?? false,
             targetImageFormat is null ? null : targetImageFormat.ToLowerInvariant(),
             request.ImageQuality,
@@ -246,6 +281,10 @@ internal static class LibraryRequestParser
             request.MoveOverwrite ?? false,
             request.MinVmafHarmonicMean,
             request.MinVmafMin,
+            request.VmafQualityGateEnabled,
+            request.MinVmafCatastrophicMin,
+            request.ClipVmafEnabled,
+            request.VmafFrameSubsample,
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,
@@ -259,6 +298,11 @@ internal static class LibraryRequestParser
         var trimmed = value?.Trim();
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;
     }
+
+    // Kept audio languages are stored as a canonical comma-separated list of lower-case ISO 639
+    // codes ("eng, jpn"). Blank input means "keep every track" and stores null.
+    private static bool TryParseKeepAudioLanguages(string? value, out string? normalised)
+        => AudioTrackSelection.TryNormaliseLanguageList(value, out normalised);
 
     // An omitted window time defaults to 00:00; start == end means the window is open
     // all day (resolved by AutoEnqueueScheduleEvaluator), i.e. "auto-enqueue once a day".

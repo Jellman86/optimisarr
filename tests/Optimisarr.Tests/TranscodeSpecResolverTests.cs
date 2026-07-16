@@ -51,6 +51,62 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void Removes_audio_tracks_outside_the_kept_languages()
+    {
+        var rules = Hevc with { KeepAudioLanguages = new[] { "eng" } };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceAudioLanguages: new string?[] { "fra", "eng", "und" });
+
+        Assert.Equal(new[] { 0 }, spec.RemoveAudioStreamIndexes);
+    }
+
+    [Fact]
+    public void Removes_no_audio_tracks_when_the_source_languages_are_unknown()
+    {
+        // A file probed before languages were captured has no per-track data; the rule
+        // stays a no-op rather than guessing.
+        var rules = Hevc with { KeepAudioLanguages = new[] { "eng" } };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceAudioLanguages: null);
+
+        Assert.Null(spec.RemoveAudioStreamIndexes);
+    }
+
+    [Fact]
+    public void Removes_no_audio_tracks_when_no_languages_are_kept()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, inputPath: "/data/films/Movie/Movie.mkv", relativePath: "Movie/Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceAudioLanguages: new string?[] { "fra", "eng" });
+
+        Assert.Null(spec.RemoveAudioStreamIndexes);
+    }
+
+    [Fact]
+    public void A_remux_spec_still_removes_audio_tracks_outside_the_kept_languages()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie/Movie.avi", relativePath: "Movie/Movie.avi",
+            workRoot: "/work", sourceIsHdr: false, crf: null, preset: null,
+            sourceAudioLanguages: new string?[] { "eng", "spa" });
+
+        Assert.Null(spec.VideoCodec);
+        Assert.Equal(new[] { 1 }, spec.RemoveAudioStreamIndexes);
+    }
+
+    [Fact]
     public void Keeps_the_mp4_target_when_there_are_no_image_subtitles()
     {
         var spec = TranscodeSpecResolver.Resolve(

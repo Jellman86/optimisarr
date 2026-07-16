@@ -1,5 +1,99 @@
 # Changelog
 
+## 0.2.4 — 2026-07-16
+
+### Added
+
+- **A maintained hardware validation matrix.** CPU, NVIDIA NVENC, Intel QSV, Intel/AMD VA-API,
+  hardware decode, VMAF acceleration, and live metrics now have one public evidence table that
+  distinguishes implemented/unit-tested paths from real-host validation. It records known gaps and
+  an exact, non-secret evidence checklist; AMD VA-API and current CUDA VMAF remain honestly pending
+  instead of being implied by device detection or command coverage.
+- **Resumable, safety-first first-run setup.** A genuinely new database now opens a five-step
+  setup workspace for deployment/tool checks, creation and full configuration of any number of
+  conservatively configured libraries,
+  dry-run/concurrency choices, and a final no-work-started review. Progress is versioned and
+  persisted after each completed step, duplicate submissions are idempotent, Back retains applied
+  choices, and completion is possible only from the review step. Upgraded installations are marked
+  complete and never forced through onboarding; the Settings header offers an explicit **Run setup
+  again** action that keeps every existing library and setting. The library step reuses the complete
+  per-library rules editor, rechecks every configured path before Continue, and keeps Add/Configure
+  actions available until the operator is ready. Fresh installs start in dry-run,
+  automatic enqueue/replacement and VMAF remain off, and the readiness ledger reports database,
+  config/work/quarantine/library path access, filesystem and container-mount identities, free and
+  total capacity, the configured work-space reserve, required tools, and detected hardware encoders.
+  It identifies whether each library can use atomic moves to work and quarantine, states when the
+  verified cross-filesystem fallback is disabled, and gives selectable, exact recovery steps for
+  local, Docker Compose, Unraid, and TrueNAS deployments. **Re-test system** reruns the real probes,
+  announces completion, and removes resolved guidance without pretending a container can repair its
+  own host mounts or permissions. The focused
+  responsive layout ships in all nine locales with text status alongside colour and keyboard focus
+  moved to actionable errors. Shared form sizing and unit-bearing fields now remain inside General
+  Settings cards at phone widths, with long toggle labels wrapping instead of being truncated.
+- **Dedicated library configuration pages and library-owned VMAF policies.** Configure now
+  opens a full-page Rules workspace instead of expanding an increasingly dense library card, while
+  Candidates and Excluded remain adjacent tabs on the same canonical library URL. Each video
+  library can disable its VMAF gate, select a Space-saver through Archival quality tier, or enter
+  custom harmonic-mean, fifth-percentile, and catastrophic-frame floors. Clip/full-file scoring and
+  the 1st–10th-frame sampling interval are also library-owned. The upgrade migration materialises
+  the former global policy onto existing libraries and removes its obsolete settings; older config
+  backups receive the same conversion during import. API/import validation enforces safe ranges and
+  ordered floors. The responsive editor keeps primary choices visible, uses a compact borderless
+  summary for effective floors, progressively discloses advanced encoding controls, warns before
+  discarding changes, and exposes non-overlapping Save/Cancel actions on desktop and mobile.
+- **Encoder-aware VMAF recovery and safer temporal pooling.** Hardware quality controls now receive
+  conservative encoder-family calibration (QSV ICQ, NVENC CQ, VA-API QP) instead of treating their
+  numeric values as interchangeable with software CRF. Verification pools harmonic mean, fifth
+  percentile, and a catastrophic single-frame floor; optional fast scoring uses deterministic
+  early/middle/late windows. If VMAF is the only failed gate, Optimisarr automatically retries once
+  at a higher encoder-specific quality. The Queue persists and displays the requested/effective
+  quality and sampling context, offers explicit same-settings and higher-quality recovery actions,
+  and container shutdown now drains active jobs for up to two hours before safe cancellation.
+- **Hardware-assisted and subsampled VMAF with automatic software fallback.** SDR verification now
+  follows the job's selected NVIDIA/QSV/VA-API hardware path when Hardware decoding is enabled:
+  NVIDIA can keep both inputs on the GPU through NVDEC, bicubic `scale_cuda`, and `libvmaf_cuda`,
+  while QSV/VA-API can offload both decodes before downloading frames for CPU VMAF. CUDA is enabled
+  only when the configured binary exposes the exact filter (`OPTIMISARR_FFMPEG_VMAF_CUDA` can point
+  at a purpose-built binary), and every accelerated runtime failure is discarded and retried through
+  the established software graph. HDR deliberately stays on the colour-accurate software path. A new
+  Frame sampling control scores every 1st–10th frame (default 1/every frame) with a warning that
+  skipped frames weaken the worst-frame floor. Incidental PSNR/SSIM features are no longer computed
+  during the VMAF gate, avoiding work that does not affect replacement safety.
+- **Optional sampled VMAF (faster quality gate on modest hardware).** A per-library control under
+  the quality policy measures VMAF across three 40-second windows near the beginning, middle and end
+  instead of the whole runtime, which cuts VMAF time dramatically on low-power hosts (e.g. an Intel
+  N100) where full-file scoring is impractical. Both the output and original are sought to each
+  matching window, and progress is reported across all three samples. The other
+  gates (decode health, duration, structure, size) still check the whole output. Off by default, and
+  skipped for short files where full scoring is comparable. VMAF's scoring acceleration remains NVIDIA-only;
+  Intel/AMD hardware can offload decode but not the metric itself.
+- **Per-library "Keep audio languages" removes unwanted audio tracks.** A library can list the
+  ISO 639 codes to keep (e.g. `eng, jpn`); when a video is optimised or remuxed, audio tracks in
+  any other language are dropped from the output via explicit `-map -0:a:N` exclusions. The
+  behaviour is conservative by design: unknown, malformed, uncoded, and private-use language tags
+  are never removed, and when no track matches a kept language nothing is removed. The complete
+  ISO 639-1/-2 aliases match each other (`de`/`deu`/`ger`). Verification requires exactly the
+  planned nonzero retention and judges channel/sample-rate fidelity against the kept tracks. The
+  upgrade queues existing videos with audio for background re-probing, with a job-time fallback,
+  so already-clean remuxes become eligible for fast stream-copy cleanup. The accessible library
+  control validates and normalises input before save in every locale, and config backup/restore
+  uses the same validator. Migration `AddKeepAudioLanguages`.
+
+### Fixed
+
+- **Queue capacity now follows the real work filesystem.** Free-space checks select the deepest
+  mounted filesystem containing the configured work path, so a bind-mounted `/work` no longer
+  reports the container overlay's much smaller capacity or pauses a healthy queue prematurely.
+- **Abandoned work output is reclaimed safely.** Clearing, deleting, or retrying a failed job now
+  removes its owned scratch output before dropping the database reference and retains the job if
+  cleanup cannot be completed. Startup also removes output left by cancelled jobs and numeric,
+  unreferenced work directories older than seven days, while retaining recent or referenced data.
+- **Credential-bearing integration URLs are excluded from normal logs.** Default logging now keeps
+  `System.Net.Http.HttpClient` request messages at Warning or above, preventing Discord webhook URLs
+  and similar outbound credentials from appearing in ordinary Information-level container logs.
+- **First-run review copy uses locale-aware singular and plural forms.** The setup summary now reads
+  naturally for one or many concurrent jobs in every supported language.
+
 ## 0.2.3 — 2026-07-14
 
 ### Added
@@ -62,6 +156,29 @@
 
 ### Fixed
 
+- **Sampled VMAF no longer mistakes seek/decode startup frames for catastrophic quality loss.**
+  Each early/middle/late window now seeks both independently encoded inputs five seconds early and
+  trims identical decoded pre-roll before resetting timestamps and scoring the requested interval.
+  When a hardware-decoded measurement falls below any configured VMAF floor, Optimisarr confirms
+  that window through the authoritative software path before rejecting the output or spending time
+  on a higher-quality re-encode.
+- **Replacement and rollback are crash-safe end to end.** Optimisarr now commits a `Pending`
+  rollback record before moving the original, then finalizes it only after the verified output is
+  in place. Startup reconciles interrupted records idempotently: it restores a quarantined original
+  when the verified output remains in `/work`, or completes the database transition when both file
+  moves had already finished. Rollback stages the current optimised file and restores it if moving
+  the quarantined original fails, so a failed rollback never leaves the library path empty.
+  Quarantine folders also include the job id, preventing concurrent same-named replacements from
+  colliding within the same millisecond.
+- **Clip-VMAF configuration and translations are complete.** Config export/import now preserves
+  the clip-scoring preference. All VMAF settings and presets are translated across the eight
+  non-English locales, stale claims that VMAF is enabled by default are corrected, and the locale
+  audit now rejects long English prose copied unchanged into a translation.
+- **Admin tokens no longer leak through ordinary API query strings.** The `access_token` query
+  fallback is limited to SignalR hub paths, where WebSocket clients require it; REST API calls must
+  use the bearer header so reverse-proxy logs and browser history do not capture the token. A
+  successful bearer request establishes a derived HttpOnly, same-site cookie for native browser
+  media elements, keeping authenticated previews working without exposing the configured secret.
 - **A retried job no longer keeps a stale failure category.** Starting a new attempt now clears the
   previous attempt's error message and failure classification, so a job that failed once (e.g. a
   verification-gate rejection) and then succeeded on retry is reported as the success it is, instead
@@ -73,10 +190,10 @@
   assistive technology.
 - **VMAF is an opt-in perceptual-quality gate, chosen with a quality slider.** It is off by default
   because it fully decodes both files and scores every frame, which roughly doubles verification
-  time and can dominate a run on modest hardware. A single Settings slider turns it on and prefills
-  both floors from five tiers — Space-saver (80/60), Balanced (85/70), High (90/75), Visually
-  lossless (93/80), and Archival (96/90) — with "Off" as the default leftmost stop; existing
-  installations retain their explicitly saved choice. While it is off the structural, duration and
+  time and can dominate a run on modest hardware. Each library's policy selector turns it on and
+  prefills all floors from five tiers — Space-saver (80/60/30), Balanced (85/70/40), High
+  (90/75/45), Visually lossless (93/80/50), and Archival (96/90/70) — with "Off" as the default;
+  existing installations retain their effective choice. While it is off the structural, duration and
   size gates plus quarantine rollback still guard every replacement. Remux, audio, and image work
   skip VMAF because it is either redundant or inapplicable, and the final-container smoke test still
   performs a real synthetic `libvmaf` comparison rather than trusting the filter list. Model choice

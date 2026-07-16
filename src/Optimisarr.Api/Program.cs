@@ -27,6 +27,10 @@ var adminToken = Environment.GetEnvironmentVariable(AdminTokenAuth.EnvironmentVa
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<OptimisarrOpenApiTransformer>());
 builder.Services.AddSignalR();
+// Long encodes should survive a routine container update. QueueDispatcher drains active work and
+// only cancels it when this bounded shutdown window is exhausted.
+builder.Services.Configure<HostOptions>(options =>
+    options.ShutdownTimeout = TimeSpan.FromHours(2));
 // The transcoding/detection ffmpeg. Defaults to "ffmpeg" on PATH, but can be pointed at a
 // hardware-capable build (e.g. jellyfin-ffmpeg, which bundles Intel iHD + oneVPL and NVENC)
 // via OPTIMISARR_FFMPEG. Detection and transcode share it so the encoder list never lies
@@ -43,10 +47,12 @@ builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
 // different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
-// OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH.
+// OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH. A purpose-built CUDA variant may be
+// supplied separately; QualityScoreService checks its filter and falls back to this CPU binary.
 var vmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF");
-builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe));
-builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg));
+var cudaVmafFfmpeg = Environment.GetEnvironmentVariable("OPTIMISARR_FFMPEG_VMAF_CUDA");
+builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmpeg, ffprobe, cudaVmafFfmpeg));
+builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
@@ -87,6 +93,7 @@ var configDirectory = ResolveConfigDirectory(builder.Environment);
 Directory.CreateDirectory(configDirectory);
 
 var databasePath = Path.Combine(configDirectory, "optimisarr.db");
+var databaseExistedBeforeStartup = File.Exists(databasePath);
 builder.Services.AddDbContext<OptimisarrDbContext>(options =>
 {
     options.UseSqlite($"Data Source={databasePath}");
@@ -109,10 +116,16 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
 
     var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
+    await settings.InitialiseSetupStateAsync(databaseExistedBeforeStartup, CancellationToken.None);
     await LibrarySeeder.MigrateLegacyLibraryRootAsync(db, settings, CancellationToken.None);
 
     // One-time: re-probe files left as Unknown by databases predating media-kind classification.
     await MediaKindBackfill.ResetUnknownProbedFilesAsync(db, CancellationToken.None);
+
+    // Replacement and rollback intent is recorded before the first filesystem move. Reconcile any
+    // interrupted operation before queue workers start so no job can race its own recovery.
+    var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
+    await replacement.RecoverPendingAsync(CancellationToken.None);
 }
 
 if (app.Environment.IsDevelopment())
@@ -153,6 +166,19 @@ app.Use(async (context, next) =>
 
     if (AdminTokenAuth.IsAuthorized(context.Request, adminToken!))
     {
+        if (AdminTokenAuth.HasBearerToken(context.Request))
+        {
+            // Media elements cannot attach an Authorization header. Establish an HttpOnly,
+            // same-site cookie from a successful bearer request so their plain content URLs stay
+            // authenticated without putting the admin token in query strings or browser history.
+            var forwardedScheme = context.Request.Headers["X-Forwarded-Proto"]
+                .ToString()
+                .Split(',', 2)[0]
+                .Trim();
+            var secureCookie = context.Request.IsHttps
+                || string.Equals(forwardedScheme, "https", StringComparison.OrdinalIgnoreCase);
+            AdminTokenAuth.SetSessionCookie(context.Response, adminToken!, secureCookie);
+        }
         await next();
         return;
     }
@@ -206,9 +232,6 @@ internal sealed record SettingsDto(
     bool VerificationRequireAudioRetained,
     bool VerificationRequireSubtitlesRetained,
     bool VerificationRequireSizeReduction,
-    bool VerificationQualityGateEnabled,
-    double VerificationMinimumVmafHarmonicMean,
-    double VerificationMinimumVmafMin,
     bool VerificationAudioLoudnessGateEnabled,
     double VerificationMaxLoudnessDriftLufs,
     bool VerificationAudioClippingGateEnabled,
@@ -231,9 +254,6 @@ internal sealed record SettingsDto(
         settings.VerificationPolicy.RequireAudioRetained,
         settings.VerificationPolicy.RequireSubtitlesRetained,
         settings.VerificationPolicy.RequireSizeReduction,
-        settings.VerificationPolicy.QualityGateEnabled,
-        settings.VerificationPolicy.MinimumVmafHarmonicMean,
-        settings.VerificationPolicy.MinimumVmafMin,
         settings.VerificationPolicy.AudioLoudnessGateEnabled,
         settings.VerificationPolicy.MaxLoudnessDriftLufs,
         settings.VerificationPolicy.AudioClippingGateEnabled,
@@ -308,6 +328,7 @@ internal sealed record SaveLibraryRequest(
     string? VideoAudioCodec,
     int? VideoAudioBitrateKbps,
     bool? DownmixToStereo,
+    string? KeepAudioLanguages,
     bool? ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -319,6 +340,10 @@ internal sealed record SaveLibraryRequest(
     bool? MoveOverwrite,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
+    bool? VmafQualityGateEnabled,
+    double? MinVmafCatastrophicMin,
+    bool? ClipVmafEnabled,
+    int? VmafFrameSubsample,
     bool? AutoEnqueueEnabled,
     string? AutoEnqueueWindowStart,
     string? AutoEnqueueWindowEnd,
@@ -359,6 +384,7 @@ internal sealed record LibraryDto(
     string? VideoAudioCodec,
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
+    string? KeepAudioLanguages,
     bool ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -370,6 +396,10 @@ internal sealed record LibraryDto(
     bool MoveOverwrite,
     double? MinVmafHarmonicMean,
     double? MinVmafMin,
+    bool? VmafQualityGateEnabled,
+    double? MinVmafCatastrophicMin,
+    bool? ClipVmafEnabled,
+    int? VmafFrameSubsample,
     bool AutoEnqueueEnabled,
     string AutoEnqueueWindowStart,
     string AutoEnqueueWindowEnd,
@@ -403,6 +433,7 @@ internal sealed record LibraryDto(
         library.VideoAudioCodec,
         library.VideoAudioBitrateKbps,
         library.DownmixToStereo,
+        library.KeepAudioLanguages,
         library.ReencodeLossyAudio,
         library.TargetImageFormat,
         library.ImageQuality,
@@ -414,6 +445,10 @@ internal sealed record LibraryDto(
         library.MoveOverwrite,
         library.MinVmafHarmonicMean,
         library.MinVmafMin,
+        library.VmafQualityGateEnabled,
+        library.MinVmafCatastrophicMin,
+        library.ClipVmafEnabled,
+        library.VmafFrameSubsample,
         library.AutoEnqueueEnabled,
         library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
         library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture),

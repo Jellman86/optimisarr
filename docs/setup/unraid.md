@@ -20,15 +20,18 @@ The image is `ghcr.io/jellman86/optimisarr:latest`. It exposes port **8787** and
 | Container path | What it holds | Notes |
 |----------------|---------------|-------|
 | `/config` | SQLite database + configuration | Keep on fast storage (e.g. `appdata`). |
-| `/data` | Your media library | **Read-write** — Optimisarr replaces files in place after verification. |
-| `/work` | Temporary transcode outputs | Fast local scratch; can be large during encodes. |
-| `/trash` | Quarantined originals (rollback) | **Put on the same filesystem as `/data`.** |
+| `/data` | Storage root: media, work, and quarantine | **Read-write.** Add libraries from `/data`; the template keeps work and quarantine under `/data/.optimisarr`. |
 
-**Why `/trash` placement matters.** After a converted file passes verification, Optimisarr moves the
-original into `/trash` (recoverable by rollback) and moves the verified output into place. When
-`/trash` and `/data` are on the **same** filesystem those are instant atomic moves; on different
-mounts Optimisarr falls back to a slower verified copy-plus-delete. Keeping `/trash` inside your
-media share (e.g. `/mnt/user/media/.optimisarr-trash`) is the simplest safe choice.
+**Why one mapping matters.** After a converted file passes verification, Optimisarr moves the
+original into quarantine (recoverable by rollback) and moves the verified output into place.
+Keeping media, work, and quarantine below the single `/data` container mapping lets those be atomic
+moves. Separate container bind mounts are distinct move boundaries even when their host paths are
+on the same filesystem, so Optimisarr must use its slower verified copy-plus-delete fallback.
+
+The template sets `OPTIMISARR_WORK_DIR=/data/.optimisarr/work` and
+`OPTIMISARR_TRASH_DIR=/data/.optimisarr/trash`. You can move work to fast scratch storage, but doing
+so intentionally gives up atomic work-to-library moves; keep the verified cross-filesystem fallback
+enabled and use the setup Re-test action to confirm the effective relationship.
 
 No original is ever deleted or overwritten until a verified replacement exists — a failed or
 re-eligible job leaves the source untouched.

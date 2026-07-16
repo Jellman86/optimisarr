@@ -19,8 +19,10 @@
   // names for notification-target, connection, and watcher records.
   import { i18n, t as tr } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
+  import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
   import InfoTip from '../components/InfoTip.svelte'
+  import Icon from '../components/Icon.svelte'
   import Banner from '../components/Banner.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
 
@@ -48,6 +50,7 @@
   let editingTargetId = $state<number | null>(null)
   let targetDraft = $state<SaveNotificationTarget>(emptyTarget())
   let savingTarget = $state(false)
+  let restartingSetup = $state(false)
 
   async function loadTargets() {
     try {
@@ -96,6 +99,18 @@
       await loadTargets()
     } catch (err) {
       targetError = err instanceof Error ? err.message : i18n.m.settings.error_remove_target
+    }
+  }
+
+  async function restartSetup() {
+    if (!confirm(i18n.m.settings.restart_setup_confirm)) return
+    restartingSetup = true
+    try {
+      await setup.restart()
+    } catch (err) {
+      error = err instanceof Error ? err.message : i18n.m.settings.error_save
+    } finally {
+      restartingSetup = false
     }
   }
 
@@ -352,9 +367,6 @@
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
     verificationRequireSizeReduction: true,
-    verificationQualityGateEnabled: false,
-    verificationMinimumVmafHarmonicMean: 93,
-    verificationMinimumVmafMin: 80,
     verificationAudioLoudnessGateEnabled: false,
     verificationMaxLoudnessDriftLufs: 1,
     verificationAudioClippingGateEnabled: false,
@@ -366,57 +378,6 @@
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
   })
-
-  // Perceptual-quality (VMAF) presets exposed as a single slider: the leftmost stop turns the
-  // gate off (the default) and each remaining stop prefills both VMAF floors. Values follow
-  // VMAF's 0-100 scale (~6 points ≈ one just-noticeable difference; ~93 is the commonly-cited
-  // "visually lossless" mark for HD). Higher stops are stricter and keep larger files.
-  const vmafPresets = [
-    { enabled: false, harmonicMean: 93, min: 80 }, // Off
-    { enabled: true, harmonicMean: 80, min: 60 }, // Space-saver
-    { enabled: true, harmonicMean: 85, min: 70 }, // Balanced
-    { enabled: true, harmonicMean: 90, min: 75 }, // High
-    { enabled: true, harmonicMean: 93, min: 80 }, // Visually lossless
-    { enabled: true, harmonicMean: 96, min: 90 }, // Archival
-  ] as const
-
-  function vmafPresetLabel(index: number): string {
-    const s = i18n.m.settings
-    return [
-      s.vmaf_preset_off,
-      s.vmaf_preset_space_saver,
-      s.vmaf_preset_balanced,
-      s.vmaf_preset_high,
-      s.vmaf_preset_lossless,
-      s.vmaf_preset_archival,
-    ][index]
-  }
-
-  // Map the saved policy onto a slider stop: off when the gate is disabled, otherwise the stop
-  // whose harmonic-mean floor is closest to the saved value, so an older config with custom
-  // numbers snaps to the nearest tier instead of dropping off the slider.
-  let vmafIndex = $derived.by(() => {
-    if (!settings.verificationQualityGateEnabled) return 0
-    let best = 1
-    let bestDistance = Infinity
-    for (let i = 1; i < vmafPresets.length; i++) {
-      const distance = Math.abs(vmafPresets[i].harmonicMean - settings.verificationMinimumVmafHarmonicMean)
-      if (distance < bestDistance) {
-        bestDistance = distance
-        best = i
-      }
-    }
-    return best
-  })
-
-  function applyVmafPreset(index: number) {
-    const preset = vmafPresets[index]
-    settings.verificationQualityGateEnabled = preset.enabled
-    if (preset.enabled) {
-      settings.verificationMinimumVmafHarmonicMean = preset.harmonicMean
-      settings.verificationMinimumVmafMin = preset.min
-    }
-  }
 
   let minFreeDiskGiB = $state('10')
   let loading = $state(true)
@@ -455,8 +416,6 @@
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
         verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
-        verificationMinimumVmafHarmonicMean: clamp01to100(settings.verificationMinimumVmafHarmonicMean),
-        verificationMinimumVmafMin: clamp01to100(settings.verificationMinimumVmafMin),
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
         verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
@@ -539,9 +498,15 @@
   }
 </script>
 
-<header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
+<header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+  <div class="min-w-0">
+    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
+  </div>
+  <button class="btn min-h-11 w-full flex-none sm:w-auto" onclick={restartSetup} disabled={restartingSetup}>
+    <Icon name="retry" class="h-4 w-4 {restartingSetup ? 'animate-spin' : ''}" />
+    {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
+  </button>
 </header>
 
 {#if error}
@@ -565,8 +530,8 @@
   </div>
 
   {#if activeTab === 'general'}
-  <div class="space-y-5">
-  <div class="card p-5">
+  <div class="min-w-0 space-y-5">
+  <div class="card p-4 sm:p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       {i18n.m.settings.queue_desc}
@@ -595,17 +560,17 @@
 
       <div>
         <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
-        <div class="flex items-center gap-2">
-          <input id="scan-interval" class="input" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
-          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
+          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
         </div>
       </div>
 
       <div>
         <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
-        <div class="flex items-center gap-2">
-          <input id="free-disk" class="input" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
-          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
+          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
         </div>
       </div>
     </div>
@@ -622,20 +587,20 @@
     </div>
   </div>
 
-  <div class="card p-5">
+  <div class="card p-4 sm:p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.gates_title}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       {i18n.m.settings.gates_desc}
     </p>
 
     <div class="grid gap-4 lg:grid-cols-2">
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">{i18n.m.settings.always_on}</h3>
         <div class="max-w-[16rem]">
           <label class="label" for="duration-tolerance">{i18n.m.settings.duration_tolerance} <InfoTip text={i18n.m.settings.duration_tolerance_tip} /></label>
-          <div class="flex items-center gap-2">
-            <input id="duration-tolerance" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">%</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <input id="duration-tolerance" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
+            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
           </div>
         </div>
         <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
@@ -645,42 +610,7 @@
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <div class="label flex items-center gap-1">
-          {i18n.m.settings.vmaf_label}
-          <InfoTip text={i18n.m.settings.vmaf_hint} />
-        </div>
-        <input
-          class="mt-3 w-full"
-          type="range"
-          min="0"
-          max="5"
-          step="1"
-          value={vmafIndex}
-          oninput={(event) => applyVmafPreset(Number(event.currentTarget.value))}
-          aria-label={i18n.m.settings.vmaf_label}
-        />
-        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-          <span>{i18n.m.settings.vmaf_preset_off}</span>
-          <span>{i18n.m.settings.vmaf_preset_archival}</span>
-        </div>
-        <p class="mt-3 text-sm">
-          <span class="font-medium text-slate-700 dark:text-slate-200">{vmafPresetLabel(vmafIndex)}</span>
-          {#if settings.verificationQualityGateEnabled}
-            <span class="text-slate-500 dark:text-slate-400">
-              — {i18n.m.settings.vmaf_harmonic} {settings.verificationMinimumVmafHarmonicMean} ·
-              {i18n.m.settings.vmaf_min} {settings.verificationMinimumVmafMin}
-            </span>
-          {:else}
-            <span class="text-slate-500 dark:text-slate-400">— {i18n.m.settings.vmaf_off_desc}</span>
-          {/if}
-        </p>
-        {#if settings.verificationQualityGateEnabled}
-          <p class="mt-1 text-xs text-amber-600 dark:text-amber-500">{i18n.m.settings.vmaf_cost_warning}</p>
-        {/if}
-      </div>
-
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationAudioLoudnessGateEnabled}
           label={i18n.m.settings.loudness_label}
@@ -688,14 +618,14 @@
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
           <label class="label" for="loudness-drift">{i18n.m.settings.loudness_max}</label>
-          <div class="flex items-center gap-2">
-            <input id="loudness-drift" class="input" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <input id="loudness-drift" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
+            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
           </div>
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationAudioClippingGateEnabled}
           label={i18n.m.settings.clipping_label}
@@ -703,14 +633,14 @@
         />
         <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
           <label class="label" for="true-peak-ceiling">{i18n.m.settings.true_peak} <InfoTip text={i18n.m.settings.true_peak_tip} /></label>
-          <div class="flex items-center gap-2">
-            <input id="true-peak-ceiling" class="input" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
-            <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
+          <div class="flex min-w-0 items-center gap-2">
+            <input id="true-peak-ceiling" class="input min-w-0 flex-1" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
+            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
           </div>
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationImageQualityGateEnabled}
           label={i18n.m.settings.ssim_label}
@@ -722,7 +652,7 @@
         </div>
       </div>
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
         <Toggle
           bind:checked={settings.verificationImageMetadataGateEnabled}
           label={i18n.m.settings.exif_label}
@@ -733,7 +663,7 @@
     </div>
   </div>
 
-  <div class="card p-5">
+  <div class="card p-4 sm:p-5">
     <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.replacement_title}</h2>
     <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
       {i18n.m.settings.replacement_desc}
@@ -754,14 +684,14 @@
     </div>
     <div class="mt-5 max-w-[16rem] border-t border-slate-200 pt-5 dark:border-slate-800">
       <label class="label" for="quarantine-retention">{i18n.m.settings.quarantine_retention} <InfoTip text={i18n.m.settings.quarantine_retention_tip} /></label>
-      <div class="flex items-center gap-2">
-        <input id="quarantine-retention" class="input" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
-        <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
+      <div class="flex min-w-0 items-center gap-2">
+        <input id="quarantine-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
+        <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
       </div>
     </div>
   </div>
 
-  <div class="flex items-center gap-3">
+  <div class="flex flex-wrap items-center gap-3">
     <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
     <span class="text-xs text-slate-400">{i18n.m.settings.save_note}</span>
@@ -1095,13 +1025,14 @@
       <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{backupMessage}</div>
     {/if}
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button class="btn" onclick={exportConfig}>{i18n.m.settings.export_config}</button>
       <button class="btn" onclick={() => fileInput?.click()} disabled={importing}>
         {importing ? i18n.m.settings.importing : i18n.m.settings.import_config}
       </button>
       <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
     </div>
+
   </div>
   {/if}
 {/if}

@@ -10,6 +10,11 @@ namespace Optimisarr.Core.Queue;
 /// </summary>
 public static class TranscodeSpecResolver
 {
+    /// <param name="sourceAudioLanguages">
+    /// The source's per-track audio language tags in stream order, or <c>null</c> when they are
+    /// unknown (e.g. probed before languages were captured) — in which case the kept-languages
+    /// rule stays a no-op rather than guessing.
+    /// </param>
     public static TranscodeSpec Resolve(
         RuleSettings rules,
         string inputPath,
@@ -23,7 +28,8 @@ public static class TranscodeSpecResolver
         bool sourceHasMp4IncompatibleAudio = false,
         string? sourceImageCodec = null,
         int sourceMaxAudioChannels = 0,
-        bool sourceIsVariableFrameRate = false)
+        bool sourceIsVariableFrameRate = false,
+        IReadOnlyList<string?>? sourceAudioLanguages = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -83,6 +89,10 @@ public static class TranscodeSpecResolver
             ? AudioTarget.Resolve(videoAudioCodec).Encoder
             : null;
 
+        var removedAudio = sourceAudioLanguages is null
+            ? Array.Empty<int>()
+            : AudioTrackSelection.SelectRemovals(sourceAudioLanguages, rules.KeepAudioLanguages);
+
         return new TranscodeSpec(
             inputPath,
             outputPath,
@@ -97,7 +107,8 @@ public static class TranscodeSpecResolver
                     rules.VideoAudioBitrateKbps, sourceMaxAudioChannels, rules.DownmixToStereo),
             SourceIsVariableFrameRate: sourceIsVariableFrameRate,
             // A downmix needs an audio re-encode; a copied track keeps its layout.
-            DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo);
+            DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo,
+            RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null);
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

@@ -10,6 +10,7 @@ using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Security;
+using Optimisarr.Api.Setup;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
@@ -44,6 +45,7 @@ internal static class LibraryEndpoints
         app.MapGet("/api/libraries/{id:int}/access", async (
             int id,
             OptimisarrDbContext db,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             var library = await db.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, cancellationToken);
@@ -53,6 +55,9 @@ internal static class LibraryEndpoints
             }
 
             var (exists, readable, writable) = PathAccessProbe.Probe(library.Path);
+            var evidence = FileSystemEvidenceProbe.Probe(library.Path);
+            var workEvidence = FileSystemEvidenceProbe.Probe(WorkPaths.Resolve(environment));
+            var quarantineEvidence = FileSystemEvidenceProbe.Probe(TrashPaths.Resolve(environment));
             return Results.Ok(new
             {
                 path = library.Path,
@@ -61,6 +66,20 @@ internal static class LibraryEndpoints
                 writable,
                 ok = LibraryAccessEvaluator.IsOk(exists, readable, writable),
                 message = LibraryAccessEvaluator.Describe(exists, readable, writable),
+                issue = SetupPathIssueClassifier.ToWireValue(SetupPathIssueClassifier.Classify(
+                    exists,
+                    readable,
+                    writable,
+                    evidence.AvailableBytes,
+                    requiredBytes: null)),
+                evidence.FileSystemId,
+                evidence.MountId,
+                evidence.MountPoint,
+                evidence.FileSystemType,
+                evidence.AvailableBytes,
+                evidence.TotalBytes,
+                atomicWithWork = AtomicRelationship(evidence, workEvidence),
+                atomicWithQuarantine = AtomicRelationship(evidence, quarantineEvidence)
             });
         })
         .WithName("CheckLibraryAccess");
@@ -104,6 +123,7 @@ internal static class LibraryEndpoints
                 VideoAudioCodec = parsed.VideoAudioCodec,
                 VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps,
                 DownmixToStereo = parsed.DownmixToStereo,
+                KeepAudioLanguages = parsed.KeepAudioLanguages,
                 ReencodeLossyAudio = parsed.ReencodeLossyAudio,
                 TargetImageFormat = parsed.TargetImageFormat,
                 ImageQuality = parsed.ImageQuality,
@@ -115,6 +135,10 @@ internal static class LibraryEndpoints
                 MoveOverwrite = parsed.MoveOverwrite,
                 MinVmafHarmonicMean = parsed.MinVmafHarmonicMean,
                 MinVmafMin = parsed.MinVmafMin,
+                VmafQualityGateEnabled = parsed.VmafQualityGateEnabled,
+                MinVmafCatastrophicMin = parsed.MinVmafCatastrophicMin,
+                ClipVmafEnabled = parsed.ClipVmafEnabled,
+                VmafFrameSubsample = parsed.VmafFrameSubsample,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
                 AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd,
@@ -171,6 +195,7 @@ internal static class LibraryEndpoints
             library.VideoAudioCodec = parsed.VideoAudioCodec;
             library.VideoAudioBitrateKbps = parsed.VideoAudioBitrateKbps;
             library.DownmixToStereo = parsed.DownmixToStereo;
+            library.KeepAudioLanguages = parsed.KeepAudioLanguages;
             library.ReencodeLossyAudio = parsed.ReencodeLossyAudio;
             library.TargetImageFormat = parsed.TargetImageFormat;
             library.ImageQuality = parsed.ImageQuality;
@@ -182,6 +207,10 @@ internal static class LibraryEndpoints
             library.MoveOverwrite = parsed.MoveOverwrite;
             library.MinVmafHarmonicMean = parsed.MinVmafHarmonicMean;
             library.MinVmafMin = parsed.MinVmafMin;
+            library.VmafQualityGateEnabled = parsed.VmafQualityGateEnabled;
+            library.MinVmafCatastrophicMin = parsed.MinVmafCatastrophicMin;
+            library.ClipVmafEnabled = parsed.ClipVmafEnabled;
+            library.VmafFrameSubsample = parsed.VmafFrameSubsample;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
             library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;
@@ -242,4 +271,9 @@ internal static class LibraryEndpoints
         })
         .WithName("ScanAllLibraries");
     }
+
+    private static bool? AtomicRelationship(FileSystemEvidence first, FileSystemEvidence second) =>
+        string.IsNullOrWhiteSpace(first.MountId) || string.IsNullOrWhiteSpace(second.MountId)
+            ? null
+            : FileSystemEvidenceProbe.SharesAtomicBoundary(first, second);
 }

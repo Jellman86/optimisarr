@@ -24,7 +24,7 @@
     : 'cursor-pointer'}"
 >
   <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
-    <span class="truncate">{label}</span>
+    <span class="min-w-0 break-words">{label}</span>
     {#if hint}<InfoTip text={hint} label={`About: ${label}`} />{/if}
   </span>
 

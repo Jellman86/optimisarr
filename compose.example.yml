@@ -3,6 +3,7 @@ services:
     image: ghcr.io/jellman86/optimisarr:dev
     container_name: optimisarr
     restart: unless-stopped
+    stop_grace_period: 2h5m
     ports:
       - "${OPTIMISARR_PORT:-8787}:8787"
     environment:
@@ -12,15 +13,14 @@ services:
       TZ: "${TZ:-Europe/London}"
       ASPNETCORE_URLS: "http://0.0.0.0:8787"
       OPTIMISARR_CONFIG_DIR: "${OPTIMISARR_CONFIG_DIR:-/config}"
+      OPTIMISARR_WORK_DIR: "${OPTIMISARR_WORK_DIR:-/data/.optimisarr/work}"
+      OPTIMISARR_TRASH_DIR: "${OPTIMISARR_TRASH_DIR:-/data/.optimisarr/trash}"
       Logging__LogLevel__Default: "${OPTIMISARR_LOG_LEVEL:-Information}"
     volumes:
       - ./config:/config
-      - /path/to/media:/data
-      - /path/to/work:/work
-      # Quarantine for replaced originals (rollback restores from here). Put it on
-      # the same filesystem as /data so replacement uses an atomic move; on a
-      # different mount Optimisarr falls back to a verified copy-plus-delete.
-      - /path/to/trash:/trash
+      # Mount one common parent. Libraries, work, and quarantine below /data can then use
+      # atomic moves; a deliberately separate scratch mount requires the verified fallback.
+      - /path/to/storage:/data
     # --- Intel iGPU (e.g. N100) / AMD GPU: VA-API + Intel QSV ---
     # Map the render node and add the container user to the host's "render" group so it
     # can open it. Find the GID with:  stat -c '%g' /dev/dri/renderD128

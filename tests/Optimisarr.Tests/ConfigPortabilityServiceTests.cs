@@ -189,17 +189,103 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_materialises_legacy_global_vmaf_settings_without_persisting_them()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["verification.qualityGateEnabled"] = "True",
+                ["verification.minimumVmafHarmonicMean"] = "88",
+                ["verification.minimumVmafMin"] = "72",
+                ["verification.minimumVmafCatastrophicMin"] = "42",
+                ["verification.clipVmafEnabled"] = "True",
+                ["verification.vmafFrameSubsample"] = "3"
+            },
+            Libraries =
+            [
+                new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null),
+                new LibrarySnapshot("Archive", "/data/archive", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    VmafQualityGateEnabled: false,
+                    MinVmafHarmonicMean: 96,
+                    MinVmafMin: 90,
+                    MinVmafCatastrophicMin: 70,
+                    ClipVmafEnabled: false,
+                    VmafFrameSubsample: 1)
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.True(result.Applied);
+        Assert.Equal(0, result.SettingsApplied);
+        await using var db = CreateDb();
+        var films = await db.Libraries.SingleAsync(library => library.Path == "/data/films");
+        Assert.True(films.VmafQualityGateEnabled);
+        Assert.Equal(88, films.MinVmafHarmonicMean);
+        Assert.Equal(72, films.MinVmafMin);
+        Assert.Equal(42, films.MinVmafCatastrophicMin);
+        Assert.True(films.ClipVmafEnabled);
+        Assert.Equal(3, films.VmafFrameSubsample);
+
+        var archive = await db.Libraries.SingleAsync(library => library.Path == "/data/archive");
+        Assert.False(archive.VmafQualityGateEnabled);
+        Assert.Equal(96, archive.MinVmafHarmonicMean);
+        Assert.Equal(90, archive.MinVmafMin);
+        Assert.Equal(70, archive.MinVmafCatastrophicMin);
+        Assert.False(archive.ClipVmafEnabled);
+        Assert.Equal(1, archive.VmafFrameSubsample);
+        Assert.Empty(await db.AppSettings.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Import_rejects_an_invalid_effective_legacy_vmaf_policy()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["verification.minimumVmafHarmonicMean"] = "50",
+                ["verification.minimumVmafMin"] = "80"
+            },
+            Libraries =
+            [
+                new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null)
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.False(result.Applied);
+        Assert.Contains(result.Errors, error => error.Contains("fifth-percentile", StringComparison.OrdinalIgnoreCase));
+        await using var db = CreateDb();
+        Assert.Empty(await db.Libraries.ToListAsync());
+        Assert.Empty(await db.AppSettings.ToListAsync());
+    }
+
+    [Fact]
     public async Task Exported_config_round_trips_back_through_import()
     {
         await using (var db = CreateDb())
         {
-            db.AppSettings.Add(new AppSetting { Key = SettingKeys.EncoderMode, Value = "NvidiaNvenc" });
+            db.AppSettings.AddRange(
+                new AppSetting { Key = SettingKeys.EncoderMode, Value = "NvidiaNvenc" });
             db.Libraries.Add(new Library
             {
                 Name = "TV", Path = "/data/tv", MediaType = MediaType.Tv,
                 RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080,
                 VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160, DownmixToStereo = true,
+                KeepAudioLanguages = " ENG, jpn, eng ",
                 ReencodeLossyAudio = true,
+                VmafQualityGateEnabled = true,
+                MinVmafHarmonicMean = 91,
+                MinVmafMin = 78,
+                MinVmafCatastrophicMin = 48,
+                ClipVmafEnabled = true,
+                VmafFrameSubsample = 2,
                 AutoEnqueueEnabled = true,
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
                 AutoEnqueueWindowEnd = new TimeOnly(6, 30)
@@ -235,7 +321,14 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal("aac", library.VideoAudioCodec);
         Assert.Equal(160, library.VideoAudioBitrateKbps);
         Assert.True(library.DownmixToStereo);
+        Assert.Equal("eng, jpn", library.KeepAudioLanguages);
         Assert.True(library.ReencodeLossyAudio);
+        Assert.True(library.VmafQualityGateEnabled);
+        Assert.Equal(91, library.MinVmafHarmonicMean);
+        Assert.Equal(78, library.MinVmafMin);
+        Assert.Equal(48, library.MinVmafCatastrophicMin);
+        Assert.True(library.ClipVmafEnabled);
+        Assert.Equal(2, library.VmafFrameSubsample);
         Assert.True(library.AutoEnqueueEnabled);
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);
         Assert.Equal(new TimeOnly(6, 30), library.AutoEnqueueWindowEnd);

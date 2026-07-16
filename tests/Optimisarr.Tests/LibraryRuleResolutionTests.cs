@@ -30,4 +30,28 @@ public sealed class LibraryRuleResolutionTests
 
         Assert.Null(rules.MinSourceBitsPerPixelSecond);   // floor removed, so every source reaches the encoder
     }
+
+    [Fact]
+    public void Stored_kept_audio_languages_resolve_into_the_rules()
+    {
+        var library = new Library
+        {
+            Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc,
+            KeepAudioLanguages = "eng, jpn"
+        };
+
+        var rules = LibraryRuleResolution.Resolve(library);
+
+        Assert.Equal(new[] { "eng", "jpn" }, rules.KeepAudioLanguages);
+    }
+
+    [Fact]
+    public void An_unset_kept_audio_languages_column_keeps_every_track()
+    {
+        var library = new Library { Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc };
+
+        var rules = LibraryRuleResolution.Resolve(library);
+
+        Assert.Empty(rules.KeepAudioLanguages);
+    }
 }

@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-13)
+## Up next (priority order, updated 2026-07-15)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -14,15 +14,15 @@ the replacement workflow is trustworthy.
    and its peer response. Most of the phase has shipped — admin-token auth (with
    end-to-end coverage), the self-describing CI-checked OpenAPI contract, the pipeline
    robustness pass, endpoint modularization, large-library paging, the diagnostics
-   bundle, and the roadmap/docs split are all done. The **hardware validation matrix**
-   below is the remaining open item, gated on access to non-Intel GPUs.
+   bundle, the maintained hardware validation matrix, and the roadmap/docs split are all done.
+   **Real-host AMD VA-API validation** remains gated on access to suitable hardware.
 
    - **Adaptive language selector: done.** The sidebar language menu now measures the available
      viewport space and opens upward or downward as appropriate, with keyboard navigation and
      accessible listbox semantics retained in either direction.
 
    - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
-     re-encodes at selectable floors — a single Settings slider offers Off (the default), Space-saver
+     re-encodes at selectable floors — each library offers Off (the default), Space-saver
      (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
      off by default because it fully decodes both files and scores every frame, roughly doubling
      verification time; while off, the structural, duration and size gates plus quarantine rollback
@@ -116,11 +116,11 @@ the replacement workflow is trustworthy.
      capability and the most recent captured ffmpeg logs, so it is self-contained for a support
      ticket. Done.
 
-   - **Hardware validation matrix.** Create a maintained matrix that records CPU,
-     NVIDIA NVENC, Intel QSV, VA-API, hardware decode, and GPU metrics validation by
-     platform, with date, evidence, and known limits. AMD VA-API remains the important
-     open validation target. The matrix should distinguish "implemented and unit-tested"
-     from "validated on real hardware."
+   - **Hardware validation matrix: maintained; AMD evidence pending.** The public
+     [matrix](setup/hardware-validation-matrix.md) records CPU, NVIDIA NVENC, Intel QSV, VA-API,
+     hardware decode, VMAF, and GPU metrics by platform, with date, evidence, known limits, and a
+     repeatable evidence checklist. It distinguishes "implemented and unit-tested" from "validated
+     on real hardware." AMD VA-API remains the important open validation target.
 
    - **Roadmap/docs split: done.** The dense recently-shipped log, current status, and per-phase
      implementation detail moved to [`engineering/history.md`](engineering/history.md), so this
@@ -153,14 +153,86 @@ the replacement workflow is trustworthy.
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
         of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
-2. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
+2. **Gold-standard first-run setup wizard** — turn a new, empty installation into safe,
+   understandable libraries without hiding Docker-level mistakes or weakening Optimisarr's
+   fail-closed defaults. This is the next independently actionable product item while the hardware
+   validation matrix remains gated on access to non-Intel GPUs.
+
+   - **Trigger, resume, and ownership: foundation shipped.** A versioned `SetupState` now distinguishes
+     a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
+     restart, accepts duplicate progress writes idempotently, and permits completion only from final
+     review. Upgraded installations are marked complete and never forced into onboarding. Back retains
+     applied choices, and the Settings header offers **Run setup again** without deleting configuration.
+     Remaining refinement: explicit optional-step Skip semantics as integrations join the flow.
+   - **Five stable, task-oriented steps: initial flow shipped.** One heading and primary action drive:
+     (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) any
+     number of libraries and their optimisation rules; (4) verification, scheduling, quarantine, and replacement
+     safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
+     skippable sub-step, so Plex/Jellyfin/Sonarr/Radarr availability can never block first use. A
+     stable step indicator shows “step N of 5”, current/completed/pending text, `aria-current`, and
+     separate Back/Continue controls—the [USWDS step-indicator guidance](https://designsystem.digital.gov/components/step-indicator/)
+     recommends this pattern for linear processes with three or more high-level sections.
+   - **Prove the environment instead of merely collecting fields: shipped.** The readiness
+     step runs the existing tool/capability checks and non-destructive probes for `/config`, `/work`,
+     `/trash`, and the chosen media root: existence, effective read/write permissions, available
+     space, and whether media, work, and quarantine remain below one container mount boundary for
+     atomic replacement. It detects
+     encoder support with the same real test encode used by Tools. Database connectivity,
+     required/optional tools, detected hardware encoders, and effective read/write access for config,
+     work, quarantine, and every configured library root are visible and gate progress. Each row now
+     carries free/total capacity plus filesystem, mount, type, and boundary evidence; configured
+     libraries state whether work and quarantine moves are atomic. Missing, unreadable, unwritable,
+     and low-space states produce exact local, Compose, Unraid, and TrueNAS recovery steps. A
+     loading/announced **Re-test system** action reruns the real probes and clears resolved advice.
+     The container never pretends it can create a host bind mount or change host permissions. Docker
+     documents that mounts must be explicitly granted to a service and recommends
+     [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
+   - **Safe recommendations, not silent automation: initial defaults shipped.** Start in dry-run
+     mode, one concurrent job, auto-replace off, conservative free-space/quarantine settings, and no
+     auto-enqueue until the user reviews them. Explain encoder-specific quality, preview one
+     representative candidate when possible, and show the estimated effect before saving. The wizard
+     may recommend hardware decode, a VMAF tier, and a schedule from detected capabilities, but every
+     recommendation remains visible and reversible. It never scans, enqueues, transcodes, replaces,
+     or deletes an original until the
+     user confirms the review screen. The current flow visibly applies dry-run/concurrency, creates
+     every new library with auto-enqueue, auto-replace, and VMAF off unless explicitly changed in the
+     full embedded rules editor, and starts no work. Capability-
+     based encoder/VMAF/schedule recommendations and an in-wizard representative preview remain.
+   - **Review before commitment: initial receipt shipped.** The last step currently groups system,
+     library, replacement, and queue choices and states explicitly that completion starts no work.
+     Remaining: security, storage, quality, scheduling and integration Change links, plus a single
+     transactional plan apply. The intended final form groups security, storage, library, quality,
+     scheduling, integration, and replacement choices; each section has an accessible Change action
+     that returns directly to that step with values pre-populated. GOV.UK's
+     [check-answers pattern](https://design-system.service.gov.uk/patterns/check-answers/) uses this
+     review to raise confidence and reduce submission errors. Applying the plan uses one validated
+     transaction where possible, returns a clear success receipt, and links directly to the first
+     scan/candidate review rather than starting destructive work.
+   - **Accessible recovery is a release criterion.** Validate when Continue is pressed, preserve all
+     user input, place a concise error summary at the top, move focus to it, and associate inline
+     errors with their fields. W3C requires logical
+     [keyboard focus order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) and recommends
+     concise, actionable [form notifications](https://www.w3.org/WAI/tutorials/forms/notifications/);
+     WCAG 2.2 also adds minimum target size, unobscured focus, redundant-entry, and accessible-
+     authentication criteria. Status from readiness tests uses a polite live region without stealing
+     focus, and progress never relies on colour alone.
+   - **Gold-standard acceptance matrix.** Ship only with API/domain tests for state transitions,
+     idempotency, rollback, and upgrade bypass; real-host integration tests for fresh/resumed/completed
+     setup; and browser tests for Back/Continue/Change/Skip/Re-test across light/dark mode, all nine
+     locales, keyboard-only and screen-reader semantics, 400% zoom, and 390px mobile width. Exercise
+     read-only media, unwritable/missing work or quarantine, low disk, absent VMAF/ExifTool, unavailable
+     selected GPU, unreachable optional integration, invalid admin token, refresh/restart mid-step,
+     double-submit, and a failure during final apply. The invariant is explicit: wizard tests may
+     create disposable files under `/work` but must prove no source file is modified or removed.
+
+3. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration
   coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
   notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
   and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
   paid external services.
 
-3. **First-class diagnostics & observability API** — make "why did this fail?" answerable
+4. **First-class diagnostics & observability API** — make "why did this fail?" answerable
    from the API alone, without SSH-ing the host or reading container logs. Today failed-job
    detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
    verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
@@ -192,7 +264,7 @@ the replacement workflow is trustworthy.
    logic, which now handles the "skip before we waste an encode" cases directly — see the
    *already-optimised sibling skip* and *already-efficient source skip* notes below.
 
-4. **Full translation parity with YA-WAMF: done.** The Optimisarr UI and
+5. **Full translation parity with YA-WAMF: done.** The Optimisarr UI and
    user-facing API/status strings, then provide complete translations for the same language
    set currently carried by YA-WAMF: English, German, Spanish, French, Italian, Japanese,
    Portuguese, Russian, and Chinese (`en`, `de`, `es`, `fr`, `it`, `ja`, `pt`, `ru`, `zh`).
@@ -226,7 +298,7 @@ the replacement workflow is trustworthy.
      initial application chunk until selected. Native-speaker refinements remain welcome through
      normal issue reports, but no language is navigation-only or structurally incomplete.
 
-5. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
+6. **Packaging, app-store templates, and discovery** — make Optimisarr easy to find and
    install where Docker media-stack users already look. Keep the Docker contract stable and
    make every template expose the same core surface: image tag, web port, admin token,
    `/config`, work/output, quarantine, media-library paths, health check, optional hardware
@@ -265,6 +337,50 @@ the replacement workflow is trustworthy.
      as r/selfhosted, r/unRAID, r/truenas, r/radarr, and r/sonarr. Prioritise a short, honest
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
+
+7. **Blind quality calibration ("placebo panel")** — help a user pick the lowest quality preset
+   that is transparent *to them*, without the "higher must be better" bias that wastes storage.
+   Per library, choose a representative file (video, audio, or image) and encode a short
+   representative segment at each preset tier. Present the candidates unlabelled and in randomised
+   order alongside the untouched original; the user judges them — ideally an ABX trial ("is X the
+   original or the encode?") repeated a few times, which is far more defensible than a single guess
+   — then a Reveal button shows the true tiers and each candidate's VMAF/SSIM score. The outcome
+   feeds straight back into the library's quality slider ("use this tier for this library").
+
+   - **Bias controls are the point.** Randomise order per session, hide size/bitrate and labels
+     until reveal, and loudness-match audio candidates (a louder encode always sounds "better").
+     Video and image candidates share one viewport, zoom, and playback position.
+   - **Per media kind.** Video reuses the frame-synced compare panel ("Play both") and the
+     preview-clip mechanism so only a short segment is encoded, not the whole file; audio uses
+     instant, level-matched switching; images use a synced zoom/pan toggle.
+   - **Cheap and safe by construction.** Candidates are short, on-demand encodes written to `/work`
+     and cleaned up afterwards; the original is only ever read. Nothing here can replace or delete
+     a file, so it sits entirely outside the safety-critical path.
+   - **Honest results.** Showing the VMAF/SSIM score at reveal lets a user correlate what they can
+     actually perceive with the metric — the whole justification for trusting a lower default floor.
+
+8. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
+   low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why
+   the gate ships off by default. Make it fast enough to actually turn on.
+
+   - **The honest hardware picture: done.** The only GPU acceleration for the VMAF computation itself is
+     **VMAF-CUDA** (`libvmaf_cuda`, part of VMAF 3.0 / FFmpeg 6.1) — **NVIDIA only**. There is no
+     Intel (QSV/VAAPI), AMD, Vulkan, OpenCL, or NPU/OpenVINO backend for the VMAF feature
+     extractors; Intel/AMD silicon can hardware-accelerate decode and scaling but not the scoring.
+     Document this plainly so users don't expect QSV/VAAPI/NPU VMAF that does not exist.
+   - **Optional CUDA VMAF when an NVIDIA GPU is present: done.** Detect the filter and switch to NVDEC
+     decode + `scale_cuda` + `libvmaf_cuda` (CUDA frames end to end), falling back to the CPU path
+     otherwise. Reported ~4.4× throughput. Needs an ffmpeg built with `--enable-nonfree`
+     `--enable-libvmaf` and `--enable-ffnvcodec` (and the CUDA VMAF library), so it is a build/runtime capability check,
+     not an assumption.
+   - **CPU-side wins for everyone else (the N100 case): done.** In impact order: score a short
+     representative **clip** instead of the whole file (reuse the preview-clip mechanism — the
+     biggest single win); optionally **hardware-decode the two inputs** with QSV/VAAPI to offload
+     decode while VMAF stays on the CPU; expose an `n_subsample` setting (less scoring work by measuring every
+     Nth frame, with the caveat that it can step over the single bad frame the per-frame-minimum
+     floor exists to catch); and drop the incidental PSNR/SSIM report features when only the gate
+     decision is needed. All accelerated paths fall back to software, HDR stays on its established
+     software colour pipeline, and `n_threads` remains bounded to the core count.
 
 
 ## Guiding principles

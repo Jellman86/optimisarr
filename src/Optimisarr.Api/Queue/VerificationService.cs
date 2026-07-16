@@ -19,10 +19,16 @@ public sealed record OriginalSnapshot(
     bool AudioDownmixed = false,
     bool ImageDownscaleRequested = false,
     bool VideoReencoded = true,
-    string? ExpectedVideoCodec = null);
+    string? ExpectedVideoCodec = null,
+    // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
+    // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
+    IReadOnlyList<int>? RemovedAudioStreamIndexes = null);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
-public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
+public sealed record VerificationOutcome(
+    VerificationReport Report,
+    long OutputSizeBytes,
+    string? VmafSampling = null);
 
 /// <summary>The preview clip window to use when building a verification reference segment.</summary>
 public sealed record VerificationClip(int Seconds, int? StartSeconds, string ReferencePath);
@@ -49,7 +55,8 @@ public sealed class VerificationService(
         VerificationPolicy policy,
         CancellationToken cancellationToken,
         VerificationClip? clip = null,
-        IProgress<double>? qualityProgress = null)
+        IProgress<double>? qualityProgress = null,
+        VmafAcceleration vmafAcceleration = VmafAcceleration.None)
     {
         var reference = clip is null
             ? original
@@ -69,23 +76,54 @@ public sealed class VerificationService(
             // catch a silent downmix or sample-rate drop in the output.
             var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
 
+            // When the job removed tracks by language, the audio the output promised to retain
+            // is the kept tracks — so channel/sample-rate expectations come from those, not from
+            // a removed track (e.g. dropping a foreign 7.1 track must not excuse downmixing the
+            // kept one, and must not demand 8 channels the output was never meant to have).
+            var keptAudioTracks = KeptAudioTracks(originalProbe, reference.RemovedAudioStreamIndexes);
+
             // VMAF is expensive (a second full decode of both files), so run it only for
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
             // audio and image jobs have their own applicable verification gates.
-            var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
-                ? await MeasureQualityAsync(
-                    reference,
-                    outputPath,
-                    originalProbe,
-                    quality,
-                    // A preview's cheap stream-copy clip is suitable for duration/stream checks,
-                    // but can retain keyframe pre-roll. VMAF decodes the full original from the
-                    // exact preview start instead, keeping its frames aligned with the encode.
-                    clip is null ? reference.Path : original.Path,
-                    clip?.StartSeconds,
-                    qualityProgress,
-                    cancellationToken)
-                : null;
+            QualityResult? qualityResult = null;
+            string? vmafSampling = null;
+            if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            {
+                var windows = clip is null && reference.DurationSeconds is { } total
+                    ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)
+                    : [VmafWindow.Full];
+                vmafSampling = windows.Count == 1 && windows[0] == VmafWindow.Full
+                    ? "Full file"
+                    : "Three 40-second samples (early, middle and late)";
+
+                var measurements = new List<QualityResult>(windows.Count);
+                for (var index = 0; index < windows.Count; index++)
+                {
+                    var window = windows[index];
+                    var progress = qualityProgress is null
+                        ? null
+                        : new WindowProgress(qualityProgress, index, windows.Count);
+                    measurements.Add(await MeasureQualityAsync(
+                        reference,
+                        outputPath,
+                        originalProbe,
+                        quality,
+                        // A preview's cheap stream-copy clip is suitable for duration/stream checks,
+                        // but can retain keyframe pre-roll. VMAF decodes the full original from the
+                        // exact preview start instead, keeping its frames aligned with the encode.
+                        clip is null ? reference.Path : original.Path,
+                        clip?.StartSeconds,
+                        window.StartSeconds,
+                        window.DurationSeconds,
+                        policy.VmafFrameSubsample,
+                        vmafAcceleration,
+                        policy,
+                        progress,
+                        cancellationToken));
+                }
+
+                qualityResult = QualityScoreAggregator.Combine(measurements, vmafSampling);
+            }
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
             // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
@@ -150,9 +188,13 @@ public sealed class VerificationService(
                 OriginalIsHdr: reference.IsHdr,
                 OutputIsHdr: outputProbe.IsHdr,
                 HdrConvertedToSdr: reference.HdrConvertedToSdr,
-                OriginalMaxAudioChannels: originalProbe.MaxAudioChannels,
+                OriginalMaxAudioChannels: keptAudioTracks.Count == 0
+                    ? originalProbe.MaxAudioChannels
+                    : keptAudioTracks.Max(track => track.Channels),
                 OutputMaxAudioChannels: outputProbe.MaxAudioChannels,
-                OriginalMaxAudioSampleRate: originalProbe.MaxAudioSampleRate,
+                OriginalMaxAudioSampleRate: keptAudioTracks.Count == 0
+                    ? originalProbe.MaxAudioSampleRate
+                    : keptAudioTracks.Max(track => track.SampleRate),
                 OutputMaxAudioSampleRate: outputProbe.MaxAudioSampleRate,
                 QualityMeasured: qualityResult?.Measured ?? false,
                 QualityError: qualityResult?.Error,
@@ -182,6 +224,7 @@ public sealed class VerificationService(
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,
+                AudioTracksRemoved: reference.RemovedAudioStreamIndexes?.Count ?? 0,
                 OriginalWidth: originalProbe.Width,
                 OriginalHeight: originalProbe.Height,
                 OutputWidth: outputProbe.Width,
@@ -210,7 +253,10 @@ public sealed class VerificationService(
                 OriginalVideoProfile: originalProbe.VideoProfile,
                 OutputVideoProfile: outputProbe.VideoProfile);
 
-            return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
+            return new VerificationOutcome(
+                VerificationEvaluator.Evaluate(input, policy),
+                outputSize,
+                vmafSampling);
         }
         finally
         {
@@ -221,20 +267,42 @@ public sealed class VerificationService(
         }
     }
 
-    private static Task<QualityResult> MeasureQualityAsync(
+    // The original's audio tracks minus the ones the job removed on purpose. Falls back to
+    // every track when nothing was removed (or the probe saw no audio, e.g. an unreadable
+    // original — the aggregate fields then keep their existing conservative behaviour).
+    private static IReadOnlyList<AudioTrackInfo> KeptAudioTracks(
+        MediaProbeResult originalProbe,
+        IReadOnlyList<int>? removedIndexes)
+    {
+        if (removedIndexes is not { Count: > 0 })
+        {
+            return originalProbe.AudioTracks;
+        }
+
+        return originalProbe.AudioTracks
+            .Where((_, index) => !removedIndexes.Contains(index))
+            .ToList();
+    }
+
+    private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
         QualityScoreService quality,
         string qualityReferencePath,
         int? referenceStartSeconds,
+        int? clipStartSeconds,
+        int? clipDurationSeconds,
+        int frameSubsample,
+        VmafAcceleration acceleration,
+        VerificationPolicy policy,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
         if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
         {
-            return Task.FromResult(QualityResult.Failed(
-                "Could not determine the original video dimensions required for VMAF."));
+            return QualityResult.Failed(
+                "Could not determine the original video dimensions required for VMAF.");
         }
 
         var context = new QualityMeasurementContext(
@@ -242,9 +310,34 @@ public sealed class VerificationService(
             originalProbe.Height.Value,
             reference.IsHdr,
             reference.HdrConvertedToSdr,
-            referenceStartSeconds,
-            originalProbe.DurationSeconds);
-        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
+            // A clip-VMAF window seeks both inputs to its start; otherwise only the reference seek
+            // (a preview) applies to the reference input.
+            ReferenceStartSeconds: clipStartSeconds ?? referenceStartSeconds,
+            ReferenceDurationSeconds: originalProbe.DurationSeconds,
+            DistortedStartSeconds: clipStartSeconds,
+            MeasureDurationSeconds: clipDurationSeconds,
+            FrameSubsample: frameSubsample,
+            Acceleration: acceleration);
+        var result = await quality.MeasureAsync(
+            qualityReferencePath,
+            outputPath,
+            context,
+            cancellationToken,
+            qualityProgress);
+        return await VmafSoftwareConfirmation.ConfirmAsync(
+            result,
+            policy,
+            () => quality.MeasureAsync(
+                qualityReferencePath,
+                outputPath,
+                context with { Acceleration = VmafAcceleration.None },
+                cancellationToken));
+    }
+
+    private sealed class WindowProgress(IProgress<double> target, int index, int count) : IProgress<double>
+    {
+        public void Report(double value) =>
+            target.Report(Math.Clamp((index + value) / count, 0, 0.999));
     }
 
     private async Task<OriginalSnapshot> CreateReferenceClipAsync(

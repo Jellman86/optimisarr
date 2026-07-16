@@ -23,8 +23,103 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref]", command.FilterGraph);
         Assert.Contains("model=version=vmaf_v0.6.1", command.FilterGraph);
         Assert.Contains("n_threads=4", command.FilterGraph);
+        Assert.Contains("n_subsample=1", command.FilterGraph);
+        Assert.DoesNotContain("feature=", command.FilterGraph);
         Assert.Contains("shortest=1:repeatlast=0", command.FilterGraph);
         Assert.DoesNotContain("scale2ref", command.FilterGraph);
+    }
+
+    [Fact]
+    public void Frame_subsampling_is_passed_to_libvmaf()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                FrameSubsample: 4),
+            threads: 2);
+
+        Assert.Contains("n_subsample=4", command.FilterGraph);
+        Assert.Contains("every 4th frame", command.Preprocessing);
+    }
+
+    [Fact]
+    public void Cuda_measurement_keeps_sdr_frames_on_the_gpu()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda),
+            threads: 2);
+
+        Assert.Equal(2, command.Arguments.Count(argument => argument == "-hwaccel"));
+        Assert.Equal(2, command.Arguments.Count(argument => argument == "-hwaccel_output_format"));
+        Assert.Contains("scale_cuda=1920:1080:interp_algo=bicubic:format=yuv420p", command.FilterGraph);
+        Assert.Contains("libvmaf_cuda=", command.FilterGraph);
+        Assert.DoesNotContain("hwdownload", command.FilterGraph);
+        Assert.Contains("CUDA VMAF", command.Preprocessing);
+    }
+
+    [Fact]
+    public void Qsv_decode_downloads_frames_for_cpu_vmaf()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Qsv),
+            threads: 2);
+
+        Assert.Equal("qsv=hw", ValueAfter(command.Arguments, "-init_hw_device", occurrence: 1));
+        Assert.Equal(2, command.Arguments.Count(argument => argument == "-hwaccel"));
+        Assert.Contains("hwdownload,format=nv12", command.FilterGraph);
+        Assert.Contains("libvmaf=", command.FilterGraph);
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+    }
+
+    [Fact]
+    public void Vaapi_decode_downloads_frames_for_cpu_vmaf()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Vaapi),
+            threads: 2);
+
+        Assert.Equal("/dev/dri/renderD128", ValueAfter(command.Arguments, "-vaapi_device", occurrence: 1));
+        Assert.Equal(2, command.Arguments.Count(argument => argument == "-hwaccel"));
+        Assert.Contains("hwdownload,format=nv12", command.FilterGraph);
+    }
+
+    [Fact]
+    public void Hdr_measurement_ignores_requested_acceleration_to_preserve_the_colour_pipeline()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: true, HdrConvertedToSdr: true,
+                Acceleration: VmafAcceleration.Cuda),
+            threads: 2);
+
+        Assert.DoesNotContain("-hwaccel", command.Arguments);
+        Assert.Contains("libvmaf=", command.FilterGraph);
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        Assert.Equal("HDR reference tone-mapped to SDR", command.Preprocessing);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(11)]
+    public void Invalid_frame_subsampling_is_rejected(int frameSubsample)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                FrameSubsample: frameSubsample),
+            threads: 1));
     }
 
     [Fact]
@@ -38,6 +133,53 @@ public sealed class QualityScoreCommandBuilderTests
         // -stats makes ffmpeg emit per-frame "time=" progress even at the error log level, which
         // the verification service turns into live queue progress.
         Assert.Contains("-stats", command.Arguments);
+    }
+
+    [Fact]
+    public void Clip_measurement_seeks_before_the_window_and_trims_matching_decoder_preroll()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 300, ReferenceStartSeconds: 300, MeasureDurationSeconds: 120),
+            threads: 4);
+
+        var args = command.Arguments;
+        // Decode five seconds of pre-roll on both independently encoded inputs, then trim the same
+        // interval after decode. This avoids scoring different keyframe/decoder startup regions.
+        Assert.Equal("295", ValueAfter(args, "-ss", occurrence: 1));
+        Assert.Equal("/work/output.mkv", ValueAfter(args, "-i", occurrence: 1));
+        Assert.Equal("295", ValueAfter(args, "-ss", occurrence: 2));
+        Assert.Equal("/data/original.mkv", ValueAfter(args, "-i", occurrence: 2));
+        Assert.Equal(2, command.FilterGraph.Split("trim=start=5:duration=120").Length - 1);
+        Assert.Equal("120", ValueAfter(args, "-t", occurrence: 1));
+    }
+
+    [Fact]
+    public void Clip_near_the_start_decodes_from_zero_and_trims_to_the_exact_window()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 3, ReferenceStartSeconds: 3, MeasureDurationSeconds: 40),
+            threads: 4);
+
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.Equal(2, command.FilterGraph.Split("trim=start=3:duration=40").Length - 1);
+    }
+
+    [Fact]
+    public void Full_file_measurement_has_no_seek_or_duration_cap()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
+            threads: 4);
+
+        Assert.DoesNotContain("-ss", command.Arguments);
+        Assert.DoesNotContain("-t", command.Arguments);
     }
 
     [Fact]

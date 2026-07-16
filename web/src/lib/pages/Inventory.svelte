@@ -376,6 +376,9 @@
               {selectedFile.audioCodecs ?? '—'}{selectedFile.audioTrackCount
                 ? t(i18n.m.inventory.audio_tracks, { count: selectedFile.audioTrackCount })
                 : ''}
+              {#if selectedFile.audioLanguages}
+                <span class="block text-xs text-slate-400">{selectedFile.audioLanguages}</span>
+              {/if}
             </dd>
           </div>
           <div class="flex justify-between gap-4">

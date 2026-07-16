@@ -46,6 +46,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
             entity.Property(library => library.EncoderPreset).HasMaxLength(32);
             entity.Property(library => library.AudioTargetCodec).HasMaxLength(32);
+            entity.Property(library => library.KeepAudioLanguages).HasMaxLength(256);
             entity.Property(library => library.TargetImageFormat).HasMaxLength(32);
             entity.Property(library => library.TargetFolder).HasMaxLength(1024);
         });
@@ -63,6 +64,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.VideoProfile).HasMaxLength(64);
             entity.Property(file => file.PixelFormat).HasMaxLength(32);
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
+            entity.Property(file => file.AudioLanguages).HasMaxLength(256);
 
             // Removing a library removes its inventory; orphan media files make no sense.
             entity.HasOne(file => file.Library)
@@ -82,6 +84,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(job => job.FailureCategory).HasConversion<string>().HasMaxLength(32);
             entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
+            entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
 
             // Deleting a media file (e.g. via its library) removes its jobs too.
             entity.HasOne(job => job.MediaFile)

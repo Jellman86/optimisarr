@@ -15,9 +15,8 @@ namespace Optimisarr.Core.Verification;
 /// Settings) when the extra safeguard is worth the cost; the structural, duration and
 /// size gates plus quarantine rollback still protect every replacement while it is off.
 /// It is skipped for remuxes and non-video media, where VMAF has no useful work to do.
-/// When enabled, the output must clear both a harmonic-mean VMAF floor (which penalises
-/// bad frames) and a per-frame minimum floor (which catches short artifact bursts a
-/// healthy average would hide).
+/// When enabled, the output must clear a harmonic-mean VMAF floor, a fifth-percentile
+/// floor for sustained difficult content, and a lower single-frame catastrophic floor.
 ///
 /// The audio loudness and clipping gates are opt-in too and share one
 /// <c>ebur128</c> decode pass: the loudness gate bounds EBU R128 drift, and the
@@ -46,13 +45,16 @@ public sealed record VerificationPolicy(
     bool QualityGateEnabled,
     double MinimumVmafHarmonicMean,
     double MinimumVmafMin,
+    double MinimumVmafCatastrophicMin,
     bool AudioLoudnessGateEnabled,
     double MaxLoudnessDriftLufs,
     bool AudioClippingGateEnabled,
     double MaxTruePeakDbtp,
     bool ImageQualityGateEnabled,
     double MinimumImageSsim,
-    bool ImageMetadataGateEnabled = false)
+    bool ImageMetadataGateEnabled = false,
+    bool ClipVmafEnabled = false,
+    int VmafFrameSubsample = 1)
 {
     public static VerificationPolicy Default { get; } = new(
         DurationTolerancePercent: 1.0,
@@ -62,13 +64,16 @@ public sealed record VerificationPolicy(
         QualityGateEnabled: false,
         MinimumVmafHarmonicMean: 93.0,
         MinimumVmafMin: 80.0,
+        MinimumVmafCatastrophicMin: 50.0,
         AudioLoudnessGateEnabled: false,
         MaxLoudnessDriftLufs: 1.0,
         AudioClippingGateEnabled: false,
         MaxTruePeakDbtp: 0.0,
         ImageQualityGateEnabled: true,
         MinimumImageSsim: 0.95,
-        ImageMetadataGateEnabled: true);
+        ImageMetadataGateEnabled: true,
+        ClipVmafEnabled: false,
+        VmafFrameSubsample: 1);
 
     public bool RequiresVmaf(MediaKind kind, bool videoReencoded) =>
         QualityGateEnabled && kind == MediaKind.Video && videoReencoded;

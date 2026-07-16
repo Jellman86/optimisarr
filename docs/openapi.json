@@ -248,6 +248,12 @@
             "default": false,
             "type": "boolean"
           },
+          "clipVmafEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
@@ -295,6 +301,12 @@
               "string"
             ]
           },
+          "keepAudioLanguages": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -313,6 +325,15 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "minVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -424,6 +445,21 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "vmafFrameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "vmafQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         },
@@ -629,6 +665,12 @@
               "boolean"
             ]
           },
+          "clipVmafEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "type": [
               "null",
@@ -683,6 +725,12 @@
               "string"
             ]
           },
+          "keepAudioLanguages": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -704,6 +752,15 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "minVmafCatastrophicMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -844,6 +901,21 @@
               "null",
               "string"
             ]
+          },
+          "vmafFrameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "vmafQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         },
         "required": [
@@ -869,6 +941,7 @@
           "videoAudioCodec",
           "videoAudioBitrateKbps",
           "downmixToStereo",
+          "keepAudioLanguages",
           "reencodeLossyAudio",
           "targetImageFormat",
           "imageQuality",
@@ -880,6 +953,10 @@
           "moveOverwrite",
           "minVmafHarmonicMean",
           "minVmafMin",
+          "vmafQualityGateEnabled",
+          "minVmafCatastrophicMin",
+          "clipVmafEnabled",
+          "vmafFrameSubsample",
           "autoEnqueueEnabled",
           "autoEnqueueWindowStart",
           "autoEnqueueWindowEnd",
@@ -1041,25 +1118,6 @@
               "string"
             ]
           },
-          "verificationMinimumVmafHarmonicMean": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationMinimumVmafMin": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationQualityGateEnabled": {
-            "type": "boolean"
-          },
           "verificationRequireAudioRetained": {
             "type": "boolean"
           },
@@ -1081,9 +1139,6 @@
           "verificationRequireAudioRetained",
           "verificationRequireSubtitlesRetained",
           "verificationRequireSizeReduction",
-          "verificationQualityGateEnabled",
-          "verificationMinimumVmafHarmonicMean",
-          "verificationMinimumVmafMin",
           "verificationAudioLoudnessGateEnabled",
           "verificationMaxLoudnessDriftLufs",
           "verificationAudioClippingGateEnabled",
@@ -1096,13 +1151,29 @@
           "replacementQuarantineRetentionDays"
         ],
         "type": "object"
+      },
+      "SetupProgressDto": {
+        "properties": {
+          "completedStep": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "completedStep"
+        ],
+        "type": "object"
       }
     }
   },
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.3.0"
+    "version": "0.2.4.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -2036,6 +2107,14 @@
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "higherQuality",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -2920,6 +2999,96 @@
         ]
       }
     },
+    "/api/setup": {
+      "get": {
+        "operationId": "GetSetupState",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Setup"
+        ]
+      }
+    },
+    "/api/setup/complete": {
+      "post": {
+        "operationId": "CompleteSetup",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Setup"
+        ]
+      }
+    },
+    "/api/setup/progress": {
+      "put": {
+        "operationId": "UpdateSetupProgress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupProgressDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Setup"
+        ]
+      }
+    },
+    "/api/setup/readiness": {
+      "get": {
+        "operationId": "GetSetupReadiness",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Setup"
+        ]
+      }
+    },
+    "/api/setup/restart": {
+      "post": {
+        "operationId": "RestartSetup",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Setup"
+        ]
+      }
+    },
     "/api/stats": {
       "get": {
         "operationId": "GetStats",
@@ -2997,6 +3166,9 @@
   "tags": [
     {
       "name": "System"
+    },
+    {
+      "name": "Setup"
     },
     {
       "name": "Settings"

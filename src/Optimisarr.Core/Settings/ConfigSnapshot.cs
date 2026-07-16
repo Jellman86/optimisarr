@@ -56,7 +56,12 @@ public sealed record LibrarySnapshot(
     bool MoveOverwrite = false,
     bool AutoReplace = false,
     bool? SkipEfficientSources = null,
-    bool? OptimiseDolbyVision = null);
+    bool? OptimiseDolbyVision = null,
+    string? KeepAudioLanguages = null,
+    bool? VmafQualityGateEnabled = null,
+    double? MinVmafCatastrophicMin = null,
+    bool? ClipVmafEnabled = null,
+    int? VmafFrameSubsample = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

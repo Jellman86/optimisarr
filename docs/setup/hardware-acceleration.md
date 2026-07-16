@@ -1,5 +1,8 @@
 # Hardware acceleration
 
+See the maintained [hardware validation matrix](hardware-validation-matrix.md) for the distinction
+between automated implementation coverage and paths proven on a physical GPU.
+
 Use **Settings → Tools** after deployment. Optimisarr verifies each available
 encoder with a real test encode; a GPU device node alone is not sufficient.
 
@@ -11,7 +14,11 @@ No copyrighted material is used.
 The bundled Jellyfin FFmpeg is used for both hardware detection and transcoding, so the
 Tools page is the source of truth for what this container can actually encode. A separate
 static FFmpeg supplies the optional `libvmaf` quality-measurement filter and appears as its
-own Tools entry. The Queue shows the selected encoder on each job.
+own Tools entry. A configured `OPTIMISARR_FFMPEG_VMAF_CUDA` binary appears separately and is usable
+only when it exposes `libvmaf_cuda`; actual GPU/driver/source compatibility is checked by the first
+measurement. Runtime failures fall back to software, and a measured hardware-decoded score below
+the selected quality floor is confirmed in software before the output is rejected. The Queue shows
+the selected encoder on each job.
 
 ## Intel and AMD
 
@@ -36,7 +43,17 @@ and select a hardware mode only after Tools reports success.
 For systems with no GPU, use the [CPU-only Compose example](../../compose.cpu.example.yml).
 
 Hardware decode is used with hardware encoders when possible and retries with
-software decode when a source cannot be decoded on the GPU.
+software decode when a source cannot be decoded on the GPU. Eligible SDR VMAF passes use the same
+selection: Intel QSV and VA-API can decode both inputs before downloading frames for CPU scoring.
+That GPU-to-RAM copy means hardware decode is not guaranteed to be faster; benchmark it on the host.
+There is no Intel/AMD/NPU backend for VMAF's feature extractors.
+
+NVIDIA is the only full scoring-acceleration path. Supply an FFmpeg build with `libvmaf_cuda`,
+FFmpeg NVIDIA codec support, and `scale_cuda` through `OPTIMISARR_FFMPEG_VMAF_CUDA`; Optimisarr then
+uses NVDEC and keeps both SDR streams in CUDA memory. HDR remains on the software path so its 10-bit
+and tone-map preparation is unchanged. See FFmpeg's official
+[`libvmaf_cuda` example](https://ffmpeg.org/ffmpeg-filters.html#libvmaf_005fcuda) and
+[hardware-acceleration caveats](https://ffmpeg.org/ffmpeg.html#Advanced-Video-options).
 
 GPU usage graphs require an unprivileged metrics source. Intel/AMD are read from
 DRM fdinfo and NVIDIA from `nvidia-smi`; if neither is available, encoding can

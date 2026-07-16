@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Settings;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Optimisarr.Api.Library;
 
@@ -21,6 +23,16 @@ public sealed record QueueSettings(
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db)
 {
+    private static readonly string[] LegacyVmafSettingKeys =
+    [
+        "verification.qualityGateEnabled",
+        "verification.minimumVmafHarmonicMean",
+        "verification.minimumVmafMin",
+        "verification.minimumVmafCatastrophicMin",
+        "verification.clipVmafEnabled",
+        "verification.vmafFrameSubsample"
+    ];
+
     /// <summary>Conservative default: process one job at a time until the user opts in to more.</summary>
     public const int DefaultMaxConcurrentJobs = 1;
 
@@ -44,9 +56,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.VerificationRequireAudioRetained,
         SettingKeys.VerificationRequireSubtitlesRetained,
         SettingKeys.VerificationRequireSizeReduction,
-        SettingKeys.VerificationQualityGateEnabled,
-        SettingKeys.VerificationMinimumVmafHarmonicMean,
-        SettingKeys.VerificationMinimumVmafMin,
         SettingKeys.VerificationAudioLoudnessGateEnabled,
         SettingKeys.VerificationMaxLoudnessDriftLufs,
         SettingKeys.VerificationAudioClippingGateEnabled,
@@ -58,6 +67,14 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
+
+    /// <summary>
+    /// Setting keys accepted while reading a backup. The legacy VMAF keys remain recognised so
+    /// backups made before VMAF became per-library can be upgraded during import, but they are
+    /// deliberately absent from <see cref="PortableSettingKeys"/> and are never persisted again.
+    /// </summary>
+    public static readonly IReadOnlySet<string> RecognizedImportSettingKeys = new HashSet<string>(
+        PortableSettingKeys.Concat(LegacyVmafSettingKeys));
 
     /// <summary>
     /// The legacy single library root, if one was configured before the
@@ -83,6 +100,46 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             : DefaultMaxConcurrentJobs;
     }
 
+    public async Task<SetupState> InitialiseSetupStateAsync(
+        bool databaseExistedBeforeStartup,
+        CancellationToken cancellationToken)
+    {
+        var setting = await db.AppSettings
+            .FirstOrDefaultAsync(candidate => candidate.Key == SettingKeys.SetupState, cancellationToken);
+        var existing = ParseSetupState(setting?.Value);
+        var state = SetupState.Initialise(existing, databaseExistedBeforeStartup);
+        if (existing is null)
+        {
+            var initialValues = new Dictionary<string, string>
+            {
+                [SettingKeys.SetupState] = JsonSerializer.Serialize(state)
+            };
+            if (!databaseExistedBeforeStartup)
+            {
+                initialValues[SettingKeys.DryRunMode] = bool.TrueString;
+            }
+
+            await UpsertManyAsync(initialValues, cancellationToken);
+        }
+
+        return state;
+    }
+
+    public async Task<SetupState> GetSetupStateAsync(CancellationToken cancellationToken)
+    {
+        var value = await db.AppSettings
+            .AsNoTracking()
+            .Where(setting => setting.Key == SettingKeys.SetupState)
+            .Select(setting => setting.Value)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // Missing or malformed state must never force an upgraded installation into setup.
+        return ParseSetupState(value) ?? SetupState.CompletedUpgrade;
+    }
+
+    public Task SetSetupStateAsync(SetupState state, CancellationToken cancellationToken) =>
+        UpsertAsync(SettingKeys.SetupState, JsonSerializer.Serialize(state), cancellationToken);
+
     public async Task<QueueSettings> GetQueueSettingsAsync(CancellationToken cancellationToken)
     {
         var settings = await db.AppSettings
@@ -97,9 +154,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.VerificationRequireAudioRetained
                 || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
                 || setting.Key == SettingKeys.VerificationRequireSizeReduction
-                || setting.Key == SettingKeys.VerificationQualityGateEnabled
-                || setting.Key == SettingKeys.VerificationMinimumVmafHarmonicMean
-                || setting.Key == SettingKeys.VerificationMinimumVmafMin
                 || setting.Key == SettingKeys.VerificationAudioLoudnessGateEnabled
                 || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
                 || setting.Key == SettingKeys.VerificationAudioClippingGateEnabled
@@ -136,17 +190,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationRequireSizeReduction),
                     VerificationPolicy.Default.RequireSizeReduction),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationQualityGateEnabled),
-                    VerificationPolicy.Default.QualityGateEnabled),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafHarmonicMean),
-                    VerificationPolicy.Default.MinimumVmafHarmonicMean,
-                    min: 0),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumVmafMin),
-                    VerificationPolicy.Default.MinimumVmafMin,
-                    min: 0),
+                VerificationPolicy.Default.QualityGateEnabled,
+                VerificationPolicy.Default.MinimumVmafHarmonicMean,
+                VerificationPolicy.Default.MinimumVmafMin,
+                VerificationPolicy.Default.MinimumVmafCatastrophicMin,
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationAudioLoudnessGateEnabled),
                     VerificationPolicy.Default.AudioLoudnessGateEnabled),
@@ -169,7 +216,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                     min: 0),
                 ParseBool(
                     settings.GetValueOrDefault(SettingKeys.VerificationImageMetadataGateEnabled),
-                    VerificationPolicy.Default.ImageMetadataGateEnabled)),
+                    VerificationPolicy.Default.ImageMetadataGateEnabled),
+                VerificationPolicy.Default.ClipVmafEnabled,
+                VerificationPolicy.Default.VmafFrameSubsample),
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
@@ -219,12 +268,6 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 settings.VerificationPolicy.RequireSubtitlesRetained.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationRequireSizeReduction] =
                 settings.VerificationPolicy.RequireSizeReduction.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationQualityGateEnabled] =
-                settings.VerificationPolicy.QualityGateEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMinimumVmafHarmonicMean] =
-                Math.Max(0, settings.VerificationPolicy.MinimumVmafHarmonicMean).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMinimumVmafMin] =
-                Math.Max(0, settings.VerificationPolicy.MinimumVmafMin).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationAudioLoudnessGateEnabled] =
                 settings.VerificationPolicy.AudioLoudnessGateEnabled.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationMaxLoudnessDriftLufs] =
@@ -296,6 +339,33 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private static SetupState? ParseSetupState(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        try
+        {
+            var state = JsonSerializer.Deserialize<SetupState>(value);
+            return state is
+            {
+                Version: SetupState.CurrentVersion,
+                CompletedStep: >= 0 and <= SetupState.StepCount
+            }
+                && (state.Completed
+                    ? state.CompletedStep == SetupState.StepCount
+                    : state.CompletedStep < SetupState.StepCount)
+                ? state
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private async Task UpsertManyAsync(IReadOnlyDictionary<string, string> values, CancellationToken cancellationToken)
     {
         var keys = values.Keys.ToArray();
@@ -319,8 +389,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static int ParseInt(string? value, int fallback, int min) =>
-        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= min
+    private static int ParseInt(string? value, int fallback, int min, int max = int.MaxValue) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            && parsed >= min
+            && parsed <= max
             ? parsed
             : fallback;
 

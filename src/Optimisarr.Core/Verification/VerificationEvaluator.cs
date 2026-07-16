@@ -424,13 +424,16 @@ public static class VerificationEvaluator
         }
 
         var scores = input.QualityScores;
-        if (scores.VmafHarmonicMean is not { } harmonic || scores.VmafMin is not { } min)
+        if (scores.VmafHarmonicMean is null || scores.VmafMin is null)
         {
             return Fail("Perceptual quality (VMAF)", "VMAF aggregates were missing from the measurement.");
         }
 
         var detail = DescribeScores(scores, policy);
-        return harmonic >= policy.MinimumVmafHarmonicMean && min >= policy.MinimumVmafMin
+        // Netflix documents percentile pooling as a way to stop easy content hiding difficult
+        // frames. New measurements carry a fifth percentile; older persisted reports fall back to
+        // their minimum so they remain conservative and readable after upgrade.
+        return VmafSoftwareConfirmation.MeetsGate(scores, policy)
             ? Pass("Perceptual quality (VMAF)", detail)
             : Fail("Perceptual quality (VMAF)", $"{detail} Below the quality gate.");
     }
@@ -501,9 +504,10 @@ public static class VerificationEvaluator
         {
             string.Format(
                 CultureInfo.InvariantCulture,
-                "VMAF harmonic mean {0:0.##} (gate {1:0.##}), lowest frame {2:0.##} (gate {3:0.##})",
+                "VMAF harmonic mean {0:0.##} (gate {1:0.##}), fifth percentile {2:0.##} (gate {3:0.##}), lowest frame {4:0.##} (catastrophic floor {5:0.##})",
                 scores.VmafHarmonicMean, policy.MinimumVmafHarmonicMean,
-                scores.VmafMin, policy.MinimumVmafMin)
+                scores.VmafFifthPercentile ?? scores.VmafMin, policy.MinimumVmafMin,
+                scores.VmafMin, policy.MinimumVmafCatastrophicMin)
         };
 
         if (scores.VmafMean is { } mean)
@@ -687,6 +691,25 @@ public static class VerificationEvaluator
     private static VerificationCheck AudioRetained(VerificationInput input, VerificationPolicy policy)
     {
         var detail = $"Original {input.OriginalAudioTrackCount} audio track(s), output {input.OutputAudioTrackCount}.";
+        // Tracks the kept-languages rule removed are intentional, so expect exactly that many
+        // fewer — but a source that had audio must never verify with none at all, even if the
+        // planned removal claims otherwise (the selection logic forbids removing every track).
+        if (input.AudioTracksRemoved > 0)
+        {
+            var expected = input.OriginalAudioTrackCount - input.AudioTracksRemoved;
+            if (input.OriginalAudioTrackCount > 0)
+            {
+                expected = Math.Max(expected, 1);
+            }
+
+            detail += $" {input.AudioTracksRemoved} track(s) intentionally removed by the kept-languages rule.";
+            return input.OutputAudioTrackCount == expected
+                ? Pass("Audio tracks", detail)
+                : Fail(
+                    "Audio tracks",
+                    $"{detail} Expected exactly {expected} track(s) after the planned removal.");
+        }
+
         if (!policy.RequireAudioRetained)
         {
             return Pass("Audio tracks", $"{detail} Retention not required by policy.");

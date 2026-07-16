@@ -72,6 +72,13 @@ public sealed class MediaFile
     /// <summary>Comma-separated summary of audio codecs, e.g. "eac3, aac".</summary>
     public string? AudioCodecs { get; set; }
 
+    /// <summary>
+    /// Comma-separated audio track languages in stream order, e.g. "eng, jpn, und" ("und"
+    /// standing in for an untagged track). Null when the file was probed before languages
+    /// were captured; language rules treat that as unknown and change nothing.
+    /// </summary>
+    public string? AudioLanguages { get; set; }
+
     public int? AudioTrackCount { get; set; }
 
     /// <summary>Largest channel count among the source audio streams.</summary>

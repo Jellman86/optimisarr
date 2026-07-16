@@ -54,6 +54,52 @@ public sealed class WorkPathsTests : IDisposable
         Assert.True(Directory.Exists(workRoot));
     }
 
+    [Fact]
+    public void Selects_the_deepest_mount_that_contains_the_work_path()
+    {
+        var path = Path.Combine(Path.DirectorySeparatorChar.ToString(), "work", "jobs", "42");
+        var root = Path.DirectorySeparatorChar.ToString();
+        var work = Path.Combine(root, "work");
+        var nested = Path.Combine(work, "jobs");
+
+        var selected = WorkPaths.SelectContainingMount(path, [root, work, nested]);
+
+        Assert.Equal(Path.TrimEndingDirectorySeparator(nested), selected);
+    }
+
+    [Fact]
+    public void Work_root_itself_is_not_treated_as_owned_output()
+    {
+        var root = Path.GetPathRoot(_root)!;
+
+        Assert.False(WorkPaths.IsUnderRoot(root, root));
+        Assert.True(WorkPaths.IsUnderRoot(root, _root));
+    }
+
+    [Fact]
+    public void Finds_only_old_unreferenced_numeric_work_directories()
+    {
+        var workRoot = Path.Combine(_root, "work");
+        var staleOrphan = Path.Combine(workRoot, "41");
+        var referenced = Path.Combine(workRoot, "42");
+        var recent = Path.Combine(workRoot, "43");
+        var nonJob = Path.Combine(workRoot, "preview");
+        Directory.CreateDirectory(staleOrphan);
+        Directory.CreateDirectory(referenced);
+        Directory.CreateDirectory(recent);
+        Directory.CreateDirectory(nonJob);
+        var now = DateTime.UtcNow;
+        Directory.SetLastWriteTimeUtc(staleOrphan, now.AddDays(-8));
+        Directory.SetLastWriteTimeUtc(referenced, now.AddDays(-8));
+        Directory.SetLastWriteTimeUtc(recent, now.AddHours(-1));
+        Directory.SetLastWriteTimeUtc(nonJob, now.AddDays(-8));
+
+        var result = WorkPaths.FindStaleOrphanDirectories(
+            workRoot, new HashSet<int> { 42 }, now.AddDays(-7));
+
+        Assert.Equal([staleOrphan], result);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

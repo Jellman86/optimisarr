@@ -59,6 +59,9 @@ public sealed record VerificationInput(
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
     bool AudioDownmixed = false,
+    // How many audio tracks the kept-languages rule removed on purpose; the retention
+    // gate expects exactly that many fewer, never zero audio when the original had any.
+    int AudioTracksRemoved = 0,
     int? OriginalWidth = null,
     int? OriginalHeight = null,
     int? OutputWidth = null,
