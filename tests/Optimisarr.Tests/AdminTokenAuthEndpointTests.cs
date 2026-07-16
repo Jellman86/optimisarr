@@ -392,6 +392,84 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal("calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
     }
 
+    [Fact]
+    public async Task Audio_calibration_creates_disposable_bitrate_candidates_for_the_selected_library()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var directory = Path.Combine(
+            Path.GetDirectoryName(_api.LibraryDirectory)!,
+            "audio-calibration-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var sourcePath = Path.Combine(directory, "track.flac");
+        await File.WriteAllTextAsync(sourcePath, "original-audio-must-remain-unchanged");
+
+        using var created = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Audio calibration library",
+            path = directory,
+            mediaType = "Music",
+            ruleProfile = "ConservativeHevc",
+            audioTargetCodec = "opus",
+            audioBitrateKbps = 96
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var libraryId = JsonNode.Parse(await created.Content.ReadAsStringAsync())!["id"]!.GetValue<int>();
+
+        int mediaFileId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                LibraryId = libraryId,
+                Path = sourcePath,
+                RelativePath = "track.flac",
+                SizeBytes = new FileInfo(sourcePath).Length,
+                ModifiedAt = DateTimeOffset.UtcNow,
+                Status = MediaFileStatus.Probed,
+                MediaKind = MediaKind.Audio,
+                DurationSeconds = 600,
+                AudioCodecs = "flac",
+                AudioTrackCount = 1,
+                MaxAudioChannels = 2,
+                ProbedAt = DateTimeOffset.UtcNow
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaFileId = media.Id;
+        }
+
+        var sources = JsonNode.Parse(await client.GetStringAsync(
+            $"/api/libraries/{libraryId}/calibration/sources"))!.AsArray();
+        Assert.Equal("Audio", sources.Single()!["mediaKind"]!.GetValue<string>());
+
+        using var started = await client.PostAsJsonAsync(
+            $"/api/libraries/{libraryId}/calibration",
+            new { mediaFileId });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var sessionId = JsonNode.Parse(await started.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
+            Assert.Equal(15, jobs.Count);
+            Assert.Equal([64, 80, 96, 128, 160],
+                jobs.Select(job => job.RequestedAudioBitrateKbps!.Value).Distinct().Order().ToArray());
+            Assert.All(jobs, job =>
+            {
+                Assert.Null(job.LibraryId);
+                Assert.Null(job.RequestedVideoQuality);
+                Assert.Equal(15, job.CalibrationClipSeconds);
+            });
+        }
+
+        using var deleted = await client.DeleteAsync($"/api/calibration/{sessionId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal("original-audio-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
+    }
+
     /// <summary>
     /// The real app with the admin token configured, a throwaway config directory (fresh migrated
     /// SQLite), and no background workers — the auth tests only exercise the HTTP pipeline.

@@ -99,6 +99,7 @@ export const de: Messages = {
     change: 'Ändern', skipped: 'Übersprungen — später hinzufügen', receipt_heading: 'Einrichtung wurde sicher angewendet', receipt_body: '{count} Bibliothek(en) sind bereit. Es wurde kein Scan, keine Kodierung, kein Austausch und keine Löschung gestartet.', review_candidates: 'Kandidaten prüfen', open_dashboard: 'Dashboard öffnen',
   },
   calibration: {
+    choose_audio: 'Repräsentatives Audio auswählen', source_audio: 'Quellaudio', preparing_audio_hint: 'Optimisarr kodiert drei kurze Ausschnitte je Bitrate und misst sie anschließend, damit die Lautstärke die Antwort nicht verrät.', result_caveat_audio: 'Dies ist ein persönliches Ergebnis für diese Ausschnitte, diese Wiedergabegeräte und diese Hörumgebung. Es beweist nicht, dass zwei Kodierungen identisch sind.',
     hdr_title: 'HDR-Wiedergabe prüfen', hdr_body: 'Ihr Browser meldet eine HDR-fähige Anzeigekette. Verwenden Sie Ihre üblichen HDR-Sichtbedingungen.', hdr_confirm: 'Dieser Browser zeigt HDR auf dem Bildschirm an, den ich für den Vergleich verwende.', hdr_unsupported: 'Dieser Browser meldet keine HDR-fähige Anzeigekette. Die HDR-Kalibrierung ist daher nicht verfügbar.',
     no_difference_result: 'In diesem kurzen persönlichen Test wurde kein verlässlicher Unterschied erkannt.',
     no_transparent_result: 'Keine getestete Einstellung war verlässlich transparent. Behalten Sie die aktuelle Qualität und versuchen Sie anderes Quellmaterial.',

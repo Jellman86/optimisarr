@@ -341,7 +341,7 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
-7. **Blind quality calibration ("placebo panel"): SDR and HDR video slices done** — help a user choose
+7. **Blind quality calibration ("placebo panel"): video and audio slices done** — help a user choose
    the most space-efficient quality that they cannot reliably distinguish from their own source,
    without revealing the setting or estimated saving early. The design is informed by the source,
    observer, presentation, repetition, and paired-comparison principles in
@@ -366,6 +366,14 @@ the replacement workflow is trustworthy.
      the W3C `video-dynamic-range`/`dynamic-range` capability signal. It does not silently tone-map
      or claim a laboratory-grade HDR result. Dolby Vision remains excluded because its RPU dynamic
      metadata cannot safely survive Optimisarr's current re-encode path.
+   - **Level-matched audio is shipped.** Music and mixed libraries can test Opus, AAC, or MP3
+     bitrate ladders using three repeatable 15-second excerpts. Each original-side excerpt is a
+     lossless FLAC derivative; both sides are measured with EBU R128 integrated loudness and the
+     louder side is attenuated only in the browser, preserving the candidate files and avoiding
+     clipping. Instant A/B/X switching keeps relative playback position. This follows the
+     hidden-reference and controlled-listening principles in
+     [ITU-R BS.1116](https://www.itu.int/rec/R-REC-BS.1116-3-201502-I/en) and the measurement method
+     in [EBU Tech 3341](https://tech.ebu.ch/publications/tech3341).
    - **Cheap and safe by construction is shipped.** Candidates are disposable jobs isolated under
      `/work/calibration`; they bypass normal candidate scheduling but still receive structural
      verification. They cannot replace, move, or delete a source and are hidden from the normal
@@ -374,7 +382,7 @@ the replacement workflow is trustworthy.
    - **Next research and implementation.** Select representative sources using spatial/temporal
      complexity rather than file size alone and support a small multi-source result; correlate the
      revealed choice with sampled VMAF without turning the metric into a hint; then add
-     level-matched audio with instant switching, and images with
+     images with
      synchronised zoom/pan. Keep each media kind separately validated rather than stretching the
      video method across unlike perception tasks.
 

@@ -346,11 +346,11 @@ public sealed class VerificationService(
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(clip.ReferencePath)!);
-        var args = PreviewReferenceClipCommandBuilder.Build(
-            original.Path,
-            clip.ReferencePath,
-            clip.Seconds,
-            clip.StartSeconds);
+        var args = original.Kind == MediaKind.Audio
+            ? PreviewReferenceClipCommandBuilder.BuildAudio(
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds)
+            : PreviewReferenceClipCommandBuilder.Build(
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds);
 
         var run = await RunReferenceClipAsync(args, cancellationToken);
         if (run.ExitCode != 0)

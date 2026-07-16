@@ -91,6 +91,12 @@ reads the original but never changes it. Its clips are disposable and are cleane
 closes, after being abandoned for two hours, or when Optimisarr restarts. If the browser cannot play
 every sample, the panel disables answers rather than guessing.
 
+Music and mixed libraries can use the same panel with a probed audio file. Optimisarr tests a
+codec-appropriate Opus, AAC, or MP3 bitrate ladder across three 15-second excerpts. It measures both
+sides using EBU R128 integrated loudness and attenuates only the louder stream during playback, so a
+volume jump cannot give away the answer and no prepared file is normalised or amplified. Applying
+the result changes only that library's saved audio bitrate and does not queue any work.
+
 You should see **access ok** on the library card. If not, fix the host mount,
 `PUID`/`PGID`, or folder permissions before queueing jobs.
 

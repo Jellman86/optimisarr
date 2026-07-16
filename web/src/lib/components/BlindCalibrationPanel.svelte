@@ -21,7 +21,7 @@
   let error = $state<string | null>(null)
   let timer: ReturnType<typeof setTimeout> | null = null
   let activeSlot = $state<'A' | 'B' | 'X'>('A')
-  let players = $state<Partial<Record<'A' | 'B' | 'X', HTMLVideoElement>>>({})
+  let players = $state<Partial<Record<'A' | 'B' | 'X', HTMLMediaElement>>>({})
   let playbackError = $state(false)
   let hdrDisplaySupported = $state(false)
   let hdrViewingConfirmed = $state(false)
@@ -88,19 +88,23 @@
   }
 
   function sourceLabel(source: CalibrationSource): string {
+    if (source.mediaKind === 'Audio') return `${source.relativePath} · ${formatDuration(source.durationSeconds)}`
     const resolution = source.width && source.height ? ` · ${source.width}×${source.height}` : ''
     const range = source.isHdr ? ' · HDR' : ' · SDR'
     return `${source.relativePath}${resolution}${range} · ${formatDuration(source.durationSeconds)}`
   }
 
   function preparePlayer(name: 'A' | 'B' | 'X', event: Event) {
-    const player = event.currentTarget as HTMLVideoElement
+    const player = event.currentTarget as HTMLMediaElement
     const source = slot(name)
-    if (source && Number.isFinite(player.duration)) player.currentTime = source.startSeconds
+    if (source && Number.isFinite(player.duration)) {
+      player.currentTime = source.startSeconds
+      player.volume = Math.min(1, Math.pow(10, source.gainDb / 20))
+    }
   }
 
   function stopAtSampleEnd(name: 'A' | 'B' | 'X', event: Event) {
-    const player = event.currentTarget as HTMLVideoElement
+    const player = event.currentTarget as HTMLMediaElement
     const source = slot(name)
     if (source && session?.trial && player.currentTime >= source.startSeconds + session.trial.durationSeconds) {
       player.pause()
@@ -180,7 +184,7 @@
     }
     if (event.key === 'Tab') {
       const focusable = [...dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), select:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), select:not([disabled]), video[controls], audio[controls], [tabindex]:not([tabindex="-1"])',
       )].filter((element) => element.offsetParent !== null)
       if (focusable.length === 0) return
       const first = focusable[0]
@@ -249,7 +253,7 @@
         <div class="py-12 text-center text-sm text-slate-500">{i18n.m.common.loading_short}</div>
       {:else if !session}
         <div class="mx-auto max-w-2xl">
-          <h3 class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.calibration.choose_source}</h3>
+          <h3 class="font-semibold text-slate-900 dark:text-slate-100">{selected?.mediaKind === 'Audio' ? i18n.m.calibration.choose_audio : i18n.m.calibration.choose_source}</h3>
           <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.intro}</p>
           {#if sources.length === 0}
             <div class="mt-5 rounded-lg border border-dashed border-slate-300 p-6 text-center dark:border-slate-700">
@@ -257,7 +261,7 @@
               <p class="mt-1 text-sm text-slate-500">{i18n.m.calibration.no_sources_hint}</p>
             </div>
           {:else}
-            <label class="label mt-5" for="calibration-source">{i18n.m.calibration.source_label}</label>
+            <label class="label mt-5" for="calibration-source">{selected?.mediaKind === 'Audio' ? i18n.m.calibration.source_audio : i18n.m.calibration.source_label}</label>
             <select id="calibration-source" class="input" bind:value={selectedSource}>
               {#each sources as source}
                 <option value={source.mediaFileId}>{sourceLabel(source)}</option>
@@ -289,7 +293,7 @@
       {:else if session.status === 'Preparing'}
         <div class="mx-auto max-w-xl py-10 text-center" aria-live="polite">
           <h3 class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.calibration.preparing}</h3>
-          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{i18n.m.calibration.preparing_hint}</p>
+          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : i18n.m.calibration.preparing_hint}</p>
           <div class="progress-track mx-auto mt-6 max-w-md"><div class="progress-fill" style={`width: ${Math.round(session.preparationProgress * 100)}%`}></div></div>
           <p class="mt-2 text-sm tabular-nums text-slate-500">{Math.round(session.preparationProgress * 100)}%</p>
         </div>
@@ -305,12 +309,24 @@
             <span class="font-medium">{trial.phase === 'Screening' ? i18n.m.calibration.screening : i18n.m.calibration.confirming}</span>
             <span class="text-slate-500">{t(i18n.m.calibration.trial_progress, { number: trial.number })} · {t(i18n.m.calibration.sample_progress, { current: trial.sampleNumber, total: trial.sampleCount })}</span>
           </div>
-          <div class="relative aspect-video overflow-hidden rounded-lg bg-black">
+          <div class="relative {session.mediaKind === 'Audio' ? 'min-h-36' : 'aspect-video'} overflow-hidden rounded-lg bg-black">
             {#each ['A', 'B', 'X'] as name}
               {@const typedName = name as 'A' | 'B' | 'X'}
               {@const source = slot(typedName)}
               {#if source}
-                <video
+                {#if session.mediaKind === 'Audio'}
+                  <audio
+                    bind:this={players[typedName]}
+                    class="absolute inset-x-6 top-1/2 w-[calc(100%-3rem)] -translate-y-1/2 {activeSlot === typedName ? 'block' : 'hidden'}"
+                    src={source.url}
+                    preload="auto"
+                    controls
+                    onloadedmetadata={(event) => preparePlayer(typedName, event)}
+                    ontimeupdate={(event) => stopAtSampleEnd(typedName, event)}
+                    onerror={() => { playbackError = true }}
+                  ></audio>
+                {:else}
+                  <video
                   bind:this={players[typedName]}
                   class="h-full w-full object-contain {activeSlot === typedName ? 'block' : 'hidden'}"
                   src={source.url}
@@ -321,7 +337,8 @@
                   onloadedmetadata={(event) => preparePlayer(typedName, event)}
                   ontimeupdate={(event) => stopAtSampleEnd(typedName, event)}
                   onerror={() => { playbackError = true }}
-                ><track kind="captions" /></video>
+                  ><track kind="captions" /></video>
+                {/if}
               {/if}
             {/each}
             <span class="absolute left-3 top-3 rounded bg-black/75 px-3 py-1 text-sm font-bold text-white">{activeSlot}</span>
@@ -360,11 +377,11 @@
           <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{resultOutcome(session.result.outcome)}</p>
           <dl class="mt-5 grid gap-3 rounded-lg border border-slate-200 p-4 text-sm sm:grid-cols-2 dark:border-slate-700">
             <div><dt class="text-slate-500">{i18n.m.calibration.answers}</dt><dd class="mt-1 font-semibold">{session.result.correctAnswers}/{session.result.totalAnswers}</dd></div>
-            <div><dt class="text-slate-500">{i18n.m.calibration.recommendation}</dt><dd class="mt-1 font-semibold">{session.result.recommendedQuality != null ? `CRF/CQ ${session.result.recommendedQuality}` : i18n.m.calibration.keep_current}</dd></div>
+            <div><dt class="text-slate-500">{i18n.m.calibration.recommendation}</dt><dd class="mt-1 font-semibold">{session.result.recommendedQuality != null ? (session.mediaKind === 'Audio' ? `${session.result.recommendedQuality} kbps` : `CRF/CQ ${session.result.recommendedQuality}`) : i18n.m.calibration.keep_current}</dd></div>
             {#if session.result.encoder}<div><dt class="text-slate-500">{i18n.m.calibration.encoder}</dt><dd class="mt-1 font-semibold">{session.result.encoder} · {session.result.qualityMode} {session.result.effectiveQuality}</dd></div>{/if}
             {#if session.result.estimatedSavingPercent != null}<div><dt class="text-slate-500">{i18n.m.calibration.estimated_saving}</dt><dd class="mt-1 font-semibold">≈ {session.result.estimatedSavingPercent}%</dd></div>{/if}
           </dl>
-          <p class="mt-3 text-xs leading-relaxed text-slate-500">{i18n.m.calibration.result_caveat}</p>
+          <p class="mt-3 text-xs leading-relaxed text-slate-500">{session.mediaKind === 'Audio' ? i18n.m.calibration.result_caveat_audio : i18n.m.calibration.result_caveat}</p>
           <div class="mt-5 flex flex-wrap gap-2">
             {#if session.result.recommendedQuality != null && !session.result.applied}
               <button class="btn btn-primary min-h-11" type="button" disabled={busy} onclick={apply}>{i18n.m.calibration.apply}</button>

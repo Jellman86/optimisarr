@@ -90,6 +90,7 @@ export const ja: Messages = {
     change: "変更", skipped: "スキップ — 後で追加", receipt_heading: "セットアップを安全に適用しました", receipt_body: "{count} 件のライブラリを利用できます。スキャン、エンコード、置換、削除は開始されていません。", review_candidates: "候補を確認", open_dashboard: "ダッシュボードを開く"
   },
   calibration: {
+    choose_audio: '代表的な音声を選択', source_audio: '元の音声', preparing_audio_hint: '各ビットレートで短い 3 つの抜粋をエンコードし、音量から答えが分からないよう測定しています。', result_caveat_audio: 'これは、この抜粋、再生機器、視聴環境に対する個人的な結果です。二つのエンコードが同一であることを証明するものではありません。',
     hdr_title: 'HDR 再生の確認', hdr_body: 'ブラウザーは HDR 対応の表示経路を検出しました。普段の HDR 視聴環境で比較してください。', hdr_confirm: '比較に使う画面で、このブラウザーが HDR 表示になっていることを確認しました。', hdr_unsupported: 'ブラウザーが HDR 対応の表示経路を検出できないため、HDR キャリブレーションは利用できません。',
     no_difference_result: 'この短い個人テストでは、信頼できる違いは検出されませんでした。',
     no_transparent_result: 'テストした設定では十分に透明な結果が得られませんでした。現在の品質を維持し、別の素材を試してください。',

@@ -638,9 +638,15 @@ public sealed class QueueDispatcher(
         var isPreview = job.Type == JobType.Preview;
         var isCalibration = job.Type == JobType.Calibration;
         var isDisposable = isPreview || isCalibration;
-        if (isCalibration && (job.CalibrationSessionId is null || job.RequestedVideoQuality is null))
+        if (isCalibration && (job.CalibrationSessionId is null
+            || media.MediaKind == MediaKind.Video && job.RequestedVideoQuality is null
+            || media.MediaKind == MediaKind.Audio && job.RequestedAudioBitrateKbps is null))
         {
             throw new InvalidOperationException("Calibration job is missing its session or requested quality.");
+        }
+        if (isCalibration && media.MediaKind == MediaKind.Audio)
+        {
+            rules = rules with { AudioBitrateKbps = job.RequestedAudioBitrateKbps!.Value };
         }
 
         var isVideoJob = media.MediaKind is not (MediaKind.Audio or MediaKind.Image);
@@ -707,10 +713,15 @@ public sealed class QueueDispatcher(
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an
         // intro/black frames. Audio/image previews are already fast, so they run in full.
-        if (isDisposable && spec.Kind == MediaKind.Video && spec.VideoCodec is not null)
+        if (isDisposable
+            && (spec.Kind == MediaKind.Video && spec.VideoCodec is not null
+                || isCalibration && spec.Kind == MediaKind.Audio))
         {
             var seconds = isCalibration
-                ? job.CalibrationClipSeconds ?? Optimisarr.Core.Calibration.BlindCalibrationPolicy.SampleSeconds
+                ? job.CalibrationClipSeconds
+                    ?? (spec.Kind == MediaKind.Audio
+                        ? Optimisarr.Core.Calibration.BlindCalibrationPolicy.AudioSampleSeconds
+                        : Optimisarr.Core.Calibration.BlindCalibrationPolicy.SampleSeconds)
                 : PreviewClipSeconds;
             var start = isCalibration
                 ? job.CalibrationClipStartSeconds ?? 0
@@ -1104,7 +1115,11 @@ public sealed class QueueDispatcher(
             ? new VerificationClip(
                 seconds,
                 work.Spec.ClipStartSeconds,
-                Path.Combine(Path.GetDirectoryName(outputPath)!, ".optimisarr-comparison-reference.mkv"))
+                Path.Combine(
+                    Path.GetDirectoryName(outputPath)!,
+                    work.Spec.Kind == MediaKind.Audio
+                        ? ".optimisarr-comparison-reference.flac"
+                        : ".optimisarr-comparison-reference.mkv"))
             : null;
         // The VMAF pass is the long part of verification; surface its live progress on the same
         // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%

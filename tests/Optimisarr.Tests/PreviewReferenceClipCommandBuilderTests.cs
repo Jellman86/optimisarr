@@ -39,6 +39,21 @@ public sealed class PreviewReferenceClipCommandBuilderTests
         Assert.Equal("60", args[IndexOf(args, "-t") + 1]);
     }
 
+    [Fact]
+    public void Audio_reference_is_a_single_lossless_flac_stream_for_native_browser_playback()
+    {
+        var args = PreviewReferenceClipCommandBuilder.BuildAudio(
+            "/data/music/track.wav",
+            "/work/calibration/reference.flac",
+            15,
+            30);
+
+        Assert.Equal("0:a:0", args[IndexOf(args, "-map") + 1]);
+        Assert.Equal("flac", args[IndexOf(args, "-c:a") + 1]);
+        Assert.Equal("15", args[IndexOf(args, "-t") + 1]);
+        Assert.Equal("/work/calibration/reference.flac", args[^1]);
+    }
+
     private static int IndexOf(IReadOnlyList<string> args, string value) =>
         ((List<string>)args).IndexOf(value);
 }

@@ -16,8 +16,15 @@
   Native playback fails closed when the browser cannot decode a candidate. HDR is available only
   when the library preserves HDR and the browser reports an HDR-capable display path; the user must
   also confirm that the normal viewing display is actually presenting HDR. Dolby Vision remains
-  unavailable because a re-encode cannot safely retain its dynamic metadata. Audio, images,
+  unavailable because a re-encode cannot safely retain its dynamic metadata. Images,
   content-complexity source guidance, and metric correlation remain on the roadmap.
+- **A level-matched blind audio check.** Music and mixed libraries can now calibrate their saved
+  Opus, AAC, or MP3 bitrate using three repeatable 15-second excerpts and the same conservative
+  hidden-reference decision process. Optimisarr creates a lossless FLAC reference for browser
+  playback, measures both sides with EBU R128 integrated loudness, and only attenuates the louder
+  side during playback so volume cannot reveal the answer or introduce clipping. The result applies
+  only the library's audio bitrate after an explicit confirmation; every candidate remains
+  disposable and outside replacement, history, notifications, and the normal queue.
 - **Gold-standard first-run recommendations and final review.** Setup now turns proved encoder and
   VMAF capabilities into visible, reversible encoder, hardware-decode, VMAF, and overnight-window
   recommendations instead of silently choosing for the operator. When a probed candidate exists,

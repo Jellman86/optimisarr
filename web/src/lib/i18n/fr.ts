@@ -92,6 +92,7 @@ export const fr: Messages = {
     change: 'Modifier', skipped: 'Ignoré — à ajouter plus tard', receipt_heading: 'La configuration est appliquée en toute sécurité', receipt_body: '{count} médiathèque(s) sont prêtes. Aucun scan, encodage, remplacement ni suppression n’a démarré.', review_candidates: 'Examiner les candidats', open_dashboard: 'Ouvrir le tableau de bord',
   },
   calibration: {
+    choose_audio: 'Choisissez un audio représentatif', source_audio: 'Audio source', preparing_audio_hint: 'Optimisarr encode trois courts extraits à chaque débit, puis les mesure afin que le volume ne révèle pas la réponse.', result_caveat_audio: 'Ce résultat est personnel à ces extraits, ce matériel de lecture et cet environnement d’écoute. Il ne prouve pas que deux encodages sont identiques.',
     hdr_title: 'Vérifier la lecture HDR', hdr_body: 'Le navigateur signale une chaîne d’affichage compatible HDR. Utilisez vos conditions de visionnage HDR habituelles.', hdr_confirm: 'Ce navigateur affiche bien le HDR sur l’écran utilisé pour cette comparaison.', hdr_unsupported: 'Le navigateur ne signale pas de chaîne d’affichage compatible HDR ; l’étalonnage HDR est donc indisponible.',
     no_difference_result: 'Aucune différence fiable n’a été détectée lors de ce court test personnel.',
     no_transparent_result: 'Aucun réglage testé n’était fiablement transparent. Conservez la qualité actuelle et essayez une autre source.',

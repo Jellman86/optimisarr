@@ -73,6 +73,9 @@ public sealed class Job
     /// <summary>Library/profile quality number requested before encoder-specific calibration.</summary>
     public int? RequestedVideoQuality { get; set; }
 
+    /// <summary>Audio bitrate requested by a disposable blind-calibration candidate.</summary>
+    public int? RequestedAudioBitrateKbps { get; set; }
+
     /// <summary>Encoder-specific quality value passed to FFmpeg for the current attempt.</summary>
     public int? EffectiveVideoQuality { get; set; }
 

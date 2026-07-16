@@ -90,6 +90,7 @@ export const pt: Messages = {
     change: "Alterar", skipped: "Ignorado — adicionar depois", receipt_heading: "Configuração aplicada em segurança", receipt_body: "{count} biblioteca(s) estão prontas. Nenhuma análise, codificação, substituição ou eliminação foi iniciada.", review_candidates: "Rever candidatos", open_dashboard: "Abrir painel"
   },
   calibration: {
+    choose_audio: 'Escolha um áudio representativo', source_audio: 'Áudio de origem', preparing_audio_hint: 'O Optimisarr codifica três excertos curtos em cada taxa de bits e depois mede-os para que o volume não revele a resposta.', result_caveat_audio: 'Este é um resultado pessoal para estes excertos, este equipamento e este ambiente de audição. Não prova que duas codificações sejam idênticas.',
     hdr_title: 'Verificar reprodução HDR', hdr_body: 'O navegador indica um percurso de imagem compatível com HDR. Use as suas condições habituais de visualização HDR.', hdr_confirm: 'Este navegador mostra HDR no ecrã que vou usar para a comparação.', hdr_unsupported: 'O navegador não indica um percurso de imagem compatível com HDR, por isso a calibração HDR não está disponível.',
     no_difference_result: 'Não foi detetada uma diferença fiável neste breve teste pessoal.',
     no_transparent_result: 'Nenhuma definição testada foi fiavelmente transparente. Mantenha a qualidade atual e tente outro material.',

@@ -413,6 +413,7 @@ export type CalibrationSlot = {
   name: 'A' | 'B' | 'X'
   url: string
   startSeconds: number
+  gainDb: number
 }
 
 export type CalibrationTrial = {
@@ -444,6 +445,7 @@ export type CalibrationSession = {
   libraryId: number
   mediaFileId: number
   source: string
+  mediaKind: 'Video' | 'Audio' | 'Image'
   status: 'Preparing' | 'Screening' | 'Confirming' | 'Complete' | 'Revealed' | 'Applied' | 'Failed'
   preparationProgress: number
   error: string | null

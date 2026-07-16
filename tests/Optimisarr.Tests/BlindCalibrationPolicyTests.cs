@@ -68,6 +68,40 @@ public sealed class BlindCalibrationPolicyTests
     }
 
     [Theory]
+    [InlineData("opus", 96, new[] { 64, 80, 96, 128, 160 })]
+    [InlineData("aac", 192, new[] { 96, 128, 160, 192, 256 })]
+    [InlineData("mp3", 320, new[] { 128, 160, 192, 256, 320 })]
+    public void Audio_plan_uses_a_codec_appropriate_most_compressed_first_ladder(
+        string codec,
+        int currentBitrate,
+        int[] expected)
+    {
+        var plan = BlindCalibrationPolicy.AudioPlan(600, codec, currentBitrate);
+
+        Assert.Equal(expected, plan.RequestedQualities);
+        Assert.Equal(3, plan.Samples.Count);
+        Assert.All(plan.Samples, sample => Assert.Equal(15, sample.DurationSeconds));
+    }
+
+    [Theory]
+    [InlineData("flac")]
+    [InlineData("copy")]
+    public void Audio_plan_rejects_a_target_without_a_meaningful_lossy_bitrate_ladder(string codec)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            BlindCalibrationPolicy.AudioPlan(600, codec, 128));
+    }
+
+    [Fact]
+    public void Audio_level_match_only_attenuates_the_louder_sample()
+    {
+        var match = BlindCalibrationPolicy.MatchAudioLevels(-18.2, -21.7);
+
+        Assert.Equal(-3.5, match.OriginalGainDb, precision: 6);
+        Assert.Equal(0, match.CandidateGainDb);
+    }
+
+    [Theory]
     [InlineData(1, 2, CalibrationJudgement.Continue)]
     [InlineData(1, 3, CalibrationJudgement.NoReliableDifference)]
     [InlineData(2, 3, CalibrationJudgement.Distinguishable)]

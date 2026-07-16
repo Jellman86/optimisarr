@@ -8,6 +8,8 @@ public sealed record BlindCalibrationPlan(
     IReadOnlyList<int> RequestedQualities,
     IReadOnlyList<CalibrationSample> Samples);
 
+public sealed record AudioLevelMatch(double OriginalGainDb, double CandidateGainDb);
+
 public enum CalibrationJudgement
 {
     Continue,
@@ -19,6 +21,7 @@ public enum CalibrationJudgement
 public static class BlindCalibrationPolicy
 {
     public const int SampleSeconds = 12;
+    public const int AudioSampleSeconds = 15;
 
     public static bool CanCalibrateVideo(
         bool isHdr,
@@ -57,9 +60,54 @@ public static class BlindCalibrationPolicy
             .OrderDescending()
             .ToList();
 
-        var lastStart = Math.Max(0, (int)Math.Floor(durationSeconds) - SampleSeconds);
+        return new BlindCalibrationPlan(qualities, RepresentativeSamples(durationSeconds, SampleSeconds));
+    }
+
+    public static BlindCalibrationPlan AudioPlan(
+        double durationSeconds,
+        string targetCodec,
+        int currentBitrateKbps)
+    {
+        if (!double.IsFinite(durationSeconds) || durationSeconds < AudioSampleSeconds * 4)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationSeconds),
+                "Blind audio calibration needs at least 60 seconds of audio.");
+        }
+
+        var ladder = targetCodec.ToLowerInvariant() switch
+        {
+            "opus" => new[] { 64, 80, 96, 128, 160 },
+            "aac" => new[] { 96, 128, 160, 192, 256 },
+            "mp3" => new[] { 128, 160, 192, 256, 320 },
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(targetCodec),
+                "Blind audio calibration supports Opus, AAC, and MP3 bitrate targets.")
+        };
+
+        return new BlindCalibrationPlan(
+            ladder,
+            RepresentativeSamples(durationSeconds, AudioSampleSeconds));
+    }
+
+    public static AudioLevelMatch MatchAudioLevels(double originalLufs, double candidateLufs)
+    {
+        if (!double.IsFinite(originalLufs) || !double.IsFinite(candidateLufs))
+        {
+            throw new ArgumentOutOfRangeException(nameof(originalLufs), "Measured loudness must be finite.");
+        }
+
+        var target = Math.Min(originalLufs, candidateLufs);
+        return new AudioLevelMatch(target - originalLufs, target - candidateLufs);
+    }
+
+    private static IReadOnlyList<CalibrationSample> RepresentativeSamples(
+        double durationSeconds,
+        int sampleSeconds)
+    {
+        var lastStart = Math.Max(0, (int)Math.Floor(durationSeconds) - sampleSeconds);
         int Centred(double fraction) => Math.Clamp(
-            (int)Math.Floor(durationSeconds * fraction) - (SampleSeconds / 2),
+            (int)Math.Floor(durationSeconds * fraction) - (sampleSeconds / 2),
             0,
             lastStart);
 
@@ -67,10 +115,9 @@ public static class BlindCalibrationPolicy
             .Distinct()
             .ToList();
         var samples = starts
-            .Select((start, index) => new CalibrationSample(index, start, SampleSeconds))
+            .Select((start, index) => new CalibrationSample(index, start, sampleSeconds))
             .ToList();
-
-        return new BlindCalibrationPlan(qualities, samples);
+        return samples;
     }
 
     public static CalibrationJudgement JudgeScreening(int correctAnswers, int totalAnswers)
