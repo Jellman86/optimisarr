@@ -86,6 +86,7 @@ export type LibraryRules = {
   videoAudioBitrateKbps: number | null
   downmixToStereo: boolean
   keepAudioLanguages: string | null
+  keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
   targetImageFormat: string | null
   imageQuality: number | null
@@ -277,6 +278,7 @@ export type Job = {
   priority: number
   progress: number
   errorMessage: string | null
+  enqueueReason: string | null
   failureCategory: string | null
   ffmpegArguments: string | null
   videoEncoder: string | null

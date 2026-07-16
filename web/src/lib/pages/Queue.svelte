@@ -461,6 +461,9 @@
                 {#if heroFolder(job.relativePath)}
                   <div class="truncate text-xs text-slate-400 dark:text-slate-500">{heroFolder(job.relativePath)}</div>
                 {/if}
+                {#if job.enqueueReason}
+                  <div class="truncate text-xs text-slate-400 dark:text-slate-500" title={job.enqueueReason}>{job.enqueueReason}</div>
+                {/if}
               </div>
               {#if job.videoEncoder}
                 <span class="badge {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
@@ -616,6 +619,9 @@
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span></td>
             <td class="max-w-[40vw] px-4 py-2 sm:max-w-xs">
               <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</div>
+              {#if job.enqueueReason}
+                <div class="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500" title={job.enqueueReason}>{job.enqueueReason}</div>
+              {/if}
               {#if job.videoEncoder}
                 {@const gpu = isGpuEncoder(job.videoEncoder)}
                 <span

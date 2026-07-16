@@ -53,6 +53,7 @@
     ExperimentalAv1: i18n.m.libraries.preset_experimental_av1,
     RemuxCleanup: i18n.m.libraries.preset_remux_cleanup,
     ScottsSettings: i18n.m.libraries.preset_scotts_settings,
+    TrackCleanup: i18n.m.libraries.preset_track_cleanup,
   })
 
   // The re-encode profiles form a single compatibility→efficiency axis, shown as a slider so the
@@ -80,6 +81,7 @@
     ExperimentalAv1: i18n.m.libraries.profile_experimental_av1,
     RemuxCleanup: i18n.m.libraries.profile_remux_cleanup,
     ScottsSettings: i18n.m.libraries.profile_scotts_settings,
+    TrackCleanup: i18n.m.libraries.profile_track_cleanup,
   })
   function profileLabel(profile: string): string {
     return profileLabels[profile] ?? profile
@@ -223,6 +225,14 @@
   const showImageOptions = $derived(isImageType(form.mediaType))
 
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
+  const isTrackCleanupProfile = $derived(form.ruleProfile === 'TrackCleanup')
+  // Both no-encode profiles take the compatibility→efficiency slider out of play.
+  const isNoEncodeProfile = $derived(isRemuxProfile || isTrackCleanupProfile)
+  // Track cleanup does nothing until at least one kept-language rule is set; surface
+  // that honestly in the form rather than letting the operator save a no-op library.
+  const trackCleanupNeedsLanguages = $derived(
+    isTrackCleanupProfile && !form.keepAudioLanguages?.trim() && !form.keepSubtitleLanguages?.trim(),
+  )
 
   // Custom mode lets the operator fine-tune codec/container themselves instead of following a
   // preset. It is the honest framing for an override — a deliberate "Custom" config — rather than a
@@ -232,7 +242,7 @@
   // hoisted function declaration below, so referencing it here is fine.)
   let customSelected = $state(false)
   const isCustom = $derived(
-    showVideoOptions && !isRemuxProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
+    showVideoOptions && !isNoEncodeProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
   )
   function selectPresetMode() {
     customSelected = false
@@ -279,11 +289,17 @@
     form.ruleProfile = checked ? 'RemuxCleanup' : 'ConservativeHevc'
   }
 
+  function toggleTrackCleanup(checked: boolean) {
+    // Ticking Track cleanup switches off re-encoding *and* remuxing: the job only removes
+    // unwanted-language tracks. Unticking returns to the Balanced default.
+    form.ruleProfile = checked ? 'TrackCleanup' : 'ConservativeHevc'
+  }
+
   // The slider only picks a baseline profile; an explicit codec/container override in Advanced
   // takes precedence, so the slider can imply a codec that isn't actually used. Surface that
   // divergence instead of hiding it — the slider stays editable (it still sets the baseline the
   // non-overridden values follow).
-  const presetOverridden = $derived(!isRemuxProfile && (form.targetVideoCodec != null || form.targetContainer != null))
+  const presetOverridden = $derived(!isNoEncodeProfile && (form.targetVideoCodec != null || form.targetContainer != null))
 
   function overrideSummary(): string {
     const parts: string[] = []
@@ -391,6 +407,7 @@
       videoAudioBitrateKbps: null,
       downmixToStereo: false,
       keepAudioLanguages: null,
+      keepSubtitleLanguages: null,
       reencodeLossyAudio: false,
       targetImageFormat: null,
       imageQuality: null,
@@ -534,6 +551,7 @@
       videoAudioBitrateKbps: library.videoAudioBitrateKbps,
       downmixToStereo: library.downmixToStereo,
       keepAudioLanguages: library.keepAudioLanguages,
+      keepSubtitleLanguages: library.keepSubtitleLanguages,
       reencodeLossyAudio: library.reencodeLossyAudio,
       targetImageFormat: library.targetImageFormat,
       imageQuality: library.imageQuality,
@@ -595,6 +613,7 @@
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
       videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
       keepAudioLanguages: emptyToNull(form.keepAudioLanguages),
+      keepSubtitleLanguages: emptyToNull(form.keepSubtitleLanguages),
       targetImageFormat: emptyToNull(form.targetImageFormat),
       imageQuality: toNullableNumber(form.imageQuality),
       imageDownscaleValue: Number(form.imageDownscaleValue) || 0,
@@ -787,7 +806,26 @@
         </span>
       </label>
 
-      <div class="mt-3 {isRemuxProfile ? 'pointer-events-none opacity-40' : ''}">
+      <label class="mt-2 flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          class="checkbox mt-0.5"
+          checked={isTrackCleanupProfile}
+          onchange={(e) => toggleTrackCleanup(e.currentTarget.checked)}
+        />
+        <span>
+          {i18n.m.libraries.track_cleanup_label}
+          <span class="mt-0.5 block text-xs font-normal text-slate-400">
+            {i18n.m.libraries.track_cleanup_hint}
+          </span>
+        </span>
+      </label>
+
+      {#if trackCleanupNeedsLanguages}
+        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">{i18n.m.libraries.track_cleanup_needs_languages}</p>
+      {/if}
+
+      <div class="mt-3 {isNoEncodeProfile ? 'pointer-events-none opacity-40' : ''}">
         <input
           type="range"
           min="0"
@@ -796,14 +834,14 @@
           class="w-full"
           aria-label={i18n.m.libraries.slider_aria}
           value={encodeStop}
-          disabled={isRemuxProfile}
+          disabled={isNoEncodeProfile}
           oninput={(e) => setEncodeStop(e.currentTarget.value)}
         />
         <!-- Every position is explicit: each stop shows the codec it resolves to, with the active
              stop highlighted and its full container/CRF spelled out in the "Selects:" row below. -->
         <div class="mt-1 flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
           {#each encodeStopLabels as stop, i}
-            {@const active = !isRemuxProfile && encodeStop === i}
+            {@const active = !isNoEncodeProfile && encodeStop === i}
             <span class="flex flex-col {i === 0 ? 'items-start' : i === encodeStopLabels.length - 1 ? 'items-end text-right' : 'items-center text-center'}">
               <span class={active ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
               <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : '—'}</span>
@@ -821,6 +859,9 @@
       <!-- Explicit, concrete selection so the slider isn't a mystery. -->
       <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
         <span class="text-slate-400">{i18n.m.libraries.selects}</span>
+        {#if isTrackCleanupProfile}
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{i18n.m.libraries.track_cleanup_badge}</span>
+        {:else}
         <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.codec}</span>
         {#if !isRemuxProfile}
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container}</span>
@@ -829,6 +870,7 @@
           {/if}
         {:else}
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.container_badge, { container: effectiveVideoSpec.container })}</span>
+        {/if}
         {/if}
       </div>
 
@@ -1026,6 +1068,20 @@
             bind:value={form.keepAudioLanguages}
           />
           <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
+        </div>
+
+        <!-- Subtitle removal mirrors the audio rule, with one honest difference: there is no
+             keep-at-least-one guard, so a file whose subtitles are all foreign ends with none. -->
+        <div class="mt-4">
+          <label class="label" for="lib-keep-subtitle-languages">{i18n.m.libraries.keep_subtitle_langs} <InfoTip text={i18n.m.libraries.keep_subtitle_langs_tip} /></label>
+          <input
+            id="lib-keep-subtitle-languages"
+            class="input"
+            type="text"
+            placeholder={i18n.m.libraries.keep_subtitle_langs_ph}
+            bind:value={form.keepSubtitleLanguages}
+          />
+          <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_subtitle_langs_hint}</p>
         </div>
 
         <div class="mt-4">
