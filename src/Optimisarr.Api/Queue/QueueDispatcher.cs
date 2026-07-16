@@ -535,8 +535,13 @@ public sealed class QueueDispatcher(
             && rules.KeepAudioLanguages.Count > 0
             && sourceAudioLanguages is null
             && (media.AudioTrackCount ?? 0) > 0;
+        var sourceSubtitleLanguages = TrackLanguages.ParseTrackLanguages(media.SubtitleLanguages);
+        var needsSubtitleLanguageProbe = isVideoJob
+            && rules.KeepSubtitleLanguages.Count > 0
+            && sourceSubtitleLanguages is null
+            && (media.SubtitleTrackCount ?? 0) > 0;
         var sourceHasImageSubtitles = false;
-        if (needsSubtitleProbe || needsLanguageProbe)
+        if (needsSubtitleProbe || needsLanguageProbe || needsSubtitleLanguageProbe)
         {
             var probe = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
             var probeResult = await probe.ProbeAsync(media.Path, cancellationToken);
@@ -544,6 +549,10 @@ public sealed class QueueDispatcher(
             if (needsLanguageProbe && probeResult.Success)
             {
                 sourceAudioLanguages = probeResult.AudioTracks.Select(track => track.Language).ToList();
+            }
+            if (needsSubtitleLanguageProbe && probeResult.Success)
+            {
+                sourceSubtitleLanguages = probeResult.SubtitleLanguages;
             }
         }
 
@@ -574,7 +583,8 @@ public sealed class QueueDispatcher(
             media.VideoCodec,
             media.MaxAudioChannels,
             media.IsVariableFrameRate == true,
-            sourceAudioLanguages);
+            sourceAudioLanguages,
+            sourceSubtitleLanguages);
 
         // A video preview only needs a short sample: encoding the whole file would be as slow as a
         // real transcode. Take it from the middle, where the content is representative rather than an
@@ -611,9 +621,13 @@ public sealed class QueueDispatcher(
             // would add a full decode pass without providing another safety signal.
             VideoReencoded: spec.VideoCodec is not null,
             ExpectedVideoCodec: spec.VideoCodec,
-            // The audio tracks the kept-languages rule removes on purpose; verification holds
+            // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
-            RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes);
+            RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
+            RemovedSubtitleStreamIndexes: spec.RemoveSubtitleStreamIndexes,
+            // Track cleanup (no codec, no target container) promises the container type
+            // is untouched; verification holds the output to that promise.
+            ContainerMustMatch: rules.TargetVideoCodec is null && rules.TargetContainer is null);
 
         // Only a video re-encode needs a hardware/software encoder resolved. A non-null
         // VideoCodec is exactly the case the command builder re-encodes video for (audio,

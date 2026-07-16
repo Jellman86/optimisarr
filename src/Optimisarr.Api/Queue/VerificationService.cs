@@ -22,7 +22,12 @@ public sealed record OriginalSnapshot(
     string? ExpectedVideoCodec = null,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
-    IReadOnlyList<int>? RemovedAudioStreamIndexes = null);
+    IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
+    // Subtitle-relative indexes the kept-languages rule removed on purpose; verification
+    // expects exactly those tracks gone (and, unlike audio, tolerates zero remaining).
+    IReadOnlyList<int>? RemovedSubtitleStreamIndexes = null,
+    // True for a track-cleanup job, whose promise includes an unchanged container type.
+    bool ContainerMustMatch = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
@@ -222,7 +227,11 @@ public sealed class VerificationService(
                 OriginalBitsPerRawSample: originalProbe.BitsPerRawSample,
                 OutputBitsPerRawSample: outputProbe.BitsPerRawSample,
                 OriginalVideoProfile: originalProbe.VideoProfile,
-                OutputVideoProfile: outputProbe.VideoProfile);
+                OutputVideoProfile: outputProbe.VideoProfile,
+                SubtitleTracksRemoved: reference.RemovedSubtitleStreamIndexes?.Count ?? 0,
+                RequireContainerUnchanged: reference.ContainerMustMatch,
+                OriginalContainer: originalProbe.Container,
+                OutputContainer: outputProbe.Container);
 
             return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
         }
