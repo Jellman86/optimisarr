@@ -311,13 +311,13 @@ when the verification report is for a sample rather than the whole file.
 |---|---|---|
 | `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
 | `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123 }`. |
-| `GET` | `/api/calibration/{id}` | Read preparation progress, the anonymous A–F variants, or a revealed result. |
-| `POST` | `/api/calibration/{id}/classifications` | Classify all six anonymous variants and reveal the lineup. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
+| `GET` | `/api/calibration/{id}` | Read preparation progress, the marked original reference plus anonymous candidates A–E, or a revealed result. |
+| `POST` | `/api/calibration/{id}/classifications` | Classify all five anonymous candidates and reveal their settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended quality to the library, if its relevant settings have not changed. |
-| `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for anonymous variant `A`–`F`. |
+| `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for `ORIGINAL` or anonymous candidate `A`–`E`. |
 | `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
 
-Video calibration creates three 12-second scenes for five quality levels plus one shuffled original.
+Video calibration creates three 12-second scenes for five shuffled quality levels plus one marked original reference.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
 preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
 samples contain only the primary video stream. Music uses three 15-second excerpts with a lossless

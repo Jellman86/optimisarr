@@ -4,8 +4,8 @@ Detailed, dated engineering record: what shipped, the per-phase plan, and curren
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
 **Recently shipped (2026-07-16) — blind calibration across video, audio, and images.** Libraries can
-now run a full-page anonymous A–F quality check with one unmarked original and five settings, without
-exposing quality or estimated saving before every sample is classified. Video uses three 12-second
+now run a full-page quality check with one marked original reference and five anonymous candidates
+A–E, without exposing candidate quality or estimated saving before every candidate is classified. Video uses three 12-second
 scenes and fail-closed HDR presentation, audio uses repeatable
 15-second excerpts with EBU R128 browser-side attenuation, and still images share zoom and pan
 against a lossless PNG reference. Every candidate is disposable, hidden from the normal queue, and
@@ -18,7 +18,7 @@ seconds and falsely fail Duration and Tail integrity against the accurately deco
 fix keeps the source bitstream unchanged, limits both sides to primary video, verifies the intended
 window, records the pre-roll as a blinded playback offset, and retains the reference until session
 cleanup. The player uses a common accessible sample timeline rather than native controls, so raw
-container duration cannot reveal the original. A migration persists the offset per disposable job,
+container pre-roll cannot shift the displayed frame. A migration persists the offset per disposable job,
 while regression coverage exercises
 the observed 13.054-second-reference/12-second-window case, video-only FFmpeg mapping, API slot
 alignment, and the unchanged-source lifecycle.

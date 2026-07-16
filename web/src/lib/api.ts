@@ -420,6 +420,7 @@ export type CalibrationSample = {
 
 export type CalibrationVariant = {
   name: string
+  isOriginal: boolean
   samples: CalibrationSample[]
 }
 

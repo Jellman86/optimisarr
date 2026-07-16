@@ -351,11 +351,12 @@ the replacement workflow is trustworthy.
 
    - **Shipped for SDR video.** A saved video library can use one chosen, probed source. Optimisarr
      prepares 12-second early, middle, and late clips at a most-compressed-first quality ladder,
-     shuffles the original among five candidates as an anonymous A–F lineup, and asks the user to
-     classify each version once as Indistinguishable, Acceptable, or Visibly worse. The most
+     presents the original as a fixed reference beside five shuffled anonymous candidates A–E, and
+     asks the user to classify each candidate once as Indistinguishable, Acceptable, or Visibly worse. The most
      compressed acceptable candidate is recommended; if none is acceptable, the current setting is kept.
    - **Bias and interaction controls are shipped.** The setting, encoder and saving remain hidden
-     until every classification is complete, and the original is not marked before reveal. A–F share
+     until every candidate classification is complete. The original is marked so every judgement has
+     a stable baseline; candidate quality labels remain blind. The reference and A–E share
      one large viewport and relative playback position, support mouse, keyboard, and touch controls,
      and native playback fails closed if any sample cannot be decoded. Video supports browser
      fullscreen for close inspection. Applying
@@ -380,12 +381,12 @@ the replacement workflow is trustworthy.
      bitrate ladders using three repeatable 15-second excerpts. Each original-side excerpt is a
      lossless FLAC derivative; the full lineup is measured with EBU R128 integrated loudness and
      every version is attenuated to the quietest one in the browser, preserving files and avoiding
-     clipping. Instant A–F switching keeps relative playback position. This follows the
+     clipping. Instant reference/A–E switching keeps relative playback position. This follows the
      hidden-reference and controlled-listening principles in
      [ITU-R BS.1116](https://www.itu.int/rec/R-REC-BS.1116-3-201502-I/en) and the measurement method
      in [EBU Tech 3341](https://tech.ebu.ch/publications/tech3341).
    - **Synchronized image comparison is shipped.** Photo and mixed libraries can test five output
-     quality levels against a lossless PNG derivative in one shared viewport. A–F switching keeps
+     quality levels against a lossless PNG derivative in one shared viewport. Reference/A–E switching keeps
      zoom and pan identical, all streams preload and fail closed, and animated images are excluded.
      This follows the observer-controlled comparison principles in
      [ISO 20462-1](https://www.iso.org/standard/38330.html) without claiming laboratory compliance.

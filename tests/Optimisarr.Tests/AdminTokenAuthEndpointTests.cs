@@ -300,6 +300,9 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
             Assert.Equal(15, jobs.Count);
+            Assert.Equal(
+                [18, 21, 24, 27, 30],
+                jobs.Select(job => job.RequestedVideoQuality!.Value).Distinct().Order().ToArray());
             Assert.All(jobs, job =>
             {
                 Assert.Equal(JobType.Calibration, job.Type);
@@ -320,7 +323,9 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 var workDirectory = Path.Combine(calibrationDirectory, $"job-{job.Id}");
                 Directory.CreateDirectory(workDirectory);
                 job.WorkOutputPath = Path.Combine(workDirectory, "candidate.mp4");
-                await File.WriteAllTextAsync(job.WorkOutputPath, "candidate-clip");
+                await File.WriteAllTextAsync(
+                    job.WorkOutputPath,
+                    $"candidate-quality-{job.RequestedVideoQuality}");
                 await File.WriteAllTextAsync(
                     Path.Combine(workDirectory, ".optimisarr-comparison-reference.mkv"),
                     "reference-clip");
@@ -352,26 +357,33 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal("Comparing", session["status"]!.GetValue<string>());
         var variants = session["variants"]!.AsArray();
         Assert.Equal(6, variants.Count);
+        Assert.Equal(1, variants.Count(variant => variant!["isOriginal"]!.GetValue<bool>()));
+        Assert.Equal("ORIGINAL", variants.Single(variant => variant!["isOriginal"]!.GetValue<bool>())!["name"]!.GetValue<string>());
         Assert.All(variants, variant =>
         {
-            Assert.Null(variant!["isOriginal"]);
-            Assert.Null(variant["quality"]);
+            Assert.Null(variant!["quality"]);
             Assert.Equal(3, variant["samples"]!.AsArray().Count);
             Assert.All(variant["samples"]!.AsArray(), sample =>
                 Assert.Contains(sample!["startSeconds"]!.GetValue<double>(), new[] { 0, 0.751 }));
         });
         var firstSampleContents = new List<string>();
+        var firstSampleUrls = new List<string>();
         foreach (var variant in variants)
         {
+            firstSampleUrls.Add(variant!["samples"]![0]!["url"]!.GetValue<string>());
             firstSampleContents.Add(await client.GetStringAsync(
-                variant!["samples"]![0]!["url"]!.GetValue<string>()));
+                firstSampleUrls[^1]));
         }
+        Assert.Equal(6, firstSampleUrls.Distinct().Count());
         Assert.Equal(1, firstSampleContents.Count(content => content == "reference-clip"));
-        Assert.Equal(5, firstSampleContents.Count(content => content == "candidate-clip"));
+        Assert.Equal(
+            ["candidate-quality-18", "candidate-quality-21", "candidate-quality-24", "candidate-quality-27", "candidate-quality-30"],
+            firstSampleContents.Where(content => content != "reference-clip").Order().ToArray());
 
         var classifications = variants.ToDictionary(
             variant => variant!["name"]!.GetValue<string>(),
             _ => "Acceptable");
+        classifications.Remove("ORIGINAL");
         using var revealed = await client.PostAsJsonAsync(
             $"/api/calibration/{sessionId}/classifications",
             new { classifications });
@@ -577,6 +589,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         var classifications = variants.ToDictionary(
             variant => variant!["name"]!.GetValue<string>(),
             _ => "Acceptable");
+        classifications.Remove("ORIGINAL");
         using var revealed = await client.PostAsJsonAsync(
             $"/api/calibration/{sessionId}/classifications",
             new { classifications });

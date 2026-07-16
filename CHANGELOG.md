@@ -4,10 +4,11 @@
 
 ### Fixed
 
-- **Personal quality checks are now finite, frame-aligned, and usable for a complete session.** The
-  former repeated A/B/X trial loop is replaced by one anonymous A–F lineup: the original and five
-  relevant quality settings are shuffled, each letter is classified once, and the result is then
-  revealed. Video switching waits for the destination stream to seek to the same source frame before
+- **Personal quality checks are now finite, reference-led, frame-aligned, and usable for a complete
+  session.** The former repeated A/B/X trial loop is replaced by one marked original reference and
+  five shuffled anonymous candidates A–E. Only the candidates require classification, so each rating
+  has a stable quality baseline without forcing a worst-to-best ranking. Video switching waits for
+  the destination stream to seek to the same source frame before
   it becomes visible or resumes, removing the timing jump that could reveal a version, and playback
   continues across all scenes instead of stopping after the first comparison.
 - **Personal quality checks now explain queue waits instead of appearing frozen at 0%.** If all
@@ -34,8 +35,8 @@
 
 - **A full-page personal quality lab for video.** A saved video library can prepare short,
   disposable samples from the beginning, middle, and end of a representative file, then compare an
-  anonymous shuffled A–F lineup containing the original and five library-relevant quality levels.
-  The original, quality settings, and estimated sizes remain hidden until all six versions are
+  marked original reference and five shuffled anonymous candidates A–E covering library-relevant
+  quality levels. Candidate quality settings and estimated sizes remain hidden until all five are
   classified as Indistinguishable, Acceptable, or Visibly worse. One large synchronized viewer,
   scene controls, and real browser fullscreen support close inspection without a 25-trial loop. The
   result recommends the most compressed acceptable setting but never claims encodes are equivalent.
@@ -49,14 +50,14 @@
   unavailable because a re-encode cannot safely retain its dynamic metadata. Content-complexity
   source guidance and metric correlation remain on the roadmap.
 - **A level-matched blind audio check.** Music and mixed libraries can now calibrate their saved
-  Opus, AAC, or MP3 bitrate using three repeatable 15-second excerpts and the same anonymous A–F
-  classification model. Optimisarr creates a lossless FLAC reference for browser
+  Opus, AAC, or MP3 bitrate using three repeatable 15-second excerpts and the same marked-reference,
+  anonymous-candidate classification model. Optimisarr creates a lossless FLAC reference for browser
   playback, measures the full lineup with EBU R128 integrated loudness, and attenuates every version
   to the quietest measured level so volume cannot reveal the answer or introduce clipping. The result applies
   only the library's audio bitrate after an explicit confirmation; every candidate remains
   disposable and outside replacement, history, notifications, and the normal queue.
 - **A zoom-synchronised blind image check.** Photo and mixed libraries can now compare a lossless
-  PNG view of one still image against five hidden output-quality levels. A–F share exactly one
+  PNG view of one still image against five hidden output-quality levels. The reference and A–E share exactly one
   viewport, so zoom and pan stay fixed when switching and spatial position cannot give the answer
   away. The PNG reference carries the source colour metadata when the configured metadata tool can
   copy it, animated images are excluded, browser loading fails closed, and Apply changes only the

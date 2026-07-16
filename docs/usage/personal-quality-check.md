@@ -26,28 +26,28 @@ ladder. It structurally verifies every candidate before the comparison becomes a
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
 
-## Compare the anonymous A–F lineup
+## Compare candidates with the original
 
-The six versions are shuffled and labelled only **A** through **F**. One is the original, but neither
-the UI nor its label identifies it before reveal. Quality, encoder, bitrate, and estimated saving are
-also hidden.
+The original is clearly marked as the fixed reference. The five encoded candidates are shuffled and
+labelled only **A** through **E**. Their quality, encoder, bitrate, and estimated saving remain hidden.
 
-- Select A–F repeatedly while examining the same moment. Video and audio keep one shared relative
+- Switch between **Original** and A–E while examining the same moment. Video and audio keep one shared relative
   position, and a switch is not shown until the destination stream has sought to the matching frame.
 - Video provides three scene tabs, a shared 0–12-second timeline, and real browser fullscreen.
-- Audio provides three 15-second excerpts. Optimisarr measures all six versions using EBU R128
+- Audio provides three 15-second excerpts. Optimisarr measures the reference and all five candidates using EBU R128
   integrated loudness and attenuates each to the quietest one so volume cannot reveal a version.
 - Still images use one viewport. Zoom or drag to inspect detail; zoom and pan remain unchanged while
-  switching A–F.
+  switching between the reference and A–E.
 
-Classify every letter as **Indistinguishable**, **Acceptable**, or **Visibly worse**. Desktop users
+Classify A–E as **Indistinguishable**, **Acceptable**, or **Visibly worse** relative to the original.
+Desktop users
 may drag a sample into a rating; the selection buttons provide the same operation for keyboard and
-touch users. There are six classifications in total—no repeated trial loop.
+touch users. There are five classifications in total—no repeated trial loop and no rating for the original.
 
 ## Reveal and apply the result
 
-After all six samples are classified, select **Reveal samples and result**. Optimisarr then shows
-which letter was the original, the setting behind every candidate, your classifications, estimated
+After all five candidates are classified, select **Reveal samples and result**. Optimisarr then shows
+the setting behind every candidate, your classifications, estimated
 savings, and the most compressed candidate you considered Indistinguishable or Acceptable. If every
 candidate was Visibly worse, it recommends keeping the current setting.
 

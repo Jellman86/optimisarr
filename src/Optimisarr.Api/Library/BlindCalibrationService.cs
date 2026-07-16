@@ -30,6 +30,7 @@ public sealed record CalibrationSampleDto(
 
 public sealed record CalibrationVariantDto(
     string Name,
+    bool IsOriginal,
     IReadOnlyList<CalibrationSampleDto> Samples);
 
 public sealed record CalibrationVariantResultDto(
@@ -342,14 +343,20 @@ internal sealed class BlindCalibrationService(
                     throw new InvalidOperationException("Each anonymous sample may only be classified once.");
                 }
             }
-            if (normalized.Count != session.Variants.Count
-                || session.Variants.Any(variant => !normalized.ContainsKey(variant.Name)))
+            var candidates = session.Variants.Where(variant => !variant.IsOriginal).ToList();
+            if (normalized.Count != candidates.Count
+                || candidates.Any(variant => !normalized.ContainsKey(variant.Name)))
             {
-                throw new InvalidOperationException("Classify every anonymous sample before revealing the result.");
+                throw new InvalidOperationException("Classify every anonymous candidate before revealing the result.");
             }
 
             foreach (var variant in session.Variants)
             {
+                if (variant.IsOriginal)
+                {
+                    variant.Classification = CalibrationPreference.Indistinguishable;
+                    continue;
+                }
                 if (!Enum.TryParse<CalibrationPreference>(
                         normalized[variant.Name],
                         ignoreCase: true,
@@ -486,8 +493,8 @@ internal sealed class BlindCalibrationService(
             return null;
         }
 
-        // Serve the verifier's short reference for the one anonymously shuffled original variant.
-        // The DTO supplies its hidden pre-roll offset; no public name or URL marks it as original.
+        // Serve the verifier's short reference for the explicitly marked original variant.
+        // The DTO supplies its pre-roll offset so the shared timeline still selects matching frames.
         var path = variant.IsOriginal
             ? Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
@@ -625,19 +632,20 @@ internal sealed class BlindCalibrationService(
 
     private List<Variant> CreateVariants(BlindCalibrationPlan plan)
     {
-        var sources = new List<(bool Original, int? Quality)> { (true, null) };
-        sources.AddRange(plan.RequestedQualities.Select(quality => (false, (int?)quality)));
-        for (var index = sources.Count - 1; index > 0; index--)
+        var qualities = plan.RequestedQualities.ToList();
+        for (var index = qualities.Count - 1; index > 0; index--)
         {
             var swap = randomizer.Next(index + 1);
-            (sources[index], sources[swap]) = (sources[swap], sources[index]);
+            (qualities[index], qualities[swap]) = (qualities[swap], qualities[index]);
         }
-        return sources
-            .Select((source, index) => new Variant(
+        return
+        [
+            new Variant("ORIGINAL", true, null),
+            .. qualities.Select((quality, index) => new Variant(
                 ((char)('A' + index)).ToString(),
-                source.Original,
-                source.Quality))
-            .ToList();
+                false,
+                quality))
+        ];
     }
 
     private static CalibrationResultDto BuildResult(Session session, IReadOnlyList<Job> jobs)
@@ -771,7 +779,7 @@ internal sealed class BlindCalibrationService(
                 variant.IsOriginal ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
                 variant.IsOriginal ? levels.OriginalGainDb : levels.CandidateGainDb);
         }).ToList();
-        return new CalibrationVariantDto(variant.Name, samples);
+        return new CalibrationVariantDto(variant.Name, variant.IsOriginal, samples);
     }
 
     private enum SessionStatus

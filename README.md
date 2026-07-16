@@ -76,8 +76,8 @@ no support SLA or promise of a release schedule.
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
   as segment-only; audio and image previews run in full.
-- A per-library, full-page **Personal quality check** shuffles one unmarked original among five
-  quality settings in an anonymous A–F lineup, then finds the most compressed setting the user
+- A per-library, full-page **Personal quality check** compares a marked original reference with five
+  anonymous candidates A–E, then finds the most compressed setting the user
   classifies as indistinguishable or acceptable on their own equipment.
   Video uses frame-aligned early/middle/late scenes (including fail-closed HDR handling), music uses
   level-matched excerpts, and still images keep zoom and pan synchronized. Results change only the

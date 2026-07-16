@@ -25,7 +25,7 @@
   let selectedSource = $state<number | null>(null)
   let session = $state<CalibrationSession | null>(null)
   let ratings = $state<Record<string, Rating>>({})
-  let activeName = $state('A')
+  let activeName = $state('ORIGINAL')
   let activeScene = $state(0)
   let loading = $state(true)
   let busy = $state(false)
@@ -48,10 +48,11 @@
 
   const selected = $derived(sources.find((source) => source.mediaFileId === selectedSource) ?? null)
   const variants = $derived(session?.variants ?? [])
+  const candidateVariants = $derived(variants.filter((variant) => !variant.isOriginal))
   const activeVariant = $derived(variants.find((variant) => variant.name === activeName) ?? variants[0] ?? null)
   const activeSample = $derived(activeVariant?.samples[activeScene] ?? null)
   const classifiedCount = $derived(Object.values(ratings).filter(Boolean).length)
-  const canReveal = $derived(!playbackError && variants.length > 0 && classifiedCount === variants.length)
+  const canReveal = $derived(!playbackError && candidateVariants.length > 0 && classifiedCount === candidateVariants.length)
   const revealed = $derived(session?.status === 'Revealed' || session?.status === 'Applied')
   const hdrReady = $derived(!selected?.isHdr || hdrDisplaySupported && hdrViewingConfirmed)
 
@@ -93,7 +94,7 @@
     error = null
     try {
       session = await api.startCalibration(libraryId, selectedSource, selected?.isHdr === true && hdrReady)
-      activeName = 'A'
+      activeName = 'ORIGINAL'
       activeScene = 0
       ratings = {}
       schedulePoll()
@@ -257,7 +258,7 @@
   }
 
   function classify(name: string, rating: CalibrationClassification) {
-    if (revealed || playbackError) return
+    if (revealed || playbackError || variants.find((variant) => variant.name === name)?.isOriginal) return
     ratings = { ...ratings, [name]: rating }
   }
 
@@ -265,6 +266,12 @@
     event.preventDefault()
     const name = event.dataTransfer?.getData('text/plain')
     if (name && variants.some((variant) => variant.name === name)) classify(name, rating)
+  }
+
+  function variantLabel(name: string): string {
+    return variants.find((variant) => variant.name === name)?.isOriginal
+      ? i18n.m.calibration.original
+      : name
   }
 
   async function revealResults() {
@@ -361,7 +368,7 @@
     </div>
     {#if session?.status === 'Comparing'}
       <div class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" aria-live="polite">
-        {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: variants.length })}
+        {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: candidateVariants.length })}
       </div>
     {/if}
   </header>
@@ -418,10 +425,11 @@
   {:else}
     <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="min-w-0 space-y-5">
-        <section class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl shadow-slate-950/10" bind:this={viewer}>
+        <section class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl shadow-slate-950/10" bind:this={viewer} aria-busy={switching}>
           <div class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 text-slate-200">
-            <div><span class="text-xs uppercase tracking-[0.18em] text-slate-500">{i18n.m.calibration.sample_label}</span><strong class="ml-2 text-lg">{activeName}</strong></div>
+            <div><span class="text-xs uppercase tracking-[0.18em] text-slate-500">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span><strong class="ml-2 text-lg">{variantLabel(activeName)}</strong></div>
             <div class="flex items-center gap-2">
+              {#if switching}<span class="text-xs font-medium text-cyan-300" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
               {#if activeSample && activeSample.sampleCount > 1}<span class="text-xs text-slate-400">{t(i18n.m.calibration.scene_label, { current: activeScene + 1, total: activeSample.sampleCount })}</span>{/if}
               {#if session.mediaKind === 'Video'}
                 <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
@@ -434,7 +442,7 @@
             {#key activeScene}
               {#if session.mediaKind === 'Image'}
                 {#each variants as variant}
-                  <img src={variant.samples[activeScene]?.url} alt={t(i18n.m.calibration.image_alt, { slot: variant.name })} draggable="false" class="absolute inset-0 h-full w-full select-none object-contain" class:invisible={variant.name !== activeName} style:transform={`translate(${imagePanX}px, ${imagePanY}px) scale(${imageZoom})`} onerror={() => (playbackError = true)} />
+                  <img src={variant.samples[activeScene]?.url} alt={variant.isOriginal ? i18n.m.calibration.original_reference : t(i18n.m.calibration.image_alt, { slot: variant.name })} draggable="false" class="absolute inset-0 h-full w-full select-none object-contain" class:invisible={variant.name !== activeName} style:transform={`translate(${imagePanX}px, ${imagePanY}px) scale(${imageZoom})`} onerror={() => (playbackError = true)} />
                 {/each}
               {:else}
                 {#each variants as variant}
@@ -468,8 +476,9 @@
           <div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
-              <button class="group relative min-h-20 rounded-xl border-2 bg-white px-3 py-3 text-left transition-colors dark:bg-slate-900" class:border-cyan-500={activeName === variant.name} class:border-slate-200={activeName !== variant.name} class:dark:border-slate-700={activeName !== variant.name} draggable={!revealed} ondragstart={(event) => event.dataTransfer?.setData('text/plain', variant.name)} onclick={() => chooseVariant(variant.name)} aria-pressed={activeName === variant.name}>
-                <span class="text-xl font-bold text-slate-900 dark:text-white">{variant.name}</span>
+              <button class="group relative min-h-20 rounded-xl border-2 bg-white px-3 py-3 text-left transition-colors dark:bg-slate-900" class:border-cyan-500={activeName === variant.name} class:border-slate-200={activeName !== variant.name} class:dark:border-slate-700={activeName !== variant.name} class:bg-cyan-50={variant.isOriginal} class:dark:bg-slate-800={variant.isOriginal} disabled={switching} draggable={!revealed && !variant.isOriginal} ondragstart={(event) => !variant.isOriginal && event.dataTransfer?.setData('text/plain', variant.name)} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
+                <span class="text-xl font-bold text-slate-900 dark:text-white">{variantLabel(variant.name)}</span>
+                {#if variant.isOriginal}<span class="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.reference_label}</span>{/if}
                 {#if ratings[variant.name]}<span class="mt-1 block truncate text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">{ratingLabel(ratings[variant.name]!)}</span>{/if}
                 {#if revealed}<span class="mt-1 block text-xs text-slate-500 dark:text-slate-400">{revealedLabel(variant.name)}</span>{/if}
                 {#if resultVariant?.recommended}<span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-emerald-500" title={i18n.m.calibration.recommended_sample}></span>{/if}
@@ -484,19 +493,23 @@
           <section class="card p-5 xl:sticky xl:top-0">
             <h2 class="font-semibold text-slate-900 dark:text-white">{i18n.m.calibration.classification_title}</h2>
             <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.classification_hint}</p>
-            <div class="mt-4 rounded-xl bg-slate-100 p-3 text-center dark:bg-slate-800"><span class="text-xs uppercase tracking-wide text-slate-500">{i18n.m.calibration.sample_label}</span><strong class="ml-2 text-2xl text-slate-950 dark:text-white">{activeName}</strong></div>
-            <div class="mt-3 space-y-2">
-              {#each ratingOptions as rating}
-                <button class="min-h-12 w-full rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors" class:border-cyan-500={ratings[activeName] === rating} class:bg-cyan-50={ratings[activeName] === rating} class:text-cyan-800={ratings[activeName] === rating} class:border-slate-200={ratings[activeName] !== rating} class:dark:border-slate-700={ratings[activeName] !== rating} class:dark:bg-cyan-950={ratings[activeName] === rating} class:dark:text-cyan-200={ratings[activeName] === rating} disabled={playbackError} onclick={() => classify(activeName, rating)} ondragover={(event) => event.preventDefault()} ondrop={(event) => dropRating(rating, event)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
-              {/each}
-            </div>
+            <div class="mt-4 rounded-xl bg-slate-100 p-3 text-center dark:bg-slate-800"><span class="text-xs uppercase tracking-wide text-slate-500">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span><strong class="ml-2 text-2xl text-slate-950 dark:text-white">{variantLabel(activeName)}</strong></div>
+            {#if activeVariant?.isOriginal}
+              <p class="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm leading-relaxed text-cyan-900 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-200">{i18n.m.calibration.reference_hint}</p>
+            {:else}
+              <div class="mt-3 space-y-2">
+                {#each ratingOptions as rating}
+                  <button class="min-h-12 w-full rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors" class:border-cyan-500={ratings[activeName] === rating} class:bg-cyan-50={ratings[activeName] === rating} class:text-cyan-800={ratings[activeName] === rating} class:border-slate-200={ratings[activeName] !== rating} class:dark:border-slate-700={ratings[activeName] !== rating} class:dark:bg-cyan-950={ratings[activeName] === rating} class:dark:text-cyan-200={ratings[activeName] === rating} disabled={playbackError} onclick={() => classify(activeName, rating)} ondragover={(event) => event.preventDefault()} ondrop={(event) => dropRating(rating, event)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
+                {/each}
+              </div>
+            {/if}
             <button class="btn btn-primary mt-5 min-h-12 w-full" disabled={!canReveal || busy} onclick={revealResults}>{busy ? i18n.m.common.loading_short : i18n.m.calibration.reveal_lineup}</button>
           </section>
         {:else if session.result}
           <section class="card overflow-hidden">
             <div class="border-b border-slate-200 p-5 dark:border-slate-700"><p class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-slate-950 dark:text-white">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
             <div class="divide-y divide-slate-100 dark:divide-slate-800">
-              {#each session.result.variants as variant}<div class="flex items-center gap-3 px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}><strong class="w-6 text-slate-900 dark:text-white">{variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span><span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span></div>{/each}
+              {#each session.result.variants as variant}<div class="flex items-center gap-3 px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}><strong class="w-16 text-slate-900 dark:text-white">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span>{/if}</div>{/each}
             </div>
             <div class="p-5">
               {#if session.result.recommendedQuality !== null}
