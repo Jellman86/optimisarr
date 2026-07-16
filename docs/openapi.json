@@ -1212,6 +1212,10 @@
       },
       "StartCalibrationRequest": {
         "properties": {
+          "hdrPlaybackConfirmed": {
+            "default": false,
+            "type": "boolean"
+          },
           "mediaFileId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
