@@ -23,16 +23,22 @@
   let activeSlot = $state<'A' | 'B' | 'X'>('A')
   let players = $state<Partial<Record<'A' | 'B' | 'X', HTMLVideoElement>>>({})
   let playbackError = $state(false)
+  let hdrDisplaySupported = $state(false)
+  let hdrViewingConfirmed = $state(false)
   let closed = false
   let dialog: HTMLDivElement
   const returnFocus = typeof document === 'undefined' ? null : document.activeElement as HTMLElement | null
   let previousOverflow = ''
+  const selected = $derived(sources.find((source) => source.mediaFileId === selectedSource) ?? null)
+  const hdrReady = $derived(!selected?.isHdr || hdrDisplaySupported && hdrViewingConfirmed)
 
   loadSources()
   onMount(() => {
     previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     dialog.focus()
+    hdrDisplaySupported = window.matchMedia('(video-dynamic-range: high)').matches
+      || window.matchMedia('(dynamic-range: high)').matches
   })
 
   async function loadSources() {
@@ -51,7 +57,7 @@
     busy = true
     error = null
     try {
-      session = await api.startCalibration(libraryId, selectedSource)
+      session = await api.startCalibration(libraryId, selectedSource, selected?.isHdr === true && hdrReady)
       schedulePoll()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.calibration.start_error
@@ -83,7 +89,8 @@
 
   function sourceLabel(source: CalibrationSource): string {
     const resolution = source.width && source.height ? ` · ${source.width}×${source.height}` : ''
-    return `${source.relativePath}${resolution} · ${formatDuration(source.durationSeconds)}`
+    const range = source.isHdr ? ' · HDR' : ' · SDR'
+    return `${source.relativePath}${resolution}${range} · ${formatDuration(source.durationSeconds)}`
   }
 
   function preparePlayer(name: 'A' | 'B' | 'X', event: Event) {
@@ -256,11 +263,25 @@
                 <option value={source.mediaFileId}>{sourceLabel(source)}</option>
               {/each}
             </select>
+            {#if selected?.isHdr}
+              <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                <p class="font-medium">{i18n.m.calibration.hdr_title}</p>
+                {#if hdrDisplaySupported}
+                  <p class="mt-1 text-xs leading-relaxed">{i18n.m.calibration.hdr_body}</p>
+                  <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3">
+                    <input class="checkbox mt-0.5" type="checkbox" bind:checked={hdrViewingConfirmed} />
+                    <span class="text-sm">{i18n.m.calibration.hdr_confirm}</span>
+                  </label>
+                {:else}
+                  <p class="mt-1 text-xs leading-relaxed">{i18n.m.calibration.hdr_unsupported}</p>
+                {/if}
+              </div>
+            {/if}
             <div class="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-950 dark:border-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-100">
               <p class="font-medium">{i18n.m.calibration.safe_title}</p>
               <p class="mt-1 text-xs leading-relaxed">{i18n.m.calibration.safe_body}</p>
             </div>
-            <button class="btn btn-primary mt-5 min-h-11" type="button" disabled={busy} onclick={start}>
+            <button class="btn btn-primary mt-5 min-h-11" type="button" disabled={busy || !hdrReady} onclick={start}>
               {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}
             </button>
           {/if}

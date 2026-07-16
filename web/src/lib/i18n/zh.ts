@@ -90,6 +90,7 @@ export const zh: Messages = {
     change: "更改", skipped: "已跳过 — 稍后添加", receipt_heading: "设置已安全应用", receipt_body: "{count} 个媒体库已准备就绪。未启动扫描、编码、替换或删除。", review_candidates: "查看候选项", open_dashboard: "打开仪表板"
   },
   calibration: {
+    hdr_title: '检查 HDR 播放', hdr_body: '浏览器报告显示链路支持 HDR。请在平时观看 HDR 的条件下进行比较。', hdr_confirm: '我确认此浏览器可在用于比较的显示器上呈现 HDR。', hdr_unsupported: '浏览器未报告显示链路支持 HDR，因此无法使用 HDR 校准。',
     no_difference_result: '在这次简短的个人测试中未检测到可靠差异。',
     no_transparent_result: '测试的设置均未达到可靠的透明效果。请保持当前质量并尝试其他素材。',
     eyebrow: '个人质量检查', title: '盲测质量校准', load_error: '无法加载校准详情。', start_error: '无法开始校准。', answer_error: '无法记录该答案。', reveal_error: '无法显示校准结果。', apply_error: '无法应用推荐质量。',

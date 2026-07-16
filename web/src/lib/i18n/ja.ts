@@ -90,6 +90,7 @@ export const ja: Messages = {
     change: "変更", skipped: "スキップ — 後で追加", receipt_heading: "セットアップを安全に適用しました", receipt_body: "{count} 件のライブラリを利用できます。スキャン、エンコード、置換、削除は開始されていません。", review_candidates: "候補を確認", open_dashboard: "ダッシュボードを開く"
   },
   calibration: {
+    hdr_title: 'HDR 再生の確認', hdr_body: 'ブラウザーは HDR 対応の表示経路を検出しました。普段の HDR 視聴環境で比較してください。', hdr_confirm: '比較に使う画面で、このブラウザーが HDR 表示になっていることを確認しました。', hdr_unsupported: 'ブラウザーが HDR 対応の表示経路を検出できないため、HDR キャリブレーションは利用できません。',
     no_difference_result: 'この短い個人テストでは、信頼できる違いは検出されませんでした。',
     no_transparent_result: 'テストした設定では十分に透明な結果が得られませんでした。現在の品質を維持し、別の素材を試してください。',
     eyebrow: '個人向け品質チェック', title: 'ブラインド品質キャリブレーション', load_error: 'キャリブレーションの詳細を読み込めませんでした。', start_error: 'キャリブレーションを開始できませんでした。', answer_error: '回答を記録できませんでした。', reveal_error: 'キャリブレーション結果を表示できませんでした。', apply_error: '推奨品質を適用できませんでした。',

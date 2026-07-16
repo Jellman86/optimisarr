@@ -341,7 +341,7 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
-7. **Blind quality calibration ("placebo panel"): first SDR-video slice done** — help a user choose
+7. **Blind quality calibration ("placebo panel"): SDR and HDR video slices done** — help a user choose
    the most space-efficient quality that they cannot reliably distinguish from their own source,
    without revealing the setting or estimated saving early. The design is informed by the source,
    observer, presentation, repetition, and paired-comparison principles in
@@ -359,6 +359,13 @@ the replacement workflow is trustworthy.
      touch switching, and native playback fails closed if any sample cannot be decoded. Applying
      the recommendation is a separate, explicit action and is refused if the library's relevant
      settings changed during the session.
+   - **HDR video is shipped with a fail-closed presentation contract.** Non-Dolby-Vision HDR is
+     offered only when the library preserves HDR, the browser reports an HDR-capable display path,
+     and the user confirms the intended display is presenting HDR. This follows the signal and
+     viewing-condition principles in [ITU-R BT.2100](https://www.itu.int/rec/R-REC-BT.2100) and uses
+     the W3C `video-dynamic-range`/`dynamic-range` capability signal. It does not silently tone-map
+     or claim a laboratory-grade HDR result. Dolby Vision remains excluded because its RPU dynamic
+     metadata cannot safely survive Optimisarr's current re-encode path.
    - **Cheap and safe by construction is shipped.** Candidates are disposable jobs isolated under
      `/work/calibration`; they bypass normal candidate scheduling but still receive structural
      verification. They cannot replace, move, or delete a source and are hidden from the normal
@@ -366,8 +373,8 @@ the replacement workflow is trustworthy.
      files. The original is only read.
    - **Next research and implementation.** Select representative sources using spatial/temporal
      complexity rather than file size alone and support a small multi-source result; correlate the
-     revealed choice with sampled VMAF without turning the metric into a hint; then add HDR with a
-     colour-managed playback contract, level-matched audio with instant switching, and images with
+     revealed choice with sampled VMAF without turning the metric into a hint; then add
+     level-matched audio with instant switching, and images with
      synchronised zoom/pan. Keep each media kind separately validated rather than stretching the
      video method across unlike perception tasks.
 

@@ -75,7 +75,7 @@ The custom floors must remain ordered: catastrophic frame â‰¤ fifth percentile â
 Scoring every frame and the full file is the strongest check; three representative samples and
 every-Nth-frame scoring trade some coverage for faster verification.
 
-For a more personal starting point, save an SDR video library and select **Personal quality check**
+For a more personal starting point, save a video library and select **Personal quality check**
 beside its optimisation preset. Choose a representative, probed file and let Optimisarr prepare the
 short samples. During the blind A/B/X check, switch freely between A, B, and X, then answer whether
 X matches A or B. Quality settings and estimated size remain hidden until you finish and select
@@ -83,10 +83,13 @@ X matches A or B. Quality settings and estimated size remain hidden until you fi
 source, display, and viewing conditions. Select **Apply to this library** only if you want to replace
 the library's saved quality value; no media is queued or replaced.
 
-The personal check currently supports SDR video with a re-encode preset. It reads the original but
-never changes it. Its clips are disposable and are cleaned up when the panel closes, after being
-abandoned for two hours, or when Optimisarr restarts. If the browser cannot play every sample, the
-panel disables answers rather than guessing.
+The personal check supports SDR video and HDR video that the library is configured to preserve. HDR
+also requires a browser-reported HDR display path and your confirmation that the intended display is
+actually showing HDR; it never falls back to a tone-mapped comparison. Dolby Vision remains
+unavailable because its dynamic metadata cannot safely survive the current re-encode path. The check
+reads the original but never changes it. Its clips are disposable and are cleaned up when the panel
+closes, after being abandoned for two hours, or when Optimisarr restarts. If the browser cannot play
+every sample, the panel disables answers rather than guessing.
 
 You should see **access ok** on the library card. If not, fix the host mount,
 `PUID`/`PGID`, or folder permissions before queueing jobs.

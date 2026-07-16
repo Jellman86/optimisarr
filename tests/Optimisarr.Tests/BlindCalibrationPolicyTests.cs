@@ -1,9 +1,32 @@
 using Optimisarr.Core.Calibration;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Tests;
 
 public sealed class BlindCalibrationPolicyTests
 {
+    [Theory]
+    [InlineData(false, false, HdrHandling.Exclude, false, true)]
+    [InlineData(true, false, HdrHandling.Preserve, true, true)]
+    [InlineData(true, false, HdrHandling.Preserve, false, false)]
+    [InlineData(true, false, HdrHandling.TonemapToSdr, true, false)]
+    [InlineData(true, true, HdrHandling.Preserve, true, false)]
+    public void Video_source_readiness_fails_closed_for_unsafe_hdr_presentations(
+        bool isHdr,
+        bool isDolbyVision,
+        HdrHandling hdrHandling,
+        bool hdrPlaybackConfirmed,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            BlindCalibrationPolicy.CanCalibrateVideo(
+                isHdr,
+                isDolbyVision,
+                hdrHandling,
+                hdrPlaybackConfirmed));
+    }
+
     [Fact]
     public void Plan_builds_a_most_compressed_first_quality_ladder_and_three_windows()
     {

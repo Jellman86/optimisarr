@@ -95,6 +95,7 @@ export const es: Messages = {
     change: 'Cambiar', skipped: 'Omitido — añadir después', receipt_heading: 'La configuración se aplicó de forma segura', receipt_body: '{count} biblioteca(s) están listas. No se inició ningún análisis, codificación, sustitución ni eliminación.', review_candidates: 'Revisar candidatos', open_dashboard: 'Abrir panel',
   },
   calibration: {
+    hdr_title: 'Comprobar la reproducción HDR', hdr_body: 'El navegador indica que la ruta de pantalla admite HDR. Usa tus condiciones habituales de visualización HDR.', hdr_confirm: 'Este navegador muestra HDR en la pantalla que usaré para la comparación.', hdr_unsupported: 'El navegador no indica que la ruta de pantalla admita HDR, por lo que la calibración HDR no está disponible.',
     no_difference_result: 'No se detectó ninguna diferencia fiable en esta breve prueba personal.',
     no_transparent_result: 'Ningún ajuste probado resultó transparentemente fiable. Mantén la calidad actual y prueba otro material.',
     eyebrow: 'Comprobación de calidad personal', title: 'Calibración de calidad a ciegas', load_error: 'No se pudieron cargar los detalles de calibración.', start_error: 'No se pudo iniciar la calibración.', answer_error: 'No se pudo registrar esa respuesta.', reveal_error: 'No se pudo mostrar el resultado de calibración.', apply_error: 'No se pudo aplicar la calidad recomendada.',

@@ -15,7 +15,9 @@ public sealed record CalibrationSourceDto(
     string RelativePath,
     double DurationSeconds,
     int? Width,
-    int? Height);
+    int? Height,
+    string MediaKind,
+    bool IsHdr);
 
 public sealed record CalibrationSlotDto(string Name, string Url, double StartSeconds);
 
@@ -106,7 +108,6 @@ internal sealed class BlindCalibrationService(
             .Where(file => file.LibraryId == libraryId
                 && file.Status == MediaFileStatus.Probed
                 && file.MediaKind == MediaKind.Video
-                && !file.IsHdr
                 && !file.IsDolbyVision
                 && file.DurationSeconds >= BlindCalibrationPolicy.SampleSeconds * 4)
             .OrderByDescending(file => file.SizeBytes)
@@ -116,13 +117,16 @@ internal sealed class BlindCalibrationService(
                 file.RelativePath,
                 file.DurationSeconds!.Value,
                 file.Width,
-                file.Height))
+                file.Height,
+                file.MediaKind.ToString(),
+                file.IsHdr))
             .ToListAsync(cancellationToken);
     }
 
     public async Task<CalibrationSessionDto> CreateAsync(
         int libraryId,
         int mediaFileId,
+        bool hdrPlaybackConfirmed,
         CancellationToken cancellationToken)
     {
         await RemoveExpiredAsync(cancellationToken);
@@ -138,9 +142,9 @@ internal sealed class BlindCalibrationService(
         {
             throw new KeyNotFoundException("The calibration source or library no longer exists.");
         }
-        if (media.MediaKind != MediaKind.Video || media.IsHdr || media.IsDolbyVision)
+        if (media.MediaKind != MediaKind.Video)
         {
-            throw new InvalidOperationException("Blind calibration currently supports SDR video only.");
+            throw new InvalidOperationException("Choose a probed video source for this calibration.");
         }
         if (media.DurationSeconds is not { } duration)
         {
@@ -148,6 +152,16 @@ internal sealed class BlindCalibrationService(
         }
 
         var rules = LibraryRuleResolution.Resolve(media.Library);
+        if (!BlindCalibrationPolicy.CanCalibrateVideo(
+                media.IsHdr,
+                media.IsDolbyVision,
+                rules.Hdr,
+                hdrPlaybackConfirmed))
+        {
+            throw new InvalidOperationException(media.IsDolbyVision
+                ? "Dolby Vision calibration is unavailable because a re-encode cannot safely preserve its dynamic metadata."
+                : "HDR calibration requires Preserve HDR handling and confirmed HDR playback support.");
+        }
         if (rules.TargetVideoCodec is null || rules.DefaultCrf is null)
         {
             throw new InvalidOperationException("Choose a video re-encode preset before calibrating quality.");

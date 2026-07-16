@@ -92,6 +92,7 @@ export const fr: Messages = {
     change: 'Modifier', skipped: 'Ignoré — à ajouter plus tard', receipt_heading: 'La configuration est appliquée en toute sécurité', receipt_body: '{count} médiathèque(s) sont prêtes. Aucun scan, encodage, remplacement ni suppression n’a démarré.', review_candidates: 'Examiner les candidats', open_dashboard: 'Ouvrir le tableau de bord',
   },
   calibration: {
+    hdr_title: 'Vérifier la lecture HDR', hdr_body: 'Le navigateur signale une chaîne d’affichage compatible HDR. Utilisez vos conditions de visionnage HDR habituelles.', hdr_confirm: 'Ce navigateur affiche bien le HDR sur l’écran utilisé pour cette comparaison.', hdr_unsupported: 'Le navigateur ne signale pas de chaîne d’affichage compatible HDR ; l’étalonnage HDR est donc indisponible.',
     no_difference_result: 'Aucune différence fiable n’a été détectée lors de ce court test personnel.',
     no_transparent_result: 'Aucun réglage testé n’était fiablement transparent. Conservez la qualité actuelle et essayez une autre source.',
     eyebrow: 'Contrôle qualité personnel', title: 'Étalonnage de qualité en aveugle', load_error: 'Impossible de charger les détails de l’étalonnage.', start_error: 'Impossible de démarrer l’étalonnage.', answer_error: 'Impossible d’enregistrer cette réponse.', reveal_error: 'Impossible d’afficher le résultat de l’étalonnage.', apply_error: 'Impossible d’appliquer la qualité recommandée.',

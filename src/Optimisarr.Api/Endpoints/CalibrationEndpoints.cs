@@ -2,7 +2,7 @@ using Optimisarr.Api.Library;
 
 namespace Optimisarr.Api.Endpoints;
 
-internal sealed record StartCalibrationRequest(int MediaFileId);
+internal sealed record StartCalibrationRequest(int MediaFileId, bool HdrPlaybackConfirmed = false);
 internal sealed record CalibrationAnswerRequest(Guid TrialId, string? Choice);
 
 internal static class CalibrationEndpoints
@@ -24,7 +24,11 @@ internal static class CalibrationEndpoints
         {
             try
             {
-                return Results.Ok(await calibration.CreateAsync(id, request.MediaFileId, cancellationToken));
+                return Results.Ok(await calibration.CreateAsync(
+                    id,
+                    request.MediaFileId,
+                    request.HdrPlaybackConfirmed,
+                    cancellationToken));
             }
             catch (KeyNotFoundException exception)
             {

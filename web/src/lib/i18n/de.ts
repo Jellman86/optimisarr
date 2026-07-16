@@ -99,6 +99,7 @@ export const de: Messages = {
     change: 'Ändern', skipped: 'Übersprungen — später hinzufügen', receipt_heading: 'Einrichtung wurde sicher angewendet', receipt_body: '{count} Bibliothek(en) sind bereit. Es wurde kein Scan, keine Kodierung, kein Austausch und keine Löschung gestartet.', review_candidates: 'Kandidaten prüfen', open_dashboard: 'Dashboard öffnen',
   },
   calibration: {
+    hdr_title: 'HDR-Wiedergabe prüfen', hdr_body: 'Ihr Browser meldet eine HDR-fähige Anzeigekette. Verwenden Sie Ihre üblichen HDR-Sichtbedingungen.', hdr_confirm: 'Dieser Browser zeigt HDR auf dem Bildschirm an, den ich für den Vergleich verwende.', hdr_unsupported: 'Dieser Browser meldet keine HDR-fähige Anzeigekette. Die HDR-Kalibrierung ist daher nicht verfügbar.',
     no_difference_result: 'In diesem kurzen persönlichen Test wurde kein verlässlicher Unterschied erkannt.',
     no_transparent_result: 'Keine getestete Einstellung war verlässlich transparent. Behalten Sie die aktuelle Qualität und versuchen Sie anderes Quellmaterial.',
     eyebrow: 'Persönliche Qualitätsprüfung', title: 'Blinde Qualitätskalibrierung', load_error: 'Kalibrierungsdetails konnten nicht geladen werden.', start_error: 'Kalibrierung konnte nicht gestartet werden.', answer_error: 'Diese Antwort konnte nicht gespeichert werden.', reveal_error: 'Das Kalibrierungsergebnis konnte nicht angezeigt werden.', apply_error: 'Die empfohlene Qualität konnte nicht angewendet werden.',

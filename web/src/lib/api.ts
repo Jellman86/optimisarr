@@ -405,6 +405,8 @@ export type CalibrationSource = {
   durationSeconds: number
   width: number | null
   height: number | null
+  mediaKind: 'Video' | 'Audio' | 'Image'
+  isHdr: boolean
 }
 
 export type CalibrationSlot = {
@@ -839,9 +841,9 @@ export const api = {
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
-  startCalibration: (libraryId: number, mediaFileId: number) =>
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false) =>
     request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
-      method: 'POST', body: JSON.stringify({ mediaFileId }),
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed }),
     }),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
   answerCalibration: (id: string, trialId: string, choice: 'A' | 'B') =>

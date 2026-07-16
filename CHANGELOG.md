@@ -4,7 +4,7 @@
 
 ### Added
 
-- **A personal blind video-quality check.** A saved SDR video library can now prepare short,
+- **A personal blind video-quality check.** A saved video library can now prepare short,
   disposable samples from the beginning, middle, and end of a representative file, then guide one
   person through an adaptive A/B/X check without showing which clip is the original, the quality
   setting, or the estimated size until the answers are complete. A conservative confirmation stage
@@ -13,9 +13,11 @@
   are removed when the panel closes, after being abandoned for two hours, or when the app restarts;
   nothing enters the normal queue or replacement path, and the suggested quality changes the
   library only after an explicit Apply.
-  Native playback fails closed when the browser cannot decode a candidate. The first slice is SDR
-  video only; HDR, audio, images, content-complexity source guidance, and metric correlation remain
-  on the roadmap.
+  Native playback fails closed when the browser cannot decode a candidate. HDR is available only
+  when the library preserves HDR and the browser reports an HDR-capable display path; the user must
+  also confirm that the normal viewing display is actually presenting HDR. Dolby Vision remains
+  unavailable because a re-encode cannot safely retain its dynamic metadata. Audio, images,
+  content-complexity source guidance, and metric correlation remain on the roadmap.
 - **Gold-standard first-run recommendations and final review.** Setup now turns proved encoder and
   VMAF capabilities into visible, reversible encoder, hardware-decode, VMAF, and overnight-window
   recommendations instead of silently choosing for the operator. When a probed candidate exists,

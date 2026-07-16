@@ -90,6 +90,7 @@ export const pt: Messages = {
     change: "Alterar", skipped: "Ignorado — adicionar depois", receipt_heading: "Configuração aplicada em segurança", receipt_body: "{count} biblioteca(s) estão prontas. Nenhuma análise, codificação, substituição ou eliminação foi iniciada.", review_candidates: "Rever candidatos", open_dashboard: "Abrir painel"
   },
   calibration: {
+    hdr_title: 'Verificar reprodução HDR', hdr_body: 'O navegador indica um percurso de imagem compatível com HDR. Use as suas condições habituais de visualização HDR.', hdr_confirm: 'Este navegador mostra HDR no ecrã que vou usar para a comparação.', hdr_unsupported: 'O navegador não indica um percurso de imagem compatível com HDR, por isso a calibração HDR não está disponível.',
     no_difference_result: 'Não foi detetada uma diferença fiável neste breve teste pessoal.',
     no_transparent_result: 'Nenhuma definição testada foi fiavelmente transparente. Mantenha a qualidade atual e tente outro material.',
     eyebrow: 'Verificação de qualidade pessoal', title: 'Calibração cega de qualidade', load_error: 'Não foi possível carregar os detalhes da calibração.', start_error: 'Não foi possível iniciar a calibração.', answer_error: 'Não foi possível registar essa resposta.', reveal_error: 'Não foi possível mostrar o resultado da calibração.', apply_error: 'Não foi possível aplicar a qualidade recomendada.',

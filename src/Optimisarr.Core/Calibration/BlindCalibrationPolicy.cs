@@ -1,5 +1,7 @@
 namespace Optimisarr.Core.Calibration;
 
+using Optimisarr.Core.Domain;
+
 public sealed record CalibrationSample(int Index, int StartSeconds, int DurationSeconds);
 
 public sealed record BlindCalibrationPlan(
@@ -17,6 +19,20 @@ public enum CalibrationJudgement
 public static class BlindCalibrationPolicy
 {
     public const int SampleSeconds = 12;
+
+    public static bool CanCalibrateVideo(
+        bool isHdr,
+        bool isDolbyVision,
+        HdrHandling hdrHandling,
+        bool hdrPlaybackConfirmed)
+    {
+        if (isDolbyVision)
+        {
+            return false;
+        }
+
+        return !isHdr || hdrHandling == HdrHandling.Preserve && hdrPlaybackConfirmed;
+    }
 
     public static BlindCalibrationPlan Plan(double durationSeconds, int currentQuality)
     {
