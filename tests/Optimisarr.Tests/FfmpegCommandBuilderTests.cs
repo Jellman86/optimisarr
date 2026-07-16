@@ -436,6 +436,25 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Video_only_clip_maps_and_encodes_only_the_primary_video()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            ClipSeconds = 12,
+            ClipStartSeconds = 281,
+            VideoOnly = true
+        });
+
+        Assert.Contains(("-map", "0:v:0"), MapPairs(args));
+        Assert.DoesNotContain(("-map", "0"), MapPairs(args));
+        Assert.DoesNotContain("-c:a", args);
+        Assert.DoesNotContain("-c:s", args);
+        Assert.DoesNotContain("-0:t", args);
+        Assert.DoesNotContain("-0:d", args);
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v:0") + 1]);
+    }
+
+    [Fact]
     public void Excludes_the_removed_audio_tracks_from_a_video_re_encode()
     {
         var args = FfmpegCommandBuilder.Build(

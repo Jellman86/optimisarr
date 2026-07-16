@@ -97,6 +97,12 @@ public sealed class Job
     /// <summary>The duration of this short calibration candidate.</summary>
     public int? CalibrationClipSeconds { get; set; }
 
+    /// <summary>
+    /// Hidden decode pre-roll at the start of the stream-copy original reference. The blind
+    /// player begins here so original and candidate show the same requested source frame.
+    /// </summary>
+    public double? CalibrationReferenceStartSeconds { get; set; }
+
     /// <summary>Transcode progress in the range 0..1, parsed from ffmpeg.</summary>
     public double Progress { get; set; }
 

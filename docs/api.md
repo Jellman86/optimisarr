@@ -309,7 +309,7 @@ when the verification report is for a sample rather than the whole file.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/libraries/{id}/calibration/sources` | List probed SDR videos suitable for a personal quality check. |
+| `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
 | `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123 }`. |
 | `GET` | `/api/calibration/{id}` | Read preparation progress, the current blinded trial, or a revealed result. |
 | `POST` | `/api/calibration/{id}/answers` | Answer the current A/B/X trial. Body: `{ "trialId": "…", "choice": "A" }`. |
@@ -318,16 +318,25 @@ when the verification report is for a sample rather than the whole file.
 | `GET` | `/api/calibration/{id}/trials/{trialId}/content/{slot}` | Stream the current blinded `A`, `B`, or `X` content. |
 | `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
 
-Calibration currently supports SDR video using a saved re-encode preset. The service creates three
-12-second scenes at several quality levels under `/work/calibration`; these jobs are excluded from
-the normal queue and can never enter replacement. Active requests extend the session; an abandoned
+Video calibration creates three 12-second scenes at several quality levels. Its original-side
+reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
+preceding keyframe, each original slot's `startSeconds` hides that decode pre-roll so it presents the
+same source window as the candidate. Video samples contain only the primary video stream. Music uses
+three 15-second excerpts with a lossless FLAC reference and returns a per-slot `gainDb` for
+level-matched playback. Still images use a lossless PNG reference and return `startSeconds: 0` and
+`gainDb: 0`.
+
+All candidate and reference media lives under `/work/calibration`. These jobs are excluded from the
+normal queue and can never enter replacement. Active requests extend the session; an abandoned
 session expires after two hours, and all session state is discarded on restart. The original file
-is only read. A completed result does not alter settings:
-only the separate `apply` request may change the library quality, and it queues no media work.
+is only read. A completed result does not alter settings: only the separate `apply` request may
+change the relevant library quality, and it queues no media work.
 
 Trial URLs and labels are opaque until reveal. Clients should not display encoder, quality, bitrate,
-or estimated size during the blind phase. If any stream cannot be decoded, fail closed rather than
-recording an answer. The `NoReliableDifference` outcome is not a proof that two encodes are equal.
+estimated size, or the media element's raw duration during the blind phase. Drive all slots from the
+trial's common `durationSeconds` and each slot's `startSeconds`; otherwise keyframe pre-roll can
+identify the original. If any stream cannot be decoded, fail closed rather than recording an answer.
+The `NoReliableDifference` outcome is not a proof that two encodes are equal.
 
 ## Queue
 

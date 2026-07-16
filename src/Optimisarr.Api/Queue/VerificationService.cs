@@ -28,10 +28,22 @@ public sealed record OriginalSnapshot(
 public sealed record VerificationOutcome(
     VerificationReport Report,
     long OutputSizeBytes,
-    string? VmafSampling = null);
+    string? VmafSampling = null,
+    double ReferenceStartSeconds = 0);
 
-/// <summary>The preview clip window to use when building a verification reference segment.</summary>
-public sealed record VerificationClip(int Seconds, int? StartSeconds, string ReferencePath);
+/// <summary>The disposable clip window used to build a preview or calibration reference.</summary>
+public sealed record VerificationClip(
+    int Seconds,
+    int? StartSeconds,
+    string ReferencePath,
+    bool RetainReference = false,
+    bool VideoOnly = false);
+
+internal static class VerificationClipLifecycle
+{
+    public static bool DeleteReferenceAfterVerification(VerificationClip clip) =>
+        !clip.RetainReference;
+}
 
 /// <summary>
 /// Gathers the real-world evidence a converted output is healthy — a full software
@@ -43,6 +55,7 @@ public sealed class VerificationService(
     MediaProbeService probe,
     DecodeHealthCheck decode,
     TimestampIntegrityCheck timestamps,
+    ReferenceFrameAlignmentProbe referenceAlignment,
     QualityScoreService quality,
     LoudnessService loudness,
     ImageQualityService imageQuality,
@@ -58,9 +71,10 @@ public sealed class VerificationService(
         IProgress<double>? qualityProgress = null,
         VmafAcceleration vmafAcceleration = VmafAcceleration.None)
     {
-        var reference = clip is null
-            ? original
+        var preparedReference = clip is null
+            ? new PreparedReference(original, 0)
             : await CreateReferenceClipAsync(original, clip, cancellationToken);
+        var reference = preparedReference.Snapshot;
 
         try
         {
@@ -256,11 +270,12 @@ public sealed class VerificationService(
             return new VerificationOutcome(
                 VerificationEvaluator.Evaluate(input, policy),
                 outputSize,
-                vmafSampling);
+                vmafSampling,
+                preparedReference.PresentationOffsetSeconds);
         }
         finally
         {
-            if (clip is not null)
+            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip))
             {
                 TryDelete(reference.Path);
             }
@@ -340,7 +355,7 @@ public sealed class VerificationService(
             target.Report(Math.Clamp((index + value) / count, 0, 0.999));
     }
 
-    private async Task<OriginalSnapshot> CreateReferenceClipAsync(
+    private async Task<PreparedReference> CreateReferenceClipAsync(
         OriginalSnapshot original,
         VerificationClip clip,
         CancellationToken cancellationToken)
@@ -350,7 +365,7 @@ public sealed class VerificationService(
             ? PreviewReferenceClipCommandBuilder.BuildAudio(
                 original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds)
             : PreviewReferenceClipCommandBuilder.Build(
-                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds);
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds, clip.VideoOnly);
 
         var run = await RunReferenceClipAsync(args, cancellationToken);
         if (run.ExitCode != 0)
@@ -360,16 +375,37 @@ public sealed class VerificationService(
         }
 
         var clipProbe = await probe.ProbeAsync(clip.ReferencePath, cancellationToken);
-        return original with
+        var probedDuration = clipProbe.DurationSeconds
+            ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds)
+            ?? clip.Seconds;
+        var snapshot = original with
         {
             Path = clip.ReferencePath,
             SizeBytes = TryGetSize(clip.ReferencePath),
-            DurationSeconds = clipProbe.DurationSeconds ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds),
+            // Stream copy necessarily retains packets from the preceding keyframe. The candidate
+            // still represents the requested window, so verify against that window rather than
+            // mistaking harmless decode pre-roll for a truncated encode.
+            DurationSeconds = clip.VideoOnly ? clip.Seconds : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
             IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr
         };
+        var presentationOffset = 0.0;
+        if (clip.VideoOnly && clip.StartSeconds is { } start and > 0)
+        {
+            presentationOffset = await referenceAlignment.MeasureAsync(
+                    original.Path,
+                    start,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Could not align the original calibration reference to the requested source frame.");
+        }
+        return new PreparedReference(snapshot, presentationOffset);
     }
+
+    private sealed record PreparedReference(
+        OriginalSnapshot Snapshot,
+        double PresentationOffsetSeconds);
 
     private async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
         IReadOnlyList<string> arguments,

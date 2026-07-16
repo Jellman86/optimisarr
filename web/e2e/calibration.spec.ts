@@ -27,8 +27,8 @@ function session(mediaKind: 'Video' | 'Image' = 'Video') {
       id: trialId, phase: 'Screening', number: 1, sampleNumber: 1, sampleCount: 3,
       durationSeconds: mediaKind === 'Image' ? 0 : 12,
       a: { name: 'A', url: content('A'), startSeconds: 0, gainDb: 0 },
-      b: { name: 'B', url: content('B'), startSeconds: 0, gainDb: 0 },
-      x: { name: 'X', url: content('X'), startSeconds: 0, gainDb: 0 },
+      b: { name: 'B', url: content('B'), startSeconds: mediaKind === 'Video' ? 0.751 : 0, gainDb: 0 },
+      x: { name: 'X', url: content('X'), startSeconds: mediaKind === 'Video' ? 0.751 : 0, gainDb: 0 },
     },
   }
 }
@@ -91,6 +91,9 @@ test('blind calibration hides settings, supports keyboard switching, and traps f
 
   await dialog.getByRole('button', { name: 'Prepare blind samples' }).click()
   await expect(dialog.getByText('Does X match A or B?')).toBeVisible()
+  await expect(dialog.locator('video[controls]')).toHaveCount(0)
+  await expect(dialog.getByRole('slider', { name: 'Sample position' })).toHaveAttribute('max', '12')
+  await expect(dialog.getByText('0:00 / 0:12')).toBeVisible()
   await page.keyboard.press('x')
   await expect(dialog.getByRole('button', { name: 'X', exact: true })).toHaveAttribute('aria-pressed', 'true')
 

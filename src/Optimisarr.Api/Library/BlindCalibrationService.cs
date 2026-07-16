@@ -476,9 +476,9 @@ internal sealed class BlindCalibrationService(
             return null;
         }
 
-        // Serve the verifier's stream-copy reference clip, not the full original. This keeps the
-        // native controls on the same short 0-based timeline as the encoded candidate, avoiding a
-        // duration/seek-position side channel that would reveal which blind slot is the original.
+        // Serve the verifier's short stream-copy reference, not the full original. The trial DTO
+        // supplies its hidden keyframe pre-roll offset and the shared player exposes only the common
+        // sample timeline, so neither source position nor raw container duration reveals this slot.
         var path = source.Original
             ? Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
@@ -730,16 +730,24 @@ internal sealed class BlindCalibrationService(
             session.Status.ToString(),
             Math.Round(progress, 3),
             session.Error,
-            session.CurrentTrial is { } trial ? ToTrialDto(session, trial) : null,
+            session.CurrentTrial is { } trial ? ToTrialDto(session, trial, jobs) : null,
             session.Status is SessionStatus.Revealed or SessionStatus.Applied ? session.Result : null);
     }
 
-    private static CalibrationTrialDto ToTrialDto(Session session, Trial trial)
+    private static CalibrationTrialDto ToTrialDto(
+        Session session,
+        Trial trial,
+        IReadOnlyList<Job> jobs)
     {
+        var referenceOffsets = jobs.ToDictionary(
+            job => job.Id,
+            job => job.CalibrationReferenceStartSeconds ?? 0);
         CalibrationSlotDto Slot(string name, TrialSource source) => new(
             name,
             $"/api/calibration/{session.Id}/trials/{trial.Id}/content/{name}",
-            0,
+            source.Original && referenceOffsets.TryGetValue(source.JobId, out var offset)
+                ? offset
+                : 0,
             source.GainDb);
         return new CalibrationTrialDto(
             trial.Id,

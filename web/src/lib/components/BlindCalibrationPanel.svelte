@@ -23,6 +23,8 @@
   let activeSlot = $state<'A' | 'B' | 'X'>('A')
   let players = $state<Partial<Record<'A' | 'B' | 'X', HTMLMediaElement>>>({})
   let playbackError = $state(false)
+  let playbackPosition = $state(0)
+  let playing = $state(false)
   let hdrDisplaySupported = $state(false)
   let hdrViewingConfirmed = $state(false)
   let imageZoom = $state(1)
@@ -103,7 +105,7 @@
     const player = event.currentTarget as HTMLMediaElement
     const source = slot(name)
     if (source && Number.isFinite(player.duration)) {
-      player.currentTime = source.startSeconds
+      player.currentTime = source.startSeconds + playbackPosition
       player.volume = Math.min(1, Math.pow(10, source.gainDb / 20))
     }
   }
@@ -111,10 +113,52 @@
   function stopAtSampleEnd(name: 'A' | 'B' | 'X', event: Event) {
     const player = event.currentTarget as HTMLMediaElement
     const source = slot(name)
+    if (source && name === activeSlot) {
+      playbackPosition = Math.max(0, Math.min(
+        session?.trial?.durationSeconds ?? 0,
+        player.currentTime - source.startSeconds,
+      ))
+    }
     if (source && session?.trial && player.currentTime >= source.startSeconds + session.trial.durationSeconds) {
       player.pause()
       player.currentTime = source.startSeconds
+      if (name === activeSlot) {
+        playbackPosition = 0
+        playing = false
+      }
     }
+  }
+
+  function togglePlayback() {
+    const player = players[activeSlot]
+    const source = slot(activeSlot)
+    if (!player || !source || !session?.trial) return
+    if (!player.paused) {
+      player.pause()
+      playing = false
+      return
+    }
+    if (playbackPosition >= session.trial.durationSeconds - 0.05) {
+      playbackPosition = 0
+      player.currentTime = source.startSeconds
+    }
+    void player.play().catch(() => {
+      playing = false
+      playbackError = true
+    })
+  }
+
+  function seekPlayback(event: Event) {
+    const position = Number((event.currentTarget as HTMLInputElement).value)
+    const player = players[activeSlot]
+    const source = slot(activeSlot)
+    playbackPosition = position
+    if (player && source) player.currentTime = source.startSeconds + position
+  }
+
+  function sampleTime(seconds: number): string {
+    const wholeSeconds = Math.max(0, Math.floor(seconds))
+    return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, '0')}`
   }
 
   function switchTo(next: 'A' | 'B' | 'X') {
@@ -133,8 +177,13 @@
     currentPlayer?.pause()
     if (nextPlayer && nextSource) {
       nextPlayer.currentTime = nextSource.startSeconds + relativeTime
-      if (wasPlaying) void nextPlayer.play().catch(() => { playbackError = true })
+      if (wasPlaying) void nextPlayer.play().catch(() => {
+        playing = false
+        playbackError = true
+      })
     }
+    playbackPosition = relativeTime
+    playing = wasPlaying
     activeSlot = next
   }
 
@@ -172,6 +221,8 @@
       session = await api.answerCalibration(session.id, session.trial.id, choice)
       activeSlot = 'A'
       players = {}
+      playbackPosition = 0
+      playing = false
       imageZoom = 1
       imagePanX = 0
       imagePanY = 0
@@ -221,7 +272,7 @@
     }
     if (event.key === 'Tab') {
       const focusable = [...dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), select:not([disabled]), video[controls], audio[controls], [tabindex]:not([tabindex="-1"])',
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
       )].filter((element) => element.offsetParent !== null)
       if (focusable.length === 0) return
       const first = focusable[0]
@@ -384,9 +435,10 @@
                     class="absolute inset-x-6 top-1/2 w-[calc(100%-3rem)] -translate-y-1/2 {activeSlot === typedName ? 'block' : 'hidden'}"
                     src={source.url}
                     preload="auto"
-                    controls
                     onloadedmetadata={(event) => preparePlayer(typedName, event)}
                     ontimeupdate={(event) => stopAtSampleEnd(typedName, event)}
+                    onplay={() => { if (activeSlot === typedName) playing = true }}
+                    onpause={() => { if (activeSlot === typedName) playing = false }}
                     onerror={() => { playbackError = true }}
                   ></audio>
                 {:else if source}
@@ -397,9 +449,10 @@
                   muted
                   playsinline
                   preload="auto"
-                  controls
                   onloadedmetadata={(event) => preparePlayer(typedName, event)}
                   ontimeupdate={(event) => stopAtSampleEnd(typedName, event)}
+                  onplay={() => { if (activeSlot === typedName) playing = true }}
+                  onpause={() => { if (activeSlot === typedName) playing = false }}
                   onerror={() => { playbackError = true }}
                   ><track kind="captions" /></video>
                 {/if}
@@ -407,6 +460,32 @@
             {/if}
             <span class="absolute left-3 top-3 rounded bg-black/75 px-3 py-1 text-sm font-bold text-white">{activeSlot}</span>
           </div>
+          {#if session.mediaKind !== 'Image'}
+            <div class="mt-3 flex items-center gap-2 sm:gap-3">
+              <button
+                class="btn min-h-11 min-w-11 p-2"
+                type="button"
+                disabled={playbackError || !players[activeSlot]}
+                aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample}
+                aria-pressed={playing}
+                onclick={togglePlayback}
+              ><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button>
+              <input
+                class="min-h-11 min-w-0 flex-1 cursor-pointer accent-cyan-600"
+                type="range"
+                min="0"
+                max={trial.durationSeconds}
+                step="0.01"
+                value={playbackPosition}
+                disabled={playbackError || !players[activeSlot]}
+                aria-label={i18n.m.calibration.sample_position}
+                oninput={seekPlayback}
+              />
+              <span class="min-w-20 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                {sampleTime(playbackPosition)} / {sampleTime(trial.durationSeconds)}
+              </span>
+            </div>
+          {/if}
           {#if session.mediaKind === 'Image'}
             <div class="mt-3 flex flex-wrap justify-center gap-2" aria-label={i18n.m.calibration.image_zoom_controls}>
               <button class="btn min-h-11 min-w-11" type="button" disabled={imageZoom <= 1} onclick={() => setImageZoom(imageZoom - 0.5)} aria-label={i18n.m.calibration.zoom_out}>−</button>

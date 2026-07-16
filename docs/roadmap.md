@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-15)
+## Up next (priority order, updated 2026-07-16)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -359,6 +359,14 @@ the replacement workflow is trustworthy.
      touch switching, and native playback fails closed if any sample cannot be decoded. Applying
      the recommendation is a separate, explicit action and is refused if the library's relevant
      settings changed during the session.
+   - **Long-GOP reference alignment is shipped.** Video candidates and their original-side
+     references contain only the primary video stream. The original remains a bit-for-bit stream
+     copy, including the preceding keyframe packets required to decode a mid-file scene; Optimisarr
+     records that hidden pre-roll, verifies the intended 12-second window, and starts playback at
+     the matching frame. References live for the session and are removed with its other disposable
+     work. A shared accessible 0–12-second control hides raw container duration from the observer.
+     This prevents false Duration/Tail failures without weakening either gate, revealing the
+     original, or introducing a second-generation reference encode.
    - **HDR video is shipped with a fail-closed presentation contract.** Non-Dolby-Vision HDR is
      offered only when the library preserves HDR, the browser reports an HDR-capable display path,
      and the user confirms the intended display is presenting HDR. This follows the signal and

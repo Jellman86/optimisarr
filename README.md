@@ -76,6 +76,11 @@ no support SLA or promise of a release schedule.
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
   as segment-only; audio and image previews run in full.
+- A per-library **Personal quality check** uses disposable, blinded A/B/X comparisons to find the
+  most space-efficient setting one person cannot reliably distinguish on their own equipment.
+  Video uses frame-aligned early/middle/late scenes (including fail-closed HDR handling), music uses
+  level-matched excerpts, and still images keep zoom and pan synchronized. Results change only the
+  saved library quality after an explicit Apply; no source is queued, replaced, moved, or deleted.
 - Video replacement verifies the resolved codec, exact resolution, pixel bit depth, chroma sampling,
   and encoder profile in addition to full decode, timing, HDR/colour, stream, size, and VMAF gates.
 - Music defaults to **AAC 128 kbps in M4A**, preserving common attached cover art, tags, and timed

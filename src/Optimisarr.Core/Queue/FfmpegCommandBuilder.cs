@@ -30,7 +30,10 @@ public sealed record TranscodeSpec(
     int? ClipStartSeconds = null,
     // Audio-relative indexes of the source tracks a kept-languages rule removes from the
     // output (see AudioTrackSelection). Null or empty keeps every track.
-    IReadOnlyList<int>? RemoveAudioStreamIndexes = null);
+    IReadOnlyList<int>? RemoveAudioStreamIndexes = null,
+    // Disposable video calibration candidates compare picture quality only. Excluding audio,
+    // subtitles, attachments, and data keeps their timing and size out of that judgement.
+    bool VideoOnly = false);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -155,20 +158,20 @@ public static class FfmpegCommandBuilder
         List<string> args, TranscodeSpec spec, string? encoder, EncoderFamily family, bool hardwareDecode)
     {
         args.Add("-map");
-        args.Add("0");
+        args.Add(spec.VideoOnly ? "0:v:0" : "0");
 
         // MP4/MOV cannot mux Matroska attachments (fonts/cover-art files) or data streams: ffmpeg
         // reports them as "codec none", fails to write the header, and aborts the whole job before a
         // single frame is produced. Exclude them for an MP4-family output so a source carrying one
         // still transcodes. Matroska holds them, so the blanket "-c copy" below keeps them there.
-        if (IsMp4Family(spec.OutputPath))
+        if (!spec.VideoOnly && IsMp4Family(spec.OutputPath))
         {
             args.Add("-map");
             args.Add("-0:t");
             args.Add("-map");
             args.Add("-0:d");
         }
-        else if (family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc)
+        else if (!spec.VideoOnly && family is EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.Nvenc)
         {
             // A hardware encoder can abort on a data stream (camera timecode, GoPro GPMF) even in a
             // Matroska output, where the MP4 exclusion above doesn't apply. Drop data streams for any
@@ -180,7 +183,7 @@ public static class FfmpegCommandBuilder
         // The tracks a kept-languages rule removes. The selection already guarantees at least
         // one audio track survives, and the verification gate re-checks the output against the
         // planned removal — this only translates the decided indexes into stream exclusions.
-        if (spec.RemoveAudioStreamIndexes is { Count: > 0 } removedAudio)
+        if (!spec.VideoOnly && spec.RemoveAudioStreamIndexes is { Count: > 0 } removedAudio)
         {
             foreach (var index in removedAudio)
             {
@@ -192,12 +195,12 @@ public static class FfmpegCommandBuilder
         if (spec.VideoCodec is null)
         {
             // Remux only: copy every stream into the new container, no re-encode.
-            args.Add("-c");
+            args.Add(spec.VideoOnly ? "-c:v" : "-c");
             args.Add("copy");
 
             // A library may still opt to shrink the audio; override the blanket copy for the
             // audio streams only, leaving video and subtitles untouched.
-            if (spec.AudioEncoder is not null)
+            if (!spec.VideoOnly && spec.AudioEncoder is not null)
             {
                 AppendAudioCodec(args, spec);
             }
@@ -229,8 +232,11 @@ public static class FfmpegCommandBuilder
         // and any attachments/data thus stay copied: routing those tiny stills through a hardware
         // encoder fails with "Invalid argument" and aborts the whole job. Remuxes commonly carry
         // several such streams. Audio and subtitles below override this blanket copy as needed.
-        args.Add("-c");
-        args.Add("copy");
+        if (!spec.VideoOnly)
+        {
+            args.Add("-c");
+            args.Add("copy");
+        }
 
         if (filters.Count > 0)
         {
@@ -266,6 +272,11 @@ public static class FfmpegCommandBuilder
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV
         // cannot mux SubRip directly, so their text subtitles must use the native mov_text
         // codec; containers such as Matroska can retain the source subtitle codec unchanged.
+        if (spec.VideoOnly)
+        {
+            return;
+        }
+
         if (spec.AudioEncoder is not null)
         {
             AppendAudioCodec(args, spec);

@@ -321,6 +321,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 job.VideoEncoder = "libx265";
                 job.VideoQualityMode = "CRF";
                 job.EffectiveVideoQuality = job.RequestedVideoQuality;
+                job.CalibrationReferenceStartSeconds = 0.751;
             }
             await db.SaveChangesAsync();
         }
@@ -349,12 +350,16 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal(
             "reference-clip",
             await client.GetStringAsync(initialTrial["x"]!["url"]!.GetValue<string>()));
+        Assert.Equal(0, initialTrial["a"]!["startSeconds"]!.GetValue<double>());
+        Assert.Equal(0.751, initialTrial["b"]!["startSeconds"]!.GetValue<double>(), precision: 3);
+        Assert.Equal(0.751, initialTrial["x"]!["startSeconds"]!.GetValue<double>(), precision: 3);
         var answerCount = 0;
         while (session["trial"] is JsonObject trial && answerCount < 20)
         {
-            Assert.Equal(0, trial["a"]!["startSeconds"]!.GetValue<double>());
-            Assert.Equal(0, trial["b"]!["startSeconds"]!.GetValue<double>());
-            Assert.Equal(0, trial["x"]!["startSeconds"]!.GetValue<double>());
+            Assert.All(new[] { "a", "b", "x" }, slotName =>
+                Assert.Contains(
+                    trial[slotName]!["startSeconds"]!.GetValue<double>(),
+                    new[] { 0, 0.751 }));
             using var answered = await client.PostAsJsonAsync($"/api/calibration/{sessionId}/answers", new
             {
                 trialId = trial["id"]!.GetValue<Guid>(),

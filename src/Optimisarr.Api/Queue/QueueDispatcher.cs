@@ -763,7 +763,8 @@ public sealed class QueueDispatcher(
             spec = spec with
             {
                 ClipSeconds = seconds,
-                ClipStartSeconds = start > 0 ? start : null
+                ClipStartSeconds = start > 0 ? start : null,
+                VideoOnly = isCalibration && spec.Kind == MediaKind.Video
             };
         }
 
@@ -1152,7 +1153,9 @@ public sealed class QueueDispatcher(
                     Path.GetDirectoryName(outputPath)!,
                     work.Spec.Kind == MediaKind.Audio
                         ? ".optimisarr-comparison-reference.flac"
-                        : ".optimisarr-comparison-reference.mkv"))
+                        : ".optimisarr-comparison-reference.mkv"),
+                RetainReference: work.IsCalibration,
+                VideoOnly: work.IsCalibration && work.Spec.Kind == MediaKind.Video)
             : null;
         // The VMAF pass is the long part of verification; surface its live progress on the same
         // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%
@@ -1202,6 +1205,9 @@ public sealed class QueueDispatcher(
             job.OutputSizeBytes = outcome.OutputSizeBytes;
             job.VerificationReportJson = reportJson;
             job.VerificationPassed = outcome.Report.Passed;
+            job.CalibrationReferenceStartSeconds = work.IsCalibration
+                ? outcome.ReferenceStartSeconds
+                : null;
             job.VerifiedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, CancellationToken.None);

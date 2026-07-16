@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Blind video checks no longer reject healthy samples as too short.** Some long-GOP TV and film
+  sources can only be stream-copied from the keyframe immediately before the requested scene. That
+  harmless decode pre-roll made a 12-second original-side clip appear longer than its encoded match,
+  so every quality level failed the Duration and Tail integrity gates. Optimisarr now verifies the
+  requested 12-second picture window, records the hidden pre-roll, and starts original playback at
+  the matching frame. Video calibration jobs carry only the primary video stream, so audio,
+  subtitles, attachments, and data cannot affect timing or preparation cost. Original references
+  remain available until the disposable session is closed or expires instead of being removed as
+  soon as verification finishes. One accessible shared timeline now controls every blind stream,
+  so native container duration cannot reveal which slot carries hidden decode pre-roll. No source
+  file is changed.
+
 ### Added
 
 - **A personal blind video-quality check.** A saved video library can now prepare short,

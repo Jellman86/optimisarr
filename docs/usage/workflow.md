@@ -91,6 +91,11 @@ reads the original but never changes it. Its clips are disposable and are cleane
 closes, after being abandoned for two hours, or when Optimisarr restarts. If the browser cannot play
 every sample, the panel disables answers rather than guessing.
 
+For video, Optimisarr compares only the primary picture stream. Mid-file originals may need a few
+hidden packets from the preceding keyframe so the first requested frame can decode; the player skips
+that pre-roll automatically and both sides still show the same 12-second scene. Those original-side
+references remain available only for the life of the disposable panel session.
+
 Music and mixed libraries can use the same panel with a probed audio file. Optimisarr tests a
 codec-appropriate Opus, AAC, or MP3 bitrate ladder across three 15-second excerpts. It measures both
 sides using EBU R128 integrated loudness and attenuates only the louder stream during playback, so a
