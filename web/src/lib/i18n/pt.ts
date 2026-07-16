@@ -26,6 +26,7 @@ export const pt: Messages = {
     api_job_cancel_state: "A tarefa de processamento {id} não pode mais ser cancelada.",
     api_job_remove_active: "Pare a tarefa de processamento ativa antes de removê-la da fila.",
     api_job_retry_state: "A tarefa de processamento {id} só pode ser tentada novamente após falhar ou ser cancelada.",
+    api_job_work_cleanup_failed: "Não foi possível remover a saída de trabalho. A tarefa de processamento foi mantida.",
     api_job_status_invalid: "Status da tarefa de processamento desconhecido: {value}",
     api_failure_category_invalid: "Categoria de falha desconhecida: {value}",
     api_request_failed: "Falha na solicitação com status {status}.",
@@ -83,7 +84,7 @@ export const pt: Messages = {
     review_eyebrow: "Nenhum trabalho foi iniciado", review_heading: "Reveja o ponto de partida", review_body: "Concluir regista a configuração e abre o painel. Não analisa, enfileira, codifica, substitui ou elimina ficheiros.",
     review_system: "Sistema", review_ready: "Ferramentas multimédia obrigatórias disponíveis", review_attention: "Precisa de atenção", review_library: "Bibliotecas",
     review_replacement: "Substituição", review_dry_run: "Simulação: rever cada saída verificada", review_live: "Substituição permitida após verificação",
-    review_queue: "Fila", review_jobs: "{count} trabalho(s) simultâneo(s)"
+    review_queue: "Fila", review_jobs_one: "{count} trabalho simultâneo", review_jobs_other: "{count} trabalhos simultâneos"
   },
   nav: {
     dashboard: "Painel",

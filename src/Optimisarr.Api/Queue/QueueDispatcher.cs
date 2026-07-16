@@ -37,6 +37,7 @@ public sealed class QueueDispatcher(
     ILogger<QueueDispatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan OrphanWorkGracePeriod = TimeSpan.FromDays(7);
     private const int MaxAttempts = 3;
 
     // A video preview encodes only this many seconds — enough to judge quality/size without
@@ -119,6 +120,7 @@ public sealed class QueueDispatcher(
     {
         await PurgePreviewsAsync(stoppingToken);
         await RecoverInterruptedJobsAsync(stoppingToken);
+        await PurgeAbandonedWorkAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -212,6 +214,54 @@ public sealed class QueueDispatcher(
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Recovered {Count} interrupted job(s) after restart", interrupted.Count);
         await NotifyAsync();
+    }
+
+    // Scratch output is deliberately retained while a failed job exists so the operator can inspect
+    // it. Once a row has been removed, however, an old numeric work directory has no owner and would
+    // otherwise consume disk forever. Cancelled jobs never need an output, so tidy those immediately;
+    // orphan directories receive a seven-day grace period to avoid racing any external inspection.
+    private async Task PurgeAbandonedWorkAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+
+        var cancelled = await db.Jobs
+            .Where(job => job.Status == JobStatus.Cancelled && job.WorkOutputPath != null)
+            .ToListAsync(cancellationToken);
+        foreach (var job in cancelled)
+        {
+            if (TryDiscardWorkOutput(job.WorkOutputPath))
+            {
+                job.WorkOutputPath = null;
+                job.OutputSizeBytes = null;
+                job.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+        }
+        if (cancelled.Count > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var referencedMediaFileIds = (await db.Jobs
+                .Where(job => job.WorkOutputPath != null)
+                .Select(job => job.MediaFileId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var cutoff = DateTime.UtcNow - OrphanWorkGracePeriod;
+        foreach (var directory in WorkPaths.FindStaleOrphanDirectories(
+                     _workRoot, referencedMediaFileIds, cutoff))
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+                logger.LogInformation("Removed stale orphan work directory {Directory}", directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(exception, "Could not remove orphan work directory {Directory}", directory);
+            }
+        }
     }
 
     // Cap per cycle so a large backlog of ready jobs is replaced gradually rather than in one burst.
@@ -1256,7 +1306,7 @@ public sealed class QueueDispatcher(
         var settings = await GetQueueSettingsAsync(cancellationToken);
         var activity = await activityMonitor.GetActivityAsync(cancellationToken);
         var decision = EvaluateDispatchPolicy(settings, activity);
-        var freeDiskBytes = TryGetFreeDiskBytes(_workRoot);
+        var freeDiskBytes = WorkPaths.TryGetAvailableFreeSpace(_workRoot);
 
         // When dispatch is otherwise ready but nothing runs, explain whether the backlog is just
         // waiting for closed per-library windows (the common "why isn't it running?" surprise).
@@ -1369,7 +1419,7 @@ public sealed class QueueDispatcher(
     private DispatchDecision EvaluateDispatchPolicy(QueueSettings settings, ActivityDecision activity) =>
         DispatchPolicyEvaluator.Evaluate(
             settings.MinFreeDiskBytes,
-            TryGetFreeDiskBytes(_workRoot),
+            WorkPaths.TryGetAvailableFreeSpace(_workRoot),
             activity.Active,
             activity.Reason);
 
@@ -1428,11 +1478,23 @@ public sealed class QueueDispatcher(
     private Task BroadcastProgressAsync(int jobId, double progress, double? fps, double? speed, double? etaSeconds) =>
         hub.Clients.All.SendAsync("jobProgress", new { jobId, progress, fps, speed, etaSeconds });
 
-    private void DeleteWorkOutput(string? path)
+    /// <summary>
+    /// Deletes a persisted scratch output before its job row is retried or removed. Paths outside
+    /// the owned work root (for example a completed move-to-folder output) are deliberately ignored.
+    /// A false result means the row must be retained so the output never becomes an untracked orphan.
+    /// </summary>
+    public bool TryDiscardWorkOutput(string? path) => DeleteWorkOutput(path);
+
+    private bool DeleteWorkOutput(string? path)
     {
         if (string.IsNullOrEmpty(path))
         {
-            return;
+            return true;
+        }
+
+        if (!WorkPaths.IsUnderRoot(_workRoot, path))
+        {
+            return true;
         }
 
         try
@@ -1442,14 +1504,16 @@ public sealed class QueueDispatcher(
                 File.Delete(path);
             }
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Could not delete work output {Path}", path);
+            return false;
         }
 
         // Tidy the per-media-file scratch directory this output lived in so /work does not
         // accumulate an empty tree for every file ever processed.
         WorkPaths.PruneEmptyAncestors(_workRoot, path);
+        return true;
     }
 
     private void KillQuietly(Process process)
@@ -1467,28 +1531,6 @@ public sealed class QueueDispatcher(
         }
     }
 
-    private static long? TryGetFreeDiskBytes(string path)
-    {
-        try
-        {
-            var target = Directory.Exists(path)
-                ? path
-                : Path.GetDirectoryName(path);
-            if (string.IsNullOrWhiteSpace(target))
-            {
-                return null;
-            }
-
-            var root = Path.GetPathRoot(Path.GetFullPath(target));
-            return string.IsNullOrWhiteSpace(root)
-                ? null
-                : new DriveInfo(root).AvailableFreeSpace;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-    }
 }
 
 /// <summary>The ffmpeg binary used for transcoding (see OPTIMISARR_FFMPEG).</summary>

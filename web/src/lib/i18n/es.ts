@@ -26,6 +26,7 @@ export const es: Messages = {
     api_job_cancel_state: 'La tarea {id} ya no puede ser cancelada.',
     api_job_remove_active: 'Detén la tarea activa antes de eliminarla de la cola.',
     api_job_retry_state: 'La tarea {id} solo puede ser reintentada después de que haya fallado o sido cancelada.',
+    api_job_work_cleanup_failed: 'No se pudo eliminar la salida de trabajo. La tarea se conservó.',
     api_job_status_invalid: 'Estado de tarea desconocido: {value}',
     api_failure_category_invalid: 'Categoría de error desconocida: {value}',
     api_request_failed: 'Solicitud fallida con estado {status}.',
@@ -88,7 +89,7 @@ export const es: Messages = {
     review_eyebrow: 'No se ha iniciado ningún trabajo', review_heading: 'Revisa el punto de partida', review_body: 'Finalizar registra la configuración y abre el panel. No analiza, encola, codifica, sustituye ni elimina archivos.',
     review_system: 'Sistema', review_ready: 'Herramientas multimedia obligatorias disponibles', review_attention: 'Necesita atención', review_library: 'Bibliotecas',
     review_replacement: 'Sustitución', review_dry_run: 'Simulación: revisar cada salida verificada', review_live: 'Sustitución permitida tras verificar',
-    review_queue: 'Cola', review_jobs: '{count} trabajo(s) simultáneo(s)',
+    review_queue: 'Cola', review_jobs_one: '{count} trabajo simultáneo', review_jobs_other: '{count} trabajos simultáneos',
   },
   nav: {
     dashboard: 'Panel',

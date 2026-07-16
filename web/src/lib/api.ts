@@ -657,6 +657,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'job.cancel.invalidState': return t(i18n.m.common.api_job_cancel_state, args)
     case 'job.remove.active': return i18n.m.common.api_job_remove_active
     case 'job.retry.invalidState': return t(i18n.m.common.api_job_retry_state, args)
+    case 'job.workCleanupFailed': return i18n.m.common.api_job_work_cleanup_failed
     case 'job.status.invalid': return t(i18n.m.common.api_job_status_invalid, args)
     case 'job.failureCategory.invalid': return t(i18n.m.common.api_failure_category_invalid, args)
     case 'replacement.notFound': return t(i18n.m.common.api_replacement_not_found, args)

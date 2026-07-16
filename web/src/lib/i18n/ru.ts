@@ -26,6 +26,7 @@ export const ru: Messages = {
     api_job_cancel_state: "Задачу обработки {id} больше нельзя отменить.",
     api_job_remove_active: "Остановите активную задачу обработки перед удалением ее из очереди.",
     api_job_retry_state: "Задачу обработки {id} можно повторить только после сбоя или отмены.",
+    api_job_work_cleanup_failed: "Не удалось удалить рабочий результат. Задача обработки сохранена.",
     api_job_status_invalid: "Неизвестный статус задачи обработки: {value}",
     api_failure_category_invalid: "Неизвестная категория отказа: {value}.",
     api_request_failed: "Запрос не выполнен со статусом {status}.",
@@ -83,7 +84,7 @@ export const ru: Messages = {
     review_eyebrow: "Задачи не запускались", review_heading: "Проверьте начальное состояние", review_body: "Завершение сохраняет настройку и открывает панель управления. Файлы не сканируются, не ставятся в очередь, не кодируются, не заменяются и не удаляются.",
     review_system: "Система", review_ready: "Обязательные инструменты доступны", review_attention: "Требует внимания", review_library: "Медиатеки",
     review_replacement: "Замена", review_dry_run: "Симуляция: проверять каждый результат", review_live: "Замена разрешена после проверки",
-    review_queue: "Очередь", review_jobs: "Одновременных задач: {count}"
+    review_queue: "Очередь", review_jobs_one: "Одновременных задач: {count}", review_jobs_other: "Одновременных задач: {count}"
   },
   nav: {
     dashboard: "Панель управления",

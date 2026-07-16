@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 — 2026-07-16
 
 ### Added
 
@@ -78,6 +78,21 @@
   so already-clean remuxes become eligible for fast stream-copy cleanup. The accessible library
   control validates and normalises input before save in every locale, and config backup/restore
   uses the same validator. Migration `AddKeepAudioLanguages`.
+
+### Fixed
+
+- **Queue capacity now follows the real work filesystem.** Free-space checks select the deepest
+  mounted filesystem containing the configured work path, so a bind-mounted `/work` no longer
+  reports the container overlay's much smaller capacity or pauses a healthy queue prematurely.
+- **Abandoned work output is reclaimed safely.** Clearing, deleting, or retrying a failed job now
+  removes its owned scratch output before dropping the database reference and retains the job if
+  cleanup cannot be completed. Startup also removes output left by cancelled jobs and numeric,
+  unreferenced work directories older than seven days, while retaining recent or referenced data.
+- **Credential-bearing integration URLs are excluded from normal logs.** Default logging now keeps
+  `System.Net.Http.HttpClient` request messages at Warning or above, preventing Discord webhook URLs
+  and similar outbound credentials from appearing in ordinary Information-level container logs.
+- **First-run review copy uses locale-aware singular and plural forms.** The setup summary now reads
+  naturally for one or many concurrent jobs in every supported language.
 
 ## 0.2.3 — 2026-07-14
 

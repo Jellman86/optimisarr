@@ -26,6 +26,7 @@ export const zh: Messages = {
     api_job_cancel_state: "处理任务 {id} 无法再取消。",
     api_job_remove_active: "在将活动处理任务从队列中删除之前，将其停止。",
     api_job_retry_state: "处理任务{id}只能在失败或被取消后重试。",
+    api_job_work_cleanup_failed: "无法删除工作输出。处理任务已保留。",
     api_job_status_invalid: "未知处理任务状态：{value}",
     api_failure_category_invalid: "未知故障类别：{value}",
     api_request_failed: "请求失败，状态为 {status}。",
@@ -83,7 +84,7 @@ export const zh: Messages = {
     review_eyebrow: "尚未启动任何任务", review_heading: "复核初始状态", review_body: "完成后会记录设置并打开仪表板。它不会扫描、排队、编码、替换或删除任何文件。",
     review_system: "系统", review_ready: "必需的媒体工具可用", review_attention: "需要处理", review_library: "媒体库",
     review_replacement: "替换", review_dry_run: "模拟模式：复核每个已验证输出", review_live: "验证后允许替换",
-    review_queue: "队列", review_jobs: "{count} 个并发任务"
+    review_queue: "队列", review_jobs_one: "{count} 个并发任务", review_jobs_other: "{count} 个并发任务"
   },
   nav: {
     dashboard: "仪表板",

@@ -26,6 +26,7 @@ export const it: Messages = {
     api_job_cancel_state: 'Il processo {id} non può più essere annullato.',
     api_job_remove_active: 'Ferma il processo attivo prima di rimuoverlo dalla coda.',
     api_job_retry_state: 'Il processo {id} può essere riprovato solo dopo un errore o annullamento.',
+    api_job_work_cleanup_failed: 'Non è stato possibile rimuovere l’output di lavoro. Il processo è stato conservato.',
     api_job_status_invalid: 'Stato del processo sconosciuto: {value}',
     api_failure_category_invalid: 'Categoria errore sconosciuta: {value}',
     api_request_failed: 'Richiesta fallita con stato {status}.',
@@ -83,7 +84,7 @@ export const it: Messages = {
     review_eyebrow: 'Nessun lavoro è stato avviato', review_heading: 'Controlla il punto di partenza', review_body: 'Terminare registra la configurazione e apre la dashboard. Non analizza, accoda, codifica, sostituisce o elimina alcun file.',
     review_system: 'Sistema', review_ready: 'Strumenti multimediali richiesti disponibili', review_attention: 'Richiede attenzione', review_library: 'Librerie',
     review_replacement: 'Sostituzione', review_dry_run: 'Simulazione: controlla ogni output verificato', review_live: 'Sostituzione consentita dopo la verifica',
-    review_queue: 'Coda', review_jobs: '{count} lavori simultanei',
+    review_queue: 'Coda', review_jobs_one: '{count} lavoro simultaneo', review_jobs_other: '{count} lavori simultanei',
   },
   nav: {
     dashboard: 'Dashboard',

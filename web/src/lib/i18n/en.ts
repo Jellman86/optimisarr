@@ -28,6 +28,7 @@ export const en = {
     api_job_cancel_state: 'Job {id} can no longer be cancelled.',
     api_job_remove_active: 'Stop the active job before removing it from the queue.',
     api_job_retry_state: 'Job {id} can only be retried after it has failed or been cancelled.',
+    api_job_work_cleanup_failed: 'The work output could not be removed. The job was retained.',
     api_job_status_invalid: 'Unknown job status: {value}',
     api_failure_category_invalid: 'Unknown failure category: {value}',
     api_request_failed: 'Request failed with status {status}.',
@@ -164,7 +165,8 @@ export const en = {
     review_dry_run: 'Dry-run: review every verified output',
     review_live: 'Live replacement allowed after verification',
     review_queue: 'Queue',
-    review_jobs: '{count} concurrent job(s)',
+    review_jobs_one: '{count} concurrent job',
+    review_jobs_other: '{count} concurrent jobs',
   },
   nav: {
     dashboard: 'Dashboard',

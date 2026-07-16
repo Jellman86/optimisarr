@@ -26,6 +26,7 @@ export const ja: Messages = {
     api_job_cancel_state: "処理中のタスク {id} はキャンセルできなくなりました。",
     api_job_remove_active: "アクティブな処理タスクをキューから削除する前に停止します。",
     api_job_retry_state: "処理タスク {id} は、失敗するかキャンセルされた後にのみ再試行できます。",
+    api_job_work_cleanup_failed: "作業出力を削除できなかったため、処理タスクを保持しました。",
     api_job_status_invalid: "不明な処理タスクのステータス: {value}",
     api_failure_category_invalid: "不明な障害カテゴリ: {value}",
     api_request_failed: "リクエストはステータス {status} で失敗しました。",
@@ -83,7 +84,7 @@ export const ja: Messages = {
     review_eyebrow: "ジョブは開始されていません", review_heading: "開始状態を確認", review_body: "完了するとセットアップを記録してダッシュボードを開きます。ファイルのスキャン、キュー投入、エンコード、置換、削除は行いません。",
     review_system: "システム", review_ready: "必須メディアツールを利用可能", review_attention: "確認が必要", review_library: "ライブラリ",
     review_replacement: "置換", review_dry_run: "ドライラン：検証済み出力をすべて確認", review_live: "検証後の置換を許可",
-    review_queue: "キュー", review_jobs: "同時ジョブ {count} 件"
+    review_queue: "キュー", review_jobs_one: "同時ジョブ {count} 件", review_jobs_other: "同時ジョブ {count} 件"
   },
   nav: {
     dashboard: "ダッシュボード",

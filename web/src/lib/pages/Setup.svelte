@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { api, type HardwareCapability, type Library, type LibraryAccess, type Settings, type SetupPath, type SetupReadiness, type SetupStorageRelationship, type ToolCheck } from '../api'
-  import { i18n, t } from '../i18n/i18n.svelte'
+  import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
   import { formatSize } from '../format'
   import { setup } from '../stores/setup.svelte'
@@ -475,7 +475,7 @@
             <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_system}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd></div>
             <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd></div>
             <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd></div>
-            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_queue}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{t(i18n.m.setup.review_jobs, { count: settings?.maxConcurrentJobs ?? 1 })}</dd></div>
+            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_queue}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd></div>
           </dl>
         {/if}
       </div>

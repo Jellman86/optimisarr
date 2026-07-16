@@ -28,6 +28,7 @@ export const de: Messages = {
     api_job_cancel_state: 'Die Aufgabe {id} kann nicht mehr abgebrochen werden.',
     api_job_remove_active: 'Stoppen Sie die aktive Aufgabe, bevor Sie sie aus der Warteschlange entfernen.',
     api_job_retry_state: 'Die Aufgabe {id} kann nur nach einem Fehler oder Abbruch wiederholt werden.',
+    api_job_work_cleanup_failed: 'Die Arbeitsausgabe konnte nicht entfernt werden. Die Aufgabe wurde beibehalten.',
     api_job_status_invalid: 'Unbekannter Aufgabenstatus: {value}',
     api_failure_category_invalid: 'Unbekannte Fehlerkategorie: {value}',
     api_request_failed: 'Die Anfrage ist mit Status {status} fehlgeschlagen.',
@@ -92,7 +93,7 @@ export const de: Messages = {
     review_eyebrow: 'Keine Arbeit wurde gestartet', review_heading: 'Startpunkt prüfen', review_body: 'Der Abschluss markiert die Einrichtung als fertig und öffnet das Dashboard. Es wird keine Datei gescannt, eingereiht, kodiert, ersetzt oder gelöscht.',
     review_system: 'System', review_ready: 'Erforderliche Medienwerkzeuge verfügbar', review_attention: 'Aufmerksamkeit erforderlich', review_library: 'Bibliotheken',
     review_replacement: 'Austausch', review_dry_run: 'Testlauf: jede geprüfte Ausgabe kontrollieren', review_live: 'Austausch nach Prüfung erlaubt',
-    review_queue: 'Warteschlange', review_jobs: '{count} gleichzeitige Aufträge',
+    review_queue: 'Warteschlange', review_jobs_one: '{count} gleichzeitiger Auftrag', review_jobs_other: '{count} gleichzeitige Aufträge',
   },
   nav: {
     dashboard: 'Dashboard',

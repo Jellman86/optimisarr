@@ -26,6 +26,7 @@ export const fr: Messages = {
     api_job_cancel_state: 'La tâche {id} ne peut plus être annulée.',
     api_job_remove_active: 'Arrêtez la tâche active avant de la retirer de la file d’attente.',
     api_job_retry_state: 'La tâche {id} ne peut être réessayée qu’après un échec ou une annulation.',
+    api_job_work_cleanup_failed: 'La sortie de travail n’a pas pu être supprimée. La tâche a été conservée.',
     api_job_status_invalid: 'Statut de tâche inconnu : {value}',
     api_failure_category_invalid: 'Catégorie d’échec inconnue : {value}',
     api_request_failed: 'La requête a échoué avec le statut {status}.',
@@ -85,7 +86,7 @@ export const fr: Messages = {
     review_eyebrow: 'Aucun travail n’a démarré', review_heading: 'Vérifiez le point de départ', review_body: 'Terminer enregistre la configuration et ouvre le tableau de bord. Aucun fichier n’est scanné, mis en file, encodé, remplacé ou supprimé.',
     review_system: 'Système', review_ready: 'Outils multimédias requis disponibles', review_attention: 'Attention requise', review_library: 'Médiathèques',
     review_replacement: 'Remplacement', review_dry_run: 'Simulation : vérifier chaque sortie validée', review_live: 'Remplacement autorisé après vérification',
-    review_queue: 'File d’attente', review_jobs: '{count} travail/travaux simultané(s)',
+    review_queue: 'File d’attente', review_jobs_one: '{count} travail simultané', review_jobs_other: '{count} travaux simultanés',
   },
   nav: {
     dashboard: 'Tableau de bord',
