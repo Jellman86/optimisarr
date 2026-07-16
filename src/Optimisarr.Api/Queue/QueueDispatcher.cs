@@ -530,7 +530,7 @@ public sealed class QueueDispatcher(
         var needsSubtitleProbe = isVideoJob
             && (media.SubtitleTrackCount ?? 0) > 0
             && TranscodeSpecResolver.IsMp4Container(rules.TargetContainer);
-        var sourceAudioLanguages = AudioTrackSelection.ParseTrackLanguages(media.AudioLanguages);
+        var sourceAudioLanguages = TrackLanguages.ParseTrackLanguages(media.AudioLanguages);
         var needsLanguageProbe = isVideoJob
             && rules.KeepAudioLanguages.Count > 0
             && sourceAudioLanguages is null

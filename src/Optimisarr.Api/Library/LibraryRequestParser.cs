@@ -278,7 +278,7 @@ internal static class LibraryRequestParser
             return true;
         }
 
-        var codes = AudioTrackSelection.ParseLanguageList(value);
+        var codes = TrackLanguages.ParseLanguageList(value);
         if (codes.Count == 0 || codes.Any(code => code.Length is < 2 or > 3 || !code.All(char.IsAsciiLetter)))
         {
             return false;

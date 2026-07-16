@@ -49,7 +49,7 @@ internal static class LibraryRuleResolution
             DownmixToStereo = library.DownmixToStereo,
             KeepAudioLanguages = string.IsNullOrWhiteSpace(library.KeepAudioLanguages)
                 ? null
-                : AudioTrackSelection.ParseLanguageList(library.KeepAudioLanguages),
+                : TrackLanguages.ParseLanguageList(library.KeepAudioLanguages),
             ReencodeLossyAudio = library.ReencodeLossyAudio,
             TargetImageFormat = library.TargetImageFormat,
             ImageQuality = library.ImageQuality,

@@ -99,10 +99,10 @@ public class AudioTrackSelectionTests
     [Fact]
     public void Parses_a_stored_comma_separated_list()
     {
-        Assert.Equal(new[] { "eng", "jpn" }, AudioTrackSelection.ParseLanguageList("eng, jpn"));
-        Assert.Equal(new[] { "eng" }, AudioTrackSelection.ParseLanguageList(" ENG ,, eng "));
-        Assert.Empty(AudioTrackSelection.ParseLanguageList(null));
-        Assert.Empty(AudioTrackSelection.ParseLanguageList("   "));
+        Assert.Equal(new[] { "eng", "jpn" }, TrackLanguages.ParseLanguageList("eng, jpn"));
+        Assert.Equal(new[] { "eng" }, TrackLanguages.ParseLanguageList(" ENG ,, eng "));
+        Assert.Empty(TrackLanguages.ParseLanguageList(null));
+        Assert.Empty(TrackLanguages.ParseLanguageList("   "));
     }
 
     [Fact]
@@ -112,9 +112,9 @@ public class AudioTrackSelectionTests
         // stream index), so nothing may be deduplicated or dropped.
         Assert.Equal(
             new string?[] { "eng", "eng", "und" },
-            AudioTrackSelection.ParseTrackLanguages("eng, eng, und"));
-        Assert.Equal(new string?[] { null, "eng" }, AudioTrackSelection.ParseTrackLanguages(", eng"));
-        Assert.Null(AudioTrackSelection.ParseTrackLanguages(null));
-        Assert.Null(AudioTrackSelection.ParseTrackLanguages("   "));
+            TrackLanguages.ParseTrackLanguages("eng, eng, und"));
+        Assert.Equal(new string?[] { null, "eng" }, TrackLanguages.ParseTrackLanguages(", eng"));
+        Assert.Null(TrackLanguages.ParseTrackLanguages(null));
+        Assert.Null(TrackLanguages.ParseTrackLanguages("   "));
     }
 }
