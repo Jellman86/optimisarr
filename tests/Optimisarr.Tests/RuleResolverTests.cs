@@ -150,4 +150,15 @@ public sealed class RuleResolverTests
 
         Assert.True(CandidateEvaluator.Evaluate(hdrFile, rules).IsEligible);
     }
+
+    [Fact]
+    public void Track_cleanup_ignores_a_library_container_override()
+    {
+        // The profile's whole promise is "container unchanged"; a stale per-library
+        // override must not silently reintroduce a remux.
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.TrackCleanup, new RuleOverrides { TargetContainer = "mkv" });
+
+        Assert.Null(resolved.TargetContainer);
+    }
 }

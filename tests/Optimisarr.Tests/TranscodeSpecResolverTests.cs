@@ -349,4 +349,27 @@ public sealed class TranscodeSpecResolverTests
         Assert.False(sdrSpec.TonemapToSdr);   // not HDR
         Assert.False(preserveSpec.TonemapToSdr); // HDR but rule preserves it
     }
+
+    [Fact]
+    public void Null_target_container_keeps_the_source_extension()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules,
+            inputPath: "/data/Movies/Film (2020)/Film.mp4",
+            relativePath: "Film (2020)/Film.mp4",
+            workRoot: "/work",
+            sourceIsHdr: false,
+            crf: null,
+            preset: null,
+            sourceAudioLanguages: new string?[] { "eng", "fra" });
+
+        Assert.Equal("/work/Film (2020)/Film.mp4", spec.OutputPath);
+        Assert.Null(spec.VideoCodec);
+        Assert.Equal(new[] { 1 }, spec.RemoveAudioStreamIndexes);
+    }
 }

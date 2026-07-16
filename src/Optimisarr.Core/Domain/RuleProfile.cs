@@ -22,5 +22,11 @@ public enum RuleProfile
     /// "Scott's Settings": conservative HEVC video that preserves HDR and re-encodes audio to AAC
     /// 96 kbps downmixed to stereo — a compatibility-first, space-saving bundle.
     /// </summary>
-    ScottsSettings = 4
+    ScottsSettings = 4,
+
+    /// <summary>
+    /// Removes audio/subtitle tracks not in the library's kept languages, and nothing
+    /// else: no re-encode, no container change. Streams are copied bit-identically.
+    /// </summary>
+    TrackCleanup = 5
 }

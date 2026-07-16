@@ -612,4 +612,48 @@ public sealed class CandidateEvaluatorTests
 
         Assert.False(decision.IsEligible);
     }
+
+    [Fact]
+    public void Track_cleanup_skips_everything_when_no_kept_languages_are_configured()
+    {
+        var media = File() with { AudioLanguages = new string?[] { "eng", "fra" } };
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup);
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("nothing to remove", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Track_cleanup_is_eligible_only_when_tracks_are_removable()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var removable = File() with { AudioLanguages = new string?[] { "eng", "fra" } };
+        var clean = File() with { AudioLanguages = new string?[] { "eng" } };
+
+        var eligible = CandidateEvaluator.Evaluate(removable, rules);
+        Assert.True(eligible.IsEligible);
+        Assert.Contains("1 audio track(s) (fra)", eligible.Reason);
+        Assert.False(CandidateEvaluator.Evaluate(clean, rules).IsEligible);
+    }
+
+    [Fact]
+    public void Track_cleanup_stays_conservative_when_languages_were_never_captured()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+        var media = File() with { AudioLanguages = null };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("re-probe", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
 }

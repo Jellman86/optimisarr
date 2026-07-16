@@ -215,10 +215,35 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Resolution {height}p above limit ({maxHeight}p)");
         }
 
-        // Remux/cleanup-only profile never re-encodes; it only acts on containers and,
-        // when a kept-languages rule is set, on unwanted audio tracks.
+        // Profiles with no target codec never re-encode; they act on containers and,
+        // when kept-languages rules are set, on unwanted tracks. Unknown languages stay
+        // conservative: no data, no removal.
         if (rules.TargetVideoCodec is null)
         {
+            var audioRemovals = media.AudioLanguages is null
+                ? (IReadOnlyList<int>)Array.Empty<int>()
+                : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages);
+
+            // Track cleanup: the only work this profile does is removing unwanted tracks,
+            // so eligibility is exactly "is there anything to remove".
+            if (rules.TargetContainer is null)
+            {
+                if (rules.KeepAudioLanguages.Count == 0)
+                {
+                    return CandidateDecision.Skipped(
+                        "No kept audio or subtitle languages configured — nothing to remove");
+                }
+
+                if (audioRemovals.Count > 0)
+                {
+                    return CandidateDecision.Eligible(RemovalReason(media, audioRemovals));
+                }
+
+                return CandidateDecision.Skipped(media.AudioLanguages is null
+                    ? "Track languages not captured yet — re-probe the file to evaluate the kept-languages rule"
+                    : "No removable tracks (all tracks match the kept languages or are unknown)");
+            }
+
             var keyword = ContainerKeyword(rules.TargetContainer);
             var alreadyClean = media.Container is not null &&
                 media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase);
@@ -228,16 +253,10 @@ public static class CandidateEvaluator
                 return CandidateDecision.Eligible($"Remux to {rules.TargetContainer} ({media.Container} → {rules.TargetContainer})");
             }
 
-            // A container-clean file can still carry audio tracks the kept-languages rule
-            // removes; stripping them (a stream copy, no re-encode) is part of this profile's
-            // cleanup. Unknown languages stay conservative: no data, no eligibility.
-            var removableTracks = media.AudioLanguages is null
-                ? 0
-                : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages).Count;
-
-            return removableTracks > 0
-                ? CandidateDecision.Eligible(
-                    $"Remove {removableTracks} audio track(s) not in the kept languages ({string.Join(", ", rules.KeepAudioLanguages)})")
+            // A container-clean file can still carry tracks the kept-languages rules remove;
+            // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
+            return audioRemovals.Count > 0
+                ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals))
                 : CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})");
         }
 
@@ -270,6 +289,14 @@ public static class CandidateEvaluator
         }
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetVideoCodec}");
+    }
+
+    // Names the languages being removed, not just counts, so the inventory and the
+    // queue answer "why is this file here?" at a glance.
+    private static string RemovalReason(MediaProperties media, IReadOnlyList<int> audioRemovals)
+    {
+        var languages = string.Join(", ", audioRemovals.Select(index => media.AudioLanguages![index] ?? "und"));
+        return $"Remove {audioRemovals.Count} audio track(s) ({languages}) not in the kept languages";
     }
 
     // The source bitrate normalised by pixel count (bits per pixel-second): file bitrate ÷

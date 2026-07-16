@@ -20,9 +20,11 @@ public sealed record RuleSettings
 
     /// <summary>
     /// The container to remux/mux into (e.g. "mkv"). A file whose container already
-    /// matches is considered clean for remux-only profiles.
+    /// matches is considered clean for remux-only profiles. <c>null</c> means the
+    /// output keeps the source's container — used by the track-cleanup profile,
+    /// whose promise is that nothing but unwanted tracks changes.
     /// </summary>
-    public string TargetContainer { get; init; } = "mkv";
+    public string? TargetContainer { get; init; } = "mkv";
 
     /// <summary>Files smaller than this are not worth optimising.</summary>
     public long MinFileSizeBytes { get; init; }

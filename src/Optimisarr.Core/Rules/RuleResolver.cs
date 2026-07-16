@@ -17,7 +17,11 @@ public static class RuleResolver
             MaxHeight = overrides.MaxHeight ?? settings.MaxHeight,
             ReencodeSameCodecAboveBytes = overrides.ReencodeSameCodecAboveBytes ?? settings.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = Normalise(overrides.TargetVideoCodec) ?? settings.TargetVideoCodec,
-            TargetContainer = Normalise(overrides.TargetContainer) ?? settings.TargetContainer,
+            // TrackCleanup's promise is "container unchanged", so a per-library container
+            // override (e.g. left over from a previous profile) must not reintroduce a remux.
+            TargetContainer = profile == Domain.RuleProfile.TrackCleanup
+                ? null
+                : Normalise(overrides.TargetContainer) ?? settings.TargetContainer,
             Hdr = overrides.Hdr ?? settings.Hdr,
             OptimiseDolbyVision = overrides.OptimiseDolbyVision ?? settings.OptimiseDolbyVision,
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,

@@ -73,9 +73,14 @@ public static class TranscodeSpecResolver
         // stream survives instead of aborting the encode. Any other target container already holds them.
         var copyingAudio = rules.VideoAudioCodec is null;
         var audioForcesMkv = sourceHasMp4IncompatibleAudio && copyingAudio;
-        var container = (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(rules.TargetContainer)
-            ? "mkv"
-            : rules.TargetContainer;
+        // A null target container means "keep the source container" (the track-cleanup
+        // promise). Every kept stream already lives in that container, so the MP4
+        // image-subtitle / incompatible-audio fallback does not apply.
+        var container = rules.TargetContainer is null
+            ? Path.GetExtension(relativePath).TrimStart('.')
+            : (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(rules.TargetContainer)
+                ? "mkv"
+                : rules.TargetContainer;
         var outputPath = BuildOutputPath(workRoot, relativePath, container);
 
         // Tone-map only when re-encoding an HDR source under a library that asks for it.
