@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.2.3 — 2026-07-14
+## Unreleased
+
+### Added
+
+- **Track cleanup profile.** A new rule profile that only removes audio/subtitle tracks outside
+  the library's kept languages — no re-encode, no container change (an `.mkv` stays `.mkv`).
+  Every kept stream is copied bit-identically; a file with nothing to remove is skipped with a
+  clear reason, and the library form warns when the profile is selected with no kept languages
+  configured. Verification additionally confirms the output container matches the source.
+  Migration `AddJobEnqueueReason`/`AddKeepSubtitleLanguages`/`AddSubtitleLanguages`.
+- **Per-library "Keep subtitle languages" removes unwanted subtitle tracks.** Mirrors the audio
+  rule on every profile: comma-separated ISO 639 codes, `-map -0:s:N` exclusions, unknown-language
+  tracks never removed, common spellings of the same language match each other. One deliberate
+  difference from audio: subtitles are optional streams, so there is no keep-at-least-one guard —
+  an all-foreign subtitle set is removed entirely. The probe now records each subtitle track's
+  language (rows probed before the upgrade are re-probed at job time), and the subtitle-retention
+  gate expects exactly the planned removal, so an encode that drops an extra stream still fails.
+- **The queue shows why each job is queued.** Every job records its eligibility reason at enqueue
+  time (e.g. `h264 → hevc`, `Remove 2 audio track(s) (fra, deu) not in the kept languages`) and
+  the Queue page shows it on the active-job card and each row. Track-removal reasons name the
+  languages being removed, not just counts.
 
 ### Added
 

@@ -164,6 +164,22 @@ right container but carrying removable foreign-language tracks becomes eligible 
 fast stream-copy cleanup; re-encode presets strip tracks as part of the jobs they
 already run.
 
+**Keep subtitle languages** (Advanced options) works the same way for subtitle
+tracks, with one deliberate difference: subtitles are optional streams, so there is
+no keep-at-least-one guard. A track with no language tag is never removed, but if a
+file's subtitles are all in non-kept languages they are all removed and the file ends
+with none. Verification expects exactly the planned subtitle retention, so an encode
+that drops a stream beyond the plan still fails.
+
+**Track cleanup** is a preset for libraries that should only lose unwanted tracks:
+it never re-encodes and never changes the container type (an `.mkv` stays `.mkv`, an
+`.mp4` stays `.mp4`). A file is eligible only when it has audio or subtitle tracks
+outside the library's kept languages; with neither kept-language field set, every
+file is skipped with a clear reason. Removing a track always rewrites the file —
+FFmpeg stream-copies every kept stream bit-identically into a new file, which then
+passes the usual verify-and-replace gates (including a container-unchanged check)
+before the original is touched.
+
 ## Per-library automation
 
 **Auto-optimise** uses a per-library local-time window. Inside that window the
