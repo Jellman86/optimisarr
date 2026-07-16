@@ -994,24 +994,6 @@
         {/if}
       </div>
 
-      {#if editingId && editingId > 0 && showVideoOptions && !isRemuxProfile}
-        <div class="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-          <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.calibration.title}</p>
-              <p class="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.intro}</p>
-            </div>
-            <button
-              type="button"
-              class="btn min-h-11 flex-shrink-0"
-              disabled={isDirty}
-              title={isDirty ? i18n.m.libraries.unsaved : i18n.m.calibration.title}
-              onclick={() => (calibrationOpen = true)}
-            >{i18n.m.calibration.eyebrow}</button>
-          </div>
-        </div>
-      {/if}
-
       {#if isCustom}
         <!-- Neutral, not amber: a custom config is a deliberate choice, not a warning. -->
         <div class="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
@@ -1056,6 +1038,24 @@
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {i18n.m.libraries.music_note}
       </p>
+    {/if}
+
+    {#if editingId && editingId > 0 && (!isRemuxProfile || showAudioOptions || showImageOptions)}
+      <div class="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+        <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.calibration.title}</p>
+            <p class="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.intro}</p>
+          </div>
+          <button
+            type="button"
+            class="btn min-h-11 flex-shrink-0"
+            disabled={isDirty}
+            title={isDirty ? i18n.m.libraries.unsaved : i18n.m.calibration.title}
+            onclick={() => (calibrationOpen = true)}
+          >{i18n.m.calibration.eyebrow}</button>
+        </div>
+      </div>
     {/if}
   </div>
 

@@ -390,8 +390,9 @@ the replacement workflow is trustworthy.
    - **Cheap and safe by construction is shipped.** Candidates are disposable jobs isolated under
      `/work/calibration`; they bypass normal candidate scheduling but still receive structural
      verification. They cannot replace, move, or delete a source and are hidden from the normal
-     queue. Closing the panel or restarting Optimisarr removes their database rows and scratch
-     files. The original is only read.
+     queue. Every saved Film, TV, Music, Photo, and mixed library exposes the compatible personal
+     check from its own configuration page. Closing the panel or restarting Optimisarr removes the
+     session's database rows and scratch files. The original is only read.
    - **Next research and implementation.** Select representative sources using spatial/temporal
      complexity rather than file size alone and support a small multi-source result; correlate the
      revealed choice with sampled VMAF without turning the metric into a hint. Extend toward a

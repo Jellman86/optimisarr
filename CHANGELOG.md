@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **Personal quality checks are now reachable from Music and Photo libraries.** The audio and still-image
+  comparison pipelines were available, but their per-library entry point was incorrectly nested
+  inside the video preset controls. Saved Music and Photo libraries now show the same **Personal
+  quality check** action as Film, TV, and mixed libraries.
 - **Blind video checks no longer reject healthy samples as too short.** Some long-GOP TV and film
   sources can only be stream-copied from the keyframe immediately before the requested scene. That
   harmless decode pre-roll made a 12-second original-side clip appear longer than its encoded match,

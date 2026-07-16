@@ -16,12 +16,19 @@ const library = {
   lastAutoEnqueueAt: null, fileCount: 1,
 }
 
-function session(mediaKind: 'Video' | 'Image' = 'Video') {
+type CalibrationMediaKind = 'Video' | 'Audio' | 'Image'
+
+function session(mediaKind: CalibrationMediaKind = 'Video') {
   const id = '11111111-1111-1111-1111-111111111111'
   const trialId = '22222222-2222-2222-2222-222222222222'
   const content = (slot: string) => `/api/calibration/${id}/trials/${trialId}/content/${slot}`
   return {
-    id, libraryId: 1, mediaFileId: 7, source: mediaKind === 'Image' ? 'Example Photo.tiff' : 'Example Film.mkv', mediaKind, status: 'Screening',
+    id,
+    libraryId: 1,
+    mediaFileId: 7,
+    source: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv',
+    mediaKind,
+    status: 'Screening',
     preparationProgress: 1, error: null, result: null,
     trial: {
       id: trialId, phase: 'Screening', number: 1, sampleNumber: 1, sampleCount: 3,
@@ -33,14 +40,18 @@ function session(mediaKind: 'Video' | 'Image' = 'Video') {
   }
 }
 
-async function mockApp(page: Page, mediaKind: 'Video' | 'Image' = 'Video') {
+async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
+  const currentLibrary = {
+    ...library,
+    mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film',
+  }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
-    if (path === '/api/libraries') return json(route, [library])
+    if (path === '/api/libraries') return json(route, [currentLibrary])
     if (path === '/api/library-options') return json(route, {
-      mediaTypes: ['Film'], ruleProfiles: ['ConservativeHevc'],
+      mediaTypes: [currentLibrary.mediaType], ruleProfiles: ['ConservativeHevc'],
       ruleProfileSpecs: [{ profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24 }],
       hdrHandlings: ['Exclude', 'Preserve', 'TonemapToSdr'], videoCodecs: ['hevc'], containers: ['mp4'],
       encoderPresets: ['medium'], imageFormats: ['jpeg'],
@@ -48,17 +59,17 @@ async function mockApp(page: Page, mediaKind: 'Video' | 'Image' = 'Video') {
     if (path === '/api/candidates/summary') return json(route, [{ libraryId: 1, eligible: 1, skipped: 0 }])
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
     if (path === '/api/libraries/1/access') return json(route, {
-      path: library.path, exists: true, readable: true, writable: true, ok: true, message: 'ready',
+      path: currentLibrary.path, exists: true, readable: true, writable: true, ok: true, message: 'ready',
       issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/', fileSystemType: 'ext4',
       availableBytes: 100_000_000_000, totalBytes: 200_000_000_000, atomicWithWork: true,
       atomicWithQuarantine: true,
     })
     if (path === '/api/libraries/1/calibration/sources') return json(route, [{
       mediaFileId: 7,
-      relativePath: mediaKind === 'Image' ? 'Example Photo.tiff' : 'Example Film.mkv',
-      durationSeconds: mediaKind === 'Image' ? 0 : 1_200,
-      width: 1_920,
-      height: 1_080,
+      relativePath: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv',
+      durationSeconds: mediaKind === 'Image' ? 0 : mediaKind === 'Audio' ? 240 : 1_200,
+      width: mediaKind === 'Audio' ? null : 1_920,
+      height: mediaKind === 'Audio' ? null : 1_080,
       mediaKind,
       isHdr: false,
     }])
@@ -125,3 +136,12 @@ test('image calibration keeps one zoomed viewport while switching on mobile', as
   await expect(viewport.getByRole('img', { name: 'Blind comparison image X' })).toHaveAttribute('style', /scale\(1\.5\)/)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
+
+for (const [mediaKind, mediaType] of [['Audio', 'Music'], ['Image', 'Photo']] as const) {
+  test(`personal quality check is available for a saved ${mediaType} library`, async ({ page }) => {
+    await mockApp(page, mediaKind)
+    await page.goto('/#/libraries/1/configure')
+
+    await expect(page.getByRole('button', { name: 'Personal quality check' })).toBeVisible()
+  })
+}

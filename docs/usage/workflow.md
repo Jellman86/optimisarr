@@ -75,38 +75,12 @@ The custom floors must remain ordered: catastrophic frame ≤ fifth percentile �
 Scoring every frame and the full file is the strongest check; three representative samples and
 every-Nth-frame scoring trade some coverage for faster verification.
 
-For a more personal starting point, save a video library and select **Personal quality check**
-beside its optimisation preset. Choose a representative, probed file and let Optimisarr prepare the
-short samples. During the blind A/B/X check, switch freely between A, B, and X, then answer whether
-X matches A or B. Quality settings and estimated size remain hidden until you finish and select
-**Reveal result**. A result means only that this check found no reliable difference for this person,
-source, display, and viewing conditions. Select **Apply to this library** only if you want to replace
-the library's saved quality value; no media is queued or replaced.
-
-The personal check supports SDR video and HDR video that the library is configured to preserve. HDR
-also requires a browser-reported HDR display path and your confirmation that the intended display is
-actually showing HDR; it never falls back to a tone-mapped comparison. Dolby Vision remains
-unavailable because its dynamic metadata cannot safely survive the current re-encode path. The check
-reads the original but never changes it. Its clips are disposable and are cleaned up when the panel
-closes, after being abandoned for two hours, or when Optimisarr restarts. If the browser cannot play
-every sample, the panel disables answers rather than guessing.
-
-For video, Optimisarr compares only the primary picture stream. Mid-file originals may need a few
-hidden packets from the preceding keyframe so the first requested frame can decode; the player skips
-that pre-roll automatically and both sides still show the same 12-second scene. Those original-side
-references remain available only for the life of the disposable panel session.
-
-Music and mixed libraries can use the same panel with a probed audio file. Optimisarr tests a
-codec-appropriate Opus, AAC, or MP3 bitrate ladder across three 15-second excerpts. It measures both
-sides using EBU R128 integrated loudness and attenuates only the louder stream during playback, so a
-volume jump cannot give away the answer and no prepared file is normalised or amplified. Applying
-the result changes only that library's saved audio bitrate and does not queue any work.
-
-Photo and mixed libraries can choose a probed, non-animated still image. Optimisarr creates a
-lossless PNG reference and five candidate quality levels. A/B/X use one viewport: switch freely,
-zoom from 100–400%, and drag to inspect detail without changing the position between versions. If
-any image cannot load, answers remain disabled. Apply changes only the library's saved image-quality
-value; it does not queue, replace, move, or delete a file.
+For a more personal starting point, save the library and select **Personal quality check** beside its
+optimisation preset. Film, TV, Music, Photo, and mixed libraries can run a blind comparison suited to
+their media. Settings and estimated savings stay hidden until you finish, and applying a result only
+changes that library's saved quality value; it does not queue or replace media. Follow [Choose a
+personal quality setting](personal-quality-check.md) for prerequisites, screenshots, media-specific
+controls, HDR limits, result interpretation, and troubleshooting.
 
 You should see **access ok** on the library card. If not, fix the host mount,
 `PUID`/`PGID`, or folder permissions before queueing jobs.
