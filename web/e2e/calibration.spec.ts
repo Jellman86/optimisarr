@@ -98,13 +98,15 @@ async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
 
 test('quality check is a finite full-page anonymous lineup and only marks the original after reveal', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
-  await openLab(page)
+  // Use the valid image fixture here so this media-independent flow cannot race an intentionally
+  // empty video response. Video timing and fullscreen have their own focused regression below.
+  await openLab(page, 'Image')
 
   await expect(page.getByRole('heading', { name: 'Quality lab' })).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   for (const name of names) await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
   await expect(page.getByText('Original', { exact: true })).toHaveCount(0)
-  await expect(page.getByText(/CRF 27/)).toHaveCount(0)
+  await expect(page.getByText(/Quality 70/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Reveal samples and result' })).toBeDisabled()
   const undersized = await page.locator('.quality-lab button:visible').evaluateAll((buttons) =>
     buttons.filter((button) => button.getBoundingClientRect().height < 44).length)
@@ -120,7 +122,7 @@ test('quality check is a finite full-page anonymous lineup and only marks the or
   // The same single original is labelled once in the deck and once in the result breakdown.
   await expect(page.getByText('Original', { exact: true })).toHaveCount(2)
   await expect(page.getByText('Your most efficient acceptable setting')).toBeVisible()
-  await expect(page.getByText('CRF 27', { exact: true })).toBeVisible()
+  await expect(page.getByText('Quality 70', { exact: true })).toHaveCount(3)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.setViewportSize({ width: 812, height: 375 })
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
