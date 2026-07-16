@@ -80,11 +80,14 @@ export const ja: Messages = {
     dry_run_title: "ドライランを有効にする", dry_run_body: "通常どおりエンコードと検証を行い、置換準備完了で停止します。オリジナルを移動する前に結果を確認できます。",
     concurrent_title: "同時ジョブ数", concurrent_body: "まず1件から始めます。実際のエンコードで CPU、GPU、ディスク、温度を確認してから増やしてください。",
     automation_title: "自動化は無効のまま", automation_body: "新しいライブラリは自動でキュー投入や置換を行いません。候補確認後にライブラリ設定から変更できます。",
+    recommended_heading: "このシステムへの推奨事項", recommended_body: "上記で確認された機能に基づきます。自動適用はされません。必要な項目だけ選択してください。",
+    use_recommendation: "推奨設定を使用", recommendation_applied: "推奨設定を選択済み",
     settings_required_error: "設定を利用できません。システムを再確認してください。",
     review_eyebrow: "ジョブは開始されていません", review_heading: "開始状態を確認", review_body: "完了するとセットアップを記録してダッシュボードを開きます。ファイルのスキャン、キュー投入、エンコード、置換、削除は行いません。",
     review_system: "システム", review_ready: "必須メディアツールを利用可能", review_attention: "確認が必要", review_library: "ライブラリ",
     review_replacement: "置換", review_dry_run: "ドライラン：検証済み出力をすべて確認", review_live: "検証後の置換を許可",
-    review_queue: "キュー", review_jobs_one: "同時ジョブ {count} 件", review_jobs_other: "同時ジョブ {count} 件"
+    review_queue: "キュー", review_jobs_one: "同時ジョブ {count} 件", review_jobs_other: "同時ジョブ {count} 件",
+    change: "変更", skipped: "スキップ — 後で追加", receipt_heading: "セットアップを安全に適用しました", receipt_body: "{count} 件のライブラリを利用できます。スキャン、エンコード、置換、削除は開始されていません。", review_candidates: "候補を確認", open_dashboard: "ダッシュボードを開く"
   },
   nav: {
     dashboard: "ダッシュボード",

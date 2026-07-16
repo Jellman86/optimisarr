@@ -49,6 +49,10 @@ jobs:
         working-directory: web
       - run: npm run check
         working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npm run test:e2e
+        working-directory: web
 
   docs:
     name: Documentation and Compose validation

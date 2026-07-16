@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Gold-standard first-run recommendations and final review.** Setup now turns proved encoder and
+  VMAF capabilities into visible, reversible encoder, hardware-decode, VMAF, and overnight-window
+  recommendations instead of silently choosing for the operator. When a probed candidate exists,
+  the wizard can run the established disposable original-versus-output preview without touching the
+  source. The final check-answers page now covers network security, storage, libraries, encoder,
+  quality, scheduling, optional connections, and replacement, with accessible Change actions that
+  preserve the draft. One validated database transaction applies the reviewed settings and opted-in
+  per-library recommendations, records completion, and returns a no-work-started receipt linking to
+  candidate review or the dashboard; duplicate submissions return that completed state without
+  changing the applied plan. Draft safety choices survive refresh in local browser storage, inline
+  validation is tied to its field and focused error summary, and the new browser acceptance suite
+  exercises keyboard flows, re-test announcements, final apply, dark/reduced-motion presentation,
+  320px reflow, landscape, 390px mobile, and all nine locales in CI.
+
 ## 0.2.4 — 2026-07-16
 
 ### Added

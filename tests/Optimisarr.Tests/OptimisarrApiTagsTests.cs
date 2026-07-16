@@ -37,6 +37,7 @@ public class OptimisarrApiTagsTests
     [InlineData("/api/libraries/1/enqueue")]
     [InlineData("/api/diagnostics")]
     [InlineData("/api/setup")]
+    [InlineData("/api/setup/apply")]
     [InlineData("/api/setup/restart")]
     public void RequiresAdminToken_is_true_for_protected_endpoints(string path) =>
         Assert.True(OptimisarrApiTags.RequiresAdminToken(path));

@@ -39,84 +39,12 @@ internal static class SettingsEndpoints
             SettingsStore settings,
             CancellationToken cancellationToken) =>
         {
-            if (request.MaxConcurrentJobs < 1)
+            if (!SettingsRequestParser.TryParse(request, out var parsed, out var error))
             {
-                return ApiErrors.BadRequest("settings.maxConcurrentJobs.minimum", "Max concurrent jobs must be at least 1.");
+                return ApiErrors.BadRequest(error!.Code, error.Message);
             }
 
-            if (request.MinFreeDiskBytes < 0)
-            {
-                return ApiErrors.BadRequest("settings.minFreeDiskBytes.nonNegative", "Minimum free disk space cannot be negative.");
-            }
-
-            if (request.CpuThreadLimit < 0)
-            {
-                return ApiErrors.BadRequest("settings.cpuThreadLimit.nonNegative", "CPU thread limit cannot be negative.");
-            }
-
-            if (request.LibraryScanIntervalHours < 1)
-            {
-                return ApiErrors.BadRequest("settings.libraryScanIntervalHours.minimum", "Library scan interval must be at least 1 hour.");
-            }
-
-            if (request.VerificationDurationTolerancePercent < 0)
-            {
-                return ApiErrors.BadRequest("settings.verificationDurationTolerance.nonNegative", "Verification duration tolerance cannot be negative.");
-            }
-
-            if (request.VerificationMaxLoudnessDriftLufs < 0)
-            {
-                return ApiErrors.BadRequest("settings.loudnessDrift.nonNegative", "Loudness drift tolerance cannot be negative.");
-            }
-
-            if (!double.IsFinite(request.VerificationMaxTruePeakDbtp))
-            {
-                return ApiErrors.BadRequest("settings.truePeak.finite", "True-peak ceiling must be a finite dBTP value.");
-            }
-
-            if (request.VerificationMinimumImageSsim is < 0 or > 1)
-            {
-                return ApiErrors.BadRequest("settings.imageSsim.range", "Image SSIM threshold must be between 0 and 1.");
-            }
-
-            if (request.ReplacementQuarantineRetentionDays < 0)
-            {
-                return ApiErrors.BadRequest("settings.quarantineRetention.nonNegative", "Quarantine retention days cannot be negative.");
-            }
-
-            if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
-            {
-                return ApiErrors.BadRequest("settings.encoderMode.invalid", "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi.");
-            }
-
-            await settings.SetQueueSettingsAsync(new QueueSettings(
-                request.MaxConcurrentJobs,
-                request.MinFreeDiskBytes,
-                request.CpuThreadLimit,
-                request.LibraryScanIntervalHours,
-                encoderMode,
-                request.HardwareDecode,
-                new VerificationPolicy(
-                    request.VerificationDurationTolerancePercent,
-                    request.VerificationRequireAudioRetained,
-                    request.VerificationRequireSubtitlesRetained,
-                    request.VerificationRequireSizeReduction,
-                    VerificationPolicy.Default.QualityGateEnabled,
-                    VerificationPolicy.Default.MinimumVmafHarmonicMean,
-                    VerificationPolicy.Default.MinimumVmafMin,
-                    VerificationPolicy.Default.MinimumVmafCatastrophicMin,
-                    request.VerificationAudioLoudnessGateEnabled,
-                    request.VerificationMaxLoudnessDriftLufs,
-                    request.VerificationAudioClippingGateEnabled,
-                    request.VerificationMaxTruePeakDbtp,
-                    request.VerificationImageQualityGateEnabled,
-                    request.VerificationMinimumImageSsim,
-                    request.VerificationImageMetadataGateEnabled,
-                    VerificationPolicy.Default.ClipVmafEnabled,
-                    VerificationPolicy.Default.VmafFrameSubsample),
-                request.ReplacementAllowCrossFilesystem,
-                request.DryRunMode,
-                request.ReplacementQuarantineRetentionDays), cancellationToken);
+            await settings.SetQueueSettingsAsync(parsed, cancellationToken);
 
             var queue = await settings.GetQueueSettingsAsync(cancellationToken);
             return Results.Ok(SettingsDto.From(queue));

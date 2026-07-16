@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -30,6 +31,9 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("POST", "/api/settings/import")]
     [InlineData("GET", "/api/setup")]
     [InlineData("GET", "/api/setup/readiness")]
+    [InlineData("PUT", "/api/setup/progress")]
+    [InlineData("POST", "/api/setup/complete")]
+    [InlineData("POST", "/api/setup/apply")]
     [InlineData("POST", "/api/setup/restart")]
     [InlineData("POST", "/api/libraries")]
     [InlineData("DELETE", "/api/libraries/1")]
@@ -151,6 +155,76 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Contains("\"currentStep\":1", await restart.Content.ReadAsStringAsync());
     }
 
+    [Fact]
+    public async Task Setup_plan_is_validated_then_applied_atomically_and_duplicate_submission_is_idempotent()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var sourcePath = Path.Combine(_api.LibraryDirectory, "original-source.mkv");
+        await File.WriteAllTextAsync(sourcePath, "original-must-not-change");
+
+        using var library = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Setup plan library",
+            path = _api.LibraryDirectory,
+            mediaType = "Film",
+            ruleProfile = "ConservativeHevc"
+        });
+        Assert.True(
+            library.StatusCode is HttpStatusCode.Created or HttpStatusCode.Conflict,
+            await library.Content.ReadAsStringAsync());
+
+        using var restart = await client.PostAsync("/api/setup/restart", content: null);
+        Assert.Equal(HttpStatusCode.OK, restart.StatusCode);
+
+        var originalSettings = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        var originalConcurrency = originalSettings["maxConcurrentJobs"]!.GetValue<int>();
+        var changedSettings = originalSettings.DeepClone().AsObject();
+        changedSettings["maxConcurrentJobs"] = originalConcurrency + 1;
+        var request = new
+        {
+            settings = changedSettings,
+            useRecommendedEncoder = false,
+            applyRecommendedVmaf = false,
+            applyRecommendedSchedule = true
+        };
+
+        using var premature = await client.PostAsJsonAsync("/api/setup/apply", request);
+        Assert.Equal(HttpStatusCode.BadRequest, premature.StatusCode);
+        var unchanged = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        Assert.Equal(originalConcurrency, unchanged["maxConcurrentJobs"]!.GetValue<int>());
+
+        foreach (var completedStep in new[] { 1, 2, 3, 4 })
+        {
+            using var progress = await client.PutAsJsonAsync("/api/setup/progress", new { completedStep });
+            Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        }
+
+        using var applied = await client.PostAsJsonAsync("/api/setup/apply", request);
+        Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
+        var receipt = await applied.Content.ReadAsStringAsync();
+        Assert.Contains("\"completed\":true", receipt);
+        Assert.Contains("\"settingsApplied\":true", receipt);
+        Assert.Contains("\"recommendationsApplied\":true", receipt);
+
+        var saved = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        Assert.Equal(originalConcurrency + 1, saved["maxConcurrentJobs"]!.GetValue<int>());
+        var savedLibraries = JsonNode.Parse(await client.GetStringAsync("/api/libraries"))!.AsArray();
+        var savedLibrary = savedLibraries
+            .Select(node => node!.AsObject())
+            .Single(node => node["name"]!.GetValue<string>() == "Setup plan library");
+        Assert.Equal("01:00", savedLibrary["autoEnqueueWindowStart"]!.GetValue<string>());
+        Assert.Equal("06:00", savedLibrary["autoEnqueueWindowEnd"]!.GetValue<string>());
+
+        changedSettings["maxConcurrentJobs"] = originalConcurrency + 2;
+        using var duplicate = await client.PostAsJsonAsync("/api/setup/apply", request);
+        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
+        Assert.Contains("\"alreadyApplied\":true", await duplicate.Content.ReadAsStringAsync());
+        var stillSaved = JsonNode.Parse(await client.GetStringAsync("/api/settings"))!.AsObject();
+        Assert.Equal(originalConcurrency + 1, stillSaved["maxConcurrentJobs"]!.GetValue<int>());
+        Assert.Equal("original-must-not-change", await File.ReadAllTextAsync(sourcePath));
+    }
+
     /// <summary>
     /// The real app with the admin token configured, a throwaway config directory (fresh migrated
     /// SQLite), and no background workers — the auth tests only exercise the HTTP pipeline.
@@ -161,9 +235,13 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         private readonly string _configDir =
             Path.Combine(Path.GetTempPath(), "optimisarr-authtest-" + Guid.NewGuid().ToString("N"));
 
+        public string LibraryDirectory { get; }
+
         public TokenedApi()
         {
             Directory.CreateDirectory(_configDir);
+            LibraryDirectory = Path.Combine(_configDir, "library");
+            Directory.CreateDirectory(LibraryDirectory);
             Environment.SetEnvironmentVariable(AdminTokenAuth.EnvironmentVariable, Token);
             Environment.SetEnvironmentVariable("OPTIMISARR_CONFIG_DIR", _configDir);
         }

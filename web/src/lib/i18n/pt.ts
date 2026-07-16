@@ -80,11 +80,14 @@ export const pt: Messages = {
     dry_run_title: "Manter o modo simulação ativo", dry_run_body: "Codifica e verifica normalmente, mas para em Pronto para substituir para poder inspecionar o resultado antes de mover o original.",
     concurrent_title: "Trabalhos simultâneos", concurrent_body: "Comece com um. Aumente só depois de observar CPU, GPU, disco e temperaturas numa codificação real.",
     automation_title: "A automação permanece desligada", automation_body: "As novas bibliotecas não enfileiram nem substituem automaticamente. Estas opções ficam na página de configuração de cada biblioteca.",
+    recommended_heading: "Recomendações para este sistema", recommended_body: "Baseiam-se nas capacidades verificadas acima. Nada é aplicado silenciosamente; selecione apenas o que pretende.",
+    use_recommendation: "Usar recomendação", recommendation_applied: "Recomendação selecionada",
     settings_required_error: "As configurações estão indisponíveis. Teste o sistema novamente.",
     review_eyebrow: "Nenhum trabalho foi iniciado", review_heading: "Reveja o ponto de partida", review_body: "Concluir regista a configuração e abre o painel. Não analisa, enfileira, codifica, substitui ou elimina ficheiros.",
     review_system: "Sistema", review_ready: "Ferramentas multimédia obrigatórias disponíveis", review_attention: "Precisa de atenção", review_library: "Bibliotecas",
     review_replacement: "Substituição", review_dry_run: "Simulação: rever cada saída verificada", review_live: "Substituição permitida após verificação",
-    review_queue: "Fila", review_jobs_one: "{count} trabalho simultâneo", review_jobs_other: "{count} trabalhos simultâneos"
+    review_queue: "Fila", review_jobs_one: "{count} trabalho simultâneo", review_jobs_other: "{count} trabalhos simultâneos",
+    change: "Alterar", skipped: "Ignorado — adicionar depois", receipt_heading: "Configuração aplicada em segurança", receipt_body: "{count} biblioteca(s) estão prontas. Nenhuma análise, codificação, substituição ou eliminação foi iniciada.", review_candidates: "Rever candidatos", open_dashboard: "Abrir painel"
   },
   nav: {
     dashboard: "Painel",

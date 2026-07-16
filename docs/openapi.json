@@ -1152,6 +1152,29 @@
         ],
         "type": "object"
       },
+      "SetupApplyRequest": {
+        "properties": {
+          "applyRecommendedSchedule": {
+            "type": "boolean"
+          },
+          "applyRecommendedVmaf": {
+            "type": "boolean"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SettingsDto"
+          },
+          "useRecommendedEncoder": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "settings",
+          "useRecommendedEncoder",
+          "applyRecommendedVmaf",
+          "applyRecommendedSchedule"
+        ],
+        "type": "object"
+      },
       "SetupProgressDto": {
         "properties": {
           "completedStep": {
@@ -3002,6 +3025,32 @@
     "/api/setup": {
       "get": {
         "operationId": "GetSetupState",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Setup"
+        ]
+      }
+    },
+    "/api/setup/apply": {
+      "post": {
+        "operationId": "ApplySetupPlan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"

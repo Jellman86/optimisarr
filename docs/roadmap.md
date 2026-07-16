@@ -91,7 +91,7 @@ the replacement workflow is trustworthy.
      WebP, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and
      decode assertions.
 
-   - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
+   - **Endpoint modularization: done.** All 73 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
      system, library, stats, replacement, media/queue), leaving `Program.cs` a 418-line composition
      root (down from 1,960). A pure move verified by the byte-identical generated OpenAPI document and
@@ -153,18 +153,19 @@ the replacement workflow is trustworthy.
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
         of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
-2. **Gold-standard first-run setup wizard** — turn a new, empty installation into safe,
+2. **Gold-standard first-run setup wizard: complete** — turn a new, empty installation into safe,
    understandable libraries without hiding Docker-level mistakes or weakening Optimisarr's
    fail-closed defaults. This is the next independently actionable product item while the hardware
    validation matrix remains gated on access to non-Intel GPUs.
 
-   - **Trigger, resume, and ownership: foundation shipped.** A versioned `SetupState` now distinguishes
+   - **Trigger, resume, and ownership: done.** A versioned `SetupState` now distinguishes
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
      applied choices, and the Settings header offers **Run setup again** without deleting configuration.
-     Remaining refinement: explicit optional-step Skip semantics as integrations join the flow.
-   - **Five stable, task-oriented steps: initial flow shipped.** One heading and primary action drive:
+     Connections remain explicitly skipped on the final review and can be added later, so an optional
+     provider can never block first use.
+   - **Five stable, task-oriented steps: done.** One heading and primary action drive:
      (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) any
      number of libraries and their optimisation rules; (4) verification, scheduling, quarantine, and replacement
      safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
@@ -187,28 +188,28 @@ the replacement workflow is trustworthy.
      The container never pretends it can create a host bind mount or change host permissions. Docker
      documents that mounts must be explicitly granted to a service and recommends
      [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
-   - **Safe recommendations, not silent automation: initial defaults shipped.** Start in dry-run
+   - **Safe recommendations, not silent automation: done.** Start in dry-run
      mode, one concurrent job, auto-replace off, conservative free-space/quarantine settings, and no
      auto-enqueue until the user reviews them. Explain encoder-specific quality, preview one
      representative candidate when possible, and show the estimated effect before saving. The wizard
      may recommend hardware decode, a VMAF tier, and a schedule from detected capabilities, but every
      recommendation remains visible and reversible. It never scans, enqueues, transcodes, replaces,
      or deletes an original until the
-     user confirms the review screen. The current flow visibly applies dry-run/concurrency, creates
+     user confirms the review screen. The flow visibly applies dry-run/concurrency, creates
      every new library with auto-enqueue, auto-replace, and VMAF off unless explicitly changed in the
-     full embedded rules editor, and starts no work. Capability-
-     based encoder/VMAF/schedule recommendations and an in-wizard representative preview remain.
-   - **Review before commitment: initial receipt shipped.** The last step currently groups system,
-     library, replacement, and queue choices and states explicitly that completion starts no work.
-     Remaining: security, storage, quality, scheduling and integration Change links, plus a single
-     transactional plan apply. The intended final form groups security, storage, library, quality,
-     scheduling, integration, and replacement choices; each section has an accessible Change action
+     full embedded rules editor, and starts no work. Proved HEVC hardware support now drives a visible,
+     reversible encoder/hardware-decode recommendation; CPU VMAF stays off by default, while a proved
+     NVIDIA CUDA-VMAF path may recommend Balanced. The overnight window remains opt-in and never turns
+     auto-enqueue on. A representative probed candidate can launch the established disposable preview;
+     an honest empty state explains why a fresh, unscanned library has nothing to preview yet.
+   - **Review before commitment: done.** The final form groups security, storage, library, encoder,
+     quality, scheduling, integration, and replacement choices; each section has an accessible Change action
      that returns directly to that step with values pre-populated. GOV.UK's
      [check-answers pattern](https://design-system.service.gov.uk/patterns/check-answers/) uses this
      review to raise confidence and reduce submission errors. Applying the plan uses one validated
-     transaction where possible, returns a clear success receipt, and links directly to the first
-     scan/candidate review rather than starting destructive work.
-   - **Accessible recovery is a release criterion.** Validate when Continue is pressed, preserve all
+     database transaction, rolls back on failure, is idempotent after a lost response, returns a clear
+     no-work-started receipt, and links directly to candidate review rather than starting destructive work.
+   - **Accessible recovery: done.** Validate when Continue is pressed, preserve all
      user input, place a concise error summary at the top, move focus to it, and associate inline
      errors with their fields. W3C requires logical
      [keyboard focus order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) and recommends
@@ -216,14 +217,16 @@ the replacement workflow is trustworthy.
      WCAG 2.2 also adds minimum target size, unobscured focus, redundant-entry, and accessible-
      authentication criteria. Status from readiness tests uses a polite live region without stealing
      focus, and progress never relies on colour alone.
-   - **Gold-standard acceptance matrix.** Ship only with API/domain tests for state transitions,
-     idempotency, rollback, and upgrade bypass; real-host integration tests for fresh/resumed/completed
-     setup; and browser tests for Back/Continue/Change/Skip/Re-test across light/dark mode, all nine
-     locales, keyboard-only and screen-reader semantics, 400% zoom, and 390px mobile width. Exercise
-     read-only media, unwritable/missing work or quarantine, low disk, absent VMAF/ExifTool, unavailable
-     selected GPU, unreachable optional integration, invalid admin token, refresh/restart mid-step,
-     double-submit, and a failure during final apply. The invariant is explicit: wizard tests may
-     create disposable files under `/work` but must prove no source file is modified or removed.
+   - **Gold-standard acceptance matrix: automated core shipped.** API/domain tests cover state transitions,
+     ordered/idempotent progress, upgrade bypass, rejected and duplicate final apply, settings persistence,
+     recommendation policy, and the no-source-mutation invariant. Browser tests cover
+     Back/Continue/Change/Skip/Re-test and final apply across light/dark mode,
+     all nine locales, keyboard and role/name semantics, reduced motion, the 320px WCAG 400%-reflow
+     equivalent, 390px mobile width, and landscape. Readiness/policy tests cover missing, unreadable,
+     unwritable and low-space paths, absent VMAF, and unproved GPU encoders; authentication tests cover
+     every setup mutation. Optional integrations are not contacted during setup by design. The final
+     apply transaction explicitly rolls back on an exception, and applying setup leaves a sentinel
+     source file byte-for-byte unchanged while preview work remains disposable under `/work`.
 
 3. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration

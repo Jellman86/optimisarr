@@ -80,11 +80,14 @@ export const zh: Messages = {
     dry_run_title: "保持模拟模式开启", dry_run_body: "正常编码和验证，但在“可以替换”处停止，以便在移动原文件前检查结果。",
     concurrent_title: "并发任务", concurrent_body: "从一个开始。观察真实编码时的 CPU、GPU、磁盘和温度后再增加。",
     automation_title: "自动化保持关闭", automation_body: "新媒体库不会自动排队或替换。这些选项会保留在每个媒体库的配置页中。",
+    recommended_heading: "此系统的建议", recommended_body: "这些建议基于上方已验证的功能。不会静默应用；只选择您需要的建议。",
+    use_recommendation: "使用建议", recommendation_applied: "已选择建议",
     settings_required_error: "设置不可用。请重新检查系统。",
     review_eyebrow: "尚未启动任何任务", review_heading: "复核初始状态", review_body: "完成后会记录设置并打开仪表板。它不会扫描、排队、编码、替换或删除任何文件。",
     review_system: "系统", review_ready: "必需的媒体工具可用", review_attention: "需要处理", review_library: "媒体库",
     review_replacement: "替换", review_dry_run: "模拟模式：复核每个已验证输出", review_live: "验证后允许替换",
-    review_queue: "队列", review_jobs_one: "{count} 个并发任务", review_jobs_other: "{count} 个并发任务"
+    review_queue: "队列", review_jobs_one: "{count} 个并发任务", review_jobs_other: "{count} 个并发任务",
+    change: "更改", skipped: "已跳过 — 稍后添加", receipt_heading: "设置已安全应用", receipt_body: "{count} 个媒体库已准备就绪。未启动扫描、编码、替换或删除。", review_candidates: "查看候选项", open_dashboard: "打开仪表板"
   },
   nav: {
     dashboard: "仪表板",

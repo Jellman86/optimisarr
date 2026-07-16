@@ -183,9 +183,10 @@ does not contain secrets and is not exported between installations.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/setup` | Read the versioned completed/current step and completion state. |
-| `GET` | `/api/setup/readiness` | Non-destructively check database, config/work/quarantine paths, and media tools. |
+| `GET` | `/api/setup/readiness` | Non-destructively check database, config/work/quarantine paths and media tools, then return visible encoder, VMAF and schedule recommendations from proved capabilities. |
 | `PUT` | `/api/setup/progress` | Persist one completed step in order; repeated writes are idempotent. |
 | `POST` | `/api/setup/complete` | Complete setup from the final review step. Does not start work. |
+| `POST` | `/api/setup/apply` | Validate and atomically apply the reviewed settings and opted-in recommendations, then complete setup. A duplicate submission returns the existing receipt without changing the applied plan. |
 | `POST` | `/api/setup/restart` | Return to step one while preserving libraries and settings. |
 
 Health response:

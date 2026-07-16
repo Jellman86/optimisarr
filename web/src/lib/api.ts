@@ -83,6 +83,25 @@ export type SetupReadiness = {
   paths: SetupPath[]
   storageRelationships: SetupStorageRelationship[]
   tools: ToolCheck[]
+  recommendation: SetupRecommendation
+}
+
+export type SetupRecommendation = {
+  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
+  hardwareDecode: boolean
+  vmafTier: 'Off' | 'Balanced'
+  scheduleStart: string
+  scheduleEnd: string
+  encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'
+  vmafReason: 'cuda-balanced' | 'cpu-cost' | 'unavailable'
+}
+
+export type SetupApplyReceipt = {
+  state: SetupState
+  libraryCount: number
+  settingsApplied: boolean
+  recommendationsApplied: boolean
+  alreadyApplied: boolean
 }
 
 export type ToolCheck = {
@@ -695,6 +714,8 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
     case 'setup.completion.invalid': return i18n.m.setup.error_save
+    case 'setup.library.required': return i18n.m.setup.library_required_error
+    case 'setup.library.unavailable': return i18n.m.setup.required_tools_error
     default: return error
   }
 }
@@ -725,6 +746,12 @@ export const api = {
   advanceSetup: (completedStep: number) =>
     request<SetupState>('/api/setup/progress', { method: 'PUT', body: JSON.stringify({ completedStep }) }),
   completeSetup: () => request<SetupState>('/api/setup/complete', { method: 'POST' }),
+  applySetup: (body: {
+    settings: Settings
+    useRecommendedEncoder: boolean
+    applyRecommendedVmaf: boolean
+    applyRecommendedSchedule: boolean
+  }) => request<SetupApplyReceipt>('/api/setup/apply', { method: 'POST', body: JSON.stringify(body) }),
   restartSetup: () => request<SetupState>('/api/setup/restart', { method: 'POST' }),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
   hardware: (refresh = false) =>
