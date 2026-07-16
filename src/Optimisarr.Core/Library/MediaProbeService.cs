@@ -21,6 +21,7 @@ public sealed record MediaProbeResult(
     IReadOnlyList<AudioTrackInfo> AudioTracks,
     int AudioTrackCount,
     int SubtitleTrackCount,
+    IReadOnlyList<string?> SubtitleLanguages,
     bool HasImageSubtitles,
     bool IsHdr,
     bool IsDolbyVision,
@@ -44,7 +45,7 @@ public sealed record MediaProbeResult(
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
-            0, 0, false, false, false, 0, 0, null,
+            0, 0, Array.Empty<string?>(), false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, null, error);
 }
@@ -174,6 +175,7 @@ public sealed class MediaProbeService
         var audioCodecs = new List<string>();
         var audioTracks = new List<AudioTrackInfo>();
         var subtitleCount = 0;
+        var subtitleLanguages = new List<string?>();
         var hasImageSubtitles = false;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
@@ -277,6 +279,7 @@ public sealed class MediaProbeService
                         break;
                     case "subtitle":
                         subtitleCount++;
+                        subtitleLanguages.Add(ReadLanguageTag(stream));
                         if (SubtitleClassifier.IsImageBased(codecName))
                         {
                             hasImageSubtitles = true;
@@ -306,6 +309,7 @@ public sealed class MediaProbeService
             audioTracks,
             audioCodecs.Count,
             subtitleCount,
+            subtitleLanguages,
             hasImageSubtitles,
             isHdr,
             isDolbyVision,

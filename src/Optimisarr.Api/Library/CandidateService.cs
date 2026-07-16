@@ -193,7 +193,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             file.AttachedPictureCount,
             file.SubtitleTrackCount ?? 0,
             file.MaxAudioChannels,
-            TrackLanguages.ParseTrackLanguages(file.AudioLanguages));
+            TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
+            TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages));
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }

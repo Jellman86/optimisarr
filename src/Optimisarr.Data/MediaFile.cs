@@ -93,6 +93,14 @@ public sealed class MediaFile
 
     public int? SubtitleTrackCount { get; set; }
 
+    /// <summary>
+    /// Comma-separated subtitle track languages in stream order, e.g. "eng, und, fra"
+    /// ("und" standing in for an untagged track). Null when the file was probed before
+    /// subtitle languages were captured; language rules treat that as unknown and change
+    /// nothing.
+    /// </summary>
+    public string? SubtitleLanguages { get; set; }
+
     /// <summary>True when the video stream is HDR10/HLG or carries Dolby Vision side data.</summary>
     public bool IsHdr { get; set; }
 

@@ -97,6 +97,7 @@ public sealed class LibraryInventoryService(
                 file.MaxAudioChannels = 0;
                 file.AudioBitrateKbps = null;
                 file.SubtitleTrackCount = null;
+                file.SubtitleLanguages = null;
                 file.IsHdr = false;
                 file.IsDolbyVision = false;
                 file.OptimisedMarker = null;
@@ -236,6 +237,9 @@ public sealed class LibraryInventoryService(
             file.MaxAudioChannels = result.MaxAudioChannels;
             file.AudioBitrateKbps = result.AudioBitrateKbps;
             file.SubtitleTrackCount = result.SubtitleTrackCount;
+            file.SubtitleLanguages = result.SubtitleLanguages.Count > 0
+                ? string.Join(", ", result.SubtitleLanguages.Select(language => language ?? "und"))
+                : null;
             file.IsHdr = result.IsHdr;
             file.IsDolbyVision = result.IsDolbyVision;
             // Images carry their marker in EXIF/XMP (ffprobe doesn't surface it), so read it back

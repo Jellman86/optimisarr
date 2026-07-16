@@ -65,6 +65,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(file => file.PixelFormat).HasMaxLength(32);
             entity.Property(file => file.AudioCodecs).HasMaxLength(256);
             entity.Property(file => file.AudioLanguages).HasMaxLength(256);
+            entity.Property(file => file.SubtitleLanguages).HasMaxLength(512);
 
             // Removing a library removes its inventory; orphan media files make no sense.
             entity.HasOne(file => file.Library)

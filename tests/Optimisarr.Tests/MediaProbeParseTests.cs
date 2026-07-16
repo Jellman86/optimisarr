@@ -138,6 +138,29 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_captures_subtitle_languages_positionally()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "width": 1920, "height": 1080 },
+            { "codec_type": "subtitle", "codec_name": "subrip", "tags": { "language": "ENG" } },
+            { "codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle" },
+            { "codec_type": "subtitle", "codec_name": "subrip", "tags": { "language": "fra" } }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        // Index = subtitle-relative stream position; an untagged track stays null so
+        // the order lines up with the file's subtitle streams.
+        Assert.Equal(new string?[] { "eng", null, "fra" }, result.SubtitleLanguages);
+        Assert.Equal(3, result.SubtitleTrackCount);
+    }
+
+    [Fact]
     public void Parse_treats_a_blank_language_tag_as_unknown()
     {
         const string json = """
