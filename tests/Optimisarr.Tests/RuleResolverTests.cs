@@ -152,6 +152,17 @@ public sealed class RuleResolverTests
     }
 
     [Fact]
+    public void Keep_subtitle_languages_override_layers_onto_the_profile_default()
+    {
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { KeepSubtitleLanguages = new[] { "eng" } });
+
+        Assert.Equal(new[] { "eng" }, resolved.KeepSubtitleLanguages);
+        Assert.Empty(RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None).KeepSubtitleLanguages);
+    }
+
+    [Fact]
     public void Track_cleanup_ignores_a_library_container_override()
     {
         // The profile's whole promise is "container unchanged"; a stale per-library

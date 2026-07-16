@@ -23,6 +23,7 @@ public sealed record RuleOverrides
     public int? VideoAudioBitrateKbps { get; init; }
     public bool? DownmixToStereo { get; init; }
     public IReadOnlyList<string>? KeepAudioLanguages { get; init; }
+    public IReadOnlyList<string>? KeepSubtitleLanguages { get; init; }
     public bool? ReencodeLossyAudio { get; init; }
     public string? TargetImageFormat { get; init; }
     public int? ImageQuality { get; init; }

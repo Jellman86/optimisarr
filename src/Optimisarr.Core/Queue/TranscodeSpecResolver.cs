@@ -29,7 +29,8 @@ public static class TranscodeSpecResolver
         string? sourceImageCodec = null,
         int sourceMaxAudioChannels = 0,
         bool sourceIsVariableFrameRate = false,
-        IReadOnlyList<string?>? sourceAudioLanguages = null)
+        IReadOnlyList<string?>? sourceAudioLanguages = null,
+        IReadOnlyList<string?>? sourceSubtitleLanguages = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -97,6 +98,9 @@ public static class TranscodeSpecResolver
         var removedAudio = sourceAudioLanguages is null
             ? Array.Empty<int>()
             : AudioTrackSelection.SelectRemovals(sourceAudioLanguages, rules.KeepAudioLanguages);
+        var removedSubtitles = sourceSubtitleLanguages is null
+            ? Array.Empty<int>()
+            : SubtitleTrackSelection.SelectRemovals(sourceSubtitleLanguages, rules.KeepSubtitleLanguages);
 
         return new TranscodeSpec(
             inputPath,
@@ -113,7 +117,8 @@ public static class TranscodeSpecResolver
             SourceIsVariableFrameRate: sourceIsVariableFrameRate,
             // A downmix needs an audio re-encode; a copied track keeps its layout.
             DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo,
-            RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null);
+            RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null,
+            RemoveSubtitleStreamIndexes: removedSubtitles.Count > 0 ? removedSubtitles : null);
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

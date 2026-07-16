@@ -223,23 +223,29 @@ public static class CandidateEvaluator
             var audioRemovals = media.AudioLanguages is null
                 ? (IReadOnlyList<int>)Array.Empty<int>()
                 : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages);
+            var subtitleRemovals = media.SubtitleLanguages is null
+                ? (IReadOnlyList<int>)Array.Empty<int>()
+                : Queue.SubtitleTrackSelection.SelectRemovals(media.SubtitleLanguages, rules.KeepSubtitleLanguages);
 
             // Track cleanup: the only work this profile does is removing unwanted tracks,
             // so eligibility is exactly "is there anything to remove".
             if (rules.TargetContainer is null)
             {
-                if (rules.KeepAudioLanguages.Count == 0)
+                if (rules.KeepAudioLanguages.Count == 0 && rules.KeepSubtitleLanguages.Count == 0)
                 {
                     return CandidateDecision.Skipped(
                         "No kept audio or subtitle languages configured — nothing to remove");
                 }
 
-                if (audioRemovals.Count > 0)
+                if (audioRemovals.Count + subtitleRemovals.Count > 0)
                 {
-                    return CandidateDecision.Eligible(RemovalReason(media, audioRemovals));
+                    return CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals));
                 }
 
-                return CandidateDecision.Skipped(media.AudioLanguages is null
+                var languagesUnknown =
+                    (rules.KeepAudioLanguages.Count > 0 && media.AudioLanguages is null)
+                    || (rules.KeepSubtitleLanguages.Count > 0 && media.SubtitleLanguages is null);
+                return CandidateDecision.Skipped(languagesUnknown
                     ? "Track languages not captured yet — re-probe the file to evaluate the kept-languages rule"
                     : "No removable tracks (all tracks match the kept languages or are unknown)");
             }
@@ -255,8 +261,8 @@ public static class CandidateEvaluator
 
             // A container-clean file can still carry tracks the kept-languages rules remove;
             // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
-            return audioRemovals.Count > 0
-                ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals))
+            return audioRemovals.Count + subtitleRemovals.Count > 0
+                ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals))
                 : CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})");
         }
 
@@ -293,11 +299,24 @@ public static class CandidateEvaluator
 
     // Names the languages being removed, not just counts, so the inventory and the
     // queue answer "why is this file here?" at a glance.
-    private static string RemovalReason(MediaProperties media, IReadOnlyList<int> audioRemovals)
+    private static string RemovalReason(
+        MediaProperties media, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals)
     {
-        var languages = string.Join(", ", audioRemovals.Select(index => media.AudioLanguages![index] ?? "und"));
-        return $"Remove {audioRemovals.Count} audio track(s) ({languages}) not in the kept languages";
+        var parts = new List<string>(2);
+        if (audioRemovals.Count > 0)
+        {
+            parts.Add(DescribeRemovals("audio", media.AudioLanguages!, audioRemovals));
+        }
+        if (subtitleRemovals.Count > 0)
+        {
+            parts.Add(DescribeRemovals("subtitle", media.SubtitleLanguages!, subtitleRemovals));
+        }
+
+        return $"Remove {string.Join(" + ", parts)} not in the kept languages";
     }
+
+    private static string DescribeRemovals(string kind, IReadOnlyList<string?> languages, IReadOnlyList<int> removals) =>
+        $"{removals.Count} {kind} track(s) ({string.Join(", ", removals.Select(index => languages[index] ?? "und"))})";
 
     // The source bitrate normalised by pixel count (bits per pixel-second): file bitrate ÷
     // (width × height). Null when the duration or resolution needed to compute it is missing, so the

@@ -372,4 +372,30 @@ public sealed class TranscodeSpecResolverTests
         Assert.Null(spec.VideoCodec);
         Assert.Equal(new[] { 1 }, spec.RemoveAudioStreamIndexes);
     }
+
+    [Fact]
+    public void Subtitle_removals_are_resolved_positionally()
+    {
+        var rules = Hevc with { KeepSubtitleLanguages = new[] { "eng" } };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/in/a.mkv", relativePath: "a.mkv", workRoot: "/work",
+            sourceIsHdr: false, crf: 24, preset: null,
+            sourceSubtitleLanguages: new string?[] { "eng", "fra", null, "deu" });
+
+        Assert.Equal(new[] { 1, 3 }, spec.RemoveSubtitleStreamIndexes);
+    }
+
+    [Fact]
+    public void Unknown_subtitle_languages_resolve_to_no_removals()
+    {
+        var rules = Hevc with { KeepSubtitleLanguages = new[] { "eng" } };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/in/a.mkv", relativePath: "a.mkv", workRoot: "/work",
+            sourceIsHdr: false, crf: 24, preset: null,
+            sourceSubtitleLanguages: null);
+
+        Assert.Null(spec.RemoveSubtitleStreamIndexes);
+    }
 }

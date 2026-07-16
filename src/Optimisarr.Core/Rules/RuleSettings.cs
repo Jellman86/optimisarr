@@ -108,6 +108,15 @@ public sealed record RuleSettings
     public IReadOnlyList<string> KeepAudioLanguages { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// The subtitle languages a video job keeps (ISO 639 codes); tracks in any other
+    /// language are removed from the output. Empty (the default) keeps every track.
+    /// Tracks whose language is unknown are always kept. Unlike audio there is no
+    /// keep-at-least-one guard — subtitles are optional streams, so a file may end
+    /// with none. See <see cref="Queue.SubtitleTrackSelection"/>.
+    /// </summary>
+    public IReadOnlyList<string> KeepSubtitleLanguages { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// When <c>true</c>, already-lossy audio (e.g. a 320 kbps MP3) is also eligible for
     /// re-encoding to the target codec, but only when its source bitrate is known to exceed
     /// the target enough to genuinely save space. Defaults to <c>false</c>: the conservative

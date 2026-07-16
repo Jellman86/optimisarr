@@ -30,7 +30,10 @@ public sealed record TranscodeSpec(
     int? ClipStartSeconds = null,
     // Audio-relative indexes of the source tracks a kept-languages rule removes from the
     // output (see AudioTrackSelection). Null or empty keeps every track.
-    IReadOnlyList<int>? RemoveAudioStreamIndexes = null);
+    IReadOnlyList<int>? RemoveAudioStreamIndexes = null,
+    // Subtitle-relative indexes of the source tracks the kept-languages rule removes
+    // (see SubtitleTrackSelection). Null or empty keeps every track.
+    IReadOnlyList<int>? RemoveSubtitleStreamIndexes = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -186,6 +189,15 @@ public static class FfmpegCommandBuilder
             {
                 args.Add("-map");
                 args.Add($"-0:a:{index}");
+            }
+        }
+
+        if (spec.RemoveSubtitleStreamIndexes is { Count: > 0 } removedSubtitles)
+        {
+            foreach (var index in removedSubtitles)
+            {
+                args.Add("-map");
+                args.Add($"-0:s:{index}");
             }
         }
 

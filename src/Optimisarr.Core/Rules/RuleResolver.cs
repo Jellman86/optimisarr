@@ -31,6 +31,7 @@ public static class RuleResolver
             VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
             DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo,
             KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
+            KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages,
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,
             TargetImageFormat = Normalise(overrides.TargetImageFormat) ?? settings.TargetImageFormat,
             ImageQuality = overrides.ImageQuality ?? settings.ImageQuality,

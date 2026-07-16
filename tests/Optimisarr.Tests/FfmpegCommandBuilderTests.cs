@@ -466,6 +466,33 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain(args, argument => argument.StartsWith("-0:a:"));
     }
 
+    [Fact]
+    public void Excludes_the_removed_subtitle_tracks_alongside_audio()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: null, crf: null, preset: null) with
+            {
+                RemoveAudioStreamIndexes = new[] { 1 },
+                RemoveSubtitleStreamIndexes = new[] { 0, 2 }
+            });
+
+        Assert.Contains(("-map", "-0:a:1"), MapPairs(args));
+        Assert.Contains(("-map", "-0:s:0"), MapPairs(args));
+        Assert.Contains(("-map", "-0:s:2"), MapPairs(args));
+        // Still a pure stream copy: the kept tracks are not re-encoded.
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+        // The exclusions follow the blanket "-map 0" so they actually remove those streams.
+        Assert.True(IndexOf(args, "0") < ((List<string>)args).IndexOf("-0:s:0"));
+    }
+
+    [Fact]
+    public void Removes_no_subtitle_tracks_by_default()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.DoesNotContain(args, argument => argument.StartsWith("-0:s:"));
+    }
+
     [Theory]
     [InlineData(".mp4")]
     [InlineData(".m4v")]

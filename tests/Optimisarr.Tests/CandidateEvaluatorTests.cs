@@ -614,6 +614,59 @@ public sealed class CandidateEvaluatorTests
     }
 
     [Fact]
+    public void Remux_cleanup_offers_a_container_clean_file_with_removable_subtitles()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File() with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("1 subtitle track(s) (fra)", decision.Reason);
+    }
+
+    [Fact]
+    public void Track_cleanup_counts_subtitle_removals_toward_eligibility()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File() with { SubtitleLanguages = new string?[] { "fra", "spa" } };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("2 subtitle track(s) (fra, spa)", decision.Reason);
+    }
+
+    [Fact]
+    public void Track_cleanup_names_both_kinds_of_removals_in_one_reason()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" },
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File() with
+        {
+            AudioLanguages = new string?[] { "eng", "fra", "deu" },
+            SubtitleLanguages = new string?[] { "spa" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("2 audio track(s) (fra, deu) + 1 subtitle track(s) (spa)", decision.Reason);
+    }
+
+    [Fact]
     public void Track_cleanup_skips_everything_when_no_kept_languages_are_configured()
     {
         var media = File() with { AudioLanguages = new string?[] { "eng", "fra" } };
