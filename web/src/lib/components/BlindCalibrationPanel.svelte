@@ -381,9 +381,22 @@
       {:else if session.status === 'Preparing'}
         <div class="mx-auto max-w-xl py-10 text-center" aria-live="polite">
           <h3 class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.calibration.preparing}</h3>
-          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
-          <div class="progress-track mx-auto mt-6 max-w-md"><div class="progress-fill" style={`width: ${Math.round(session.preparationProgress * 100)}%`}></div></div>
-          <p class="mt-2 text-sm tabular-nums text-slate-500">{Math.round(session.preparationProgress * 100)}%</p>
+          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
+          <div
+            class="progress-track mx-auto mt-6 max-w-md"
+            role="progressbar"
+            aria-label={i18n.m.calibration.preparing}
+            aria-valuemin={session.preparationState === 'Waiting' ? undefined : 0}
+            aria-valuemax={session.preparationState === 'Waiting' ? undefined : 100}
+            aria-valuenow={session.preparationState === 'Waiting' ? undefined : Math.round(session.preparationProgress * 100)}
+          >
+            {#if session.preparationState === 'Waiting'}
+              <div class="progress-indeterminate"></div>
+            {:else}
+              <div class="progress-fill" style={`width: ${Math.round(session.preparationProgress * 100)}%`}></div>
+            {/if}
+          </div>
+          <p class="mt-2 text-sm tabular-nums text-slate-500">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : `${Math.round(session.preparationProgress * 100)}%`}</p>
         </div>
       {:else if session.status === 'Failed'}
         <div class="mx-auto max-w-xl py-10 text-center">

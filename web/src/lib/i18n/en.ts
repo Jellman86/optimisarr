@@ -204,6 +204,8 @@ export const en = {
     starting: 'Starting…',
     start: 'Prepare blind samples',
     preparing: 'Preparing blind samples',
+    waiting: 'Waiting for an available worker',
+    waiting_hint: 'Another queue job is using the available worker. Your calibration is next and will start automatically.',
     preparing_hint: 'Optimisarr is encoding three short scenes at each tested quality. You can close this panel to cancel and clean them up.',
     preparing_audio_hint: 'Optimisarr is encoding three short excerpts at each tested bitrate, then measuring them so loudness cannot reveal the answer. You can close this panel to cancel and clean them up.',
     preparing_image_hint: 'Optimisarr is preparing a lossless PNG reference and five image quality levels. You can close this panel to cancel and clean them up.',

@@ -283,7 +283,9 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             $"/api/libraries/{libraryId}/calibration",
             new { mediaFileId });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
-        var sessionId = JsonNode.Parse(await started.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+        var startedSession = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
+        var sessionId = startedSession["id"]!.GetValue<Guid>();
+        Assert.Equal("Waiting", startedSession["preparationState"]!.GetValue<string>());
 
         using (var clearedPending = await client.PostAsync("/api/jobs/clear-pending", content: null))
         {
@@ -306,6 +308,13 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 Assert.NotNull(job.RequestedVideoQuality);
                 Assert.Equal(JobStatus.Queued, job.Status);
             });
+            jobs[0].Status = JobStatus.Transcoding;
+            jobs[0].Progress = 0.5;
+            await db.SaveChangesAsync();
+            var activeSession = JsonNode.Parse(
+                await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
+            Assert.Equal("Working", activeSession["preparationState"]!.GetValue<string>());
+            Assert.Equal(0.033, activeSession["preparationProgress"]!.GetValue<double>(), precision: 3);
             foreach (var job in jobs)
             {
                 var workDirectory = Path.Combine(calibrationDirectory, $"job-{job.Id}");

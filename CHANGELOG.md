@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- **Personal quality checks now explain queue waits instead of appearing frozen at 0%.** If all
+  processing slots are occupied, calibration preparation shows an indeterminate waiting state and
+  says it will start automatically. Once a worker is available, the panel returns to real sample
+  preparation progress; no running encode is interrupted or reordered unsafely.
 - **Personal quality checks are now reachable from Music and Photo libraries.** The audio and still-image
   comparison pipelines were available, but their per-library entry point was incorrectly nested
   inside the video preset controls. Saved Music and Photo libraries now show the same **Personal

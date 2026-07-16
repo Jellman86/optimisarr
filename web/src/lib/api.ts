@@ -448,6 +448,7 @@ export type CalibrationSession = {
   mediaKind: 'Video' | 'Audio' | 'Image'
   status: 'Preparing' | 'Screening' | 'Confirming' | 'Complete' | 'Revealed' | 'Applied' | 'Failed'
   preparationProgress: number
+  preparationState: 'Waiting' | 'Working'
   error: string | null
   trial: CalibrationTrial | null
   result: CalibrationResult | null

@@ -52,6 +52,7 @@ public sealed record CalibrationSessionDto(
     string MediaKind,
     string Status,
     double PreparationProgress,
+    string PreparationState,
     string? Error,
     CalibrationTrialDto? Trial,
     CalibrationResultDto? Result);
@@ -721,6 +722,9 @@ internal sealed class BlindCalibrationService(
         var progress = jobs.Count == 0
             ? 0
             : jobs.Average(job => job.Status == JobStatus.Completed ? 1 : Math.Clamp(job.Progress, 0, 1));
+        var preparationState = jobs.Count > 0 && jobs.All(job => job.Status == JobStatus.Queued)
+            ? "Waiting"
+            : "Working";
         return new CalibrationSessionDto(
             session.Id,
             session.LibraryId,
@@ -729,6 +733,7 @@ internal sealed class BlindCalibrationService(
             session.MediaKind.ToString(),
             session.Status.ToString(),
             Math.Round(progress, 3),
+            preparationState,
             session.Error,
             session.CurrentTrial is { } trial ? ToTrialDto(session, trial, jobs) : null,
             session.Status is SessionStatus.Revealed or SessionStatus.Applied ? session.Result : null);
