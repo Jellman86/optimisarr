@@ -351,12 +351,14 @@ the replacement workflow is trustworthy.
 
    - **Shipped for SDR video.** A saved video library can use one chosen, probed source. Optimisarr
      prepares 12-second early, middle, and late clips at a most-compressed-first quality ladder,
-     randomises A/B/X independently for every trial, and uses a cheap screening stage followed by
-     10 trials (20 only when inconclusive). The one-sided decision thresholds are deliberately
-     conservative; a miss is reported only as "no reliable difference found."
+     shuffles the original among five candidates as an anonymous A–F lineup, and asks the user to
+     classify each version once as Indistinguishable, Acceptable, or Visibly worse. The most
+     compressed acceptable candidate is recommended; if none is acceptable, the current setting is kept.
    - **Bias and interaction controls are shipped.** The setting, encoder and saving remain hidden
-     until the final answer. A/B/X share one viewport and relative playback position, support keyboard and
-     touch switching, and native playback fails closed if any sample cannot be decoded. Applying
+     until every classification is complete, and the original is not marked before reveal. A–F share
+     one large viewport and relative playback position, support mouse, keyboard, and touch controls,
+     and native playback fails closed if any sample cannot be decoded. Video supports browser
+     fullscreen for close inspection. Applying
      the recommendation is a separate, explicit action and is refused if the library's relevant
      settings changed during the session.
    - **Long-GOP reference alignment is shipped.** Video candidates and their original-side
@@ -376,14 +378,14 @@ the replacement workflow is trustworthy.
      metadata cannot safely survive Optimisarr's current re-encode path.
    - **Level-matched audio is shipped.** Music and mixed libraries can test Opus, AAC, or MP3
      bitrate ladders using three repeatable 15-second excerpts. Each original-side excerpt is a
-     lossless FLAC derivative; both sides are measured with EBU R128 integrated loudness and the
-     louder side is attenuated only in the browser, preserving the candidate files and avoiding
-     clipping. Instant A/B/X switching keeps relative playback position. This follows the
+     lossless FLAC derivative; the full lineup is measured with EBU R128 integrated loudness and
+     every version is attenuated to the quietest one in the browser, preserving files and avoiding
+     clipping. Instant A–F switching keeps relative playback position. This follows the
      hidden-reference and controlled-listening principles in
      [ITU-R BS.1116](https://www.itu.int/rec/R-REC-BS.1116-3-201502-I/en) and the measurement method
      in [EBU Tech 3341](https://tech.ebu.ch/publications/tech3341).
    - **Synchronized image comparison is shipped.** Photo and mixed libraries can test five output
-     quality levels against a lossless PNG derivative in one shared viewport. A/B/X switching keeps
+     quality levels against a lossless PNG derivative in one shared viewport. A–F switching keeps
      zoom and pan identical, all streams preload and fail closed, and animated images are excluded.
      This follows the observer-controlled comparison principles in
      [ISO 20462-1](https://www.iso.org/standard/38330.html) without claiming laboratory compliance.
@@ -391,7 +393,7 @@ the replacement workflow is trustworthy.
      `/work/calibration`; they bypass normal candidate scheduling but still receive structural
      verification. They cannot replace, move, or delete a source and are hidden from the normal
      queue. Every saved Film, TV, Music, Photo, and mixed library exposes the compatible personal
-     check from its own configuration page. Closing the panel or restarting Optimisarr removes the
+     check from its own configuration page. Leaving the full-page lab or restarting Optimisarr removes the
      session's database rows and scratch files. The original is only read.
    - **Next research and implementation.** Select representative sources using spatial/temporal
      complexity rather than file size alone and support a small multi-source result; correlate the

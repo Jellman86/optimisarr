@@ -9,6 +9,7 @@
   import BrandMark from './lib/components/BrandMark.svelte'
   import Dashboard from './lib/pages/Dashboard.svelte'
   import Libraries from './lib/pages/Libraries.svelte'
+  import QualityLab from './lib/pages/QualityLab.svelte'
   import Inventory from './lib/pages/Inventory.svelte'
   import Queue from './lib/pages/Queue.svelte'
   import Quarantine from './lib/pages/Quarantine.svelte'
@@ -19,6 +20,7 @@
   // Map the active route to its page component.
   let page = $derived.by(() => {
     const path = router.path
+    if (/^\/libraries\/\d+\/quality-check$/.test(path)) return QualityLab
     if (path.startsWith('/libraries')) return Libraries
     // Inventory absorbed the Candidates view; the old /candidates route still lands there.
     if (path.startsWith('/inventory') || path.startsWith('/candidates')) return Inventory
@@ -163,7 +165,7 @@
       class="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
-      <div class="mx-auto max-w-6xl">
+      <div class:mx-auto={!/^\/libraries\/\d+\/quality-check$/.test(router.path)} class:max-w-6xl={!/^\/libraries\/\d+\/quality-check$/.test(router.path)}>
         {#key router.path}
           {@const Page = page}
           <Page />

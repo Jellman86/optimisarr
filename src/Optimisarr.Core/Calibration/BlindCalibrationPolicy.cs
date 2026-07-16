@@ -10,11 +10,11 @@ public sealed record BlindCalibrationPlan(
 
 public sealed record AudioLevelMatch(double OriginalGainDb, double CandidateGainDb);
 
-public enum CalibrationJudgement
+public enum CalibrationPreference
 {
-    Continue,
-    Distinguishable,
-    NoReliableDifference
+    Indistinguishable,
+    Acceptable,
+    VisiblyWorse
 }
 
 /// <summary>Pure planning and decision rules for a short, personal blind quality calibration.</summary>
@@ -22,7 +22,6 @@ public static class BlindCalibrationPolicy
 {
     public const int SampleSeconds = 12;
     public const int AudioSampleSeconds = 15;
-    public const int MaximumTrials = 25;
 
     public static bool CanCalibrateVideo(
         bool isHdr,
@@ -48,20 +47,15 @@ public static class BlindCalibrationPolicy
         }
 
         var boundedQuality = Math.Clamp(currentQuality, 14, 40);
-        var qualities = new[]
-            {
-                boundedQuality + 6,
-                boundedQuality + 3,
-                boundedQuality,
-                boundedQuality - 3,
-                boundedQuality - 6
-            }
-            .Select(quality => Math.Clamp(quality, 14, 40))
-            .Distinct()
-            .OrderDescending()
-            .ToList();
+        var qualities = new HashSet<int>();
+        foreach (var offset in new[] { 6, 3, 0, -3, -6, 9, -9, 12, -12, 15, -15 })
+        {
+            qualities.Add(Math.Clamp(boundedQuality + offset, 14, 40));
+            if (qualities.Count == 5) break;
+        }
+        var orderedQualities = qualities.OrderDescending().ToList();
 
-        return new BlindCalibrationPlan(qualities, RepresentativeSamples(durationSeconds, SampleSeconds));
+        return new BlindCalibrationPlan(orderedQualities, RepresentativeSamples(durationSeconds, SampleSeconds));
     }
 
     public static BlindCalibrationPlan AudioPlan(
@@ -92,13 +86,19 @@ public static class BlindCalibrationPolicy
 
     public static AudioLevelMatch MatchAudioLevels(double originalLufs, double candidateLufs)
     {
-        if (!double.IsFinite(originalLufs) || !double.IsFinite(candidateLufs))
+        var gains = MatchAudioGroupLevels([originalLufs, candidateLufs]);
+        return new AudioLevelMatch(gains[0], gains[1]);
+    }
+
+    public static IReadOnlyList<double> MatchAudioGroupLevels(IReadOnlyList<double> measuredLufs)
+    {
+        if (measuredLufs.Count == 0 || measuredLufs.Any(level => !double.IsFinite(level)))
         {
-            throw new ArgumentOutOfRangeException(nameof(originalLufs), "Measured loudness must be finite.");
+            throw new ArgumentOutOfRangeException(nameof(measuredLufs), "Measured loudness must be finite.");
         }
 
-        var target = Math.Min(originalLufs, candidateLufs);
-        return new AudioLevelMatch(target - originalLufs, target - candidateLufs);
+        var target = measuredLufs.Min();
+        return measuredLufs.Select(level => target - level).ToList();
     }
 
     public static BlindCalibrationPlan ImagePlan() => new(
@@ -124,46 +124,19 @@ public static class BlindCalibrationPolicy
         return samples;
     }
 
-    public static CalibrationJudgement JudgeScreening(int correctAnswers, int totalAnswers)
+    public static int? Recommend(
+        BlindCalibrationPlan plan,
+        IReadOnlyDictionary<int, CalibrationPreference> ratings)
     {
-        if (totalAnswers < 3)
+        foreach (var quality in plan.RequestedQualities)
         {
-            return CalibrationJudgement.Continue;
-        }
-
-        return correctAnswers >= 2
-            ? CalibrationJudgement.Distinguishable
-            : CalibrationJudgement.NoReliableDifference;
-    }
-
-    public static CalibrationJudgement JudgeConfirmation(int correctAnswers, int totalAnswers)
-    {
-        if (totalAnswers < 10)
-        {
-            return CalibrationJudgement.Continue;
-        }
-
-        if (totalAnswers < 20)
-        {
-            // Under random guessing, 9/10 or better has a one-sided binomial probability of
-            // about 1.1%. Seven or eight correct is deliberately treated as inconclusive rather
-            // than either proof of a visible difference or proof of equivalence.
-            if (correctAnswers >= 9)
+            if (ratings.TryGetValue(quality, out var rating)
+                && rating is CalibrationPreference.Indistinguishable or CalibrationPreference.Acceptable)
             {
-                return CalibrationJudgement.Distinguishable;
+                return quality;
             }
-
-            return correctAnswers <= 6
-                ? CalibrationJudgement.NoReliableDifference
-                : CalibrationJudgement.Continue;
         }
 
-        // The extended threshold has the same conservative intent: 15/20 or better is about
-        // 2.1% under random guessing. Falling short means only "no reliable difference found".
-        return correctAnswers >= 15
-            ? CalibrationJudgement.Distinguishable
-            : CalibrationJudgement.NoReliableDifference;
+        return null;
     }
-
-    public static bool HasReachedTrialLimit(int totalAnswers) => totalAnswers >= MaximumTrials;
 }

@@ -311,19 +311,18 @@ when the verification report is for a sample rather than the whole file.
 |---|---|---|
 | `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
 | `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123 }`. |
-| `GET` | `/api/calibration/{id}` | Read preparation progress, the current blinded trial, or a revealed result. |
-| `POST` | `/api/calibration/{id}/answers` | Answer the current A/B/X trial. Body: `{ "trialId": "…", "choice": "A" }`. |
-| `POST` | `/api/calibration/{id}/reveal` | Reveal the result after all blind trials finish. |
+| `GET` | `/api/calibration/{id}` | Read preparation progress, the anonymous A–F variants, or a revealed result. |
+| `POST` | `/api/calibration/{id}/classifications` | Classify all six anonymous variants and reveal the lineup. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended quality to the library, if its relevant settings have not changed. |
-| `GET` | `/api/calibration/{id}/trials/{trialId}/content/{slot}` | Stream the current blinded `A`, `B`, or `X` content. |
+| `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for anonymous variant `A`–`F`. |
 | `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
 
-Video calibration creates three 12-second scenes at several quality levels. Its original-side
-reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
-preceding keyframe, each original slot's `startSeconds` hides that decode pre-roll so it presents the
-same source window as the candidate. Video samples contain only the primary video stream. Music uses
-three 15-second excerpts with a lossless FLAC reference and returns a per-slot `gainDb` for
-level-matched playback. Still images use a lossless PNG reference and return `startSeconds: 0` and
+Video calibration creates three 12-second scenes for five quality levels plus one shuffled original.
+Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
+preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
+samples contain only the primary video stream. Music uses three 15-second excerpts with a lossless
+FLAC reference and returns a per-sample `gainDb` that brings every anonymous version to the same
+quietest measured level. Still images use a lossless PNG reference and return `startSeconds: 0` and
 `gainDb: 0`.
 
 All candidate and reference media lives under `/work/calibration`. These jobs are excluded from the
@@ -332,11 +331,12 @@ session expires after two hours, and all session state is discarded on restart. 
 is only read. A completed result does not alter settings: only the separate `apply` request may
 change the relevant library quality, and it queues no media work.
 
-Trial URLs and labels are opaque until reveal. Clients should not display encoder, quality, bitrate,
-estimated size, or the media element's raw duration during the blind phase. Drive all slots from the
-trial's common `durationSeconds` and each slot's `startSeconds`; otherwise keyframe pre-roll can
-identify the original. If any stream cannot be decoded, fail closed rather than recording an answer.
-The `NoReliableDifference` outcome is not a proof that two encodes are equal.
+Variant labels and URLs are opaque until reveal. The comparing response contains no original or
+quality marker. Clients must not display encoder, quality, bitrate, estimated size, or raw media
+duration during this phase. Drive each variant from its sample `durationSeconds` and `startSeconds`,
+preserve one relative playback position, and wait for `seeked` before showing a newly selected video;
+otherwise timing can become a side channel. Submit exactly one `Indistinguishable`, `Acceptable`, or
+`VisiblyWorse` classification for every variant. If any stream cannot be decoded, fail closed.
 
 ## Queue
 

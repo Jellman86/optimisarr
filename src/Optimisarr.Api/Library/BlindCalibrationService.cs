@@ -20,19 +20,28 @@ public sealed record CalibrationSourceDto(
     string MediaKind,
     bool IsHdr);
 
-public sealed record CalibrationSlotDto(string Name, string Url, double StartSeconds, double GainDb);
-
-public sealed record CalibrationTrialDto(
-    Guid Id,
-    string Phase,
-    int Number,
-    int MaximumNumber,
+public sealed record CalibrationSampleDto(
     int SampleNumber,
     int SampleCount,
     int DurationSeconds,
-    CalibrationSlotDto A,
-    CalibrationSlotDto B,
-    CalibrationSlotDto X);
+    string Url,
+    double StartSeconds,
+    double GainDb);
+
+public sealed record CalibrationVariantDto(
+    string Name,
+    IReadOnlyList<CalibrationSampleDto> Samples);
+
+public sealed record CalibrationVariantResultDto(
+    string Name,
+    bool IsOriginal,
+    int? Quality,
+    string Classification,
+    string? Encoder,
+    string? QualityMode,
+    int? EffectiveQuality,
+    double? EstimatedSavingPercent,
+    bool Recommended);
 
 public sealed record CalibrationResultDto(
     int? RecommendedQuality,
@@ -40,10 +49,9 @@ public sealed record CalibrationResultDto(
     string? QualityMode,
     int? EffectiveQuality,
     double? EstimatedSavingPercent,
-    int CorrectAnswers,
-    int TotalAnswers,
     string Outcome,
-    bool Applied);
+    bool Applied,
+    IReadOnlyList<CalibrationVariantResultDto> Variants);
 
 public sealed record CalibrationSessionDto(
     Guid Id,
@@ -55,19 +63,19 @@ public sealed record CalibrationSessionDto(
     double PreparationProgress,
     string PreparationState,
     string? Error,
-    CalibrationTrialDto? Trial,
+    IReadOnlyList<CalibrationVariantDto> Variants,
     CalibrationResultDto? Result);
 
 public sealed record CalibrationStream(string Path);
 
 internal interface ICalibrationRandomizer
 {
-    bool NextBit();
+    int Next(int exclusiveMaximum);
 }
 
 internal sealed class CryptographicCalibrationRandomizer : ICalibrationRandomizer
 {
-    public bool NextBit() => RandomNumberGenerator.GetInt32(2) == 1;
+    public int Next(int exclusiveMaximum) => RandomNumberGenerator.GetInt32(exclusiveMaximum);
 }
 
 /// <summary>
@@ -235,6 +243,7 @@ internal sealed class BlindCalibrationService(
             plan,
             fingerprint,
             candidates,
+            CreateVariants(plan),
             timeProvider.GetUtcNow().Add(SessionLifetime));
         if (!_sessions.TryAdd(id, session))
         {
@@ -255,8 +264,8 @@ internal sealed class BlindCalibrationService(
         }
         lock (session.Gate)
         {
-            // Active polling and trials keep the session alive; abandoned panels are reaped two
-            // hours after their last request, even if the container itself keeps running.
+            // Active polling and comparison requests keep the session alive; abandoned labs are
+            // reaped two hours after their last request, even if the container keeps running.
             session.ExpiresAt = timeProvider.GetUtcNow().Add(SessionLifetime);
         }
 
@@ -291,8 +300,7 @@ internal sealed class BlindCalibrationService(
                     {
                         return ToDto(session, jobs);
                     }
-                    session.Status = SessionStatus.Screening;
-                    session.CurrentTrial = CreateTrial(session);
+                    session.Status = SessionStatus.Comparing;
                 }
             }
 
@@ -300,63 +308,10 @@ internal sealed class BlindCalibrationService(
         }
     }
 
-    public async Task<CalibrationSessionDto> AnswerAsync(
+    public async Task<CalibrationSessionDto> ClassifyAsync(
         Guid id,
-        Guid trialId,
-        string choice,
+        IReadOnlyDictionary<string, string> classifications,
         CancellationToken cancellationToken)
-    {
-        _ = await GetAsync(id, cancellationToken)
-            ?? throw new KeyNotFoundException("Calibration session was not found.");
-        if (!_sessions.TryGetValue(id, out var session))
-        {
-            throw new KeyNotFoundException("Calibration session was not found.");
-        }
-
-        lock (session.Gate)
-        {
-            var trial = session.CurrentTrial;
-            if (trial is null || trial.Id != trialId)
-            {
-                throw new InvalidOperationException("This trial has already been answered or is no longer current.");
-            }
-            if (choice is not ("A" or "B"))
-            {
-                throw new InvalidOperationException("Choose whether X matches A or B.");
-            }
-
-            var correct = string.Equals(choice, trial.CorrectChoice, StringComparison.Ordinal);
-            session.StageAnswers.Add(correct);
-            session.AllAnswers.Add(correct);
-            session.CurrentTrial = null;
-
-            var judgement = session.Status == SessionStatus.Screening
-                ? BlindCalibrationPolicy.JudgeScreening(
-                    session.StageAnswers.Count(answer => answer),
-                    session.StageAnswers.Count)
-                : BlindCalibrationPolicy.JudgeConfirmation(
-                    session.StageAnswers.Count(answer => answer),
-                    session.StageAnswers.Count);
-            Advance(session, judgement);
-            if (session.Status is SessionStatus.Screening or SessionStatus.Confirming
-                && BlindCalibrationPolicy.HasReachedTrialLimit(session.AllAnswers.Count))
-            {
-                // Conflicting evidence can otherwise repeat the extended confirmation stage at
-                // several quality levels. End conservatively instead of exhausting the observer.
-                session.Status = SessionStatus.Complete;
-                session.StageAnswers.Clear();
-            }
-            if (session.Status is SessionStatus.Screening or SessionStatus.Confirming)
-            {
-                session.CurrentTrial = CreateTrial(session);
-            }
-        }
-
-        return await GetAsync(id, cancellationToken)
-            ?? throw new KeyNotFoundException("Calibration session was not found.");
-    }
-
-    public async Task<CalibrationSessionDto> RevealAsync(Guid id, CancellationToken cancellationToken)
     {
         _ = await GetAsync(id, cancellationToken)
             ?? throw new KeyNotFoundException("Calibration session was not found.");
@@ -374,25 +329,69 @@ internal sealed class BlindCalibrationService(
 
         lock (session.Gate)
         {
-            if (session.Status is not (SessionStatus.Complete or SessionStatus.Revealed or SessionStatus.Applied))
+            if (session.Status != SessionStatus.Comparing)
             {
-                throw new InvalidOperationException("Finish the blind trials before revealing the settings.");
+                throw new InvalidOperationException("This blind comparison is not ready to classify.");
             }
-            if (session.Status == SessionStatus.Complete)
+
+            var normalized = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in classifications)
             {
-                session.Status = SessionStatus.Revealed;
+                if (!normalized.TryAdd(pair.Key.Trim().ToUpperInvariant(), pair.Value.Trim()))
+                {
+                    throw new InvalidOperationException("Each anonymous sample may only be classified once.");
+                }
             }
-            session.Result ??= BuildResult(session, jobs);
+            if (normalized.Count != session.Variants.Count
+                || session.Variants.Any(variant => !normalized.ContainsKey(variant.Name)))
+            {
+                throw new InvalidOperationException("Classify every anonymous sample before revealing the result.");
+            }
+
+            foreach (var variant in session.Variants)
+            {
+                if (!Enum.TryParse<CalibrationPreference>(
+                        normalized[variant.Name],
+                        ignoreCase: true,
+                        out var classification)
+                    || !string.Equals(
+                        normalized[variant.Name],
+                        classification.ToString(),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "Each sample must be Indistinguishable, Acceptable, or VisiblyWorse.");
+                }
+                variant.Classification = classification;
+            }
+
+            var qualityRatings = session.Variants
+                .Where(variant => !variant.IsOriginal && variant.Quality is not null)
+                .ToDictionary(
+                    variant => variant.Quality!.Value,
+                    variant => variant.Classification!.Value);
+            session.RecommendedQuality = BlindCalibrationPolicy.Recommend(session.Plan, qualityRatings);
+            session.Status = SessionStatus.Revealed;
+            session.Result = BuildResult(session, jobs);
             return ToDto(session, jobs);
         }
     }
 
     public async Task<CalibrationSessionDto> ApplyAsync(Guid id, CancellationToken cancellationToken)
     {
-        _ = await RevealAsync(id, cancellationToken);
+        _ = await GetAsync(id, cancellationToken)
+            ?? throw new KeyNotFoundException("Calibration session was not found.");
         if (!_sessions.TryGetValue(id, out var session))
         {
             throw new KeyNotFoundException("Calibration session was not found.");
+        }
+        lock (session.Gate)
+        {
+            if (session.Status is not (SessionStatus.Revealed or SessionStatus.Applied)
+                || session.Result is null)
+            {
+                throw new InvalidOperationException("Reveal the completed comparison before applying a quality.");
+            }
         }
         if (session.RecommendedQuality is null)
         {
@@ -442,8 +441,8 @@ internal sealed class BlindCalibrationService(
 
     public async Task<CalibrationStream?> ResolveStreamAsync(
         Guid sessionId,
-        Guid trialId,
-        string slot,
+        string variantName,
+        int sampleIndex,
         CancellationToken cancellationToken)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
@@ -451,32 +450,33 @@ internal sealed class BlindCalibrationService(
             return null;
         }
 
-        Trial trial;
+        Variant? variant;
+        Candidate? candidate;
         lock (session.Gate)
         {
-            if (session.CurrentTrial is not { } current || current.Id != trialId)
+            if (session.Status is not (SessionStatus.Comparing or SessionStatus.Revealed or SessionStatus.Applied)
+                || sampleIndex < 0
+                || sampleIndex >= session.Plan.Samples.Count)
             {
                 return null;
             }
-            trial = current;
+            variant = session.Variants.FirstOrDefault(item =>
+                string.Equals(item.Name, variantName, StringComparison.Ordinal));
+            if (variant is null)
+            {
+                return null;
+            }
+            var quality = variant.Quality ?? session.Plan.RequestedQualities[0];
+            candidate = session.Candidates.FirstOrDefault(item =>
+                item.Quality == quality && item.Sample.Index == sampleIndex);
         }
+        if (variant is null || candidate is null) return null;
 
-        var source = slot switch
-        {
-            "A" => trial.A,
-            "B" => trial.B,
-            "X" => trial.X,
-            _ => null
-        };
-        if (source is null)
-        {
-            return null;
-        }
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         var outputPath = await db.Jobs
             .AsNoTracking()
-            .Where(job => job.Id == source.JobId
+            .Where(job => job.Id == candidate.Job.Id
                 && job.CalibrationSessionId == sessionId
                 && job.Status == JobStatus.Completed)
             .Select(job => job.WorkOutputPath)
@@ -486,10 +486,9 @@ internal sealed class BlindCalibrationService(
             return null;
         }
 
-        // Serve the verifier's short stream-copy reference, not the full original. The trial DTO
-        // supplies its hidden keyframe pre-roll offset and the shared player exposes only the common
-        // sample timeline, so neither source position nor raw container duration reveals this slot.
-        var path = source.Original
+        // Serve the verifier's short reference for the one anonymously shuffled original variant.
+        // The DTO supplies its hidden pre-roll offset; no public name or URL marks it as original.
+        var path = variant.IsOriginal
             ? Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
                 session.MediaKind switch
@@ -568,28 +567,45 @@ internal sealed class BlindCalibrationService(
                 return;
             }
 
-            foreach (var job in jobs)
+            foreach (var sample in session.Plan.Samples)
             {
-                if (job.WorkOutputPath is null)
+                var sampleJobIds = session.Candidates
+                    .Where(candidate => candidate.Sample.Index == sample.Index)
+                    .Select(candidate => candidate.Job.Id)
+                    .ToHashSet();
+                var sampleJobs = jobs.Where(job => sampleJobIds.Contains(job.Id)).ToList();
+                if (sampleJobs.Count == 0 || sampleJobs.Any(job => job.WorkOutputPath is null))
                 {
                     throw new InvalidOperationException("An audio calibration candidate has no output path.");
                 }
 
                 var referencePath = Path.Combine(
-                    Path.GetDirectoryName(job.WorkOutputPath)!,
+                    Path.GetDirectoryName(sampleJobs[0].WorkOutputPath)!,
                     ".optimisarr-comparison-reference.flac");
                 var original = await loudness.MeasureAsync(referencePath, cancellationToken);
-                var candidate = await loudness.MeasureAsync(job.WorkOutputPath, cancellationToken);
-                if (!original.Measured || original.IntegratedLufs is null
-                    || !candidate.Measured || candidate.IntegratedLufs is null)
+                var candidateLevels = new List<double>();
+                foreach (var job in sampleJobs)
+                {
+                    var candidate = await loudness.MeasureAsync(job.WorkOutputPath!, cancellationToken);
+                    if (!candidate.Measured || candidate.IntegratedLufs is null)
+                    {
+                        throw new InvalidOperationException(
+                            "The audio samples could not be level-matched, so the blind comparison was stopped.");
+                    }
+                    candidateLevels.Add(candidate.IntegratedLufs.Value);
+                }
+                if (!original.Measured || original.IntegratedLufs is null)
                 {
                     throw new InvalidOperationException(
                         "The audio samples could not be level-matched, so the blind comparison was stopped.");
                 }
 
-                session.AudioLevels[job.Id] = BlindCalibrationPolicy.MatchAudioLevels(
-                    original.IntegratedLufs.Value,
-                    candidate.IntegratedLufs.Value);
+                var gains = BlindCalibrationPolicy.MatchAudioGroupLevels(
+                    [original.IntegratedLufs.Value, .. candidateLevels]);
+                for (var index = 0; index < sampleJobs.Count; index++)
+                {
+                    session.AudioLevels[sampleJobs[index].Id] = new AudioLevelMatch(gains[0], gains[index + 1]);
+                }
             }
             session.AudioLevelsReady = true;
         }
@@ -607,91 +623,90 @@ internal sealed class BlindCalibrationService(
         }
     }
 
-    private static void Advance(Session session, CalibrationJudgement judgement)
+    private List<Variant> CreateVariants(BlindCalibrationPlan plan)
     {
-        if (judgement == CalibrationJudgement.Continue)
+        var sources = new List<(bool Original, int? Quality)> { (true, null) };
+        sources.AddRange(plan.RequestedQualities.Select(quality => (false, (int?)quality)));
+        for (var index = sources.Count - 1; index > 0; index--)
         {
-            return;
+            var swap = randomizer.Next(index + 1);
+            (sources[index], sources[swap]) = (sources[swap], sources[index]);
         }
-        if (session.Status == SessionStatus.Screening
-            && judgement == CalibrationJudgement.NoReliableDifference)
-        {
-            session.Status = SessionStatus.Confirming;
-            session.StageAnswers.Clear();
-            return;
-        }
-        if (session.Status == SessionStatus.Confirming
-            && judgement == CalibrationJudgement.NoReliableDifference)
-        {
-            session.RecommendedQuality = session.Plan.RequestedQualities[session.QualityIndex];
-            session.Status = SessionStatus.Complete;
-            return;
-        }
-
-        session.QualityIndex++;
-        session.StageAnswers.Clear();
-        if (session.QualityIndex >= session.Plan.RequestedQualities.Count)
-        {
-            session.Status = SessionStatus.Complete;
-            return;
-        }
-        session.Status = SessionStatus.Screening;
-    }
-
-    private Trial CreateTrial(Session session)
-    {
-        var sample = session.Plan.Samples[session.StageAnswers.Count % session.Plan.Samples.Count];
-        var quality = session.Plan.RequestedQualities[session.QualityIndex];
-        var candidate = session.Candidates.Single(item =>
-            item.Quality == quality && item.Sample.Index == sample.Index);
-        var levels = session.MediaKind == MediaKind.Audio
-            ? session.AudioLevels[candidate.Job.Id]
-            : new AudioLevelMatch(0, 0);
-        var aIsOriginal = randomizer.NextBit();
-        var xMatchesA = randomizer.NextBit();
-        var a = new TrialSource(
-            aIsOriginal,
-            candidate.Job.Id,
-            aIsOriginal ? levels.OriginalGainDb : levels.CandidateGainDb);
-        var b = new TrialSource(
-            !aIsOriginal,
-            candidate.Job.Id,
-            aIsOriginal ? levels.CandidateGainDb : levels.OriginalGainDb);
-        return new Trial(
-            Guid.NewGuid(),
-            a,
-            b,
-            xMatchesA ? a : b,
-            xMatchesA ? "A" : "B",
-            sample,
-            session.AllAnswers.Count + 1);
+        return sources
+            .Select((source, index) => new Variant(
+                ((char)('A' + index)).ToString(),
+                source.Original,
+                source.Quality))
+            .ToList();
     }
 
     private static CalibrationResultDto BuildResult(Session session, IReadOnlyList<Job> jobs)
     {
-        if (session.RecommendedQuality is not { } quality)
+        CalibrationVariantResultDto ResultFor(Variant variant)
         {
-            return new CalibrationResultDto(
-                null,
-                null,
-                null,
-                null,
-                null,
-                session.AllAnswers.Count(answer => answer),
-                session.AllAnswers.Count,
-                "NoTransparentSetting",
-                false);
+            if (variant.IsOriginal)
+            {
+                return new CalibrationVariantResultDto(
+                    variant.Name,
+                    true,
+                    null,
+                    variant.Classification!.Value.ToString(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    false);
+            }
+
+            var quality = variant.Quality!.Value;
+            var candidateJobs = JobsForQuality(session, jobs, quality);
+            var representative = candidateJobs.FirstOrDefault();
+            return new CalibrationVariantResultDto(
+                variant.Name,
+                false,
+                quality,
+                variant.Classification!.Value.ToString(),
+                session.MediaKind is MediaKind.Audio or MediaKind.Image
+                    ? session.TargetCodec
+                    : representative?.VideoEncoder,
+                session.MediaKind switch
+                {
+                    MediaKind.Audio => "kbps",
+                    MediaKind.Image => "quality",
+                    _ => representative?.VideoQualityMode
+                },
+                session.MediaKind is MediaKind.Audio or MediaKind.Image
+                    ? quality
+                    : representative?.EffectiveVideoQuality,
+                EstimateSavingPercent(session, candidateJobs),
+                session.RecommendedQuality == quality);
         }
 
-        var candidateJobs = jobs
-            .Where(job => (session.MediaKind switch
-                {
-                    MediaKind.Audio => job.RequestedAudioBitrateKbps,
-                    MediaKind.Image => job.RequestedImageQuality,
-                    _ => job.RequestedVideoQuality
-                }) == quality
-                && job.OutputSizeBytes is > 0)
-            .ToList();
+        var variants = session.Variants.Select(ResultFor).ToList();
+        var recommended = variants.FirstOrDefault(variant => variant.Recommended);
+        return new CalibrationResultDto(
+            session.RecommendedQuality,
+            recommended?.Encoder,
+            recommended?.QualityMode,
+            recommended?.EffectiveQuality,
+            recommended?.EstimatedSavingPercent,
+            recommended is null ? "NoAcceptableSetting" : "PreferenceFound",
+            false,
+            variants);
+    }
+
+    private static List<Job> JobsForQuality(Session session, IReadOnlyList<Job> jobs, int quality) =>
+        jobs.Where(job => (session.MediaKind switch
+            {
+                MediaKind.Audio => job.RequestedAudioBitrateKbps,
+                MediaKind.Image => job.RequestedImageQuality,
+                _ => job.RequestedVideoQuality
+            }) == quality
+            && job.OutputSizeBytes is > 0)
+        .ToList();
+
+    private static double? EstimateSavingPercent(Session session, IReadOnlyList<Job> candidateJobs)
+    {
         var encodedMeasure = candidateJobs.Count == 0
             ? (double?)null
             : session.MediaKind == MediaKind.Image
@@ -700,30 +715,12 @@ internal sealed class BlindCalibrationService(
                     job.OutputSizeBytes!.Value / (double)(job.CalibrationClipSeconds ?? 1));
         var sourceMeasure = session.MediaKind == MediaKind.Image
             ? session.SourceSizeBytes
-            : session.SourceSizeBytes / session.SourceDurationSeconds;
-        double? saving = encodedMeasure is null || sourceMeasure <= 0
+            : session.SourceDurationSeconds > 0
+                ? session.SourceSizeBytes / session.SourceDurationSeconds
+                : 0;
+        return encodedMeasure is null || sourceMeasure <= 0
             ? null
             : Math.Round((1 - encodedMeasure.Value / sourceMeasure) * 100, 1);
-        var representative = candidateJobs.FirstOrDefault();
-        return new CalibrationResultDto(
-            quality,
-            session.MediaKind is MediaKind.Audio or MediaKind.Image
-                ? session.TargetCodec
-                : representative?.VideoEncoder,
-            session.MediaKind switch
-            {
-                MediaKind.Audio => "kbps",
-                MediaKind.Image => "quality",
-                _ => representative?.VideoQualityMode
-            },
-            session.MediaKind is MediaKind.Audio or MediaKind.Image
-                ? quality
-                : representative?.EffectiveVideoQuality,
-            saving,
-            session.AllAnswers.Count(answer => answer),
-            session.AllAnswers.Count,
-            "NoReliableDifference",
-            false);
     }
 
     private static CalibrationSessionDto ToDto(Session session, IReadOnlyList<Job> jobs)
@@ -744,44 +741,43 @@ internal sealed class BlindCalibrationService(
             Math.Round(progress, 3),
             preparationState,
             session.Error,
-            session.CurrentTrial is { } trial ? ToTrialDto(session, trial, jobs) : null,
+            session.Status is SessionStatus.Comparing or SessionStatus.Revealed or SessionStatus.Applied
+                ? session.Variants.Select(variant => ToVariantDto(session, variant, jobs)).ToList()
+                : [],
             session.Status is SessionStatus.Revealed or SessionStatus.Applied ? session.Result : null);
     }
 
-    private static CalibrationTrialDto ToTrialDto(
+    private static CalibrationVariantDto ToVariantDto(
         Session session,
-        Trial trial,
+        Variant variant,
         IReadOnlyList<Job> jobs)
     {
-        var referenceOffsets = jobs.ToDictionary(
-            job => job.Id,
-            job => job.CalibrationReferenceStartSeconds ?? 0);
-        CalibrationSlotDto Slot(string name, TrialSource source) => new(
-            name,
-            $"/api/calibration/{session.Id}/trials/{trial.Id}/content/{name}",
-            source.Original && referenceOffsets.TryGetValue(source.JobId, out var offset)
-                ? offset
-                : 0,
-            source.GainDb);
-        return new CalibrationTrialDto(
-            trial.Id,
-            session.Status == SessionStatus.Screening ? "Screening" : "Confirmation",
-            trial.Number,
-            BlindCalibrationPolicy.MaximumTrials,
-            trial.Sample.Index + 1,
-            session.Plan.Samples.Count,
-            trial.Sample.DurationSeconds,
-            Slot("A", trial.A),
-            Slot("B", trial.B),
-            Slot("X", trial.X));
+        var jobsById = jobs.ToDictionary(job => job.Id);
+        var quality = variant.Quality ?? session.Plan.RequestedQualities[0];
+        var samples = session.Plan.Samples.Select(sample =>
+        {
+            var candidate = session.Candidates.Single(item =>
+                item.Quality == quality && item.Sample.Index == sample.Index);
+            jobsById.TryGetValue(candidate.Job.Id, out var job);
+            var levels = session.MediaKind == MediaKind.Audio
+                && session.AudioLevels.TryGetValue(candidate.Job.Id, out var matched)
+                    ? matched
+                    : new AudioLevelMatch(0, 0);
+            return new CalibrationSampleDto(
+                sample.Index + 1,
+                session.Plan.Samples.Count,
+                sample.DurationSeconds,
+                $"/api/calibration/{session.Id}/variants/{variant.Name}/samples/{sample.Index}/content",
+                variant.IsOriginal ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
+                variant.IsOriginal ? levels.OriginalGainDb : levels.CandidateGainDb);
+        }).ToList();
+        return new CalibrationVariantDto(variant.Name, samples);
     }
 
     private enum SessionStatus
     {
         Preparing,
-        Screening,
-        Confirming,
-        Complete,
+        Comparing,
         Revealed,
         Applied,
         Failed
@@ -799,6 +795,7 @@ internal sealed class BlindCalibrationService(
         BlindCalibrationPlan plan,
         Fingerprint fingerprint,
         List<Candidate> candidates,
+        List<Variant> variants,
         DateTimeOffset expiresAt)
     {
         public object Gate { get; } = new();
@@ -813,14 +810,11 @@ internal sealed class BlindCalibrationService(
         public BlindCalibrationPlan Plan { get; } = plan;
         public Fingerprint Fingerprint { get; } = fingerprint;
         public List<Candidate> Candidates { get; } = candidates;
+        public List<Variant> Variants { get; } = variants;
         public DateTimeOffset ExpiresAt { get; set; } = expiresAt;
         public SessionStatus Status { get; set; } = SessionStatus.Preparing;
         public string? Error { get; set; }
-        public int QualityIndex { get; set; }
         public int? RecommendedQuality { get; set; }
-        public List<bool> StageAnswers { get; } = [];
-        public List<bool> AllAnswers { get; } = [];
-        public Trial? CurrentTrial { get; set; }
         public CalibrationResultDto? Result { get; set; }
         public SemaphoreSlim AudioLevelGate { get; } = new(1, 1);
         public Dictionary<int, AudioLevelMatch> AudioLevels { get; } = [];
@@ -828,15 +822,13 @@ internal sealed class BlindCalibrationService(
     }
 
     private sealed record Candidate(Job Job, int Quality, CalibrationSample Sample);
-    private sealed record TrialSource(bool Original, int JobId, double GainDb);
-    private sealed record Trial(
-        Guid Id,
-        TrialSource A,
-        TrialSource B,
-        TrialSource X,
-        string CorrectChoice,
-        CalibrationSample Sample,
-        int Number);
+    private sealed class Variant(string name, bool isOriginal, int? quality)
+    {
+        public string Name { get; } = name;
+        public bool IsOriginal { get; } = isOriginal;
+        public int? Quality { get; } = quality;
+        public CalibrationPreference? Classification { get; set; }
+    }
 
     private sealed record Fingerprint(
         MediaKind Kind,

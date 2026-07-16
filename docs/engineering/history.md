@@ -4,8 +4,9 @@ Detailed, dated engineering record: what shipped, the per-phase plan, and curren
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
 **Recently shipped (2026-07-16) — blind calibration across video, audio, and images.** Libraries can
-now run a conservative personal A/B/X check without exposing quality or estimated saving before the
-answer. Video uses three 12-second scenes and fail-closed HDR presentation, audio uses repeatable
+now run a full-page anonymous A–F quality check with one unmarked original and five settings, without
+exposing quality or estimated saving before every sample is classified. Video uses three 12-second
+scenes and fail-closed HDR presentation, audio uses repeatable
 15-second excerpts with EBU R128 browser-side attenuation, and still images share zoom and pan
 against a lossless PNG reference. Every candidate is disposable, hidden from the normal queue, and
 unable to replace a source; Apply changes only the relevant saved library quality.

@@ -43,8 +43,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
     [InlineData("POST", "/api/libraries/1/calibration")]
-    [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/answers")]
-    [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/reveal")]
+    [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/classifications")]
     [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/apply")]
     [InlineData("DELETE", "/api/calibration/00000000-0000-0000-0000-000000000000")]
     [InlineData("POST", "/api/jobs/clear")]
@@ -350,44 +349,41 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal("calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
 
         var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
-        var initialTrial = session["trial"]!.AsObject();
-        Assert.Equal(BlindCalibrationPolicy.MaximumTrials, initialTrial["maximumNumber"]!.GetValue<int>());
-        Assert.Equal(
-            "candidate-clip",
-            await client.GetStringAsync(initialTrial["a"]!["url"]!.GetValue<string>()));
-        Assert.Equal(
-            "reference-clip",
-            await client.GetStringAsync(initialTrial["b"]!["url"]!.GetValue<string>()));
-        Assert.Equal(
-            "reference-clip",
-            await client.GetStringAsync(initialTrial["x"]!["url"]!.GetValue<string>()));
-        Assert.Equal(0, initialTrial["a"]!["startSeconds"]!.GetValue<double>());
-        Assert.Equal(0.751, initialTrial["b"]!["startSeconds"]!.GetValue<double>(), precision: 3);
-        Assert.Equal(0.751, initialTrial["x"]!["startSeconds"]!.GetValue<double>(), precision: 3);
-        var answerCount = 0;
-        while (session["trial"] is JsonObject trial && answerCount < 20)
+        Assert.Equal("Comparing", session["status"]!.GetValue<string>());
+        var variants = session["variants"]!.AsArray();
+        Assert.Equal(6, variants.Count);
+        Assert.All(variants, variant =>
         {
-            Assert.All(new[] { "a", "b", "x" }, slotName =>
-                Assert.Contains(
-                    trial[slotName]!["startSeconds"]!.GetValue<double>(),
-                    new[] { 0, 0.751 }));
-            using var answered = await client.PostAsJsonAsync($"/api/calibration/{sessionId}/answers", new
-            {
-                trialId = trial["id"]!.GetValue<Guid>(),
-                // The test randomizer always makes B correct. Deliberately wrong answers drive
-                // the no-reliable-difference path without exposing that mapping through the API.
-                choice = "A"
-            });
-            Assert.Equal(HttpStatusCode.OK, answered.StatusCode);
-            session = JsonNode.Parse(await answered.Content.ReadAsStringAsync())!.AsObject();
-            answerCount++;
+            Assert.Null(variant!["isOriginal"]);
+            Assert.Null(variant["quality"]);
+            Assert.Equal(3, variant["samples"]!.AsArray().Count);
+            Assert.All(variant["samples"]!.AsArray(), sample =>
+                Assert.Contains(sample!["startSeconds"]!.GetValue<double>(), new[] { 0, 0.751 }));
+        });
+        var firstSampleContents = new List<string>();
+        foreach (var variant in variants)
+        {
+            firstSampleContents.Add(await client.GetStringAsync(
+                variant!["samples"]![0]!["url"]!.GetValue<string>()));
         }
-        Assert.Equal("Complete", session["status"]!.GetValue<string>());
-        Assert.Equal(13, answerCount);
+        Assert.Equal(1, firstSampleContents.Count(content => content == "reference-clip"));
+        Assert.Equal(5, firstSampleContents.Count(content => content == "candidate-clip"));
 
-        using var revealed = await client.PostAsync($"/api/calibration/{sessionId}/reveal", content: null);
+        var classifications = variants.ToDictionary(
+            variant => variant!["name"]!.GetValue<string>(),
+            _ => "Acceptable");
+        using var revealed = await client.PostAsJsonAsync(
+            $"/api/calibration/{sessionId}/classifications",
+            new { classifications });
         Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
-        Assert.Equal(30, JsonNode.Parse(await revealed.Content.ReadAsStringAsync())!["result"]!["recommendedQuality"]!.GetValue<int>());
+        session = JsonNode.Parse(await revealed.Content.ReadAsStringAsync())!.AsObject();
+        Assert.Equal("Revealed", session["status"]!.GetValue<string>());
+        var result = session["result"]!.AsObject();
+        Assert.Equal(30, result["recommendedQuality"]!.GetValue<int>());
+        var revealedVariants = result["variants"]!.AsArray();
+        Assert.Equal(1, revealedVariants.Count(variant => variant!["isOriginal"]!.GetValue<bool>()));
+        Assert.Null(revealedVariants.Single(variant => variant!["isOriginal"]!.GetValue<bool>())!["quality"]);
+        Assert.Equal(30, revealedVariants.Single(variant => variant!["recommended"]!.GetValue<bool>())!["quality"]!.GetValue<int>());
 
         using var applied = await client.PostAsync($"/api/calibration/{sessionId}/apply", content: null);
         Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
@@ -575,21 +571,15 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         }
 
         var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
-        var answerCount = 0;
-        while (session["trial"] is JsonObject trial && answerCount < 20)
-        {
-            using var answered = await client.PostAsJsonAsync($"/api/calibration/{sessionId}/answers", new
-            {
-                trialId = trial["id"]!.GetValue<Guid>(),
-                choice = "A"
-            });
-            Assert.Equal(HttpStatusCode.OK, answered.StatusCode);
-            session = JsonNode.Parse(await answered.Content.ReadAsStringAsync())!.AsObject();
-            answerCount++;
-        }
-        Assert.Equal("Complete", session["status"]!.GetValue<string>());
-
-        using var revealed = await client.PostAsync($"/api/calibration/{sessionId}/reveal", content: null);
+        Assert.Equal("Comparing", session["status"]!.GetValue<string>());
+        var variants = session["variants"]!.AsArray();
+        Assert.Equal(6, variants.Count);
+        var classifications = variants.ToDictionary(
+            variant => variant!["name"]!.GetValue<string>(),
+            _ => "Acceptable");
+        using var revealed = await client.PostAsJsonAsync(
+            $"/api/calibration/{sessionId}/classifications",
+            new { classifications });
         Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
         Assert.Equal(40, JsonNode.Parse(await revealed.Content.ReadAsStringAsync())!["result"]!["recommendedQuality"]!.GetValue<int>());
         using var applied = await client.PostAsync($"/api/calibration/{sessionId}/apply", content: null);
@@ -647,7 +637,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer
         {
-            public bool NextBit() => false;
+            public int Next(int exclusiveMaximum) => 0;
         }
 
         protected override void Dispose(bool disposing)

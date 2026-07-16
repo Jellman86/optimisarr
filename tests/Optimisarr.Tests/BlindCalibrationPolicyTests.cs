@@ -43,10 +43,10 @@ public sealed class BlindCalibrationPolicyTests
     }
 
     [Fact]
-    public void Plan_clamps_and_deduplicates_quality_edges()
+    public void Plan_keeps_five_distinct_candidates_at_quality_edges()
     {
-        Assert.Equal([40, 37, 34], BlindCalibrationPolicy.Plan(120, 40).RequestedQualities);
-        Assert.Equal([20, 17, 14], BlindCalibrationPolicy.Plan(120, 14).RequestedQualities);
+        Assert.Equal([40, 37, 34, 31, 28], BlindCalibrationPolicy.Plan(120, 40).RequestedQualities);
+        Assert.Equal([26, 23, 20, 17, 14], BlindCalibrationPolicy.Plan(120, 14).RequestedQualities);
     }
 
     [Fact]
@@ -101,6 +101,14 @@ public sealed class BlindCalibrationPolicyTests
     }
 
     [Fact]
+    public void Audio_lineup_uses_one_common_quietest_loudness_target()
+    {
+        var gains = BlindCalibrationPolicy.MatchAudioGroupLevels([-18.2, -21.7, -20.2]);
+
+        Assert.Equal([-3.5, 0, -1.5], gains);
+    }
+
+    [Fact]
     public void Image_plan_uses_a_low_to_high_quality_ladder_and_one_shared_view()
     {
         var plan = BlindCalibrationPolicy.ImagePlan();
@@ -109,42 +117,30 @@ public sealed class BlindCalibrationPolicyTests
         Assert.Equal([new CalibrationSample(0, 0, 0)], plan.Samples);
     }
 
-    [Theory]
-    [InlineData(1, 2, CalibrationJudgement.Continue)]
-    [InlineData(1, 3, CalibrationJudgement.NoReliableDifference)]
-    [InlineData(2, 3, CalibrationJudgement.Distinguishable)]
-    public void Screening_uses_three_trials_to_choose_the_next_stage(
-        int correct,
-        int total,
-        CalibrationJudgement expected)
+    [Fact]
+    public void Preference_result_selects_the_most_compressed_acceptable_quality()
     {
-        Assert.Equal(expected, BlindCalibrationPolicy.JudgeScreening(correct, total));
+        var plan = BlindCalibrationPolicy.Plan(1_200, 24);
+        var ratings = new Dictionary<int, CalibrationPreference>
+        {
+            [30] = CalibrationPreference.VisiblyWorse,
+            [27] = CalibrationPreference.Acceptable,
+            [24] = CalibrationPreference.Indistinguishable,
+            [21] = CalibrationPreference.Indistinguishable,
+            [18] = CalibrationPreference.Indistinguishable
+        };
+
+        Assert.Equal(27, BlindCalibrationPolicy.Recommend(plan, ratings));
     }
 
-    [Theory]
-    [InlineData(8, 9, CalibrationJudgement.Continue)]
-    [InlineData(6, 10, CalibrationJudgement.NoReliableDifference)]
-    [InlineData(7, 10, CalibrationJudgement.Continue)]
-    [InlineData(8, 10, CalibrationJudgement.Continue)]
-    [InlineData(9, 10, CalibrationJudgement.Distinguishable)]
-    [InlineData(14, 20, CalibrationJudgement.NoReliableDifference)]
-    [InlineData(15, 20, CalibrationJudgement.Distinguishable)]
-    public void Confirmation_uses_an_inconclusive_extension_before_its_final_judgement(
-        int correct,
-        int total,
-        CalibrationJudgement expected)
+    [Fact]
+    public void Preference_result_keeps_the_current_setting_when_every_encode_is_rejected()
     {
-        Assert.Equal(expected, BlindCalibrationPolicy.JudgeConfirmation(correct, total));
-    }
+        var plan = BlindCalibrationPolicy.ImagePlan();
+        var ratings = plan.RequestedQualities.ToDictionary(
+            quality => quality,
+            _ => CalibrationPreference.VisiblyWorse);
 
-    [Theory]
-    [InlineData(24, false)]
-    [InlineData(25, true)]
-    [InlineData(26, true)]
-    public void Session_trial_limit_bounds_repeated_inconclusive_quality_stages(
-        int total,
-        bool expected)
-    {
-        Assert.Equal(expected, BlindCalibrationPolicy.HasReachedTrialLimit(total));
+        Assert.Null(BlindCalibrationPolicy.Recommend(plan, ratings));
     }
 }
