@@ -14,7 +14,8 @@ public sealed class ReplacementPlannerTests
             originalPath: "/data/films/Movie (2010)/Movie.avi",
             workOutputPath: "/work/Movie (2010)/Movie.mkv",
             trashRoot: "/trash",
-            nowUtc: Now);
+            nowUtc: Now,
+            replacementKey: "job-42");
 
         Assert.Equal("/data/films/Movie (2010)/Movie.mkv", plan.FinalPath);
     }
@@ -23,7 +24,7 @@ public sealed class ReplacementPlannerTests
     public void Final_path_equals_the_original_when_the_container_is_unchanged()
     {
         var plan = ReplacementPlanner.Plan(
-            "/data/films/A.mkv", "/work/A.mkv", "/trash", Now);
+            "/data/films/A.mkv", "/work/A.mkv", "/trash", Now, "job-42");
 
         Assert.Equal("/data/films/A.mkv", plan.FinalPath);
         Assert.Equal("/data/films/A.mkv", plan.OriginalPath);
@@ -33,19 +34,28 @@ public sealed class ReplacementPlannerTests
     public void Quarantine_path_is_under_a_timestamped_folder_in_the_trash_root()
     {
         var plan = ReplacementPlanner.Plan(
-            "/data/films/A.mkv", "/work/A.mkv", "/trash", Now);
+            "/data/films/A.mkv", "/work/A.mkv", "/trash", Now, "job-42");
 
-        Assert.Equal("/trash/20260608T173045123/A.mkv", plan.QuarantinePath);
+        Assert.Equal("/trash/20260608T173045123-job-42/A.mkv", plan.QuarantinePath);
     }
 
     [Fact]
     public void Same_named_files_replaced_at_different_times_get_distinct_quarantine_paths()
     {
-        var first = ReplacementPlanner.Plan("/data/a/Episode.avi", "/work/a/Episode.mkv", "/trash", Now);
-        var second = ReplacementPlanner.Plan("/data/b/Episode.avi", "/work/b/Episode.mkv", "/trash", Now.AddSeconds(1));
+        var first = ReplacementPlanner.Plan("/data/a/Episode.avi", "/work/a/Episode.mkv", "/trash", Now, "job-1");
+        var second = ReplacementPlanner.Plan("/data/b/Episode.avi", "/work/b/Episode.mkv", "/trash", Now.AddSeconds(1), "job-2");
 
         Assert.NotEqual(first.QuarantinePath, second.QuarantinePath);
         Assert.EndsWith("/Episode.avi", first.QuarantinePath);
         Assert.EndsWith("/Episode.avi", second.QuarantinePath);
+    }
+
+    [Fact]
+    public void Same_named_files_replaced_at_the_same_time_get_distinct_quarantine_paths()
+    {
+        var first = ReplacementPlanner.Plan("/data/a/Episode.avi", "/work/a/Episode.mkv", "/trash", Now, "job-1");
+        var second = ReplacementPlanner.Plan("/data/b/Episode.avi", "/work/b/Episode.mkv", "/trash", Now, "job-2");
+
+        Assert.NotEqual(first.QuarantinePath, second.QuarantinePath);
     }
 }

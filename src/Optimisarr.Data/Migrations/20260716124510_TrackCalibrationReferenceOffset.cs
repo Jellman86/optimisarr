@@ -5,16 +5,15 @@
 namespace Optimisarr.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddSubtitleLanguages : Migration
+    public partial class TrackCalibrationReferenceOffset : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "SubtitleLanguages",
-                table: "MediaFiles",
-                type: "TEXT",
-                maxLength: 512,
+            migrationBuilder.AddColumn<double>(
+                name: "CalibrationReferenceStartSeconds",
+                table: "Jobs",
+                type: "REAL",
                 nullable: true);
         }
 
@@ -22,8 +21,8 @@ namespace Optimisarr.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "SubtitleLanguages",
-                table: "MediaFiles");
+                name: "CalibrationReferenceStartSeconds",
+                table: "Jobs");
         }
     }
 }

@@ -5,16 +5,15 @@
 namespace Optimisarr.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddKeepSubtitleLanguages : Migration
+    public partial class AddImageCalibrationQuality : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "KeepSubtitleLanguages",
-                table: "Libraries",
-                type: "TEXT",
-                maxLength: 256,
+            migrationBuilder.AddColumn<int>(
+                name: "RequestedImageQuality",
+                table: "Jobs",
+                type: "INTEGER",
                 nullable: true);
         }
 
@@ -22,8 +21,8 @@ namespace Optimisarr.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "KeepSubtitleLanguages",
-                table: "Libraries");
+                name: "RequestedImageQuality",
+                table: "Jobs");
         }
     }
 }

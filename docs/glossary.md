@@ -14,6 +14,7 @@ These terms appear throughout Optimisarr and the documentation.
 | FFmpeg | The tool Optimisarr uses to transcode media and perform verification checks. |
 | ffprobe | The tool Optimisarr uses to inspect media streams, codecs, duration, and container metadata. |
 | Library | A configured root path plus media type, preset, rules, and automation settings. |
+| Personal quality check | A per-library blind A/B/X comparison that can recommend a video quality, audio bitrate, or image quality for one person and representative source. Its disposable samples cannot enter replacement. |
 | Preview | A throwaway test encode for one file. Long video previews use a 60-second middle sample; audio and image previews run in full. |
 | Quarantine | The `/trash` area where originals are kept after replacement so you can roll back until they are approved or purged. |
 | Ready to replace | A queue state meaning the output has passed verification and can replace the original when dry-run is off. |

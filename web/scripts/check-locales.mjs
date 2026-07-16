@@ -47,6 +47,10 @@ function placeholders(value) {
   return [...value.matchAll(/\{\w+\}/g)].map((match) => match[0]).sort()
 }
 
+function looksLikeEnglishProse(value) {
+  return value.length >= 32 && /[A-Za-z]{4,}\s+[A-Za-z]{4,}/.test(value)
+}
+
 const english = flatten(readLocale('en'))
 const failures = []
 
@@ -58,12 +62,15 @@ for (const localeName of localeNames) {
     if (expected.join('\0') !== actual.join('\0')) {
       failures.push(`${localeName}.${key}: expected [${expected}], found [${actual}]`)
     }
+    if (locale[key] === source && looksLikeEnglishProse(source)) {
+      failures.push(`${localeName}.${key}: untranslated English prose`)
+    }
   }
 }
 
 if (failures.length > 0) {
-  console.error(`Locale placeholder audit failed:\n${failures.join('\n')}`)
+  console.error(`Locale audit failed:\n${failures.join('\n')}`)
   process.exit(1)
 }
 
-console.log(`Locale placeholder audit passed for ${localeNames.length} translation(s).`)
+console.log(`Locale placeholder and untranslated-prose audit passed for ${localeNames.length} translation(s).`)

@@ -21,13 +21,15 @@ public enum JobStatus
 
 /// <summary>
 /// Why a job exists. A <see cref="Normal"/> job can replace its original after verification;
-/// a <see cref="Preview"/> job is a throwaway run of a library's settings on one file — it
-/// transcodes and verifies for comparison but never replaces, moves, or survives a restart.
+/// a <see cref="Preview"/> job is a throwaway run of a library's settings on one file; a
+/// <see cref="Calibration"/> job is one blinded candidate clip. Disposable jobs never replace,
+/// move, or survive a restart.
 /// </summary>
 public enum JobType
 {
     Normal = 0,
-    Preview = 1
+    Preview = 1,
+    Calibration = 2
 }
 
 /// <summary>
@@ -40,7 +42,7 @@ public sealed class Job
 
     public int MediaFileId { get; set; }
 
-    /// <summary>Normal (replaceable) work, or a throwaway settings preview. See <see cref="JobType"/>.</summary>
+    /// <summary>Normal replaceable work or a disposable preview/calibration candidate.</summary>
     public JobType Type { get; set; } = JobType.Normal;
 
     public MediaFile? MediaFile { get; set; }
@@ -75,6 +77,39 @@ public sealed class Job
     /// can show whether it ran on the GPU or CPU. Null for a remux/audio/image job.
     /// </summary>
     public string? VideoEncoder { get; set; }
+
+    /// <summary>Library/profile quality number requested before encoder-specific calibration.</summary>
+    public int? RequestedVideoQuality { get; set; }
+
+    /// <summary>Audio bitrate requested by a disposable blind-calibration candidate.</summary>
+    public int? RequestedAudioBitrateKbps { get; set; }
+
+    /// <summary>Image quality requested by a disposable blind-calibration candidate.</summary>
+    public int? RequestedImageQuality { get; set; }
+
+    /// <summary>Encoder-specific quality value passed to FFmpeg for the current attempt.</summary>
+    public int? EffectiveVideoQuality { get; set; }
+
+    /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
+    public string? VideoQualityMode { get; set; }
+
+    /// <summary>Number of automatic or operator-requested higher-quality retries.</summary>
+    public int QualityRetryCount { get; set; }
+
+    /// <summary>The disposable blind-calibration session that owns this candidate job.</summary>
+    public Guid? CalibrationSessionId { get; set; }
+
+    /// <summary>The source offset used for this short calibration candidate.</summary>
+    public int? CalibrationClipStartSeconds { get; set; }
+
+    /// <summary>The duration of this short calibration candidate.</summary>
+    public int? CalibrationClipSeconds { get; set; }
+
+    /// <summary>
+    /// Hidden decode pre-roll at the start of the stream-copy original reference. The blind
+    /// player begins here so original and candidate show the same requested source frame.
+    /// </summary>
+    public double? CalibrationReferenceStartSeconds { get; set; }
 
     /// <summary>Transcode progress in the range 0..1, parsed from ffmpeg.</summary>
     public double Progress { get; set; }

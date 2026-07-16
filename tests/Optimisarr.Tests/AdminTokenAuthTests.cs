@@ -52,12 +52,54 @@ public sealed class AdminTokenAuthTests
     }
 
     [Fact]
-    public void Query_token_authorizes_media_style_request()
+    public void Derived_session_cookie_authorizes_request_without_exposing_the_admin_token()
+    {
+        var issueContext = new DefaultHttpContext();
+        AdminTokenAuth.SetSessionCookie(issueContext.Response, "secret", secure: true);
+        var setCookie = issueContext.Response.Headers.SetCookie.ToString();
+        var cookiePair = setCookie.Split(';', 2)[0];
+
+        var requestContext = new DefaultHttpContext();
+        requestContext.Request.Headers.Cookie = cookiePair;
+
+        Assert.DoesNotContain("secret", setCookie);
+        Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.True(AdminTokenAuth.IsAuthorized(requestContext.Request, "secret"));
+    }
+
+    [Fact]
+    public void Explicit_wrong_bearer_is_rejected_even_when_a_valid_session_cookie_exists()
+    {
+        var issueContext = new DefaultHttpContext();
+        AdminTokenAuth.SetSessionCookie(issueContext.Response, "secret", secure: false);
+        var cookiePair = issueContext.Response.Headers.SetCookie.ToString().Split(';', 2)[0];
+
+        var requestContext = new DefaultHttpContext();
+        requestContext.Request.Headers.Cookie = cookiePair;
+        requestContext.Request.Headers.Authorization = "Bearer wrong";
+
+        Assert.False(AdminTokenAuth.IsAuthorized(requestContext.Request, "secret"));
+    }
+
+    [Fact]
+    public void Query_token_authorizes_signalr_hub_request()
     {
         var context = new DefaultHttpContext();
+        context.Request.Path = "/hubs/jobs";
         context.Request.QueryString = new QueryString("?access_token=secret");
 
         Assert.True(AdminTokenAuth.IsAuthorized(context.Request, "secret"));
+    }
+
+    [Fact]
+    public void Query_token_does_not_authorize_api_request()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/settings/export";
+        context.Request.QueryString = new QueryString("?access_token=secret");
+
+        Assert.False(AdminTokenAuth.IsAuthorized(context.Request, "secret"));
     }
 
     [Fact]

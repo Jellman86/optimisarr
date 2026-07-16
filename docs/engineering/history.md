@@ -3,6 +3,25 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Recently shipped (2026-07-16) — blind calibration across video, audio, and images.** Libraries can
+now run a conservative personal A/B/X check without exposing quality or estimated saving before the
+answer. Video uses three 12-second scenes and fail-closed HDR presentation, audio uses repeatable
+15-second excerpts with EBU R128 browser-side attenuation, and still images share zoom and pan
+against a lossless PNG reference. Every candidate is disposable, hidden from the normal queue, and
+unable to replace a source; Apply changes only the relevant saved library quality.
+
+The live TV validation also exposed two video-reference lifecycle faults that unit-only synthetic
+fixtures had missed. FFmpeg necessarily preserves packets between the previous seek point and an
+input-side `-ss` when stream-copying, so a requested 12-second reference could probe as roughly 13
+seconds and falsely fail Duration and Tail integrity against the accurately decoded candidate. The
+fix keeps the source bitstream unchanged, limits both sides to primary video, verifies the intended
+window, records the pre-roll as a blinded playback offset, and retains the reference until session
+cleanup. The player uses a common accessible sample timeline rather than native controls, so raw
+container duration cannot reveal the original. A migration persists the offset per disposable job,
+while regression coverage exercises
+the observed 13.054-second-reference/12-second-window case, video-only FFmpeg mapping, API slot
+alignment, and the unchanged-source lifecycle.
+
 **Recently shipped (2026-06-28) — upstream-grounded edge-case hardening.** A pass driven by real
 failure modes Tdarr/Unmanic/HandBrake and ffmpeg users hit, prioritised by product risk. The design
 decisions, not just the changes:

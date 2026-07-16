@@ -2,6 +2,18 @@ namespace Optimisarr.Data;
 
 public enum ReplacementStatus
 {
+    /// <summary>
+    /// The rollback paths are durably recorded, but the filesystem move sequence has not yet been
+    /// committed. Startup recovery either restores the original or finalizes the replacement.
+    /// </summary>
+    Pending = 3,
+
+    /// <summary>
+    /// Rollback intent is durably recorded while the optimised file is staged and the original is
+    /// restored. Startup recovery completes the rollback or restores the optimised file.
+    /// </summary>
+    RollbackPending = 4,
+
     /// <summary>The original is quarantined and the verified output is in its place.</summary>
     Replaced = 0,
 

@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Blind quality checks now stay playable, frame-aligned, and finite across trials.** Each new
+  answer remounts and reconnects its A/B/X media players, so video does not stop after the first
+  comparison. Switching now waits for the destination stream to seek to the same source frame
+  before resuming playback, removing the timing jump that could reveal the original. The adaptive
+  check shows a 25-trial ceiling and stops conservatively at that limit if repeated inconclusive
+  stages still cannot support a recommendation; a conclusive final answer reveals its result
+  immediately instead of requiring another hidden completion step.
+- **Personal quality checks now explain queue waits instead of appearing frozen at 0%.** If all
+  processing slots are occupied, calibration preparation shows an indeterminate waiting state and
+  says it will start automatically. Once a worker is available, the panel returns to real sample
+  preparation progress; no running encode is interrupted or reordered unsafely.
+- **Personal quality checks are now reachable from Music and Photo libraries.** The audio and still-image
+  comparison pipelines were available, but their per-library entry point was incorrectly nested
+  inside the video preset controls. Saved Music and Photo libraries now show the same **Personal
+  quality check** action as Film, TV, and mixed libraries.
+- **Blind video checks no longer reject healthy samples as too short.** Some long-GOP TV and film
+  sources can only be stream-copied from the keyframe immediately before the requested scene. That
+  harmless decode pre-roll made a 12-second original-side clip appear longer than its encoded match,
+  so every quality level failed the Duration and Tail integrity gates. Optimisarr now verifies the
+  requested 12-second picture window, records the hidden pre-roll, and starts original playback at
+  the matching frame. Video calibration jobs carry only the primary video stream, so audio,
+  subtitles, attachments, and data cannot affect timing or preparation cost. Original references
+  remain available until the disposable session is closed or expires instead of being removed as
+  soon as verification finishes. One accessible shared timeline now controls every blind stream,
+  so native container duration cannot reveal which slot carries hidden decode pre-roll. No source
+  file is changed.
+
 ### Added
 
 - **Track cleanup profile.** A new rule profile that only removes audio/subtitle tracks outside
@@ -9,7 +38,7 @@
   Every kept stream is copied bit-identically; a file with nothing to remove is skipped with a
   clear reason, and the library form warns when the profile is selected with no kept languages
   configured. Verification additionally confirms the output container matches the source.
-  Migration `AddJobEnqueueReason`/`AddKeepSubtitleLanguages`/`AddSubtitleLanguages`.
+  Migration `AddTrackCleanupSupport`.
 - **Per-library "Keep subtitle languages" removes unwanted subtitle tracks.** Mirrors the audio
   rule on every profile: comma-separated ISO 639 codes, `-map -0:s:N` exclusions, unknown-language
   tracks never removed, common spellings of the same language match each other. One deliberate
@@ -21,23 +50,150 @@
   time (e.g. `h264 → hevc`, `Remove 2 audio track(s) (fra, deu) not in the kept languages`) and
   the Queue page shows it on the active-job card and each row. Track-removal reasons name the
   languages being removed, not just counts.
+- **Personal quality checks can now be minimised without cancelling the session.** The blind
+  comparison collapses to a live bottom-corner status widget while preparation continues, and
+  expanding it restores the current trial. Escape minimises; only Close discards the disposable
+  session. Expanded minimisable panels now softly blur the UI behind them, while minimised widgets
+  leave the rest of Optimisarr clear and usable.
+- **A personal blind video-quality check.** A saved video library can now prepare short,
+  disposable samples from the beginning, middle, and end of a representative file, then guide one
+  person through an adaptive A/B/X check without showing which clip is the original, the quality
+  setting, or the estimated size until the answers are complete. A conservative confirmation stage
+  avoids treating a few guesses as evidence, and the result says only that no reliable difference
+  was found—it never claims two encodes are equivalent. The original is read-only, scratch clips
+  are removed when the panel closes, after being abandoned for two hours, or when the app restarts;
+  nothing enters the normal queue or replacement path, and the suggested quality changes the
+  library only after an explicit Apply.
+  Native playback fails closed when the browser cannot decode a candidate. HDR is available only
+  when the library preserves HDR and the browser reports an HDR-capable display path; the user must
+  also confirm that the normal viewing display is actually presenting HDR. Dolby Vision remains
+  unavailable because a re-encode cannot safely retain its dynamic metadata. Content-complexity
+  source guidance and metric correlation remain on the roadmap.
+- **A level-matched blind audio check.** Music and mixed libraries can now calibrate their saved
+  Opus, AAC, or MP3 bitrate using three repeatable 15-second excerpts and the same conservative
+  hidden-reference decision process. Optimisarr creates a lossless FLAC reference for browser
+  playback, measures both sides with EBU R128 integrated loudness, and only attenuates the louder
+  side during playback so volume cannot reveal the answer or introduce clipping. The result applies
+  only the library's audio bitrate after an explicit confirmation; every candidate remains
+  disposable and outside replacement, history, notifications, and the normal queue.
+- **A zoom-synchronised blind image check.** Photo and mixed libraries can now compare a lossless
+  PNG view of one still image against five hidden output-quality levels. A/B/X share exactly one
+  viewport, so zoom and pan stay fixed when switching and spatial position cannot give the answer
+  away. The PNG reference carries the source colour metadata when the configured metadata tool can
+  copy it, animated images are excluded, browser loading fails closed, and Apply changes only the
+  library's saved image quality without queueing work.
+- **Gold-standard first-run recommendations and final review.** Setup now turns proved encoder and
+  VMAF capabilities into visible, reversible encoder, hardware-decode, VMAF, and overnight-window
+  recommendations instead of silently choosing for the operator. When a probed candidate exists,
+  the wizard can run the established disposable original-versus-output preview without touching the
+  source. The final check-answers page now covers network security, storage, libraries, encoder,
+  quality, scheduling, optional connections, and replacement, with accessible Change actions that
+  preserve the draft. One validated database transaction applies the reviewed settings and opted-in
+  per-library recommendations, records completion, and returns a no-work-started receipt linking to
+  candidate review or the dashboard; duplicate submissions return that completed state without
+  changing the applied plan. Draft safety choices survive refresh in local browser storage, inline
+  validation is tied to its field and focused error summary, and the new browser acceptance suite
+  exercises keyboard flows, re-test announcements, final apply, dark/reduced-motion presentation,
+  320px reflow, landscape, 390px mobile, and all nine locales in CI.
+
+## 0.2.4 — 2026-07-16
 
 ### Added
 
+- **A maintained hardware validation matrix.** CPU, NVIDIA NVENC, Intel QSV, Intel/AMD VA-API,
+  hardware decode, VMAF acceleration, and live metrics now have one public evidence table that
+  distinguishes implemented/unit-tested paths from real-host validation. It records known gaps and
+  an exact, non-secret evidence checklist; AMD VA-API and current CUDA VMAF remain honestly pending
+  instead of being implied by device detection or command coverage.
+- **Resumable, safety-first first-run setup.** A genuinely new database now opens a five-step
+  setup workspace for deployment/tool checks, creation and full configuration of any number of
+  conservatively configured libraries,
+  dry-run/concurrency choices, and a final no-work-started review. Progress is versioned and
+  persisted after each completed step, duplicate submissions are idempotent, Back retains applied
+  choices, and completion is possible only from the review step. Upgraded installations are marked
+  complete and never forced through onboarding; the Settings header offers an explicit **Run setup
+  again** action that keeps every existing library and setting. The library step reuses the complete
+  per-library rules editor, rechecks every configured path before Continue, and keeps Add/Configure
+  actions available until the operator is ready. Fresh installs start in dry-run,
+  automatic enqueue/replacement and VMAF remain off, and the readiness ledger reports database,
+  config/work/quarantine/library path access, filesystem and container-mount identities, free and
+  total capacity, the configured work-space reserve, required tools, and detected hardware encoders.
+  It identifies whether each library can use atomic moves to work and quarantine, states when the
+  verified cross-filesystem fallback is disabled, and gives selectable, exact recovery steps for
+  local, Docker Compose, Unraid, and TrueNAS deployments. **Re-test system** reruns the real probes,
+  announces completion, and removes resolved guidance without pretending a container can repair its
+  own host mounts or permissions. The focused
+  responsive layout ships in all nine locales with text status alongside colour and keyboard focus
+  moved to actionable errors. Shared form sizing and unit-bearing fields now remain inside General
+  Settings cards at phone widths, with long toggle labels wrapping instead of being truncated.
+- **Dedicated library configuration pages and library-owned VMAF policies.** Configure now
+  opens a full-page Rules workspace instead of expanding an increasingly dense library card, while
+  Candidates and Excluded remain adjacent tabs on the same canonical library URL. Each video
+  library can disable its VMAF gate, select a Space-saver through Archival quality tier, or enter
+  custom harmonic-mean, fifth-percentile, and catastrophic-frame floors. Clip/full-file scoring and
+  the 1st–10th-frame sampling interval are also library-owned. The upgrade migration materialises
+  the former global policy onto existing libraries and removes its obsolete settings; older config
+  backups receive the same conversion during import. API/import validation enforces safe ranges and
+  ordered floors. The responsive editor keeps primary choices visible, uses a compact borderless
+  summary for effective floors, progressively discloses advanced encoding controls, warns before
+  discarding changes, and exposes non-overlapping Save/Cancel actions on desktop and mobile.
+- **Encoder-aware VMAF recovery and safer temporal pooling.** Hardware quality controls now receive
+  conservative encoder-family calibration (QSV ICQ, NVENC CQ, VA-API QP) instead of treating their
+  numeric values as interchangeable with software CRF. Verification pools harmonic mean, fifth
+  percentile, and a catastrophic single-frame floor; optional fast scoring uses deterministic
+  early/middle/late windows. If VMAF is the only failed gate, Optimisarr automatically retries once
+  at a higher encoder-specific quality. The Queue persists and displays the requested/effective
+  quality and sampling context, offers explicit same-settings and higher-quality recovery actions,
+  and container shutdown now drains active jobs for up to two hours before safe cancellation.
+- **Hardware-assisted and subsampled VMAF with automatic software fallback.** SDR verification now
+  follows the job's selected NVIDIA/QSV/VA-API hardware path when Hardware decoding is enabled:
+  NVIDIA can keep both inputs on the GPU through NVDEC, bicubic `scale_cuda`, and `libvmaf_cuda`,
+  while QSV/VA-API can offload both decodes before downloading frames for CPU VMAF. CUDA is enabled
+  only when the configured binary exposes the exact filter (`OPTIMISARR_FFMPEG_VMAF_CUDA` can point
+  at a purpose-built binary), and every accelerated runtime failure is discarded and retried through
+  the established software graph. HDR deliberately stays on the colour-accurate software path. A new
+  Frame sampling control scores every 1st–10th frame (default 1/every frame) with a warning that
+  skipped frames weaken the worst-frame floor. Incidental PSNR/SSIM features are no longer computed
+  during the VMAF gate, avoiding work that does not affect replacement safety.
+- **Optional sampled VMAF (faster quality gate on modest hardware).** A per-library control under
+  the quality policy measures VMAF across three 40-second windows near the beginning, middle and end
+  instead of the whole runtime, which cuts VMAF time dramatically on low-power hosts (e.g. an Intel
+  N100) where full-file scoring is impractical. Both the output and original are sought to each
+  matching window, and progress is reported across all three samples. The other
+  gates (decode health, duration, structure, size) still check the whole output. Off by default, and
+  skipped for short files where full scoring is comparable. VMAF's scoring acceleration remains NVIDIA-only;
+  Intel/AMD hardware can offload decode but not the metric itself.
 - **Per-library "Keep audio languages" removes unwanted audio tracks.** A library can list the
   ISO 639 codes to keep (e.g. `eng, jpn`); when a video is optimised or remuxed, audio tracks in
   any other language are dropped from the output via explicit `-map -0:a:N` exclusions. The
-  behaviour is conservative by design: a track with no language tag (`und`/`zxx`/`mul` or missing)
-  is never removed, and when no track matches a kept language nothing is removed — so an output
-  never loses all its audio. Common ISO 639-1/-2 spellings of the same language match each other
-  (`de`/`deu`/`ger`). Verification is tightened, not relaxed: the audio-track gate expects exactly
-  the planned retention (and never zero tracks when the source had audio), and the channel/sample-
-  rate fidelity gate is judged against the *kept* tracks, so removing a foreign 7.1 track cannot
-  mask a silent downmix of the kept one. The probe now records each audio track's language
-  (visible in the inventory detail), files probed before this upgrade are re-probed at job time,
-  and under the Remux/cleanup profile a container-clean file with removable foreign tracks becomes
-  eligible for a fast stream-copy cleanup. Setting is in the library form (all locales), carried in
-  config backup/restore. Migration `AddKeepAudioLanguages`.
+  behaviour is conservative by design: unknown, malformed, uncoded, and private-use language tags
+  are never removed, and when no track matches a kept language nothing is removed. The complete
+  ISO 639-1/-2 aliases match each other (`de`/`deu`/`ger`). Verification requires exactly the
+  planned nonzero retention and judges channel/sample-rate fidelity against the kept tracks. The
+  upgrade queues existing videos with audio for background re-probing, with a job-time fallback,
+  so already-clean remuxes become eligible for fast stream-copy cleanup. The accessible library
+  control validates and normalises input before save in every locale, and config backup/restore
+  uses the same validator. Migration `AddKeepAudioLanguages`.
+
+### Fixed
+
+- **Queue capacity now follows the real work filesystem.** Free-space checks select the deepest
+  mounted filesystem containing the configured work path, so a bind-mounted `/work` no longer
+  reports the container overlay's much smaller capacity or pauses a healthy queue prematurely.
+- **Abandoned work output is reclaimed safely.** Clearing, deleting, or retrying a failed job now
+  removes its owned scratch output before dropping the database reference and retains the job if
+  cleanup cannot be completed. Startup also removes output left by cancelled jobs and numeric,
+  unreferenced work directories older than seven days, while retaining recent or referenced data.
+- **Credential-bearing integration URLs are excluded from normal logs.** Default logging now keeps
+  `System.Net.Http.HttpClient` request messages at Warning or above, preventing Discord webhook URLs
+  and similar outbound credentials from appearing in ordinary Information-level container logs.
+- **First-run review copy uses locale-aware singular and plural forms.** The setup summary now reads
+  naturally for one or many concurrent jobs in every supported language.
+
+## 0.2.3 — 2026-07-14
+
+### Added
+
 - **Live verification progress in the queue.** The perceptual-quality (VMAF) pass is the long part
   of verification, so it now reports real 0–100% progress on the same job-progress and live-update
   channel the transcode uses (ffmpeg `-stats` parsed against the source runtime). The Queue hero and
@@ -96,6 +252,29 @@
 
 ### Fixed
 
+- **Sampled VMAF no longer mistakes seek/decode startup frames for catastrophic quality loss.**
+  Each early/middle/late window now seeks both independently encoded inputs five seconds early and
+  trims identical decoded pre-roll before resetting timestamps and scoring the requested interval.
+  When a hardware-decoded measurement falls below any configured VMAF floor, Optimisarr confirms
+  that window through the authoritative software path before rejecting the output or spending time
+  on a higher-quality re-encode.
+- **Replacement and rollback are crash-safe end to end.** Optimisarr now commits a `Pending`
+  rollback record before moving the original, then finalizes it only after the verified output is
+  in place. Startup reconciles interrupted records idempotently: it restores a quarantined original
+  when the verified output remains in `/work`, or completes the database transition when both file
+  moves had already finished. Rollback stages the current optimised file and restores it if moving
+  the quarantined original fails, so a failed rollback never leaves the library path empty.
+  Quarantine folders also include the job id, preventing concurrent same-named replacements from
+  colliding within the same millisecond.
+- **Clip-VMAF configuration and translations are complete.** Config export/import now preserves
+  the clip-scoring preference. All VMAF settings and presets are translated across the eight
+  non-English locales, stale claims that VMAF is enabled by default are corrected, and the locale
+  audit now rejects long English prose copied unchanged into a translation.
+- **Admin tokens no longer leak through ordinary API query strings.** The `access_token` query
+  fallback is limited to SignalR hub paths, where WebSocket clients require it; REST API calls must
+  use the bearer header so reverse-proxy logs and browser history do not capture the token. A
+  successful bearer request establishes a derived HttpOnly, same-site cookie for native browser
+  media elements, keeping authenticated previews working without exposing the configured secret.
 - **A retried job no longer keeps a stale failure category.** Starting a new attempt now clears the
   previous attempt's error message and failure classification, so a job that failed once (e.g. a
   verification-gate rejection) and then succeeded on retry is reported as the success it is, instead
@@ -107,10 +286,10 @@
   assistive technology.
 - **VMAF is an opt-in perceptual-quality gate, chosen with a quality slider.** It is off by default
   because it fully decodes both files and scores every frame, which roughly doubles verification
-  time and can dominate a run on modest hardware. A single Settings slider turns it on and prefills
-  both floors from five tiers — Space-saver (80/60), Balanced (85/70), High (90/75), Visually
-  lossless (93/80), and Archival (96/90) — with "Off" as the default leftmost stop; existing
-  installations retain their explicitly saved choice. While it is off the structural, duration and
+  time and can dominate a run on modest hardware. Each library's policy selector turns it on and
+  prefills all floors from five tiers — Space-saver (80/60/30), Balanced (85/70/40), High
+  (90/75/45), Visually lossless (93/80/50), and Archival (96/90/70) — with "Off" as the default;
+  existing installations retain their effective choice. While it is off the structural, duration and
   size gates plus quarantine rollback still guard every replacement. Remux, audio, and image work
   skip VMAF because it is either redundant or inapplicable, and the final-container smoke test still
   performs a real synthetic `libvmaf` comparison rather than trusting the filter list. Model choice

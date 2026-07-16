@@ -80,6 +80,11 @@ function createRouter() {
     go(path: string) {
       window.location.hash = path
     },
+    // Replace the current history entry while still emitting hashchange so route state and keyed
+    // page components stay in sync (used when a just-created resource gains its canonical URL).
+    replace(path: string) {
+      window.location.replace(`#${path}`)
+    },
     // Register a guard; returns a disposer the page calls on unmount. Only one page is mounted
     // at a time, so a single slot is enough.
     guardLeave(fn: () => boolean) {

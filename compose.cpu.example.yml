@@ -3,6 +3,7 @@ services:
     image: ghcr.io/jellman86/optimisarr:dev
     container_name: optimisarr
     restart: unless-stopped
+    stop_grace_period: 2h5m
     ports:
       - "${OPTIMISARR_PORT:-8787}:8787"
     environment:
@@ -12,8 +13,10 @@ services:
       TZ: "${TZ:-Europe/London}"
       ASPNETCORE_URLS: "http://0.0.0.0:8787"
       OPTIMISARR_CONFIG_DIR: "${OPTIMISARR_CONFIG_DIR:-/config}"
+      OPTIMISARR_WORK_DIR: "${OPTIMISARR_WORK_DIR:-/data/.optimisarr/work}"
+      OPTIMISARR_TRASH_DIR: "${OPTIMISARR_TRASH_DIR:-/data/.optimisarr/trash}"
     volumes:
       - ./config:/config
-      - /path/to/media:/data
-      - /path/to/work:/work
-      - /path/to/trash:/trash
+      # One parent mount keeps media, work, and quarantine on the same atomic boundary.
+      # Add libraries from /data/media (or another folder below /data).
+      - /path/to/storage:/data

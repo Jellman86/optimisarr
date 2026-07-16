@@ -8,72 +8,74 @@ namespace Optimisarr.Core.Queue;
 /// </summary>
 public static class TrackLanguages
 {
+    public const int MaxLanguageListLength = 256;
+
     // Tags that mean "language not identified" (und), "no linguistic content" (zxx, e.g. an
-    // instrumental score), "multiple languages" (mul), or "uncoded" (mis). None of them can
-    // prove a track is unwanted, so such tracks are always kept.
+    // instrumental score), or "multiple languages" (mul). None of them can prove a track is
+    // unwanted, so such tracks are always kept.
     private static readonly HashSet<string> UnknownTags =
         new(StringComparer.OrdinalIgnoreCase) { "mis", "mul", "und", "unk", "zxx" };
 
-    // ISO 639 spellings of the same language: two-letter 639-1 codes and, where ISO 639-2
-    // defines both, the bibliographic (B) form — containers commonly tag with B (e.g. "ger",
-    // "fre") while operators may type the two-letter or terminological form. Each alias maps
-    // to one canonical spelling; codes not listed here compare by exact (case-insensitive) text.
-    private static readonly Dictionary<string, string> CanonicalCodes = new(StringComparer.OrdinalIgnoreCase)
+    // The complete ISO 639-1 -> ISO 639-2 terminology mapping published by the Library of Congress,
+    // plus all 20 legacy bibliographic spellings that containers still commonly carry. Keeping the
+    // table in-process makes matching deterministic even when .NET runs without platform culture
+    // data. Unrecognised three-letter codes compare exactly, preserving ISO 639-3 support.
+    private static readonly IReadOnlyDictionary<string, string> CanonicalCodes = BuildCanonicalCodes();
+
+    private const string Alpha2ToTerminology = """
+        aa:aar ab:abk af:afr ak:aka sq:sqi am:amh ar:ara an:arg hy:hye as:asm av:ava ae:ave
+        ay:aym az:aze ba:bak bm:bam eu:eus be:bel bn:ben bi:bis bs:bos br:bre bg:bul my:mya
+        ca:cat ch:cha ce:che zh:zho cu:chu cv:chv kw:cor co:cos cr:cre cs:ces da:dan dv:div
+        nl:nld dz:dzo en:eng eo:epo et:est ee:ewe fo:fao fj:fij fi:fin fr:fra fy:fry ff:ful
+        ka:kat de:deu gd:gla ga:gle gl:glg gv:glv el:ell gn:grn gu:guj ht:hat ha:hau he:heb
+        hz:her hi:hin ho:hmo hr:hrv hu:hun ig:ibo is:isl io:ido ii:iii iu:iku ie:ile ia:ina
+        id:ind ik:ipk it:ita jv:jav ja:jpn kl:kal kn:kan ks:kas kr:kau kk:kaz km:khm ki:kik
+        rw:kin ky:kir kv:kom kg:kon ko:kor kj:kua ku:kur lo:lao la:lat lv:lav li:lim ln:lin
+        lt:lit lb:ltz lu:lub lg:lug mk:mkd mh:mah ml:mal mi:mri mr:mar ms:msa mg:mlg mt:mlt
+        mn:mon na:nau nv:nav nr:nbl nd:nde ng:ndo ne:nep nn:nno nb:nob no:nor ny:nya oc:oci
+        oj:oji or:ori om:orm os:oss pa:pan fa:fas pi:pli pl:pol pt:por ps:pus qu:que rm:roh
+        ro:ron rn:run ru:rus sg:sag sa:san si:sin sk:slk sl:slv se:sme sm:smo sn:sna sd:snd
+        so:som st:sot es:spa sc:srd sr:srp ss:ssw su:sun sw:swa sv:swe ty:tah ta:tam tt:tat
+        te:tel tg:tgk tl:tgl th:tha bo:bod ti:tir to:ton tn:tsn ts:tso tk:tuk tr:tur tw:twi
+        ug:uig uk:ukr ur:urd uz:uzb ve:ven vi:vie vo:vol cy:cym wa:wln wo:wol xh:xho yi:yid
+        yo:yor za:zha zu:zul
+        """;
+
+    private static Dictionary<string, string> BuildCanonicalCodes()
     {
-        ["en"] = "eng",
-        ["fr"] = "fra", ["fre"] = "fra",
-        ["de"] = "deu", ["ger"] = "deu",
-        ["es"] = "spa",
-        ["it"] = "ita",
-        ["ja"] = "jpn",
-        ["zh"] = "zho", ["chi"] = "zho",
-        ["ko"] = "kor",
-        ["ru"] = "rus",
-        ["pt"] = "por",
-        ["nl"] = "nld", ["dut"] = "nld",
-        ["sv"] = "swe",
-        ["no"] = "nor",
-        ["da"] = "dan",
-        ["fi"] = "fin",
-        ["pl"] = "pol",
-        ["cs"] = "ces", ["cze"] = "ces",
-        ["sk"] = "slk", ["slo"] = "slk",
-        ["hu"] = "hun",
-        ["el"] = "ell", ["gre"] = "ell",
-        ["tr"] = "tur",
-        ["ar"] = "ara",
-        ["he"] = "heb",
-        ["hi"] = "hin",
-        ["ta"] = "tam",
-        ["te"] = "tel",
-        ["th"] = "tha",
-        ["vi"] = "vie",
-        ["id"] = "ind",
-        ["ms"] = "msa", ["may"] = "msa",
-        ["uk"] = "ukr",
-        ["ro"] = "ron", ["rum"] = "ron",
-        ["bg"] = "bul",
-        ["hr"] = "hrv",
-        ["sr"] = "srp",
-        ["sl"] = "slv",
-        ["ca"] = "cat",
-        ["is"] = "isl", ["ice"] = "isl",
-        ["fa"] = "fas", ["per"] = "fas",
-        ["bn"] = "ben",
-        ["ur"] = "urd",
-        ["et"] = "est",
-        ["lv"] = "lav",
-        ["lt"] = "lit",
-        ["eu"] = "eus", ["baq"] = "eus",
-        ["gl"] = "glg",
-        ["cy"] = "cym", ["wel"] = "cym",
-        ["mk"] = "mkd", ["mac"] = "mkd",
-        ["sq"] = "sqi", ["alb"] = "sqi",
-        ["hy"] = "hye", ["arm"] = "hye",
-        ["ka"] = "kat", ["geo"] = "kat",
-        ["my"] = "mya", ["bur"] = "mya",
-        ["bo"] = "bod", ["tib"] = "bod"
-    };
+        var codes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["alb"] = "sqi",
+            ["arm"] = "hye",
+            ["baq"] = "eus",
+            ["bur"] = "mya",
+            ["chi"] = "zho",
+            ["cze"] = "ces",
+            ["dut"] = "nld",
+            ["fre"] = "fra",
+            ["geo"] = "kat",
+            ["ger"] = "deu",
+            ["gre"] = "ell",
+            ["ice"] = "isl",
+            ["mac"] = "mkd",
+            ["mao"] = "mri",
+            ["may"] = "msa",
+            ["per"] = "fas",
+            ["rum"] = "ron",
+            ["slo"] = "slk",
+            ["tib"] = "bod",
+            ["wel"] = "cym"
+        };
+
+        foreach (var pair in Alpha2ToTerminology.Split(
+                     (char[]?)null,
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            codes.Add(pair[..2], pair[3..]);
+        }
+
+        return codes;
+    }
 
     /// <summary>
     /// Parses a stored comma-separated language list (e.g. "eng, jpn") into distinct
@@ -91,6 +93,35 @@ public static class TrackLanguages
             .Select(code => code.ToLowerInvariant())
             .Distinct()
             .ToArray();
+    }
+
+    /// <summary>
+    /// Validates and canonicalises an operator-supplied kept-language list for persistence.
+    /// Blank means keep every track; otherwise every distinct entry must be a two- or three-letter
+    /// language code and the formatted value must fit the database column.
+    /// </summary>
+    public static bool TryNormaliseLanguageList(string? value, out string? normalised)
+    {
+        normalised = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var codes = ParseLanguageList(value);
+        if (codes.Count == 0 || codes.Any(code => !IsAsciiLanguageCode(code)))
+        {
+            return false;
+        }
+
+        var formatted = string.Join(", ", codes);
+        if (formatted.Length > MaxLanguageListLength)
+        {
+            return false;
+        }
+
+        normalised = formatted;
+        return true;
     }
 
     /// <summary>
@@ -129,6 +160,8 @@ public static class TrackLanguages
             return true;
         }
 
+        // ISO 639-2 reserves qaa-qtz for private local use. Such a tag has no portable meaning,
+        // so it cannot prove that a track is safe to delete.
         return code.Length == 3
             && string.CompareOrdinal(code, "qaa") >= 0
             && string.CompareOrdinal(code, "qtz") <= 0;

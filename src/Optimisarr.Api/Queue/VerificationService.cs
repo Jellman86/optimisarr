@@ -30,10 +30,25 @@ public sealed record OriginalSnapshot(
     bool ContainerMustMatch = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
-public sealed record VerificationOutcome(VerificationReport Report, long OutputSizeBytes);
+public sealed record VerificationOutcome(
+    VerificationReport Report,
+    long OutputSizeBytes,
+    string? VmafSampling = null,
+    double ReferenceStartSeconds = 0);
 
-/// <summary>The preview clip window to use when building a verification reference segment.</summary>
-public sealed record VerificationClip(int Seconds, int? StartSeconds, string ReferencePath);
+/// <summary>The disposable clip window used to build a preview or calibration reference.</summary>
+public sealed record VerificationClip(
+    int Seconds,
+    int? StartSeconds,
+    string ReferencePath,
+    bool RetainReference = false,
+    bool VideoOnly = false);
+
+internal static class VerificationClipLifecycle
+{
+    public static bool DeleteReferenceAfterVerification(VerificationClip clip) =>
+        !clip.RetainReference;
+}
 
 /// <summary>
 /// Gathers the real-world evidence a converted output is healthy — a full software
@@ -45,6 +60,7 @@ public sealed class VerificationService(
     MediaProbeService probe,
     DecodeHealthCheck decode,
     TimestampIntegrityCheck timestamps,
+    ReferenceFrameAlignmentProbe referenceAlignment,
     QualityScoreService quality,
     LoudnessService loudness,
     ImageQualityService imageQuality,
@@ -57,11 +73,13 @@ public sealed class VerificationService(
         VerificationPolicy policy,
         CancellationToken cancellationToken,
         VerificationClip? clip = null,
-        IProgress<double>? qualityProgress = null)
+        IProgress<double>? qualityProgress = null,
+        VmafAcceleration vmafAcceleration = VmafAcceleration.None)
     {
-        var reference = clip is null
-            ? original
+        var preparedReference = clip is null
+            ? new PreparedReference(original, 0)
             : await CreateReferenceClipAsync(original, clip, cancellationToken);
+        var reference = preparedReference.Snapshot;
 
         try
         {
@@ -86,20 +104,45 @@ public sealed class VerificationService(
             // VMAF is expensive (a second full decode of both files), so run it only for
             // video that was actually re-encoded. Remuxes preserve the encoded frames, while
             // audio and image jobs have their own applicable verification gates.
-            var qualityResult = policy.RequiresVmaf(reference.Kind, reference.VideoReencoded)
-                ? await MeasureQualityAsync(
-                    reference,
-                    outputPath,
-                    originalProbe,
-                    quality,
-                    // A preview's cheap stream-copy clip is suitable for duration/stream checks,
-                    // but can retain keyframe pre-roll. VMAF decodes the full original from the
-                    // exact preview start instead, keeping its frames aligned with the encode.
-                    clip is null ? reference.Path : original.Path,
-                    clip?.StartSeconds,
-                    qualityProgress,
-                    cancellationToken)
-                : null;
+            QualityResult? qualityResult = null;
+            string? vmafSampling = null;
+            if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            {
+                var windows = clip is null && reference.DurationSeconds is { } total
+                    ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)
+                    : [VmafWindow.Full];
+                vmafSampling = windows.Count == 1 && windows[0] == VmafWindow.Full
+                    ? "Full file"
+                    : "Three 40-second samples (early, middle and late)";
+
+                var measurements = new List<QualityResult>(windows.Count);
+                for (var index = 0; index < windows.Count; index++)
+                {
+                    var window = windows[index];
+                    var progress = qualityProgress is null
+                        ? null
+                        : new WindowProgress(qualityProgress, index, windows.Count);
+                    measurements.Add(await MeasureQualityAsync(
+                        reference,
+                        outputPath,
+                        originalProbe,
+                        quality,
+                        // A preview's cheap stream-copy clip is suitable for duration/stream checks,
+                        // but can retain keyframe pre-roll. VMAF decodes the full original from the
+                        // exact preview start instead, keeping its frames aligned with the encode.
+                        clip is null ? reference.Path : original.Path,
+                        clip?.StartSeconds,
+                        window.StartSeconds,
+                        window.DurationSeconds,
+                        policy.VmafFrameSubsample,
+                        vmafAcceleration,
+                        policy,
+                        progress,
+                        cancellationToken));
+                }
+
+                qualityResult = QualityScoreAggregator.Combine(measurements, vmafSampling);
+            }
 
             // The image SSIM gate is the still-image counterpart of VMAF: measure it only for an
             // image job when enabled (the safe default), since it runs an extra ffmpeg pass.
@@ -233,11 +276,15 @@ public sealed class VerificationService(
                 OriginalContainer: originalProbe.Container,
                 OutputContainer: outputProbe.Container);
 
-            return new VerificationOutcome(VerificationEvaluator.Evaluate(input, policy), outputSize);
+            return new VerificationOutcome(
+                VerificationEvaluator.Evaluate(input, policy),
+                outputSize,
+                vmafSampling,
+                preparedReference.PresentationOffsetSeconds);
         }
         finally
         {
-            if (clip is not null)
+            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip))
             {
                 TryDelete(reference.Path);
             }
@@ -261,20 +308,25 @@ public sealed class VerificationService(
             .ToList();
     }
 
-    private static Task<QualityResult> MeasureQualityAsync(
+    private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
         QualityScoreService quality,
         string qualityReferencePath,
         int? referenceStartSeconds,
+        int? clipStartSeconds,
+        int? clipDurationSeconds,
+        int frameSubsample,
+        VmafAcceleration acceleration,
+        VerificationPolicy policy,
         IProgress<double>? qualityProgress,
         CancellationToken cancellationToken)
     {
         if (originalProbe.Width is not > 0 || originalProbe.Height is not > 0)
         {
-            return Task.FromResult(QualityResult.Failed(
-                "Could not determine the original video dimensions required for VMAF."));
+            return QualityResult.Failed(
+                "Could not determine the original video dimensions required for VMAF.");
         }
 
         var context = new QualityMeasurementContext(
@@ -282,22 +334,47 @@ public sealed class VerificationService(
             originalProbe.Height.Value,
             reference.IsHdr,
             reference.HdrConvertedToSdr,
-            referenceStartSeconds,
-            originalProbe.DurationSeconds);
-        return quality.MeasureAsync(qualityReferencePath, outputPath, context, cancellationToken, qualityProgress);
+            // A clip-VMAF window seeks both inputs to its start; otherwise only the reference seek
+            // (a preview) applies to the reference input.
+            ReferenceStartSeconds: clipStartSeconds ?? referenceStartSeconds,
+            ReferenceDurationSeconds: originalProbe.DurationSeconds,
+            DistortedStartSeconds: clipStartSeconds,
+            MeasureDurationSeconds: clipDurationSeconds,
+            FrameSubsample: frameSubsample,
+            Acceleration: acceleration);
+        var result = await quality.MeasureAsync(
+            qualityReferencePath,
+            outputPath,
+            context,
+            cancellationToken,
+            qualityProgress);
+        return await VmafSoftwareConfirmation.ConfirmAsync(
+            result,
+            policy,
+            () => quality.MeasureAsync(
+                qualityReferencePath,
+                outputPath,
+                context with { Acceleration = VmafAcceleration.None },
+                cancellationToken));
     }
 
-    private async Task<OriginalSnapshot> CreateReferenceClipAsync(
+    private sealed class WindowProgress(IProgress<double> target, int index, int count) : IProgress<double>
+    {
+        public void Report(double value) =>
+            target.Report(Math.Clamp((index + value) / count, 0, 0.999));
+    }
+
+    private async Task<PreparedReference> CreateReferenceClipAsync(
         OriginalSnapshot original,
         VerificationClip clip,
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(clip.ReferencePath)!);
-        var args = PreviewReferenceClipCommandBuilder.Build(
-            original.Path,
-            clip.ReferencePath,
-            clip.Seconds,
-            clip.StartSeconds);
+        var args = original.Kind == MediaKind.Audio
+            ? PreviewReferenceClipCommandBuilder.BuildAudio(
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds)
+            : PreviewReferenceClipCommandBuilder.Build(
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds, clip.VideoOnly);
 
         var run = await RunReferenceClipAsync(args, cancellationToken);
         if (run.ExitCode != 0)
@@ -307,16 +384,37 @@ public sealed class VerificationService(
         }
 
         var clipProbe = await probe.ProbeAsync(clip.ReferencePath, cancellationToken);
-        return original with
+        var probedDuration = clipProbe.DurationSeconds
+            ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds)
+            ?? clip.Seconds;
+        var snapshot = original with
         {
             Path = clip.ReferencePath,
             SizeBytes = TryGetSize(clip.ReferencePath),
-            DurationSeconds = clipProbe.DurationSeconds ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds),
+            // Stream copy necessarily retains packets from the preceding keyframe. The candidate
+            // still represents the requested window, so verify against that window rather than
+            // mistaking harmless decode pre-roll for a truncated encode.
+            DurationSeconds = clip.VideoOnly ? clip.Seconds : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
             IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr
         };
+        var presentationOffset = 0.0;
+        if (clip.VideoOnly && clip.StartSeconds is { } start and > 0)
+        {
+            presentationOffset = await referenceAlignment.MeasureAsync(
+                    original.Path,
+                    start,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Could not align the original calibration reference to the requested source frame.");
+        }
+        return new PreparedReference(snapshot, presentationOffset);
     }
+
+    private sealed record PreparedReference(
+        OriginalSnapshot Snapshot,
+        double PresentationOffsetSeconds);
 
     private async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
         IReadOnlyList<string> arguments,

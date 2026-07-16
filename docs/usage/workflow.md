@@ -46,7 +46,9 @@ Do this:
 3. Use a path as the container sees it, usually below `/data`.
 4. Pick the media type.
 5. Pick a preset.
-6. Leave advanced options closed unless you already know what you need.
+6. Choose a perceptual-quality (VMAF) policy for video libraries. Leave it **Off**, select a named
+   tier, or use **Custom** for all three quality floors, clip/full-file scoring, and frame sampling.
+7. Leave advanced options closed unless you already know what you need.
 
 ![Library configuration panel showing path, media type, preset slider, automation window, auto-replace, and advanced options](../images/optimisarr-library-configure-dark.png)
 
@@ -59,6 +61,26 @@ Preset guide:
 | Smallest files and slower encodes | Efficiency AV1 |
 | Scott's compatibility-first setup | Scott's Settings |
 | No re-encode, container cleanup only | Remux / cleanup |
+
+VMAF policy guide:
+
+| Goal | Library policy |
+|---|---|
+| Skip perceptual scoring for this library | Off |
+| Prefer smaller outputs | Space-saver or Balanced |
+| Protect high-value media more strictly | High, Visually lossless, or Archival |
+| Tune exact floors and sampling cost | Custom |
+
+The custom floors must remain ordered: catastrophic frame ≤ fifth percentile ≤ harmonic mean.
+Scoring every frame and the full file is the strongest check; three representative samples and
+every-Nth-frame scoring trade some coverage for faster verification.
+
+For a more personal starting point, save the library and select **Personal quality check** beside its
+optimisation preset. Film, TV, Music, Photo, and mixed libraries can run a blind comparison suited to
+their media. Settings and estimated savings stay hidden until you finish, and applying a result only
+changes that library's saved quality value; it does not queue or replace media. Follow [Choose a
+personal quality setting](personal-quality-check.md) for prerequisites, screenshots, media-specific
+controls, HDR limits, result interpretation, and troubleshooting.
 
 You should see **access ok** on the library card. If not, fix the host mount,
 `PUID`/`PGID`, or folder permissions before queueing jobs.

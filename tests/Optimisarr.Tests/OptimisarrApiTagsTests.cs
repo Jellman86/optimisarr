@@ -8,9 +8,11 @@ public class OptimisarrApiTagsTests
     [InlineData("/api/settings", "Settings")]
     [InlineData("/api/settings/export", "Settings")]
     [InlineData("/api/queue/status", "Settings")]
+    [InlineData("/api/setup", "Setup")]
     [InlineData("/api/libraries", "Libraries")]
     [InlineData("/api/libraries/1/enqueue", "Libraries")]
     [InlineData("/api/exclusions", "Libraries")]
+    [InlineData("/api/calibration/00000000-0000-0000-0000-000000000000", "Libraries")]
     [InlineData("/api/media/1/thumbnail", "Inventory")]
     [InlineData("/api/candidates", "Inventory")]
     [InlineData("/api/inventory", "Inventory")]
@@ -35,6 +37,10 @@ public class OptimisarrApiTagsTests
     [InlineData("/api/replacements/1/rollback")]
     [InlineData("/api/libraries/1/enqueue")]
     [InlineData("/api/diagnostics")]
+    [InlineData("/api/setup")]
+    [InlineData("/api/setup/apply")]
+    [InlineData("/api/setup/restart")]
+    [InlineData("/api/calibration/00000000-0000-0000-0000-000000000000/apply")]
     public void RequiresAdminToken_is_true_for_protected_endpoints(string path) =>
         Assert.True(OptimisarrApiTags.RequiresAdminToken(path));
 

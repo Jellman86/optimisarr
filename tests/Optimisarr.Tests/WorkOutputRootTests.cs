@@ -36,6 +36,17 @@ public sealed class WorkOutputRootTests
     }
 
     [Fact]
+    public void Calibration_outputs_are_isolated_by_session_and_job()
+    {
+        var sessionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var calibration = WorkOutputRoot.ForCalibration("/work/", sessionId, 42);
+
+        Assert.Equal("/work/calibration/11111111111111111111111111111111/42", calibration);
+        Assert.NotEqual(WorkOutputRoot.ForMediaFile("/work", 42), calibration);
+        Assert.NotEqual(WorkOutputRoot.ForPreview("/work", 42), calibration);
+    }
+
+    [Fact]
     public void Two_sources_sharing_a_stem_resolve_to_distinct_work_outputs()
     {
         // photo.bmp and photo.tif both target WebP; without per-file namespacing they would

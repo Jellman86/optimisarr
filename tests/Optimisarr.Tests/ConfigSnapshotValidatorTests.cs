@@ -103,6 +103,75 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.True(result.IsValid, string.Join("; ", result.Errors));
     }
 
+    [Fact]
+    public void A_library_with_malformed_kept_audio_languages_is_rejected()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    KeepAudioLanguages: "english")
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("kept audio languages"));
+    }
+
+    [Fact]
+    public void A_library_with_a_valid_vmaf_override_is_accepted()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    VmafQualityGateEnabled: true,
+                    MinVmafHarmonicMean: 93,
+                    MinVmafMin: 80,
+                    MinVmafCatastrophicMin: 50,
+                    ClipVmafEnabled: true,
+                    VmafFrameSubsample: 2)
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+    }
+
+    [Fact]
+    public void A_library_with_invalid_vmaf_floors_or_sampling_is_rejected()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    MinVmafHarmonicMean: 70,
+                    MinVmafMin: 80,
+                    MinVmafCatastrophicMin: 90,
+                    VmafFrameSubsample: 11)
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("sampling interval"));
+        Assert.Contains(result.Errors, error => error.Contains("catastrophic floor cannot exceed"));
+        Assert.Contains(result.Errors, error => error.Contains("fifth-percentile floor cannot exceed"));
+    }
+
     private static ConfigSnapshot Empty() => new(
         ConfigSnapshot.CurrentVersion,
         DateTimeOffset.UnixEpoch,

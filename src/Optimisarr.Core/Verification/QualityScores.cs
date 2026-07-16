@@ -2,8 +2,9 @@ namespace Optimisarr.Core.Verification;
 
 /// <summary>
 /// Perceptual/structural quality of an output measured against its original by
-/// libvmaf. VMAF is the gate metric; PSNR and SSIM are corroborating signals and
-/// may be absent depending on the libvmaf build, so every field is nullable.
+/// libvmaf. VMAF is the gate metric; PSNR and SSIM are retained for compatibility
+/// with older reports but are not requested by the performance-oriented measurement
+/// path, so every field is nullable.
 /// </summary>
 /// <param name="VmafMean">Arithmetic mean VMAF across frames (0–100).</param>
 /// <param name="VmafHarmonicMean">Harmonic-mean VMAF — penalises bad frames more than the plain mean.</param>
@@ -12,6 +13,8 @@ namespace Optimisarr.Core.Verification;
 /// <param name="SsimMean">Mean SSIM (0–1), when computed.</param>
 /// <param name="ModelVersion">The libvmaf model selected for the source resolution.</param>
 /// <param name="Preprocessing">The colour-domain preparation applied before measurement.</param>
+/// <param name="VmafFifthPercentile">The fifth-percentile frame score, representing sustained difficult content.</param>
+/// <param name="FrameCount">The number of frames included in the measurement.</param>
 public sealed record QualityScores(
     double? VmafMean,
     double? VmafHarmonicMean,
@@ -19,4 +22,6 @@ public sealed record QualityScores(
     double? PsnrYMean,
     double? SsimMean,
     string? ModelVersion = null,
-    string? Preprocessing = null);
+    string? Preprocessing = null,
+    double? VmafFifthPercentile = null,
+    int? FrameCount = null);

@@ -237,7 +237,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
         int? libraryId, CancellationToken cancellationToken)
     {
         var query = db.Jobs.AsNoTracking()
-            .Where(job => job.FinishedAt != null
+            .Where(job => job.Type == JobType.Normal
+                && job.FinishedAt != null
                 && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed));
         if (libraryId is not null)
         {

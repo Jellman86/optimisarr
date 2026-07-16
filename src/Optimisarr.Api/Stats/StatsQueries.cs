@@ -33,12 +33,13 @@ public static class StatsQueries
         var inQuarantine = await quarantined.CountAsync(cancellationToken);
         var quarantineReclaimableBytes = await quarantined.SumAsync(r => r.OriginalSizeBytes, cancellationToken);
 
-        var queued = await db.Jobs.CountAsync(j => j.Status == JobStatus.Queued, cancellationToken);
-        var running = await db.Jobs.CountAsync(
+        var normalJobs = db.Jobs.Where(job => job.Type == JobType.Normal);
+        var queued = await normalJobs.CountAsync(j => j.Status == JobStatus.Queued, cancellationToken);
+        var running = await normalJobs.CountAsync(
             j => j.Status == JobStatus.Probing || j.Status == JobStatus.Transcoding || j.Status == JobStatus.Verifying,
             cancellationToken);
-        var readyToReplace = await db.Jobs.CountAsync(j => j.Status == JobStatus.ReadyToReplace, cancellationToken);
-        var failed = await db.Jobs.CountAsync(j => j.Status == JobStatus.Failed, cancellationToken);
+        var readyToReplace = await normalJobs.CountAsync(j => j.Status == JobStatus.ReadyToReplace, cancellationToken);
+        var failed = await normalJobs.CountAsync(j => j.Status == JobStatus.Failed, cancellationToken);
 
         var libraries = await db.Libraries.CountAsync(cancellationToken);
         var enabledLibraries = await db.Libraries.CountAsync(l => l.Enabled, cancellationToken);

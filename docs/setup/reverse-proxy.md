@@ -32,9 +32,12 @@ curl -H "Authorization: Bearer change-this-long-random-token" \
   https://optimisarr.example.com/api/settings
 ```
 
-Browser media previews use request URLs that include the token as `access_token`
-because `<video>` and `<img>` requests cannot attach bearer headers. Prefer
-HTTPS and avoid logging query strings at the proxy if you enable remote previews.
+After the UI validates a bearer token, Optimisarr issues a derived HttpOnly,
+same-site session cookie for native `<video>`, `<audio>`, and `<img>` requests,
+which cannot attach bearer headers. Media URLs never contain the admin token.
+The cookie is marked Secure when the request reaches Optimisarr as HTTPS; keep
+the application behind HTTPS for remote access and forward the original scheme
+correctly through the proxy.
 
 ## Caddy
 

@@ -304,7 +304,7 @@ internal static class MediaAndQueueEndpoints
         {
             var log = await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Id == id)
+                .Where(job => job.Id == id && job.Type == JobType.Normal)
                 .Select(job => job.ProcessLog)
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -357,7 +357,11 @@ internal static class MediaAndQueueEndpoints
         // destroy a recorded rollback, which the safety standard forbids. Re-optimisation of the
         // cleared files is still prevented by the embedded optimisation marker, so losing the
         // history rows is safe.
-        app.MapPost("/api/jobs/clear", async (string? scope, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+        app.MapPost("/api/jobs/clear", async (
+            string? scope,
+            OptimisarrDbContext db,
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
         {
             // scope: "finished" = completed only; "errored" = failed/cancelled; anything else (or
             // omitted) = every terminal job. The IsClearable safety check below still protects jobs
@@ -376,11 +380,16 @@ internal static class MediaAndQueueEndpoints
                 .ToHashSet();
 
             var terminal = await db.Jobs
-                .Where(j => statuses.Contains(j.Status))
+                .Where(j => j.Type == JobType.Normal && statuses.Contains(j.Status))
                 .ToListAsync(cancellationToken);
 
             var clearable = terminal.Where(j => JobClearing.IsClearable(j, liveRollbackJobIds)).ToList();
-            var clearableIds = clearable.Select(j => j.Id).ToList();
+            // Delete owned scratch output before its database owner. A cleanup failure keeps the
+            // corresponding row so the output remains visible and retryable instead of orphaned.
+            clearable = clearable
+                .Where(job => dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
+                .ToList();
+            var clearableIds = clearable.Select(job => job.Id).ToList();
 
             // The Job→Replacement FK is Restrict, so spent rollback records (rolled back or purged)
             // for these jobs must be removed before their parent job.
@@ -411,7 +420,9 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -439,9 +450,12 @@ internal static class MediaAndQueueEndpoints
         app.MapDelete("/api/jobs/{id:int}", async (
             int id,
             OptimisarrDbContext db,
+            QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -450,6 +464,13 @@ internal static class MediaAndQueueEndpoints
             if (job.Status is not (JobStatus.Failed or JobStatus.Cancelled))
             {
                 return ApiErrors.BadRequest("job.remove.active", "Stop an active job before removing it from the queue.");
+            }
+
+            if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
+            {
+                return ApiErrors.Conflict(
+                    "job.workCleanupFailed",
+                    "The job output could not be removed from the work directory. The job was retained.");
             }
 
             db.Jobs.Remove(job);
@@ -465,9 +486,12 @@ internal static class MediaAndQueueEndpoints
             int id,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            bool higherQuality = false) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -478,8 +502,21 @@ internal static class MediaAndQueueEndpoints
                 return ApiErrors.BadRequest("job.retry.invalidState", $"Only failed or cancelled jobs can be retried; job {id} is {job.Status}.", new { id, status = job.Status.ToString() });
             }
 
+            if (!dispatcher.TryDiscardWorkOutput(job.WorkOutputPath))
+            {
+                return ApiErrors.Conflict(
+                    "job.workCleanupFailed",
+                    "The previous output could not be removed from the work directory. The job was not retried.");
+            }
+
             job.Status = JobStatus.Queued;
             job.ErrorMessage = null;
+            job.FailureCategory = null;
+            job.ProcessLog = null;
+            if (higherQuality)
+            {
+                job.QualityRetryCount += 1;
+            }
             job.Progress = 0;
             job.StartedAt = null;
             job.FinishedAt = null;

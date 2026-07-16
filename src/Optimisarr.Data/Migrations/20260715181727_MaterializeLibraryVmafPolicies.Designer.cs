@@ -11,8 +11,8 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    [Migration("20260716174049_AddSubtitleLanguages")]
-    partial class AddSubtitleLanguages
+    [Migration("20260715181727_MaterializeLibraryVmafPolicies")]
+    partial class MaterializeLibraryVmafPolicies
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -168,6 +168,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int>("Attempt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("EffectiveVideoQuality")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset>("EnqueuedAt")
                         .HasColumnType("TEXT");
 
@@ -202,6 +205,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<double>("Progress")
                         .HasColumnType("REAL");
 
+                    b.Property<int>("QualityRetryCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("RequestedVideoQuality")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("TEXT");
 
@@ -229,6 +238,10 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("VideoEncoder")
                         .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VideoQualityMode")
+                        .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("WorkOutputPath")
@@ -269,6 +282,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("AutoReplace")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("ClipVmafEnabled")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -320,6 +336,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<long?>("MinFileSizeBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<double?>("MinVmafCatastrophicMin")
+                        .HasColumnType("REAL");
 
                     b.Property<double?>("MinVmafHarmonicMean")
                         .HasColumnType("REAL");
@@ -393,6 +412,12 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("VideoAudioCodec")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("VmafFrameSubsample")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("VmafQualityGateEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -499,10 +524,6 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SubtitleLanguages")
-                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("SubtitleTrackCount")

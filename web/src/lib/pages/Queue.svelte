@@ -133,10 +133,10 @@
     return ACTIVE.includes(status)
   }
 
-  async function retry(job: Job) {
+  async function retry(job: Job, higherQuality = false) {
     retryingId = job.id
     try {
-      await api.retryJob(job.id)
+      await api.retryJob(job.id, higherQuality)
       await load()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.queue.error_retry
@@ -351,14 +351,29 @@
     return STATUS_LABELS[status] ?? status
   }
 
-  function parseReport(job: Job): VerificationCheck[] | null {
+  function fullReport(job: Job): VerificationReport | null {
     if (!job.verificationReportJson) return null
     try {
       const report = JSON.parse(job.verificationReportJson) as VerificationReport
-      return report.checks ?? null
+      return report.checks ? report : null
     } catch {
       return null
     }
+  }
+
+  function parseReport(job: Job): VerificationCheck[] | null {
+    return fullReport(job)?.checks ?? null
+  }
+
+  function isVmafOnlyFailure(job: Job): boolean {
+    const failed = fullReport(job)?.checks.filter((check) => check.outcome === 'Failed') ?? []
+    return failed.length === 1 && failed[0].name === 'Perceptual quality (VMAF)'
+  }
+
+  function vmafSamplingLabel(value: string): string {
+    if (value === 'Full file') return i18n.m.queue.vmaf_sampling_full
+    if (value === 'Three 40-second samples (early, middle and late)') return i18n.m.queue.vmaf_sampling_three
+    return value
   }
 
   function toggle(job: Job) {
@@ -690,9 +705,14 @@
                   </button>
                 {/if}
                 {#if job.status === 'Failed' || job.status === 'Cancelled'}
-                  <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); retry(job) }} disabled={retryingId === job.id} title={i18n.m.queue.retry_title}>
+                  <button
+                    class="btn btn-ghost inline-flex min-h-9 items-center gap-1 px-3 py-1 text-xs"
+                    onclick={(e) => { e.stopPropagation(); retry(job, isVmafOnlyFailure(job)) }}
+                    disabled={retryingId === job.id}
+                    title={isVmafOnlyFailure(job) ? i18n.m.queue.retry_higher_quality_title : i18n.m.queue.retry_title}
+                  >
                     <Icon name="retry" class="h-3.5 w-3.5" />
-                    {retryingId === job.id ? i18n.m.queue.action_retrying : i18n.m.queue.action_retry}
+                    {retryingId === job.id ? i18n.m.queue.action_retrying : isVmafOnlyFailure(job) ? i18n.m.queue.action_retry_higher_quality : i18n.m.queue.action_retry}
                   </button>
                   <button class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); exclude(job) }} disabled={excludingId === job.id} title={i18n.m.queue.exclude_title}>
                     <Icon name="ban" class="h-3.5 w-3.5" />
@@ -762,6 +782,7 @@
   {#snippet children()}
     {#if selectedJob}
       {@const telemetry = live[selectedJob.id]}
+      {@const report = fullReport(selectedJob)}
       <!-- Live progress/stage spans the full width; the box art lives beside the detail/verification
            body below, not up here. -->
       <div class="mb-4">
@@ -812,10 +833,40 @@
           <dt class="text-slate-500">{i18n.m.queue.detail_encoder}</dt>
           <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-slate-400">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
         </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-slate-500">{i18n.m.queue.detail_quality}</dt>
+          <dd class="text-right">
+            {#if selectedJob.videoQualityMode && selectedJob.effectiveVideoQuality != null}
+              {selectedJob.videoQualityMode} {selectedJob.effectiveVideoQuality}
+              {#if selectedJob.requestedVideoQuality != null && selectedJob.requestedVideoQuality !== selectedJob.effectiveVideoQuality}
+                <span class="text-slate-400">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
+              {/if}
+            {:else}—{/if}
+          </dd>
+        </div>
         <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
         <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
       </dl>
+
+      {#if report?.context?.vmafSampling}
+        <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          <span class="font-medium">{i18n.m.queue.detail_vmaf_sampling}:</span>
+          {vmafSamplingLabel(report.context.vmafSampling)}
+        </p>
+      {/if}
+
+      {#if selectedJob.status === 'Failed' && isVmafOnlyFailure(selectedJob)}
+        <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" role="status" aria-live="polite">
+          <div class="flex items-start gap-2">
+            <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p class="font-semibold">{i18n.m.queue.vmaf_recovery_title}</p>
+              <p class="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200">{i18n.m.queue.vmaf_recovery_desc}</p>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <!-- The exact ffmpeg command for this job — the "under the hood" view that complements the
            hero's live status. Useful while encoding and for diagnosing a failed job. -->
@@ -845,9 +896,18 @@
           </button>
         {/if}
         {#if selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
-          <button class="btn px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
-            {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry}
-          </button>
+          {#if isVmafOnlyFailure(selectedJob)}
+            <button class="btn btn-primary min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob, true)} disabled={retryingId === selectedJob.id}>
+              {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry_higher_quality}
+            </button>
+            <button class="btn min-h-11 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
+              {i18n.m.queue.action_retry_same}
+            </button>
+          {:else}
+            <button class="btn min-h-9 px-3 py-1 text-xs" onclick={() => selectedJob && retry(selectedJob)} disabled={retryingId === selectedJob.id}>
+              {retryingId === selectedJob.id ? i18n.m.queue.action_retrying_ellipsis : i18n.m.queue.action_retry}
+            </button>
+          {/if}
           <button class="btn btn-danger px-3 py-1 text-xs" onclick={() => selectedJob && stopAndRemove(selectedJob)} disabled={removingId === selectedJob.id}>
             {removingId === selectedJob.id ? i18n.m.queue.action_removing_ellipsis : i18n.m.queue.action_remove_from_queue}
           </button>

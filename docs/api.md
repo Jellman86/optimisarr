@@ -62,9 +62,11 @@ curl -fsS -H "Authorization: Bearer change-this-long-random-token" \
   http://localhost:8787/api/settings
 ```
 
-The SignalR hub at `/hubs/jobs` accepts the same bearer token. Browser media
-content endpoints also accept `?access_token=<token>` because native media
-requests cannot attach custom headers.
+The SignalR hub at `/hubs/jobs` accepts the same token through its WebSocket
+`access_token` query parameter. Ordinary `/api` routes reject query tokens. A
+successful bearer-authenticated API request also establishes a derived HttpOnly,
+same-site session cookie so native browser media requests can authenticate
+without placing the admin token in their URLs.
 
 ## Common Recipes
 
@@ -169,9 +171,23 @@ exists in quarantine.
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
 | `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/diagnostics` | Admin support snapshot: version, environment, settings, library and integration summaries, stats, and the failure summary. Assembled from non-secret data only (no tokens, API keys, or webhook URLs). Protected by the admin token when one is set. |
-| `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks and optional VMAF-FFmpeg capability; each result includes `required`. |
+| `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |
+
+## First-run setup
+
+Setup progress is admin-token protected and intentionally separate from configuration backup. It
+does not contain secrets and is not exported between installations.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/setup` | Read the versioned completed/current step and completion state. |
+| `GET` | `/api/setup/readiness` | Non-destructively check database, config/work/quarantine paths and media tools, then return visible encoder, VMAF and schedule recommendations from proved capabilities. |
+| `PUT` | `/api/setup/progress` | Persist one completed step in order; repeated writes are idempotent. |
+| `POST` | `/api/setup/complete` | Complete setup from the final review step. Does not start work. |
+| `POST` | `/api/setup/apply` | Validate and atomically apply the reviewed settings and opted-in recommendations, then complete setup. A duplicate submission returns the existing receipt without changing the applied plan. |
+| `POST` | `/api/setup/restart` | Return to step one while preserving libraries and settings. |
 
 Health response:
 
@@ -211,6 +227,7 @@ Settings fields include:
   "verificationQualityGateEnabled": false,
   "verificationMinimumVmafHarmonicMean": 93,
   "verificationMinimumVmafMin": 80,
+  "verificationMinimumVmafCatastrophicMin": 50,
   "verificationAudioLoudnessGateEnabled": false,
   "verificationMaxLoudnessDriftLufs": 1,
   "verificationAudioClippingGateEnabled": false,
@@ -218,6 +235,8 @@ Settings fields include:
   "verificationImageQualityGateEnabled": true,
   "verificationMinimumImageSsim": 0.95,
   "verificationImageMetadataGateEnabled": true,
+  "verificationClipVmafEnabled": false,
+  "verificationVmafFrameSubsample": 1,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -285,6 +304,39 @@ rejected.
 
 Long video previews may be segment-only. The response includes `clipped: true`
 when the verification report is for a sample rather than the whole file.
+
+## Personal blind quality calibration
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
+| `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123 }`. |
+| `GET` | `/api/calibration/{id}` | Read preparation progress, the current blinded trial, or a revealed result. |
+| `POST` | `/api/calibration/{id}/answers` | Answer the current A/B/X trial. Body: `{ "trialId": "…", "choice": "A" }`. |
+| `POST` | `/api/calibration/{id}/reveal` | Reveal the result after all blind trials finish. |
+| `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended quality to the library, if its relevant settings have not changed. |
+| `GET` | `/api/calibration/{id}/trials/{trialId}/content/{slot}` | Stream the current blinded `A`, `B`, or `X` content. |
+| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
+
+Video calibration creates three 12-second scenes at several quality levels. Its original-side
+reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
+preceding keyframe, each original slot's `startSeconds` hides that decode pre-roll so it presents the
+same source window as the candidate. Video samples contain only the primary video stream. Music uses
+three 15-second excerpts with a lossless FLAC reference and returns a per-slot `gainDb` for
+level-matched playback. Still images use a lossless PNG reference and return `startSeconds: 0` and
+`gainDb: 0`.
+
+All candidate and reference media lives under `/work/calibration`. These jobs are excluded from the
+normal queue and can never enter replacement. Active requests extend the session; an abandoned
+session expires after two hours, and all session state is discarded on restart. The original file
+is only read. A completed result does not alter settings: only the separate `apply` request may
+change the relevant library quality, and it queues no media work.
+
+Trial URLs and labels are opaque until reveal. Clients should not display encoder, quality, bitrate,
+estimated size, or the media element's raw duration during the blind phase. Drive all slots from the
+trial's common `durationSeconds` and each slot's `startSeconds`; otherwise keyframe pre-roll can
+identify the original. If any stream cannot be decoded, fail closed rather than recording an answer.
+The `NoReliableDifference` outcome is not a proof that two encodes are equal.
 
 ## Queue
 

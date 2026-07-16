@@ -55,6 +55,18 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
+            if (!TrackLanguages.TryNormaliseLanguageList(library.KeepAudioLanguages, out _))
+            {
+                errors.Add(
+                    $"{where} kept audio languages must be comma-separated ISO 639 codes " +
+                    $"of 2–3 letters and at most {TrackLanguages.MaxLanguageListLength} characters.");
+            }
+            if (!TrackLanguages.TryNormaliseLanguageList(library.KeepSubtitleLanguages, out _))
+            {
+                errors.Add(
+                    $"{where} kept subtitle languages must be comma-separated ISO 639 codes " +
+                    $"of 2–3 letters and at most {TrackLanguages.MaxLanguageListLength} characters.");
+            }
             if (library.TargetImageFormat is { } targetImageFormat
                 && !ImageTarget.IsEncodable(targetImageFormat)
                 && !targetImageFormat.Equals("avif", StringComparison.OrdinalIgnoreCase))
@@ -76,6 +88,29 @@ public static class ConfigSnapshotValidator
             }
             RequireWindowTime(library.AutoEnqueueWindowStart, $"{where} auto-enqueue window start", errors);
             RequireWindowTime(library.AutoEnqueueWindowEnd, $"{where} auto-enqueue window end", errors);
+            RequireRange(library.MinVmafHarmonicMean, 0, 100, $"{where} VMAF harmonic-mean floor", errors);
+            RequireRange(library.MinVmafMin, 0, 100, $"{where} VMAF fifth-percentile floor", errors);
+            RequireRange(library.MinVmafCatastrophicMin, 0, 100, $"{where} VMAF catastrophic floor", errors);
+            RequireRange(library.VmafFrameSubsample, 1, 10, $"{where} VMAF frame sampling interval", errors);
+            if (library.MinVmafCatastrophicMin is { } catastrophic
+                && library.MinVmafMin is { } fifth
+                && catastrophic > fifth)
+            {
+                errors.Add($"{where} VMAF catastrophic floor cannot exceed the fifth-percentile floor.");
+            }
+            if (library.MinVmafMin is { } percentile
+                && library.MinVmafHarmonicMean is { } harmonic
+                && percentile > harmonic)
+            {
+                errors.Add($"{where} VMAF fifth-percentile floor cannot exceed the harmonic-mean floor.");
+            }
+            if (library.MinVmafMin is null
+                && library.MinVmafCatastrophicMin is { } catastrophicFloor
+                && library.MinVmafHarmonicMean is { } harmonicFloor
+                && catastrophicFloor > harmonicFloor)
+            {
+                errors.Add($"{where} VMAF catastrophic floor cannot exceed the harmonic-mean floor.");
+            }
         }
 
         for (var i = 0; i < snapshot.ActivityWatchers.Count; i++)
@@ -139,6 +174,14 @@ public static class ConfigSnapshotValidator
         if (!TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
         {
             errors.Add($"{label} must use HH:mm format.");
+        }
+    }
+
+    private static void RequireRange(double? value, double minimum, double maximum, string label, List<string> errors)
+    {
+        if (value is { } number && (!double.IsFinite(number) || number < minimum || number > maximum))
+        {
+            errors.Add($"{label} must be between {minimum} and {maximum}.");
         }
     }
 }

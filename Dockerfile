@@ -79,4 +79,5 @@ ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl --fail --silent http://127.0.0.1:8787/api/ready || exit 1
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["/entrypoint.sh"]

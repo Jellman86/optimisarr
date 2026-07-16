@@ -4,6 +4,7 @@
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
   import { auth } from './lib/stores/auth.svelte'
+  import { setup } from './lib/stores/setup.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import BrandMark from './lib/components/BrandMark.svelte'
   import Dashboard from './lib/pages/Dashboard.svelte'
@@ -13,6 +14,7 @@
   import Quarantine from './lib/pages/Quarantine.svelte'
   import Schedule from './lib/pages/Schedule.svelte'
   import Settings from './lib/pages/Settings.svelte'
+  import Setup from './lib/pages/Setup.svelte'
 
   // Map the active route to its page component.
   let page = $derived.by(() => {
@@ -36,7 +38,10 @@
   })
 
   $effect(() => {
-    if (auth.canUseApp) activity.start()
+    if (auth.canUseApp) {
+      if (!setup.checked && !setup.loading) void setup.load()
+      else if (setup.checked && !setup.required) activity.start()
+    }
   })
 
   async function submitToken(event: SubmitEvent) {
@@ -94,6 +99,23 @@
       </button>
     </form>
   </div>
+{:else if !setup.checked || setup.loading && setup.state === null}
+  <div class="flex h-dvh items-center justify-center bg-slate-50 p-4 text-slate-800 dark:bg-slate-950 dark:text-slate-200">
+    <div class="flex items-center gap-3 text-slate-500 dark:text-slate-400">
+      <BrandMark sizes="32px" class="h-8 w-8" />
+      <span class="text-sm font-semibold">{i18n.m.setup.loading}</span>
+    </div>
+  </div>
+{:else if setup.error && setup.state === null}
+  <div class="flex h-dvh items-center justify-center bg-slate-50 p-4 text-slate-800 dark:bg-slate-950 dark:text-slate-200">
+    <div class="card w-full max-w-md p-6 text-center">
+      <h1 class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.error_heading}</h1>
+      <p class="mt-2 text-sm text-red-700 dark:text-red-300">{setup.error}</p>
+      <button class="btn btn-primary mt-5" onclick={() => setup.load()}>{i18n.m.setup.retry}</button>
+    </div>
+  </div>
+{:else if setup.required}
+  <Setup />
 {:else}
   <!-- h-dvh tracks iOS Safari's dynamic toolbar; the safe-area insets keep the bar
        and content clear of the notch and home indicator. -->

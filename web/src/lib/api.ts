@@ -43,6 +43,67 @@ export type AuthStatus = {
   required: boolean
 }
 
+export type SetupState = {
+  version: number
+  completedStep: number
+  currentStep: number
+  stepCount: number
+  completed: boolean
+}
+
+export type SetupPath = {
+  name: string
+  role: 'config' | 'work' | 'quarantine' | 'library'
+  libraryId: number | null
+  path: string
+  exists: boolean
+  readable: boolean
+  writable: boolean
+  issue: 'none' | 'missing' | 'unreadable' | 'unwritable' | 'lowSpace'
+  fileSystemId: string | null
+  mountId: string | null
+  mountPoint: string | null
+  fileSystemType: string | null
+  availableBytes: number | null
+  totalBytes: number | null
+  requiredFreeBytes: number | null
+}
+
+export type SetupStorageRelationship = {
+  libraryId: number
+  libraryName: string
+  workAtomic: boolean | null
+  quarantineAtomic: boolean | null
+}
+
+export type SetupReadiness = {
+  databaseAvailable: boolean
+  ready: boolean
+  platform: 'local' | 'compose' | 'unraid' | 'truenas'
+  paths: SetupPath[]
+  storageRelationships: SetupStorageRelationship[]
+  tools: ToolCheck[]
+  recommendation: SetupRecommendation
+}
+
+export type SetupRecommendation = {
+  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
+  hardwareDecode: boolean
+  vmafTier: 'Off' | 'Balanced'
+  scheduleStart: string
+  scheduleEnd: string
+  encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'
+  vmafReason: 'cuda-balanced' | 'cpu-cost' | 'unavailable'
+}
+
+export type SetupApplyReceipt = {
+  state: SetupState
+  libraryCount: number
+  settingsApplied: boolean
+  recommendationsApplied: boolean
+  alreadyApplied: boolean
+}
+
 export type ToolCheck = {
   name: string
   command: string
@@ -98,6 +159,10 @@ export type LibraryRules = {
   moveOverwrite: boolean
   minVmafHarmonicMean: number | null
   minVmafMin: number | null
+  vmafQualityGateEnabled: boolean | null
+  minVmafCatastrophicMin: number | null
+  clipVmafEnabled: boolean | null
+  vmafFrameSubsample: number | null
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
@@ -111,6 +176,15 @@ export type LibraryAccess = {
   writable: boolean
   ok: boolean
   message: string
+  issue: 'none' | 'missing' | 'unreadable' | 'unwritable'
+  fileSystemId: string | null
+  mountId: string | null
+  mountPoint: string | null
+  fileSystemType: string | null
+  availableBytes: number | null
+  totalBytes: number | null
+  atomicWithWork: boolean | null
+  atomicWithQuarantine: boolean | null
 }
 
 export type Library = LibraryRules & {
@@ -132,6 +206,54 @@ export type SaveLibrary = LibraryRules & {
   mediaType: string
   ruleProfile: string
   enabled: boolean
+}
+
+export function newLibraryDefaults(): SaveLibrary {
+  return {
+    name: '',
+    path: '',
+    mediaType: 'Film',
+    ruleProfile: 'ConservativeHevc',
+    enabled: true,
+    priority: 0,
+    minFileSizeBytes: null,
+    maxHeight: null,
+    reencodeSameCodecAboveBytes: null,
+    skipEfficientSources: true,
+    targetVideoCodec: null,
+    targetContainer: null,
+    hdrHandling: null,
+    optimiseDolbyVision: false,
+    excludePaths: null,
+    qualityCrf: null,
+    encoderPreset: null,
+    audioTargetCodec: null,
+    audioBitrateKbps: null,
+    videoAudioCodec: null,
+    videoAudioBitrateKbps: null,
+    downmixToStereo: false,
+    keepAudioLanguages: null,
+    keepSubtitleLanguages: null,
+    reencodeLossyAudio: false,
+    targetImageFormat: null,
+    imageQuality: null,
+    reencodeLossyImages: false,
+    imageDownscaleMode: 'None',
+    imageDownscaleValue: 0,
+    moveOnComplete: false,
+    targetFolder: null,
+    moveOverwrite: false,
+    minVmafHarmonicMean: null,
+    minVmafMin: null,
+    vmafQualityGateEnabled: false,
+    minVmafCatastrophicMin: null,
+    clipVmafEnabled: null,
+    vmafFrameSubsample: null,
+    autoEnqueueEnabled: false,
+    autoEnqueueWindowStart: '00:00',
+    autoEnqueueWindowEnd: '00:00',
+    autoReplace: false,
+  }
 }
 
 export type RuleProfileSpec = {
@@ -163,9 +285,6 @@ export type Settings = {
   verificationRequireAudioRetained: boolean
   verificationRequireSubtitlesRetained: boolean
   verificationRequireSizeReduction: boolean
-  verificationQualityGateEnabled: boolean
-  verificationMinimumVmafHarmonicMean: number
-  verificationMinimumVmafMin: number
   verificationAudioLoudnessGateEnabled: boolean
   verificationMaxLoudnessDriftLufs: number
   verificationAudioClippingGateEnabled: boolean
@@ -240,6 +359,19 @@ export type VerificationCheck = {
 
 export type VerificationReport = {
   checks: VerificationCheck[]
+  context?: VerificationContext | null
+}
+
+export type VerificationContext = {
+  videoEncoder: string | null
+  requestedVideoQuality: number | null
+  effectiveVideoQuality: number | null
+  videoQualityMode: string | null
+  qualityRetryCount: number
+  vmafSampling: string | null
+  minimumVmafHarmonicMean: number
+  minimumVmafFifthPercentile: number
+  minimumVmafCatastrophicMin: number
 }
 
 export type MediaSideStats = {
@@ -269,6 +401,62 @@ export type PreviewComparison = {
   verificationReportJson: string | null
 }
 
+export type CalibrationSource = {
+  mediaFileId: number
+  relativePath: string
+  durationSeconds: number
+  width: number | null
+  height: number | null
+  mediaKind: 'Video' | 'Audio' | 'Image'
+  isHdr: boolean
+}
+
+export type CalibrationSlot = {
+  name: 'A' | 'B' | 'X'
+  url: string
+  startSeconds: number
+  gainDb: number
+}
+
+export type CalibrationTrial = {
+  id: string
+  phase: 'Screening' | 'Confirmation'
+  number: number
+  maximumNumber: number
+  sampleNumber: number
+  sampleCount: number
+  durationSeconds: number
+  a: CalibrationSlot
+  b: CalibrationSlot
+  x: CalibrationSlot
+}
+
+export type CalibrationResult = {
+  recommendedQuality: number | null
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
+  estimatedSavingPercent: number | null
+  correctAnswers: number
+  totalAnswers: number
+  outcome: string
+  applied: boolean
+}
+
+export type CalibrationSession = {
+  id: string
+  libraryId: number
+  mediaFileId: number
+  source: string
+  mediaKind: 'Video' | 'Audio' | 'Image'
+  status: 'Preparing' | 'Screening' | 'Confirming' | 'Complete' | 'Revealed' | 'Applied' | 'Failed'
+  preparationProgress: number
+  preparationState: 'Waiting' | 'Working'
+  error: string | null
+  trial: CalibrationTrial | null
+  result: CalibrationResult | null
+}
+
 export type Job = {
   id: number
   mediaFileId: number
@@ -282,6 +470,10 @@ export type Job = {
   failureCategory: string | null
   ffmpegArguments: string | null
   videoEncoder: string | null
+  requestedVideoQuality: number | null
+  effectiveVideoQuality: number | null
+  videoQualityMode: string | null
+  qualityRetryCount: number
   outputSizeBytes: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
@@ -506,13 +698,6 @@ function authorizedHeaders(init?: RequestInit): Headers {
   return headers
 }
 
-function authenticatedUrl(url: string): string {
-  const token = getAdminToken()
-  if (!token) return url
-  const separator = url.includes('?') ? '&' : '?'
-  return `${url}${separator}access_token=${encodeURIComponent(token)}`
-}
-
 function handleAuthRequired(): never {
   clearAdminToken()
   authRequiredHandler?.()
@@ -550,6 +735,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'job.cancel.invalidState': return t(i18n.m.common.api_job_cancel_state, args)
     case 'job.remove.active': return i18n.m.common.api_job_remove_active
     case 'job.retry.invalidState': return t(i18n.m.common.api_job_retry_state, args)
+    case 'job.workCleanupFailed': return i18n.m.common.api_job_work_cleanup_failed
     case 'job.status.invalid': return t(i18n.m.common.api_job_status_invalid, args)
     case 'job.failureCategory.invalid': return t(i18n.m.common.api_failure_category_invalid, args)
     case 'replacement.notFound': return t(i18n.m.common.api_replacement_not_found, args)
@@ -578,12 +764,17 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.libraryScanIntervalHours.minimum': return i18n.m.settings.validation_scan_interval
     case 'settings.verificationDurationTolerance.nonNegative': return i18n.m.settings.validation_duration
     case 'settings.vmaf.range': return i18n.m.settings.validation_vmaf
+    case 'settings.vmafFrameSubsample.range': return i18n.m.settings.validation_vmaf_subsample
     case 'settings.loudnessDrift.nonNegative': return i18n.m.settings.validation_loudness
     case 'settings.truePeak.finite': return i18n.m.settings.validation_true_peak
     case 'settings.imageSsim.range': return i18n.m.settings.validation_ssim
     case 'settings.quarantineRetention.nonNegative': return i18n.m.settings.validation_quarantine
     case 'settings.encoderMode.invalid': return i18n.m.settings.validation_encoder
     case 'settings.import.invalid': return i18n.m.settings.validation_import
+    case 'setup.step.invalid': return i18n.m.setup.error_save
+    case 'setup.completion.invalid': return i18n.m.setup.error_save
+    case 'setup.library.required': return i18n.m.setup.library_required_error
+    case 'setup.library.unavailable': return i18n.m.setup.required_tools_error
     default: return error
   }
 }
@@ -609,6 +800,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<Health>('/api/health'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
+  setup: () => request<SetupState>('/api/setup'),
+  setupReadiness: () => request<SetupReadiness>('/api/setup/readiness'),
+  advanceSetup: (completedStep: number) =>
+    request<SetupState>('/api/setup/progress', { method: 'PUT', body: JSON.stringify({ completedStep }) }),
+  completeSetup: () => request<SetupState>('/api/setup/complete', { method: 'POST' }),
+  applySetup: (body: {
+    settings: Settings
+    useRecommendedEncoder: boolean
+    applyRecommendedVmaf: boolean
+    applyRecommendedSchedule: boolean
+  }) => request<SetupApplyReceipt>('/api/setup/apply', { method: 'POST', body: JSON.stringify(body) }),
+  restartSetup: () => request<SetupState>('/api/setup/restart', { method: 'POST' }),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
   hardware: (refresh = false) =>
     request<{ hardware: HardwareCapability }>(`/api/system/hardware${refresh ? '?refresh=true' : ''}`).then(
@@ -640,8 +843,26 @@ export const api = {
     request<{ jobId: number }>(`/api/media/${mediaFileId}/preview`, { method: 'POST' }),
   getPreview: (jobId: number) => request<PreviewComparison>(`/api/preview/${jobId}`),
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
-  mediaContentUrl: (mediaFileId: number) => authenticatedUrl(`/api/media/${mediaFileId}/content`),
-  previewContentUrl: (jobId: number) => authenticatedUrl(`/api/preview/${jobId}/content`),
+  mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
+  previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
+
+  calibrationSources: (libraryId: number) =>
+    request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false) =>
+    request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed }),
+    }),
+  calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
+  answerCalibration: (id: string, trialId: string, choice: 'A' | 'B') =>
+    request<CalibrationSession>(`/api/calibration/${id}/answers`, {
+      method: 'POST', body: JSON.stringify({ trialId, choice }),
+    }),
+  revealCalibration: (id: string) =>
+    request<CalibrationSession>(`/api/calibration/${id}/reveal`, { method: 'POST' }),
+  applyCalibration: (id: string) =>
+    request<CalibrationSession>(`/api/calibration/${id}/apply`, { method: 'POST' }),
+  deleteCalibration: (id: string) =>
+    request<void>(`/api/calibration/${id}`, { method: 'DELETE' }),
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),
@@ -721,7 +942,8 @@ export const api = {
   },
   cancelJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
   removeJob: (id: number) => request<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
-  retryJob: (id: number) => request<{ id: number; status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),
+  retryJob: (id: number, higherQuality = false) =>
+    request<{ id: number; status: string }>(`/api/jobs/${id}/retry?higherQuality=${higherQuality}`, { method: 'POST' }),
   clearJobs: (scope?: 'errored' | 'finished' | 'all') =>
     request<{ cleared: number }>(`/api/jobs/clear${scope ? `?scope=${scope}` : ''}`, { method: 'POST' }),
   clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),
@@ -732,8 +954,8 @@ export const api = {
 
   replacements: () => request<Replacement[]>('/api/replacements'),
   replacement: (id: number) => request<ReplacementDetail>(`/api/replacements/${id}`),
-  replacementOriginalContentUrl: (id: number) => authenticatedUrl(`/api/replacements/${id}/original/content`),
-  replacementReplacementContentUrl: (id: number) => authenticatedUrl(`/api/replacements/${id}/replacement/content`),
+  replacementOriginalContentUrl: (id: number) => `/api/replacements/${id}/original/content`,
+  replacementReplacementContentUrl: (id: number) => `/api/replacements/${id}/replacement/content`,
   rollbackReplacement: (id: number) =>
     request<Replacement>(`/api/replacements/${id}/rollback`, { method: 'POST' }),
   approveReplacement: (id: number) =>

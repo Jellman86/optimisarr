@@ -5,16 +5,15 @@
 namespace Optimisarr.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddJobEnqueueReason : Migration
+    public partial class AddAudioCalibrationBitrate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "EnqueueReason",
+            migrationBuilder.AddColumn<int>(
+                name: "RequestedAudioBitrateKbps",
                 table: "Jobs",
-                type: "TEXT",
-                maxLength: 512,
+                type: "INTEGER",
                 nullable: true);
         }
 
@@ -22,7 +21,7 @@ namespace Optimisarr.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "EnqueueReason",
+                name: "RequestedAudioBitrateKbps",
                 table: "Jobs");
         }
     }

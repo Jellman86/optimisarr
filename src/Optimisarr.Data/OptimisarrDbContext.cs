@@ -87,6 +87,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(job => job.WorkOutputPath).HasMaxLength(1024);
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
             entity.Property(job => job.EnqueueReason).HasMaxLength(512);
+            entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
 
             // Deleting a media file (e.g. via its library) removes its jobs too.
             entity.HasOne(job => job.MediaFile)
@@ -97,6 +98,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             // The scheduler queries by status and orders by priority then enqueue time.
             entity.HasIndex(job => job.Status);
             entity.HasIndex(job => new { job.Priority, job.EnqueuedAt });
+            entity.HasIndex(job => job.CalibrationSessionId);
         });
 
         modelBuilder.Entity<Replacement>(entity =>

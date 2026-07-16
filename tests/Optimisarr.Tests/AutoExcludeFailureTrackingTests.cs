@@ -79,6 +79,24 @@ public sealed class AutoExcludeFailureTrackingTests : IDisposable
         Assert.Single(db.Exclusions);   // still just the original manual one
     }
 
+    [Theory]
+    [InlineData(JobType.Preview)]
+    [InlineData(JobType.Calibration)]
+    public async Task Disposable_comparison_work_never_changes_a_files_failure_streak(JobType type)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var (job, file) = await SeedAsync(db);
+        job.Type = type;
+        file.FailureCount = 2;
+
+        await QueueDispatcher.ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
+        await QueueDispatcher.ApplyFailureTrackingAsync(db, job, JobStatus.Completed);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(2, (await db.MediaFiles.SingleAsync()).FailureCount);
+        Assert.Empty(db.Exclusions);
+    }
+
     private static async Task<(Job Job, MediaFile File)> SeedAsync(OptimisarrDbContext db)
     {
         var library = new Library { Name = "Films", Path = "/data/films" };
