@@ -29,7 +29,7 @@ function session(mediaKind: CalibrationMediaKind = 'Video') {
     source: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv',
     mediaKind,
     status: 'Screening',
-    preparationProgress: 1, error: null, result: null,
+    preparationProgress: 1, preparationState: 'Working', error: null, result: null,
     trial: {
       id: trialId, phase: 'Screening', number: 1, sampleNumber: 1, sampleCount: 3,
       durationSeconds: mediaKind === 'Image' ? 0 : 12,
@@ -96,6 +96,7 @@ test('blind calibration hides settings, supports keyboard switching, and traps f
   const dialog = page.getByRole('dialog', { name: 'Blind quality calibration' })
   await expect(dialog).toBeVisible()
   await expect(dialog).toBeFocused()
+  await expect(dialog.locator('..')).toHaveClass(/backdrop-blur-sm/)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await expect(dialog.getByText('CRF/CQ 30')).toHaveCount(0)
   await expect(dialog.getByText(/estimated size reduction/i)).toHaveCount(0)
@@ -107,6 +108,20 @@ test('blind calibration hides settings, supports keyboard switching, and traps f
   await expect(dialog.getByText('0:00 / 0:12')).toBeVisible()
   await page.keyboard.press('x')
   await expect(dialog.getByRole('button', { name: 'X', exact: true })).toHaveAttribute('aria-pressed', 'true')
+
+  await dialog.getByRole('button', { name: 'Minimise' }).click()
+  const minimized = page.getByRole('region', { name: 'Blind quality calibration' })
+  await expect(dialog).toBeHidden()
+  await expect(minimized).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden')
+
+  await minimized.getByRole('button', { name: 'Expand' }).click()
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toBeFocused()
+  await expect(dialog.getByRole('button', { name: 'X', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('Escape')
+  await expect(minimized).toBeVisible()
+  await minimized.getByRole('button', { name: 'Expand' }).click()
 
   const undersized = await dialog.locator('button:visible').evaluateAll((buttons) =>
     buttons.filter((button) => button.getBoundingClientRect().height < 44).length)

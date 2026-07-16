@@ -26,6 +26,11 @@
 
 ### Added
 
+- **Personal quality checks can now be minimised without cancelling the session.** The blind
+  comparison collapses to a live bottom-corner status widget while preparation continues, and
+  expanding it restores the current trial. Escape minimises; only Close discards the disposable
+  session. Expanded minimisable panels now softly blur the UI behind them, while minimised widgets
+  leave the rest of Optimisarr clear and usable.
 - **A personal blind video-quality check.** A saved video library can now prepare short,
   disposable samples from the beginning, middle, and end of a representative file, then guide one
   person through an adaptive A/B/X check without showing which clip is the original, the quality

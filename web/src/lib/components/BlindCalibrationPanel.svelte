@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { api, type CalibrationSession, type CalibrationSlot, type CalibrationSource } from '../api'
   import { formatDuration } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
@@ -31,18 +31,48 @@
   let imagePanX = $state(0)
   let imagePanY = $state(0)
   let imageDrag = $state<{ x: number, y: number, panX: number, panY: number } | null>(null)
+  let minimized = $state(false)
   let closed = false
-  let dialog: HTMLDivElement
+  let dialog = $state<HTMLDivElement | null>(null)
   const returnFocus = typeof document === 'undefined' ? null : document.activeElement as HTMLElement | null
   let previousOverflow = ''
   const selected = $derived(sources.find((source) => source.mediaFileId === selectedSource) ?? null)
   const hdrReady = $derived(!selected?.isHdr || hdrDisplaySupported && hdrViewingConfirmed)
+  const minimizedStatus = $derived(
+    error
+      ? i18n.m.shared.status_error
+      : loading
+        ? i18n.m.common.loading_short
+        : busy && !session
+          ? i18n.m.calibration.starting
+          : !session
+            ? selected?.mediaKind === 'Audio'
+              ? i18n.m.calibration.choose_audio
+              : selected?.mediaKind === 'Image'
+                ? i18n.m.calibration.choose_image
+                : i18n.m.calibration.choose_source
+            : session.status === 'Preparing'
+              ? session.preparationState === 'Waiting'
+                ? i18n.m.calibration.waiting
+                : `${i18n.m.calibration.preparing} · ${Math.round(session.preparationProgress * 100)}%`
+              : session.status === 'Failed'
+                ? i18n.m.calibration.failed
+                : session.status === 'Screening'
+                  ? i18n.m.calibration.screening
+                  : session.status === 'Confirming'
+                    ? i18n.m.calibration.confirming
+                    : session.status === 'Complete'
+                      ? i18n.m.calibration.complete
+                      : session.status === 'Applied'
+                        ? i18n.m.calibration.applied
+                        : i18n.m.calibration.result_title,
+  )
 
   loadSources()
   onMount(() => {
     previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    dialog.focus()
+    dialog?.focus()
     hdrDisplaySupported = window.matchMedia('(video-dynamic-range: high)').matches
       || window.matchMedia('(dynamic-range: high)').matches
   })
@@ -265,12 +295,40 @@
       : i18n.m.calibration.no_transparent_result
   }
 
+  function minimise() {
+    if (minimized) return
+    const player = players[activeSlot]
+    const source = slot(activeSlot)
+    if (player && source && session?.trial) {
+      playbackPosition = Math.max(0, Math.min(
+        session.trial.durationSeconds,
+        player.currentTime - source.startSeconds,
+      ))
+    }
+    for (const candidate of Object.values(players)) candidate?.pause()
+    playing = false
+    minimized = true
+    document.body.style.overflow = previousOverflow
+  }
+
+  function restore() {
+    if (!minimized) return
+    minimized = false
+    document.body.style.overflow = 'hidden'
+    void tick().then(() => dialog?.focus())
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
-      void close()
+      if (!minimized) {
+        event.preventDefault()
+        minimise()
+      }
       return
     }
+    if (minimized) return
     if (event.key === 'Tab') {
+      if (!dialog) return
       const focusable = [...dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
       )].filter((element) => element.offsetParent !== null)
@@ -314,7 +372,43 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4" role="presentation">
+{#if minimized}
+  <section
+    class="fixed bottom-4 left-4 right-4 z-50 rounded-lg border border-slate-200 bg-white p-3 shadow-xl sm:left-auto sm:w-80 dark:border-slate-700 dark:bg-slate-900"
+    aria-label={i18n.m.calibration.title}
+  >
+    <div class="flex items-center gap-2">
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={libraryName}>{libraryName}</p>
+        <p class="truncate text-[11px] text-slate-500 dark:text-slate-400" aria-live="polite">{minimizedStatus}</p>
+      </div>
+      <button class="btn btn-ghost min-h-11 min-w-11 flex-shrink-0 p-2" type="button" onclick={restore} title={i18n.m.shared.expand} aria-label={i18n.m.shared.expand}>
+        <Icon name="chevron" class="h-4 w-4 rotate-180" />
+      </button>
+      <button class="btn btn-ghost min-h-11 min-w-11 flex-shrink-0 p-2 text-red-600 dark:text-red-400" type="button" onclick={close} title={i18n.m.common.close} aria-label={i18n.m.common.close}>
+        <Icon name="x" class="h-4 w-4" />
+      </button>
+    </div>
+    {#if session?.status === 'Preparing'}
+      <div
+        class="progress-track mt-2"
+        role="progressbar"
+        aria-label={i18n.m.calibration.preparing}
+        aria-valuemin={session.preparationState === 'Waiting' ? undefined : 0}
+        aria-valuemax={session.preparationState === 'Waiting' ? undefined : 100}
+        aria-valuenow={session.preparationState === 'Waiting' ? undefined : Math.round(session.preparationProgress * 100)}
+      >
+        {#if session.preparationState === 'Waiting'}
+          <div class="progress-indeterminate"></div>
+        {:else}
+          <div class="progress-fill" style={`width: ${Math.round(session.preparationProgress * 100)}%`}></div>
+        {/if}
+      </div>
+    {/if}
+    {#if error}<p class="mt-2 text-[11px] text-red-600 dark:text-red-400">{error}</p>{/if}
+  </section>
+{:else}
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4" role="presentation">
   <div
     bind:this={dialog}
     class="card flex max-h-[96dvh] w-full max-w-5xl flex-col overflow-hidden"
@@ -329,9 +423,14 @@
         <h2 id="calibration-title" class="text-lg font-semibold text-slate-900 dark:text-slate-100">{i18n.m.calibration.title}</h2>
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{libraryName}</p>
       </div>
-      <button class="btn btn-ghost min-h-11 min-w-11 p-2" type="button" onclick={close} aria-label={i18n.m.common.close}>
-        <Icon name="x" class="h-5 w-5" />
-      </button>
+      <div class="flex flex-shrink-0 items-center gap-1">
+        <button class="btn btn-ghost min-h-11 min-w-11 p-2" type="button" onclick={minimise} title={i18n.m.shared.minimise} aria-label={i18n.m.shared.minimise}>
+          <Icon name="minus" class="h-5 w-5" />
+        </button>
+        <button class="btn btn-ghost min-h-11 min-w-11 p-2" type="button" onclick={close} title={i18n.m.common.close} aria-label={i18n.m.common.close}>
+          <Icon name="x" class="h-5 w-5" />
+        </button>
+      </div>
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
@@ -559,3 +658,4 @@
     </div>
   </div>
 </div>
+{/if}
