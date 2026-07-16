@@ -38,7 +38,9 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
 
         var eligibleIds = eligible.Select(candidate => candidate.MediaFileId).ToHashSet();
         var alreadyActive = (await db.Jobs
-                .Where(job => eligibleIds.Contains(job.MediaFileId) && ActiveStatuses.Contains(job.Status))
+                .Where(job => job.Type == JobType.Normal
+                    && eligibleIds.Contains(job.MediaFileId)
+                    && ActiveStatuses.Contains(job.Status))
                 .Select(job => job.MediaFileId)
                 .ToListAsync(cancellationToken))
             .ToHashSet();

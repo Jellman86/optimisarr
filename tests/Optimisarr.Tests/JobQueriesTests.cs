@@ -74,7 +74,7 @@ public sealed class JobQueriesTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_excludes_preview_jobs()
+    public async Task ListAsync_excludes_disposable_comparison_jobs()
     {
         await using (var db = new OptimisarrDbContext(_options))
         {
@@ -83,19 +83,23 @@ public sealed class JobQueriesTests : IDisposable
             await db.SaveChangesAsync();
             db.MediaFiles.Add(MediaFile(library.Id, id: 1));
             db.MediaFiles.Add(MediaFile(library.Id, id: 2));
+            db.MediaFiles.Add(MediaFile(library.Id, id: 3));
             await db.SaveChangesAsync();
 
             db.Jobs.Add(Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow));
             var preview = Job(id: 2, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
             preview.Type = JobType.Preview;
             db.Jobs.Add(preview);
+            var calibration = Job(id: 3, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            calibration.Type = JobType.Calibration;
+            db.Jobs.Add(calibration);
             await db.SaveChangesAsync();
         }
 
         await using var readDb = new OptimisarrDbContext(_options);
         var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
 
-        // The preview job is hidden from the normal queue list.
+        // Interactive previews and blind-calibration clips are hidden from the normal queue list.
         Assert.Equal(1, Assert.Single(jobs).Id);
     }
 

@@ -20,7 +20,8 @@ internal static class OptimisarrApiTags
         if (p.StartsWith("/api/settings", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/queue", StringComparison.OrdinalIgnoreCase)) return "Settings";
         if (p.StartsWith("/api/libraries", StringComparison.OrdinalIgnoreCase)
-            || p.StartsWith("/api/exclusions", StringComparison.OrdinalIgnoreCase)) return "Libraries";
+            || p.StartsWith("/api/exclusions", StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith("/api/calibration", StringComparison.OrdinalIgnoreCase)) return "Libraries";
         if (p.StartsWith("/api/media", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/candidates", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/inventory", StringComparison.OrdinalIgnoreCase)

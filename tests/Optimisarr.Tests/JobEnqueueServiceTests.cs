@@ -55,6 +55,33 @@ public sealed class JobEnqueueServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_disposable_calibration_job_does_not_block_normal_enqueue()
+    {
+        var libraryId = await SeedLibraryWithFilesAsync();
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var fileId = await db.MediaFiles
+                .Where(file => file.LibraryId == libraryId && file.VideoCodec == "h264")
+                .Select(file => file.Id)
+                .SingleAsync();
+            db.Jobs.Add(new Job
+            {
+                MediaFileId = fileId,
+                Type = JobType.Calibration,
+                Status = JobStatus.Queued
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await EnqueueAsync(libraryId);
+
+        Assert.Equal(1, result.Enqueued);
+        await using var readDb = new OptimisarrDbContext(_options);
+        Assert.Contains(readDb.Jobs, job => job.Type == JobType.Normal);
+        Assert.Contains(readDb.Jobs, job => job.Type == JobType.Calibration);
+    }
+
+    [Fact]
     public async Task Holds_back_a_file_a_connected_arr_is_importing_into()
     {
         var libraryId = await SeedLibraryWithFilesAsync();

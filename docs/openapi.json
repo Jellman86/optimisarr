@@ -63,6 +63,25 @@
         ],
         "type": "object"
       },
+      "CalibrationAnswerRequest": {
+        "properties": {
+          "choice": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "trialId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trialId",
+          "choice"
+        ],
+        "type": "object"
+      },
       "ConfigSnapshot": {
         "properties": {
           "activityWatchers": {
@@ -1190,6 +1209,22 @@
           "completedStep"
         ],
         "type": "object"
+      },
+      "StartCalibrationRequest": {
+        "properties": {
+          "mediaFileId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "mediaFileId"
+        ],
+        "type": "object"
       }
     }
   },
@@ -1418,6 +1453,193 @@
         },
         "tags": [
           "System"
+        ]
+      }
+    },
+    "/api/calibration/{id}": {
+      "delete": {
+        "operationId": "DeleteCalibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "get": {
+        "operationId": "GetCalibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/calibration/{id}/answers": {
+      "post": {
+        "operationId": "AnswerCalibrationTrial",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/calibration/{id}/apply": {
+      "post": {
+        "operationId": "ApplyCalibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/calibration/{id}/reveal": {
+      "post": {
+        "operationId": "RevealCalibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/calibration/{id}/trials/{trialId}/content/{slot}": {
+      "get": {
+        "operationId": "GetCalibrationTrialContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "trialId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slot",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
         ]
       }
     },
@@ -2276,6 +2498,72 @@
     "/api/libraries/{id}/access": {
       "get": {
         "operationId": "CheckLibraryAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/{id}/calibration": {
+      "post": {
+        "operationId": "StartCalibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCalibrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/api/libraries/{id}/calibration/sources": {
+      "get": {
+        "operationId": "ListCalibrationSources",
         "parameters": [
           {
             "in": "path",

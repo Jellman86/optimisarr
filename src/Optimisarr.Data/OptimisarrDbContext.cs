@@ -95,6 +95,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             // The scheduler queries by status and orders by priority then enqueue time.
             entity.HasIndex(job => job.Status);
             entity.HasIndex(job => new { job.Priority, job.EnqueuedAt });
+            entity.HasIndex(job => job.CalibrationSessionId);
         });
 
         modelBuilder.Entity<Replacement>(entity =>

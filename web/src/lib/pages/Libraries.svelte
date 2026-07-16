@@ -9,6 +9,7 @@
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import BlindCalibrationPanel from '../components/BlindCalibrationPanel.svelte'
 
   let {
     embeddedEditorId = null,
@@ -234,6 +235,7 @@
   let busyId = $state<number | null>(null)
   let pickerOpen = $state(false)
   let targetPickerOpen = $state(false)
+  let calibrationOpen = $state(false)
 
   // null = nothing open; 0 = adding a new library; >0 = editing that card.
   let editingId = $state<number | null>(null)
@@ -680,6 +682,13 @@
     else router.go('/libraries')
   }
 
+  function calibrationApplied(quality: number) {
+    form.qualityCrf = quality
+    markPristine()
+    message = i18n.m.calibration.applied
+    void load()
+  }
+
   function emptyToNull(value: string | null): string | null {
     const trimmed = value?.trim()
     return trimmed ? trimmed : null
@@ -984,6 +993,24 @@
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.container_badge, { container: effectiveVideoSpec.container })}</span>
         {/if}
       </div>
+
+      {#if editingId && editingId > 0 && showVideoOptions && !isRemuxProfile}
+        <div class="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.calibration.title}</p>
+              <p class="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.intro}</p>
+            </div>
+            <button
+              type="button"
+              class="btn min-h-11 flex-shrink-0"
+              disabled={isDirty}
+              title={isDirty ? i18n.m.libraries.unsaved : i18n.m.calibration.title}
+              onclick={() => (calibrationOpen = true)}
+            >{i18n.m.calibration.eyebrow}</button>
+          </div>
+        </div>
+      {/if}
 
       {#if isCustom}
         <!-- Neutral, not amber: a custom config is a deliberate choice, not a warning. -->
@@ -1678,4 +1705,13 @@
       {i18n.m.libraries.add_library}
     </button>
   </EmptyState>
+{/if}
+
+{#if calibrationOpen && editingId && editingId > 0}
+  <BlindCalibrationPanel
+    libraryId={editingId}
+    libraryName={form.name}
+    onClose={() => (calibrationOpen = false)}
+    onApplied={calibrationApplied}
+  />
 {/if}

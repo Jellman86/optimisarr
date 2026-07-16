@@ -305,6 +305,30 @@ rejected.
 Long video previews may be segment-only. The response includes `clipped: true`
 when the verification report is for a sample rather than the whole file.
 
+## Personal blind quality calibration
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/libraries/{id}/calibration/sources` | List probed SDR videos suitable for a personal quality check. |
+| `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123 }`. |
+| `GET` | `/api/calibration/{id}` | Read preparation progress, the current blinded trial, or a revealed result. |
+| `POST` | `/api/calibration/{id}/answers` | Answer the current A/B/X trial. Body: `{ "trialId": "…", "choice": "A" }`. |
+| `POST` | `/api/calibration/{id}/reveal` | Reveal the result after all blind trials finish. |
+| `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended quality to the library, if its relevant settings have not changed. |
+| `GET` | `/api/calibration/{id}/trials/{trialId}/content/{slot}` | Stream the current blinded `A`, `B`, or `X` content. |
+| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
+
+Calibration currently supports SDR video using a saved re-encode preset. The service creates three
+12-second scenes at several quality levels under `/work/calibration`; these jobs are excluded from
+the normal queue and can never enter replacement. Active requests extend the session; an abandoned
+session expires after two hours, and all session state is discarded on restart. The original file
+is only read. A completed result does not alter settings:
+only the separate `apply` request may change the library quality, and it queues no media work.
+
+Trial URLs and labels are opaque until reveal. Clients should not display encoder, quality, bitrate,
+or estimated size during the blind phase. If any stream cannot be decoded, fail closed rather than
+recording an answer. The `NoReliableDifference` outcome is not a proof that two encodes are equal.
+
 ## Queue
 
 | Method | Endpoint | Purpose |

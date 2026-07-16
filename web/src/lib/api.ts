@@ -399,6 +399,56 @@ export type PreviewComparison = {
   verificationReportJson: string | null
 }
 
+export type CalibrationSource = {
+  mediaFileId: number
+  relativePath: string
+  durationSeconds: number
+  width: number | null
+  height: number | null
+}
+
+export type CalibrationSlot = {
+  name: 'A' | 'B' | 'X'
+  url: string
+  startSeconds: number
+}
+
+export type CalibrationTrial = {
+  id: string
+  phase: 'Screening' | 'Confirmation'
+  number: number
+  sampleNumber: number
+  sampleCount: number
+  durationSeconds: number
+  a: CalibrationSlot
+  b: CalibrationSlot
+  x: CalibrationSlot
+}
+
+export type CalibrationResult = {
+  recommendedQuality: number | null
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
+  estimatedSavingPercent: number | null
+  correctAnswers: number
+  totalAnswers: number
+  outcome: string
+  applied: boolean
+}
+
+export type CalibrationSession = {
+  id: string
+  libraryId: number
+  mediaFileId: number
+  source: string
+  status: 'Preparing' | 'Screening' | 'Confirming' | 'Complete' | 'Revealed' | 'Applied' | 'Failed'
+  preparationProgress: number
+  error: string | null
+  trial: CalibrationTrial | null
+  result: CalibrationResult | null
+}
+
 export type Job = {
   id: number
   mediaFileId: number
@@ -786,6 +836,24 @@ export const api = {
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
   mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
   previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
+
+  calibrationSources: (libraryId: number) =>
+    request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
+  startCalibration: (libraryId: number, mediaFileId: number) =>
+    request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
+      method: 'POST', body: JSON.stringify({ mediaFileId }),
+    }),
+  calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
+  answerCalibration: (id: string, trialId: string, choice: 'A' | 'B') =>
+    request<CalibrationSession>(`/api/calibration/${id}/answers`, {
+      method: 'POST', body: JSON.stringify({ trialId, choice }),
+    }),
+  revealCalibration: (id: string) =>
+    request<CalibrationSession>(`/api/calibration/${id}/reveal`, { method: 'POST' }),
+  applyCalibration: (id: string) =>
+    request<CalibrationSession>(`/api/calibration/${id}/apply`, { method: 'POST' }),
+  deleteCalibration: (id: string) =>
+    request<void>(`/api/calibration/${id}`, { method: 'DELETE' }),
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),

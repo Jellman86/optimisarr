@@ -341,26 +341,35 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
-7. **Blind quality calibration ("placebo panel")** — help a user pick the lowest quality preset
-   that is transparent *to them*, without the "higher must be better" bias that wastes storage.
-   Per library, choose a representative file (video, audio, or image) and encode a short
-   representative segment at each preset tier. Present the candidates unlabelled and in randomised
-   order alongside the untouched original; the user judges them — ideally an ABX trial ("is X the
-   original or the encode?") repeated a few times, which is far more defensible than a single guess
-   — then a Reveal button shows the true tiers and each candidate's VMAF/SSIM score. The outcome
-   feeds straight back into the library's quality slider ("use this tier for this library").
+7. **Blind quality calibration ("placebo panel"): first SDR-video slice done** — help a user choose
+   the most space-efficient quality that they cannot reliably distinguish from their own source,
+   without revealing the setting or estimated saving early. The design is informed by the source,
+   observer, presentation, repetition, and paired-comparison principles in
+   [ITU-R BT.500](https://www.itu.int/rec/R-REC-BT.500-15-202305-I/en) and
+   [ITU-T P.910](https://www.itu.int/rec/T-REC-P.910-202310-I/en); it is a personal calibration aid,
+   not a standards-conformant laboratory study or a claim of perceptual equivalence.
 
-   - **Bias controls are the point.** Randomise order per session, hide size/bitrate and labels
-     until reveal, and loudness-match audio candidates (a louder encode always sounds "better").
-     Video and image candidates share one viewport, zoom, and playback position.
-   - **Per media kind.** Video reuses the frame-synced compare panel ("Play both") and the
-     preview-clip mechanism so only a short segment is encoded, not the whole file; audio uses
-     instant, level-matched switching; images use a synced zoom/pan toggle.
-   - **Cheap and safe by construction.** Candidates are short, on-demand encodes written to `/work`
-     and cleaned up afterwards; the original is only ever read. Nothing here can replace or delete
-     a file, so it sits entirely outside the safety-critical path.
-   - **Honest results.** Showing the VMAF/SSIM score at reveal lets a user correlate what they can
-     actually perceive with the metric — the whole justification for trusting a lower default floor.
+   - **Shipped for SDR video.** A saved video library can use one chosen, probed source. Optimisarr
+     prepares 12-second early, middle, and late clips at a most-compressed-first quality ladder,
+     randomises A/B/X independently for every trial, and uses a cheap screening stage followed by
+     10 trials (20 only when inconclusive). The one-sided decision thresholds are deliberately
+     conservative; a miss is reported only as "no reliable difference found."
+   - **Bias and interaction controls are shipped.** The setting, encoder and saving remain hidden
+     until Reveal. A/B/X share one viewport and relative playback position, support keyboard and
+     touch switching, and native playback fails closed if any sample cannot be decoded. Applying
+     the recommendation is a separate, explicit action and is refused if the library's relevant
+     settings changed during the session.
+   - **Cheap and safe by construction is shipped.** Candidates are disposable jobs isolated under
+     `/work/calibration`; they bypass normal candidate scheduling but still receive structural
+     verification. They cannot replace, move, or delete a source and are hidden from the normal
+     queue. Closing the panel or restarting Optimisarr removes their database rows and scratch
+     files. The original is only read.
+   - **Next research and implementation.** Select representative sources using spatial/temporal
+     complexity rather than file size alone and support a small multi-source result; correlate the
+     revealed choice with sampled VMAF without turning the metric into a hint; then add HDR with a
+     colour-managed playback contract, level-matched audio with instant switching, and images with
+     synchronised zoom/pan. Keep each media kind separately validated rather than stretching the
+     video method across unlike perception tasks.
 
 8. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
    low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why

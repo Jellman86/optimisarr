@@ -304,7 +304,7 @@ internal static class MediaAndQueueEndpoints
         {
             var log = await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Id == id)
+                .Where(job => job.Id == id && job.Type == JobType.Normal)
                 .Select(job => job.ProcessLog)
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -380,7 +380,7 @@ internal static class MediaAndQueueEndpoints
                 .ToHashSet();
 
             var terminal = await db.Jobs
-                .Where(j => statuses.Contains(j.Status))
+                .Where(j => j.Type == JobType.Normal && statuses.Contains(j.Status))
                 .ToListAsync(cancellationToken);
 
             var clearable = terminal.Where(j => JobClearing.IsClearable(j, liveRollbackJobIds)).ToList();
@@ -420,7 +420,9 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -451,7 +453,9 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -485,7 +489,9 @@ internal static class MediaAndQueueEndpoints
             CancellationToken cancellationToken,
             bool higherQuality = false) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });

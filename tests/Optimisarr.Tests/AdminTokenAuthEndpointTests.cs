@@ -7,7 +7,10 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
+using Optimisarr.Core.Domain;
+using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
 
@@ -38,6 +41,11 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("POST", "/api/libraries")]
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
+    [InlineData("POST", "/api/libraries/1/calibration")]
+    [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/answers")]
+    [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/reveal")]
+    [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/apply")]
+    [InlineData("DELETE", "/api/calibration/00000000-0000-0000-0000-000000000000")]
     [InlineData("POST", "/api/jobs/clear")]
     [InlineData("POST", "/api/jobs/clear-pending")]
     [InlineData("POST", "/api/jobs/1/cancel")]
@@ -225,6 +233,165 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal("original-must-not-change", await File.ReadAllTextAsync(sourcePath));
     }
 
+    [Fact]
+    public async Task Calibration_creates_only_disposable_clipped_jobs_and_delete_cleans_the_session()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var calibrationDirectory = Path.Combine(
+            Path.GetDirectoryName(_api.LibraryDirectory)!,
+            "calibration-library-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(calibrationDirectory);
+        var sourcePath = Path.Combine(calibrationDirectory, "calibration-source.mkv");
+        await File.WriteAllTextAsync(sourcePath, "calibration-source-must-remain-unchanged");
+
+        using var createLibrary = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Calibration library",
+            path = calibrationDirectory,
+            mediaType = "Film",
+            ruleProfile = "ConservativeHevc"
+        });
+        Assert.Equal(HttpStatusCode.Created, createLibrary.StatusCode);
+        var libraryId = JsonNode.Parse(await createLibrary.Content.ReadAsStringAsync())!["id"]!.GetValue<int>();
+
+        int mediaFileId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                LibraryId = libraryId,
+                Path = sourcePath,
+                RelativePath = "calibration-source.mkv",
+                SizeBytes = new FileInfo(sourcePath).Length,
+                ModifiedAt = DateTimeOffset.UtcNow,
+                Status = MediaFileStatus.Probed,
+                MediaKind = MediaKind.Video,
+                DurationSeconds = 1_200,
+                VideoCodec = "h264",
+                Width = 1_920,
+                Height = 1_080,
+                ProbedAt = DateTimeOffset.UtcNow
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaFileId = media.Id;
+        }
+
+        using var started = await client.PostAsJsonAsync(
+            $"/api/libraries/{libraryId}/calibration",
+            new { mediaFileId });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var sessionId = JsonNode.Parse(await started.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+
+        using (var clearedPending = await client.PostAsync("/api/jobs/clear-pending", content: null))
+        {
+            Assert.Equal(HttpStatusCode.OK, clearedPending.StatusCode);
+            Assert.Equal(
+                0,
+                JsonNode.Parse(await clearedPending.Content.ReadAsStringAsync())!["cleared"]!.GetValue<int>());
+        }
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
+            Assert.Equal(15, jobs.Count);
+            Assert.All(jobs, job =>
+            {
+                Assert.Equal(JobType.Calibration, job.Type);
+                Assert.Null(job.LibraryId);
+                Assert.Equal(12, job.CalibrationClipSeconds);
+                Assert.NotNull(job.RequestedVideoQuality);
+                Assert.Equal(JobStatus.Queued, job.Status);
+            });
+            foreach (var job in jobs)
+            {
+                var workDirectory = Path.Combine(calibrationDirectory, $"job-{job.Id}");
+                Directory.CreateDirectory(workDirectory);
+                job.WorkOutputPath = Path.Combine(workDirectory, "candidate.mp4");
+                await File.WriteAllTextAsync(job.WorkOutputPath, "candidate-clip");
+                await File.WriteAllTextAsync(
+                    Path.Combine(workDirectory, ".optimisarr-comparison-reference.mkv"),
+                    "reference-clip");
+                job.Status = JobStatus.Completed;
+                job.Progress = 1;
+                job.OutputSizeBytes = 1_000_000;
+                job.VideoEncoder = "libx265";
+                job.VideoQualityMode = "CRF";
+                job.EffectiveVideoQuality = job.RequestedVideoQuality;
+            }
+            await db.SaveChangesAsync();
+        }
+        using (var clearedFinished = await client.PostAsync("/api/jobs/clear?scope=finished", content: null))
+        {
+            Assert.Equal(HttpStatusCode.OK, clearedFinished.StatusCode);
+            Assert.Equal(
+                0,
+                JsonNode.Parse(await clearedFinished.Content.ReadAsStringAsync())!["cleared"]!.GetValue<int>());
+        }
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            Assert.Equal(15, db.Jobs.Count(job => job.CalibrationSessionId == sessionId));
+        }
+        Assert.Equal("calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
+
+        var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
+        var initialTrial = session["trial"]!.AsObject();
+        Assert.Equal(
+            "candidate-clip",
+            await client.GetStringAsync(initialTrial["a"]!["url"]!.GetValue<string>()));
+        Assert.Equal(
+            "reference-clip",
+            await client.GetStringAsync(initialTrial["b"]!["url"]!.GetValue<string>()));
+        Assert.Equal(
+            "reference-clip",
+            await client.GetStringAsync(initialTrial["x"]!["url"]!.GetValue<string>()));
+        var answerCount = 0;
+        while (session["trial"] is JsonObject trial && answerCount < 20)
+        {
+            Assert.Equal(0, trial["a"]!["startSeconds"]!.GetValue<double>());
+            Assert.Equal(0, trial["b"]!["startSeconds"]!.GetValue<double>());
+            Assert.Equal(0, trial["x"]!["startSeconds"]!.GetValue<double>());
+            using var answered = await client.PostAsJsonAsync($"/api/calibration/{sessionId}/answers", new
+            {
+                trialId = trial["id"]!.GetValue<Guid>(),
+                // The test randomizer always makes B correct. Deliberately wrong answers drive
+                // the no-reliable-difference path without exposing that mapping through the API.
+                choice = "A"
+            });
+            Assert.Equal(HttpStatusCode.OK, answered.StatusCode);
+            session = JsonNode.Parse(await answered.Content.ReadAsStringAsync())!.AsObject();
+            answerCount++;
+        }
+        Assert.Equal("Complete", session["status"]!.GetValue<string>());
+        Assert.Equal(13, answerCount);
+
+        using var revealed = await client.PostAsync($"/api/calibration/{sessionId}/reveal", content: null);
+        Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
+        Assert.Equal(30, JsonNode.Parse(await revealed.Content.ReadAsStringAsync())!["result"]!["recommendedQuality"]!.GetValue<int>());
+
+        using var applied = await client.PostAsync($"/api/calibration/{sessionId}/apply", content: null);
+        Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            Assert.Equal(30, db.Libraries.Single(library => library.Id == libraryId).QualityCrf);
+            Assert.False(db.Jobs.Any(job => job.Type == JobType.Normal && job.MediaFileId == mediaFileId));
+        }
+
+        using var deleted = await client.DeleteAsync($"/api/calibration/{sessionId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            Assert.False(db.Jobs.Any(job => job.CalibrationSessionId == sessionId));
+        }
+        Assert.Equal("calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
+    }
+
     /// <summary>
     /// The real app with the admin token configured, a throwaway config directory (fresh migrated
     /// SQLite), and no background workers — the auth tests only exercise the HTTP pipeline.
@@ -255,7 +422,19 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 {
                     services.Remove(hosted);
                 }
+                foreach (var randomizer in services
+                    .Where(service => service.ServiceType == typeof(ICalibrationRandomizer))
+                    .ToList())
+                {
+                    services.Remove(randomizer);
+                }
+                services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
             });
+        }
+
+        private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer
+        {
+            public bool NextBit() => false;
         }
 
         protected override void Dispose(bool disposing)

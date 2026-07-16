@@ -68,6 +68,8 @@ builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
+builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();
+builder.Services.AddSingleton<BlindCalibrationService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
@@ -83,6 +85,7 @@ builder.Services.AddSingleton<ActiveEncodeRegistry>();
 builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BlindCalibrationService>());
 builder.Services.AddHostedService<SystemMetricsBroadcaster>();
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
@@ -194,6 +197,8 @@ app.MapHealthEndpoints(adminToken, configDirectory);
 app.MapSystemEndpoints();
 
 app.MapLibraryEndpoints();
+
+app.MapCalibrationEndpoints();
 
 app.MapMediaAndQueueEndpoints();
 
