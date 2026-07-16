@@ -88,4 +88,12 @@ public sealed record VerificationInput(
     int? OriginalBitsPerRawSample = null,
     int? OutputBitsPerRawSample = null,
     string? OriginalVideoProfile = null,
-    string? OutputVideoProfile = null);
+    string? OutputVideoProfile = null,
+    // How many subtitle tracks the kept-languages rule removed on purpose; the retention
+    // gate then expects exactly that many fewer, regardless of the policy's subtitle flag.
+    int SubtitleTracksRemoved = 0,
+    // A track-cleanup job promises the container type is untouched; both values are the
+    // probes' format_name so a silent remux fails verification.
+    bool RequireContainerUnchanged = false,
+    string? OriginalContainer = null,
+    string? OutputContainer = null);

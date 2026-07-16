@@ -30,6 +30,13 @@ public static class VerificationEvaluator
             checks.Add(DurationWithinTolerance(input, policy));
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
+
+            // Only registered when the job promised an unchanged container (track cleanup),
+            // so ordinary remuxes/transcodes don't get a noisy not-applicable line.
+            if (input.RequireContainerUnchanged)
+            {
+                checks.Add(ContainerUnchanged(input));
+            }
         }
 
         // Music metadata and embedded artwork are part of the media, not decoration. Audio-only
@@ -714,6 +721,19 @@ public static class VerificationEvaluator
     private static VerificationCheck SubtitlesRetained(VerificationInput input, VerificationPolicy policy)
     {
         var detail = $"Original {input.OriginalSubtitleTrackCount} subtitle track(s), output {input.OutputSubtitleTrackCount}.";
+
+        if (input.SubtitleTracksRemoved > 0)
+        {
+            // The plan is exact: an encode that drops a stream beyond the plan must fail even
+            // when the policy does not require retention, and unlike audio a zero-subtitle
+            // output is legitimate (no minimum-one floor — an all-foreign set goes entirely).
+            var expected = Math.Max(input.OriginalSubtitleTrackCount - input.SubtitleTracksRemoved, 0);
+            detail += $" {input.SubtitleTracksRemoved} track(s) intentionally removed by the kept-languages rule.";
+            return input.OutputSubtitleTrackCount == expected
+                ? Pass("Subtitle tracks", detail)
+                : Fail("Subtitle tracks", $"{detail} Expected exactly {expected} track(s) after the planned removal.");
+        }
+
         if (!policy.RequireSubtitlesRetained)
         {
             return Pass("Subtitle tracks", $"{detail} Retention not required by policy.");
@@ -722,6 +742,17 @@ public static class VerificationEvaluator
         return input.OutputSubtitleTrackCount >= input.OriginalSubtitleTrackCount
             ? Pass("Subtitle tracks", detail)
             : Fail("Subtitle tracks", $"{detail} Subtitle tracks were lost.");
+    }
+
+    // ffprobe's format_name is a demuxer name shared by every extension it serves, so a
+    // straight comparison holds exactly when the container type is genuinely the same.
+    private static VerificationCheck ContainerUnchanged(VerificationInput input)
+    {
+        var detail = $"Original \"{input.OriginalContainer}\", output \"{input.OutputContainer}\".";
+        return input.OutputContainer is not null
+            && string.Equals(input.OriginalContainer, input.OutputContainer, StringComparison.OrdinalIgnoreCase)
+            ? Pass("Container unchanged", detail)
+            : Fail("Container unchanged", $"{detail} The container type must not change under this profile.");
     }
 
     private static VerificationCheck SizeReduced(VerificationInput input, VerificationPolicy policy)

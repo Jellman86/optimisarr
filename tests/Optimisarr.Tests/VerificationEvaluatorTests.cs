@@ -1346,4 +1346,78 @@ public sealed class VerificationEvaluatorTests
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, ClippingCheck));
     }
+
+    [Fact]
+    public void Planned_subtitle_removal_expects_exactly_the_remaining_tracks()
+    {
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 3,
+            OutputSubtitleTrackCount = 1,
+            SubtitleTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void Losing_an_extra_subtitle_beyond_the_plan_fails_even_when_retention_is_not_required()
+    {
+        // The default policy has RequireSubtitlesRetained = false; the planned-removal
+        // contract is stricter than the policy — tightened, never relaxed.
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 3,
+            OutputSubtitleTrackCount = 0,
+            SubtitleTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void A_planned_removal_of_every_subtitle_verifies_at_zero()
+    {
+        // Unlike audio, subtitles have no minimum-one floor: an all-foreign set is
+        // legitimately removed in full.
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 2,
+            OutputSubtitleTrackCount = 0,
+            SubtitleTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void A_track_cleanup_output_must_keep_the_source_container()
+    {
+        var pass = Healthy() with
+        {
+            RequireContainerUnchanged = true,
+            OriginalContainer = "matroska,webm",
+            OutputContainer = "matroska,webm"
+        };
+        var fail = pass with { OutputContainer = "mov,mp4,m4a,3gp,3g2,mj2" };
+
+        Assert.Equal(CheckOutcome.Passed,
+            Outcome(VerificationEvaluator.Evaluate(pass, VerificationPolicy.Default), "Container unchanged"));
+        Assert.Equal(CheckOutcome.Failed,
+            Outcome(VerificationEvaluator.Evaluate(fail, VerificationPolicy.Default), "Container unchanged"));
+    }
+
+    [Fact]
+    public void The_container_gate_is_absent_unless_the_job_promised_it()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Container unchanged");
+    }
 }
