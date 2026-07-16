@@ -41,13 +41,26 @@ public sealed class MigrationTests : IDisposable
         var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
         await migrator.MigrateAsync("20260713210047_TrackVideoProfile");
 
-        db.Libraries.Add(new Library
-        {
-            Name = "Photos",
-            Path = "/data/photos",
-            TargetImageFormat = "AVIF"
-        });
-        await db.SaveChangesAsync();
+        // Insert with raw SQL, not the entity: the schema is checkpointed at an old
+        // migration, while an entity insert writes every column of the *current* model —
+        // any column added by a later migration would make this fixture fail to insert.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "Libraries"
+                ("Name", "Path", "MediaType", "RuleProfile", "Enabled", "Priority",
+                 "SkipEfficientSources", "OptimiseDolbyVision", "DownmixToStereo",
+                 "ReencodeLossyAudio", "TargetImageFormat", "ReencodeLossyImages",
+                 "ImageDownscaleMode", "ImageDownscaleValue", "MoveOnComplete", "MoveOverwrite",
+                 "AutoEnqueueEnabled", "AutoEnqueueWindowStart", "AutoEnqueueWindowEnd",
+                 "AutoReplace", "CreatedAt", "UpdatedAt")
+            VALUES
+                ('Photos', '/data/photos', 'Other', 'ConservativeHevc', 1, 0,
+                 1, 0, 0,
+                 0, 'AVIF', 0,
+                 'None', 0, 0, 0,
+                 0, '00:00:00', '00:00:00',
+                 0, '2026-07-13 00:00:00+00:00', '2026-07-13 00:00:00+00:00')
+            """);
 
         await migrator.MigrateAsync();
         db.ChangeTracker.Clear();
