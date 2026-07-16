@@ -63,22 +63,20 @@
         ],
         "type": "object"
       },
-      "CalibrationAnswerRequest": {
+      "CalibrationClassificationsRequest": {
         "properties": {
-          "choice": {
+          "classifications": {
+            "additionalProperties": {
+              "type": "string"
+            },
             "type": [
               "null",
-              "string"
+              "object"
             ]
-          },
-          "trialId": {
-            "format": "uuid",
-            "type": "string"
           }
         },
         "required": [
-          "trialId",
-          "choice"
+          "classifications"
         ],
         "type": "object"
       },
@@ -1525,43 +1523,6 @@
         ]
       }
     },
-    "/api/calibration/{id}/answers": {
-      "post": {
-        "operationId": "AnswerCalibrationTrial",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CalibrationAnswerRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "401": {
-            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
-          }
-        },
-        "tags": [
-          "Libraries"
-        ]
-      }
-    },
     "/api/calibration/{id}/apply": {
       "post": {
         "operationId": "ApplyCalibration",
@@ -1589,9 +1550,9 @@
         ]
       }
     },
-    "/api/calibration/{id}/reveal": {
+    "/api/calibration/{id}/classifications": {
       "post": {
-        "operationId": "RevealCalibration",
+        "operationId": "ClassifyCalibrationVariants",
         "parameters": [
           {
             "in": "path",
@@ -1603,6 +1564,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationClassificationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -1616,9 +1587,9 @@
         ]
       }
     },
-    "/api/calibration/{id}/trials/{trialId}/content/{slot}": {
+    "/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content": {
       "get": {
-        "operationId": "GetCalibrationTrialContent",
+        "operationId": "GetCalibrationVariantContent",
         "parameters": [
           {
             "in": "path",
@@ -1631,19 +1602,20 @@
           },
           {
             "in": "path",
-            "name": "trialId",
+            "name": "variant",
             "required": true,
             "schema": {
-              "format": "uuid",
               "type": "string"
             }
           },
           {
             "in": "path",
-            "name": "slot",
+            "name": "sampleIndex",
             "required": true,
             "schema": {
-              "type": "string"
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
             }
           }
         ],

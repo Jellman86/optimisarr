@@ -411,24 +411,33 @@ export type CalibrationSource = {
   isHdr: boolean
 }
 
-export type CalibrationSlot = {
-  name: 'A' | 'B' | 'X'
+export type CalibrationSample = {
+  sampleNumber: number
+  sampleCount: number
+  durationSeconds: number
   url: string
   startSeconds: number
   gainDb: number
 }
 
-export type CalibrationTrial = {
-  id: string
-  phase: 'Screening' | 'Confirmation'
-  number: number
-  maximumNumber: number
-  sampleNumber: number
-  sampleCount: number
-  durationSeconds: number
-  a: CalibrationSlot
-  b: CalibrationSlot
-  x: CalibrationSlot
+export type CalibrationVariant = {
+  name: string
+  isOriginal: boolean
+  samples: CalibrationSample[]
+}
+
+export type CalibrationClassification = 'Indistinguishable' | 'Acceptable' | 'VisiblyWorse'
+
+export type CalibrationVariantResult = {
+  name: string
+  isOriginal: boolean
+  quality: number | null
+  classification: CalibrationClassification
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
+  estimatedSavingPercent: number | null
+  recommended: boolean
 }
 
 export type CalibrationResult = {
@@ -437,10 +446,9 @@ export type CalibrationResult = {
   qualityMode: string | null
   effectiveQuality: number | null
   estimatedSavingPercent: number | null
-  correctAnswers: number
-  totalAnswers: number
   outcome: string
   applied: boolean
+  variants: CalibrationVariantResult[]
 }
 
 export type CalibrationSession = {
@@ -449,11 +457,11 @@ export type CalibrationSession = {
   mediaFileId: number
   source: string
   mediaKind: 'Video' | 'Audio' | 'Image'
-  status: 'Preparing' | 'Screening' | 'Confirming' | 'Complete' | 'Revealed' | 'Applied' | 'Failed'
+  status: 'Preparing' | 'Comparing' | 'Revealed' | 'Applied' | 'Failed'
   preparationProgress: number
   preparationState: 'Waiting' | 'Working'
   error: string | null
-  trial: CalibrationTrial | null
+  variants: CalibrationVariant[]
   result: CalibrationResult | null
 }
 
@@ -853,12 +861,10 @@ export const api = {
       method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed }),
     }),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
-  answerCalibration: (id: string, trialId: string, choice: 'A' | 'B') =>
-    request<CalibrationSession>(`/api/calibration/${id}/answers`, {
-      method: 'POST', body: JSON.stringify({ trialId, choice }),
+  classifyCalibration: (id: string, classifications: Record<string, CalibrationClassification>) =>
+    request<CalibrationSession>(`/api/calibration/${id}/classifications`, {
+      method: 'POST', body: JSON.stringify({ classifications }),
     }),
-  revealCalibration: (id: string) =>
-    request<CalibrationSession>(`/api/calibration/${id}/reveal`, { method: 'POST' }),
   applyCalibration: (id: string) =>
     request<CalibrationSession>(`/api/calibration/${id}/apply`, { method: 'POST' }),
   deleteCalibration: (id: string) =>

@@ -3,7 +3,8 @@ using Optimisarr.Api.Library;
 namespace Optimisarr.Api.Endpoints;
 
 internal sealed record StartCalibrationRequest(int MediaFileId, bool HdrPlaybackConfirmed = false);
-internal sealed record CalibrationAnswerRequest(Guid TrialId, string? Choice);
+internal sealed record CalibrationClassificationsRequest(
+    IReadOnlyDictionary<string, string>? Classifications);
 
 internal static class CalibrationEndpoints
 {
@@ -55,18 +56,17 @@ internal static class CalibrationEndpoints
         })
         .WithName("GetCalibration");
 
-        app.MapPost("/api/calibration/{id:guid}/answers", async (
+        app.MapPost("/api/calibration/{id:guid}/classifications", async (
             Guid id,
-            CalibrationAnswerRequest request,
+            CalibrationClassificationsRequest request,
             BlindCalibrationService calibration,
             CancellationToken cancellationToken) =>
         {
             try
             {
-                return Results.Ok(await calibration.AnswerAsync(
+                return Results.Ok(await calibration.ClassifyAsync(
                     id,
-                    request.TrialId,
-                    request.Choice?.Trim().ToUpperInvariant() ?? string.Empty,
+                    request.Classifications ?? new Dictionary<string, string>(),
                     cancellationToken));
             }
             catch (KeyNotFoundException exception)
@@ -75,30 +75,10 @@ internal static class CalibrationEndpoints
             }
             catch (InvalidOperationException exception)
             {
-                return ApiErrors.Conflict("calibration.trialConflict", exception.Message);
+                return ApiErrors.Conflict("calibration.classificationConflict", exception.Message);
             }
         })
-        .WithName("AnswerCalibrationTrial");
-
-        app.MapPost("/api/calibration/{id:guid}/reveal", async (
-            Guid id,
-            BlindCalibrationService calibration,
-            CancellationToken cancellationToken) =>
-        {
-            try
-            {
-                return Results.Ok(await calibration.RevealAsync(id, cancellationToken));
-            }
-            catch (KeyNotFoundException exception)
-            {
-                return ApiErrors.NotFound("calibration.notFound", exception.Message);
-            }
-            catch (InvalidOperationException exception)
-            {
-                return ApiErrors.Conflict("calibration.notReady", exception.Message);
-            }
-        })
-        .WithName("RevealCalibration");
+        .WithName("ClassifyCalibrationVariants");
 
         app.MapPost("/api/calibration/{id:guid}/apply", async (
             Guid id,
@@ -120,21 +100,21 @@ internal static class CalibrationEndpoints
         })
         .WithName("ApplyCalibration");
 
-        app.MapGet("/api/calibration/{id:guid}/trials/{trialId:guid}/content/{slot}", async (
+        app.MapGet("/api/calibration/{id:guid}/variants/{variant}/samples/{sampleIndex:int}/content", async (
             Guid id,
-            Guid trialId,
-            string slot,
+            string variant,
+            int sampleIndex,
             BlindCalibrationService calibration,
             CancellationToken cancellationToken) =>
         {
             var stream = await calibration.ResolveStreamAsync(
                 id,
-                trialId,
-                slot.ToUpperInvariant(),
+                variant.ToUpperInvariant(),
+                sampleIndex,
                 cancellationToken);
             return FileServing.ServeFile(stream?.Path);
         })
-        .WithName("GetCalibrationTrialContent");
+        .WithName("GetCalibrationVariantContent");
 
         app.MapDelete("/api/calibration/{id:guid}", async (
             Guid id,

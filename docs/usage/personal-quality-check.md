@@ -1,122 +1,78 @@
 # Choose a personal quality setting
 
-The **Personal quality check** helps you choose the most space-efficient video quality, audio
-bitrate, or image quality that you cannot reliably distinguish from one representative source on
-your own equipment.
-
-It is a personal calibration aid, not proof that two encodes are identical. Repeat it with other
+The **Personal quality check** is a full-page quality lab for finding the most space-efficient video
+quality, audio bitrate, or image quality that still looks or sounds acceptable on your own equipment.
+It is a personal calibration aid, not proof that two encodes are identical. Repeat it with several
 representative sources before treating one result as a rule for a varied library.
-
-Screenshots in this guide use fabricated dummy media created for documentation. No copyrighted
-material is used.
 
 ## Before you begin
 
-You need:
+You need a saved Film, TV, Music, Photo, or Other library; a scanned and probed source; enough free
+space under `/work`; and the display or listening equipment you normally use. Video and audio sources
+must be long enough for three excerpts. Animated images and Dolby Vision video are not offered.
 
-- a saved Film, TV, Music, Photo, or Other library;
-- at least one scanned and probed source in that library;
-- enough free space under `/work` for the disposable samples; and
-- the display, speakers or headphones, browser, viewing distance, and room conditions you normally
-  use.
-
-Video and audio sources must be long enough to provide three excerpts. Animated images and Dolby
-Vision video are not offered. Save any changed library settings before opening the check; the button
-stays disabled while the form has unsaved changes.
-
-The source remains read-only. Optimisarr creates disposable work under `/work/calibration`; those
-jobs cannot replace, move, or delete media and do not appear in the normal Queue.
+The source remains read-only. Optimisarr creates disposable jobs under `/work/calibration`; they
+cannot replace, move, or delete media and do not appear in the normal Queue.
 
 ## Start a check
 
-1. Open **Libraries**.
-2. Select **Configure** for the library you want to tune.
-3. Find **Blind quality calibration** below the optimisation preset and select **Personal quality
-   check**.
-4. Choose a representative source. Prefer material that contains the detail, motion, texture,
-   ambience, or tonal range you care about preserving.
-5. Select **Prepare blind samples**.
+1. Open **Libraries**, configure a saved library, and select **Personal quality check**.
+2. The dedicated quality-lab page opens. Choose a representative source containing the motion,
+   texture, fine detail, ambience, or tonal range you care about.
+3. Select **Prepare blind samples**.
 
-![Library configuration showing the Blind quality calibration card and Personal quality check button](../images/optimisarr-personal-quality-check-dark.png)
+Optimisarr prepares one unmodified reference and five candidates representing the relevant quality
+ladder. It structurally verifies every candidate before the comparison becomes available. For HDR
+video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
+your confirmation that the intended display is actually presenting HDR.
 
-Optimisarr prepares and structurally verifies every candidate before showing a comparison. You can
-close the panel to cancel and clean up the session.
+## Compare candidates with the original
 
-For HDR video, Optimisarr continues only when the library is configured to preserve HDR, the browser
-reports an HDR-capable display path, and you confirm that the intended display is actually showing
-HDR. Stop if the picture looks washed out or tone-mapped.
+The original is clearly marked as the fixed reference. The five encoded candidates are shuffled and
+labelled only **A** through **E**. Their quality, encoder, bitrate, and estimated saving remain hidden.
 
-## Compare A, B, and X
+- Switch between **Original** and A–E while examining the same moment. Video and audio keep one shared relative
+  position, and a switch is not shown until the destination stream has sought to the matching frame.
+- Video provides three scene tabs, a shared 0–12-second timeline, and real browser fullscreen.
+- Audio provides three 15-second excerpts. Optimisarr measures the reference and all five candidates using EBU R128
+  integrated loudness and attenuates each to the quietest one so volume cannot reveal a version.
+- Still images use one viewport. Zoom or drag to inspect detail; zoom and pan remain unchanged while
+  switching between the reference and A–E.
 
-Each trial asks whether X matches A or B. A/B/X assignments are randomised, and quality settings,
-encoder details, and estimated savings remain hidden until the check is complete.
-The counter always shows the session's 25-trial ceiling. Most checks finish sooner; if conflicting
-answers reach that ceiling, Optimisarr stops without recommending a setting rather than prolonging
-the test or treating uncertain evidence as a result.
-
-![Cropped video comparison panel showing the shared timeline, A/B/X switcher, and answer controls](../images/optimisarr-personal-quality-video-dark.png)
-
-During a video or audio trial:
-
-1. Select **A**, **B**, and **X** repeatedly. You can also press `A`, `B`, or `X` without looking
-   away from the media.
-2. Use the shared play button and timeline to revisit the same moment. Switching preserves the
-   relative position.
-3. Select **X matches A** or **X matches B** only after you have compared the details that matter to
-   you.
-
-Video checks compare only the primary picture stream, without audio. The player deliberately shows
-one shared 0–12-second timeline instead of each file's native duration. This keeps hidden keyframe
-pre-roll from identifying the original while presenting the same source frames on both sides.
-
-Audio checks use three 15-second excerpts. Optimisarr measures both sides using EBU R128 integrated
-loudness and attenuates only the louder stream during playback, so a volume jump cannot reveal the
-answer. It never amplifies or rewrites a prepared sample for level matching.
-
-For a still image, A/B/X share one viewport. Zoom or drag to inspect fine detail, then switch versions;
-the same zoom and pan remain in place.
-
-![Cropped image comparison panel showing the shared viewport, zoom controls, A/B/X switcher, and answer controls](../images/optimisarr-personal-quality-image-dark.png)
-
-Answers stay disabled if any comparison stream fails to load or play. Try another supported browser
-or source rather than guessing.
+Classify A–E as **Indistinguishable**, **Acceptable**, or **Visibly worse** relative to the original.
+Desktop users
+may drag a sample into a rating; the selection buttons provide the same operation for keyboard and
+touch users. There are five classifications in total—no repeated trial loop and no rating for the original.
 
 ## Reveal and apply the result
 
-After the screening and confirmation trials, Optimisarr reveals the result automatically:
+After all five candidates are classified, select **Reveal samples and result**. Optimisarr then shows
+the setting behind every candidate, your classifications, estimated
+savings, and the most compressed candidate you considered Indistinguishable or Acceptable. If every
+candidate was Visibly worse, it recommends keeping the current setting.
 
-1. Review the recommendation, actual setting, estimated saving, and answer count.
-2. Read the result caveat. “No reliable difference” describes only this short test, source,
-   equipment, observer, and environment.
-3. Select **Use this quality for the library** only when you want to replace that library's saved
-   video quality, audio bitrate, or image quality.
-
-Applying the result changes one saved library setting. It does not scan, enqueue, replace, move, or
-delete any media. Optimisarr refuses to apply a stale result if the library's relevant codec, preset,
-or quality changed while the panel was open.
+**Use this quality for the library** changes only the saved video quality, audio bitrate, or image
+quality. It does not scan, enqueue, replace, move, or delete media. Optimisarr refuses a stale result
+if the relevant library codec, preset, or quality changed during the session.
 
 ## What each media type tests
 
 | Media | Prepared comparison | Applied setting |
 |---|---|---|
-| Video | Three 12-second scenes at several hidden quality levels, using only the primary picture stream. | Video CRF/CQ quality. |
-| Audio | Three 15-second, loudness-matched excerpts across a codec-appropriate bitrate ladder. | Audio bitrate in kbps. |
-| Still image | One lossless PNG reference and five hidden output-quality levels with synchronized zoom and pan. | Image quality. |
-
-Film and TV libraries offer video sources, Music libraries offer audio sources, and Photo libraries
-offer still images. An Other library can offer any supported, probed media it contains.
+| Video | One frame-aligned original plus five quality levels across three 12-second scenes. | Video CRF/CQ quality. |
+| Audio | One lossless reference plus five codec-appropriate bitrates across three level-matched 15-second excerpts. | Audio bitrate in kbps. |
+| Still image | One lossless PNG reference plus five output-quality levels in a synchronized zoom/pan viewport. | Image quality. |
 
 ## If the check cannot continue
 
 | What you see | What to do |
 |---|---|
 | **Personal quality check** is disabled | Save or discard the library's unsaved changes first. |
-| No suitable source is ready | Scan and probe the library. Choose a longer video or audio file, or a non-animated still image. |
-| HDR viewing check blocks preparation | Use an HDR-capable browser and display, confirm the display is presenting HDR, and keep the library's HDR handling set to Preserve. |
-| **Calibration samples could not be prepared** | Check free space and write access for `/work`, then check **Settings → Tools** for FFmpeg, ffprobe, and encoder availability. Try a different source after correcting the reported failure. |
-| The browser cannot play a comparison stream | Close the panel and retry with a browser that supports the configured codec, or use a different library codec/source. Answers remain disabled. |
+| No suitable source is ready | Scan and probe the library, then choose a long enough video/audio file or a non-animated image. |
+| HDR viewing check blocks preparation | Use an HDR-capable browser/display and keep the library's HDR handling set to Preserve. |
+| Preparation fails | Check `/work` space and permissions, then **Settings → Tools** for encoder availability. |
+| A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
 
-Closing the panel removes its session and scratch media. Abandoned sessions expire after two hours,
-and restarting Optimisarr discards all remaining calibration sessions.
-
-For the underlying HTTP endpoints and blind-client requirements, see the [API reference](../api.md#personal-blind-quality-calibration).
+Leaving the quality lab removes its session and scratch media. Abandoned sessions expire after two
+hours, and restarting Optimisarr discards all remaining sessions. See the
+[API reference](../api.md#personal-blind-quality-calibration) for the HTTP contract.
