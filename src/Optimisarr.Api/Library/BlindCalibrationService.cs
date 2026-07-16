@@ -114,13 +114,15 @@ internal sealed class BlindCalibrationService(
                     && !file.IsDolbyVision
                     && file.DurationSeconds >= BlindCalibrationPolicy.SampleSeconds * 4
                     || file.MediaKind == MediaKind.Audio
-                    && file.DurationSeconds >= BlindCalibrationPolicy.AudioSampleSeconds * 4))
+                    && file.DurationSeconds >= BlindCalibrationPolicy.AudioSampleSeconds * 4
+                    || file.MediaKind == MediaKind.Image
+                    && (file.FrameCount == null || file.FrameCount <= 1)))
             .OrderByDescending(file => file.SizeBytes)
             .Take(25)
             .Select(file => new CalibrationSourceDto(
                 file.Id,
                 file.RelativePath,
-                file.DurationSeconds!.Value,
+                file.DurationSeconds ?? 0,
                 file.Width,
                 file.Height,
                 file.MediaKind.ToString(),
@@ -147,14 +149,16 @@ internal sealed class BlindCalibrationService(
         {
             throw new KeyNotFoundException("The calibration source or library no longer exists.");
         }
-        if (media.MediaKind is not (MediaKind.Video or MediaKind.Audio))
+        if (media.Status != MediaFileStatus.Probed
+            || media.MediaKind is not (MediaKind.Video or MediaKind.Audio or MediaKind.Image))
         {
-            throw new InvalidOperationException("Choose a probed video or audio source for this calibration.");
+            throw new InvalidOperationException("Choose a probed video, audio, or still-image source for this calibration.");
         }
-        if (media.DurationSeconds is not { } duration)
+        if (media.MediaKind != MediaKind.Image && media.DurationSeconds is null)
         {
             throw new InvalidOperationException("Probe the source before starting calibration.");
         }
+        var duration = media.DurationSeconds ?? 0;
 
         var rules = LibraryRuleResolution.Resolve(media.Library);
         if (media.MediaKind == MediaKind.Video
@@ -173,10 +177,15 @@ internal sealed class BlindCalibrationService(
 
         var currentQuality = media.MediaKind == MediaKind.Audio
             ? media.Library.AudioBitrateKbps ?? rules.AudioBitrateKbps
-            : media.Library.QualityCrf ?? rules.DefaultCrf!.Value;
-        var plan = media.MediaKind == MediaKind.Audio
-            ? BlindCalibrationPolicy.AudioPlan(duration, rules.TargetAudioCodec, currentQuality)
-            : BlindCalibrationPolicy.Plan(duration, currentQuality);
+            : media.MediaKind == MediaKind.Image
+                ? media.Library.ImageQuality ?? rules.ImageQuality
+                : media.Library.QualityCrf ?? rules.DefaultCrf!.Value;
+        var plan = media.MediaKind switch
+        {
+            MediaKind.Audio => BlindCalibrationPolicy.AudioPlan(duration, rules.TargetAudioCodec),
+            MediaKind.Image => BlindCalibrationPolicy.ImagePlan(),
+            _ => BlindCalibrationPolicy.Plan(duration, currentQuality)
+        };
         var id = Guid.NewGuid();
         var fingerprint = Fingerprint.From(media.Library, rules, media.MediaKind, currentQuality);
         var candidates = new List<Candidate>();
@@ -195,6 +204,7 @@ internal sealed class BlindCalibrationService(
                     Priority = int.MaxValue,
                     RequestedVideoQuality = media.MediaKind == MediaKind.Video ? quality : null,
                     RequestedAudioBitrateKbps = media.MediaKind == MediaKind.Audio ? quality : null,
+                    RequestedImageQuality = media.MediaKind == MediaKind.Image ? quality : null,
                     CalibrationSessionId = id,
                     CalibrationClipStartSeconds = sample.StartSeconds,
                     CalibrationClipSeconds = sample.DurationSeconds,
@@ -214,7 +224,12 @@ internal sealed class BlindCalibrationService(
             media.SizeBytes,
             duration,
             media.MediaKind,
-            media.MediaKind == MediaKind.Audio ? rules.TargetAudioCodec : rules.TargetVideoCodec,
+            media.MediaKind switch
+            {
+                MediaKind.Audio => rules.TargetAudioCodec,
+                MediaKind.Image => rules.TargetImageFormat,
+                _ => rules.TargetVideoCodec
+            },
             plan,
             fingerprint,
             candidates,
@@ -383,7 +398,9 @@ internal sealed class BlindCalibrationService(
         var rules = LibraryRuleResolution.Resolve(library);
         var currentQuality = session.MediaKind == MediaKind.Audio
             ? library.AudioBitrateKbps ?? rules.AudioBitrateKbps
-            : library.QualityCrf ?? rules.DefaultCrf;
+            : session.MediaKind == MediaKind.Image
+                ? library.ImageQuality ?? rules.ImageQuality
+                : library.QualityCrf ?? rules.DefaultCrf;
         if (currentQuality is null
             || !session.Fingerprint.Matches(library, rules, session.MediaKind, currentQuality.Value))
         {
@@ -394,6 +411,10 @@ internal sealed class BlindCalibrationService(
         if (session.MediaKind == MediaKind.Audio)
         {
             library.AudioBitrateKbps = session.RecommendedQuality;
+        }
+        else if (session.MediaKind == MediaKind.Image)
+        {
+            library.ImageQuality = session.RecommendedQuality;
         }
         else
         {
@@ -461,9 +482,12 @@ internal sealed class BlindCalibrationService(
         var path = source.Original
             ? Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
-                session.MediaKind == MediaKind.Audio
-                    ? ".optimisarr-comparison-reference.flac"
-                    : ".optimisarr-comparison-reference.mkv")
+                session.MediaKind switch
+                {
+                    MediaKind.Audio => ".optimisarr-comparison-reference.flac",
+                    MediaKind.Image => ".optimisarr-comparison-reference.png",
+                    _ => ".optimisarr-comparison-reference.mkv"
+                })
             : outputPath;
         return new CalibrationStream(path);
     }
@@ -650,24 +674,41 @@ internal sealed class BlindCalibrationService(
         }
 
         var candidateJobs = jobs
-            .Where(job => (session.MediaKind == MediaKind.Audio
-                    ? job.RequestedAudioBitrateKbps
-                    : job.RequestedVideoQuality) == quality
+            .Where(job => (session.MediaKind switch
+                {
+                    MediaKind.Audio => job.RequestedAudioBitrateKbps,
+                    MediaKind.Image => job.RequestedImageQuality,
+                    _ => job.RequestedVideoQuality
+                }) == quality
                 && job.OutputSizeBytes is > 0)
             .ToList();
-        var encodedBytesPerSecond = candidateJobs.Count == 0
+        var encodedMeasure = candidateJobs.Count == 0
             ? (double?)null
-            : candidateJobs.Average(job => job.OutputSizeBytes!.Value / (double)BlindCalibrationPolicy.SampleSeconds);
-        var sourceBytesPerSecond = session.SourceSizeBytes / session.SourceDurationSeconds;
-        double? saving = encodedBytesPerSecond is null || sourceBytesPerSecond <= 0
+            : session.MediaKind == MediaKind.Image
+                ? candidateJobs.Average(job => (double)job.OutputSizeBytes!.Value)
+                : candidateJobs.Average(job =>
+                    job.OutputSizeBytes!.Value / (double)(job.CalibrationClipSeconds ?? 1));
+        var sourceMeasure = session.MediaKind == MediaKind.Image
+            ? session.SourceSizeBytes
+            : session.SourceSizeBytes / session.SourceDurationSeconds;
+        double? saving = encodedMeasure is null || sourceMeasure <= 0
             ? null
-            : Math.Round((1 - encodedBytesPerSecond.Value / sourceBytesPerSecond) * 100, 1);
+            : Math.Round((1 - encodedMeasure.Value / sourceMeasure) * 100, 1);
         var representative = candidateJobs.FirstOrDefault();
         return new CalibrationResultDto(
             quality,
-            session.MediaKind == MediaKind.Audio ? session.TargetCodec : representative?.VideoEncoder,
-            session.MediaKind == MediaKind.Audio ? "kbps" : representative?.VideoQualityMode,
-            session.MediaKind == MediaKind.Audio ? quality : representative?.EffectiveVideoQuality,
+            session.MediaKind is MediaKind.Audio or MediaKind.Image
+                ? session.TargetCodec
+                : representative?.VideoEncoder,
+            session.MediaKind switch
+            {
+                MediaKind.Audio => "kbps",
+                MediaKind.Image => "quality",
+                _ => representative?.VideoQualityMode
+            },
+            session.MediaKind is MediaKind.Audio or MediaKind.Image
+                ? quality
+                : representative?.EffectiveVideoQuality,
             saving,
             session.AllAnswers.Count(answer => answer),
             session.AllAnswers.Count,
@@ -780,6 +821,10 @@ internal sealed class BlindCalibrationService(
         string? TargetCodec,
         string? TargetContainer,
         string? EncoderPreset,
+        HdrHandling HdrHandling,
+        bool DownmixToStereo,
+        ImageDownscaleMode ImageDownscaleMode,
+        int ImageDownscaleValue,
         int InitialQuality)
     {
         public static Fingerprint From(
@@ -789,9 +834,18 @@ internal sealed class BlindCalibrationService(
             int quality) => new(
             kind,
             library.RuleProfile,
-            kind == MediaKind.Audio ? rules.TargetAudioCodec : rules.TargetVideoCodec,
+            kind switch
+            {
+                MediaKind.Audio => rules.TargetAudioCodec,
+                MediaKind.Image => rules.TargetImageFormat,
+                _ => rules.TargetVideoCodec
+            },
             rules.TargetContainer,
             kind == MediaKind.Audio ? null : library.EncoderPreset,
+            rules.Hdr,
+            rules.DownmixToStereo,
+            rules.ImageDownscaleMode,
+            rules.ImageDownscaleValue,
             quality);
 
         public bool Matches(
@@ -803,13 +857,22 @@ internal sealed class BlindCalibrationService(
             && Profile == library.RuleProfile
             && string.Equals(
                 TargetCodec,
-                kind == MediaKind.Audio ? rules.TargetAudioCodec : rules.TargetVideoCodec,
+                kind switch
+                {
+                    MediaKind.Audio => rules.TargetAudioCodec,
+                    MediaKind.Image => rules.TargetImageFormat,
+                    _ => rules.TargetVideoCodec
+                },
                 StringComparison.OrdinalIgnoreCase)
             && string.Equals(TargetContainer, rules.TargetContainer, StringComparison.OrdinalIgnoreCase)
             && string.Equals(
                 EncoderPreset,
                 kind == MediaKind.Audio ? null : library.EncoderPreset,
                 StringComparison.OrdinalIgnoreCase)
+            && HdrHandling == rules.Hdr
+            && DownmixToStereo == rules.DownmixToStereo
+            && ImageDownscaleMode == rules.ImageDownscaleMode
+            && ImageDownscaleValue == rules.ImageDownscaleValue
             && InitialQuality == quality;
     }
 }

@@ -76,6 +76,9 @@ public sealed class Job
     /// <summary>Audio bitrate requested by a disposable blind-calibration candidate.</summary>
     public int? RequestedAudioBitrateKbps { get; set; }
 
+    /// <summary>Image quality requested by a disposable blind-calibration candidate.</summary>
+    public int? RequestedImageQuality { get; set; }
+
     /// <summary>Encoder-specific quality value passed to FFmpeg for the current attempt.</summary>
     public int? EffectiveVideoQuality { get; set; }
 

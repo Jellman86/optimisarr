@@ -16,8 +16,8 @@
   Native playback fails closed when the browser cannot decode a candidate. HDR is available only
   when the library preserves HDR and the browser reports an HDR-capable display path; the user must
   also confirm that the normal viewing display is actually presenting HDR. Dolby Vision remains
-  unavailable because a re-encode cannot safely retain its dynamic metadata. Images,
-  content-complexity source guidance, and metric correlation remain on the roadmap.
+  unavailable because a re-encode cannot safely retain its dynamic metadata. Content-complexity
+  source guidance and metric correlation remain on the roadmap.
 - **A level-matched blind audio check.** Music and mixed libraries can now calibrate their saved
   Opus, AAC, or MP3 bitrate using three repeatable 15-second excerpts and the same conservative
   hidden-reference decision process. Optimisarr creates a lossless FLAC reference for browser
@@ -25,6 +25,12 @@
   side during playback so volume cannot reveal the answer or introduce clipping. The result applies
   only the library's audio bitrate after an explicit confirmation; every candidate remains
   disposable and outside replacement, history, notifications, and the normal queue.
+- **A zoom-synchronised blind image check.** Photo and mixed libraries can now compare a lossless
+  PNG view of one still image against five hidden output-quality levels. A/B/X share exactly one
+  viewport, so zoom and pan stay fixed when switching and spatial position cannot give the answer
+  away. The PNG reference carries the source colour metadata when the configured metadata tool can
+  copy it, animated images are excluded, browser loading fails closed, and Apply changes only the
+  library's saved image quality without queueing work.
 - **Gold-standard first-run recommendations and final review.** Setup now turns proved encoder and
   VMAF capabilities into visible, reversible encoder, hardware-decode, VMAF, and overnight-window
   recommendations instead of silently choosing for the operator. When a probed candidate exists,

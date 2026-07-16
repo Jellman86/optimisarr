@@ -32,6 +32,7 @@ public sealed class QueueDispatcher(
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
     ImageMarkerService imageMarker,
+    ImageComparisonReferenceService imageReference,
     TranscodeOptions transcodeOptions,
     ActiveEncodeRegistry encodes,
     ILogger<QueueDispatcher> logger) : BackgroundService
@@ -544,6 +545,32 @@ public sealed class QueueDispatcher(
                             "Job {JobId}: could not write the portable image marker (exiftool missing or failed); " +
                             "re-optimisation is still prevented by the database.", jobId);
                     }
+
+                    if (work.Value.IsCalibration)
+                    {
+                        var referencePath = Path.Combine(
+                            Path.GetDirectoryName(spec.OutputPath)!,
+                            ".optimisarr-comparison-reference.png");
+                        var reference = await imageReference.CreateAsync(
+                            work.Value.Original.Path,
+                            referencePath,
+                            cancellationToken);
+                        if (!reference.Created)
+                        {
+                            throw new InvalidOperationException(
+                                $"Could not create the lossless image comparison reference: {reference.Error}");
+                        }
+
+                        if (!await imageMarker.CopyMetadataAsync(
+                                work.Value.Original.Path,
+                                referencePath,
+                                cancellationToken))
+                        {
+                            logger.LogWarning(
+                                "Job {JobId}: could not copy source colour metadata to the PNG comparison reference.",
+                                jobId);
+                        }
+                    }
                 }
 
                 await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
@@ -640,13 +667,18 @@ public sealed class QueueDispatcher(
         var isDisposable = isPreview || isCalibration;
         if (isCalibration && (job.CalibrationSessionId is null
             || media.MediaKind == MediaKind.Video && job.RequestedVideoQuality is null
-            || media.MediaKind == MediaKind.Audio && job.RequestedAudioBitrateKbps is null))
+            || media.MediaKind == MediaKind.Audio && job.RequestedAudioBitrateKbps is null
+            || media.MediaKind == MediaKind.Image && job.RequestedImageQuality is null))
         {
             throw new InvalidOperationException("Calibration job is missing its session or requested quality.");
         }
         if (isCalibration && media.MediaKind == MediaKind.Audio)
         {
             rules = rules with { AudioBitrateKbps = job.RequestedAudioBitrateKbps!.Value };
+        }
+        else if (isCalibration && media.MediaKind == MediaKind.Image)
+        {
+            rules = rules with { ImageQuality = job.RequestedImageQuality!.Value };
         }
 
         var isVideoJob = media.MediaKind is not (MediaKind.Audio or MediaKind.Image);
@@ -1108,7 +1140,8 @@ public sealed class QueueDispatcher(
                 RequireSizeReduction = false,
                 QualityGateEnabled = false,
                 AudioLoudnessGateEnabled = false,
-                AudioClippingGateEnabled = false
+                AudioClippingGateEnabled = false,
+                ImageQualityGateEnabled = false
             };
         }
         var clip = work.IsDisposable && work.Spec.ClipSeconds is { } seconds

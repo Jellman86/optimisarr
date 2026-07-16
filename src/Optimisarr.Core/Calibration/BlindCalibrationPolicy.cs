@@ -65,8 +65,7 @@ public static class BlindCalibrationPolicy
 
     public static BlindCalibrationPlan AudioPlan(
         double durationSeconds,
-        string targetCodec,
-        int currentBitrateKbps)
+        string targetCodec)
     {
         if (!double.IsFinite(durationSeconds) || durationSeconds < AudioSampleSeconds * 4)
         {
@@ -100,6 +99,10 @@ public static class BlindCalibrationPolicy
         var target = Math.Min(originalLufs, candidateLufs);
         return new AudioLevelMatch(target - originalLufs, target - candidateLufs);
     }
+
+    public static BlindCalibrationPlan ImagePlan() => new(
+        [40, 55, 70, 82, 92],
+        [new CalibrationSample(0, 0, 0)]);
 
     private static IReadOnlyList<CalibrationSample> RepresentativeSamples(
         double durationSeconds,

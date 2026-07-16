@@ -341,7 +341,7 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
-7. **Blind quality calibration ("placebo panel"): video and audio slices done** — help a user choose
+7. **Blind quality calibration ("placebo panel"): video, audio, and image slices done** — help a user choose
    the most space-efficient quality that they cannot reliably distinguish from their own source,
    without revealing the setting or estimated saving early. The design is informed by the source,
    observer, presentation, repetition, and paired-comparison principles in
@@ -374,6 +374,11 @@ the replacement workflow is trustworthy.
      hidden-reference and controlled-listening principles in
      [ITU-R BS.1116](https://www.itu.int/rec/R-REC-BS.1116-3-201502-I/en) and the measurement method
      in [EBU Tech 3341](https://tech.ebu.ch/publications/tech3341).
+   - **Synchronized image comparison is shipped.** Photo and mixed libraries can test five output
+     quality levels against a lossless PNG derivative in one shared viewport. A/B/X switching keeps
+     zoom and pan identical, all streams preload and fail closed, and animated images are excluded.
+     This follows the observer-controlled comparison principles in
+     [ISO 20462-1](https://www.iso.org/standard/38330.html) without claiming laboratory compliance.
    - **Cheap and safe by construction is shipped.** Candidates are disposable jobs isolated under
      `/work/calibration`; they bypass normal candidate scheduling but still receive structural
      verification. They cannot replace, move, or delete a source and are hidden from the normal
@@ -381,10 +386,9 @@ the replacement workflow is trustworthy.
      files. The original is only read.
    - **Next research and implementation.** Select representative sources using spatial/temporal
      complexity rather than file size alone and support a small multi-source result; correlate the
-     revealed choice with sampled VMAF without turning the metric into a hint; then add
-     images with
-     synchronised zoom/pan. Keep each media kind separately validated rather than stretching the
-     video method across unlike perception tasks.
+     revealed choice with sampled VMAF without turning the metric into a hint. Extend toward a
+     multi-source result only after each media kind remains separately validated rather than
+     stretching one perception method across unlike tasks.
 
 8. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
    low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why

@@ -68,15 +68,14 @@ public sealed class BlindCalibrationPolicyTests
     }
 
     [Theory]
-    [InlineData("opus", 96, new[] { 64, 80, 96, 128, 160 })]
-    [InlineData("aac", 192, new[] { 96, 128, 160, 192, 256 })]
-    [InlineData("mp3", 320, new[] { 128, 160, 192, 256, 320 })]
+    [InlineData("opus", new[] { 64, 80, 96, 128, 160 })]
+    [InlineData("aac", new[] { 96, 128, 160, 192, 256 })]
+    [InlineData("mp3", new[] { 128, 160, 192, 256, 320 })]
     public void Audio_plan_uses_a_codec_appropriate_most_compressed_first_ladder(
         string codec,
-        int currentBitrate,
         int[] expected)
     {
-        var plan = BlindCalibrationPolicy.AudioPlan(600, codec, currentBitrate);
+        var plan = BlindCalibrationPolicy.AudioPlan(600, codec);
 
         Assert.Equal(expected, plan.RequestedQualities);
         Assert.Equal(3, plan.Samples.Count);
@@ -89,7 +88,7 @@ public sealed class BlindCalibrationPolicyTests
     public void Audio_plan_rejects_a_target_without_a_meaningful_lossy_bitrate_ladder(string codec)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            BlindCalibrationPolicy.AudioPlan(600, codec, 128));
+            BlindCalibrationPolicy.AudioPlan(600, codec));
     }
 
     [Fact]
@@ -99,6 +98,15 @@ public sealed class BlindCalibrationPolicyTests
 
         Assert.Equal(-3.5, match.OriginalGainDb, precision: 6);
         Assert.Equal(0, match.CandidateGainDb);
+    }
+
+    [Fact]
+    public void Image_plan_uses_a_low_to_high_quality_ladder_and_one_shared_view()
+    {
+        var plan = BlindCalibrationPolicy.ImagePlan();
+
+        Assert.Equal([40, 55, 70, 82, 92], plan.RequestedQualities);
+        Assert.Equal([new CalibrationSample(0, 0, 0)], plan.Samples);
     }
 
     [Theory]

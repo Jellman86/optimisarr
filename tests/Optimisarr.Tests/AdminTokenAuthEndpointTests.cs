@@ -470,6 +470,125 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal("original-audio-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
     }
 
+    [Fact]
+    public async Task Image_calibration_creates_disposable_quality_candidates_for_the_selected_library()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var directory = Path.Combine(
+            Path.GetDirectoryName(_api.LibraryDirectory)!,
+            "image-calibration-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var sourcePath = Path.Combine(directory, "photo.tiff");
+        await File.WriteAllTextAsync(sourcePath, "original-image-must-remain-unchanged");
+
+        using var created = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Image calibration library",
+            path = directory,
+            mediaType = "Photo",
+            ruleProfile = "ConservativeHevc",
+            targetImageFormat = "webp",
+            imageQuality = 80
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var libraryId = JsonNode.Parse(await created.Content.ReadAsStringAsync())!["id"]!.GetValue<int>();
+
+        int mediaFileId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                LibraryId = libraryId,
+                Path = sourcePath,
+                RelativePath = "photo.tiff",
+                SizeBytes = new FileInfo(sourcePath).Length,
+                ModifiedAt = DateTimeOffset.UtcNow,
+                Status = MediaFileStatus.Probed,
+                MediaKind = MediaKind.Image,
+                VideoCodec = "tiff",
+                Width = 4_000,
+                Height = 3_000,
+                FrameCount = 1,
+                ProbedAt = DateTimeOffset.UtcNow
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaFileId = media.Id;
+        }
+
+        var sources = JsonNode.Parse(await client.GetStringAsync(
+            $"/api/libraries/{libraryId}/calibration/sources"))!.AsArray();
+        Assert.Equal("Image", sources.Single()!["mediaKind"]!.GetValue<string>());
+
+        using var started = await client.PostAsJsonAsync(
+            $"/api/libraries/{libraryId}/calibration",
+            new { mediaFileId });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var sessionId = JsonNode.Parse(await started.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
+            Assert.Equal(5, jobs.Count);
+            Assert.Equal([40, 55, 70, 82, 92],
+                jobs.Select(job => job.RequestedImageQuality!.Value).Order().ToArray());
+            Assert.All(jobs, job =>
+            {
+                Assert.Null(job.LibraryId);
+                Assert.Null(job.RequestedVideoQuality);
+                Assert.Null(job.RequestedAudioBitrateKbps);
+                Assert.Equal(0, job.CalibrationClipSeconds);
+            });
+            foreach (var job in jobs)
+            {
+                var workDirectory = Path.Combine(directory, $"image-job-{job.Id}");
+                Directory.CreateDirectory(workDirectory);
+                job.WorkOutputPath = Path.Combine(workDirectory, "candidate.webp");
+                await File.WriteAllTextAsync(job.WorkOutputPath, "candidate-image");
+                await File.WriteAllTextAsync(
+                    Path.Combine(workDirectory, ".optimisarr-comparison-reference.png"),
+                    "reference-image");
+                job.Status = JobStatus.Completed;
+                job.Progress = 1;
+                job.OutputSizeBytes = 15;
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
+        var answerCount = 0;
+        while (session["trial"] is JsonObject trial && answerCount < 20)
+        {
+            using var answered = await client.PostAsJsonAsync($"/api/calibration/{sessionId}/answers", new
+            {
+                trialId = trial["id"]!.GetValue<Guid>(),
+                choice = "A"
+            });
+            Assert.Equal(HttpStatusCode.OK, answered.StatusCode);
+            session = JsonNode.Parse(await answered.Content.ReadAsStringAsync())!.AsObject();
+            answerCount++;
+        }
+        Assert.Equal("Complete", session["status"]!.GetValue<string>());
+
+        using var revealed = await client.PostAsync($"/api/calibration/{sessionId}/reveal", content: null);
+        Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
+        Assert.Equal(40, JsonNode.Parse(await revealed.Content.ReadAsStringAsync())!["result"]!["recommendedQuality"]!.GetValue<int>());
+        using var applied = await client.PostAsync($"/api/calibration/{sessionId}/apply", content: null);
+        Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            Assert.Equal(40, db.Libraries.Single(library => library.Id == libraryId).ImageQuality);
+        }
+
+        using var deleted = await client.DeleteAsync($"/api/calibration/{sessionId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal("original-image-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
+    }
+
     /// <summary>
     /// The real app with the admin token configured, a throwaway config directory (fresh migrated
     /// SQLite), and no background workers — the auth tests only exercise the HTTP pipeline.

@@ -90,6 +90,7 @@ export const zh: Messages = {
     change: "更改", skipped: "已跳过 — 稍后添加", receipt_heading: "设置已安全应用", receipt_body: "{count} 个媒体库已准备就绪。未启动扫描、编码、替换或删除。", review_candidates: "查看候选项", open_dashboard: "打开仪表板"
   },
   calibration: {
+    choose_image: '选择有代表性的静态图像', source_image: '源图像', preparing_image_hint: 'Optimisarr 正在准备无损 PNG 参考图和五个图像质量级别。', image_alt: '盲测对比图像 {slot}', image_viewport: '盲测图像对比视区', image_zoom_controls: '图像缩放和平移控件', zoom_out: '缩小', zoom_in: '放大', zoom_reset: '重置视图', image_quality: '质量', result_caveat_image: '这是针对该图像、显示器和观看比例的个人结果。将其作为媒体库通用偏好前，请检查多张有代表性的图像。',
     choose_audio: '选择有代表性的音频', source_audio: '源音频', preparing_audio_hint: 'Optimisarr 正在以每个测试码率编码三个短片段，然后进行响度测量，避免音量泄露答案。', result_caveat_audio: '这是针对这些片段、播放设备和收听环境的个人结果，并不能证明两个编码完全相同。',
     hdr_title: '检查 HDR 播放', hdr_body: '浏览器报告显示链路支持 HDR。请在平时观看 HDR 的条件下进行比较。', hdr_confirm: '我确认此浏览器可在用于比较的显示器上呈现 HDR。', hdr_unsupported: '浏览器未报告显示链路支持 HDR，因此无法使用 HDR 校准。',
     no_difference_result: '在这次简短的个人测试中未检测到可靠差异。',

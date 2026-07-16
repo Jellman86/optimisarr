@@ -97,6 +97,12 @@ sides using EBU R128 integrated loudness and attenuates only the louder stream d
 volume jump cannot give away the answer and no prepared file is normalised or amplified. Applying
 the result changes only that library's saved audio bitrate and does not queue any work.
 
+Photo and mixed libraries can choose a probed, non-animated still image. Optimisarr creates a
+lossless PNG reference and five candidate quality levels. A/B/X use one viewport: switch freely,
+zoom from 100–400%, and drag to inspect detail without changing the position between versions. If
+any image cannot load, answers remain disabled. Apply changes only the library's saved image-quality
+value; it does not queue, replace, move, or delete a file.
+
 You should see **access ok** on the library card. If not, fix the host mount,
 `PUID`/`PGID`, or folder permissions before queueing jobs.
 

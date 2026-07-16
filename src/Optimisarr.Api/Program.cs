@@ -55,6 +55,7 @@ builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmp
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
+builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));

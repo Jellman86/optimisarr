@@ -16,24 +16,24 @@ const library = {
   lastAutoEnqueueAt: null, fileCount: 1,
 }
 
-function session() {
+function session(mediaKind: 'Video' | 'Image' = 'Video') {
   const id = '11111111-1111-1111-1111-111111111111'
   const trialId = '22222222-2222-2222-2222-222222222222'
   const content = (slot: string) => `/api/calibration/${id}/trials/${trialId}/content/${slot}`
   return {
-    id, libraryId: 1, mediaFileId: 7, source: 'Example Film.mkv', status: 'Screening',
+    id, libraryId: 1, mediaFileId: 7, source: mediaKind === 'Image' ? 'Example Photo.tiff' : 'Example Film.mkv', mediaKind, status: 'Screening',
     preparationProgress: 1, error: null, result: null,
     trial: {
       id: trialId, phase: 'Screening', number: 1, sampleNumber: 1, sampleCount: 3,
-      durationSeconds: 12,
-      a: { name: 'A', url: content('A'), startSeconds: 0 },
-      b: { name: 'B', url: content('B'), startSeconds: 0 },
-      x: { name: 'X', url: content('X'), startSeconds: 0 },
+      durationSeconds: mediaKind === 'Image' ? 0 : 12,
+      a: { name: 'A', url: content('A'), startSeconds: 0, gainDb: 0 },
+      b: { name: 'B', url: content('B'), startSeconds: 0, gainDb: 0 },
+      x: { name: 'X', url: content('X'), startSeconds: 0, gainDb: 0 },
     },
   }
 }
 
-async function mockApp(page: Page) {
+async function mockApp(page: Page, mediaKind: 'Video' | 'Image' = 'Video') {
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/auth/status') return json(route, { required: false })
@@ -54,10 +54,18 @@ async function mockApp(page: Page) {
       atomicWithQuarantine: true,
     })
     if (path === '/api/libraries/1/calibration/sources') return json(route, [{
-      mediaFileId: 7, relativePath: 'Example Film.mkv', durationSeconds: 1_200, width: 1_920, height: 1_080,
+      mediaFileId: 7,
+      relativePath: mediaKind === 'Image' ? 'Example Photo.tiff' : 'Example Film.mkv',
+      durationSeconds: mediaKind === 'Image' ? 0 : 1_200,
+      width: 1_920,
+      height: 1_080,
+      mediaKind,
+      isHdr: false,
     }])
-    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, session())
-    if (path.includes('/content/')) return route.fulfill({ status: 200, contentType: 'video/mp4', body: '' })
+    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, session(mediaKind))
+    if (path.includes('/content/')) return mediaKind === 'Image'
+      ? route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') })
+      : route.fulfill({ status: 200, contentType: 'video/mp4', body: '' })
     if (path.startsWith('/api/calibration/') && route.request().method() === 'DELETE') return route.fulfill({ status: 204 })
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
   })
@@ -93,4 +101,24 @@ test('blind calibration hides settings, supports keyboard switching, and traps f
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toBeHidden()
   await expect(trigger).toBeFocused()
+})
+
+test('image calibration keeps one zoomed viewport while switching on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApp(page, 'Image')
+  await page.goto('/#/libraries/1/configure')
+
+  await page.getByRole('button', { name: 'Personal quality check' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Blind quality calibration' })
+  await dialog.getByRole('button', { name: 'Prepare blind samples' }).click()
+
+  const viewport = dialog.getByRole('group', { name: 'Blind comparison image viewport' })
+  await expect(viewport).toBeVisible()
+  await dialog.getByRole('button', { name: 'Zoom in' }).click()
+  const image = viewport.getByRole('img', { name: 'Blind comparison image A' })
+  await expect(image).toHaveAttribute('style', /scale\(1\.5\)/)
+
+  await page.keyboard.press('x')
+  await expect(viewport.getByRole('img', { name: 'Blind comparison image X' })).toHaveAttribute('style', /scale\(1\.5\)/)
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
