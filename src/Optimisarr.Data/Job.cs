@@ -56,6 +56,14 @@ public sealed class Job
     /// <summary>How many times this job has been started; incremented on crash recovery.</summary>
     public int Attempt { get; set; }
 
+    /// <summary>
+    /// Why this job was enqueued — the eligibility reason computed at enqueue time
+    /// (e.g. "h264 → hevc", "Remove 2 audio track(s) (fra, deu) not in the kept
+    /// languages"), shown in the queue so a row explains itself. Null for jobs that
+    /// predate the column.
+    /// </summary>
+    public string? EnqueueReason { get; set; }
+
     /// <summary>Path to the produced output under <c>/work</c>, once transcoding begins.</summary>
     public string? WorkOutputPath { get; set; }
 

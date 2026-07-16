@@ -39,6 +39,21 @@ public sealed class JobEnqueueServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Enqueue_records_the_candidate_reason_on_the_job()
+    {
+        var libraryId = await SeedLibraryWithFilesAsync();
+
+        await EnqueueAsync(libraryId);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var job = Assert.Single(db.Jobs);
+        // The eligibility reason ("h264 → hevc") travels with the job so the queue
+        // can show why each row is there.
+        Assert.False(string.IsNullOrWhiteSpace(job.EnqueueReason));
+        Assert.Contains("h264", job.EnqueueReason);
+    }
+
+    [Fact]
     public async Task Is_idempotent_for_files_with_an_active_job()
     {
         var libraryId = await SeedLibraryWithFilesAsync();

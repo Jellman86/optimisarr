@@ -74,6 +74,28 @@ public sealed class JobQueriesTests : IDisposable
     }
 
     [Fact]
+    public async Task ListAsync_surfaces_why_a_job_was_enqueued()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+            var job = Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            job.EnqueueReason = "h264 → hevc";
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
+
+        Assert.Equal("h264 → hevc", Assert.Single(jobs).EnqueueReason);
+    }
+
+    [Fact]
     public async Task ListAsync_excludes_preview_jobs()
     {
         await using (var db = new OptimisarrDbContext(_options))
