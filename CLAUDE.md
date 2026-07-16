@@ -216,3 +216,6 @@ the repo's package settings if anonymous `docker pull` is expected.
   separately; everyday work lives on `dev`.)
 - **No sub-agents.** Do the work inline. Do not spawn sub-agents (e.g. the Agent/Task
   "Explore"/"Plan"/general-purpose agents) to carry out tasks in this repo.
+- **Write GitHub Releases for the person updating their server, not for the commit
+  history.** Follow [`docs/development/releasing.md`](docs/development/releasing.md)
+  and start from [`.github/RELEASE_NOTES_TEMPLATE.md`](.github/RELEASE_NOTES_TEMPLATE.md).

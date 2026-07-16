@@ -33,6 +33,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Security policy](../SECURITY.md)
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)
+- [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.
 
 ## UI Map
 
