@@ -1566,6 +1566,22 @@
         ]
       }
     },
+    "/api/calibration": {
+      "get": {
+        "operationId": "ListCalibrations",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
     "/api/calibration/{id}": {
       "delete": {
         "operationId": "DeleteCalibration",

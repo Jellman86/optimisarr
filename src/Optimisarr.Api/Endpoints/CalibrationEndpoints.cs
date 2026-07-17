@@ -14,6 +14,12 @@ internal static class CalibrationEndpoints
 {
     public static void MapCalibrationEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/calibration", async (
+            BlindCalibrationService calibration,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await calibration.ListAsync(cancellationToken)))
+        .WithName("ListCalibrations");
+
         app.MapGet("/api/libraries/{id:int}/calibration/sources", async (
             int id,
             BlindCalibrationService calibration,

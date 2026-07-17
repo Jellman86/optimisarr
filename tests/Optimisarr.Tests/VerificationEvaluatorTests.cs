@@ -510,6 +510,29 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Measure_only_vmaf_is_retained_as_evidence_without_becoming_a_gate()
+    {
+        var input = Healthy() with
+        {
+            QualityScores = new QualityScores(
+                82.5, 80.5, 42, null, null,
+                ModelVersion: "vmaf_v0.6.1",
+                VmafFifthPercentile: 65,
+                FrameCount: 288)
+        };
+
+        var report = VerificationEvaluator.Evaluate(
+            input,
+            VerificationPolicy.Default with { MeasureVmaf = true });
+
+        Assert.True(report.Passed);
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Perceptual quality (VMAF)");
+        Assert.True(report.Vmaf?.Measured);
+        Assert.Equal(80.5, report.Vmaf?.Scores?.VmafHarmonicMean);
+        Assert.Equal(42, report.Vmaf?.Scores?.VmafMin);
+    }
+
+    [Fact]
     public void Decode_failure_fails_verification()
     {
         var input = Healthy() with { DecodeSucceeded = false, DecodeError = "corrupt frame" };

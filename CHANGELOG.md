@@ -64,6 +64,12 @@
 
 ### Added
 
+- **Revealed video quality checks now include VMAF evidence in both the lab and API.** Every preset
+  is measured across all three scenes without turning VMAF into a hidden pass/fail gate or allowing
+  it to override the user's blind ratings. The result shows harmonic mean, worst-scene fifth
+  percentile, and lowest frame; the session API also returns the complete per-scene measurements,
+  model, preprocessing, frame counts, and explicit measurement errors. A new authenticated active-
+  session endpoint makes current results discoverable without knowing their session IDs.
 - **A full-page personal quality lab for video.** A saved video library can prepare short,
   disposable samples from the beginning, middle, and end of a representative file, then compare a
   marked original reference and four shuffled anonymous candidates covering the library's real

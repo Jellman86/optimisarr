@@ -238,7 +238,7 @@ export const en = {
     preparing: 'Preparing blind samples',
     waiting: 'Waiting for an available worker',
     waiting_hint: 'Another queue job is using the available worker. Your calibration is next and will start automatically.',
-    preparing_hint: 'Optimisarr is encoding three short scenes with each video preset. Leaving this page cancels the session and cleans them up.',
+    preparing_hint: 'Optimisarr is encoding three short scenes with each video preset, then measuring VMAF as objective evidence. Leaving this page cancels the session and cleans them up.',
     preparing_audio_hint: 'Optimisarr is encoding three short excerpts at each tested bitrate, then measuring them so loudness cannot reveal the answer. Leaving this page cancels and cleans them up.',
     preparing_image_hint: 'Optimisarr is preparing a lossless PNG reference and five image quality levels. Leaving this page cancels and cleans them up.',
     failed: 'Calibration samples could not be prepared',

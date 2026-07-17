@@ -118,7 +118,8 @@ public static class VerificationEvaluator
 
         // Remuxes copy the encoded frames unchanged, so VMAF is both redundant and expensive.
         // Non-video media use their applicable audio/image gates instead.
-        if (policy.RequiresVmaf(input.Kind, input.VideoReencoded))
+        var vmafRequested = policy.RequiresVmaf(input.Kind, input.VideoReencoded);
+        if (vmafRequested && policy.QualityGateEnabled)
         {
             checks.Add(PerceptualQuality(input, policy));
         }
@@ -133,7 +134,11 @@ public static class VerificationEvaluator
             checks.Add(NoClippingIntroduced(input, policy));
         }
 
-        return new VerificationReport(checks);
+        return new VerificationReport(
+            checks,
+            Vmaf: vmafRequested
+                ? new VmafEvidence(input.QualityMeasured, input.QualityError, input.QualityScores)
+                : null);
     }
 
     private static VerificationCheck AudioMetadataPreserved(VerificationInput input)

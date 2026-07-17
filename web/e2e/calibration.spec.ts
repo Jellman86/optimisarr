@@ -80,12 +80,24 @@ function revealedSession(mediaKind: CalibrationMediaKind) {
         effectiveQuality: index === 0 ? null : mediaKind === 'Audio' ? [0, 192, 160, 128, 96, 64][index] : mediaKind === 'Image' ? [0, 92, 82, 70, 55, 40][index] : qualities[index],
         estimatedSavingPercent: index === 0 ? null : 20 + index * 5,
         recommended: index === (mediaKind === 'Video' ? 1 : 3),
+        vmaf: index === 0 || mediaKind !== 'Video' ? null : {
+          measuredSamples: 3, totalSamples: 3,
+          mean: 96 - index, harmonicMean: 95 - index,
+          fifthPercentile: 90 - index, minimum: 75 - index,
+          frameCount: 864, modelVersion: 'vmaf_v0.6.1', preprocessing: null,
+          samples: Array.from({ length: 3 }, (_, sample) => ({
+            sampleNumber: sample + 1, measured: true,
+            mean: 96 - index, harmonicMean: 95 - index,
+            fifthPercentile: 90 - index, minimum: 75 - index,
+            frameCount: 288, modelVersion: 'vmaf_v0.6.1', preprocessing: null, error: null,
+          })),
+        },
       })),
     },
   }
 }
 
-async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false) {
+async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false) {
   const currentLibrary = { ...library, mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film' }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
@@ -97,7 +109,7 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', de
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
     if (path === '/api/libraries/1/access') return json(route, { path: currentLibrary.path, exists: true, readable: true, writable: true, ok: true, message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/', fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000, atomicWithWork: true, atomicWithQuarantine: true })
     if (path === '/api/libraries/1/calibration/sources') return json(route, [{ mediaFileId: 7, relativePath: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv', durationSeconds: mediaKind === 'Image' ? 0 : 1_200, width: mediaKind === 'Audio' ? null : 1_920, height: mediaKind === 'Audio' ? null : 1_080, mediaKind, isHdr: false }])
-    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, keepPreparing ? preparingSession(mediaKind) : comparingSession(mediaKind))
+    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, keepPreparing ? preparingSession(mediaKind) : revealImmediately ? revealedSession(mediaKind) : comparingSession(mediaKind))
     if (path === `/api/calibration/${id}` && route.request().method() === 'GET') return json(route, preparingSession(mediaKind))
     if (path.endsWith('/classifications') && route.request().method() === 'POST') return json(route, revealedSession(mediaKind))
     if (path.endsWith('/apply') && route.request().method() === 'POST') return json(route, { ...revealedSession(mediaKind), status: 'Applied', result: { ...revealedSession(mediaKind).result, applied: true } })
@@ -116,13 +128,23 @@ function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false) {
-  await mockApp(page, mediaKind, deferVideoContent, keepPreparing)
+async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false) {
+  await mockApp(page, mediaKind, deferVideoContent, keepPreparing, revealImmediately)
   await page.goto('/#/libraries/1/configure')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
   await page.getByRole('button', { name: 'Prepare blind samples' }).click()
 }
+
+test('revealed video results show objective VMAF evidence for every anonymous preset', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await openLab(page, 'Video', false, false, true)
+
+  await expect(page.getByText(/VMAF H /)).toHaveCount(4)
+  await expect(page.getByText(/P5 /)).toHaveCount(4)
+  await expect(page.getByText(/min /)).toHaveCount(4)
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
 
 test('sample preparation shows the same live CPU and GPU usage cards as active queue work', async ({ page }) => {
   await openLab(page, 'Video', false, true)

@@ -311,6 +311,7 @@ when the verification report is for a sample rather than the whole file.
 |---|---|---|
 | `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
 | `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123, "diagnosticsEnabled": false, "ignoreActiveStreams": false }`. Diagnostics reveal candidate details. The default-off stream exception applies only to the session's calibration jobs; normal jobs remain activity-paused. |
+| `GET` | `/api/calibration` | List every active quality-check session, including any revealed result. Listing does not extend an abandoned session's lifetime. |
 | `GET` | `/api/calibration/{id}` | Read preparation progress, the marked original reference plus anonymous media-specific candidates, or a revealed result. |
 | `POST` | `/api/calibration/{id}/classifications` | Classify every anonymous candidate and reveal its settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended video preset or media quality to the library, if its relevant settings have not changed. |
@@ -320,7 +321,14 @@ when the verification report is for a sample rather than the whole file.
 Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
 preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
-samples retain the complete preset output, including its container and audio contract. Music uses three 15-second excerpts with a lossless
+samples retain the complete preset output, including its container and audio contract. Each scene is
+also measured with VMAF. Scores remain absent from the API until classifications reveal the lineup;
+then every non-original `result.variants[]` entry includes a `vmaf` summary and its three underlying
+`samples`. `harmonicMean` is frame-weighted across measured scenes, `fifthPercentile` is the lowest
+scene fifth percentile, and `minimum` is the lowest individual-frame score. `measuredSamples` and
+per-scene `error` fields make partial or unavailable measurement explicit. VMAF is objective evidence
+only in this personal check: it neither rejects a structurally valid sample nor changes the user's
+preference-led recommendation. Music uses three 15-second excerpts with a lossless
 FLAC reference and returns a per-sample `gainDb` that brings every anonymous version to the same
 quietest measured level. Still images use a lossless PNG reference and return `startSeconds: 0` and
 `gainDb: 0`.

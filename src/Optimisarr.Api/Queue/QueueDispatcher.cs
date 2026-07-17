@@ -1162,6 +1162,10 @@ public sealed class QueueDispatcher(
             {
                 RequireSizeReduction = false,
                 QualityGateEnabled = false,
+                // The quality lab reveals VMAF as objective evidence after the user's blind
+                // ratings. It is deliberately measure-only: a score never rejects a sample or
+                // overrides the user's preference.
+                MeasureVmaf = work.Spec.Kind == MediaKind.Video,
                 AudioLoudnessGateEnabled = false,
                 AudioClippingGateEnabled = false,
                 ImageQualityGateEnabled = false

@@ -20,6 +20,15 @@ public sealed class VerificationPolicyTests
         Assert.True(policy.RequiresVmaf(MediaKind.Video, videoReencoded: true));
     }
 
+    [Fact]
+    public void Measure_only_opt_in_requires_vmaf_without_enabling_the_gate()
+    {
+        var policy = VerificationPolicy.Default with { MeasureVmaf = true };
+
+        Assert.False(policy.QualityGateEnabled);
+        Assert.True(policy.RequiresVmaf(MediaKind.Video, videoReencoded: true));
+    }
+
     [Theory]
     [InlineData(MediaKind.Video, false)]
     [InlineData(MediaKind.Audio, true)]

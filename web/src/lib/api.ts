@@ -450,6 +450,33 @@ export type CalibrationVariantResult = {
   effectiveQuality: number | null
   estimatedSavingPercent: number | null
   recommended: boolean
+  vmaf: CalibrationVmafResult | null
+}
+
+export type CalibrationVmafSample = {
+  sampleNumber: number
+  measured: boolean
+  mean: number | null
+  harmonicMean: number | null
+  fifthPercentile: number | null
+  minimum: number | null
+  frameCount: number | null
+  modelVersion: string | null
+  preprocessing: string | null
+  error: string | null
+}
+
+export type CalibrationVmafResult = {
+  measuredSamples: number
+  totalSamples: number
+  mean: number | null
+  harmonicMean: number | null
+  fifthPercentile: number | null
+  minimum: number | null
+  frameCount: number | null
+  modelVersion: string | null
+  preprocessing: string | null
+  samples: CalibrationVmafSample[]
 }
 
 export type CalibrationResult = {
@@ -880,6 +907,7 @@ export const api = {
     request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
       method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled, ignoreActiveStreams }),
     }),
+  calibrations: () => request<CalibrationSession[]>('/api/calibration'),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
   classifyCalibration: (id: string, classifications: Record<string, CalibrationClassification>) =>
     request<CalibrationSession>(`/api/calibration/${id}/classifications`, {

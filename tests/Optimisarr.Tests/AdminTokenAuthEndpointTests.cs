@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,6 +12,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -43,6 +45,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
     [InlineData("POST", "/api/libraries/1/calibration")]
+    [InlineData("GET", "/api/calibration")]
     [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/classifications")]
     [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/apply")]
     [InlineData("DELETE", "/api/calibration/00000000-0000-0000-0000-000000000000")]
@@ -286,6 +289,8 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         var startedSession = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = startedSession["id"]!.GetValue<Guid>();
         Assert.Equal("Waiting", startedSession["preparationState"]!.GetValue<string>());
+        var activeSessions = JsonNode.Parse(await client.GetStringAsync("/api/calibration"))!.AsArray();
+        Assert.Contains(activeSessions, active => active!["id"]!.GetValue<Guid>() == sessionId);
 
         using (var clearedPending = await client.PostAsync("/api/jobs/clear-pending", content: null))
         {
@@ -358,6 +363,20 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 job.VideoQualityMode = "CRF";
                 job.EffectiveVideoQuality = job.RequestedVideoQuality;
                 job.CalibrationReferenceStartSeconds = 0.751;
+                job.VerificationReportJson = JsonSerializer.Serialize(new VerificationReport(
+                    [],
+                    Vmaf: new VmafEvidence(
+                        true,
+                        null,
+                        new QualityScores(
+                            95,
+                            94,
+                            72,
+                            null,
+                            null,
+                            ModelVersion: "vmaf_v0.6.1",
+                            VmafFifthPercentile: 88,
+                            FrameCount: 288))));
             }
             await db.SaveChangesAsync();
         }
@@ -431,6 +450,19 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal(1, revealedVariants.Count(variant => variant!["isOriginal"]!.GetValue<bool>()));
         Assert.Null(revealedVariants.Single(variant => variant!["isOriginal"]!.GetValue<bool>())!["quality"]);
         Assert.Equal("ExperimentalAv1", revealedVariants.Single(variant => variant!["recommended"]!.GetValue<bool>())!["profile"]!.GetValue<string>());
+        Assert.All(revealedVariants.Where(variant => !variant!["isOriginal"]!.GetValue<bool>()), variant =>
+        {
+            var vmaf = variant!["vmaf"]!.AsObject();
+            Assert.Equal(3, vmaf["measuredSamples"]!.GetValue<int>());
+            Assert.Equal(3, vmaf["totalSamples"]!.GetValue<int>());
+            Assert.Equal(94, vmaf["harmonicMean"]!.GetValue<double>());
+            Assert.Equal(88, vmaf["fifthPercentile"]!.GetValue<double>());
+            Assert.Equal(72, vmaf["minimum"]!.GetValue<double>());
+            Assert.Equal(3, vmaf["samples"]!.AsArray().Count);
+        });
+        activeSessions = JsonNode.Parse(await client.GetStringAsync("/api/calibration"))!.AsArray();
+        var listedResult = activeSessions.Single(active => active!["id"]!.GetValue<Guid>() == sessionId)!["result"]!;
+        Assert.Equal(4, listedResult["variants"]!.AsArray().Count(variant => variant!["vmaf"] is not null));
 
         using var applied = await client.PostAsync($"/api/calibration/{sessionId}/apply", content: null);
         Assert.Equal(HttpStatusCode.OK, applied.StatusCode);

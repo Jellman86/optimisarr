@@ -154,6 +154,10 @@
     return `${source.relativePath}${resolution}${range} · ${formatDuration(source.durationSeconds)}`
   }
 
+  function vmafScore(value: number | null): string {
+    return value === null ? '–' : value.toFixed(1)
+  }
+
   function sampleFor(name: string): CalibrationSample | null {
     return variants.find((variant) => variant.name === name)?.samples[activeScene] ?? null
   }
@@ -731,7 +735,18 @@
           <section class="card overflow-hidden">
             <div class="border-b border-slate-200 p-5 dark:border-slate-700"><p class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-slate-950 dark:text-white">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
             <div class="divide-y divide-slate-100 dark:divide-slate-800">
-              {#each session.result.variants as variant}<div class="flex items-center gap-3 px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}><strong class="w-16 text-slate-900 dark:text-white">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span>{/if}</div>{/each}
+              {#each session.result.variants as variant}
+                <div class="px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}>
+                  <div class="flex items-center gap-3"><strong class="w-16 text-slate-900 dark:text-white">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span>{/if}</div>
+                  {#if variant.vmaf}
+                    <div class="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 font-mono text-[11px] tabular-nums dark:border-slate-700 dark:bg-slate-700" title={[variant.vmaf.modelVersion, variant.vmaf.preprocessing, `${variant.vmaf.measuredSamples}/${variant.vmaf.totalSamples} scenes measured`].filter(Boolean).join(' · ')}>
+                      <span class="bg-slate-50 px-2 py-1.5 text-cyan-700 dark:bg-slate-900 dark:text-cyan-300">VMAF H {vmafScore(variant.vmaf.harmonicMean)}</span>
+                      <span class="bg-slate-50 px-2 py-1.5 text-slate-600 dark:bg-slate-900 dark:text-slate-300">P5 {vmafScore(variant.vmaf.fifthPercentile)}</span>
+                      <span class="bg-slate-50 px-2 py-1.5 text-slate-600 dark:bg-slate-900 dark:text-slate-300">min {vmafScore(variant.vmaf.minimum)}</span>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
             </div>
             <div class="p-5">
               {#if session.result.recommendedQuality !== null}

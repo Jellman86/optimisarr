@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Calibration;
@@ -55,7 +57,32 @@ public sealed record CalibrationVariantResultDto(
     string? QualityMode,
     int? EffectiveQuality,
     double? EstimatedSavingPercent,
-    bool Recommended);
+    bool Recommended,
+    CalibrationVmafResultDto? Vmaf);
+
+public sealed record CalibrationVmafSampleDto(
+    int SampleNumber,
+    bool Measured,
+    double? Mean,
+    double? HarmonicMean,
+    double? FifthPercentile,
+    double? Minimum,
+    int? FrameCount,
+    string? ModelVersion,
+    string? Preprocessing,
+    string? Error);
+
+public sealed record CalibrationVmafResultDto(
+    int MeasuredSamples,
+    int TotalSamples,
+    double? Mean,
+    double? HarmonicMean,
+    double? FifthPercentile,
+    double? Minimum,
+    int? FrameCount,
+    string? ModelVersion,
+    string? Preprocessing,
+    IReadOnlyList<CalibrationVmafSampleDto> Samples);
 
 public sealed record CalibrationResultDto(
     int? RecommendedQuality,
@@ -312,18 +339,41 @@ internal sealed class BlindCalibrationService(
             ?? throw new InvalidOperationException("Calibration session was not retained.");
     }
 
-    public async Task<CalibrationSessionDto?> GetAsync(Guid id, CancellationToken cancellationToken)
+    public Task<CalibrationSessionDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        GetCoreAsync(id, touchLifetime: true, cancellationToken);
+
+    public async Task<IReadOnlyList<CalibrationSessionDto>> ListAsync(CancellationToken cancellationToken)
+    {
+        await RemoveExpiredAsync(cancellationToken);
+        var results = new List<CalibrationSessionDto>();
+        foreach (var id in _sessions.Keys.Order())
+        {
+            if (await GetCoreAsync(id, touchLifetime: false, cancellationToken) is { } session)
+            {
+                results.Add(session);
+            }
+        }
+        return results;
+    }
+
+    private async Task<CalibrationSessionDto?> GetCoreAsync(
+        Guid id,
+        bool touchLifetime,
+        CancellationToken cancellationToken)
     {
         await RemoveExpiredAsync(cancellationToken);
         if (!_sessions.TryGetValue(id, out var session))
         {
             return null;
         }
-        lock (session.Gate)
+        if (touchLifetime)
         {
-            // Active polling and comparison requests keep the session alive; abandoned labs are
-            // reaped two hours after their last request, even if the container keeps running.
-            session.ExpiresAt = timeProvider.GetUtcNow().Add(SessionLifetime);
+            lock (session.Gate)
+            {
+                // Active polling and comparison requests keep the session alive; listing sessions
+                // for diagnostics does not, so an abandoned lab still expires on schedule.
+                session.ExpiresAt = timeProvider.GetUtcNow().Add(SessionLifetime);
+            }
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -747,7 +797,8 @@ internal sealed class BlindCalibrationService(
                     null,
                     null,
                     null,
-                    false);
+                    false,
+                    null);
             }
 
             var setting = variant.Setting!;
@@ -778,7 +829,19 @@ internal sealed class BlindCalibrationService(
                     ? quality
                     : representative?.EffectiveVideoQuality,
                 EstimateSavingPercent(session, candidateJobs),
-                session.RecommendedSetting?.Key == setting.Key);
+                session.RecommendedSetting?.Key == setting.Key,
+                session.MediaKind == MediaKind.Video
+                    ? CalibrationVmafEvidence.FromReports(
+                        session.Candidates
+                            .Where(item => item.Setting.Key == setting.Key)
+                            .OrderBy(item => item.Sample.Index)
+                            .Select(item =>
+                            {
+                                var job = jobs.FirstOrDefault(candidateJob => candidateJob.Id == item.Job.Id);
+                                return (item.Sample.Index + 1, job?.VerificationReportJson);
+                            })
+                            .ToList())
+                    : null);
         }
 
         var variants = session.Variants.Select(ResultFor).ToList();
@@ -1038,5 +1101,114 @@ internal sealed class BlindCalibrationService(
             && ImageDownscaleMode == rules.ImageDownscaleMode
             && ImageDownscaleValue == rules.ImageDownscaleValue
             && InitialQuality == quality;
+    }
+}
+
+internal static class CalibrationVmafEvidence
+{
+    private static readonly JsonSerializerOptions ReportJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    public static CalibrationVmafResultDto? FromReports(
+        IReadOnlyList<(int SampleNumber, string? ReportJson)> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return null;
+        }
+
+        var samples = reports.Select(report => Parse(report.SampleNumber, report.ReportJson)).ToList();
+        var measured = samples.Where(sample => sample.Measured).ToList();
+        return new CalibrationVmafResultDto(
+            measured.Count,
+            samples.Count,
+            WeightedAverage(measured, sample => sample.Mean),
+            WeightedHarmonicMean(measured),
+            Minimum(measured, sample => sample.FifthPercentile),
+            Minimum(measured, sample => sample.Minimum),
+            measured.Any(sample => sample.FrameCount is > 0)
+                ? measured.Sum(sample => sample.FrameCount ?? 0)
+                : null,
+            Shared(measured.Select(sample => sample.ModelVersion)),
+            Shared(measured.Select(sample => sample.Preprocessing)),
+            samples);
+    }
+
+    private static CalibrationVmafSampleDto Parse(int sampleNumber, string? reportJson)
+    {
+        VmafEvidence? evidence = null;
+        if (!string.IsNullOrWhiteSpace(reportJson))
+        {
+            try
+            {
+                evidence = JsonSerializer.Deserialize<VerificationReport>(reportJson, ReportJsonOptions)?.Vmaf;
+            }
+            catch (JsonException)
+            {
+                // A malformed retained report is surfaced as unavailable evidence for this scene;
+                // it must not prevent the user from completing an otherwise healthy blind test.
+            }
+        }
+
+        var scores = evidence?.Scores;
+        return new CalibrationVmafSampleDto(
+            sampleNumber,
+            evidence?.Measured == true && scores is not null,
+            scores?.VmafMean,
+            scores?.VmafHarmonicMean,
+            scores?.VmafFifthPercentile,
+            scores?.VmafMin,
+            scores?.FrameCount,
+            scores?.ModelVersion,
+            scores?.Preprocessing,
+            evidence?.Error ?? (scores is null ? "VMAF evidence is unavailable for this scene." : null));
+    }
+
+    private static double? WeightedAverage(
+        IReadOnlyList<CalibrationVmafSampleDto> samples,
+        Func<CalibrationVmafSampleDto, double?> selector)
+    {
+        var values = samples.Where(sample => selector(sample) is not null).ToList();
+        if (values.Count == 0)
+        {
+            return null;
+        }
+        var weighted = values.Where(sample => sample.FrameCount is > 0).ToList();
+        var value = weighted.Count == values.Count
+            ? weighted.Sum(sample => selector(sample)!.Value * sample.FrameCount!.Value)
+                / weighted.Sum(sample => sample.FrameCount!.Value)
+            : values.Average(sample => selector(sample)!.Value);
+        return Math.Round(value, 2);
+    }
+
+    private static double? WeightedHarmonicMean(IReadOnlyList<CalibrationVmafSampleDto> samples)
+    {
+        var values = samples.Where(sample => sample.HarmonicMean is > 0).ToList();
+        if (values.Count == 0)
+        {
+            return null;
+        }
+        var value = values.All(sample => sample.FrameCount is > 0)
+            ? values.Sum(sample => sample.FrameCount!.Value)
+                / values.Sum(sample => sample.FrameCount!.Value / sample.HarmonicMean!.Value)
+            : values.Count / values.Sum(sample => 1 / sample.HarmonicMean!.Value);
+        return Math.Round(value, 2);
+    }
+
+    private static double? Minimum(
+        IEnumerable<CalibrationVmafSampleDto> samples,
+        Func<CalibrationVmafSampleDto, double?> selector)
+    {
+        var values = samples.Select(selector).Where(value => value is not null).Select(value => value!.Value).ToList();
+        return values.Count == 0 ? null : Math.Round(values.Min(), 2);
+    }
+
+    private static string? Shared(IEnumerable<string?> values)
+    {
+        var present = values.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToList();
+        return present.Count == 1 ? present[0] : null;
     }
 }
