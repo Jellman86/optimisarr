@@ -64,6 +64,8 @@
 
 ### Added
 
+- **Temporary stream verification is now opt-in.** Personal video quality checks start blind by
+  default; native player controls and exact-resource diagnostics appear only when explicitly enabled.
 - **Revealed video quality checks now include VMAF evidence in both the lab and API.** Every preset
   is measured across all three scenes without turning VMAF into a hidden pass/fail gate or allowing
   it to override the user's blind ratings. The result shows harmonic mean, worst-scene fifth

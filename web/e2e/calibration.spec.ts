@@ -128,11 +128,14 @@ function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false) {
+async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false, enableDiagnostics = false) {
   await mockApp(page, mediaKind, deferVideoContent, keepPreparing, revealImmediately)
   await page.goto('/#/libraries/1/configure')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
+  if (enableDiagnostics) {
+    await page.getByRole('checkbox', { name: 'Temporary stream verification' }).check()
+  }
   await page.getByRole('button', { name: 'Prepare blind samples' }).click()
 }
 
@@ -202,8 +205,23 @@ test('active stream bypass is an explicit per-check option in the start request'
   expect(request.postDataJSON()).toMatchObject({ ignoreActiveStreams: true })
 })
 
+test('temporary stream verification is opt-in', async ({ page }) => {
+  await mockApp(page)
+  await page.goto('/#/libraries/1/configure')
+  await page.getByRole('button', { name: 'Personal quality check' }).click()
+  const proof = page.getByRole('checkbox', { name: 'Temporary stream verification' })
+  await expect(proof).not.toBeChecked()
+  const requested = page.waitForRequest((request) =>
+    request.method() === 'POST'
+      && new URL(request.url()).pathname === '/api/libraries/1/calibration')
+  await page.getByRole('button', { name: 'Prepare blind samples' }).click()
+  const request = await requested
+
+  expect(request.postDataJSON()).toMatchObject({ diagnosticsEnabled: false })
+})
+
 test('video switching replaces one native player resource and preserves its matching frame', async ({ page }) => {
-  await openLab(page, 'Video', true)
+  await openLab(page, 'Video', true, false, false, true)
   const video = page.locator('video')
   await expect(video).toHaveCount(1)
   await expect(video).toHaveAttribute('controls', '')

@@ -43,7 +43,7 @@
   let videoPlayer = $state<HTMLVideoElement | null>(null)
   let pendingName = $state<string | null>(null)
   let browserStreamUrl = $state('')
-  let diagnosticsEnabled = $state(true)
+  let diagnosticsEnabled = $state(false)
   let ignoreActiveStreams = $state(false)
   let viewer = $state<HTMLElement | null>(null)
   let fullscreen = $state(false)
