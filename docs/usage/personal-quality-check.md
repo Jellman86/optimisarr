@@ -31,12 +31,16 @@ your confirmation that the intended display is actually presenting HDR.
 
 The original is clearly marked as the fixed reference. Encoded candidates are shuffled and labelled
 only with letters. Their settings, encoder, bitrate, and estimated saving normally remain hidden.
-The temporary **stream diagnostics** switch is currently on by default to help validate the feature;
-it deliberately reveals the active preset/format and exact browser stream, so turn it off for a blind check.
+The temporary **stream verification** switch is currently on by default to help validate the feature.
+For video, it uses one native browser player and changes that element's media resource on every
+selection. Native controls, the element's resolved `currentSrc`, and **Open exact resource in browser**
+let you confirm the browser requested and opened the selected stream. This deliberately reveals the
+active preset/format, so turn it off for a blind check.
 
 - Switch between **Original** and the lettered candidates while examining the same moment. Video and audio keep one shared relative
   position, and a switch is not shown until the destination stream has sought to the matching frame.
-- Video provides three scene tabs, a shared 0–12-second timeline, and real browser fullscreen.
+- Video provides three scene tabs, a shared 0–12-second timeline, native controls while verification
+  is enabled, and real browser fullscreen.
 - Audio provides three 15-second excerpts. Optimisarr measures the reference and all five candidates using EBU R128
   integrated loudness and attenuates each to the quietest one so volume cannot reveal a version.
 - Still images use one viewport. Zoom or drag to inspect detail; zoom and pan remain unchanged while

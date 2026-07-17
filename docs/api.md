@@ -334,6 +334,9 @@ change the relevant library preset or quality, and it queues no media work.
 Variant labels and URLs are opaque until reveal when `diagnosticsEnabled` is false. With diagnostics
 enabled, each variant includes its profile, codec, actual container, requested/effective quality,
 and encoder for troubleshooting; clients must clearly state that the session is no longer blind.
+Browser verification clients should replace the `src` of one video element, report that element's
+resolved `currentSrc`, and offer a direct link to that exact resource rather than presenting an
+application-supplied active-file label as proof of a switch.
 Normal blind clients must not display encoder, quality, bitrate, estimated size, or raw media
 duration during this phase. Drive each variant from its sample `durationSeconds` and `startSeconds`,
 preserve one relative playback position, and wait for `seeked` before showing a newly selected video;

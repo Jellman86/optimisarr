@@ -76,7 +76,7 @@ function revealedSession(mediaKind: CalibrationMediaKind) {
   }
 }
 
-async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
+async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false) {
   const currentLibrary = { ...library, mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film' }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
@@ -91,9 +91,12 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
     if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, comparingSession(mediaKind))
     if (path.endsWith('/classifications') && route.request().method() === 'POST') return json(route, revealedSession(mediaKind))
     if (path.endsWith('/apply') && route.request().method() === 'POST') return json(route, { ...revealedSession(mediaKind), status: 'Applied', result: { ...revealedSession(mediaKind).result, applied: true } })
-    if (path.includes('/content')) return mediaKind === 'Image'
-      ? route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') })
-      : route.fulfill({ status: 200, contentType: mediaKind === 'Audio' ? 'audio/mp4' : 'video/mp4', body: '' })
+    if (path.includes('/content')) {
+      if (mediaKind === 'Video' && deferVideoContent) await new Promise((resolve) => setTimeout(resolve, 5_000))
+      return mediaKind === 'Image'
+        ? route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') })
+        : route.fulfill({ status: 200, contentType: mediaKind === 'Audio' ? 'audio/mp4' : 'video/mp4', body: '' })
+    }
     if (path.startsWith('/api/calibration/') && route.request().method() === 'DELETE') return route.fulfill({ status: 204 })
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
   })
@@ -103,8 +106,8 @@ function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video') {
-  await mockApp(page, mediaKind)
+async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false) {
+  await mockApp(page, mediaKind, deferVideoContent)
   await page.goto('/#/libraries/1/configure')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
@@ -142,74 +145,92 @@ test('quality check marks the original reference while keeping media-specific ca
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
-test('video switching does not reveal the new sample until its matching frame has been sought', async ({ page }) => {
-  await openLab(page)
-  const videos = page.locator('video')
-  await expect(videos).toHaveCount(5)
-  const streamUrls = await videos.evaluateAll((elements) => elements.map((element) => element.getAttribute('src')))
-  expect(new Set(streamUrls).size).toBe(5)
+test('video switching replaces one native player resource and preserves its matching frame', async ({ page }) => {
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await expect(video).toHaveAttribute('controls', '')
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/ORIGINAL/samples/0/content`)
   await expect(page.getByText('Stream diagnostics')).toBeVisible()
   await expect(page.getByText('ORIGINAL · h264 · mkv')).toBeVisible()
-  await videos.evaluateAll((elements) => {
-    elements.forEach((element, index) => {
-      const video = element as HTMLVideoElement
-      let currentTime = index === 0 ? 2 : 0
-      let paused = index !== 0
-      let seeking = false
-      Object.defineProperty(video, 'duration', { configurable: true, get: () => 12.751 })
-      Object.defineProperty(video, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
-      Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
-      Object.defineProperty(video, 'seeking', { configurable: true, get: () => seeking })
-      video.pause = () => { paused = true }
-      video.play = async () => { paused = false; video.dataset.playCalls = String(Number(video.dataset.playCalls ?? '0') + 1) }
-      video.addEventListener('seeked', () => { seeking = false })
-      if (index === 0) video.dispatchEvent(new Event('loadedmetadata'))
-      currentTime = index === 0 ? 2 : 0
-      seeking = false
-    })
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 2
+    let paused = false
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => paused })
+    player.pause = () => { paused = true }
   })
 
+  const requested = page.waitForRequest((request) => request.url().includes(`/variants/A/samples/0/content`))
   await page.getByRole('button', { name: 'A', exact: true }).click()
+  await requested
+  await expect(video).toHaveCount(1)
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
   await expect(page.getByRole('button', { name: 'Original reference', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await videos.nth(1).dispatchEvent('loadedmetadata')
-  await expect(videos.nth(1)).toHaveJSProperty('currentTime', 1.249)
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 0
+    let paused = true
+    let seeking = false
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => paused })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => seeking })
+    player.pause = () => { paused = true }
+    player.play = async () => { paused = false; player.dataset.playCalls = String(Number(player.dataset.playCalls ?? '0') + 1) }
+    player.addEventListener('seeked', () => { seeking = false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  })
+  await expect(video).toHaveJSProperty('currentTime', 1.249)
   await expect(page.getByRole('button', { name: 'Original reference', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  expect(await videos.nth(1).getAttribute('data-play-calls')).toBeNull()
-  await videos.nth(1).dispatchEvent('seeked')
+  expect(await video.getAttribute('data-play-calls')).toBeNull()
+  await video.dispatchEvent('seeked')
   await expect(page.getByRole('button', { name: 'A', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await expect(videos.nth(1)).toHaveAttribute('data-play-calls', '1')
+  await expect(video).toHaveAttribute('data-play-calls', '1')
   await expect(page.getByText('ExperimentalAv1 · av1 · mkv · CRF 30')).toBeVisible()
   await expect(page.getByText(`/api/calibration/${id}/variants/A/samples/0/content`, { exact: true })).toBeVisible()
+  const exactResource = page.getByRole('link', { name: 'Open exact video resource' })
+  await expect(exactResource).toHaveAttribute('href', await video.evaluate((element) => (element as HTMLVideoElement).currentSrc))
   await expect(page.getByRole('button', { name: 'Inspect video full screen' })).toBeVisible()
 })
 
 test('rapid sample clicks keep the full hit target active and switch to the latest choice', async ({ page }) => {
-  await openLab(page)
-  const videos = page.locator('video')
-  await videos.evaluateAll((elements) => {
-    elements.forEach((element, index) => {
-      const video = element as HTMLVideoElement
-      let currentTime = 0
-      let seeking = false
-      let paused = index !== 0
-      Object.defineProperty(video, 'duration', { configurable: true, get: () => 12.751 })
-      Object.defineProperty(video, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
-      Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
-      Object.defineProperty(video, 'seeking', { configurable: true, get: () => seeking })
-      video.pause = () => { paused = true }
-      video.play = async () => { paused = false; video.dataset.playCalls = String(Number(video.dataset.playCalls ?? '0') + 1) }
-      video.addEventListener('seeked', () => { seeking = false })
-      video.dispatchEvent(new Event('loadedmetadata'))
-      seeking = false
-    })
+  await openLab(page, 'Video', true)
+  const video = page.locator('video')
+  await expect(video).toHaveCount(1)
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 0
+    let paused = false
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => paused })
+    player.pause = () => { paused = true }
   })
 
   await page.getByRole('button', { name: 'A', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/A/samples/0/content`)
   await page.getByRole('button', { name: 'B', exact: true }).click()
+  await expect(video).toHaveAttribute('src', `/api/calibration/${id}/variants/B/samples/0/content`)
   await expect(page.getByRole('button', { name: 'B', exact: true })).toBeEnabled()
-  await expect(videos.nth(2)).toHaveJSProperty('seeking', true)
-  await videos.nth(2).dispatchEvent('seeked')
-  await videos.nth(1).dispatchEvent('seeked')
+  await video.evaluate((element) => {
+    const player = element as HTMLVideoElement
+    let currentTime = 0
+    let seeking = false
+    let paused = true
+    Object.defineProperty(player, 'duration', { configurable: true, get: () => 12.751 })
+    Object.defineProperty(player, 'currentTime', { configurable: true, get: () => currentTime, set: (value: number) => { currentTime = value; seeking = true } })
+    Object.defineProperty(player, 'paused', { configurable: true, get: () => paused })
+    Object.defineProperty(player, 'seeking', { configurable: true, get: () => seeking })
+    player.pause = () => { paused = true }
+    player.play = async () => { paused = false }
+    player.addEventListener('seeked', () => { seeking = false })
+    player.dispatchEvent(new Event('loadedmetadata'))
+  })
+  await expect(video).toHaveJSProperty('seeking', true)
+  await video.dispatchEvent('seeked')
   await expect(page.getByRole('button', { name: 'B', exact: true })).toHaveAttribute('aria-pressed', 'true')
 })
 

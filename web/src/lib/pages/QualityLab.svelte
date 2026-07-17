@@ -36,7 +36,10 @@
   let switching = $state(false)
   let switchSequence = $state(0)
   let switchShouldResume = $state(false)
+  let switchPosition = $state(0)
   let players: Record<string, HTMLMediaElement> = {}
+  let videoPlayer = $state<HTMLVideoElement | null>(null)
+  let pendingName = $state<string | null>(null)
   let browserStreamUrl = $state('')
   let diagnosticsEnabled = $state(true)
   let viewer = $state<HTMLElement | null>(null)
@@ -55,6 +58,9 @@
   const candidateVariants = $derived(variants.filter((variant) => !variant.isOriginal))
   const activeVariant = $derived(variants.find((variant) => variant.name === activeName) ?? variants[0] ?? null)
   const activeSample = $derived(activeVariant?.samples[activeScene] ?? null)
+  const videoName = $derived(pendingName ?? activeName)
+  const videoVariant = $derived(variants.find((variant) => variant.name === videoName) ?? variants[0] ?? null)
+  const videoSample = $derived(videoVariant?.samples[activeScene] ?? null)
   const activeDiagnostics = $derived(activeVariant?.diagnostics ?? null)
   const classifiedCount = $derived(Object.values(ratings).filter(Boolean).length)
   const canReveal = $derived(!playbackError && candidateVariants.length > 0 && classifiedCount === candidateVariants.length)
@@ -145,11 +151,18 @@
     return variants.find((variant) => variant.name === name)?.samples[activeScene] ?? null
   }
 
-  function registerPlayer(name: string, event: Event) {
+  function registerAudioPlayer(name: string, event: Event) {
     const player = event.currentTarget as HTMLMediaElement
     players[name] = player
     preparePlayer(name, player)
     if (name === activeName) browserStreamUrl = player.currentSrc || player.getAttribute('src') || ''
+  }
+
+  function registerVideoPlayer(name: string, event: Event) {
+    const player = event.currentTarget as HTMLVideoElement
+    videoPlayer = player
+    preparePlayer(name, player)
+    if (!switching && name === activeName) browserStreamUrl = player.currentSrc
   }
 
   function preparePlayer(name: string, player: HTMLMediaElement) {
@@ -173,6 +186,23 @@
     })
   }
 
+  function waitForMetadata(player: HTMLMediaElement): Promise<boolean> {
+    if (player.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(() => finish(false), 3000)
+      function finish(ready: boolean) {
+        window.clearTimeout(timeout)
+        player.removeEventListener('loadedmetadata', onLoaded)
+        player.removeEventListener('error', onError)
+        resolve(ready)
+      }
+      const onLoaded = () => finish(true)
+      const onError = () => finish(false)
+      player.addEventListener('loadedmetadata', onLoaded, { once: true })
+      player.addEventListener('error', onError, { once: true })
+    })
+  }
+
   async function waitForPlayer(name: string, sequence: number): Promise<HTMLMediaElement | null> {
     const deadline = performance.now() + 3000
     while (sequence === switchSequence && performance.now() < deadline) {
@@ -182,21 +212,69 @@
     return players[name] ?? null
   }
 
+  async function waitForVideoPlayer(name: string, sequence: number): Promise<HTMLVideoElement | null> {
+    const expectedSource = sampleFor(name)?.url
+    const deadline = performance.now() + 3000
+    while (sequence === switchSequence && performance.now() < deadline) {
+      if (videoPlayer?.getAttribute('src') === expectedSource) return videoPlayer
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+    return videoPlayer?.getAttribute('src') === expectedSource ? videoPlayer : null
+  }
+
   async function chooseVariant(name: string) {
     if (name === activeName && !switching) return
     if (!switching) {
-      const activePlayer = players[activeName]
+      const activePlayer = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
       switchShouldResume = playing || activePlayer != null && !activePlayer.paused
+      const currentSample = sampleFor(activeName)
+      switchPosition = activePlayer && currentSample
+        ? Math.max(0, activePlayer.currentTime - currentSample.startSeconds)
+        : playbackPosition
     }
     const sequence = ++switchSequence
     switching = true
     try {
-      await switchVariant(name, sequence)
+      if (session?.mediaKind === 'Video') await switchVideoVariant(name, sequence)
+      else await switchVariant(name, sequence)
     } finally {
       if (sequence === switchSequence) {
+        if (pendingName !== null) pendingName = null
         switching = false
         switchShouldResume = false
       }
+    }
+  }
+
+  async function switchVideoVariant(name: string, sequence: number) {
+    const targetSample = sampleFor(name)
+    if (!targetSample) return
+    videoPlayer?.pause()
+    pendingName = name
+    browserStreamUrl = ''
+    await tick()
+    const target = await waitForVideoPlayer(name, sequence)
+    if (sequence !== switchSequence) return
+    if (!target || !await waitForMetadata(target)) {
+      playbackError = true
+      return
+    }
+    target.currentTime = targetSample.startSeconds + switchPosition
+    const frameReady = await waitForSeek(target)
+    if (sequence !== switchSequence) return
+    if (!frameReady) {
+      playbackError = true
+      return
+    }
+    activeName = name
+    pendingName = null
+    playbackPosition = switchPosition
+    browserStreamUrl = target.currentSrc
+    if (switchShouldResume) {
+      await target.play().catch(() => {
+        playing = false
+        playbackError = true
+      })
     }
   }
 
@@ -240,21 +318,42 @@
   }
 
   async function chooseScene(index: number) {
+    const switchingVideo = session?.mediaKind === 'Video'
+    const sequence = switchingVideo ? ++switchSequence : switchSequence
+    if (switchingVideo) switching = true
+    const shouldResume = playing || videoPlayer != null && !videoPlayer.paused
+    videoPlayer?.pause()
     activeScene = index
     playbackPosition = 0
     playing = false
     players = {}
+    videoPlayer = null
     browserStreamUrl = ''
     imageZoom = 1
     imagePanX = 0
     imagePanY = 0
     await tick()
+    if (!switchingVideo || sequence !== switchSequence) return
+    const player = await waitForVideoPlayer(activeName, sequence)
+    const sample = sampleFor(activeName)
+    if (!player || !sample || !await waitForMetadata(player)) {
+      playbackError = true
+      switching = false
+      return
+    }
+    player.currentTime = sample.startSeconds
+    const frameReady = await waitForSeek(player)
+    if (!frameReady) playbackError = true
+    browserStreamUrl = player.currentSrc
+    switching = false
+    if (frameReady && shouldResume) await player.play().catch(() => (playbackError = true))
   }
 
   function updatePosition(event: Event) {
     const player = event.currentTarget as HTMLMediaElement
     const sample = sampleFor(activeName)
-    if (!sample || player !== players[activeName]) return
+    const activePlayer = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
+    if (!sample || pendingName !== null || player !== activePlayer) return
     playbackPosition = Math.max(0, Math.min(sample.durationSeconds, player.currentTime - sample.startSeconds))
     if (player.currentTime >= sample.startSeconds + sample.durationSeconds) {
       player.pause()
@@ -265,7 +364,7 @@
   }
 
   async function togglePlayback() {
-    const player = players[activeName]
+    const player = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
     const sample = sampleFor(activeName)
     if (!player || !sample) return
     if (!player.paused) {
@@ -285,6 +384,13 @@
 
   async function seek(position: number) {
     playbackPosition = position
+    if (session?.mediaKind === 'Video') {
+      const sample = sampleFor(activeName)
+      if (!videoPlayer || !sample) return
+      videoPlayer.currentTime = sample.startSeconds + position
+      if (!await waitForSeek(videoPlayer)) playbackError = true
+      return
+    }
     const waits: Promise<boolean>[] = []
     for (const variant of variants) {
       const player = players[variant.name]
@@ -453,7 +559,7 @@
           {/if}
           <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
-            <span><strong class="block">Temporary stream diagnostics</strong><span class="mt-0.5 block text-xs opacity-80">Shows the real preset and browser stream URL, so the comparison will not be blind.</span></span>
+            <span><strong class="block">Temporary stream verification</strong><span class="mt-0.5 block text-xs opacity-80">Uses one native video player and exposes its exact media resource, so the comparison will not be blind.</span></span>
           </label>
           <button class="btn btn-primary mt-6 min-h-11" disabled={busy || !hdrReady} onclick={start}>
             {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}
@@ -495,11 +601,30 @@
                 {#each variants as variant}
                   <img src={variant.samples[activeScene]?.url} alt={variant.isOriginal ? i18n.m.calibration.original_reference : t(i18n.m.calibration.image_alt, { slot: variant.name })} draggable="false" class="absolute inset-0 h-full w-full select-none object-contain" class:invisible={variant.name !== activeName} style:transform={`translate(${imagePanX}px, ${imagePanY}px) scale(${imageZoom})`} onerror={() => (playbackError = true)} />
                 {/each}
+              {:else if session.mediaKind === 'Video' && videoSample}
+                {#key videoSample.url}
+                  <!-- svelte-ignore a11y_media_has_caption disposable calibration clips have no generated caption track -->
+                  <video
+                    bind:this={videoPlayer}
+                    src={videoSample.url}
+                    preload="auto"
+                    playsinline
+                    controls={diagnosticsEnabled}
+                    class="absolute inset-0 h-full w-full object-contain"
+                    class:invisible={switching}
+                    onloadedmetadata={(event: Event) => registerVideoPlayer(videoName, event)}
+                    ontimeupdate={updatePosition}
+                    onplay={() => pendingName === null && (playing = true)}
+                    onpause={() => pendingName === null && (playing = false)}
+                    onerror={() => (playbackError = true)}
+                  ></video>
+                {/key}
+                {#if switching}<div class="absolute inset-0 flex items-center justify-center bg-black text-sm font-medium text-cyan-200" aria-live="polite">Loading exact video resource…</div>{/if}
               {:else}
                 {#each variants as variant}
-                  <svelte:element this={session.mediaKind === 'Audio' ? 'audio' : 'video'} src={variant.samples[activeScene]?.url} preload="auto" playsinline class="absolute inset-0 h-full w-full object-contain" class:invisible={variant.name !== activeName} onloadedmetadata={(event: Event) => registerPlayer(variant.name, event)} ontimeupdate={updatePosition} onplay={() => variant.name === activeName && (playing = true)} onpause={() => variant.name === activeName && (playing = false)} onerror={() => (playbackError = true)} />
+                  <audio src={variant.samples[activeScene]?.url} preload="auto" class="absolute inset-0 h-full w-full object-contain" class:invisible={variant.name !== activeName} onloadedmetadata={(event: Event) => registerAudioPlayer(variant.name, event)} ontimeupdate={updatePosition} onplay={() => variant.name === activeName && (playing = true)} onpause={() => variant.name === activeName && (playing = false)} onerror={() => (playbackError = true)}></audio>
                 {/each}
-                {#if session.mediaKind === 'Audio'}<div class="pointer-events-none flex flex-col items-center text-slate-300"><svg class="h-20 w-20 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l10-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm10-2a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span class="mt-3 text-sm">{i18n.m.calibration.audio_listening}</span></div>{/if}
+                <div class="pointer-events-none flex flex-col items-center text-slate-300"><svg class="h-20 w-20 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l10-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm10-2a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span class="mt-3 text-sm">{i18n.m.calibration.audio_listening}</span></div>
               {/if}
             {/key}
           </div>
@@ -510,8 +635,10 @@
                 <button class="btn min-h-11 border-slate-700 bg-slate-900 text-slate-200" onclick={() => { imageZoom = 1; imagePanX = 0; imagePanY = 0 }}>{Math.round(imageZoom * 100)}%</button>
                 <button class="btn min-h-11 border-slate-700 bg-slate-900 text-slate-200" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
               </div>
-            {:else if activeSample}
+            {:else if activeSample && !(session.mediaKind === 'Video' && diagnosticsEnabled)}
               <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-cyan-500 text-slate-950 hover:bg-cyan-400" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-cyan-400" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-slate-400">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
+            {:else if activeSample}
+              <p class="text-center text-xs text-slate-400">Playback is controlled by the browser’s native video controls above.</p>
             {/if}
           </div>
           {#if activeDiagnostics && activeSample}
@@ -522,9 +649,12 @@
               </div>
               <dl class="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-[7rem_minmax(0,1fr)]">
                 <dt class="text-amber-300/80">Requested route</dt><dd class="break-all font-mono">{activeSample.url}</dd>
-                <dt class="text-amber-300/80">Browser currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || activeSample.url}</dd>
+                <dt class="text-amber-300/80">video.currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || 'Waiting for the video element…'}</dd>
                 <dt class="text-amber-300/80">Playback time</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · scene {activeScene + 1}</dd>
               </dl>
+              {#if session.mediaKind === 'Video' && browserStreamUrl}
+                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-amber-600/70 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-900/60 focus-visible:outline-2 focus-visible:outline-amber-300" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">Open exact resource in browser</a>
+              {/if}
             </div>
           {/if}
         </section>

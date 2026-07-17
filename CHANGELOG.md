@@ -11,8 +11,10 @@
   codec/container overrides without queueing normal work. Candidate cards no longer combine drag
   and click gestures or discard a click while another stream is seeking; the latest selection wins
   while frame alignment remains fail-closed. A temporary, opt-in-at-the-API diagnostic mode is on
-  by default in the lab and shows the active preset, codec, actual output container, encoder quality,
-  requested route, browser `currentSrc`, and playback time so stream changes can be verified.
+  by default in the lab. Verification mode now uses one native browser video player and replaces
+  that element's media resource on every selection instead of keeping several hidden players. It
+  exposes the element's real `currentSrc`, native controls, and a direct link that opens that exact
+  resource in a browser tab, while retaining the aligned seek before the replacement frame appears.
 - **Personal quality checks are now finite, reference-led, frame-aligned, and usable for a complete
   session.** The former repeated A/B/X trial loop is replaced by one marked original reference and
   shuffled anonymous candidates. Only the candidates require classification, so each rating
