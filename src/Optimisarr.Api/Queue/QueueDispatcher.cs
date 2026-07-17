@@ -355,14 +355,6 @@ public sealed class QueueDispatcher(
         }
 
         var settings = await GetQueueSettingsAsync(stoppingToken);
-        var activity = await activityMonitor.GetActivityAsync(stoppingToken);
-        var policy = EvaluateDispatchPolicy(settings, activity);
-        if (!policy.CanStart)
-        {
-            logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
-            return;
-        }
-
         var maxConcurrent = settings.MaxConcurrentJobs;
         if (maxConcurrent - _running.Count <= 0)
         {
@@ -377,7 +369,12 @@ public sealed class QueueDispatcher(
             queued = await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
-                .Select(job => new QueuedJob(job.Id, job.LibraryId, job.Priority, job.EnqueuedAt))
+                .Select(job => new QueuedJob(
+                    job.Id,
+                    job.LibraryId,
+                    job.Priority,
+                    job.EnqueuedAt,
+                    job.Type == JobType.Calibration && job.IgnoreMediaActivity))
                 .ToListAsync(stoppingToken);
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -392,6 +389,15 @@ public sealed class QueueDispatcher(
                     stoppingToken);
         }
 
+        var activity = await activityMonitor.GetActivityAsync(stoppingToken);
+        var hasActivityBypass = queued.Any(job => job.IgnoreMediaActivity);
+        var policy = EvaluateDispatchPolicy(settings, activity, hasActivityBypass);
+        if (!policy.CanStart)
+        {
+            logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
+            return;
+        }
+
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
         var runnable = queued
             .Where(job => job.LibraryId is not { } libraryId
@@ -399,7 +405,11 @@ public sealed class QueueDispatcher(
                 || DispatchPolicyEvaluator.WithinWindow(window.Start, window.End, nowLocal))
             .ToList();
 
-        var toStart = JobScheduler.SelectJobsToStart(runnable, _running.Count, maxConcurrent);
+        var toStart = JobScheduler.SelectJobsToStart(
+            runnable,
+            _running.Count,
+            maxConcurrent,
+            mediaServicesActive: activity.Active);
         foreach (var jobId in toStart)
         {
             if (Volatile.Read(ref _draining) != 0
@@ -1522,12 +1532,16 @@ public sealed class QueueDispatcher(
         return await settings.GetQueueSettingsAsync(cancellationToken);
     }
 
-    private DispatchDecision EvaluateDispatchPolicy(QueueSettings settings, ActivityDecision activity) =>
+    private DispatchDecision EvaluateDispatchPolicy(
+        QueueSettings settings,
+        ActivityDecision activity,
+        bool ignoreServicesActivity = false) =>
         DispatchPolicyEvaluator.Evaluate(
             settings.MinFreeDiskBytes,
             WorkPaths.TryGetAvailableFreeSpace(_workRoot),
             activity.Active,
-            activity.Reason);
+            activity.Reason,
+            ignoreServicesActivity);
 
     private async Task<EncoderSelection> ResolveVideoEncoderAsync(
         string? targetCodec,

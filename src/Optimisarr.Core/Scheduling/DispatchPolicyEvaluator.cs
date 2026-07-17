@@ -6,9 +6,10 @@ namespace Optimisarr.Core.Scheduling;
 public sealed record DispatchDecision(bool CanStart, string? BlockedReason);
 
 /// <summary>
-/// Pure global policy for whether the queue may start new work: no watched media server may be
-/// streaming, and there must be enough free disk. <em>When</em> a given library's jobs may run is a
-/// per-library concern (its auto-optimise window), applied by the dispatcher with
+/// Pure global policy for whether the queue may start new work: watched media-server activity
+/// pauses dispatch unless the caller has an explicit interactive exception, and there must be
+/// enough free disk. <em>When</em> a given library's jobs may run is a per-library concern (its
+/// auto-optimise window), applied by the dispatcher with
 /// <see cref="WithinWindow"/> — there is no global processing window. No clocks, no disk I/O, no
 /// HTTP: the caller passes the measured signals in, so the decision is deterministic and unit
 /// tested. Running jobs are never interrupted by this gate; it only governs starting new ones.
@@ -19,9 +20,10 @@ public static class DispatchPolicyEvaluator
         long minFreeDiskBytes,
         long? freeDiskBytes,
         bool servicesActive = false,
-        string? servicesActiveReason = null)
+        string? servicesActiveReason = null,
+        bool ignoreServicesActivity = false)
     {
-        if (servicesActive)
+        if (servicesActive && !ignoreServicesActivity)
         {
             return new DispatchDecision(false,
                 servicesActiveReason ?? "A watched media server is currently active.");

@@ -160,6 +160,7 @@ internal sealed class BlindCalibrationService(
         int mediaFileId,
         bool hdrPlaybackConfirmed,
         bool diagnosticsEnabled,
+        bool ignoreActiveStreams,
         CancellationToken cancellationToken)
     {
         await RemoveExpiredAsync(cancellationToken);
@@ -258,6 +259,7 @@ internal sealed class BlindCalibrationService(
                     RequestedAudioBitrateKbps = media.MediaKind == MediaKind.Audio ? setting.Quality : null,
                     RequestedImageQuality = media.MediaKind == MediaKind.Image ? setting.Quality : null,
                     CalibrationSessionId = id,
+                    IgnoreMediaActivity = ignoreActiveStreams,
                     CalibrationClipStartSeconds = sample.StartSeconds,
                     CalibrationClipSeconds = sample.DurationSeconds,
                     EnqueuedAt = timeProvider.GetUtcNow()
@@ -812,6 +814,7 @@ internal sealed class BlindCalibrationService(
         var progress = jobs.Count == 0
             ? 0
             : jobs.Average(job => job.Status == JobStatus.Completed ? 1 : Math.Clamp(job.Progress, 0, 1));
+        session.HighestPreparationProgress = Math.Max(session.HighestPreparationProgress, progress);
         var preparationState = jobs.Count > 0 && jobs.All(job => job.Status == JobStatus.Queued)
             ? "Waiting"
             : "Working";
@@ -822,7 +825,7 @@ internal sealed class BlindCalibrationService(
             session.SourceName,
             session.MediaKind.ToString(),
             session.Status.ToString(),
-            Math.Round(progress, 3),
+            Math.Round(session.HighestPreparationProgress, 3),
             preparationState,
             session.Error,
             session.Status is SessionStatus.Comparing or SessionStatus.Revealed or SessionStatus.Applied
@@ -935,6 +938,7 @@ internal sealed class BlindCalibrationService(
         public List<Candidate> Candidates { get; } = candidates;
         public List<Variant> Variants { get; } = variants;
         public bool DiagnosticsEnabled { get; } = diagnosticsEnabled;
+        public double HighestPreparationProgress { get; set; }
         public DateTimeOffset ExpiresAt { get; set; } = expiresAt;
         public SessionStatus Status { get; set; } = SessionStatus.Preparing;
         public string? Error { get; set; }

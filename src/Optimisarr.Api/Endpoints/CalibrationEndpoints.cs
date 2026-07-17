@@ -5,7 +5,8 @@ namespace Optimisarr.Api.Endpoints;
 internal sealed record StartCalibrationRequest(
     int MediaFileId,
     bool HdrPlaybackConfirmed = false,
-    bool DiagnosticsEnabled = false);
+    bool DiagnosticsEnabled = false,
+    bool IgnoreActiveStreams = false);
 internal sealed record CalibrationClassificationsRequest(
     IReadOnlyDictionary<string, string>? Classifications);
 
@@ -33,6 +34,7 @@ internal static class CalibrationEndpoints
                     request.MediaFileId,
                     request.HdrPlaybackConfirmed,
                     request.DiagnosticsEnabled,
+                    request.IgnoreActiveStreams,
                     cancellationToken));
             }
             catch (KeyNotFoundException exception)

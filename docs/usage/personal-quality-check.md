@@ -21,11 +21,20 @@ cannot replace, move, or delete media and do not appear in the normal Queue.
    texture, fine detail, ambience, or tonal range you care about.
 3. Select **Prepare blind samples**.
 
+By default, preparation waits while a configured Plex, Jellyfin, or Emby watcher reports active
+playback. Select **Ignore active media streams for this check** if you want this disposable check to
+run anyway. The exception applies only to jobs created by this quality-check session; normal
+optimisation work remains paused. Encoding can still compete with playback for CPU, GPU, and disk
+bandwidth, so use the option only when that trade-off is acceptable.
+
 Optimisarr prepares one unmodified reference and the candidates relevant to that media type. Video
 uses the four complete preset-slider outputs; audio and still images use five-setting quality
 ladders. It structurally verifies every candidate before the comparison becomes available. For HDR
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
+
+Preparation progress is session-wide and monotonic: FFmpeg may move between probe, encode, and
+verification stages, but the displayed percentage never moves backwards.
 
 ## Compare candidates with the original
 

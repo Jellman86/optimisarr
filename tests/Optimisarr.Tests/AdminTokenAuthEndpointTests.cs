@@ -281,7 +281,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         using var started = await client.PostAsJsonAsync(
             $"/api/libraries/{libraryId}/calibration",
-            new { mediaFileId, diagnosticsEnabled = true });
+            new { mediaFileId, diagnosticsEnabled = true, ignoreActiveStreams = true });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var startedSession = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = startedSession["id"]!.GetValue<Guid>();
@@ -318,6 +318,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 Assert.Equal(12, job.CalibrationClipSeconds);
                 Assert.NotNull(job.RequestedVideoQuality);
                 Assert.NotNull(job.RequestedRuleProfile);
+                Assert.True(job.IgnoreMediaActivity);
                 Assert.Equal(JobStatus.Queued, job.Status);
             });
             jobs[0].Status = JobStatus.Transcoding;
@@ -327,6 +328,14 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
             Assert.Equal("Working", activeSession["preparationState"]!.GetValue<string>());
             Assert.Equal(0.042, activeSession["preparationProgress"]!.GetValue<double>(), precision: 3);
+            jobs[0].Progress = 0.1;
+            await db.SaveChangesAsync();
+            var regressedJobSession = JsonNode.Parse(
+                await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
+            Assert.Equal(
+                0.042,
+                regressedJobSession["preparationProgress"]!.GetValue<double>(),
+                precision: 3);
             foreach (var job in jobs)
             {
                 var workDirectory = Path.Combine(calibrationDirectory, $"job-{job.Id}");

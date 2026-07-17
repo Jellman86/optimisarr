@@ -42,6 +42,7 @@
   let pendingName = $state<string | null>(null)
   let browserStreamUrl = $state('')
   let diagnosticsEnabled = $state(true)
+  let ignoreActiveStreams = $state(false)
   let viewer = $state<HTMLElement | null>(null)
   let fullscreen = $state(false)
   let hdrDisplaySupported = $state(false)
@@ -109,6 +110,7 @@
         selectedSource,
         selected?.isHdr === true && hdrReady,
         diagnosticsEnabled,
+        ignoreActiveStreams,
       )
       activeName = 'ORIGINAL'
       activeScene = 0
@@ -560,6 +562,10 @@
           <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
             <span><strong class="block">Temporary stream verification</strong><span class="mt-0.5 block text-xs opacity-80">Uses one native video player and exposes its exact media resource, so the comparison will not be blind.</span></span>
+          </label>
+          <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <input class="mt-1" type="checkbox" bind:checked={ignoreActiveStreams} />
+            <span><strong class="block">Ignore active media streams for this check</strong><span class="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">Allows these disposable samples to run while Plex, Jellyfin, or Emby is playing. Normal optimisation work stays paused.</span></span>
           </label>
           <button class="btn btn-primary mt-6 min-h-11" disabled={busy || !hdrReady} onclick={start}>
             {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}

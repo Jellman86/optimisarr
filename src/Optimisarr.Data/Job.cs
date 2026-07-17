@@ -95,6 +95,12 @@ public sealed class Job
     /// <summary>The disposable blind-calibration session that owns this candidate job.</summary>
     public Guid? CalibrationSessionId { get; set; }
 
+    /// <summary>
+    /// Allows this disposable calibration job to start while a watched media server is streaming.
+    /// Normal jobs never set this exception and remain protected by the activity pause gate.
+    /// </summary>
+    public bool IgnoreMediaActivity { get; set; }
+
     /// <summary>The source offset used for this short calibration candidate.</summary>
     public int? CalibrationClipStartSeconds { get; set; }
 

@@ -868,9 +868,9 @@ export const api = {
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
-  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true) =>
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true, ignoreActiveStreams = false) =>
     request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
-      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled }),
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled, ignoreActiveStreams }),
     }),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
   classifyCalibration: (id: string, classifications: Record<string, CalibrationClassification>) =>

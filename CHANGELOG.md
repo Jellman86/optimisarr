@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- **Personal quality-check preparation now moves forward steadily and can explicitly bypass active
+  playback.** The displayed preparation percentage keeps the highest measured session progress, so
+  FFmpeg stage changes cannot make it jump backwards. A per-check, default-off option allows only
+  that disposable calibration session to start while Plex, Jellyfin, or Emby reports active
+  playback; normal optimisation jobs remain paused behind the media-activity safety gate.
 - **Video quality checks now test the real preset outputs and sample selection responds on the
   first click.** The video lineup is the library slider's four complete presets—Compatibility
   H.264/MP4, Balanced HEVC/MP4, Efficiency AV1/MKV, and Scott's bundle—instead of five CRF values

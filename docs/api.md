@@ -310,7 +310,7 @@ when the verification report is for a sample rather than the whole file.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
-| `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123, "diagnosticsEnabled": false }`. Diagnostics are optional and reveal candidate details. |
+| `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123, "diagnosticsEnabled": false, "ignoreActiveStreams": false }`. Diagnostics reveal candidate details. The default-off stream exception applies only to the session's calibration jobs; normal jobs remain activity-paused. |
 | `GET` | `/api/calibration/{id}` | Read preparation progress, the marked original reference plus anonymous media-specific candidates, or a revealed result. |
 | `POST` | `/api/calibration/{id}/classifications` | Classify every anonymous candidate and reveal its settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended video preset or media quality to the library, if its relevant settings have not changed. |
