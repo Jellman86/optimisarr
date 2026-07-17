@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- **Short video quality samples no longer fail duration verification because of harmless audio
+  padding.** Video calibration now compares the candidate picture stream's duration with the exact
+  12-second reference window instead of using a container duration extended by AAC frames or codec
+  delay. Decode, timestamp, tail-integrity, audio-retention, and container checks still run against
+  the complete preset output.
 - **Personal quality-check preparation now shows live CPU and GPU usage.** The preparation window
   reuses the same rolling system-usage graphs as active work in the Queue hero, including the
   detected GPU engine and the honest unavailable state when the host cannot expose GPU telemetry.

@@ -194,7 +194,10 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: reference.DurationSeconds,
-                OutputDurationSeconds: outputProbe.DurationSeconds,
+                OutputDurationSeconds: OutputDurationForVerification(
+                    outputProbe,
+                    reference.Kind,
+                    clip?.VideoOnly == true),
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
                 OriginalSubtitleTrackCount: reference.SubtitleTrackCount,
@@ -298,6 +301,14 @@ public sealed class VerificationService(
             .Where((_, index) => !removedIndexes.Contains(index))
             .ToList();
     }
+
+    internal static double? OutputDurationForVerification(
+        MediaProbeResult outputProbe,
+        MediaKind kind,
+        bool videoOnlyReference) =>
+        kind == MediaKind.Video && videoOnlyReference
+            ? outputProbe.VideoDurationSeconds ?? outputProbe.DurationSeconds
+            : outputProbe.DurationSeconds;
 
     private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,

@@ -1,3 +1,4 @@
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 
@@ -45,6 +46,49 @@ public sealed class MediaProbeParseTests
         Assert.Null(result.VideoCodec);
         Assert.Empty(result.AudioCodecs);
         Assert.Equal(0, result.SubtitleTrackCount);
+    }
+
+    [Fact]
+    public void Calibration_video_duration_uses_the_picture_stream_instead_of_audio_padded_container()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "duration": "12.000000" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "12.531000" }
+          ],
+          "format": { "format_name": "mov,mp4", "duration": "12.531000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp4");
+
+        Assert.Equal(12.0, result.VideoDurationSeconds);
+        Assert.Equal(12.0, VerificationService.OutputDurationForVerification(
+            result, MediaKind.Video, videoOnlyReference: true));
+        Assert.Equal(12.531, VerificationService.OutputDurationForVerification(
+            result, MediaKind.Video, videoOnlyReference: false));
+    }
+
+    [Fact]
+    public void Parse_reads_matroska_video_duration_tag_with_nanosecond_precision()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "av1",
+              "tags": { "DURATION": "00:00:12.031000000" }
+            }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "12.531000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(12.031, result.VideoDurationSeconds);
     }
 
     [Fact]
