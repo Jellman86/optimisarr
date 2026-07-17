@@ -350,20 +350,20 @@ the replacement workflow is trustworthy.
    not a standards-conformant laboratory study or a claim of perceptual equivalence.
 
    - **Shipped for SDR video.** A saved video library can use one chosen, probed source. Optimisarr
-     prepares 12-second early, middle, and late clips at a most-compressed-first quality ladder,
-     presents the original as a fixed reference beside five shuffled anonymous candidates A–E, and
+     prepares 12-second early, middle, and late clips for the four complete library-slider presets,
+     presents the original as a fixed reference beside four shuffled anonymous candidates, and
      asks the user to classify each candidate once as Indistinguishable, Acceptable, or Visibly worse. The most
      compressed acceptable candidate is recommended; if none is acceptable, the current setting is kept.
    - **Bias and interaction controls are shipped.** The setting, encoder and saving remain hidden
      until every candidate classification is complete. The original is marked so every judgement has
-     a stable baseline; candidate quality labels remain blind. The reference and A–E share
+     a stable baseline; candidate quality labels remain blind. The reference and lettered candidates share
      one large viewport and relative playback position, support mouse, keyboard, and touch controls,
      and native playback fails closed if any sample cannot be decoded. Video supports browser
      fullscreen for close inspection. Applying
      the recommendation is a separate, explicit action and is refused if the library's relevant
      settings changed during the session.
-   - **Long-GOP reference alignment is shipped.** Video candidates and their original-side
-     references contain only the primary video stream. The original remains a bit-for-bit stream
+   - **Long-GOP reference alignment is shipped.** Video candidates retain each preset's complete
+     output contract while their original-side references remain a bit-for-bit stream
      copy, including the preceding keyframe packets required to decode a mid-file scene; Optimisarr
      records that hidden pre-roll, verifies the intended 12-second window, and starts playback at
      the matching frame. References live for the session and are removed with its other disposable

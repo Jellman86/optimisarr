@@ -1,11 +1,17 @@
 namespace Optimisarr.Core.Calibration;
 
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Rules;
 
 public sealed record CalibrationSample(int Index, int StartSeconds, int DurationSeconds);
 
+public sealed record CalibrationSetting(
+    string Key,
+    int Quality,
+    RuleProfile? VideoProfile = null);
+
 public sealed record BlindCalibrationPlan(
-    IReadOnlyList<int> RequestedQualities,
+    IReadOnlyList<CalibrationSetting> Settings,
     IReadOnlyList<CalibrationSample> Samples);
 
 public sealed record AudioLevelMatch(double OriginalGainDb, double CandidateGainDb);
@@ -37,7 +43,7 @@ public static class BlindCalibrationPolicy
         return !isHdr || hdrHandling == HdrHandling.Preserve && hdrPlaybackConfirmed;
     }
 
-    public static BlindCalibrationPlan Plan(double durationSeconds, int currentQuality)
+    public static BlindCalibrationPlan VideoPlan(double durationSeconds)
     {
         if (!double.IsFinite(durationSeconds) || durationSeconds < SampleSeconds * 4)
         {
@@ -46,16 +52,22 @@ public static class BlindCalibrationPolicy
                 "Blind calibration needs at least 48 seconds of SDR video.");
         }
 
-        var boundedQuality = Math.Clamp(currentQuality, 14, 40);
-        var qualities = new HashSet<int>();
-        foreach (var offset in new[] { 6, 3, 0, -3, -6, 9, -9, 12, -12, 15, -15 })
+        // These are the four concrete stops on the library's compatibility-to-efficiency slider.
+        // Keep the recommendation order most space-efficient first; the UI randomises the labels.
+        var profiles = new[]
         {
-            qualities.Add(Math.Clamp(boundedQuality + offset, 14, 40));
-            if (qualities.Count == 5) break;
-        }
-        var orderedQualities = qualities.OrderDescending().ToList();
+            RuleProfile.ExperimentalAv1,
+            RuleProfile.ScottsSettings,
+            RuleProfile.ConservativeHevc,
+            RuleProfile.CompatibilityH264
+        };
+        var settings = profiles.Select(profile =>
+        {
+            var rules = RuleProfileDefaults.For(profile);
+            return new CalibrationSetting(profile.ToString(), rules.DefaultCrf!.Value, profile);
+        }).ToList();
 
-        return new BlindCalibrationPlan(orderedQualities, RepresentativeSamples(durationSeconds, SampleSeconds));
+        return new BlindCalibrationPlan(settings, RepresentativeSamples(durationSeconds, SampleSeconds));
     }
 
     public static BlindCalibrationPlan AudioPlan(
@@ -80,7 +92,7 @@ public static class BlindCalibrationPolicy
         };
 
         return new BlindCalibrationPlan(
-            ladder,
+            ladder.Select(value => new CalibrationSetting(value.ToString(), value)).ToList(),
             RepresentativeSamples(durationSeconds, AudioSampleSeconds));
     }
 
@@ -102,7 +114,13 @@ public static class BlindCalibrationPolicy
     }
 
     public static BlindCalibrationPlan ImagePlan() => new(
-        [40, 55, 70, 82, 92],
+        [
+            new CalibrationSetting("40", 40),
+            new CalibrationSetting("55", 55),
+            new CalibrationSetting("70", 70),
+            new CalibrationSetting("82", 82),
+            new CalibrationSetting("92", 92)
+        ],
         [new CalibrationSample(0, 0, 0)]);
 
     private static IReadOnlyList<CalibrationSample> RepresentativeSamples(
@@ -124,16 +142,16 @@ public static class BlindCalibrationPolicy
         return samples;
     }
 
-    public static int? Recommend(
+    public static CalibrationSetting? Recommend(
         BlindCalibrationPlan plan,
-        IReadOnlyDictionary<int, CalibrationPreference> ratings)
+        IReadOnlyDictionary<string, CalibrationPreference> ratings)
     {
-        foreach (var quality in plan.RequestedQualities)
+        foreach (var setting in plan.Settings)
         {
-            if (ratings.TryGetValue(quality, out var rating)
+            if (ratings.TryGetValue(setting.Key, out var rating)
                 && rating is CalibrationPreference.Indistinguishable or CalibrationPreference.Acceptable)
             {
-                return quality;
+                return setting;
             }
         }
 

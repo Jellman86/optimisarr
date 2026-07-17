@@ -4,9 +4,18 @@
 
 ### Fixed
 
+- **Video quality checks now test the real preset outputs and sample selection responds on the
+  first click.** The video lineup is the library slider's four complete presets—Compatibility
+  H.264/MP4, Balanced HEVC/MP4, Efficiency AV1/MKV, and Scott's bundle—instead of five CRF values
+  encoded through one codec/container. Applying a result selects that preset and clears stale
+  codec/container overrides without queueing normal work. Candidate cards no longer combine drag
+  and click gestures or discard a click while another stream is seeking; the latest selection wins
+  while frame alignment remains fail-closed. A temporary, opt-in-at-the-API diagnostic mode is on
+  by default in the lab and shows the active preset, codec, actual output container, encoder quality,
+  requested route, browser `currentSrc`, and playback time so stream changes can be verified.
 - **Personal quality checks are now finite, reference-led, frame-aligned, and usable for a complete
   session.** The former repeated A/B/X trial loop is replaced by one marked original reference and
-  five shuffled anonymous candidates A–E. Only the candidates require classification, so each rating
+  shuffled anonymous candidates. Only the candidates require classification, so each rating
   has a stable quality baseline without forcing a worst-to-best ranking. Video switching waits for
   the destination stream to seek to the same source frame before
   it becomes visible or resumes, removing the timing jump that could reveal a version, and playback
@@ -24,8 +33,7 @@
   harmless decode pre-roll made a 12-second original-side clip appear longer than its encoded match,
   so every quality level failed the Duration and Tail integrity gates. Optimisarr now verifies the
   requested 12-second picture window, records the hidden pre-roll, and starts original playback at
-  the matching frame. Video calibration jobs carry only the primary video stream, so audio,
-  subtitles, attachments, and data cannot affect timing or preparation cost. Original references
+  the matching frame. Original references
   remain available until the disposable session is closed or expires instead of being removed as
   soon as verification finishes. One accessible shared timeline now controls every blind stream,
   so native container duration cannot reveal which slot carries hidden decode pre-roll. No source
@@ -34,15 +42,15 @@
 ### Added
 
 - **A full-page personal quality lab for video.** A saved video library can prepare short,
-  disposable samples from the beginning, middle, and end of a representative file, then compare an
-  marked original reference and five shuffled anonymous candidates A–E covering library-relevant
-  quality levels. Candidate quality settings and estimated sizes remain hidden until all five are
+  disposable samples from the beginning, middle, and end of a representative file, then compare a
+  marked original reference and four shuffled anonymous candidates covering the library's real
+  preset slider. Candidate settings and estimated sizes remain hidden until all four are
   classified as Indistinguishable, Acceptable, or Visibly worse. One large synchronized viewer,
   scene controls, and real browser fullscreen support close inspection without a 25-trial loop. The
   result recommends the most compressed acceptable setting but never claims encodes are equivalent.
   The original is read-only, scratch clips
   are removed when the panel closes, after being abandoned for two hours, or when the app restarts;
-  nothing enters the normal queue or replacement path, and the suggested quality changes the
+  nothing enters the normal queue or replacement path, and the suggested preset changes the
   library only after an explicit Apply.
   Native playback fails closed when the browser cannot decode a candidate. HDR is available only
   when the library preserves HDR and the browser reports an HDR-capable display path; the user must

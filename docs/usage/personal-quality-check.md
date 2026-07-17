@@ -21,45 +21,48 @@ cannot replace, move, or delete media and do not appear in the normal Queue.
    texture, fine detail, ambience, or tonal range you care about.
 3. Select **Prepare blind samples**.
 
-Optimisarr prepares one unmodified reference and five candidates representing the relevant quality
-ladder. It structurally verifies every candidate before the comparison becomes available. For HDR
+Optimisarr prepares one unmodified reference and the candidates relevant to that media type. Video
+uses the four complete preset-slider outputs; audio and still images use five-setting quality
+ladders. It structurally verifies every candidate before the comparison becomes available. For HDR
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
 
 ## Compare candidates with the original
 
-The original is clearly marked as the fixed reference. The five encoded candidates are shuffled and
-labelled only **A** through **E**. Their quality, encoder, bitrate, and estimated saving remain hidden.
+The original is clearly marked as the fixed reference. Encoded candidates are shuffled and labelled
+only with letters. Their settings, encoder, bitrate, and estimated saving normally remain hidden.
+The temporary **stream diagnostics** switch is currently on by default to help validate the feature;
+it deliberately reveals the active preset/format and exact browser stream, so turn it off for a blind check.
 
-- Switch between **Original** and A–E while examining the same moment. Video and audio keep one shared relative
+- Switch between **Original** and the lettered candidates while examining the same moment. Video and audio keep one shared relative
   position, and a switch is not shown until the destination stream has sought to the matching frame.
 - Video provides three scene tabs, a shared 0–12-second timeline, and real browser fullscreen.
 - Audio provides three 15-second excerpts. Optimisarr measures the reference and all five candidates using EBU R128
   integrated loudness and attenuates each to the quietest one so volume cannot reveal a version.
 - Still images use one viewport. Zoom or drag to inspect detail; zoom and pan remain unchanged while
-  switching between the reference and A–E.
+  switching between the reference and candidates.
 
-Classify A–E as **Indistinguishable**, **Acceptable**, or **Visibly worse** relative to the original.
-Desktop users
-may drag a sample into a rating; the selection buttons provide the same operation for keyboard and
-touch users. There are five classifications in total—no repeated trial loop and no rating for the original.
+Classify every candidate as **Indistinguishable**, **Acceptable**, or **Visibly worse** relative to the original.
+Selection and rating use separate, full-size buttons for mouse, keyboard, and touch. There are four
+video classifications or five audio/image classifications—no repeated trial loop and no rating for the original.
 
 ## Reveal and apply the result
 
-After all five candidates are classified, select **Reveal samples and result**. Optimisarr then shows
+After every candidate is classified, select **Reveal samples and result**. Optimisarr then shows
 the setting behind every candidate, your classifications, estimated
 savings, and the most compressed candidate you considered Indistinguishable or Acceptable. If every
 candidate was Visibly worse, it recommends keeping the current setting.
 
-**Use this quality for the library** changes only the saved video quality, audio bitrate, or image
-quality. It does not scan, enqueue, replace, move, or delete media. Optimisarr refuses a stale result
+**Use this quality for the library** selects the saved video preset (and clears stale video
+codec/container overrides), audio bitrate, or image quality. It does not scan, enqueue, replace,
+move, or delete media. Optimisarr refuses a stale result
 if the relevant library codec, preset, or quality changed during the session.
 
 ## What each media type tests
 
 | Media | Prepared comparison | Applied setting |
 |---|---|---|
-| Video | One frame-aligned original plus five quality levels across three 12-second scenes. | Video CRF/CQ quality. |
+| Video | One frame-aligned original plus the four complete library-slider presets across three 12-second scenes. | Video rule preset. |
 | Audio | One lossless reference plus five codec-appropriate bitrates across three level-matched 15-second excerpts. | Audio bitrate in kbps. |
 | Still image | One lossless PNG reference plus five output-quality levels in a synchronized zoom/pan viewport. | Image quality. |
 

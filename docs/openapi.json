@@ -1210,6 +1210,10 @@
       },
       "StartCalibrationRequest": {
         "properties": {
+          "diagnosticsEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
           "hdrPlaybackConfirmed": {
             "default": false,
             "type": "boolean"

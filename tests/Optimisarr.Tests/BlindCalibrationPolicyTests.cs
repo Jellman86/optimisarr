@@ -28,11 +28,19 @@ public sealed class BlindCalibrationPolicyTests
     }
 
     [Fact]
-    public void Plan_builds_a_most_compressed_first_quality_ladder_and_three_windows()
+    public void Video_plan_uses_the_four_library_slider_presets_and_three_windows()
     {
-        var plan = BlindCalibrationPolicy.Plan(durationSeconds: 1_200, currentQuality: 24);
+        var plan = BlindCalibrationPolicy.VideoPlan(durationSeconds: 1_200);
 
-        Assert.Equal([30, 27, 24, 21, 18], plan.RequestedQualities);
+        Assert.Equal(
+            [
+                RuleProfile.ExperimentalAv1,
+                RuleProfile.ScottsSettings,
+                RuleProfile.ConservativeHevc,
+                RuleProfile.CompatibilityH264
+            ],
+            plan.Settings.Select(setting => setting.VideoProfile));
+        Assert.Equal([30, 24, 24, 20], plan.Settings.Select(setting => setting.Quality));
         Assert.Equal(
             [
                 new CalibrationSample(0, 114, 12),
@@ -43,17 +51,10 @@ public sealed class BlindCalibrationPolicyTests
     }
 
     [Fact]
-    public void Plan_keeps_five_distinct_candidates_at_quality_edges()
-    {
-        Assert.Equal([40, 37, 34, 31, 28], BlindCalibrationPolicy.Plan(120, 40).RequestedQualities);
-        Assert.Equal([26, 23, 20, 17, 14], BlindCalibrationPolicy.Plan(120, 14).RequestedQualities);
-    }
-
-    [Fact]
-    public void Plan_rejects_a_source_too_short_for_representative_windows()
+    public void Video_plan_rejects_a_source_too_short_for_representative_windows()
     {
         var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            BlindCalibrationPolicy.Plan(47.9, 24));
+            BlindCalibrationPolicy.VideoPlan(47.9));
 
         Assert.Contains("48 seconds", error.Message, StringComparison.Ordinal);
     }
@@ -61,10 +62,10 @@ public sealed class BlindCalibrationPolicyTests
     [Theory]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void Plan_rejects_a_non_finite_duration(double durationSeconds)
+    public void Video_plan_rejects_a_non_finite_duration(double durationSeconds)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            BlindCalibrationPolicy.Plan(durationSeconds, 24));
+            BlindCalibrationPolicy.VideoPlan(durationSeconds));
     }
 
     [Theory]
@@ -77,7 +78,7 @@ public sealed class BlindCalibrationPolicyTests
     {
         var plan = BlindCalibrationPolicy.AudioPlan(600, codec);
 
-        Assert.Equal(expected, plan.RequestedQualities);
+        Assert.Equal(expected, plan.Settings.Select(setting => setting.Quality));
         Assert.Equal(3, plan.Samples.Count);
         Assert.All(plan.Samples, sample => Assert.Equal(15, sample.DurationSeconds));
     }
@@ -113,32 +114,31 @@ public sealed class BlindCalibrationPolicyTests
     {
         var plan = BlindCalibrationPolicy.ImagePlan();
 
-        Assert.Equal([40, 55, 70, 82, 92], plan.RequestedQualities);
+        Assert.Equal([40, 55, 70, 82, 92], plan.Settings.Select(setting => setting.Quality));
         Assert.Equal([new CalibrationSample(0, 0, 0)], plan.Samples);
     }
 
     [Fact]
     public void Preference_result_selects_the_most_compressed_acceptable_quality()
     {
-        var plan = BlindCalibrationPolicy.Plan(1_200, 24);
-        var ratings = new Dictionary<int, CalibrationPreference>
+        var plan = BlindCalibrationPolicy.VideoPlan(1_200);
+        var ratings = new Dictionary<string, CalibrationPreference>
         {
-            [30] = CalibrationPreference.VisiblyWorse,
-            [27] = CalibrationPreference.Acceptable,
-            [24] = CalibrationPreference.Indistinguishable,
-            [21] = CalibrationPreference.Indistinguishable,
-            [18] = CalibrationPreference.Indistinguishable
+            [RuleProfile.ExperimentalAv1.ToString()] = CalibrationPreference.VisiblyWorse,
+            [RuleProfile.ScottsSettings.ToString()] = CalibrationPreference.Acceptable,
+            [RuleProfile.ConservativeHevc.ToString()] = CalibrationPreference.Indistinguishable,
+            [RuleProfile.CompatibilityH264.ToString()] = CalibrationPreference.Indistinguishable
         };
 
-        Assert.Equal(27, BlindCalibrationPolicy.Recommend(plan, ratings));
+        Assert.Equal(RuleProfile.ScottsSettings, BlindCalibrationPolicy.Recommend(plan, ratings)?.VideoProfile);
     }
 
     [Fact]
     public void Preference_result_keeps_the_current_setting_when_every_encode_is_rejected()
     {
         var plan = BlindCalibrationPolicy.ImagePlan();
-        var ratings = plan.RequestedQualities.ToDictionary(
-            quality => quality,
+        var ratings = plan.Settings.ToDictionary(
+            setting => setting.Key,
             _ => CalibrationPreference.VisiblyWorse);
 
         Assert.Null(BlindCalibrationPolicy.Recommend(plan, ratings));

@@ -666,13 +666,18 @@ public sealed class QueueDispatcher(
         var isCalibration = job.Type == JobType.Calibration;
         var isDisposable = isPreview || isCalibration;
         if (isCalibration && (job.CalibrationSessionId is null
-            || media.MediaKind == MediaKind.Video && job.RequestedVideoQuality is null
+            || media.MediaKind == MediaKind.Video
+                && (job.RequestedVideoQuality is null || job.RequestedRuleProfile is null)
             || media.MediaKind == MediaKind.Audio && job.RequestedAudioBitrateKbps is null
             || media.MediaKind == MediaKind.Image && job.RequestedImageQuality is null))
         {
             throw new InvalidOperationException("Calibration job is missing its session or requested quality.");
         }
-        if (isCalibration && media.MediaKind == MediaKind.Audio)
+        if (isCalibration && media.MediaKind == MediaKind.Video)
+        {
+            rules = LibraryRuleResolution.ResolveVideoPreset(library!, job.RequestedRuleProfile!.Value);
+        }
+        else if (isCalibration && media.MediaKind == MediaKind.Audio)
         {
             rules = rules with { AudioBitrateKbps = job.RequestedAudioBitrateKbps!.Value };
         }
@@ -764,7 +769,9 @@ public sealed class QueueDispatcher(
             {
                 ClipSeconds = seconds,
                 ClipStartSeconds = start > 0 ? start : null,
-                VideoOnly = isCalibration && spec.Kind == MediaKind.Video
+                // A video slider preset can also change its audio/container contract (notably
+                // Scott's bundle), so calibration must encode the complete preset output.
+                VideoOnly = false
             };
         }
 
@@ -1155,7 +1162,7 @@ public sealed class QueueDispatcher(
                         ? ".optimisarr-comparison-reference.flac"
                         : ".optimisarr-comparison-reference.mkv"),
                 RetainReference: work.IsCalibration,
-                VideoOnly: work.IsCalibration && work.Spec.Kind == MediaKind.Video)
+                VideoOnly: false)
             : null;
         // The VMAF pass is the long part of verification; surface its live progress on the same
         // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%

@@ -422,6 +422,17 @@ export type CalibrationVariant = {
   name: string
   isOriginal: boolean
   samples: CalibrationSample[]
+  diagnostics: CalibrationVariantDiagnostics | null
+}
+
+export type CalibrationVariantDiagnostics = {
+  profile: string | null
+  codec: string | null
+  container: string | null
+  requestedQuality: number | null
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
 }
 
 export type CalibrationClassification = 'Indistinguishable' | 'Acceptable' | 'VisiblyWorse'
@@ -429,6 +440,9 @@ export type CalibrationClassification = 'Indistinguishable' | 'Acceptable' | 'Vi
 export type CalibrationVariantResult = {
   name: string
   isOriginal: boolean
+  profile: string | null
+  codec: string | null
+  container: string | null
   quality: number | null
   classification: CalibrationClassification
   encoder: string | null
@@ -440,6 +454,7 @@ export type CalibrationVariantResult = {
 
 export type CalibrationResult = {
   recommendedQuality: number | null
+  recommendedProfile: string | null
   encoder: string | null
   qualityMode: string | null
   effectiveQuality: number | null
@@ -853,9 +868,9 @@ export const api = {
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
-  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false) =>
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true) =>
     request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
-      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed }),
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled }),
     }),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
   classifyCalibration: (id: string, classifications: Record<string, CalibrationClassification>) =>

@@ -1,4 +1,5 @@
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Data;
 
@@ -72,6 +73,9 @@ public sealed class Job
 
     /// <summary>Library/profile quality number requested before encoder-specific calibration.</summary>
     public int? RequestedVideoQuality { get; set; }
+
+    /// <summary>The complete library-slider preset requested by a video calibration candidate.</summary>
+    public RuleProfile? RequestedRuleProfile { get; set; }
 
     /// <summary>Audio bitrate requested by a disposable blind-calibration candidate.</summary>
     public int? RequestedAudioBitrateKbps { get; set; }

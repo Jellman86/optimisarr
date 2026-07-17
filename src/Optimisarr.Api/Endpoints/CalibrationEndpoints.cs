@@ -2,7 +2,10 @@ using Optimisarr.Api.Library;
 
 namespace Optimisarr.Api.Endpoints;
 
-internal sealed record StartCalibrationRequest(int MediaFileId, bool HdrPlaybackConfirmed = false);
+internal sealed record StartCalibrationRequest(
+    int MediaFileId,
+    bool HdrPlaybackConfirmed = false,
+    bool DiagnosticsEnabled = false);
 internal sealed record CalibrationClassificationsRequest(
     IReadOnlyDictionary<string, string>? Classifications);
 
@@ -29,6 +32,7 @@ internal static class CalibrationEndpoints
                     id,
                     request.MediaFileId,
                     request.HdrPlaybackConfirmed,
+                    request.DiagnosticsEnabled,
                     cancellationToken));
             }
             catch (KeyNotFoundException exception)
