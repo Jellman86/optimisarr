@@ -75,4 +75,22 @@ public sealed class JobSchedulerTests
 
         Assert.Empty(started);
     }
+
+    [Fact]
+    public void Active_media_streams_allow_only_jobs_with_an_explicit_bypass()
+    {
+        var queued = new[]
+        {
+            new QueuedJob(1, LibraryId: 1, Priority: 0, EnqueuedAt: T0, IgnoreMediaActivity: false),
+            new QueuedJob(2, LibraryId: null, Priority: int.MaxValue, EnqueuedAt: T0, IgnoreMediaActivity: true),
+        };
+
+        var started = JobScheduler.SelectJobsToStart(
+            queued,
+            runningCount: 0,
+            maxConcurrent: 2,
+            mediaServicesActive: true);
+
+        Assert.Equal([2], started);
+    }
 }

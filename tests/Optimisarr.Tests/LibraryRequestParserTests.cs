@@ -125,11 +125,11 @@ public sealed class LibraryRequestParserTests
     public void Kept_subtitle_languages_are_normalised_to_lower_case_codes()
     {
         var ok = LibraryRequestParser.TryParse(
-            Request(keepSubtitleLanguages: " ENG , jpn ,eng"), out var parsed, out var error);
+            Request(keepSubtitleLanguages: " EN , jpn, fre, eng"), out var parsed, out var error);
 
         Assert.True(ok);
         Assert.Null(error);
-        Assert.Equal("eng, jpn", parsed.KeepSubtitleLanguages);
+        Assert.Equal("eng, jpn, fra", parsed.KeepSubtitleLanguages);
     }
 
     [Fact]
@@ -144,11 +144,27 @@ public sealed class LibraryRequestParserTests
     [Theory]
     [InlineData("english")]
     [InlineData("eng; jpn")]
+    [InlineData("qqq")]
+    [InlineData("afa")]
     public void Kept_subtitle_languages_reject_anything_but_iso_639_codes(string value)
     {
         var ok = LibraryRequestParser.TryParse(Request(keepSubtitleLanguages: value), out _, out var error);
 
         Assert.False(ok);
         Assert.Contains("Subtitle languages", error);
+    }
+
+    [Theory]
+    [InlineData("Music")]
+    [InlineData("Photo")]
+    public void Track_cleanup_rejects_media_types_that_cannot_contain_video(string mediaType)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MediaType = mediaType, RuleProfile = "TrackCleanup" },
+            out _,
+            out var error);
+
+        Assert.False(ok);
+        Assert.Contains("video", error, StringComparison.OrdinalIgnoreCase);
     }
 }

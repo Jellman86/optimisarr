@@ -25,6 +25,35 @@ internal static class LibraryRuleResolution
             : rules;
     }
 
+    /// <summary>
+    /// Resolves one of the four video preset-slider stops while retaining unrelated library
+    /// overrides. Codec/container overrides are deliberately cleared because selecting a named
+    /// slider stop does the same. Scott's stop also applies the bundle fields set by the UI.
+    /// </summary>
+    public static RuleSettings ResolveVideoPreset(Data.Library library, RuleProfile profile)
+    {
+        var overrides = ToOverrides(library) with
+        {
+            TargetVideoCodec = null,
+            TargetContainer = null
+        };
+        if (profile == RuleProfile.ScottsSettings)
+        {
+            overrides = overrides with
+            {
+                Hdr = HdrHandling.Preserve,
+                VideoAudioCodec = "aac",
+                VideoAudioBitrateKbps = 96,
+                DownmixToStereo = true
+            };
+        }
+
+        var rules = RuleResolver.Resolve(profile, overrides);
+        return library.SkipEfficientSources
+            ? rules
+            : rules with { MinSourceBitsPerPixelSecond = null };
+    }
+
     public static RuleOverrides ToOverrides(Data.Library? library)
     {
         if (library is null)

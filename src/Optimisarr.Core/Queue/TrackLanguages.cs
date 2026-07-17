@@ -10,16 +10,34 @@ public static class TrackLanguages
 {
     public const int MaxLanguageListLength = 256;
 
-    // Tags that mean "language not identified" (und), "no linguistic content" (zxx, e.g. an
-    // instrumental score), or "multiple languages" (mul). None of them can prove a track is
-    // unwanted, so such tracks are always kept.
-    private static readonly HashSet<string> UnknownTags =
-        new(StringComparer.OrdinalIgnoreCase) { "mis", "mul", "und", "unk", "zxx" };
+    // The complete set of individual ISO 639-2 language identifiers published by the Library of
+    // Congress. Collective identifiers (for example "afa"), special values (und/mul/mis/zxx),
+    // and the qaa-qtz private-use range are deliberately absent: none identifies one language
+    // strongly enough to authorise destructive track removal. Future or unfamiliar identifiers
+    // therefore fail closed and the associated track is retained.
+    private const string IndividualTerminologyCodes = """
+        aar abk ace ach ada ady afh afr ain aka akk ale alt amh ang anp ara arc arg arn arp arw asm ast
+        ava ave awa aym aze bak bal bam ban bas bej bel bem ben bho bik bin bis bla bod bos bra bre bua
+        bug bul byn cad car cat ceb ces cha chb che chg chk chm chn cho chp chr chu chv chy cnr cop cor
+        cos cre crh csb cym dak dan dar del den deu dgr din div doi dsb dua dum dyu dzo efi egy eka ell
+        elx eng enm epo est eus ewe ewo fan fao fas fat fij fil fin fon fra frm fro frr frs fry ful fur
+        gaa gay gba gez gil gla gle glg glv gmh goh gon gor got grb grc grn gsw guj gwi hai hat hau haw
+        heb her hil hin hit hmn hmo hrv hsb hun hup hye iba ibo ido iii iku ile ilo ina ind inh ipk isl
+        ita jav jbo jpn jpr jrb kaa kab kac kal kam kan kas kat kau kaw kaz kbd kha khm kho kik kin kir
+        kmb kok kom kon kor kos kpe krc krl kru kua kum kur kut lad lah lam lao lat lav lez lim lin lit
+        lol loz ltz lua lub lug lui lun luo lus mad mag mah mai mak mal man mar mas mdf mdr men mga mic
+        min mkd mlg mlt mnc mni moh mon mos mri msa mus mwl mwr mya myv nap nau nav nbl nde ndo nds nep
+        new nia niu nld nno nob nog non nor nqo nso nwc nya nym nyn nyo nzi oci oji ori orm osa oss ota
+        pag pal pam pan pap pau peo phn pli pol pon por pro pus que raj rap rar roh rom ron run rup rus sad
+        sag sah sam san sas sat scn sco sel sga shn sid sin slk slv sma sme smj smn smo sms sna snd snk
+        sog som sot spa sqi srd srn srp srr ssw suk sun sus sux swa swe syc syr tah tam tat tel tem ter tet
+        tgk tgl tha tig tir tiv tkl tlh tli tmh tog ton tpi tsi tsn tso tuk tum tur tvl twi tyv udm uga
+        uig ukr umb urd uzb vai ven vie vol vot wal war was wln wol xal xho yao yap yid yor zap zbl zen zgh
+        zha zho zul zun zza
+        """;
 
-    // The complete ISO 639-1 -> ISO 639-2 terminology mapping published by the Library of Congress,
-    // plus all 20 legacy bibliographic spellings that containers still commonly carry. Keeping the
-    // table in-process makes matching deterministic even when .NET runs without platform culture
-    // data. Unrecognised three-letter codes compare exactly, preserving ISO 639-3 support.
+    // ISO 639-1 -> ISO 639-2/T plus the 20 ISO 639-2/B legacy spellings used by media
+    // containers. Keeping these tables in-process makes behaviour deterministic and reviewable.
     private static readonly IReadOnlyDictionary<string, string> CanonicalCodes = BuildCanonicalCodes();
 
     private const string Alpha2ToTerminology = """
@@ -43,7 +61,12 @@ public static class TrackLanguages
 
     private static Dictionary<string, string> BuildCanonicalCodes()
     {
-        var codes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        var codes = IndividualTerminologyCodes.Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToDictionary(code => code, code => code, StringComparer.OrdinalIgnoreCase);
+
+        var bibliographicAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["alb"] = "sqi",
             ["arm"] = "hye",
@@ -67,6 +90,11 @@ public static class TrackLanguages
             ["wel"] = "cym"
         };
 
+        foreach (var (alias, canonical) in bibliographicAliases)
+        {
+            codes.Add(alias, canonical);
+        }
+
         foreach (var pair in Alpha2ToTerminology.Split(
                      (char[]?)null,
                      StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -88,11 +116,24 @@ public static class TrackLanguages
             return Array.Empty<string>();
         }
 
-        return value
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Select(code => code.ToLowerInvariant())
-            .Distinct()
-            .ToArray();
+        var rawCodes = SplitLanguageList(value);
+        var canonical = new List<string>(rawCodes.Count);
+        foreach (var code in rawCodes)
+        {
+            if (!TryCanonicaliseKnown(code, out var known))
+            {
+                // Treat the stored rule atomically. Silently dropping just the unrecognised part
+                // would broaden deletion from the operator's original (possibly legacy) intent.
+                return Array.Empty<string>();
+            }
+
+            if (!canonical.Contains(known, StringComparer.OrdinalIgnoreCase))
+            {
+                canonical.Add(known);
+            }
+        }
+
+        return canonical;
     }
 
     /// <summary>
@@ -108,10 +149,24 @@ public static class TrackLanguages
             return true;
         }
 
-        var codes = ParseLanguageList(value);
-        if (codes.Count == 0 || codes.Any(code => !IsAsciiLanguageCode(code)))
+        var rawCodes = SplitLanguageList(value);
+        if (rawCodes.Count == 0)
         {
             return false;
+        }
+
+        var codes = new List<string>(rawCodes.Count);
+        foreach (var code in rawCodes)
+        {
+            if (!TryCanonicaliseKnown(code, out var canonical))
+            {
+                return false;
+            }
+
+            if (!codes.Contains(canonical, StringComparer.OrdinalIgnoreCase))
+            {
+                codes.Add(canonical);
+            }
         }
 
         var formatted = string.Join(", ", codes);
@@ -149,31 +204,32 @@ public static class TrackLanguages
     /// </summary>
     public static bool IsUnknown(string? tag)
     {
-        if (string.IsNullOrWhiteSpace(tag))
-        {
-            return true;
-        }
-
-        var code = tag.Trim().ToLowerInvariant();
-        if (UnknownTags.Contains(code) || !IsAsciiLanguageCode(code))
-        {
-            return true;
-        }
-
-        // ISO 639-2 reserves qaa-qtz for private local use. Such a tag has no portable meaning,
-        // so it cannot prove that a track is safe to delete.
-        return code.Length == 3
-            && string.CompareOrdinal(code, "qaa") >= 0
-            && string.CompareOrdinal(code, "qtz") <= 0;
+        return !TryCanonicaliseKnown(tag, out _);
     }
 
     /// <summary>Maps a two-letter or bibliographic spelling to its canonical ISO 639 code.</summary>
     public static string Canonicalise(string code)
     {
-        var trimmed = code.Trim();
-        return CanonicalCodes.TryGetValue(trimmed, out var canonical) ? canonical : trimmed;
+        var trimmed = code.Trim().ToLowerInvariant();
+        return TryCanonicaliseKnown(trimmed, out var canonical) ? canonical : trimmed;
     }
 
-    private static bool IsAsciiLanguageCode(string value) =>
-        value.Length is 2 or 3 && value.All(char.IsAsciiLetter);
+    /// <summary>
+    /// Resolves only a positively registered, individual ISO 639 language identifier to its
+    /// ISO 639-2/T form. False means the caller has no authority to remove the associated data.
+    /// </summary>
+    public static bool TryCanonicaliseKnown(string? value, out string canonical)
+    {
+        canonical = string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var code = value.Trim();
+        return CanonicalCodes.TryGetValue(code, out canonical!);
+    }
+
+    private static IReadOnlyList<string> SplitLanguageList(string value) =>
+        value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 }

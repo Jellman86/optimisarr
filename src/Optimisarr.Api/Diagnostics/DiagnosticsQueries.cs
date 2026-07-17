@@ -63,8 +63,7 @@ internal static class DiagnosticsQueries
         // secrets); ordering is in memory because SQLite cannot ORDER BY the DateTimeOffset column.
         var recentLogs = (await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Type == JobType.Normal
-                    && job.Status == JobStatus.Failed
+                .Where(job => job.Status == JobStatus.Failed
                     && job.ProcessLog != null)
                 .Select(job => new
                 {

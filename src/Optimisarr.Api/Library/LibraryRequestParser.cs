@@ -88,6 +88,12 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (ruleProfile == RuleProfile.TrackCleanup && mediaType is MediaType.Music or MediaType.Photo)
+        {
+            error = "Track cleanup applies only to Film, TV, or mixed libraries that can contain video files.";
+            return false;
+        }
+
         HdrHandling? hdrHandling = null;
         if (!string.IsNullOrWhiteSpace(request.HdrHandling))
         {
@@ -180,7 +186,7 @@ internal static class LibraryRequestParser
         if (!TryParseLanguageList(request.KeepAudioLanguages, out var keepAudioLanguages))
         {
             error =
-                $"Audio languages must be comma-separated ISO 639 codes of 2–3 letters " +
+                $"Audio languages must be comma-separated, registered individual ISO 639 codes " +
                 $"and at most {TrackLanguages.MaxLanguageListLength} characters (e.g. \"eng, jpn\").";
             return false;
         }
@@ -188,7 +194,7 @@ internal static class LibraryRequestParser
         if (!TryParseLanguageList(request.KeepSubtitleLanguages, out var keepSubtitleLanguages))
         {
             error =
-                $"Subtitle languages must be comma-separated ISO 639 codes of 2–3 letters " +
+                $"Subtitle languages must be comma-separated, registered individual ISO 639 codes " +
                 $"and at most {TrackLanguages.MaxLanguageListLength} characters (e.g. \"eng, jpn\").";
             return false;
         }

@@ -4,8 +4,8 @@ Detailed, dated engineering record: what shipped, the per-phase plan, and curren
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
 **Recently shipped (2026-07-16) — blind calibration across video, audio, and images.** Libraries can
-now run a full-page quality check with one marked original reference and five anonymous candidates
-A–E, without exposing candidate quality or estimated saving before every candidate is classified. Video uses three 12-second
+now run a full-page quality check with one marked original reference and media-specific anonymous candidates,
+without exposing candidate settings or estimated saving before every candidate is classified. Video uses three 12-second
 scenes and fail-closed HDR presentation, audio uses repeatable
 15-second excerpts with EBU R128 browser-side attenuation, and still images share zoom and pan
 against a lossless PNG reference. Every candidate is disposable, hidden from the normal queue, and

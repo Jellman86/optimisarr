@@ -107,11 +107,26 @@
                   <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={sample.relativePath ?? ''}>
                     {fileName(sample.relativePath)}
                   </div>
+                  {#if sample.jobType !== 'Normal'}
+                    <span class="badge mt-1 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      {sample.jobType === 'Calibration' ? 'Personal quality check' : 'Preview comparison'}
+                    </span>
+                  {/if}
                   {#if sample.errorMessage}
                     <details class="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
                       <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-red-600 dark:text-red-400">{sample.errorMessage}</p>
                     </details>
+                  {/if}
+                  {#if sample.verificationChecks.length > 0}
+                    <dl class="mt-2 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs dark:border-red-900 dark:bg-red-950/30">
+                      {#each sample.verificationChecks as check}
+                        <div>
+                          <dt class="font-semibold text-red-800 dark:text-red-300">{check.name}</dt>
+                          <dd class="mt-0.5 break-words text-red-700 dark:text-red-400">{check.detail}</dd>
+                        </div>
+                      {/each}
+                    </dl>
                   {/if}
                 </div>
                 <button

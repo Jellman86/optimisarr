@@ -4,9 +4,41 @@
 
 ### Fixed
 
+- **Short video quality samples no longer fail duration verification because of harmless audio
+  padding.** Video calibration now compares the candidate picture stream's duration with the exact
+  12-second reference window instead of using a container duration extended by AAC frames or codec
+  delay. Decode, timestamp, tail-integrity, audio-retention, and container checks still run against
+  the complete preset output.
+- **Personal quality-check preparation now shows live CPU and GPU usage.** The preparation window
+  reuses the same rolling system-usage graphs as active work in the Queue hero, including the
+  detected GPU engine and the honest unavailable state when the host cannot expose GPU telemetry.
+- **Video quality checks no longer mistake complete preset samples for truncated output, and their
+  failures remain diagnosable.** Candidate files still encode each preset's complete video,
+  container, and audio contract, while the unchanged original reference again uses the exact
+  video-only picture window required for duration, tail, and frame-alignment verification. Failed
+  preview and personal-quality jobs retain only their small database diagnostics after scratch
+  media is removed. The failure API and Queue failure view now identify comparison jobs and expose
+  every failed verification gate with its measured detail; the same detail is written to container
+  logs. **Clear errored** removes these retained diagnostic rows.
+- **Personal quality-check preparation now moves forward steadily and can explicitly bypass active
+  playback.** The displayed preparation percentage keeps the highest measured session progress, so
+  FFmpeg stage changes cannot make it jump backwards. A per-check, default-off option allows only
+  that disposable calibration session to start while Plex, Jellyfin, or Emby reports active
+  playback; normal optimisation jobs remain paused behind the media-activity safety gate.
+- **Video quality checks now test the real preset outputs and sample selection responds on the
+  first click.** The video lineup is the library slider's four complete presets—Compatibility
+  H.264/MP4, Balanced HEVC/MP4, Efficiency AV1/MKV, and Scott's bundle—instead of five CRF values
+  encoded through one codec/container. Applying a result selects that preset and clears stale
+  codec/container overrides without queueing normal work. Candidate cards no longer combine drag
+  and click gestures or discard a click while another stream is seeking; the latest selection wins
+  while frame alignment remains fail-closed. A temporary, opt-in-at-the-API diagnostic mode is on
+  by default in the lab. Verification mode now uses one native browser video player and replaces
+  that element's media resource on every selection instead of keeping several hidden players. It
+  exposes the element's real `currentSrc`, native controls, and a direct link that opens that exact
+  resource in a browser tab, while retaining the aligned seek before the replacement frame appears.
 - **Personal quality checks are now finite, reference-led, frame-aligned, and usable for a complete
   session.** The former repeated A/B/X trial loop is replaced by one marked original reference and
-  five shuffled anonymous candidates A–E. Only the candidates require classification, so each rating
+  shuffled anonymous candidates. Only the candidates require classification, so each rating
   has a stable quality baseline without forcing a worst-to-best ranking. Video switching waits for
   the destination stream to seek to the same source frame before
   it becomes visible or resumes, removing the timing jump that could reveal a version, and playback
@@ -24,8 +56,7 @@
   harmless decode pre-roll made a 12-second original-side clip appear longer than its encoded match,
   so every quality level failed the Duration and Tail integrity gates. Optimisarr now verifies the
   requested 12-second picture window, records the hidden pre-roll, and starts original playback at
-  the matching frame. Video calibration jobs carry only the primary video stream, so audio,
-  subtitles, attachments, and data cannot affect timing or preparation cost. Original references
+  the matching frame. Original references
   remain available until the disposable session is closed or expires instead of being removed as
   soon as verification finishes. One accessible shared timeline now controls every blind stream,
   so native container duration cannot reveal which slot carries hidden decode pre-roll. No source
@@ -33,33 +64,49 @@
 
 ### Added
 
+- **Temporary stream verification is now opt-in.** Personal video quality checks start blind by
+  default; native player controls and exact-resource diagnostics appear only when explicitly enabled.
+- **Revealed video quality checks now include VMAF evidence in both the lab and API.** Every preset
+  is measured across all three scenes without turning VMAF into a hidden pass/fail gate or allowing
+  it to override the user's blind ratings. The result shows harmonic mean, worst-scene fifth
+  percentile, and lowest frame; the session API also returns the complete per-scene measurements,
+  model, preprocessing, frame counts, and explicit measurement errors. A new authenticated active-
+  session endpoint makes current results discoverable without knowing their session IDs.
 - **Track cleanup profile.** A new rule profile that only removes audio/subtitle tracks outside
   the library's kept languages — no re-encode, no container change (an `.mkv` stays `.mkv`).
   Every kept stream is copied bit-identically; a file with nothing to remove is skipped with a
-  clear reason, and the library form warns when the profile is selected with no kept languages
-  configured. Verification additionally confirms the output container matches the source.
+  clear reason, and the library form presents encode, remux, and track cleanup as three exclusive
+  processing modes. Irrelevant encode, VMAF, audio-only, image, and eligibility controls are hidden
+  in cleanup mode. Verification additionally confirms the output container and retained audio
+  codecs match the source.
   Migration `AddTrackCleanupSupport`.
 - **Per-library "Keep subtitle languages" removes unwanted subtitle tracks.** Mirrors the audio
   rule on every profile: comma-separated ISO 639 codes, `-map -0:s:N` exclusions, unknown-language
-  tracks never removed, common spellings of the same language match each other. One deliberate
+  tracks never removed, common spellings of the same language match each other. Only positively
+  registered individual ISO 639 languages may authorise removal; malformed, unregistered,
+  collective, special-purpose, and private-use identifiers fail closed and keep the track. A
+  partly invalid stored rule disables the whole rule rather than silently broadening deletion.
+  One deliberate
   difference from audio: subtitles are optional streams, so there is no keep-at-least-one guard —
   an all-foreign subtitle set is removed entirely. The probe now records each subtitle track's
-  language (rows probed before the upgrade are re-probed at job time), and the subtitle-retention
-  gate expects exactly the planned removal, so an encode that drops an extra stream still fails.
+  language (rows probed before the upgrade are queued for background re-probing), and every
+  destructive dispatch requires a fresh successful source probe. The subtitle-retention gate
+  expects exactly the planned removal and verifies the identities of retained known-language
+  tracks, so an encode that drops or swaps the wrong stream still fails.
 - **The queue shows why each job is queued.** Every job records its eligibility reason at enqueue
   time (e.g. `h264 → hevc`, `Remove 2 audio track(s) (fra, deu) not in the kept languages`) and
   the Queue page shows it on the active-job card and each row. Track-removal reasons name the
   languages being removed, not just counts.
 - **A full-page personal quality lab for video.** A saved video library can prepare short,
-  disposable samples from the beginning, middle, and end of a representative file, then compare an
-  marked original reference and five shuffled anonymous candidates A–E covering library-relevant
-  quality levels. Candidate quality settings and estimated sizes remain hidden until all five are
+  disposable samples from the beginning, middle, and end of a representative file, then compare a
+  marked original reference and four shuffled anonymous candidates covering the library's real
+  preset slider. Candidate settings and estimated sizes remain hidden until all four are
   classified as Indistinguishable, Acceptable, or Visibly worse. One large synchronized viewer,
   scene controls, and real browser fullscreen support close inspection without a 25-trial loop. The
   result recommends the most compressed acceptable setting but never claims encodes are equivalent.
   The original is read-only, scratch clips
   are removed when the panel closes, after being abandoned for two hours, or when the app restarts;
-  nothing enters the normal queue or replacement path, and the suggested quality changes the
+  nothing enters the normal queue or replacement path, and the suggested preset changes the
   library only after an explicit Apply.
   Native playback fails closed when the browser cannot decode a candidate. HDR is available only
   when the library preserves HDR and the browser reports an HDR-capable display path; the user must
@@ -167,7 +214,8 @@
   are never removed, and when no track matches a kept language nothing is removed. The complete
   ISO 639-1/-2 aliases match each other (`de`/`deu`/`ger`). Verification requires exactly the
   planned nonzero retention and judges channel/sample-rate fidelity against the kept tracks. The
-  upgrade queues existing videos with audio for background re-probing, with a job-time fallback,
+  upgrade queues existing videos with audio for background re-probing, and every destructive job
+  obtains a fresh successful source probe before FFmpeg,
   so already-clean remuxes become eligible for fast stream-copy cleanup. The accessible library
   control validates and normalises input before save in every locale, and config backup/restore
   uses the same validator. Migration `AddKeepAudioLanguages`.

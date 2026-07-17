@@ -30,6 +30,19 @@ namespace Optimisarr.Data.Migrations
                 type: "TEXT",
                 maxLength: 512,
                 nullable: true);
+
+            // Existing probed videos predate SubtitleLanguages. Requeue only rows known to have
+            // subtitle streams so the background probe fills their positional tags before a
+            // cleanup rule can decide that any stream is removable. Audio-only timed lyrics are
+            // outside the video-only cleanup contract and must not be disturbed.
+            migrationBuilder.Sql(
+                """
+                UPDATE MediaFiles
+                SET Status = 'Discovered', ProbedAt = NULL
+                WHERE Status = 'Probed'
+                  AND MediaKind = 'Video'
+                  AND COALESCE(SubtitleTrackCount, 0) > 0;
+                """);
         }
 
         /// <inheritdoc />

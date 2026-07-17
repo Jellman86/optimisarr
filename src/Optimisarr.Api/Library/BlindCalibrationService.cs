@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Calibration;
@@ -31,21 +33,60 @@ public sealed record CalibrationSampleDto(
 public sealed record CalibrationVariantDto(
     string Name,
     bool IsOriginal,
-    IReadOnlyList<CalibrationSampleDto> Samples);
+    IReadOnlyList<CalibrationSampleDto> Samples,
+    CalibrationVariantDiagnosticsDto? Diagnostics);
+
+public sealed record CalibrationVariantDiagnosticsDto(
+    string? Profile,
+    string? Codec,
+    string? Container,
+    int? RequestedQuality,
+    string? Encoder,
+    string? QualityMode,
+    int? EffectiveQuality);
 
 public sealed record CalibrationVariantResultDto(
     string Name,
     bool IsOriginal,
+    string? Profile,
+    string? Codec,
+    string? Container,
     int? Quality,
     string Classification,
     string? Encoder,
     string? QualityMode,
     int? EffectiveQuality,
     double? EstimatedSavingPercent,
-    bool Recommended);
+    bool Recommended,
+    CalibrationVmafResultDto? Vmaf);
+
+public sealed record CalibrationVmafSampleDto(
+    int SampleNumber,
+    bool Measured,
+    double? Mean,
+    double? HarmonicMean,
+    double? FifthPercentile,
+    double? Minimum,
+    int? FrameCount,
+    string? ModelVersion,
+    string? Preprocessing,
+    string? Error);
+
+public sealed record CalibrationVmafResultDto(
+    int MeasuredSamples,
+    int TotalSamples,
+    double? Mean,
+    double? HarmonicMean,
+    double? FifthPercentile,
+    double? Minimum,
+    int? FrameCount,
+    string? ModelVersion,
+    string? Preprocessing,
+    IReadOnlyList<CalibrationVmafSampleDto> Samples);
 
 public sealed record CalibrationResultDto(
     int? RecommendedQuality,
+    string? RecommendedProfile,
     string? Encoder,
     string? QualityMode,
     int? EffectiveQuality,
@@ -145,6 +186,8 @@ internal sealed class BlindCalibrationService(
         int libraryId,
         int mediaFileId,
         bool hdrPlaybackConfirmed,
+        bool diagnosticsEnabled,
+        bool ignoreActiveStreams,
         CancellationToken cancellationToken)
     {
         await RemoveExpiredAsync(cancellationToken);
@@ -195,14 +238,39 @@ internal sealed class BlindCalibrationService(
         {
             MediaKind.Audio => BlindCalibrationPolicy.AudioPlan(duration, rules.TargetAudioCodec),
             MediaKind.Image => BlindCalibrationPolicy.ImagePlan(),
-            _ => BlindCalibrationPolicy.Plan(duration, currentQuality)
+            _ => BlindCalibrationPolicy.VideoPlan(duration)
         };
+        if (media.MediaKind == MediaKind.Video)
+        {
+            plan = plan with
+            {
+                Settings = plan.Settings
+                    .Select(setting =>
+                    {
+                        var presetRules = LibraryRuleResolution.ResolveVideoPreset(
+                            media.Library,
+                            setting.VideoProfile!.Value);
+                        return setting with
+                        {
+                            Quality = media.Library.QualityCrf ?? presetRules.DefaultCrf!.Value
+                        };
+                    })
+                    .Where(setting => !media.IsHdr
+                        || LibraryRuleResolution.ResolveVideoPreset(
+                            media.Library,
+                            setting.VideoProfile!.Value).Hdr == HdrHandling.Preserve)
+                    .ToList()
+            };
+        }
         var id = Guid.NewGuid();
         var fingerprint = Fingerprint.From(media.Library, rules, media.MediaKind, currentQuality);
         var candidates = new List<Candidate>();
 
-        foreach (var quality in plan.RequestedQualities)
+        foreach (var setting in plan.Settings)
         {
+            var candidateRules = setting.VideoProfile is { } profile
+                ? LibraryRuleResolution.ResolveVideoPreset(media.Library, profile)
+                : rules;
             foreach (var sample in plan.Samples)
             {
                 var job = new Job
@@ -213,16 +281,28 @@ internal sealed class BlindCalibrationService(
                     Type = JobType.Calibration,
                     Status = JobStatus.Queued,
                     Priority = int.MaxValue,
-                    RequestedVideoQuality = media.MediaKind == MediaKind.Video ? quality : null,
-                    RequestedAudioBitrateKbps = media.MediaKind == MediaKind.Audio ? quality : null,
-                    RequestedImageQuality = media.MediaKind == MediaKind.Image ? quality : null,
+                    RequestedVideoQuality = media.MediaKind == MediaKind.Video ? setting.Quality : null,
+                    RequestedRuleProfile = setting.VideoProfile,
+                    RequestedAudioBitrateKbps = media.MediaKind == MediaKind.Audio ? setting.Quality : null,
+                    RequestedImageQuality = media.MediaKind == MediaKind.Image ? setting.Quality : null,
                     CalibrationSessionId = id,
+                    IgnoreMediaActivity = ignoreActiveStreams,
                     CalibrationClipStartSeconds = sample.StartSeconds,
                     CalibrationClipSeconds = sample.DurationSeconds,
                     EnqueuedAt = timeProvider.GetUtcNow()
                 };
                 db.Jobs.Add(job);
-                candidates.Add(new Candidate(job, quality, sample));
+                candidates.Add(new Candidate(
+                    job,
+                    setting,
+                    sample,
+                    media.MediaKind switch
+                    {
+                        MediaKind.Audio => candidateRules.TargetAudioCodec,
+                        MediaKind.Image => candidateRules.TargetImageFormat,
+                        _ => candidateRules.TargetVideoCodec
+                    },
+                    candidateRules.TargetContainer));
             }
         }
 
@@ -235,6 +315,8 @@ internal sealed class BlindCalibrationService(
             media.SizeBytes,
             duration,
             media.MediaKind,
+            media.VideoCodec,
+            Path.GetExtension(media.RelativePath).TrimStart('.'),
             media.MediaKind switch
             {
                 MediaKind.Audio => rules.TargetAudioCodec,
@@ -245,6 +327,7 @@ internal sealed class BlindCalibrationService(
             fingerprint,
             candidates,
             CreateVariants(plan),
+            diagnosticsEnabled,
             timeProvider.GetUtcNow().Add(SessionLifetime));
         if (!_sessions.TryAdd(id, session))
         {
@@ -256,18 +339,41 @@ internal sealed class BlindCalibrationService(
             ?? throw new InvalidOperationException("Calibration session was not retained.");
     }
 
-    public async Task<CalibrationSessionDto?> GetAsync(Guid id, CancellationToken cancellationToken)
+    public Task<CalibrationSessionDto?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        GetCoreAsync(id, touchLifetime: true, cancellationToken);
+
+    public async Task<IReadOnlyList<CalibrationSessionDto>> ListAsync(CancellationToken cancellationToken)
+    {
+        await RemoveExpiredAsync(cancellationToken);
+        var results = new List<CalibrationSessionDto>();
+        foreach (var id in _sessions.Keys.Order())
+        {
+            if (await GetCoreAsync(id, touchLifetime: false, cancellationToken) is { } session)
+            {
+                results.Add(session);
+            }
+        }
+        return results;
+    }
+
+    private async Task<CalibrationSessionDto?> GetCoreAsync(
+        Guid id,
+        bool touchLifetime,
+        CancellationToken cancellationToken)
     {
         await RemoveExpiredAsync(cancellationToken);
         if (!_sessions.TryGetValue(id, out var session))
         {
             return null;
         }
-        lock (session.Gate)
+        if (touchLifetime)
         {
-            // Active polling and comparison requests keep the session alive; abandoned labs are
-            // reaped two hours after their last request, even if the container keeps running.
-            session.ExpiresAt = timeProvider.GetUtcNow().Add(SessionLifetime);
+            lock (session.Gate)
+            {
+                // Active polling and comparison requests keep the session alive; listing sessions
+                // for diagnostics does not, so an abandoned lab still expires on schedule.
+                session.ExpiresAt = timeProvider.GetUtcNow().Add(SessionLifetime);
+            }
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -372,12 +478,12 @@ internal sealed class BlindCalibrationService(
                 variant.Classification = classification;
             }
 
-            var qualityRatings = session.Variants
-                .Where(variant => !variant.IsOriginal && variant.Quality is not null)
+            var settingRatings = session.Variants
+                .Where(variant => !variant.IsOriginal && variant.Setting is not null)
                 .ToDictionary(
-                    variant => variant.Quality!.Value,
+                    variant => variant.Setting!.Key,
                     variant => variant.Classification!.Value);
-            session.RecommendedQuality = BlindCalibrationPolicy.Recommend(session.Plan, qualityRatings);
+            session.RecommendedSetting = BlindCalibrationPolicy.Recommend(session.Plan, settingRatings);
             session.Status = SessionStatus.Revealed;
             session.Result = BuildResult(session, jobs);
             return ToDto(session, jobs);
@@ -400,7 +506,7 @@ internal sealed class BlindCalibrationService(
                 throw new InvalidOperationException("Reveal the completed comparison before applying a quality.");
             }
         }
-        if (session.RecommendedQuality is null)
+        if (session.RecommendedSetting is null)
         {
             throw new InvalidOperationException("This calibration did not find a quality setting to apply.");
         }
@@ -426,15 +532,24 @@ internal sealed class BlindCalibrationService(
 
         if (session.MediaKind == MediaKind.Audio)
         {
-            library.AudioBitrateKbps = session.RecommendedQuality;
+            library.AudioBitrateKbps = session.RecommendedSetting.Quality;
         }
         else if (session.MediaKind == MediaKind.Image)
         {
-            library.ImageQuality = session.RecommendedQuality;
+            library.ImageQuality = session.RecommendedSetting.Quality;
         }
         else
         {
-            library.QualityCrf = session.RecommendedQuality;
+            library.RuleProfile = session.RecommendedSetting.VideoProfile!.Value;
+            library.TargetVideoCodec = null;
+            library.TargetContainer = null;
+            if (library.RuleProfile == RuleProfile.ScottsSettings)
+            {
+                library.VideoAudioCodec = "aac";
+                library.VideoAudioBitrateKbps = 96;
+                library.DownmixToStereo = true;
+                library.HdrHandling = HdrHandling.Preserve;
+            }
         }
         await db.SaveChangesAsync(cancellationToken);
         lock (session.Gate)
@@ -473,9 +588,9 @@ internal sealed class BlindCalibrationService(
             {
                 return null;
             }
-            var quality = variant.Quality ?? session.Plan.RequestedQualities[0];
+            var setting = variant.Setting ?? session.Plan.Settings[0];
             candidate = session.Candidates.FirstOrDefault(item =>
-                item.Quality == quality && item.Sample.Index == sampleIndex);
+                item.Setting.Key == setting.Key && item.Sample.Index == sampleIndex);
         }
         if (variant is null || candidate is null) return null;
 
@@ -524,21 +639,37 @@ internal sealed class BlindCalibrationService(
         {
             dispatcher.RequestCancel(job.Id);
         }
-        db.Jobs.RemoveRange(jobs);
-        await db.SaveChangesAsync(cancellationToken);
 
         var root = Path.Combine(_workRoot, "calibration", id.ToString("N"));
+        var scratchRemoved = false;
         try
         {
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
             }
+            scratchRemoved = true;
         }
         catch (IOException)
         {
             // A cancelling ffmpeg may still hold a file; startup cleanup removes the subtree.
         }
+
+        var retainedFailures = jobs
+            .Where(job => DiagnosticJobRetention.ShouldRetain(job.Type, job.Status))
+            .ToList();
+        foreach (var failed in retainedFailures)
+        {
+            // Detach the audit row from the short-lived session. Its report/error remains available
+            // through /api/jobs/failures after the browser closes the lab.
+            failed.CalibrationSessionId = null;
+            if (scratchRemoved)
+            {
+                failed.WorkOutputPath = null;
+            }
+        }
+        db.Jobs.RemoveRange(jobs.Except(retainedFailures));
+        await db.SaveChangesAsync(cancellationToken);
         return true;
     }
 
@@ -632,19 +763,19 @@ internal sealed class BlindCalibrationService(
 
     private List<Variant> CreateVariants(BlindCalibrationPlan plan)
     {
-        var qualities = plan.RequestedQualities.ToList();
-        for (var index = qualities.Count - 1; index > 0; index--)
+        var settings = plan.Settings.ToList();
+        for (var index = settings.Count - 1; index > 0; index--)
         {
             var swap = randomizer.Next(index + 1);
-            (qualities[index], qualities[swap]) = (qualities[swap], qualities[index]);
+            (settings[index], settings[swap]) = (settings[swap], settings[index]);
         }
         return
         [
             new Variant("ORIGINAL", true, null),
-            .. qualities.Select((quality, index) => new Variant(
+            .. settings.Select((setting, index) => new Variant(
                 ((char)('A' + index)).ToString(),
                 false,
-                quality))
+                setting))
         ];
     }
 
@@ -658,20 +789,31 @@ internal sealed class BlindCalibrationService(
                     variant.Name,
                     true,
                     null,
+                    session.SourceCodec,
+                    session.SourceContainer,
+                    null,
                     variant.Classification!.Value.ToString(),
                     null,
                     null,
                     null,
                     null,
-                    false);
+                    false,
+                    null);
             }
 
-            var quality = variant.Quality!.Value;
-            var candidateJobs = JobsForQuality(session, jobs, quality);
+            var setting = variant.Setting!;
+            var quality = setting.Quality;
+            var candidateJobs = JobsForSetting(session, jobs, setting);
             var representative = candidateJobs.FirstOrDefault();
+            var candidate = session.Candidates.First(item => item.Setting.Key == setting.Key);
             return new CalibrationVariantResultDto(
                 variant.Name,
                 false,
+                setting.VideoProfile?.ToString(),
+                candidate.Codec,
+                representative?.WorkOutputPath is { } outputPath
+                    ? Path.GetExtension(outputPath).TrimStart('.')
+                    : candidate.Container,
                 quality,
                 variant.Classification!.Value.ToString(),
                 session.MediaKind is MediaKind.Audio or MediaKind.Image
@@ -687,13 +829,26 @@ internal sealed class BlindCalibrationService(
                     ? quality
                     : representative?.EffectiveVideoQuality,
                 EstimateSavingPercent(session, candidateJobs),
-                session.RecommendedQuality == quality);
+                session.RecommendedSetting?.Key == setting.Key,
+                session.MediaKind == MediaKind.Video
+                    ? CalibrationVmafEvidence.FromReports(
+                        session.Candidates
+                            .Where(item => item.Setting.Key == setting.Key)
+                            .OrderBy(item => item.Sample.Index)
+                            .Select(item =>
+                            {
+                                var job = jobs.FirstOrDefault(candidateJob => candidateJob.Id == item.Job.Id);
+                                return (item.Sample.Index + 1, job?.VerificationReportJson);
+                            })
+                            .ToList())
+                    : null);
         }
 
         var variants = session.Variants.Select(ResultFor).ToList();
         var recommended = variants.FirstOrDefault(variant => variant.Recommended);
         return new CalibrationResultDto(
-            session.RecommendedQuality,
+            session.RecommendedSetting?.Quality,
+            session.RecommendedSetting?.VideoProfile?.ToString(),
             recommended?.Encoder,
             recommended?.QualityMode,
             recommended?.EffectiveQuality,
@@ -703,13 +858,15 @@ internal sealed class BlindCalibrationService(
             variants);
     }
 
-    private static List<Job> JobsForQuality(Session session, IReadOnlyList<Job> jobs, int quality) =>
-        jobs.Where(job => (session.MediaKind switch
-            {
-                MediaKind.Audio => job.RequestedAudioBitrateKbps,
-                MediaKind.Image => job.RequestedImageQuality,
-                _ => job.RequestedVideoQuality
-            }) == quality
+    private static List<Job> JobsForSetting(
+        Session session,
+        IReadOnlyList<Job> jobs,
+        CalibrationSetting setting) =>
+        jobs.Where(job => (session.MediaKind == MediaKind.Video
+                ? job.RequestedRuleProfile == setting.VideoProfile
+                : (session.MediaKind == MediaKind.Audio
+                    ? job.RequestedAudioBitrateKbps
+                    : job.RequestedImageQuality) == setting.Quality)
             && job.OutputSizeBytes is > 0)
         .ToList();
 
@@ -736,6 +893,7 @@ internal sealed class BlindCalibrationService(
         var progress = jobs.Count == 0
             ? 0
             : jobs.Average(job => job.Status == JobStatus.Completed ? 1 : Math.Clamp(job.Progress, 0, 1));
+        session.HighestPreparationProgress = Math.Max(session.HighestPreparationProgress, progress);
         var preparationState = jobs.Count > 0 && jobs.All(job => job.Status == JobStatus.Queued)
             ? "Waiting"
             : "Working";
@@ -746,7 +904,7 @@ internal sealed class BlindCalibrationService(
             session.SourceName,
             session.MediaKind.ToString(),
             session.Status.ToString(),
-            Math.Round(progress, 3),
+            Math.Round(session.HighestPreparationProgress, 3),
             preparationState,
             session.Error,
             session.Status is SessionStatus.Comparing or SessionStatus.Revealed or SessionStatus.Applied
@@ -761,11 +919,11 @@ internal sealed class BlindCalibrationService(
         IReadOnlyList<Job> jobs)
     {
         var jobsById = jobs.ToDictionary(job => job.Id);
-        var quality = variant.Quality ?? session.Plan.RequestedQualities[0];
+        var setting = variant.Setting ?? session.Plan.Settings[0];
         var samples = session.Plan.Samples.Select(sample =>
         {
             var candidate = session.Candidates.Single(item =>
-                item.Quality == quality && item.Sample.Index == sample.Index);
+                item.Setting.Key == setting.Key && item.Sample.Index == sample.Index);
             jobsById.TryGetValue(candidate.Job.Id, out var job);
             var levels = session.MediaKind == MediaKind.Audio
                 && session.AudioLevels.TryGetValue(candidate.Job.Id, out var matched)
@@ -779,7 +937,41 @@ internal sealed class BlindCalibrationService(
                 variant.IsOriginal ? job?.CalibrationReferenceStartSeconds ?? 0 : 0,
                 variant.IsOriginal ? levels.OriginalGainDb : levels.CandidateGainDb);
         }).ToList();
-        return new CalibrationVariantDto(variant.Name, variant.IsOriginal, samples);
+        CalibrationVariantDiagnosticsDto? diagnostics = null;
+        if (session.DiagnosticsEnabled)
+        {
+            var candidate = session.Candidates.First(item => item.Setting.Key == setting.Key);
+            jobsById.TryGetValue(candidate.Job.Id, out var job);
+            diagnostics = variant.IsOriginal
+                ? new CalibrationVariantDiagnosticsDto(
+                    null,
+                    session.SourceCodec,
+                    session.SourceContainer,
+                    null,
+                    null,
+                    null,
+                    null)
+                : new CalibrationVariantDiagnosticsDto(
+                    setting.VideoProfile?.ToString(),
+                    candidate.Codec,
+                    job?.WorkOutputPath is { } outputPath
+                        ? Path.GetExtension(outputPath).TrimStart('.')
+                        : candidate.Container,
+                    setting.Quality,
+                    session.MediaKind is MediaKind.Audio or MediaKind.Image
+                        ? candidate.Codec
+                        : job?.VideoEncoder,
+                    session.MediaKind switch
+                    {
+                        MediaKind.Audio => "kbps",
+                        MediaKind.Image => "quality",
+                        _ => job?.VideoQualityMode
+                    },
+                    session.MediaKind is MediaKind.Audio or MediaKind.Image
+                        ? setting.Quality
+                        : job?.EffectiveVideoQuality);
+        }
+        return new CalibrationVariantDto(variant.Name, variant.IsOriginal, samples, diagnostics);
     }
 
     private enum SessionStatus
@@ -799,11 +991,14 @@ internal sealed class BlindCalibrationService(
         long sourceSizeBytes,
         double sourceDurationSeconds,
         MediaKind mediaKind,
+        string? sourceCodec,
+        string? sourceContainer,
         string? targetCodec,
         BlindCalibrationPlan plan,
         Fingerprint fingerprint,
         List<Candidate> candidates,
         List<Variant> variants,
+        bool diagnosticsEnabled,
         DateTimeOffset expiresAt)
     {
         public object Gate { get; } = new();
@@ -814,27 +1009,36 @@ internal sealed class BlindCalibrationService(
         public long SourceSizeBytes { get; } = sourceSizeBytes;
         public double SourceDurationSeconds { get; } = sourceDurationSeconds;
         public MediaKind MediaKind { get; } = mediaKind;
+        public string? SourceCodec { get; } = sourceCodec;
+        public string? SourceContainer { get; } = sourceContainer;
         public string? TargetCodec { get; } = targetCodec;
         public BlindCalibrationPlan Plan { get; } = plan;
         public Fingerprint Fingerprint { get; } = fingerprint;
         public List<Candidate> Candidates { get; } = candidates;
         public List<Variant> Variants { get; } = variants;
+        public bool DiagnosticsEnabled { get; } = diagnosticsEnabled;
+        public double HighestPreparationProgress { get; set; }
         public DateTimeOffset ExpiresAt { get; set; } = expiresAt;
         public SessionStatus Status { get; set; } = SessionStatus.Preparing;
         public string? Error { get; set; }
-        public int? RecommendedQuality { get; set; }
+        public CalibrationSetting? RecommendedSetting { get; set; }
         public CalibrationResultDto? Result { get; set; }
         public SemaphoreSlim AudioLevelGate { get; } = new(1, 1);
         public Dictionary<int, AudioLevelMatch> AudioLevels { get; } = [];
         public bool AudioLevelsReady { get; set; }
     }
 
-    private sealed record Candidate(Job Job, int Quality, CalibrationSample Sample);
-    private sealed class Variant(string name, bool isOriginal, int? quality)
+    private sealed record Candidate(
+        Job Job,
+        CalibrationSetting Setting,
+        CalibrationSample Sample,
+        string? Codec,
+        string? Container);
+    private sealed class Variant(string name, bool isOriginal, CalibrationSetting? setting)
     {
         public string Name { get; } = name;
         public bool IsOriginal { get; } = isOriginal;
-        public int? Quality { get; } = quality;
+        public CalibrationSetting? Setting { get; } = setting;
         public CalibrationPreference? Classification { get; set; }
     }
 
@@ -897,5 +1101,114 @@ internal sealed class BlindCalibrationService(
             && ImageDownscaleMode == rules.ImageDownscaleMode
             && ImageDownscaleValue == rules.ImageDownscaleValue
             && InitialQuality == quality;
+    }
+}
+
+internal static class CalibrationVmafEvidence
+{
+    private static readonly JsonSerializerOptions ReportJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    public static CalibrationVmafResultDto? FromReports(
+        IReadOnlyList<(int SampleNumber, string? ReportJson)> reports)
+    {
+        if (reports.Count == 0)
+        {
+            return null;
+        }
+
+        var samples = reports.Select(report => Parse(report.SampleNumber, report.ReportJson)).ToList();
+        var measured = samples.Where(sample => sample.Measured).ToList();
+        return new CalibrationVmafResultDto(
+            measured.Count,
+            samples.Count,
+            WeightedAverage(measured, sample => sample.Mean),
+            WeightedHarmonicMean(measured),
+            Minimum(measured, sample => sample.FifthPercentile),
+            Minimum(measured, sample => sample.Minimum),
+            measured.Any(sample => sample.FrameCount is > 0)
+                ? measured.Sum(sample => sample.FrameCount ?? 0)
+                : null,
+            Shared(measured.Select(sample => sample.ModelVersion)),
+            Shared(measured.Select(sample => sample.Preprocessing)),
+            samples);
+    }
+
+    private static CalibrationVmafSampleDto Parse(int sampleNumber, string? reportJson)
+    {
+        VmafEvidence? evidence = null;
+        if (!string.IsNullOrWhiteSpace(reportJson))
+        {
+            try
+            {
+                evidence = JsonSerializer.Deserialize<VerificationReport>(reportJson, ReportJsonOptions)?.Vmaf;
+            }
+            catch (JsonException)
+            {
+                // A malformed retained report is surfaced as unavailable evidence for this scene;
+                // it must not prevent the user from completing an otherwise healthy blind test.
+            }
+        }
+
+        var scores = evidence?.Scores;
+        return new CalibrationVmafSampleDto(
+            sampleNumber,
+            evidence?.Measured == true && scores is not null,
+            scores?.VmafMean,
+            scores?.VmafHarmonicMean,
+            scores?.VmafFifthPercentile,
+            scores?.VmafMin,
+            scores?.FrameCount,
+            scores?.ModelVersion,
+            scores?.Preprocessing,
+            evidence?.Error ?? (scores is null ? "VMAF evidence is unavailable for this scene." : null));
+    }
+
+    private static double? WeightedAverage(
+        IReadOnlyList<CalibrationVmafSampleDto> samples,
+        Func<CalibrationVmafSampleDto, double?> selector)
+    {
+        var values = samples.Where(sample => selector(sample) is not null).ToList();
+        if (values.Count == 0)
+        {
+            return null;
+        }
+        var weighted = values.Where(sample => sample.FrameCount is > 0).ToList();
+        var value = weighted.Count == values.Count
+            ? weighted.Sum(sample => selector(sample)!.Value * sample.FrameCount!.Value)
+                / weighted.Sum(sample => sample.FrameCount!.Value)
+            : values.Average(sample => selector(sample)!.Value);
+        return Math.Round(value, 2);
+    }
+
+    private static double? WeightedHarmonicMean(IReadOnlyList<CalibrationVmafSampleDto> samples)
+    {
+        var values = samples.Where(sample => sample.HarmonicMean is > 0).ToList();
+        if (values.Count == 0)
+        {
+            return null;
+        }
+        var value = values.All(sample => sample.FrameCount is > 0)
+            ? values.Sum(sample => sample.FrameCount!.Value)
+                / values.Sum(sample => sample.FrameCount!.Value / sample.HarmonicMean!.Value)
+            : values.Count / values.Sum(sample => 1 / sample.HarmonicMean!.Value);
+        return Math.Round(value, 2);
+    }
+
+    private static double? Minimum(
+        IEnumerable<CalibrationVmafSampleDto> samples,
+        Func<CalibrationVmafSampleDto, double?> selector)
+    {
+        var values = samples.Select(selector).Where(value => value is not null).Select(value => value!.Value).ToList();
+        return values.Count == 0 ? null : Math.Round(values.Min(), 2);
+    }
+
+    private static string? Shared(IEnumerable<string?> values)
+    {
+        var present = values.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct().ToList();
+        return present.Count == 1 ? present[0] : null;
     }
 }

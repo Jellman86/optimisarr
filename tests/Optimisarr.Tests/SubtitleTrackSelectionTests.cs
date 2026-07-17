@@ -24,8 +24,8 @@ public sealed class SubtitleTrackSelectionTests
     public void Unknown_untagged_and_private_use_tracks_are_never_removed()
     {
         var removals = SubtitleTrackSelection.SelectRemovals(
-            new string?[] { "und", null, "zxx", "mul", "qaa", "fra" }, new[] { "eng" });
-        Assert.Equal(new[] { 5 }, removals);
+            new string?[] { "und", null, "zxx", "mul", "qaa", "qqq", "afa", "fra" }, new[] { "eng" });
+        Assert.Equal(new[] { 7 }, removals);
     }
 
     [Fact]

@@ -217,13 +217,22 @@ file's subtitles are all in non-kept languages they are all removed and the file
 with none. Verification expects exactly the planned subtitle retention, so an encode
 that drops a stream beyond the plan still fails.
 
+Language removal is fail-closed. Optimisarr accepts only registered, individual ISO
+639 languages and stores their canonical ISO 639-2/T form (`en` → `eng`, `fre` →
+`fra`). Unknown, malformed, collective, special-purpose, untagged, and private-use
+values never authorise removal. If a legacy stored rule contains even one
+unrecognised entry, the whole rule becomes a no-op rather than silently becoming
+broader. Every governed job freshly probes the source before FFmpeg; if that proof
+fails, no stream-removal command is run.
+
 **Track cleanup** is a preset for libraries that should only lose unwanted tracks:
 it never re-encodes and never changes the container type (an `.mkv` stays `.mkv`, an
 `.mp4` stays `.mp4`). A file is eligible only when it has audio or subtitle tracks
 outside the library's kept languages; with neither kept-language field set, every
 file is skipped with a clear reason. Removing a track always rewrites the file —
 FFmpeg stream-copies every kept stream bit-identically into a new file, which then
-passes the usual verify-and-replace gates (including a container-unchanged check)
+passes the usual verify-and-replace gates (including container, retained-language,
+and retained-audio-codec checks)
 before the original is touched.
 
 ## Per-library automation

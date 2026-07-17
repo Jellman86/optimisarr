@@ -105,6 +105,59 @@ public sealed class MigrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Existing_probed_videos_with_subtitles_are_queued_for_language_reprobe()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath}")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260716124510_TrackCalibrationReferenceOffset");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Mixed', '/data/mixed', 'Other', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+
+            INSERT INTO MediaFiles
+                (LibraryId, Path, RelativePath, SizeBytes, ModifiedAt, DiscoveredAt, UpdatedAt,
+                 Status, MediaKind, SubtitleTrackCount)
+            VALUES
+                ((SELECT Id FROM Libraries WHERE Path = '/data/mixed'),
+                 '/data/mixed/with-subs.mkv', 'with-subs.mkv', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00',
+                 '2026-01-01T00:00:00+00:00', 'Probed', 'Video', 2),
+                ((SELECT Id FROM Libraries WHERE Path = '/data/mixed'),
+                 '/data/mixed/no-subs.mkv', 'no-subs.mkv', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00',
+                 '2026-01-01T00:00:00+00:00', 'Probed', 'Video', 0),
+                ((SELECT Id FROM Libraries WHERE Path = '/data/mixed'),
+                 '/data/mixed/lyrics.flac', 'lyrics.flac', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00',
+                 '2026-01-01T00:00:00+00:00', 'Probed', 'Audio', 1);
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var files = await db.MediaFiles.OrderBy(file => file.RelativePath).ToListAsync();
+        Assert.Equal(
+            MediaFileStatus.Discovered,
+            files.Single(file => file.RelativePath == "with-subs.mkv").Status);
+        Assert.Equal(
+            MediaFileStatus.Probed,
+            files.Single(file => file.RelativePath == "no-subs.mkv").Status);
+        Assert.Equal(
+            MediaFileStatus.Probed,
+            files.Single(file => file.RelativePath == "lyrics.flac").Status);
+        Assert.All(files, file => Assert.Null(file.SubtitleLanguages));
+    }
+
+    [Fact]
     public async Task Legacy_global_vmaf_policy_is_materialised_per_library_and_removed()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);

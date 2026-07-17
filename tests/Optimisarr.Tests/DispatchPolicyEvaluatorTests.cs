@@ -48,6 +48,20 @@ public sealed class DispatchPolicyEvaluatorTests
         Assert.Equal("Plex is streaming.", decision.BlockedReason);
     }
 
+    [Fact]
+    public void Allows_an_explicit_interactive_bypass_while_a_watched_service_is_active()
+    {
+        var decision = DispatchPolicyEvaluator.Evaluate(
+            0,
+            null,
+            servicesActive: true,
+            servicesActiveReason: "Plex is streaming.",
+            ignoreServicesActivity: true);
+
+        Assert.True(decision.CanStart);
+        Assert.Null(decision.BlockedReason);
+    }
+
     // WithinWindow is the shared window check used for per-library auto-optimise windows.
     [Fact]
     public void WithinWindow_same_day_is_inclusive_of_start_and_exclusive_of_end()

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,6 +12,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -43,6 +45,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("DELETE", "/api/libraries/1")]
     [InlineData("POST", "/api/libraries/1/enqueue")]
     [InlineData("POST", "/api/libraries/1/calibration")]
+    [InlineData("GET", "/api/calibration")]
     [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/classifications")]
     [InlineData("POST", "/api/calibration/00000000-0000-0000-0000-000000000000/apply")]
     [InlineData("DELETE", "/api/calibration/00000000-0000-0000-0000-000000000000")]
@@ -281,11 +284,13 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         using var started = await client.PostAsJsonAsync(
             $"/api/libraries/{libraryId}/calibration",
-            new { mediaFileId });
+            new { mediaFileId, diagnosticsEnabled = true, ignoreActiveStreams = true });
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var startedSession = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
         var sessionId = startedSession["id"]!.GetValue<Guid>();
         Assert.Equal("Waiting", startedSession["preparationState"]!.GetValue<string>());
+        var activeSessions = JsonNode.Parse(await client.GetStringAsync("/api/calibration"))!.AsArray();
+        Assert.Contains(activeSessions, active => active!["id"]!.GetValue<Guid>() == sessionId);
 
         using (var clearedPending = await client.PostAsync("/api/jobs/clear-pending", content: null))
         {
@@ -299,16 +304,26 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
-            Assert.Equal(15, jobs.Count);
+            Assert.Equal(12, jobs.Count);
             Assert.Equal(
-                [18, 21, 24, 27, 30],
+                [20, 24, 30],
                 jobs.Select(job => job.RequestedVideoQuality!.Value).Distinct().Order().ToArray());
+            Assert.Equal(
+                [
+                    RuleProfile.ConservativeHevc,
+                    RuleProfile.CompatibilityH264,
+                    RuleProfile.ExperimentalAv1,
+                    RuleProfile.ScottsSettings
+                ],
+                jobs.Select(job => job.RequestedRuleProfile!.Value).Distinct().Order().ToArray());
             Assert.All(jobs, job =>
             {
                 Assert.Equal(JobType.Calibration, job.Type);
                 Assert.Null(job.LibraryId);
                 Assert.Equal(12, job.CalibrationClipSeconds);
                 Assert.NotNull(job.RequestedVideoQuality);
+                Assert.NotNull(job.RequestedRuleProfile);
+                Assert.True(job.IgnoreMediaActivity);
                 Assert.Equal(JobStatus.Queued, job.Status);
             });
             jobs[0].Status = JobStatus.Transcoding;
@@ -317,7 +332,15 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             var activeSession = JsonNode.Parse(
                 await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
             Assert.Equal("Working", activeSession["preparationState"]!.GetValue<string>());
-            Assert.Equal(0.033, activeSession["preparationProgress"]!.GetValue<double>(), precision: 3);
+            Assert.Equal(0.042, activeSession["preparationProgress"]!.GetValue<double>(), precision: 3);
+            jobs[0].Progress = 0.1;
+            await db.SaveChangesAsync();
+            var regressedJobSession = JsonNode.Parse(
+                await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
+            Assert.Equal(
+                0.042,
+                regressedJobSession["preparationProgress"]!.GetValue<double>(),
+                precision: 3);
             foreach (var job in jobs)
             {
                 var workDirectory = Path.Combine(calibrationDirectory, $"job-{job.Id}");
@@ -325,17 +348,35 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 job.WorkOutputPath = Path.Combine(workDirectory, "candidate.mp4");
                 await File.WriteAllTextAsync(
                     job.WorkOutputPath,
-                    $"candidate-quality-{job.RequestedVideoQuality}");
+                    $"candidate-profile-{job.RequestedRuleProfile}");
                 await File.WriteAllTextAsync(
                     Path.Combine(workDirectory, ".optimisarr-comparison-reference.mkv"),
                     "reference-clip");
                 job.Status = JobStatus.Completed;
                 job.Progress = 1;
                 job.OutputSizeBytes = 1_000_000;
-                job.VideoEncoder = "libx265";
+                job.VideoEncoder = job.RequestedRuleProfile == RuleProfile.ExperimentalAv1
+                    ? "libsvtav1"
+                    : job.RequestedRuleProfile == RuleProfile.CompatibilityH264
+                        ? "libx264"
+                        : "libx265";
                 job.VideoQualityMode = "CRF";
                 job.EffectiveVideoQuality = job.RequestedVideoQuality;
                 job.CalibrationReferenceStartSeconds = 0.751;
+                job.VerificationReportJson = JsonSerializer.Serialize(new VerificationReport(
+                    [],
+                    Vmaf: new VmafEvidence(
+                        true,
+                        null,
+                        new QualityScores(
+                            95,
+                            94,
+                            72,
+                            null,
+                            null,
+                            ModelVersion: "vmaf_v0.6.1",
+                            VmafFifthPercentile: 88,
+                            FrameCount: 288))));
             }
             await db.SaveChangesAsync();
         }
@@ -349,14 +390,14 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         using (var scope = _api.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            Assert.Equal(15, db.Jobs.Count(job => job.CalibrationSessionId == sessionId));
+            Assert.Equal(12, db.Jobs.Count(job => job.CalibrationSessionId == sessionId));
         }
         Assert.Equal("calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
 
         var session = JsonNode.Parse(await client.GetStringAsync($"/api/calibration/{sessionId}"))!.AsObject();
         Assert.Equal("Comparing", session["status"]!.GetValue<string>());
         var variants = session["variants"]!.AsArray();
-        Assert.Equal(6, variants.Count);
+        Assert.Equal(5, variants.Count);
         Assert.Equal(1, variants.Count(variant => variant!["isOriginal"]!.GetValue<bool>()));
         Assert.Equal("ORIGINAL", variants.Single(variant => variant!["isOriginal"]!.GetValue<bool>())!["name"]!.GetValue<string>());
         Assert.All(variants, variant =>
@@ -366,6 +407,13 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             Assert.All(variant["samples"]!.AsArray(), sample =>
                 Assert.Contains(sample!["startSeconds"]!.GetValue<double>(), new[] { 0, 0.751 }));
         });
+        Assert.Null(variants.Single(variant => variant!["isOriginal"]!.GetValue<bool>())!["diagnostics"]!["profile"]);
+        Assert.Equal(
+            ["CompatibilityH264", "ConservativeHevc", "ExperimentalAv1", "ScottsSettings"],
+            variants.Where(variant => !variant!["isOriginal"]!.GetValue<bool>())
+                .Select(variant => variant!["diagnostics"]!["profile"]!.GetValue<string>())
+                .Order()
+                .ToArray());
         var firstSampleContents = new List<string>();
         var firstSampleUrls = new List<string>();
         foreach (var variant in variants)
@@ -374,10 +422,15 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             firstSampleContents.Add(await client.GetStringAsync(
                 firstSampleUrls[^1]));
         }
-        Assert.Equal(6, firstSampleUrls.Distinct().Count());
+        Assert.Equal(5, firstSampleUrls.Distinct().Count());
         Assert.Equal(1, firstSampleContents.Count(content => content == "reference-clip"));
         Assert.Equal(
-            ["candidate-quality-18", "candidate-quality-21", "candidate-quality-24", "candidate-quality-27", "candidate-quality-30"],
+            [
+                "candidate-profile-CompatibilityH264",
+                "candidate-profile-ConservativeHevc",
+                "candidate-profile-ExperimentalAv1",
+                "candidate-profile-ScottsSettings"
+            ],
             firstSampleContents.Where(content => content != "reference-clip").Order().ToArray());
 
         var classifications = variants.ToDictionary(
@@ -392,17 +445,34 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         Assert.Equal("Revealed", session["status"]!.GetValue<string>());
         var result = session["result"]!.AsObject();
         Assert.Equal(30, result["recommendedQuality"]!.GetValue<int>());
+        Assert.Equal("ExperimentalAv1", result["recommendedProfile"]!.GetValue<string>());
         var revealedVariants = result["variants"]!.AsArray();
         Assert.Equal(1, revealedVariants.Count(variant => variant!["isOriginal"]!.GetValue<bool>()));
         Assert.Null(revealedVariants.Single(variant => variant!["isOriginal"]!.GetValue<bool>())!["quality"]);
-        Assert.Equal(30, revealedVariants.Single(variant => variant!["recommended"]!.GetValue<bool>())!["quality"]!.GetValue<int>());
+        Assert.Equal("ExperimentalAv1", revealedVariants.Single(variant => variant!["recommended"]!.GetValue<bool>())!["profile"]!.GetValue<string>());
+        Assert.All(revealedVariants.Where(variant => !variant!["isOriginal"]!.GetValue<bool>()), variant =>
+        {
+            var vmaf = variant!["vmaf"]!.AsObject();
+            Assert.Equal(3, vmaf["measuredSamples"]!.GetValue<int>());
+            Assert.Equal(3, vmaf["totalSamples"]!.GetValue<int>());
+            Assert.Equal(94, vmaf["harmonicMean"]!.GetValue<double>());
+            Assert.Equal(88, vmaf["fifthPercentile"]!.GetValue<double>());
+            Assert.Equal(72, vmaf["minimum"]!.GetValue<double>());
+            Assert.Equal(3, vmaf["samples"]!.AsArray().Count);
+        });
+        activeSessions = JsonNode.Parse(await client.GetStringAsync("/api/calibration"))!.AsArray();
+        var listedResult = activeSessions.Single(active => active!["id"]!.GetValue<Guid>() == sessionId)!["result"]!;
+        Assert.Equal(4, listedResult["variants"]!.AsArray().Count(variant => variant!["vmaf"] is not null));
 
         using var applied = await client.PostAsync($"/api/calibration/{sessionId}/apply", content: null);
         Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
         using (var scope = _api.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-            Assert.Equal(30, db.Libraries.Single(library => library.Id == libraryId).QualityCrf);
+            var library = db.Libraries.Single(library => library.Id == libraryId);
+            Assert.Equal(RuleProfile.ExperimentalAv1, library.RuleProfile);
+            Assert.Null(library.TargetVideoCodec);
+            Assert.Null(library.TargetContainer);
             Assert.False(db.Jobs.Any(job => job.Type == JobType.Normal && job.MediaFileId == mediaFileId));
         }
 

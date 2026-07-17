@@ -199,7 +199,10 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: reference.DurationSeconds,
-                OutputDurationSeconds: outputProbe.DurationSeconds,
+                OutputDurationSeconds: OutputDurationForVerification(
+                    outputProbe,
+                    reference.Kind,
+                    clip?.VideoOnly == true),
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
                 OriginalSubtitleTrackCount: reference.SubtitleTrackCount,
@@ -274,7 +277,29 @@ public sealed class VerificationService(
                 SubtitleTracksRemoved: reference.RemovedSubtitleStreamIndexes?.Count ?? 0,
                 RequireContainerUnchanged: reference.ContainerMustMatch,
                 OriginalContainer: originalProbe.Container,
-                OutputContainer: outputProbe.Container);
+                OutputContainer: outputProbe.Container,
+                ExpectedAudioLanguages: reference.RemovedAudioStreamIndexes is { Count: > 0 }
+                    ? KeptLanguages(
+                        originalProbe.AudioTracks.Select(track => track.Language).ToList(),
+                        reference.RemovedAudioStreamIndexes)
+                    : null,
+                OutputAudioLanguages: reference.RemovedAudioStreamIndexes is { Count: > 0 }
+                    ? outputProbe.AudioTracks.Select(track => track.Language).ToList()
+                    : null,
+                ExpectedSubtitleLanguages: reference.RemovedSubtitleStreamIndexes is { Count: > 0 }
+                    ? KeptLanguages(originalProbe.SubtitleLanguages, reference.RemovedSubtitleStreamIndexes)
+                    : null,
+                OutputSubtitleLanguages: reference.RemovedSubtitleStreamIndexes is { Count: > 0 }
+                    ? outputProbe.SubtitleLanguages
+                    : null,
+                ExpectedAudioCodecs: reference.ContainerMustMatch
+                    ? KeptValues(
+                        originalProbe.AudioTracks.Select(track => track.Codec).ToList(),
+                        reference.RemovedAudioStreamIndexes)
+                    : null,
+                OutputAudioCodecs: reference.ContainerMustMatch
+                    ? outputProbe.AudioTracks.Select(track => track.Codec).ToList()
+                    : null);
 
             return new VerificationOutcome(
                 VerificationEvaluator.Evaluate(input, policy),
@@ -307,6 +332,26 @@ public sealed class VerificationService(
             .Where((_, index) => !removedIndexes.Contains(index))
             .ToList();
     }
+
+    private static IReadOnlyList<string?> KeptLanguages(
+        IReadOnlyList<string?> languages,
+        IReadOnlyList<int> removedIndexes) =>
+        languages.Where((_, index) => !removedIndexes.Contains(index)).ToList();
+
+    private static IReadOnlyList<string?> KeptValues(
+        IReadOnlyList<string?> values,
+        IReadOnlyList<int>? removedIndexes) =>
+        removedIndexes is not { Count: > 0 }
+            ? values
+            : values.Where((_, index) => !removedIndexes.Contains(index)).ToList();
+
+    internal static double? OutputDurationForVerification(
+        MediaProbeResult outputProbe,
+        MediaKind kind,
+        bool videoOnlyReference) =>
+        kind == MediaKind.Video && videoOnlyReference
+            ? outputProbe.VideoDurationSeconds ?? outputProbe.DurationSeconds
+            : outputProbe.DurationSeconds;
 
     private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,

@@ -310,29 +310,44 @@ when the verification report is for a sample rather than the whole file.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/libraries/{id}/calibration/sources` | List probed video, audio, and still-image sources suitable for a personal quality check. |
-| `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123 }`. |
-| `GET` | `/api/calibration/{id}` | Read preparation progress, the marked original reference plus anonymous candidates A–E, or a revealed result. |
-| `POST` | `/api/calibration/{id}/classifications` | Classify all five anonymous candidates and reveal their settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
-| `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended quality to the library, if its relevant settings have not changed. |
+| `POST` | `/api/libraries/{id}/calibration` | Start a short-lived session and its disposable candidate clips. Body: `{ "mediaFileId": 123, "diagnosticsEnabled": false, "ignoreActiveStreams": false }`. Diagnostics reveal candidate details. The default-off stream exception applies only to the session's calibration jobs; normal jobs remain activity-paused. |
+| `GET` | `/api/calibration` | List every active quality-check session, including any revealed result. Listing does not extend an abandoned session's lifetime. |
+| `GET` | `/api/calibration/{id}` | Read preparation progress, the marked original reference plus anonymous media-specific candidates, or a revealed result. |
+| `POST` | `/api/calibration/{id}/classifications` | Classify every anonymous candidate and reveal its settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
+| `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended video preset or media quality to the library, if its relevant settings have not changed. |
 | `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for `ORIGINAL` or anonymous candidate `A`–`E`. |
-| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
+| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its scratch media and non-failed disposable jobs. A failed job keeps only its diagnostic row until **Clear errored** removes it. |
 
-Video calibration creates three 12-second scenes for five shuffled quality levels plus one marked original reference.
+Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
 preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
-samples contain only the primary video stream. Music uses three 15-second excerpts with a lossless
+samples retain the complete preset output, including its container and audio contract. Each scene is
+also measured with VMAF. Scores remain absent from the API until classifications reveal the lineup;
+then every non-original `result.variants[]` entry includes a `vmaf` summary and its three underlying
+`samples`. `harmonicMean` is frame-weighted across measured scenes, `fifthPercentile` is the lowest
+scene fifth percentile, and `minimum` is the lowest individual-frame score. `measuredSamples` and
+per-scene `error` fields make partial or unavailable measurement explicit. VMAF is objective evidence
+only in this personal check: it neither rejects a structurally valid sample nor changes the user's
+preference-led recommendation. Music uses three 15-second excerpts with a lossless
 FLAC reference and returns a per-sample `gainDb` that brings every anonymous version to the same
 quietest measured level. Still images use a lossless PNG reference and return `startSeconds: 0` and
 `gainDb: 0`.
 
 All candidate and reference media lives under `/work/calibration`. These jobs are excluded from the
 normal queue and can never enter replacement. Active requests extend the session; an abandoned
-session expires after two hours, and all session state is discarded on restart. The original file
+session expires after two hours, and all session state is discarded on restart. Failed job rows
+retain only their error, verification report, and process diagnostics after the scratch media and
+session are removed, so the failure API remains useful after the lab closes. The original file
 is only read. A completed result does not alter settings: only the separate `apply` request may
-change the relevant library quality, and it queues no media work.
+change the relevant library preset or quality, and it queues no media work.
 
-Variant labels and URLs are opaque until reveal. The comparing response contains no original or
-quality marker. Clients must not display encoder, quality, bitrate, estimated size, or raw media
+Variant labels and URLs are opaque until reveal when `diagnosticsEnabled` is false. With diagnostics
+enabled, each variant includes its profile, codec, actual container, requested/effective quality,
+and encoder for troubleshooting; clients must clearly state that the session is no longer blind.
+Browser verification clients should replace the `src` of one video element, report that element's
+resolved `currentSrc`, and offer a direct link to that exact resource rather than presenting an
+application-supplied active-file label as proof of a switch.
+Normal blind clients must not display encoder, quality, bitrate, estimated size, or raw media
 duration during this phase. Drive each variant from its sample `durationSeconds` and `startSeconds`,
 preserve one relative playback position, and wait for `seeked` before showing a newly selected video;
 otherwise timing can become a side channel. Submit exactly one `Indistinguishable`, `Acceptable`, or
@@ -345,7 +360,7 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/libraries/{id}/enqueue` | Enqueue eligible files for one library. |
 | `GET` | `/api/jobs` | List queue jobs. Optional filters `status`, `libraryId`, `category`, `since`, `until`, and paging `page`/`pageSize`. |
 | `GET` | `/api/jobs?status=Failed` | List jobs filtered by status. |
-| `GET` | `/api/jobs/failures` | Failure summary. Optional `libraryId` scopes it to one library. |
+| `GET` | `/api/jobs/failures` | Failure summary for normal work and failed preview/personal-quality comparisons. Optional `libraryId` scopes it to one library. Samples identify `jobType` and include structured failed `verificationChecks` (`name`, `outcome`, and measured `detail`). |
 | `GET` | `/api/jobs/{id}/log` | FFmpeg/process log for a failed job (plain text; `404` when none was captured). |
 | `GET` | `/api/jobs/{id}/artwork` | Proxied artwork for a job when a provider can resolve it. |
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
@@ -359,6 +374,12 @@ encoder, output size, verification result, verification report JSON, the
 classified failure category (when failed), and timestamps. When paging is used,
 the total number of matches before paging is returned in the `X-Total-Count`
 response header.
+
+Failed preview and personal-quality jobs never appear in the normal queue feed. Their scratch media
+is still deleted, but the small failed row remains available to `/api/jobs/failures`,
+`/api/jobs/{id}/log`, and the diagnostics bundle until `POST /api/jobs/clear?scope=errored` removes
+it. This makes an interactive failure diagnosable without retaining candidate media or reading the
+application database directly.
 
 Common job states include `Queued`, `Probing`, `Transcoding`, `Verifying`,
 `ReadyToReplace`, `Completed`, `Failed`, and `Cancelled`. A job is re-checked

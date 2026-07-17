@@ -1,5 +1,6 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
 
@@ -31,11 +32,24 @@ public static class VerificationEvaluator
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
 
+            if (input.ExpectedAudioLanguages is not null)
+            {
+                checks.Add(LanguagesRetained(
+                    "Audio languages", input.ExpectedAudioLanguages, input.OutputAudioLanguages));
+            }
+
+            if (input.ExpectedSubtitleLanguages is not null)
+            {
+                checks.Add(LanguagesRetained(
+                    "Subtitle languages", input.ExpectedSubtitleLanguages, input.OutputSubtitleLanguages));
+            }
+
             // Only registered when the job promised an unchanged container (track cleanup),
             // so ordinary remuxes/transcodes don't get a noisy not-applicable line.
             if (input.RequireContainerUnchanged)
             {
                 checks.Add(ContainerUnchanged(input));
+                checks.Add(AudioCodecsPreserved(input));
             }
         }
 
@@ -125,7 +139,8 @@ public static class VerificationEvaluator
 
         // Remuxes copy the encoded frames unchanged, so VMAF is both redundant and expensive.
         // Non-video media use their applicable audio/image gates instead.
-        if (policy.RequiresVmaf(input.Kind, input.VideoReencoded))
+        var vmafRequested = policy.RequiresVmaf(input.Kind, input.VideoReencoded);
+        if (vmafRequested && policy.QualityGateEnabled)
         {
             checks.Add(PerceptualQuality(input, policy));
         }
@@ -140,7 +155,11 @@ public static class VerificationEvaluator
             checks.Add(NoClippingIntroduced(input, policy));
         }
 
-        return new VerificationReport(checks);
+        return new VerificationReport(
+            checks,
+            Vmaf: vmafRequested
+                ? new VmafEvidence(input.QualityMeasured, input.QualityError, input.QualityScores)
+                : null);
     }
 
     private static VerificationCheck AudioMetadataPreserved(VerificationInput input)
@@ -753,6 +772,40 @@ public static class VerificationEvaluator
             : Fail("Subtitle tracks", $"{detail} Subtitle tracks were lost.");
     }
 
+    private static VerificationCheck LanguagesRetained(
+        string name,
+        IReadOnlyList<string?> expected,
+        IReadOnlyList<string?>? output)
+    {
+        if (output is null || output.Count != expected.Count)
+        {
+            return Fail(
+                name,
+                $"Expected language evidence for {expected.Count} retained track(s), output reported {output?.Count ?? 0}.");
+        }
+
+        for (var index = 0; index < expected.Count; index++)
+        {
+            // An unknown source tag was deliberately preserved, but its identity cannot be
+            // compared honestly. The exact stream-count gate still proves that no extra stream
+            // disappeared. Known identifiers, however, must survive in positional order.
+            if (!TrackLanguages.TryCanonicaliseKnown(expected[index], out var expectedLanguage))
+            {
+                continue;
+            }
+
+            if (!TrackLanguages.TryCanonicaliseKnown(output[index], out var outputLanguage)
+                || !string.Equals(expectedLanguage, outputLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(
+                    name,
+                    $"Retained track {index + 1} changed language from {expectedLanguage} to {output[index] ?? "unknown"}.");
+            }
+        }
+
+        return Pass(name, $"Verified the language identity of {expected.Count} retained track(s).");
+    }
+
     // ffprobe's format_name is a demuxer name shared by every extension it serves, so a
     // straight comparison holds exactly when the container type is genuinely the same.
     private static VerificationCheck ContainerUnchanged(VerificationInput input)
@@ -762,6 +815,38 @@ public static class VerificationEvaluator
             && string.Equals(input.OriginalContainer, input.OutputContainer, StringComparison.OrdinalIgnoreCase)
             ? Pass("Container unchanged", detail)
             : Fail("Container unchanged", $"{detail} The container type must not change under this profile.");
+    }
+
+    private static VerificationCheck AudioCodecsPreserved(VerificationInput input)
+    {
+        const string name = "Audio codecs unchanged";
+        if (input.ExpectedAudioCodecs is null || input.OutputAudioCodecs is null)
+        {
+            return Fail(name, "Source/output audio codec evidence could not be compared.");
+        }
+
+        if (input.ExpectedAudioCodecs.Count != input.OutputAudioCodecs.Count)
+        {
+            return Fail(
+                name,
+                $"Expected {input.ExpectedAudioCodecs.Count} retained audio codec(s), output reported {input.OutputAudioCodecs.Count}.");
+        }
+
+        for (var index = 0; index < input.ExpectedAudioCodecs.Count; index++)
+        {
+            if (string.IsNullOrWhiteSpace(input.ExpectedAudioCodecs[index])
+                || !string.Equals(
+                    input.ExpectedAudioCodecs[index],
+                    input.OutputAudioCodecs[index],
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(
+                    name,
+                    $"Retained audio track {index + 1} changed codec from {input.ExpectedAudioCodecs[index] ?? "unknown"} to {input.OutputAudioCodecs[index] ?? "unknown"}.");
+            }
+        }
+
+        return Pass(name, $"All {input.ExpectedAudioCodecs.Count} retained audio codec(s) are unchanged.");
     }
 
     private static VerificationCheck SizeReduced(VerificationInput input, VerificationPolicy policy)

@@ -299,8 +299,9 @@ the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
 segment-only; full queue jobs always verify against the complete original.
 
-Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration maps only
-the primary video stream. Its reference remains a stream copy of the original compressed frames;
+Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
+complete output contract of each library-slider preset, including codec, container, and audio rules.
+Its reference remains a stream copy of the original compressed frames;
 mid-file keyframe pre-roll is retained for correct decoding, excluded from the requested-duration
 verification baseline, and exposed only as an internal playback offset so the blinded slots begin on
 the same source frame. The reference is retained until session cleanup. Audio and image calibration

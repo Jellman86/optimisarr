@@ -709,4 +709,34 @@ public sealed class CandidateEvaluatorTests
         Assert.False(decision.IsEligible);
         Assert.Contains("re-probe", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Track_cleanup_never_sends_audio_or_images_to_their_encode_pipelines()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        Assert.False(CandidateEvaluator.Evaluate(AudioFile("flac"), rules).IsEligible);
+        Assert.False(CandidateEvaluator.Evaluate(
+            ImageFile("png", frameCount: 1, pixelFormat: "rgb24"), rules).IsEligible);
+    }
+
+    [Fact]
+    public void Track_cleanup_can_stream_copy_dolby_vision_without_the_reencode_opt_in()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(isHdr: true, isDolbyVision: true) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+    }
 }

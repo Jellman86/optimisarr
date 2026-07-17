@@ -197,6 +197,106 @@
         ],
         "type": "object"
       },
+      "FailureGroupDto": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "count": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/FailureSampleDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "category",
+          "description",
+          "count",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "FailureSampleDto": {
+        "properties": {
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "jobType": {
+            "type": "string"
+          },
+          "mediaFileId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "verificationChecks": {
+            "items": {
+              "$ref": "#/components/schemas/FailureVerificationCheckDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobId",
+          "mediaFileId",
+          "relativePath",
+          "jobType",
+          "errorMessage",
+          "verificationChecks"
+        ],
+        "type": "object"
+      },
+      "FailureVerificationCheckDto": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "outcome",
+          "detail"
+        ],
+        "type": "object"
+      },
       "JellyfinConnectRequest": {
         "properties": {
           "baseUrl": {
@@ -1223,7 +1323,15 @@
       },
       "StartCalibrationRequest": {
         "properties": {
+          "diagnosticsEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
           "hdrPlaybackConfirmed": {
+            "default": false,
+            "type": "boolean"
+          },
+          "ignoreActiveStreams": {
             "default": false,
             "type": "boolean"
           },
@@ -1468,6 +1576,22 @@
         },
         "tags": [
           "System"
+        ]
+      }
+    },
+    "/api/calibration": {
+      "get": {
+        "operationId": "ListCalibrations",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Libraries"
         ]
       }
     },
@@ -2177,6 +2301,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FailureGroupDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "OK"
           },
           "401": {

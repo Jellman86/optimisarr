@@ -1,5 +1,8 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -33,6 +36,12 @@ public sealed record JobDto(
 
 public static class JobQueries
 {
+    private static readonly JsonSerializerOptions VerificationJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     /// <summary>
     /// Lists jobs ordered highest priority first, then oldest enqueued first, optionally narrowed to
     /// a single <paramref name="status"/>. Thin wrapper over <see cref="QueryAsync"/> for the queue
@@ -147,11 +156,12 @@ public static class JobQueries
     {
         var query = db.Jobs
             .AsNoTracking()
-            .Where(job => job.Type == JobType.Normal && job.Status == JobStatus.Failed);
+            .Where(job => job.Status == JobStatus.Failed);
 
         if (libraryId is { } id)
         {
-            query = query.Where(job => job.LibraryId == id);
+            query = query.Where(job => job.LibraryId == id
+                || job.MediaFile != null && job.MediaFile.LibraryId == id);
         }
 
         var failures = await query
@@ -160,8 +170,10 @@ public static class JobQueries
                 job.Id,
                 job.MediaFileId,
                 RelativePath = job.MediaFile != null ? job.MediaFile.RelativePath : null,
+                job.Type,
                 job.ErrorMessage,
                 job.FailureCategory,
+                job.VerificationReportJson,
                 job.FinishedAt
             })
             .ToListAsync(cancellationToken);
@@ -177,15 +189,54 @@ public static class JobQueries
                 group
                     .OrderByDescending(job => job.FinishedAt)
                     .Take(FailureSamplesPerCategory)
-                    .Select(job => new FailureSampleDto(job.Id, job.MediaFileId, job.RelativePath, job.ErrorMessage))
+                    .Select(job => new FailureSampleDto(
+                        job.Id,
+                        job.MediaFileId,
+                        job.RelativePath,
+                        job.Type.ToString(),
+                        job.ErrorMessage,
+                        ParseFailedVerificationChecks(job.VerificationReportJson)))
                     .ToList()))
             .OrderByDescending(group => group.Count)
             .ToList();
     }
+
+    private static IReadOnlyList<FailureVerificationCheckDto> ParseFailedVerificationChecks(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<VerificationReport>(json, VerificationJsonOptions)?.Checks
+                .Where(check => check.Outcome == CheckOutcome.Failed)
+                .Select(check => new FailureVerificationCheckDto(
+                    check.Name,
+                    check.Outcome.ToString(),
+                    check.Detail))
+                .ToList() ?? [];
+        }
+        catch (JsonException)
+        {
+            // Old or partially-written diagnostic JSON must not break the failure summary.
+            return [];
+        }
+    }
 }
 
 /// <summary>One failed job shown as evidence under its category in the failure summary.</summary>
-public sealed record FailureSampleDto(int JobId, int MediaFileId, string? RelativePath, string? ErrorMessage);
+public sealed record FailureSampleDto(
+    int JobId,
+    int MediaFileId,
+    string? RelativePath,
+    string JobType,
+    string? ErrorMessage,
+    IReadOnlyList<FailureVerificationCheckDto> VerificationChecks);
+
+/// <summary>A failed verification gate exposed as structured diagnostic evidence.</summary>
+public sealed record FailureVerificationCheckDto(string Name, string Outcome, string Detail);
 
 /// <summary>A classified group of failed jobs: a category, its description, a count, and samples.</summary>
 public sealed record FailureGroupDto(

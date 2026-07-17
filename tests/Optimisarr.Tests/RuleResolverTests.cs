@@ -172,4 +172,32 @@ public sealed class RuleResolverTests
 
         Assert.Null(resolved.TargetContainer);
     }
+
+    [Fact]
+    public void Track_cleanup_ignores_every_stale_encoding_override()
+    {
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.TrackCleanup,
+            new RuleOverrides
+            {
+                TargetVideoCodec = "h264",
+                TargetContainer = "mp4",
+                VideoAudioCodec = "aac",
+                VideoAudioBitrateKbps = 64,
+                DownmixToStereo = true,
+                MinFileSizeBytes = 10_000,
+                MaxHeight = 720,
+                Hdr = HdrHandling.Exclude,
+                OptimiseDolbyVision = true
+            });
+
+        Assert.Null(resolved.TargetVideoCodec);
+        Assert.Null(resolved.TargetContainer);
+        Assert.Null(resolved.VideoAudioCodec);
+        Assert.False(resolved.DownmixToStereo);
+        Assert.Equal(0, resolved.MinFileSizeBytes);
+        Assert.Null(resolved.MaxHeight);
+        Assert.Equal(HdrHandling.Preserve, resolved.Hdr);
+        Assert.False(resolved.OptimiseDolbyVision);
+    }
 }

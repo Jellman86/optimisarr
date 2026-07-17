@@ -22,6 +22,14 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("Already optimised by Optimisarr (file is tagged)");
         }
 
+        // Track cleanup is defined only for video containers. An "Other" library can contain
+        // audio and images too, but selecting this profile must never route those files through
+        // their independent lossy encode pipelines.
+        if (rules.Profile == RuleProfile.TrackCleanup && media.Kind != MediaKind.Video)
+        {
+            return CandidateDecision.Skipped("Track cleanup applies only to video files");
+        }
+
         // Each media kind has its own eligibility rules.
         return media.Kind switch
         {
@@ -198,7 +206,9 @@ public static class CandidateEvaluator
         // layer) comes out green/pink. With the perceptual gate off by default there is no backstop, so
         // a DV source is left untouched unless the library opts in — even when HDR is otherwise
         // tone-mapped or preserved, because neither path carries the DV layer.
-        if (media.IsDolbyVision && !rules.OptimiseDolbyVision)
+        if (rules.TargetVideoCodec is not null
+            && media.IsDolbyVision
+            && !rules.OptimiseDolbyVision)
         {
             return CandidateDecision.Skipped(
                 "Dolby Vision — re-encoding would drop the DV layer and risk a colour shift (Profile 5); left untouched");

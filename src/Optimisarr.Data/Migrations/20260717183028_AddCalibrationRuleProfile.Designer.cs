@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Optimisarr.Data;
 
@@ -10,9 +11,11 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    partial class OptimisarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260717183028_AddCalibrationRuleProfile")]
+    partial class AddCalibrationRuleProfile
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
@@ -180,10 +183,6 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("EffectiveVideoQuality")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("EnqueueReason")
-                        .HasMaxLength(512)
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTimeOffset>("EnqueuedAt")
                         .HasColumnType("TEXT");
 
@@ -199,9 +198,6 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("TEXT");
-
-                    b.Property<bool>("IgnoreMediaActivity")
-                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("LibraryId")
                         .HasColumnType("INTEGER");
@@ -348,10 +344,6 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("KeepAudioLanguages")
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("KeepSubtitleLanguages")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
@@ -556,10 +548,6 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SubtitleLanguages")
-                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("SubtitleTrackCount")

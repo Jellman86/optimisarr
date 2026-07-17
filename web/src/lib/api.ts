@@ -424,6 +424,17 @@ export type CalibrationVariant = {
   name: string
   isOriginal: boolean
   samples: CalibrationSample[]
+  diagnostics: CalibrationVariantDiagnostics | null
+}
+
+export type CalibrationVariantDiagnostics = {
+  profile: string | null
+  codec: string | null
+  container: string | null
+  requestedQuality: number | null
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
 }
 
 export type CalibrationClassification = 'Indistinguishable' | 'Acceptable' | 'VisiblyWorse'
@@ -431,6 +442,9 @@ export type CalibrationClassification = 'Indistinguishable' | 'Acceptable' | 'Vi
 export type CalibrationVariantResult = {
   name: string
   isOriginal: boolean
+  profile: string | null
+  codec: string | null
+  container: string | null
   quality: number | null
   classification: CalibrationClassification
   encoder: string | null
@@ -438,10 +452,38 @@ export type CalibrationVariantResult = {
   effectiveQuality: number | null
   estimatedSavingPercent: number | null
   recommended: boolean
+  vmaf: CalibrationVmafResult | null
+}
+
+export type CalibrationVmafSample = {
+  sampleNumber: number
+  measured: boolean
+  mean: number | null
+  harmonicMean: number | null
+  fifthPercentile: number | null
+  minimum: number | null
+  frameCount: number | null
+  modelVersion: string | null
+  preprocessing: string | null
+  error: string | null
+}
+
+export type CalibrationVmafResult = {
+  measuredSamples: number
+  totalSamples: number
+  mean: number | null
+  harmonicMean: number | null
+  fifthPercentile: number | null
+  minimum: number | null
+  frameCount: number | null
+  modelVersion: string | null
+  preprocessing: string | null
+  samples: CalibrationVmafSample[]
 }
 
 export type CalibrationResult = {
   recommendedQuality: number | null
+  recommendedProfile: string | null
   encoder: string | null
   qualityMode: string | null
   effectiveQuality: number | null
@@ -503,7 +545,15 @@ export type FailureSample = {
   jobId: number
   mediaFileId: number
   relativePath: string | null
+  jobType: 'Normal' | 'Preview' | 'Calibration'
   errorMessage: string | null
+  verificationChecks: FailureVerificationCheck[]
+}
+
+export type FailureVerificationCheck = {
+  name: string
+  outcome: 'Passed' | 'Failed'
+  detail: string
 }
 
 export type FailureGroup = {
@@ -856,10 +906,11 @@ export const api = {
 
   calibrationSources: (libraryId: number) =>
     request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
-  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false) =>
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true, ignoreActiveStreams = false) =>
     request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
-      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed }),
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled, ignoreActiveStreams }),
     }),
+  calibrations: () => request<CalibrationSession[]>('/api/calibration'),
   calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
   classifyCalibration: (id: string, classifications: Record<string, CalibrationClassification>) =>
     request<CalibrationSession>(`/api/calibration/${id}/classifications`, {

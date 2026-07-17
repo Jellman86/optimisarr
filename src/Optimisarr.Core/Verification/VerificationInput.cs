@@ -96,4 +96,13 @@ public sealed record VerificationInput(
     // probes' format_name so a silent remux fails verification.
     bool RequireContainerUnchanged = false,
     string? OriginalContainer = null,
-    string? OutputContainer = null);
+    string? OutputContainer = null,
+    // Positional language identities expected after an intentional removal. Known languages must
+    // survive at the same retained position; unknown values remain protected by the exact count
+    // gate because their identity cannot be proved safely.
+    IReadOnlyList<string?>? ExpectedAudioLanguages = null,
+    IReadOnlyList<string?>? OutputAudioLanguages = null,
+    IReadOnlyList<string?>? ExpectedSubtitleLanguages = null,
+    IReadOnlyList<string?>? OutputSubtitleLanguages = null,
+    IReadOnlyList<string?>? ExpectedAudioCodecs = null,
+    IReadOnlyList<string?>? OutputAudioCodecs = null);

@@ -10,9 +10,11 @@
   } from '../api'
   import { formatDuration } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
   import Icon from '../components/Icon.svelte'
+  import UsageGraph from '../components/UsageGraph.svelte'
 
   type Rating = CalibrationClassification | null
 
@@ -34,7 +36,15 @@
   let playing = $state(false)
   let playbackPosition = $state(0)
   let switching = $state(false)
+  let switchSequence = $state(0)
+  let switchShouldResume = $state(false)
+  let switchPosition = $state(0)
   let players: Record<string, HTMLMediaElement> = {}
+  let videoPlayer = $state<HTMLVideoElement | null>(null)
+  let pendingName = $state<string | null>(null)
+  let browserStreamUrl = $state('')
+  let diagnosticsEnabled = $state(false)
+  let ignoreActiveStreams = $state(false)
   let viewer = $state<HTMLElement | null>(null)
   let fullscreen = $state(false)
   let hdrDisplaySupported = $state(false)
@@ -51,10 +61,17 @@
   const candidateVariants = $derived(variants.filter((variant) => !variant.isOriginal))
   const activeVariant = $derived(variants.find((variant) => variant.name === activeName) ?? variants[0] ?? null)
   const activeSample = $derived(activeVariant?.samples[activeScene] ?? null)
+  const videoName = $derived(pendingName ?? activeName)
+  const videoVariant = $derived(variants.find((variant) => variant.name === videoName) ?? variants[0] ?? null)
+  const videoSample = $derived(videoVariant?.samples[activeScene] ?? null)
+  const activeDiagnostics = $derived(activeVariant?.diagnostics ?? null)
   const classifiedCount = $derived(Object.values(ratings).filter(Boolean).length)
   const canReveal = $derived(!playbackError && candidateVariants.length > 0 && classifiedCount === candidateVariants.length)
   const revealed = $derived(session?.status === 'Revealed' || session?.status === 'Applied')
   const hdrReady = $derived(!selected?.isHdr || hdrDisplaySupported && hdrViewingConfirmed)
+  const gpuUnavailable = $derived(
+    activity.metrics && !activity.metrics.gpuSupported ? i18n.m.dashboard.gpu_unavailable : null,
+  )
 
   onMount(() => {
     hdrDisplaySupported = window.matchMedia('(video-dynamic-range: high)').matches
@@ -93,7 +110,13 @@
     busy = true
     error = null
     try {
-      session = await api.startCalibration(libraryId, selectedSource, selected?.isHdr === true && hdrReady)
+      session = await api.startCalibration(
+        libraryId,
+        selectedSource,
+        selected?.isHdr === true && hdrReady,
+        diagnosticsEnabled,
+        ignoreActiveStreams,
+      )
       activeName = 'ORIGINAL'
       activeScene = 0
       ratings = {}
@@ -131,14 +154,26 @@
     return `${source.relativePath}${resolution}${range} · ${formatDuration(source.durationSeconds)}`
   }
 
+  function vmafScore(value: number | null): string {
+    return value === null ? '–' : value.toFixed(1)
+  }
+
   function sampleFor(name: string): CalibrationSample | null {
     return variants.find((variant) => variant.name === name)?.samples[activeScene] ?? null
   }
 
-  function registerPlayer(name: string, event: Event) {
+  function registerAudioPlayer(name: string, event: Event) {
     const player = event.currentTarget as HTMLMediaElement
     players[name] = player
     preparePlayer(name, player)
+    if (name === activeName) browserStreamUrl = player.currentSrc || player.getAttribute('src') || ''
+  }
+
+  function registerVideoPlayer(name: string, event: Event) {
+    const player = event.currentTarget as HTMLVideoElement
+    videoPlayer = player
+    preparePlayer(name, player)
+    if (!switching && name === activeName) browserStreamUrl = player.currentSrc
   }
 
   function preparePlayer(name: string, player: HTMLMediaElement) {
@@ -162,59 +197,174 @@
     })
   }
 
+  function waitForMetadata(player: HTMLMediaElement): Promise<boolean> {
+    if (player.readyState >= HTMLMediaElement.HAVE_METADATA) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(() => finish(false), 3000)
+      function finish(ready: boolean) {
+        window.clearTimeout(timeout)
+        player.removeEventListener('loadedmetadata', onLoaded)
+        player.removeEventListener('error', onError)
+        resolve(ready)
+      }
+      const onLoaded = () => finish(true)
+      const onError = () => finish(false)
+      player.addEventListener('loadedmetadata', onLoaded, { once: true })
+      player.addEventListener('error', onError, { once: true })
+    })
+  }
+
+  async function waitForPlayer(name: string, sequence: number): Promise<HTMLMediaElement | null> {
+    const deadline = performance.now() + 3000
+    while (sequence === switchSequence && performance.now() < deadline) {
+      if (players[name]) return players[name]
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+    return players[name] ?? null
+  }
+
+  async function waitForVideoPlayer(name: string, sequence: number): Promise<HTMLVideoElement | null> {
+    const expectedSource = sampleFor(name)?.url
+    const deadline = performance.now() + 3000
+    while (sequence === switchSequence && performance.now() < deadline) {
+      if (videoPlayer?.getAttribute('src') === expectedSource) return videoPlayer
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
+    return videoPlayer?.getAttribute('src') === expectedSource ? videoPlayer : null
+  }
+
   async function chooseVariant(name: string) {
-    if (name === activeName || switching) return
+    if (name === activeName && !switching) return
+    if (!switching) {
+      const activePlayer = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
+      switchShouldResume = playing || activePlayer != null && !activePlayer.paused
+      const currentSample = sampleFor(activeName)
+      switchPosition = activePlayer && currentSample
+        ? Math.max(0, activePlayer.currentTime - currentSample.startSeconds)
+        : playbackPosition
+    }
+    const sequence = ++switchSequence
+    switching = true
+    try {
+      if (session?.mediaKind === 'Video') await switchVideoVariant(name, sequence)
+      else await switchVariant(name, sequence)
+    } finally {
+      if (sequence === switchSequence) {
+        if (pendingName !== null) pendingName = null
+        switching = false
+        switchShouldResume = false
+      }
+    }
+  }
+
+  async function switchVideoVariant(name: string, sequence: number) {
+    const targetSample = sampleFor(name)
+    if (!targetSample) return
+    videoPlayer?.pause()
+    pendingName = name
+    browserStreamUrl = ''
+    await tick()
+    const target = await waitForVideoPlayer(name, sequence)
+    if (sequence !== switchSequence) return
+    if (!target || !await waitForMetadata(target)) {
+      playbackError = true
+      return
+    }
+    target.currentTime = targetSample.startSeconds + switchPosition
+    const frameReady = await waitForSeek(target)
+    if (sequence !== switchSequence) return
+    if (!frameReady) {
+      playbackError = true
+      return
+    }
+    activeName = name
+    pendingName = null
+    playbackPosition = switchPosition
+    browserStreamUrl = target.currentSrc
+    if (switchShouldResume) {
+      await target.play().catch(() => {
+        playing = false
+        playbackError = true
+      })
+    }
+  }
+
+  async function switchVariant(name: string, sequence: number) {
     if (session?.mediaKind === 'Image') {
+      if (sequence !== switchSequence) return
       activeName = name
+      browserStreamUrl = sampleFor(name)?.url ?? ''
+      return
+    }
+    const targetSample = sampleFor(name)
+    if (!targetSample) return
+    const target = await waitForPlayer(name, sequence)
+    if (sequence !== switchSequence) return
+    if (!target) {
+      playbackError = true
       return
     }
     const current = players[activeName]
     const currentSample = sampleFor(activeName)
     if (current && currentSample) {
       playbackPosition = Math.max(0, current.currentTime - currentSample.startSeconds)
-      playing = !current.paused
       current.pause()
     }
-    const target = players[name]
-    const targetSample = sampleFor(name)
-    if (!target || !targetSample) {
-      activeName = name
-      return
-    }
-    switching = true
     target.currentTime = targetSample.startSeconds + playbackPosition
     target.volume = Math.min(1, Math.pow(10, targetSample.gainDb / 20))
     const frameReady = await waitForSeek(target)
+    if (sequence !== switchSequence) return
     if (!frameReady) {
       playbackError = true
-      switching = false
       return
     }
     activeName = name
-    if (playing) {
+    browserStreamUrl = target.currentSrc || target.getAttribute('src') || targetSample.url
+    if (switchShouldResume) {
       await target.play().catch(() => {
         playing = false
         playbackError = true
       })
     }
-    switching = false
   }
 
   async function chooseScene(index: number) {
+    const switchingVideo = session?.mediaKind === 'Video'
+    const sequence = switchingVideo ? ++switchSequence : switchSequence
+    if (switchingVideo) switching = true
+    const shouldResume = playing || videoPlayer != null && !videoPlayer.paused
+    videoPlayer?.pause()
     activeScene = index
     playbackPosition = 0
     playing = false
     players = {}
+    videoPlayer = null
+    browserStreamUrl = ''
     imageZoom = 1
     imagePanX = 0
     imagePanY = 0
     await tick()
+    if (!switchingVideo || sequence !== switchSequence) return
+    const player = await waitForVideoPlayer(activeName, sequence)
+    const sample = sampleFor(activeName)
+    if (!player || !sample || !await waitForMetadata(player)) {
+      playbackError = true
+      switching = false
+      return
+    }
+    player.currentTime = sample.startSeconds
+    const frameReady = await waitForSeek(player)
+    if (!frameReady) playbackError = true
+    browserStreamUrl = player.currentSrc
+    switching = false
+    if (frameReady && shouldResume) await player.play().catch(() => (playbackError = true))
   }
 
   function updatePosition(event: Event) {
     const player = event.currentTarget as HTMLMediaElement
     const sample = sampleFor(activeName)
-    if (!sample || player !== players[activeName]) return
+    const activePlayer = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
+    if (!sample || pendingName !== null || player !== activePlayer) return
     playbackPosition = Math.max(0, Math.min(sample.durationSeconds, player.currentTime - sample.startSeconds))
     if (player.currentTime >= sample.startSeconds + sample.durationSeconds) {
       player.pause()
@@ -225,7 +375,7 @@
   }
 
   async function togglePlayback() {
-    const player = players[activeName]
+    const player = session?.mediaKind === 'Video' ? videoPlayer : players[activeName]
     const sample = sampleFor(activeName)
     if (!player || !sample) return
     if (!player.paused) {
@@ -245,6 +395,13 @@
 
   async function seek(position: number) {
     playbackPosition = position
+    if (session?.mediaKind === 'Video') {
+      const sample = sampleFor(activeName)
+      if (!videoPlayer || !sample) return
+      videoPlayer.currentTime = sample.startSeconds + position
+      if (!await waitForSeek(videoPlayer)) playbackError = true
+      return
+    }
     const waits: Promise<boolean>[] = []
     for (const variant of variants) {
       const player = players[variant.name]
@@ -260,12 +417,6 @@
   function classify(name: string, rating: CalibrationClassification) {
     if (revealed || playbackError || variants.find((variant) => variant.name === name)?.isOriginal) return
     ratings = { ...ratings, [name]: rating }
-  }
-
-  function dropRating(rating: CalibrationClassification, event: DragEvent) {
-    event.preventDefault()
-    const name = event.dataTransfer?.getData('text/plain')
-    if (name && variants.some((variant) => variant.name === name)) classify(name, rating)
   }
 
   function variantLabel(name: string): string {
@@ -288,7 +439,7 @@
   }
 
   async function applyResult() {
-    if (!session?.result?.recommendedQuality) return
+    if (session?.result?.recommendedQuality == null) return
     busy = true
     error = null
     try {
@@ -345,7 +496,20 @@
     if (session?.mediaKind === 'Audio') return `${result.quality} kbps`
     if (session?.mediaKind === 'Image') return t(i18n.m.calibration.image_quality_value, { quality: result.quality ?? '—' })
     const mode = result.qualityMode ?? 'CRF'
-    return `${mode} ${result.effectiveQuality ?? result.quality ?? '—'}`
+    return [result.profile, result.codec, result.container, `${mode} ${result.effectiveQuality ?? result.quality ?? '—'}`]
+      .filter(Boolean)
+      .join(' · ')
+  }
+
+  function diagnosticSummary(): string {
+    if (!activeDiagnostics) return ''
+    const identity = activeVariant?.isOriginal ? 'ORIGINAL' : activeDiagnostics.profile ?? activeName
+    const quality = activeDiagnostics.qualityMode && activeDiagnostics.effectiveQuality != null
+      ? `${activeDiagnostics.qualityMode} ${activeDiagnostics.effectiveQuality}`
+      : activeDiagnostics.requestedQuality != null
+        ? `quality ${activeDiagnostics.requestedQuality}`
+        : null
+    return [identity, activeDiagnostics.codec, activeDiagnostics.container, quality].filter(Boolean).join(' · ')
   }
 </script>
 
@@ -404,6 +568,14 @@
               {:else}<p class="mt-1 leading-relaxed">{i18n.m.calibration.hdr_unsupported}</p>{/if}
             </div>
           {/if}
+          <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
+            <span><strong class="block">Temporary stream verification</strong><span class="mt-0.5 block text-xs opacity-80">Uses one native video player and exposes its exact media resource, so the comparison will not be blind.</span></span>
+          </label>
+          <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <input class="mt-1" type="checkbox" bind:checked={ignoreActiveStreams} />
+            <span><strong class="block">Ignore active media streams for this check</strong><span class="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">Allows these disposable samples to run while Plex, Jellyfin, or Emby is playing. Normal optimisation work stays paused.</span></span>
+          </label>
           <button class="btn btn-primary mt-6 min-h-11" disabled={busy || !hdrReady} onclick={start}>
             {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}
           </button>
@@ -419,6 +591,23 @@
       <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-slate-900 dark:text-white">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-cyan-700 dark:text-cyan-300">{Math.round(session.preparationProgress * 100)}%</span></div>
       <div class="mt-5 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div class="h-full rounded-full bg-cyan-500 transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
+      <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+        <div class="mb-3 flex items-center gap-2">
+          <Icon name="gpu" class="h-4 w-4 text-slate-400" />
+          <div class="label">{i18n.m.dashboard.live_usage}</div>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
+          <UsageGraph
+            label="GPU"
+            data={activity.gpuHistory}
+            current={activity.metrics?.gpuPercent ?? null}
+            color="rgb(34,197,94)"
+            unavailable={gpuUnavailable}
+            detail={activity.metrics?.gpuEngine}
+          />
+        </div>
+      </div>
     </section>
   {:else if session.status === 'Failed'}
     <Banner kind="error">{session.error ?? i18n.m.calibration.failed}</Banner>
@@ -444,11 +633,30 @@
                 {#each variants as variant}
                   <img src={variant.samples[activeScene]?.url} alt={variant.isOriginal ? i18n.m.calibration.original_reference : t(i18n.m.calibration.image_alt, { slot: variant.name })} draggable="false" class="absolute inset-0 h-full w-full select-none object-contain" class:invisible={variant.name !== activeName} style:transform={`translate(${imagePanX}px, ${imagePanY}px) scale(${imageZoom})`} onerror={() => (playbackError = true)} />
                 {/each}
+              {:else if session.mediaKind === 'Video' && videoSample}
+                {#key videoSample.url}
+                  <!-- svelte-ignore a11y_media_has_caption disposable calibration clips have no generated caption track -->
+                  <video
+                    bind:this={videoPlayer}
+                    src={videoSample.url}
+                    preload="auto"
+                    playsinline
+                    controls={diagnosticsEnabled}
+                    class="absolute inset-0 h-full w-full object-contain"
+                    class:invisible={switching}
+                    onloadedmetadata={(event: Event) => registerVideoPlayer(videoName, event)}
+                    ontimeupdate={updatePosition}
+                    onplay={() => pendingName === null && (playing = true)}
+                    onpause={() => pendingName === null && (playing = false)}
+                    onerror={() => (playbackError = true)}
+                  ></video>
+                {/key}
+                {#if switching}<div class="absolute inset-0 flex items-center justify-center bg-black text-sm font-medium text-cyan-200" aria-live="polite">Loading exact video resource…</div>{/if}
               {:else}
                 {#each variants as variant}
-                  <svelte:element this={session.mediaKind === 'Audio' ? 'audio' : 'video'} src={variant.samples[activeScene]?.url} preload="auto" playsinline class="absolute inset-0 h-full w-full object-contain" class:invisible={variant.name !== activeName} onloadedmetadata={(event: Event) => registerPlayer(variant.name, event)} ontimeupdate={updatePosition} onplay={() => variant.name === activeName && (playing = true)} onpause={() => variant.name === activeName && (playing = false)} onerror={() => (playbackError = true)} />
+                  <audio src={variant.samples[activeScene]?.url} preload="auto" class="absolute inset-0 h-full w-full object-contain" class:invisible={variant.name !== activeName} onloadedmetadata={(event: Event) => registerAudioPlayer(variant.name, event)} ontimeupdate={updatePosition} onplay={() => variant.name === activeName && (playing = true)} onpause={() => variant.name === activeName && (playing = false)} onerror={() => (playbackError = true)}></audio>
                 {/each}
-                {#if session.mediaKind === 'Audio'}<div class="pointer-events-none flex flex-col items-center text-slate-300"><svg class="h-20 w-20 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l10-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm10-2a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span class="mt-3 text-sm">{i18n.m.calibration.audio_listening}</span></div>{/if}
+                <div class="pointer-events-none flex flex-col items-center text-slate-300"><svg class="h-20 w-20 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l10-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm10-2a3 3 0 11-6 0 3 3 0 016 0z" /></svg><span class="mt-3 text-sm">{i18n.m.calibration.audio_listening}</span></div>
               {/if}
             {/key}
           </div>
@@ -459,10 +667,28 @@
                 <button class="btn min-h-11 border-slate-700 bg-slate-900 text-slate-200" onclick={() => { imageZoom = 1; imagePanX = 0; imagePanY = 0 }}>{Math.round(imageZoom * 100)}%</button>
                 <button class="btn min-h-11 border-slate-700 bg-slate-900 text-slate-200" aria-label={i18n.m.calibration.zoom_in} onclick={() => zoom(0.25)}>+</button>
               </div>
-            {:else if activeSample}
+            {:else if activeSample && !(session.mediaKind === 'Video' && diagnosticsEnabled)}
               <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-cyan-500 text-slate-950 hover:bg-cyan-400" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-cyan-400" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-slate-400">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
+            {:else if activeSample}
+              <p class="text-center text-xs text-slate-400">Playback is controlled by the browser’s native video controls above.</p>
             {/if}
           </div>
+          {#if activeDiagnostics && activeSample}
+            <div class="border-t border-amber-800/70 bg-amber-950/40 px-4 py-3 text-amber-100" aria-live="polite">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <strong class="text-xs uppercase tracking-[0.16em] text-amber-300">Stream diagnostics</strong>
+                <span class="font-mono text-xs">{diagnosticSummary()}</span>
+              </div>
+              <dl class="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-[7rem_minmax(0,1fr)]">
+                <dt class="text-amber-300/80">Requested route</dt><dd class="break-all font-mono">{activeSample.url}</dd>
+                <dt class="text-amber-300/80">video.currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || 'Waiting for the video element…'}</dd>
+                <dt class="text-amber-300/80">Playback time</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · scene {activeScene + 1}</dd>
+              </dl>
+              {#if session.mediaKind === 'Video' && browserStreamUrl}
+                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-amber-600/70 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-900/60 focus-visible:outline-2 focus-visible:outline-amber-300" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">Open exact resource in browser</a>
+              {/if}
+            </div>
+          {/if}
         </section>
 
         {#if activeSample && activeSample.sampleCount > 1}
@@ -472,11 +698,11 @@
         {/if}
 
         <section class="card p-4 sm:p-5">
-          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-slate-900 dark:text-white">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.calibration.sample_deck_hint}</p></div><span class="text-xs text-slate-400">{i18n.m.calibration.keyboard_drag_hint}</span></div>
+          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-slate-900 dark:text-white">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.calibration.sample_deck_hint}</p></div><span class="text-xs text-slate-400">Select a sample, then rate it</span></div>
           <div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
-              <button class="group relative min-h-20 rounded-xl border-2 bg-white px-3 py-3 text-left transition-colors dark:bg-slate-900" class:border-cyan-500={activeName === variant.name} class:border-slate-200={activeName !== variant.name} class:dark:border-slate-700={activeName !== variant.name} class:bg-cyan-50={variant.isOriginal} class:dark:bg-slate-800={variant.isOriginal} disabled={switching} draggable={!revealed && !variant.isOriginal} ondragstart={(event) => !variant.isOriginal && event.dataTransfer?.setData('text/plain', variant.name)} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
+              <button class="group relative min-h-20 cursor-pointer touch-manipulation rounded-xl border-2 bg-white px-3 py-3 text-left transition-colors active:bg-slate-100 dark:bg-slate-900 dark:active:bg-slate-800" class:border-cyan-500={activeName === variant.name} class:border-slate-200={activeName !== variant.name} class:dark:border-slate-700={activeName !== variant.name} class:bg-cyan-50={variant.isOriginal} class:dark:bg-slate-800={variant.isOriginal} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
                 <span class="text-xl font-bold text-slate-900 dark:text-white">{variantLabel(variant.name)}</span>
                 {#if variant.isOriginal}<span class="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.reference_label}</span>{/if}
                 {#if ratings[variant.name]}<span class="mt-1 block truncate text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">{ratingLabel(ratings[variant.name]!)}</span>{/if}
@@ -499,7 +725,7 @@
             {:else}
               <div class="mt-3 space-y-2">
                 {#each ratingOptions as rating}
-                  <button class="min-h-12 w-full rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors" class:border-cyan-500={ratings[activeName] === rating} class:bg-cyan-50={ratings[activeName] === rating} class:text-cyan-800={ratings[activeName] === rating} class:border-slate-200={ratings[activeName] !== rating} class:dark:border-slate-700={ratings[activeName] !== rating} class:dark:bg-cyan-950={ratings[activeName] === rating} class:dark:text-cyan-200={ratings[activeName] === rating} disabled={playbackError} onclick={() => classify(activeName, rating)} ondragover={(event) => event.preventDefault()} ondrop={(event) => dropRating(rating, event)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
+                  <button class="min-h-12 w-full rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors" class:border-cyan-500={ratings[activeName] === rating} class:bg-cyan-50={ratings[activeName] === rating} class:text-cyan-800={ratings[activeName] === rating} class:border-slate-200={ratings[activeName] !== rating} class:dark:border-slate-700={ratings[activeName] !== rating} class:dark:bg-cyan-950={ratings[activeName] === rating} class:dark:text-cyan-200={ratings[activeName] === rating} disabled={playbackError} onclick={() => classify(activeName, rating)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
                 {/each}
               </div>
             {/if}
@@ -509,11 +735,22 @@
           <section class="card overflow-hidden">
             <div class="border-b border-slate-200 p-5 dark:border-slate-700"><p class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-slate-950 dark:text-white">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
             <div class="divide-y divide-slate-100 dark:divide-slate-800">
-              {#each session.result.variants as variant}<div class="flex items-center gap-3 px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}><strong class="w-16 text-slate-900 dark:text-white">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span>{/if}</div>{/each}
+              {#each session.result.variants as variant}
+                <div class="px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}>
+                  <div class="flex items-center gap-3"><strong class="w-16 text-slate-900 dark:text-white">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span>{/if}</div>
+                  {#if variant.vmaf}
+                    <div class="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 font-mono text-[11px] tabular-nums dark:border-slate-700 dark:bg-slate-700" title={[variant.vmaf.modelVersion, variant.vmaf.preprocessing, `${variant.vmaf.measuredSamples}/${variant.vmaf.totalSamples} scenes measured`].filter(Boolean).join(' · ')}>
+                      <span class="bg-slate-50 px-2 py-1.5 text-cyan-700 dark:bg-slate-900 dark:text-cyan-300">VMAF H {vmafScore(variant.vmaf.harmonicMean)}</span>
+                      <span class="bg-slate-50 px-2 py-1.5 text-slate-600 dark:bg-slate-900 dark:text-slate-300">P5 {vmafScore(variant.vmaf.fifthPercentile)}</span>
+                      <span class="bg-slate-50 px-2 py-1.5 text-slate-600 dark:bg-slate-900 dark:text-slate-300">min {vmafScore(variant.vmaf.minimum)}</span>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
             </div>
             <div class="p-5">
               {#if session.result.recommendedQuality !== null}
-                <p class="text-sm text-slate-600 dark:text-slate-400">{i18n.m.calibration.recommendation}: <strong class="text-slate-900 dark:text-white">{session.mediaKind === 'Audio' ? `${session.result.recommendedQuality} kbps` : session.mediaKind === 'Image' ? t(i18n.m.calibration.image_quality_value, { quality: session.result.recommendedQuality }) : `${session.result.qualityMode ?? 'CRF'} ${session.result.effectiveQuality ?? session.result.recommendedQuality}`}</strong></p>
+                <p class="text-sm text-slate-600 dark:text-slate-400">{i18n.m.calibration.recommendation}: <strong class="text-slate-900 dark:text-white">{session.mediaKind === 'Audio' ? `${session.result.recommendedQuality} kbps` : session.mediaKind === 'Image' ? t(i18n.m.calibration.image_quality_value, { quality: session.result.recommendedQuality }) : [session.result.recommendedProfile, session.result.encoder, `${session.result.qualityMode ?? 'CRF'} ${session.result.effectiveQuality ?? session.result.recommendedQuality}`].filter(Boolean).join(' · ')}</strong></p>
                 {#if session.result.estimatedSavingPercent !== null}<p class="mt-1 text-sm text-slate-600 dark:text-slate-400">{i18n.m.calibration.estimated_saving}: <strong>{session.result.estimatedSavingPercent}%</strong></p>{/if}
                 <button class="btn btn-primary mt-5 min-h-12 w-full" disabled={busy || session.status === 'Applied'} onclick={applyResult}>{session.status === 'Applied' ? i18n.m.calibration.applied : i18n.m.calibration.apply}</button>
               {:else}<p class="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{i18n.m.calibration.keep_current}</p>{/if}

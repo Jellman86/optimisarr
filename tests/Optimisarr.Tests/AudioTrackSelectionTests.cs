@@ -51,7 +51,9 @@ public class AudioTrackSelectionTests
     [InlineData("zxx")]
     [InlineData("mul")]
     [InlineData("qaa")]
+    [InlineData("qqq")]
     [InlineData("qtz")]
+    [InlineData("afa")]
     [InlineData("en-US")]
     [InlineData("not-a-language")]
     public void Never_removes_a_track_whose_language_is_unknown(string? tag)
@@ -96,7 +98,7 @@ public class AudioTrackSelectionTests
     }
 
     [Fact]
-    public void Unrecognised_kept_codes_match_only_their_exact_tag()
+    public void Recognised_iso_639_2_codes_without_a_two_letter_form_are_supported()
     {
         var removals = AudioTrackSelection.SelectRemovals(
             new string?[] { "tlh", "eng" }, new[] { "tlh" });
@@ -114,13 +116,22 @@ public class AudioTrackSelectionTests
     }
 
     [Fact]
+    public void A_partly_invalid_stored_list_disables_the_entire_destructive_rule()
+    {
+        // A legacy/manual database value must not be weakened from "eng + something unknown"
+        // into "eng only", which could authorise removal the operator never intended.
+        Assert.Empty(TrackLanguages.ParseLanguageList("eng, qqq"));
+        Assert.Empty(TrackLanguages.ParseLanguageList("eng, afa"));
+    }
+
+    [Fact]
     public void Normalises_a_valid_kept_language_list_for_storage()
     {
         var valid = TrackLanguages.TryNormaliseLanguageList(
-            " ENG, jpn, eng ", out var normalised);
+            " EN, jpn, eng, fre, ace ", out var normalised);
 
         Assert.True(valid);
-        Assert.Equal("eng, jpn", normalised);
+        Assert.Equal("eng, jpn, fra, ace", normalised);
     }
 
     [Fact]
@@ -136,6 +147,10 @@ public class AudioTrackSelectionTests
     [InlineData("english")]
     [InlineData("en1")]
     [InlineData(",,,")]
+    [InlineData("qqq")]
+    [InlineData("qaa")]
+    [InlineData("afa")]
+    [InlineData("und")]
     public void Rejects_a_malformed_kept_language_list(string value)
     {
         Assert.False(TrackLanguages.TryNormaliseLanguageList(value, out _));

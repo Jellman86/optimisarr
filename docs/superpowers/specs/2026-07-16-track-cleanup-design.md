@@ -51,9 +51,11 @@ rules. Otherwise it is skipped with an explicit reason:
   skipped until a re-probe captures them (same job-time re-probe pattern the
   audio work established).
 
-**Library form:** when this profile is selected and both kept-language fields
-are empty, show an inline hint that the profile will do nothing until at least
-one field is set. No hard validation — save is allowed.
+**Library form:** encode, remux, and track cleanup are mutually exclusive
+processing modes. Track cleanup hides controls that cannot affect its narrow
+stream-copy contract. When selected with both kept-language fields empty, it
+shows an inline hint that the profile will do nothing until at least one field
+is set. No hard validation — save is allowed.
 
 ## 2. `KeepSubtitleLanguages` — a per-library rule for all profiles
 
@@ -67,8 +69,12 @@ applies to any video job on any profile, exactly as the audio rule does.
 table/matching out of `AudioTrackSelection` rather than duplicating it.
 Safety semantics differ deliberately:
 
-- A subtitle track whose language is unknown (`und`/`zxx`/`mul`/untagged/
-  private-use) is **never** removed — same as audio.
+- Only a positively registered individual ISO 639 language authorises removal.
+  An unknown, malformed, unregistered, collective (`afa`), special-purpose
+  (`und`/`zxx`/`mul`/`mis`), untagged, or private-use language is **never**
+  removed — same as audio. Stored rules are atomic: if any entry is not
+  recognised, the entire rule becomes a safe no-op rather than silently
+  broadening deletion.
 - **No** keep-at-least-one-match guard: subtitles are optional streams, so if a
   file's only subtitles are all in non-kept languages they are all removed and
   the file ends with zero subtitle tracks. (Audio keeps its guard: a file
@@ -80,8 +86,10 @@ Safety semantics differ deliberately:
 - `MediaFile` gains a `SubtitleLanguages` ordered-summary column
   (+ EF migration `AddKeepSubtitleLanguages`, which also adds the library's
   `KeepSubtitleLanguages` column). Scans clear it when a file changes.
-- A job whose row predates subtitle-language capture re-probes the source once
-  at job time.
+- The migration requeues already-probed video rows known to contain subtitles.
+- Every job governed by a kept-language rule freshly probes the source at
+  dispatch time. A failed probe stops before FFmpeg; cached inventory is never
+  treated as authority for destructive stream selection.
 
 **Command building:** `FfmpegCommandBuilder` adds explicit `-map -0:s:N`
 exclusions alongside the existing `-map -0:a:N` audio exclusions.
@@ -95,9 +103,11 @@ for removable audio tracks.
 
 - The subtitle-retention gate becomes removal-aware like the audio gate:
   the output must have **exactly** original-minus-planned subtitle tracks, so
-  an encode that accidentally drops an extra stream still fails.
+  an encode that accidentally drops an extra stream still fails. Known
+  retained language identities are compared positionally so removing the wrong
+  stream cannot pass merely because the final count is correct.
 - For `TrackCleanup` jobs, verification additionally confirms the output
-  container matches the source container and the video/audio codecs are
+  container matches the source container and retained video/audio codecs are
   unchanged (stream copy produced what it promised).
 - The size-saving gate is unchanged: removing a track always shrinks the file,
   so `output < original` holds.

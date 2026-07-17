@@ -22,19 +22,29 @@ public static class AudioTrackSelection
             return Array.Empty<int>();
         }
 
-        var kept = keepLanguages.Select(TrackLanguages.Canonicalise)
+        var kept = keepLanguages
+            .Select(language => TrackLanguages.TryCanonicaliseKnown(language, out var canonical)
+                ? canonical
+                : null)
+            .Where(language => language is not null)
+            .Select(language => language!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (kept.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
 
         var removals = new List<int>();
         var anyKeptMatch = false;
         for (var index = 0; index < trackLanguages.Count; index++)
         {
-            if (TrackLanguages.IsUnknown(trackLanguages[index]))
+            if (!TrackLanguages.TryCanonicaliseKnown(trackLanguages[index], out var trackLanguage))
             {
                 continue;
             }
 
-            if (kept.Contains(TrackLanguages.Canonicalise(trackLanguages[index]!)))
+            if (kept.Contains(trackLanguage))
             {
                 anyKeptMatch = true;
             }

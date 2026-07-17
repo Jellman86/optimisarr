@@ -13,6 +13,7 @@ public sealed record MediaProbeResult(
     bool Success,
     string? Container,
     double? DurationSeconds,
+    double? VideoDurationSeconds,
     string? VideoCodec,
     int? Width,
     int? Height,
@@ -44,7 +45,7 @@ public sealed record MediaProbeResult(
     string? Error)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
+        new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
             0, 0, Array.Empty<string?>(), false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, null, error);
@@ -166,6 +167,7 @@ public sealed class MediaProbeService
         }
 
         string? videoCodec = null;
+        double? videoDuration = null;
         int? width = null;
         int? height = null;
         int? frameCount = null;
@@ -217,6 +219,7 @@ public sealed class MediaProbeService
                             break;
                         }
                         videoCodec = codecName;
+                        videoDuration = ReadDurationSeconds(stream);
                         if (stream.TryGetProperty("width", out var w) && w.TryGetInt32(out var widthValue))
                         {
                             width = widthValue;
@@ -301,6 +304,7 @@ public sealed class MediaProbeService
             true,
             container,
             duration,
+            videoDuration,
             videoCodec,
             width,
             height,
@@ -436,6 +440,45 @@ public sealed class MediaProbeService
         && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+
+    // Container duration can be extended by an encoded audio frame or codec delay. Keep the
+    // picture stream's own duration separately so short calibration clips are judged against the
+    // video window the user will actually compare, rather than harmless audio/container padding.
+    private static double? ReadDurationSeconds(JsonElement stream)
+    {
+        if (stream.TryGetProperty("duration", out var duration))
+        {
+            var text = duration.ValueKind == JsonValueKind.String ? duration.GetString() : duration.GetRawText();
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                && seconds >= 0)
+            {
+                return seconds;
+            }
+        }
+
+        if (stream.TryGetProperty("duration_ts", out var durationTicks)
+            && long.TryParse(
+                durationTicks.ValueKind == JsonValueKind.String ? durationTicks.GetString() : durationTicks.GetRawText(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var ticks)
+            && ReadRational(stream, "time_base") is { } timeBase
+            && timeBase > 0)
+        {
+            return ticks * timeBase;
+        }
+
+        if (stream.TryGetProperty("tags", out var tags)
+            && tags.ValueKind == JsonValueKind.Object
+            && tags.TryGetProperty("DURATION", out var taggedDuration)
+            && taggedDuration.ValueKind == JsonValueKind.String
+            && TimeSpan.TryParse(taggedDuration.GetString(), CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed.TotalSeconds;
+        }
+
+        return null;
+    }
 
     private static bool? DetectVariableFrameRate(JsonElement stream)
     {

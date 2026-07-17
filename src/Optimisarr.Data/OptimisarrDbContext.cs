@@ -88,6 +88,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(job => job.VideoEncoder).HasMaxLength(64);
             entity.Property(job => job.EnqueueReason).HasMaxLength(512);
             entity.Property(job => job.VideoQualityMode).HasMaxLength(16);
+            entity.Property(job => job.RequestedRuleProfile).HasConversion<string>().HasMaxLength(32);
 
             // Deleting a media file (e.g. via its library) removes its jobs too.
             entity.HasOne(job => job.MediaFile)

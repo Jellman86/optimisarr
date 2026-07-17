@@ -11,17 +11,27 @@ public static class RuleResolver
     {
         var settings = RuleProfileDefaults.For(profile);
 
+        // Track cleanup is a deliberately narrow, lossless contract. Do not let overrides left
+        // behind by a previous encoding profile silently turn it into a transcode, remux, resize,
+        // HDR exclusion, or media-type conversion. Only path exclusions and the two language
+        // policies are relevant to this mode.
+        if (profile == Domain.RuleProfile.TrackCleanup)
+        {
+            return settings with
+            {
+                ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+                KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
+                KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages
+            };
+        }
+
         return settings with
         {
             MinFileSizeBytes = overrides.MinFileSizeBytes ?? settings.MinFileSizeBytes,
             MaxHeight = overrides.MaxHeight ?? settings.MaxHeight,
             ReencodeSameCodecAboveBytes = overrides.ReencodeSameCodecAboveBytes ?? settings.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = Normalise(overrides.TargetVideoCodec) ?? settings.TargetVideoCodec,
-            // TrackCleanup's promise is "container unchanged", so a per-library container
-            // override (e.g. left over from a previous profile) must not reintroduce a remux.
-            TargetContainer = profile == Domain.RuleProfile.TrackCleanup
-                ? null
-                : Normalise(overrides.TargetContainer) ?? settings.TargetContainer,
+            TargetContainer = Normalise(overrides.TargetContainer) ?? settings.TargetContainer,
             Hdr = overrides.Hdr ?? settings.Hdr,
             OptimiseDolbyVision = overrides.OptimiseDolbyVision ?? settings.OptimiseDolbyVision,
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,

@@ -2,7 +2,11 @@ using Optimisarr.Api.Library;
 
 namespace Optimisarr.Api.Endpoints;
 
-internal sealed record StartCalibrationRequest(int MediaFileId, bool HdrPlaybackConfirmed = false);
+internal sealed record StartCalibrationRequest(
+    int MediaFileId,
+    bool HdrPlaybackConfirmed = false,
+    bool DiagnosticsEnabled = false,
+    bool IgnoreActiveStreams = false);
 internal sealed record CalibrationClassificationsRequest(
     IReadOnlyDictionary<string, string>? Classifications);
 
@@ -10,6 +14,12 @@ internal static class CalibrationEndpoints
 {
     public static void MapCalibrationEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/calibration", async (
+            BlindCalibrationService calibration,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await calibration.ListAsync(cancellationToken)))
+        .WithName("ListCalibrations");
+
         app.MapGet("/api/libraries/{id:int}/calibration/sources", async (
             int id,
             BlindCalibrationService calibration,
@@ -29,6 +39,8 @@ internal static class CalibrationEndpoints
                     id,
                     request.MediaFileId,
                     request.HdrPlaybackConfirmed,
+                    request.DiagnosticsEnabled,
+                    request.IgnoreActiveStreams,
                     cancellationToken));
             }
             catch (KeyNotFoundException exception)

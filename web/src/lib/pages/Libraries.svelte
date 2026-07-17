@@ -357,6 +357,13 @@
     return type === 'Photo' || type === 'Other'
   }
 
+  function setMediaType(type: string) {
+    form.mediaType = type
+    if (!isVideoType(type) && (form.ruleProfile === 'TrackCleanup' || form.ruleProfile === 'RemuxCleanup')) {
+      form.ruleProfile = 'ConservativeHevc'
+    }
+  }
+
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
   // Music, images for Photo, and everything for a mixed "Other" library that may hold any of them.
   const showVideoOptions = $derived(isVideoType(form.mediaType))
@@ -423,15 +430,19 @@
     }
   }
 
-  function toggleRemux(checked: boolean) {
-    // Ticking Remux switches off re-encoding; unticking returns to the Balanced default.
-    form.ruleProfile = checked ? 'RemuxCleanup' : 'ConservativeHevc'
-  }
+  type ProcessingMode = 'encode' | 'remux' | 'track-cleanup'
+  const processingMode = $derived<ProcessingMode>(
+    isTrackCleanupProfile ? 'track-cleanup' : isRemuxProfile ? 'remux' : 'encode',
+  )
 
-  function toggleTrackCleanup(checked: boolean) {
-    // Ticking Track cleanup switches off re-encoding *and* remuxing: the job only removes
-    // unwanted-language tracks. Unticking returns to the Balanced default.
-    form.ruleProfile = checked ? 'TrackCleanup' : 'ConservativeHevc'
+  function setProcessingMode(mode: ProcessingMode) {
+    form.ruleProfile = mode === 'track-cleanup'
+      ? 'TrackCleanup'
+      : mode === 'remux'
+        ? 'RemuxCleanup'
+        : encodeProfiles.includes(form.ruleProfile)
+          ? form.ruleProfile
+          : 'ConservativeHevc'
   }
 
   // The slider only picks a baseline profile; an explicit codec/container override in Advanced
@@ -755,7 +766,7 @@
   async function save() {
     error = null
     message = null
-    if (audioLanguageError) return
+    if (audioLanguageError || subtitleLanguageError || (!isNoEncodeProfile && vmafError)) return
     try {
       if (editingId === 0) {
         // Replace /new with the canonical editor URL so Back returns to the library list. The
@@ -883,7 +894,7 @@
           {#if showVideoOptions}<span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(form.ruleProfile)}</span>{/if}
         {/if}
         <div class="hidden items-center gap-2 sm:flex">
-          <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!vmafError}>
+          <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!subtitleLanguageError || (!isNoEncodeProfile && !!vmafError)}>
             <Icon name="check" class="h-4 w-4" />
             {i18n.m.libraries.save}
           </button>
@@ -940,7 +951,7 @@
     </div>
     <div>
       <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
-      <select id="lib-type" class="input" bind:value={form.mediaType}>
+      <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
         {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
       </select>
     </div>
@@ -956,41 +967,38 @@
     </div>
 
     {#if showVideoOptions}
-      <label class="flex cursor-pointer items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          class="checkbox mt-0.5"
-          checked={isRemuxProfile}
-          onchange={(e) => toggleRemux(e.currentTarget.checked)}
-        />
-        <span>
-          {i18n.m.libraries.remux_label}
-          <span class="mt-0.5 block text-xs font-normal text-slate-400">
-            {i18n.m.libraries.remux_hint}
-          </span>
-        </span>
-      </label>
-
-      <label class="mt-2 flex cursor-pointer items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          class="checkbox mt-0.5"
-          checked={isTrackCleanupProfile}
-          onchange={(e) => toggleTrackCleanup(e.currentTarget.checked)}
-        />
-        <span>
-          {i18n.m.libraries.track_cleanup_label}
-          <span class="mt-0.5 block text-xs font-normal text-slate-400">
-            {i18n.m.libraries.track_cleanup_hint}
-          </span>
-        </span>
-      </label>
+      <fieldset class="grid gap-2 sm:grid-cols-3">
+        <legend class="sr-only">{i18n.m.libraries.processing_mode}</legend>
+        {#each [
+          { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
+          { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
+          { value: 'track-cleanup', label: i18n.m.libraries.track_cleanup_label, hint: i18n.m.libraries.track_cleanup_hint },
+        ] as mode}
+          <label class="min-h-24 cursor-pointer rounded-lg border p-3 transition-colors {processingMode === mode.value ? 'border-cyan-500 bg-cyan-50/70 ring-1 ring-cyan-500 dark:bg-cyan-950/20' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'}">
+            <span class="flex items-start gap-2">
+              <input
+                type="radio"
+                name="processing-mode"
+                class="mt-0.5 accent-cyan-600"
+                value={mode.value}
+                checked={processingMode === mode.value}
+                onchange={() => setProcessingMode(mode.value as ProcessingMode)}
+              />
+              <span>
+                <span class="block text-sm font-medium text-slate-800 dark:text-slate-100">{mode.label}</span>
+                <span class="mt-1 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">{mode.hint}</span>
+              </span>
+            </span>
+          </label>
+        {/each}
+      </fieldset>
 
       {#if trackCleanupNeedsLanguages}
         <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">{i18n.m.libraries.track_cleanup_needs_languages}</p>
       {/if}
 
-      <div class="mt-3 {isNoEncodeProfile ? 'pointer-events-none opacity-40' : ''}">
+      {#if !isNoEncodeProfile}
+      <div class="mt-3">
         <input
           type="range"
           min="0"
@@ -999,7 +1007,6 @@
           class="w-full"
           aria-label={i18n.m.libraries.slider_aria}
           value={encodeStop}
-          disabled={isNoEncodeProfile}
           oninput={(e) => setEncodeStop(e.currentTarget.value)}
         />
         <!-- Every position is explicit: each stop shows the codec it resolves to, with the active
@@ -1014,6 +1021,7 @@
           {/each}
         </div>
       </div>
+      {/if}
 
       <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
         {isCustom
@@ -1085,7 +1093,7 @@
       </p>
     {/if}
 
-    {#if editingId && editingId > 0 && (!isRemuxProfile || showAudioOptions || showImageOptions)}
+    {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
       <div class="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
         <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
@@ -1104,7 +1112,7 @@
     {/if}
   </div>
 
-  {#if showVideoOptions && !isRemuxProfile}
+  {#if showVideoOptions && !isNoEncodeProfile}
     <section class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
       <div class="max-w-3xl">
         <div>
@@ -1242,6 +1250,7 @@
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.video}</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.video_desc}</p>
 
+        {#if !isTrackCleanupProfile}
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.target_codec_tip} /></label>
@@ -1316,6 +1325,7 @@
             />
           </div>
         </div>
+        {/if}
 
         <!-- Keep-languages track removal applies to copied and re-encoded audio alike; tracks
              with no language tag are never removed, and a file where nothing matches is left
@@ -1382,6 +1392,7 @@
           {/if}
         </div>
 
+        {#if !isTrackCleanupProfile}
         <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
              under an HEVC target). Off by default; the size-saving gate still protects the original. -->
         <div class="mt-4">
@@ -1433,10 +1444,11 @@
             </span>
           </label>
         </div>
+        {/if}
       </section>
       {/if}
 
-      {#if showAudioOptions}
+      {#if showAudioOptions && !isTrackCleanupProfile}
       <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
       <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio}</h3>
@@ -1476,7 +1488,7 @@
       </section>
       {/if}
 
-      {#if showImageOptions}
+      {#if showImageOptions && !isTrackCleanupProfile}
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.images}</h3>
@@ -1555,7 +1567,7 @@
       </section>
       {/if}
 
-      {#if showVideoOptions || showAudioOptions}
+      {#if !isTrackCleanupProfile && (showVideoOptions || showAudioOptions)}
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="py-6">
@@ -1585,7 +1597,7 @@
             </div>
             <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
           </div>
-          {#if showVideoOptions}
+          {#if showVideoOptions && !isTrackCleanupProfile}
           <div>
             <label class="label" for="lib-maxheight">{i18n.m.libraries.skip_above} <InfoTip text={i18n.m.libraries.skip_above_tip} /></label>
             <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
@@ -1593,10 +1605,12 @@
             </select>
           </div>
           {/if}
+          {#if !isTrackCleanupProfile}
           <div>
             <label class="label" for="lib-minsize">{i18n.m.libraries.min_file_size} <InfoTip text={i18n.m.libraries.min_file_size_tip} /></label>
             <input id="lib-minsize" class="input" type="number" min="0" placeholder={i18n.m.libraries.profile_default_ph} bind:value={minSizeMb} />
           </div>
+          {/if}
         </div>
         <div class="mt-4">
           <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip text={i18n.m.libraries.exclude_paths_tip} /></label>
@@ -1636,7 +1650,7 @@
   {/if}
   </div>
   <div class="-mx-5 mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
-    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!vmafError}>
+    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!subtitleLanguageError || (!isNoEncodeProfile && !!vmafError)}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
     </button>

@@ -510,6 +510,29 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Measure_only_vmaf_is_retained_as_evidence_without_becoming_a_gate()
+    {
+        var input = Healthy() with
+        {
+            QualityScores = new QualityScores(
+                82.5, 80.5, 42, null, null,
+                ModelVersion: "vmaf_v0.6.1",
+                VmafFifthPercentile: 65,
+                FrameCount: 288)
+        };
+
+        var report = VerificationEvaluator.Evaluate(
+            input,
+            VerificationPolicy.Default with { MeasureVmaf = true });
+
+        Assert.True(report.Passed);
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Perceptual quality (VMAF)");
+        Assert.True(report.Vmaf?.Measured);
+        Assert.Equal(80.5, report.Vmaf?.Scores?.VmafHarmonicMean);
+        Assert.Equal(42, report.Vmaf?.Scores?.VmafMin);
+    }
+
+    [Fact]
     public void Decode_failure_fails_verification()
     {
         var input = Healthy() with { DecodeSucceeded = false, DecodeError = "corrupt frame" };
@@ -1449,13 +1472,67 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Planned_subtitle_removal_fails_when_the_wrong_language_survives()
+    {
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 2,
+            OutputSubtitleTrackCount = 1,
+            SubtitleTracksRemoved = 1,
+            ExpectedSubtitleLanguages = ["eng"],
+            OutputSubtitleLanguages = ["fra"]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle tracks"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Subtitle languages"));
+    }
+
+    [Fact]
+    public void Planned_audio_removal_accepts_equivalent_bibliographic_language_aliases()
+    {
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 2,
+            OutputAudioTrackCount = 1,
+            AudioTracksRemoved = 1,
+            ExpectedAudioLanguages = ["ger"],
+            OutputAudioLanguages = ["deu"]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio languages"));
+    }
+
+    [Fact]
+    public void An_unknown_retained_language_is_not_guessed_during_verification()
+    {
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 2,
+            OutputSubtitleTrackCount = 1,
+            SubtitleTracksRemoved = 1,
+            ExpectedSubtitleLanguages = ["und"],
+            OutputSubtitleLanguages = [null]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle languages"));
+    }
+
+    [Fact]
     public void A_track_cleanup_output_must_keep_the_source_container()
     {
         var pass = Healthy() with
         {
             RequireContainerUnchanged = true,
             OriginalContainer = "matroska,webm",
-            OutputContainer = "matroska,webm"
+            OutputContainer = "matroska,webm",
+            ExpectedAudioCodecs = ["aac", "ac3"],
+            OutputAudioCodecs = ["aac", "ac3"]
         };
         var fail = pass with { OutputContainer = "mov,mp4,m4a,3gp,3g2,mj2" };
 
@@ -1463,6 +1540,23 @@ public sealed class VerificationEvaluatorTests
             Outcome(VerificationEvaluator.Evaluate(pass, VerificationPolicy.Default), "Container unchanged"));
         Assert.Equal(CheckOutcome.Failed,
             Outcome(VerificationEvaluator.Evaluate(fail, VerificationPolicy.Default), "Container unchanged"));
+    }
+
+    [Fact]
+    public void A_track_cleanup_output_must_not_reencode_retained_audio()
+    {
+        var input = Healthy() with
+        {
+            RequireContainerUnchanged = true,
+            OriginalContainer = "matroska,webm",
+            OutputContainer = "matroska,webm",
+            ExpectedAudioCodecs = ["truehd", "aac"],
+            OutputAudioCodecs = ["ac3", "aac"]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio codecs unchanged"));
     }
 
     [Fact]

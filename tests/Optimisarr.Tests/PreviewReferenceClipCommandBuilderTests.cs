@@ -1,4 +1,5 @@
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Tests;
 
@@ -68,6 +69,24 @@ public sealed class PreviewReferenceClipCommandBuilderTests
 
         Assert.True(VerificationClipLifecycle.DeleteReferenceAfterVerification(preview));
         Assert.False(VerificationClipLifecycle.DeleteReferenceAfterVerification(calibration));
+    }
+
+    [Fact]
+    public void Complete_video_preset_keeps_a_video_only_frame_aligned_reference()
+    {
+        var clip = QueueDispatcher.BuildVerificationClip(
+            isDisposable: true,
+            isCalibration: true,
+            MediaKind.Video,
+            clipSeconds: 12,
+            clipStartSeconds: 281,
+            "/work/calibration/session/job/candidate.mp4");
+
+        Assert.NotNull(clip);
+        Assert.True(clip.VideoOnly);
+        Assert.True(clip.RetainReference);
+        Assert.Equal(12, clip.Seconds);
+        Assert.Equal(281, clip.StartSeconds);
     }
 
     [Fact]
