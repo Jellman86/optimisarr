@@ -135,7 +135,10 @@ public sealed class PreviewService(
             job.VerificationReportJson);
     }
 
-    /// <summary>Cancels (if running), removes the preview job, and wipes its scratch output.</summary>
+    /// <summary>
+    /// Cancels (if running) and wipes preview media. Failed rows remain as diagnostic evidence;
+    /// every other preview row is removed.
+    /// </summary>
     public async Task<bool> DeleteAsync(int jobId, CancellationToken cancellationToken)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(
@@ -146,21 +149,34 @@ public sealed class PreviewService(
         }
 
         dispatcher.RequestCancel(jobId);
-        db.Jobs.Remove(job);
-        await db.SaveChangesAsync(cancellationToken);
 
         var dir = WorkOutputRoot.ForPreview(_workRoot, jobId);
+        var scratchRemoved = false;
         try
         {
             if (Directory.Exists(dir))
             {
                 Directory.Delete(dir, recursive: true);
             }
+            scratchRemoved = true;
         }
         catch (IOException)
         {
             // Best-effort: a file still held by a cancelling ffmpeg is reaped by the startup purge.
         }
+
+        if (DiagnosticJobRetention.ShouldRetain(job.Type, job.Status))
+        {
+            if (scratchRemoved)
+            {
+                job.WorkOutputPath = null;
+            }
+        }
+        else
+        {
+            db.Jobs.Remove(job);
+        }
+        await db.SaveChangesAsync(cancellationToken);
 
         return true;
     }

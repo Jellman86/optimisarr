@@ -147,17 +147,22 @@ public sealed class QueueDispatcher(
         }
     }
 
-    // Interactive comparisons are throwaway and must not survive a restart: drop their rows and
-    // scratch trees so abandoned previews/calibrations never consume work disk indefinitely.
+    // Interactive media is throwaway and must not survive a restart. Failed comparison rows are a
+    // small diagnostic audit, however, so retain those while removing every scratch tree.
     private async Task PurgeDisposableJobsAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
 
-        var disposable = await db.Jobs.Where(job => job.Type != JobType.Normal).ToListAsync(cancellationToken);
-        if (disposable.Count > 0)
+        var disposable = await db.Jobs
+            .Where(job => job.Type != JobType.Normal)
+            .ToListAsync(cancellationToken);
+        var discard = disposable
+            .Where(job => !DiagnosticJobRetention.ShouldRetain(job.Type, job.Status))
+            .ToList();
+        if (discard.Count > 0)
         {
-            db.Jobs.RemoveRange(disposable);
+            db.Jobs.RemoveRange(discard);
             await db.SaveChangesAsync(cancellationToken);
         }
 
@@ -1162,18 +1167,13 @@ public sealed class QueueDispatcher(
                 ImageQualityGateEnabled = false
             };
         }
-        var clip = work.IsDisposable && work.Spec.ClipSeconds is { } seconds
-            ? new VerificationClip(
-                seconds,
-                work.Spec.ClipStartSeconds,
-                Path.Combine(
-                    Path.GetDirectoryName(outputPath)!,
-                    work.Spec.Kind == MediaKind.Audio
-                        ? ".optimisarr-comparison-reference.flac"
-                        : ".optimisarr-comparison-reference.mkv"),
-                RetainReference: work.IsCalibration,
-                VideoOnly: false)
-            : null;
+        var clip = BuildVerificationClip(
+            work.IsDisposable,
+            work.IsCalibration,
+            work.Spec.Kind,
+            work.Spec.ClipSeconds,
+            work.Spec.ClipStartSeconds,
+            outputPath);
         // The VMAF pass is the long part of verification; surface its live progress on the same
         // job.Progress + SignalR channel the transcode uses. The reader already throttles to ~1%
         // steps, and both helpers serialise (job lock / hub), so fire-and-forget is safe here.
@@ -1240,8 +1240,14 @@ public sealed class QueueDispatcher(
                 return;
             }
 
-            var failed = outcome.Report.Checks.Where(check => check.Outcome == CheckOutcome.Failed);
+            var failed = outcome.Report.Checks
+                .Where(check => check.Outcome == CheckOutcome.Failed)
+                .ToList();
             var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
+            logger.LogWarning(
+                "Job {JobId} verification failed: {Failures}",
+                jobId,
+                string.Join("; ", failed.Select(check => $"{check.Name}: {check.Detail}")));
             await CompleteAsync(jobId, JobStatus.Failed, error: summary);
             await NotifyJobFailedAsync(jobId, summary);
             return;
@@ -1255,6 +1261,29 @@ public sealed class QueueDispatcher(
 
         await FinishSuccessfulJobAsync(jobId, outputPath, work, settings.DryRunMode);
     }
+
+    internal static VerificationClip? BuildVerificationClip(
+        bool isDisposable,
+        bool isCalibration,
+        MediaKind kind,
+        int? clipSeconds,
+        int? clipStartSeconds,
+        string outputPath) =>
+        isDisposable && clipSeconds is { } seconds
+            ? new VerificationClip(
+                seconds,
+                clipStartSeconds,
+                Path.Combine(
+                    Path.GetDirectoryName(outputPath)!,
+                    kind == MediaKind.Audio
+                        ? ".optimisarr-comparison-reference.flac"
+                        : ".optimisarr-comparison-reference.mkv"),
+                RetainReference: isCalibration,
+                // Candidate files still encode the complete preset. Only the unchanged original
+                // reference is video-only, which gives verification an exact picture window and
+                // enables the frame-alignment probe for long-GOP sources.
+                VideoOnly: isCalibration && kind == MediaKind.Video)
+            : null;
 
     private async Task QueueHigherQualityRetryAsync(int jobId, string outputPath)
     {

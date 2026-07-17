@@ -589,21 +589,37 @@ internal sealed class BlindCalibrationService(
         {
             dispatcher.RequestCancel(job.Id);
         }
-        db.Jobs.RemoveRange(jobs);
-        await db.SaveChangesAsync(cancellationToken);
 
         var root = Path.Combine(_workRoot, "calibration", id.ToString("N"));
+        var scratchRemoved = false;
         try
         {
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
             }
+            scratchRemoved = true;
         }
         catch (IOException)
         {
             // A cancelling ffmpeg may still hold a file; startup cleanup removes the subtree.
         }
+
+        var retainedFailures = jobs
+            .Where(job => DiagnosticJobRetention.ShouldRetain(job.Type, job.Status))
+            .ToList();
+        foreach (var failed in retainedFailures)
+        {
+            // Detach the audit row from the short-lived session. Its report/error remains available
+            // through /api/jobs/failures after the browser closes the lab.
+            failed.CalibrationSessionId = null;
+            if (scratchRemoved)
+            {
+                failed.WorkOutputPath = null;
+            }
+        }
+        db.Jobs.RemoveRange(jobs.Except(retainedFailures));
+        await db.SaveChangesAsync(cancellationToken);
         return true;
     }
 

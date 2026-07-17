@@ -515,7 +515,15 @@ export type FailureSample = {
   jobId: number
   mediaFileId: number
   relativePath: string | null
+  jobType: 'Normal' | 'Preview' | 'Calibration'
   errorMessage: string | null
+  verificationChecks: FailureVerificationCheck[]
+}
+
+export type FailureVerificationCheck = {
+  name: string
+  outcome: 'Passed' | 'Failed'
+  detail: string
 }
 
 export type FailureGroup = {

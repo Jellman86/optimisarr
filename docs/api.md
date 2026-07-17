@@ -315,7 +315,7 @@ when the verification report is for a sample rather than the whole file.
 | `POST` | `/api/calibration/{id}/classifications` | Classify every anonymous candidate and reveal its settings. Body: `{ "classifications": { "A": "Acceptable", "B": "VisiblyWorse", "…": "…" } }`. |
 | `POST` | `/api/calibration/{id}/apply` | Explicitly apply a recommended video preset or media quality to the library, if its relevant settings have not changed. |
 | `GET` | `/api/calibration/{id}/variants/{variant}/samples/{sampleIndex}/content` | Stream one scene or excerpt for `ORIGINAL` or anonymous candidate `A`–`E`. |
-| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its disposable jobs and scratch media. |
+| `DELETE` | `/api/calibration/{id}` | Cancel the session and remove its scratch media and non-failed disposable jobs. A failed job keeps only its diagnostic row until **Clear errored** removes it. |
 
 Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
@@ -327,7 +327,9 @@ quietest measured level. Still images use a lossless PNG reference and return `s
 
 All candidate and reference media lives under `/work/calibration`. These jobs are excluded from the
 normal queue and can never enter replacement. Active requests extend the session; an abandoned
-session expires after two hours, and all session state is discarded on restart. The original file
+session expires after two hours, and all session state is discarded on restart. Failed job rows
+retain only their error, verification report, and process diagnostics after the scratch media and
+session are removed, so the failure API remains useful after the lab closes. The original file
 is only read. A completed result does not alter settings: only the separate `apply` request may
 change the relevant library preset or quality, and it queues no media work.
 
@@ -350,7 +352,7 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/libraries/{id}/enqueue` | Enqueue eligible files for one library. |
 | `GET` | `/api/jobs` | List queue jobs. Optional filters `status`, `libraryId`, `category`, `since`, `until`, and paging `page`/`pageSize`. |
 | `GET` | `/api/jobs?status=Failed` | List jobs filtered by status. |
-| `GET` | `/api/jobs/failures` | Failure summary. Optional `libraryId` scopes it to one library. |
+| `GET` | `/api/jobs/failures` | Failure summary for normal work and failed preview/personal-quality comparisons. Optional `libraryId` scopes it to one library. Samples identify `jobType` and include structured failed `verificationChecks` (`name`, `outcome`, and measured `detail`). |
 | `GET` | `/api/jobs/{id}/log` | FFmpeg/process log for a failed job (plain text; `404` when none was captured). |
 | `GET` | `/api/jobs/{id}/artwork` | Proxied artwork for a job when a provider can resolve it. |
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
@@ -364,6 +366,12 @@ encoder, output size, verification result, verification report JSON, the
 classified failure category (when failed), and timestamps. When paging is used,
 the total number of matches before paging is returned in the `X-Total-Count`
 response header.
+
+Failed preview and personal-quality jobs never appear in the normal queue feed. Their scratch media
+is still deleted, but the small failed row remains available to `/api/jobs/failures`,
+`/api/jobs/{id}/log`, and the diagnostics bundle until `POST /api/jobs/clear?scope=errored` removes
+it. This makes an interactive failure diagnosable without retaining candidate media or reading the
+application database directly.
 
 Common job states include `Queued`, `Probing`, `Transcoding`, `Verifying`,
 `ReadyToReplace`, `Completed`, `Failed`, and `Cancelled`. A job is re-checked

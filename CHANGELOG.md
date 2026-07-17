@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **Video quality checks no longer mistake complete preset samples for truncated output, and their
+  failures remain diagnosable.** Candidate files still encode each preset's complete video,
+  container, and audio contract, while the unchanged original reference again uses the exact
+  video-only picture window required for duration, tail, and frame-alignment verification. Failed
+  preview and personal-quality jobs retain only their small database diagnostics after scratch
+  media is removed. The failure API and Queue failure view now identify comparison jobs and expose
+  every failed verification gate with its measured detail; the same detail is written to container
+  logs. **Clear errored** removes these retained diagnostic rows.
 - **Personal quality-check preparation now moves forward steadily and can explicitly bypass active
   playback.** The displayed preparation percentage keeps the highest measured session progress, so
   FFmpeg stage changes cannot make it jump backwards. A per-check, default-off option allows only
