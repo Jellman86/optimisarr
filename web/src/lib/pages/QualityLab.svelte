@@ -10,9 +10,11 @@
   } from '../api'
   import { formatDuration } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
+  import { activity } from '../stores/activity.svelte'
   import { router } from '../stores/ui.svelte'
   import Banner from '../components/Banner.svelte'
   import Icon from '../components/Icon.svelte'
+  import UsageGraph from '../components/UsageGraph.svelte'
 
   type Rating = CalibrationClassification | null
 
@@ -67,6 +69,9 @@
   const canReveal = $derived(!playbackError && candidateVariants.length > 0 && classifiedCount === candidateVariants.length)
   const revealed = $derived(session?.status === 'Revealed' || session?.status === 'Applied')
   const hdrReady = $derived(!selected?.isHdr || hdrDisplaySupported && hdrViewingConfirmed)
+  const gpuUnavailable = $derived(
+    activity.metrics && !activity.metrics.gpuSupported ? i18n.m.dashboard.gpu_unavailable : null,
+  )
 
   onMount(() => {
     hdrDisplaySupported = window.matchMedia('(video-dynamic-range: high)').matches
@@ -582,6 +587,23 @@
       <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-slate-900 dark:text-white">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-cyan-700 dark:text-cyan-300">{Math.round(session.preparationProgress * 100)}%</span></div>
       <div class="mt-5 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div class="h-full rounded-full bg-cyan-500 transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
+      <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+        <div class="mb-3 flex items-center gap-2">
+          <Icon name="gpu" class="h-4 w-4 text-slate-400" />
+          <div class="label">{i18n.m.dashboard.live_usage}</div>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <UsageGraph label="CPU" data={activity.cpuHistory} current={activity.metrics?.cpuPercent ?? null} color="rgb(56,189,248)" />
+          <UsageGraph
+            label="GPU"
+            data={activity.gpuHistory}
+            current={activity.metrics?.gpuPercent ?? null}
+            color="rgb(34,197,94)"
+            unavailable={gpuUnavailable}
+            detail={activity.metrics?.gpuEngine}
+          />
+        </div>
+      </div>
     </section>
   {:else if session.status === 'Failed'}
     <Banner kind="error">{session.error ?? i18n.m.calibration.failed}</Banner>

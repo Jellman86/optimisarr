@@ -48,6 +48,15 @@ function comparingSession(mediaKind: CalibrationMediaKind) {
   }
 }
 
+function preparingSession(mediaKind: CalibrationMediaKind) {
+  return {
+    id, libraryId: 1, mediaFileId: 7,
+    source: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv',
+    mediaKind, status: 'Preparing', preparationProgress: 0.42, preparationState: 'Working', error: null, result: null,
+    variants: [],
+  }
+}
+
 function revealedSession(mediaKind: CalibrationMediaKind) {
   const variantNames = namesFor(mediaKind)
   const qualities = mediaKind === 'Video' ? [null, 30, 24, 24, 20] : [null, 30, 27, 24, 21, 18]
@@ -76,7 +85,7 @@ function revealedSession(mediaKind: CalibrationMediaKind) {
   }
 }
 
-async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false) {
+async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false) {
   const currentLibrary = { ...library, mediaType: mediaKind === 'Audio' ? 'Music' : mediaKind === 'Image' ? 'Photo' : 'Film' }
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
@@ -88,7 +97,8 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', de
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
     if (path === '/api/libraries/1/access') return json(route, { path: currentLibrary.path, exists: true, readable: true, writable: true, ok: true, message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/', fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000, atomicWithWork: true, atomicWithQuarantine: true })
     if (path === '/api/libraries/1/calibration/sources') return json(route, [{ mediaFileId: 7, relativePath: mediaKind === 'Image' ? 'Example Photo.tiff' : mediaKind === 'Audio' ? 'Example Track.flac' : 'Example Film.mkv', durationSeconds: mediaKind === 'Image' ? 0 : 1_200, width: mediaKind === 'Audio' ? null : 1_920, height: mediaKind === 'Audio' ? null : 1_080, mediaKind, isHdr: false }])
-    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, comparingSession(mediaKind))
+    if (path === '/api/libraries/1/calibration' && route.request().method() === 'POST') return json(route, keepPreparing ? preparingSession(mediaKind) : comparingSession(mediaKind))
+    if (path === `/api/calibration/${id}` && route.request().method() === 'GET') return json(route, preparingSession(mediaKind))
     if (path.endsWith('/classifications') && route.request().method() === 'POST') return json(route, revealedSession(mediaKind))
     if (path.endsWith('/apply') && route.request().method() === 'POST') return json(route, { ...revealedSession(mediaKind), status: 'Applied', result: { ...revealedSession(mediaKind).result, applied: true } })
     if (path.includes('/content')) {
@@ -106,13 +116,22 @@ function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false) {
-  await mockApp(page, mediaKind, deferVideoContent)
+async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false) {
+  await mockApp(page, mediaKind, deferVideoContent, keepPreparing)
   await page.goto('/#/libraries/1/configure')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
   await page.getByRole('button', { name: 'Prepare blind samples' }).click()
 }
+
+test('sample preparation shows the same live CPU and GPU usage cards as active queue work', async ({ page }) => {
+  await openLab(page, 'Video', false, true)
+
+  await expect(page.getByRole('heading', { name: 'Preparing blind samples' })).toBeVisible()
+  await expect(page.getByText('42%', { exact: true })).toBeVisible()
+  await expect(page.getByText('CPU', { exact: true })).toBeVisible()
+  await expect(page.getByText('GPU', { exact: true })).toBeVisible()
+})
 
 test('quality check marks the original reference while keeping media-specific candidates anonymous', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })

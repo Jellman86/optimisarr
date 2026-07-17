@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- **Personal quality-check preparation now shows live CPU and GPU usage.** The preparation window
+  reuses the same rolling system-usage graphs as active work in the Queue hero, including the
+  detected GPU engine and the honest unavailable state when the host cannot expose GPU telemetry.
 - **Video quality checks no longer mistake complete preset samples for truncated output, and their
   failures remain diagnosable.** Candidate files still encode each preset's complete video,
   container, and audio contract, while the unchanged original reference again uses the exact
