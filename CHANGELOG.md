@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **Unrecoverable quality and size failures no longer burn repeated full encodes.** A VMAF-only
+  rejection still receives one encoder-aware higher-quality retry, but a second VMAF rejection now
+  auto-excludes the file. Size-saving failures—including combined size and VMAF failures—exclude
+  immediately because raising quality worsens size and silently lowering the configured quality would
+  violate the selected output. Other failures keep the conservative three-attempt threshold;
+  cancellations and worker-restart interruptions never count. Every exclusion is reasoned, reversible,
+  and leaves the original untouched.
 - **Short video quality samples no longer fail duration verification because of harmless audio
   padding.** Video calibration now compares the candidate picture stream's duration with the exact
   12-second reference window instead of using a container duration extended by AAC frames or codec

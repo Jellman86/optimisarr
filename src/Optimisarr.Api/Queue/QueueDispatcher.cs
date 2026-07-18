@@ -1063,7 +1063,12 @@ public sealed class QueueDispatcher(
     private const int AutoExcludeFailureThreshold = AutoExclusionPolicy.DefaultFailureThreshold;
 
     private async Task CompleteAsync(
-        int jobId, JobStatus status, double? progress = null, string? error = null, string? processLog = null)
+        int jobId,
+        JobStatus status,
+        double? progress = null,
+        string? error = null,
+        string? processLog = null,
+        ImmediateAutoExclusionReason immediateAutoExclusion = ImmediateAutoExclusionReason.None)
     {
         await _dbLock.WaitAsync(CancellationToken.None);
         try
@@ -1098,7 +1103,7 @@ public sealed class QueueDispatcher(
             job.FinishedAt = DateTimeOffset.UtcNow;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
-            await ApplyFailureTrackingAsync(db, job, status);
+            await ApplyFailureTrackingAsync(db, job, status, immediateAutoExclusion);
             await db.SaveChangesAsync();
         }
         finally
@@ -1122,10 +1127,15 @@ public sealed class QueueDispatcher(
     }
 
     // Keep a durable per-file failure tally so a file that keeps failing is excluded automatically
-    // (and shown on the Excluded tab) rather than offered forever; a successful encode clears the
-    // streak. Excluding here never touches the original — it only stops the file being re-offered.
+    // (and shown on the Excluded tab) rather than offered forever. Deterministic size/VMAF outcomes
+    // can exclude immediately; a successful encode clears the streak. Excluding here never touches
+    // the original — it only stops the file being re-offered.
     // Internal so the pure DB effect can be unit tested without standing up the whole dispatcher.
-    internal static async Task ApplyFailureTrackingAsync(OptimisarrDbContext db, Job job, JobStatus status)
+    internal static async Task ApplyFailureTrackingAsync(
+        OptimisarrDbContext db,
+        Job job,
+        JobStatus status,
+        ImmediateAutoExclusionReason immediateAutoExclusion = ImmediateAutoExclusionReason.None)
     {
         // Interactive comparison work is disposable evidence, not an optimisation attempt. A bad
         // preview/calibration clip must never count against, exclude, or clear the source file.
@@ -1145,7 +1155,8 @@ public sealed class QueueDispatcher(
             media.FailureCount += 1;
             media.UpdatedAt = DateTimeOffset.UtcNow;
 
-            if (AutoExclusionPolicy.ShouldExclude(media.FailureCount, AutoExcludeFailureThreshold)
+            if ((immediateAutoExclusion != ImmediateAutoExclusionReason.None
+                    || AutoExclusionPolicy.ShouldExclude(media.FailureCount, AutoExcludeFailureThreshold))
                 && !await db.Exclusions.AnyAsync(e => e.Path == media.Path))
             {
                 db.Exclusions.Add(new Exclusion
@@ -1153,7 +1164,16 @@ public sealed class QueueDispatcher(
                     Path = media.Path,
                     LibraryId = media.LibraryId,
                     RelativePath = media.RelativePath,
-                    Reason = $"Auto-excluded after {media.FailureCount} failed attempts",
+                    Reason = immediateAutoExclusion switch
+                    {
+                        ImmediateAutoExclusionReason.SizeSaving =>
+                            "Auto-excluded after the output failed the size-saving gate",
+                        ImmediateAutoExclusionReason.VmafAfterHigherQualityRetry =>
+                            "Auto-excluded after VMAF failed the higher-quality retry",
+                        ImmediateAutoExclusionReason.VmafAtMaximumQuality =>
+                            "Auto-excluded after VMAF failed at the maximum encoder quality",
+                        _ => $"Auto-excluded after {media.FailureCount} failed attempts"
+                    },
                     Source = ExclusionSource.RepeatedFailures
                 });
             }
@@ -1289,7 +1309,14 @@ public sealed class QueueDispatcher(
                 "Job {JobId} verification failed: {Failures}",
                 jobId,
                 string.Join("; ", failed.Select(check => $"{check.Name}: {check.Detail}")));
-            await CompleteAsync(jobId, JobStatus.Failed, error: summary);
+            await CompleteAsync(
+                jobId,
+                JobStatus.Failed,
+                error: summary,
+                immediateAutoExclusion: AutoExclusionPolicy.ImmediateReason(
+                    outcome.Report,
+                    work.VideoQuality?.RetryCount ?? 0,
+                    work.VideoQuality?.Effective));
             await NotifyJobFailedAsync(jobId, summary);
             return;
         }

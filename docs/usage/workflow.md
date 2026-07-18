@@ -171,9 +171,16 @@ Exclusions stop repeat failures from wasting time.
 
 ![Library Excluded tab showing an automatically excluded file after repeated failures](../images/optimisarr-library-excluded-dark.png)
 
-Files can be excluded manually from Queue, or automatically after repeated
-failures. Remove an exclusion only when you want the file to become eligible
-again.
+Files can be excluded manually from Queue, or automatically when another encode cannot safely recover:
+
+- a VMAF-only failure gets one higher-quality retry, then excludes if it still fails;
+- a size-saving failure excludes immediately rather than lowering the configured quality;
+- a combined size and VMAF failure excludes immediately because improving one would worsen the other;
+- other terminal failures exclude after three attempts, while cancellations and worker interruptions
+  do not count.
+
+The original is untouched, the recorded reason remains visible here, and every automatic exclusion is
+reversible. Remove one only when you want the file to become eligible again.
 
 ## 8. Replace and review Quarantine
 

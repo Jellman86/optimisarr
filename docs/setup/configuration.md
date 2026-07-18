@@ -163,8 +163,12 @@ HDR; preserving or tone-mapping it is an explicit library-profile choice.
 Encoder quality values are not assumed to be portable between implementations. Software uses the
 profile CRF directly; QSV ICQ, NVENC CQ and VA-API QP receive conservative family-specific headroom.
 The requested and effective values are stored with each job. When VMAF is the only failed gate,
-Optimisarr makes one automatic higher-quality retry; a remaining failure is shown in Queue with
-explicit higher-quality and same-settings retry actions.
+Optimisarr makes one automatic higher-quality retry. If that recovery still fails VMAF, the file is
+automatically excluded from future optimisation and remains reversible from the library's **Excluded**
+tab. A size-saving failure excludes immediately instead of silently lowering the configured quality;
+the same applies when size and VMAF both fail because higher quality would worsen size while lower
+quality would worsen VMAF. Other technical or transient failures retain the three-terminal-failure
+threshold. Cancelled work and jobs interrupted by a worker restart do not count toward exclusion.
 
 ## Rule profiles (presets)
 

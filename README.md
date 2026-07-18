@@ -68,7 +68,7 @@ no support SLA or promise of a release schedule.
   AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
   target codec** (e.g. a huge HEVC remux) above a size you set.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
-  job, or **automatically after repeated failures** — managed per library on an
+  job, or **automatically after an unrecoverable or repeated failure** — managed per library on an
   **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.
 - A **Dashboard** leading with a persistent lifetime **space-saved** total (resettable),
   what's in flight, and live CPU/GPU usage while a job encodes.
@@ -193,7 +193,10 @@ Model choice and measurement preparation are automatic: HDTV/4K selection, refer
 bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame
 subsampling reduce runtime; every-frame scoring remains the safest default. VMAF-only failures get
-one encoder-aware higher-quality retry, and the report records the effective quality and sampling context.
+one encoder-aware higher-quality retry, then auto-exclude if that recovery still misses the gate.
+An output that fails the size-saving gate auto-excludes immediately rather than silently lowering the
+configured quality; combined size and VMAF failures do the same because the safe recovery directions
+conflict. The report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the

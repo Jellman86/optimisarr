@@ -6,7 +6,7 @@ public enum ExclusionSource
     /// <summary>The operator explicitly excluded the file (e.g. from the Queue or Libraries page).</summary>
     Manual = 0,
 
-    /// <summary>Excluded automatically after repeated failures. Reserved for a later phase.</summary>
+    /// <summary>Excluded automatically after an unrecoverable or repeated failure.</summary>
     RepeatedFailures = 1
 }
 

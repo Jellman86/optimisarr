@@ -276,7 +276,10 @@ A file should only enter the queue when it passes all configured gates:
 - Codec/container/quality rules say optimisation is useful.
 - Library rule does not exclude path, resolution, HDR, codec, or size.
 - The file is not on the exclusion list — either added manually (e.g. from a stuck
-  job on the Queue) or automatically after repeated failures. Exclusions are
+  job on the Queue) or automatically after an unrecoverable or repeated failure. A VMAF-only
+  rejection gets one higher-quality retry; a remaining VMAF failure or any size-saving failure
+  excludes without another encode. Other terminal failures retain the three-attempt threshold,
+  while cancellations and worker interruptions do not count. Exclusions are
   durable (keyed by path) and reversible from the library's **Excluded** tab.
 
 ### Output verification
