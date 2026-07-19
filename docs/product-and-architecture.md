@@ -276,7 +276,10 @@ A file should only enter the queue when it passes all configured gates:
 - Codec/container/quality rules say optimisation is useful.
 - Library rule does not exclude path, resolution, HDR, codec, or size.
 - The file is not on the exclusion list — either added manually (e.g. from a stuck
-  job on the Queue) or automatically after repeated failures. Exclusions are
+  job on the Queue) or automatically after an unrecoverable or repeated failure. A VMAF-only
+  rejection gets one higher-quality retry; a remaining VMAF failure or any size-saving failure
+  excludes without another encode. Other terminal failures retain the three-attempt threshold,
+  while cancellations and worker interruptions do not count. Exclusions are
   durable (keyed by path) and reversible from the library's **Excluded** tab.
 
 ### Output verification
@@ -287,6 +290,9 @@ Before replacement, all required checks must pass:
 - ffprobe can parse it.
 - FFmpeg full decode returns success.
 - Duration delta is within tolerance.
+- The source picture stream reaches its declared container timeline; source corruption is reported
+  separately from an output-tail failure.
+- The output picture stream reaches the source picture stream's actual endpoint.
 - Required video stream exists.
 - Required audio streams are present or intentionally converted.
 - Required subtitle streams are present or intentionally converted.
@@ -298,6 +304,17 @@ long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
 segment-only; full queue jobs always verify against the complete original.
+Sampled VMAF places the independently encoded source and output on the source's measured frame
+cadence before trimming each window, preventing differing FFmpeg timebases from pairing adjacent
+frames at motion or scene changes.
+
+Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
+complete output contract of each library-slider preset, including codec, container, and audio rules.
+Its reference remains a stream copy of the original compressed frames;
+mid-file keyframe pre-roll is retained for correct decoding, excluded from the requested-duration
+verification baseline, and exposed only as an internal playback offset so the blinded slots begin on
+the same source frame. The reference is retained until session cleanup. Audio and image calibration
+use their lossless FLAC and PNG reference paths respectively.
 
 ### Replacement
 

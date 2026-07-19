@@ -4,6 +4,8 @@
 **/.vscode/
 **/TestResults/
 web/node_modules/
+web/test-results/
+web/playwright-report/
 src/Optimisarr.Api/wwwroot/
 config/
 .env

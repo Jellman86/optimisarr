@@ -141,7 +141,7 @@
   </div>
 {:else}
 <div
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
   role="button"
   tabindex="0"
   onclick={() => (minimized = true)}

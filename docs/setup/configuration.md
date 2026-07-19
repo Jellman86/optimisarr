@@ -138,7 +138,8 @@ excluding orientation, embedded previews, and stale raster dimensions from the o
 
 No libvmaf model or filter configuration is required in the UI. Optimisarr prepares
 both streams at the original's resolution with bicubic scaling, aligns their
-timebases and starting timestamps, normalises colour range and pixel format, and
+timebases and starting timestamps, resamples both onto the source's measured picture cadence before
+selecting sampled windows, normalises colour range and pixel format, and
 uses bounded automatic threading. It selects Netflix's `vmaf_v0.6.1` HDTV model
 for HD material and `vmaf_4k_v0.6.1` when either source axis reaches UHD. If a job
 intentionally converts HDR to SDR, the reference receives the same production
@@ -163,8 +164,14 @@ HDR; preserving or tone-mapping it is an explicit library-profile choice.
 Encoder quality values are not assumed to be portable between implementations. Software uses the
 profile CRF directly; QSV ICQ, NVENC CQ and VA-API QP receive conservative family-specific headroom.
 The requested and effective values are stored with each job. When VMAF is the only failed gate,
-Optimisarr makes one automatic higher-quality retry; a remaining failure is shown in Queue with
-explicit higher-quality and same-settings retry actions.
+Optimisarr makes one automatic higher-quality retry only after a real score was measured. If that
+recovery still produces a measured score below the VMAF gate, the file is
+automatically excluded from future optimisation and remains reversible from the library's **Excluded**
+tab. Missing or unusable VMAF evidence fails closed but cannot trigger that quality retry or immediate
+VMAF exclusion. A size-saving failure excludes immediately instead of silently lowering the configured quality;
+the same applies when size and VMAF both fail because higher quality would worsen size while lower
+quality would worsen VMAF. Other technical or transient failures retain the three-terminal-failure
+threshold. Cancelled work and jobs interrupted by a worker restart do not count toward exclusion.
 
 ## Rule profiles (presets)
 
@@ -209,6 +216,31 @@ and the original is untouched until every gate passes. Under the **Remux / clean
 preset, a file already in the right container but carrying removable foreign-language
 tracks becomes eligible for a fast stream-copy cleanup; re-encode presets strip tracks
 as part of the jobs they already run.
+
+**Keep subtitle languages** (Advanced options) works the same way for subtitle
+tracks, with one deliberate difference: subtitles are optional streams, so there is
+no keep-at-least-one guard. A track with no language tag is never removed, but if a
+file's subtitles are all in non-kept languages they are all removed and the file ends
+with none. Verification expects exactly the planned subtitle retention, so an encode
+that drops a stream beyond the plan still fails.
+
+Language removal is fail-closed. Optimisarr accepts only registered, individual ISO
+639 languages and stores their canonical ISO 639-2/T form (`en` → `eng`, `fre` →
+`fra`). Unknown, malformed, collective, special-purpose, untagged, and private-use
+values never authorise removal. If a legacy stored rule contains even one
+unrecognised entry, the whole rule becomes a no-op rather than silently becoming
+broader. Every governed job freshly probes the source before FFmpeg; if that proof
+fails, no stream-removal command is run.
+
+**Track cleanup** is a preset for libraries that should only lose unwanted tracks:
+it never re-encodes and never changes the container type (an `.mkv` stays `.mkv`, an
+`.mp4` stays `.mp4`). A file is eligible only when it has audio or subtitle tracks
+outside the library's kept languages; with neither kept-language field set, every
+file is skipped with a clear reason. Removing a track always rewrites the file —
+FFmpeg stream-copies every kept stream bit-identically into a new file, which then
+passes the usual verify-and-replace gates (including container, retained-language,
+and retained-audio-codec checks)
+before the original is touched.
 
 ## Per-library automation
 

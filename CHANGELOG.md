@@ -1,5 +1,202 @@
 # Changelog
 
+## 0.2.5 — 2026-07-19
+
+### Fixed
+
+- **Video verification now compares the same frames and identifies damaged sources honestly.**
+  Sampled VMAF places the source and output on the source's measured frame cadence before trimming,
+  preventing millisecond-versus-codec timebases from pairing adjacent pictures and producing false
+  zero scores at movement or cuts. Tail verification now compares the output with the source video's
+  actual packet endpoint and reports a source picture stream that ends early as **Source video
+  timeline**, rather than blaming the encode for the container's audio-only remainder. Unmeasured
+  VMAF evidence still fails closed, but no longer triggers a pointless higher-quality retry or an
+  immediate automatic exclusion.
+- **Personal quality-check clips with a non-zero media epoch no longer fail Duration.** The
+  verifier now compares the measured picture span with the exact calibration window instead of
+  mistaking an absolute end timestamp—or copied subtitle/attachment padding—for clip runtime.
+  Full-file jobs retain their existing container-duration check.
+- **The personal quality check is no longer part-English for translated installs.** Eleven strings
+  on that screen were hardcoded in the component instead of going through the locale files,
+  including the **Temporary stream verification** and **Ignore active media streams for this check**
+  options and the sample-deck instruction — so every non-English user saw them in English next to
+  correctly translated text. They now resolve through `i18n` and ship in all ten languages. The
+  locale audit only validates the locale files, so it could not catch strings that never reached
+  them.
+- **The personal quality check now has one name.** The page introduced itself as "Quality lab"
+  under an eyebrow reading "Personal quality check", while the control that opens it said a third
+  thing. The heading, the browser tab, the library card, and its button now all say **Personal
+  quality check**.
+- **Track cleanup no longer points at controls it hides.** Selecting "Only remove unwanted
+  audio/subtitle languages" warns that the preset does nothing until a keep-language rule is set —
+  but **Keep audio languages** and **Keep subtitle languages** lived inside the collapsed Advanced
+  drawer, so the warning referred to fields that were not on the page. They are now rendered
+  directly beneath that warning whenever track cleanup is selected, and stay in Advanced > Video for
+  the encode and remux modes that treat them as a refinement.
+
+### Changed
+
+- **The library configuration form is easier to scan.** Every top-level group is now named the way
+  the Advanced sections already were — **Library** for the name, path, and media type, and
+  **Automation** for the enabled/auto-optimise/auto-replace switches, which previously floated
+  between the quality policy and Advanced with no heading of their own. Save and Cancel appeared
+  twice on the same screen, in the header and again at the foot of the form; there is now one pair,
+  in an action bar that stays pinned to the bottom of the viewport so Save remains reachable when
+  Advanced options make the form several screens tall. The perceptual-quality control no longer
+  repeats itself in a paragraph above and below the picker, the "Custom" stop on the quality slider
+  no longer renders a dash where a codec would go, and the calibration card, its button, and its
+  tooltip all now call the feature **Personal quality check** instead of alternating with "Blind
+  quality calibration". The gap between top-level groups was three different values (16/20/24px)
+  with dividers on some boundaries and not others; it is now one rhythm, matching the uniform
+  spacing the Advanced sections already used. The three processing-mode cards no longer stretch to
+  the height of the longest one, which had left the two shorter cards with a block of dead space.
+  No rule, default, or safety gate changed.
+
+### Fixed
+
+- **Unrecoverable quality and size failures no longer burn repeated full encodes.** A VMAF-only
+  rejection still receives one encoder-aware higher-quality retry, but a second VMAF rejection now
+  auto-excludes the file. Size-saving failures—including combined size and VMAF failures—exclude
+  immediately because raising quality worsens size and silently lowering the configured quality would
+  violate the selected output. Other failures keep the conservative three-attempt threshold;
+  cancellations and worker-restart interruptions never count. Every exclusion is reasoned, reversible,
+  and leaves the original untouched.
+- **Short video quality samples no longer fail duration verification because of harmless audio
+  padding.** Video calibration now compares the candidate picture stream's duration with the exact
+  12-second reference window instead of using a container duration extended by AAC frames or codec
+  delay. Decode, timestamp, tail-integrity, audio-retention, and container checks still run against
+  the complete preset output.
+- **Personal quality-check preparation now shows live CPU and GPU usage.** The preparation window
+  reuses the same rolling system-usage graphs as active work in the Queue hero, including the
+  detected GPU engine and the honest unavailable state when the host cannot expose GPU telemetry.
+- **Video quality checks no longer mistake complete preset samples for truncated output, and their
+  failures remain diagnosable.** Candidate files still encode each preset's complete video,
+  container, and audio contract, while the unchanged original reference again uses the exact
+  video-only picture window required for duration, tail, and frame-alignment verification. Failed
+  preview and personal-quality jobs retain only their small database diagnostics after scratch
+  media is removed. The failure API and Queue failure view now identify comparison jobs and expose
+  every failed verification gate with its measured detail; the same detail is written to container
+  logs. **Clear errored** removes these retained diagnostic rows.
+- **Personal quality-check preparation now moves forward steadily and can explicitly bypass active
+  playback.** The displayed preparation percentage keeps the highest measured session progress, so
+  FFmpeg stage changes cannot make it jump backwards. A per-check, default-off option allows only
+  that disposable calibration session to start while Plex, Jellyfin, or Emby reports active
+  playback; normal optimisation jobs remain paused behind the media-activity safety gate.
+- **Video quality checks now test the real preset outputs and sample selection responds on the
+  first click.** The video lineup is the library slider's four complete presets—Compatibility
+  H.264/MP4, Balanced HEVC/MP4, Efficiency AV1/MKV, and Scott's bundle—instead of five CRF values
+  encoded through one codec/container. Applying a result selects that preset and clears stale
+  codec/container overrides without queueing normal work. Candidate cards no longer combine drag
+  and click gestures or discard a click while another stream is seeking; the latest selection wins
+  while frame alignment remains fail-closed. A temporary, opt-in-at-the-API diagnostic mode is on
+  by default in the lab. Verification mode now uses one native browser video player and replaces
+  that element's media resource on every selection instead of keeping several hidden players. It
+  exposes the element's real `currentSrc`, native controls, and a direct link that opens that exact
+  resource in a browser tab, while retaining the aligned seek before the replacement frame appears.
+- **Personal quality checks are now finite, reference-led, frame-aligned, and usable for a complete
+  session.** The former repeated A/B/X trial loop is replaced by one marked original reference and
+  shuffled anonymous candidates. Only the candidates require classification, so each rating
+  has a stable quality baseline without forcing a worst-to-best ranking. Video switching waits for
+  the destination stream to seek to the same source frame before
+  it becomes visible or resumes, removing the timing jump that could reveal a version, and playback
+  continues across all scenes instead of stopping after the first comparison.
+- **Personal quality checks now explain queue waits instead of appearing frozen at 0%.** If all
+  processing slots are occupied, calibration preparation shows an indeterminate waiting state and
+  says it will start automatically. Once a worker is available, the panel returns to real sample
+  preparation progress; no running encode is interrupted or reordered unsafely.
+- **Personal quality checks are now reachable from Music and Photo libraries.** The audio and still-image
+  comparison pipelines were available, but their per-library entry point was incorrectly nested
+  inside the video preset controls. Saved Music and Photo libraries now show the same **Personal
+  quality check** action as Film, TV, and mixed libraries.
+- **Blind video checks no longer reject healthy samples as too short.** Some long-GOP TV and film
+  sources can only be stream-copied from the keyframe immediately before the requested scene. That
+  harmless decode pre-roll made a 12-second original-side clip appear longer than its encoded match,
+  so every quality level failed the Duration and Tail integrity gates. Optimisarr now verifies the
+  requested 12-second picture window, records the hidden pre-roll, and starts original playback at
+  the matching frame. Original references
+  remain available until the disposable session is closed or expires instead of being removed as
+  soon as verification finishes. One accessible shared timeline now controls every blind stream,
+  so native container duration cannot reveal which slot carries hidden decode pre-roll. No source
+  file is changed.
+
+### Added
+
+- **Temporary stream verification is now opt-in.** Personal video quality checks start blind by
+  default; native player controls and exact-resource diagnostics appear only when explicitly enabled.
+- **Revealed video quality checks now include VMAF evidence in both the lab and API.** Every preset
+  is measured across all three scenes without turning VMAF into a hidden pass/fail gate or allowing
+  it to override the user's blind ratings. The result shows harmonic mean, worst-scene fifth
+  percentile, and lowest frame; the session API also returns the complete per-scene measurements,
+  model, preprocessing, frame counts, and explicit measurement errors. A new authenticated active-
+  session endpoint makes current results discoverable without knowing their session IDs.
+- **Track cleanup profile.** A new rule profile that only removes audio/subtitle tracks outside
+  the library's kept languages — no re-encode, no container change (an `.mkv` stays `.mkv`).
+  Every kept stream is copied bit-identically; a file with nothing to remove is skipped with a
+  clear reason, and the library form presents encode, remux, and track cleanup as three exclusive
+  processing modes. Irrelevant encode, VMAF, audio-only, image, and eligibility controls are hidden
+  in cleanup mode. Verification additionally confirms the output container and retained audio
+  codecs match the source.
+  Migration `AddTrackCleanupSupport`.
+- **Per-library "Keep subtitle languages" removes unwanted subtitle tracks.** Mirrors the audio
+  rule on every profile: comma-separated ISO 639 codes, `-map -0:s:N` exclusions, unknown-language
+  tracks never removed, common spellings of the same language match each other. Only positively
+  registered individual ISO 639 languages may authorise removal; malformed, unregistered,
+  collective, special-purpose, and private-use identifiers fail closed and keep the track. A
+  partly invalid stored rule disables the whole rule rather than silently broadening deletion.
+  One deliberate
+  difference from audio: subtitles are optional streams, so there is no keep-at-least-one guard —
+  an all-foreign subtitle set is removed entirely. The probe now records each subtitle track's
+  language (rows probed before the upgrade are queued for background re-probing), and every
+  destructive dispatch requires a fresh successful source probe. The subtitle-retention gate
+  expects exactly the planned removal and verifies the identities of retained known-language
+  tracks, so an encode that drops or swaps the wrong stream still fails.
+- **The queue shows why each job is queued.** Every job records its eligibility reason at enqueue
+  time (e.g. `h264 → hevc`, `Remove 2 audio track(s) (fra, deu) not in the kept languages`) and
+  the Queue page shows it on the active-job card and each row. Track-removal reasons name the
+  languages being removed, not just counts.
+- **A full-page personal quality lab for video.** A saved video library can prepare short,
+  disposable samples from the beginning, middle, and end of a representative file, then compare a
+  marked original reference and four shuffled anonymous candidates covering the library's real
+  preset slider. Candidate settings and estimated sizes remain hidden until all four are
+  classified as Indistinguishable, Acceptable, or Visibly worse. One large synchronized viewer,
+  scene controls, and real browser fullscreen support close inspection without a 25-trial loop. The
+  result recommends the most compressed acceptable setting but never claims encodes are equivalent.
+  The original is read-only, scratch clips
+  are removed when the panel closes, after being abandoned for two hours, or when the app restarts;
+  nothing enters the normal queue or replacement path, and the suggested preset changes the
+  library only after an explicit Apply.
+  Native playback fails closed when the browser cannot decode a candidate. HDR is available only
+  when the library preserves HDR and the browser reports an HDR-capable display path; the user must
+  also confirm that the normal viewing display is actually presenting HDR. Dolby Vision remains
+  unavailable because a re-encode cannot safely retain its dynamic metadata. Content-complexity
+  source guidance and metric correlation remain on the roadmap.
+- **A level-matched blind audio check.** Music and mixed libraries can now calibrate their saved
+  Opus, AAC, or MP3 bitrate using three repeatable 15-second excerpts and the same marked-reference,
+  anonymous-candidate classification model. Optimisarr creates a lossless FLAC reference for browser
+  playback, measures the full lineup with EBU R128 integrated loudness, and attenuates every version
+  to the quietest measured level so volume cannot reveal the answer or introduce clipping. The result applies
+  only the library's audio bitrate after an explicit confirmation; every candidate remains
+  disposable and outside replacement, history, notifications, and the normal queue.
+- **A zoom-synchronised blind image check.** Photo and mixed libraries can now compare a lossless
+  PNG view of one still image against five hidden output-quality levels. The reference and A–E share exactly one
+  viewport, so zoom and pan stay fixed when switching and spatial position cannot give the answer
+  away. The PNG reference carries the source colour metadata when the configured metadata tool can
+  copy it, animated images are excluded, browser loading fails closed, and Apply changes only the
+  library's saved image quality without queueing work.
+- **Gold-standard first-run recommendations and final review.** Setup now turns proved encoder and
+  VMAF capabilities into visible, reversible encoder, hardware-decode, VMAF, and overnight-window
+  recommendations instead of silently choosing for the operator. When a probed candidate exists,
+  the wizard can run the established disposable original-versus-output preview without touching the
+  source. The final check-answers page now covers network security, storage, libraries, encoder,
+  quality, scheduling, optional connections, and replacement, with accessible Change actions that
+  preserve the draft. One validated database transaction applies the reviewed settings and opted-in
+  per-library recommendations, records completion, and returns a no-work-started receipt linking to
+  candidate review or the dashboard; duplicate submissions return that completed state without
+  changing the applied plan. Draft safety choices survive refresh in local browser storage, inline
+  validation is tied to its field and focused error summary, and the new browser acceptance suite
+  exercises keyboard flows, re-test announcements, final apply, dark/reduced-motion presentation,
+  320px reflow, landscape, 390px mobile, and all nine locales in CI.
+
 ## 0.2.4 — 2026-07-16
 
 ### Added
@@ -74,7 +271,8 @@
   are never removed, and when no track matches a kept language nothing is removed. The complete
   ISO 639-1/-2 aliases match each other (`de`/`deu`/`ger`). Verification requires exactly the
   planned nonzero retention and judges channel/sample-rate fidelity against the kept tracks. The
-  upgrade queues existing videos with audio for background re-probing, with a job-time fallback,
+  upgrade queues existing videos with audio for background re-probing, and every destructive job
+  obtains a fresh successful source probe before FFmpeg,
   so already-clean remuxes become eligible for fast stream-copy cleanup. The accessible library
   control validates and normalises input before save in every locale, and config backup/restore
   uses the same validator. Migration `AddKeepAudioLanguages`.

@@ -77,7 +77,8 @@ internal static class ExclusionEndpoints
             // them disappear. A running job is left to finish and a completed one is kept (it may own a
             // replacement); the exclusion is what stops the file being offered again.
             var spentJobs = await db.Jobs
-                .Where(job => job.MediaFileId == file.Id
+                .Where(job => job.Type == JobType.Normal
+                    && job.MediaFileId == file.Id
                     && (job.Status == JobStatus.Failed || job.Status == JobStatus.Cancelled))
                 .ToListAsync(cancellationToken);
             db.Jobs.RemoveRange(spentJobs);

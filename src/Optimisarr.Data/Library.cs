@@ -107,6 +107,14 @@ public sealed class Library
     public string? KeepAudioLanguages { get; set; }
 
     /// <summary>
+    /// Comma-separated ISO 639 codes of the subtitle languages a video job keeps;
+    /// tracks in any other language are removed from the output. Null (the default)
+    /// keeps every track. Unknown-language tracks are always kept; unlike audio there
+    /// is no keep-at-least-one guard, so a file may end with zero subtitles.
+    /// </summary>
+    public string? KeepSubtitleLanguages { get; set; }
+
+    /// <summary>
     /// When true, already-lossy audio is also eligible for re-encoding to the target codec, but
     /// only when its source bitrate is known to exceed the target enough to save space. Defaults
     /// to false: the conservative behaviour re-encodes only lossless sources.

@@ -55,11 +55,17 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
-            if (!AudioTrackSelection.TryNormaliseLanguageList(library.KeepAudioLanguages, out _))
+            if (!TrackLanguages.TryNormaliseLanguageList(library.KeepAudioLanguages, out _))
             {
                 errors.Add(
-                    $"{where} kept audio languages must be comma-separated ISO 639 codes " +
-                    $"of 2–3 letters and at most {AudioTrackSelection.MaxLanguageListLength} characters.");
+                    $"{where} kept audio languages must be comma-separated registered individual ISO 639 codes " +
+                    $"and at most {TrackLanguages.MaxLanguageListLength} characters.");
+            }
+            if (!TrackLanguages.TryNormaliseLanguageList(library.KeepSubtitleLanguages, out _))
+            {
+                errors.Add(
+                    $"{where} kept subtitle languages must be comma-separated registered individual ISO 639 codes " +
+                    $"and at most {TrackLanguages.MaxLanguageListLength} characters.");
             }
             if (library.TargetImageFormat is { } targetImageFormat
                 && !ImageTarget.IsEncodable(targetImageFormat)

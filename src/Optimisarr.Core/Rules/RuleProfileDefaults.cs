@@ -103,6 +103,18 @@ public static class RuleProfileDefaults
             MinFileSizeBytes = 0,
             Hdr = HdrHandling.Preserve
         },
+        // Track cleanup: strips audio/subtitle tracks outside the kept languages via a
+        // lossless stream copy. No codec, no CRF, and no target container — the output
+        // keeps the source container so nothing but the unwanted tracks changes.
+        RuleProfile.TrackCleanup => new RuleSettings
+        {
+            Profile = profile,
+            TargetVideoCodec = null,
+            TargetContainer = null,
+            DefaultCrf = null,
+            MinFileSizeBytes = 0,
+            Hdr = HdrHandling.Preserve
+        },
         _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown rule profile")
     };
 }

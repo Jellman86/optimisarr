@@ -510,6 +510,29 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Measure_only_vmaf_is_retained_as_evidence_without_becoming_a_gate()
+    {
+        var input = Healthy() with
+        {
+            QualityScores = new QualityScores(
+                82.5, 80.5, 42, null, null,
+                ModelVersion: "vmaf_v0.6.1",
+                VmafFifthPercentile: 65,
+                FrameCount: 288)
+        };
+
+        var report = VerificationEvaluator.Evaluate(
+            input,
+            VerificationPolicy.Default with { MeasureVmaf = true });
+
+        Assert.True(report.Passed);
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Perceptual quality (VMAF)");
+        Assert.True(report.Vmaf?.Measured);
+        Assert.Equal(80.5, report.Vmaf?.Scores?.VmafHarmonicMean);
+        Assert.Equal(42, report.Vmaf?.Scores?.VmafMin);
+    }
+
+    [Fact]
     public void Decode_failure_fails_verification()
     {
         var input = Healthy() with { DecodeSucceeded = false, DecodeError = "corrupt frame" };
@@ -684,6 +707,48 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Tail integrity"));
         Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void A_short_source_video_timeline_is_reported_as_source_corruption_not_output_truncation()
+    {
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 2881.366,
+            OutputDurationSeconds = 2881.365,
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 2362.9,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 2361.568
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Source video timeline"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
+        Assert.Contains(
+            "source video ends",
+            report.Checks.Single(check => check.Name == "Source video timeline").Detail,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Tail_integrity_compares_against_the_source_video_endpoint_when_available()
+    {
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 3600,
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 3599.96,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 3400
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Source video timeline"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Tail integrity"));
+        Assert.Contains("source video's", report.Checks.Single(check => check.Name == "Tail integrity").Detail);
     }
 
     [Fact]
@@ -1397,5 +1462,150 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, ClippingGate);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, ClippingCheck));
+    }
+
+    [Fact]
+    public void Planned_subtitle_removal_expects_exactly_the_remaining_tracks()
+    {
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 3,
+            OutputSubtitleTrackCount = 1,
+            SubtitleTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void Losing_an_extra_subtitle_beyond_the_plan_fails_even_when_retention_is_not_required()
+    {
+        // The default policy has RequireSubtitlesRetained = false; the planned-removal
+        // contract is stricter than the policy — tightened, never relaxed.
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 3,
+            OutputSubtitleTrackCount = 0,
+            SubtitleTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void A_planned_removal_of_every_subtitle_verifies_at_zero()
+    {
+        // Unlike audio, subtitles have no minimum-one floor: an all-foreign set is
+        // legitimately removed in full.
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 2,
+            OutputSubtitleTrackCount = 0,
+            SubtitleTracksRemoved = 2
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle tracks"));
+    }
+
+    [Fact]
+    public void Planned_subtitle_removal_fails_when_the_wrong_language_survives()
+    {
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 2,
+            OutputSubtitleTrackCount = 1,
+            SubtitleTracksRemoved = 1,
+            ExpectedSubtitleLanguages = ["eng"],
+            OutputSubtitleLanguages = ["fra"]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle tracks"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Subtitle languages"));
+    }
+
+    [Fact]
+    public void Planned_audio_removal_accepts_equivalent_bibliographic_language_aliases()
+    {
+        var input = Healthy() with
+        {
+            OriginalAudioTrackCount = 2,
+            OutputAudioTrackCount = 1,
+            AudioTracksRemoved = 1,
+            ExpectedAudioLanguages = ["ger"],
+            OutputAudioLanguages = ["deu"]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Audio languages"));
+    }
+
+    [Fact]
+    public void An_unknown_retained_language_is_not_guessed_during_verification()
+    {
+        var input = Healthy() with
+        {
+            OriginalSubtitleTrackCount = 2,
+            OutputSubtitleTrackCount = 1,
+            SubtitleTracksRemoved = 1,
+            ExpectedSubtitleLanguages = ["und"],
+            OutputSubtitleLanguages = [null]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Subtitle languages"));
+    }
+
+    [Fact]
+    public void A_track_cleanup_output_must_keep_the_source_container()
+    {
+        var pass = Healthy() with
+        {
+            RequireContainerUnchanged = true,
+            OriginalContainer = "matroska,webm",
+            OutputContainer = "matroska,webm",
+            ExpectedAudioCodecs = ["aac", "ac3"],
+            OutputAudioCodecs = ["aac", "ac3"]
+        };
+        var fail = pass with { OutputContainer = "mov,mp4,m4a,3gp,3g2,mj2" };
+
+        Assert.Equal(CheckOutcome.Passed,
+            Outcome(VerificationEvaluator.Evaluate(pass, VerificationPolicy.Default), "Container unchanged"));
+        Assert.Equal(CheckOutcome.Failed,
+            Outcome(VerificationEvaluator.Evaluate(fail, VerificationPolicy.Default), "Container unchanged"));
+    }
+
+    [Fact]
+    public void A_track_cleanup_output_must_not_reencode_retained_audio()
+    {
+        var input = Healthy() with
+        {
+            RequireContainerUnchanged = true,
+            OriginalContainer = "matroska,webm",
+            OutputContainer = "matroska,webm",
+            ExpectedAudioCodecs = ["truehd", "aac"],
+            OutputAudioCodecs = ["ac3", "aac"]
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Audio codecs unchanged"));
+    }
+
+    [Fact]
+    public void The_container_gate_is_absent_unless_the_job_promised_it()
+    {
+        var report = VerificationEvaluator.Evaluate(Healthy(), VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, check => check.Name == "Container unchanged");
     }
 }

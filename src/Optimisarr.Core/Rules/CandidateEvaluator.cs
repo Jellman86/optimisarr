@@ -22,6 +22,14 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("Already optimised by Optimisarr (file is tagged)");
         }
 
+        // Track cleanup is defined only for video containers. An "Other" library can contain
+        // audio and images too, but selecting this profile must never route those files through
+        // their independent lossy encode pipelines.
+        if (rules.Profile == RuleProfile.TrackCleanup && media.Kind != MediaKind.Video)
+        {
+            return CandidateDecision.Skipped("Track cleanup applies only to video files");
+        }
+
         // Each media kind has its own eligibility rules.
         return media.Kind switch
         {
@@ -198,7 +206,9 @@ public static class CandidateEvaluator
         // layer) comes out green/pink. With the perceptual gate off by default there is no backstop, so
         // a DV source is left untouched unless the library opts in — even when HDR is otherwise
         // tone-mapped or preserved, because neither path carries the DV layer.
-        if (media.IsDolbyVision && !rules.OptimiseDolbyVision)
+        if (rules.TargetVideoCodec is not null
+            && media.IsDolbyVision
+            && !rules.OptimiseDolbyVision)
         {
             return CandidateDecision.Skipped(
                 "Dolby Vision — re-encoding would drop the DV layer and risk a colour shift (Profile 5); left untouched");
@@ -215,10 +225,41 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Resolution {height}p above limit ({maxHeight}p)");
         }
 
-        // Remux/cleanup-only profile never re-encodes; it only acts on containers and,
-        // when a kept-languages rule is set, on unwanted audio tracks.
+        // Profiles with no target codec never re-encode; they act on containers and,
+        // when kept-languages rules are set, on unwanted tracks. Unknown languages stay
+        // conservative: no data, no removal.
         if (rules.TargetVideoCodec is null)
         {
+            var audioRemovals = media.AudioLanguages is null
+                ? (IReadOnlyList<int>)Array.Empty<int>()
+                : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages);
+            var subtitleRemovals = media.SubtitleLanguages is null
+                ? (IReadOnlyList<int>)Array.Empty<int>()
+                : Queue.SubtitleTrackSelection.SelectRemovals(media.SubtitleLanguages, rules.KeepSubtitleLanguages);
+
+            // Track cleanup: the only work this profile does is removing unwanted tracks,
+            // so eligibility is exactly "is there anything to remove".
+            if (rules.TargetContainer is null)
+            {
+                if (rules.KeepAudioLanguages.Count == 0 && rules.KeepSubtitleLanguages.Count == 0)
+                {
+                    return CandidateDecision.Skipped(
+                        "No kept audio or subtitle languages configured — nothing to remove");
+                }
+
+                if (audioRemovals.Count + subtitleRemovals.Count > 0)
+                {
+                    return CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals));
+                }
+
+                var languagesUnknown =
+                    (rules.KeepAudioLanguages.Count > 0 && media.AudioLanguages is null)
+                    || (rules.KeepSubtitleLanguages.Count > 0 && media.SubtitleLanguages is null);
+                return CandidateDecision.Skipped(languagesUnknown
+                    ? "Track languages not captured yet — re-probe the file to evaluate the kept-languages rule"
+                    : "No removable tracks (all tracks match the kept languages or are unknown)");
+            }
+
             var keyword = ContainerKeyword(rules.TargetContainer);
             var alreadyClean = media.Container is not null &&
                 media.Container.Contains(keyword, StringComparison.OrdinalIgnoreCase);
@@ -228,16 +269,10 @@ public static class CandidateEvaluator
                 return CandidateDecision.Eligible($"Remux to {rules.TargetContainer} ({media.Container} → {rules.TargetContainer})");
             }
 
-            // A container-clean file can still carry audio tracks the kept-languages rule
-            // removes; stripping them (a stream copy, no re-encode) is part of this profile's
-            // cleanup. Unknown languages stay conservative: no data, no eligibility.
-            var removableTracks = media.AudioLanguages is null
-                ? 0
-                : Queue.AudioTrackSelection.SelectRemovals(media.AudioLanguages, rules.KeepAudioLanguages).Count;
-
-            return removableTracks > 0
-                ? CandidateDecision.Eligible(
-                    $"Remove {removableTracks} audio track(s) not in the kept languages ({string.Join(", ", rules.KeepAudioLanguages)})")
+            // A container-clean file can still carry tracks the kept-languages rules remove;
+            // stripping them (a stream copy, no re-encode) is part of this profile's cleanup.
+            return audioRemovals.Count + subtitleRemovals.Count > 0
+                ? CandidateDecision.Eligible(RemovalReason(media, audioRemovals, subtitleRemovals))
                 : CandidateDecision.Skipped($"Already in the target container ({rules.TargetContainer})");
         }
 
@@ -271,6 +306,27 @@ public static class CandidateEvaluator
 
         return CandidateDecision.Eligible($"{media.VideoCodec} → {rules.TargetVideoCodec}");
     }
+
+    // Names the languages being removed, not just counts, so the inventory and the
+    // queue answer "why is this file here?" at a glance.
+    private static string RemovalReason(
+        MediaProperties media, IReadOnlyList<int> audioRemovals, IReadOnlyList<int> subtitleRemovals)
+    {
+        var parts = new List<string>(2);
+        if (audioRemovals.Count > 0)
+        {
+            parts.Add(DescribeRemovals("audio", media.AudioLanguages!, audioRemovals));
+        }
+        if (subtitleRemovals.Count > 0)
+        {
+            parts.Add(DescribeRemovals("subtitle", media.SubtitleLanguages!, subtitleRemovals));
+        }
+
+        return $"Remove {string.Join(" + ", parts)} not in the kept languages";
+    }
+
+    private static string DescribeRemovals(string kind, IReadOnlyList<string?> languages, IReadOnlyList<int> removals) =>
+        $"{removals.Count} {kind} track(s) ({string.Join(", ", removals.Select(index => languages[index] ?? "und"))})";
 
     // The source bitrate normalised by pixel count (bits per pixel-second): file bitrate ÷
     // (width × height). Null when the duration or resolution needed to compute it is missing, so the

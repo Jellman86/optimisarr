@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-15)
+## Up next (priority order, updated 2026-07-16)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -91,7 +91,7 @@ the replacement workflow is trustworthy.
      WebP, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and
      decode assertions.
 
-   - **Endpoint modularization: done.** All 72 endpoints are extracted into nine
+   - **Endpoint modularization: done.** All 73 endpoints are extracted into nine
      `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
      system, library, stats, replacement, media/queue), leaving `Program.cs` a 418-line composition
      root (down from 1,960). A pure move verified by the byte-identical generated OpenAPI document and
@@ -153,18 +153,19 @@ the replacement workflow is trustworthy.
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
         of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
-2. **Gold-standard first-run setup wizard** — turn a new, empty installation into safe,
+2. **Gold-standard first-run setup wizard: complete** — turn a new, empty installation into safe,
    understandable libraries without hiding Docker-level mistakes or weakening Optimisarr's
    fail-closed defaults. This is the next independently actionable product item while the hardware
    validation matrix remains gated on access to non-Intel GPUs.
 
-   - **Trigger, resume, and ownership: foundation shipped.** A versioned `SetupState` now distinguishes
+   - **Trigger, resume, and ownership: done.** A versioned `SetupState` now distinguishes
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
      applied choices, and the Settings header offers **Run setup again** without deleting configuration.
-     Remaining refinement: explicit optional-step Skip semantics as integrations join the flow.
-   - **Five stable, task-oriented steps: initial flow shipped.** One heading and primary action drive:
+     Connections remain explicitly skipped on the final review and can be added later, so an optional
+     provider can never block first use.
+   - **Five stable, task-oriented steps: done.** One heading and primary action drive:
      (1) welcome, safety model, and private-network/auth exposure; (2) system readiness; (3) any
      number of libraries and their optimisation rules; (4) verification, scheduling, quarantine, and replacement
      safety; (5) review and apply. Keep integrations optional after the core path, or as a clearly
@@ -187,28 +188,28 @@ the replacement workflow is trustworthy.
      The container never pretends it can create a host bind mount or change host permissions. Docker
      documents that mounts must be explicitly granted to a service and recommends
      [secrets rather than environment variables for sensitive values](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/).
-   - **Safe recommendations, not silent automation: initial defaults shipped.** Start in dry-run
+   - **Safe recommendations, not silent automation: done.** Start in dry-run
      mode, one concurrent job, auto-replace off, conservative free-space/quarantine settings, and no
      auto-enqueue until the user reviews them. Explain encoder-specific quality, preview one
      representative candidate when possible, and show the estimated effect before saving. The wizard
      may recommend hardware decode, a VMAF tier, and a schedule from detected capabilities, but every
      recommendation remains visible and reversible. It never scans, enqueues, transcodes, replaces,
      or deletes an original until the
-     user confirms the review screen. The current flow visibly applies dry-run/concurrency, creates
+     user confirms the review screen. The flow visibly applies dry-run/concurrency, creates
      every new library with auto-enqueue, auto-replace, and VMAF off unless explicitly changed in the
-     full embedded rules editor, and starts no work. Capability-
-     based encoder/VMAF/schedule recommendations and an in-wizard representative preview remain.
-   - **Review before commitment: initial receipt shipped.** The last step currently groups system,
-     library, replacement, and queue choices and states explicitly that completion starts no work.
-     Remaining: security, storage, quality, scheduling and integration Change links, plus a single
-     transactional plan apply. The intended final form groups security, storage, library, quality,
-     scheduling, integration, and replacement choices; each section has an accessible Change action
+     full embedded rules editor, and starts no work. Proved HEVC hardware support now drives a visible,
+     reversible encoder/hardware-decode recommendation; CPU VMAF stays off by default, while a proved
+     NVIDIA CUDA-VMAF path may recommend Balanced. The overnight window remains opt-in and never turns
+     auto-enqueue on. A representative probed candidate can launch the established disposable preview;
+     an honest empty state explains why a fresh, unscanned library has nothing to preview yet.
+   - **Review before commitment: done.** The final form groups security, storage, library, encoder,
+     quality, scheduling, integration, and replacement choices; each section has an accessible Change action
      that returns directly to that step with values pre-populated. GOV.UK's
      [check-answers pattern](https://design-system.service.gov.uk/patterns/check-answers/) uses this
      review to raise confidence and reduce submission errors. Applying the plan uses one validated
-     transaction where possible, returns a clear success receipt, and links directly to the first
-     scan/candidate review rather than starting destructive work.
-   - **Accessible recovery is a release criterion.** Validate when Continue is pressed, preserve all
+     database transaction, rolls back on failure, is idempotent after a lost response, returns a clear
+     no-work-started receipt, and links directly to candidate review rather than starting destructive work.
+   - **Accessible recovery: done.** Validate when Continue is pressed, preserve all
      user input, place a concise error summary at the top, move focus to it, and associate inline
      errors with their fields. W3C requires logical
      [keyboard focus order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) and recommends
@@ -216,14 +217,16 @@ the replacement workflow is trustworthy.
      WCAG 2.2 also adds minimum target size, unobscured focus, redundant-entry, and accessible-
      authentication criteria. Status from readiness tests uses a polite live region without stealing
      focus, and progress never relies on colour alone.
-   - **Gold-standard acceptance matrix.** Ship only with API/domain tests for state transitions,
-     idempotency, rollback, and upgrade bypass; real-host integration tests for fresh/resumed/completed
-     setup; and browser tests for Back/Continue/Change/Skip/Re-test across light/dark mode, all nine
-     locales, keyboard-only and screen-reader semantics, 400% zoom, and 390px mobile width. Exercise
-     read-only media, unwritable/missing work or quarantine, low disk, absent VMAF/ExifTool, unavailable
-     selected GPU, unreachable optional integration, invalid admin token, refresh/restart mid-step,
-     double-submit, and a failure during final apply. The invariant is explicit: wizard tests may
-     create disposable files under `/work` but must prove no source file is modified or removed.
+   - **Gold-standard acceptance matrix: automated core shipped.** API/domain tests cover state transitions,
+     ordered/idempotent progress, upgrade bypass, rejected and duplicate final apply, settings persistence,
+     recommendation policy, and the no-source-mutation invariant. Browser tests cover
+     Back/Continue/Change/Skip/Re-test and final apply across light/dark mode,
+     all nine locales, keyboard and role/name semantics, reduced motion, the 320px WCAG 400%-reflow
+     equivalent, 390px mobile width, and landscape. Readiness/policy tests cover missing, unreadable,
+     unwritable and low-space paths, absent VMAF, and unproved GPU encoders; authentication tests cover
+     every setup mutation. Optional integrations are not contacted during setup by design. The final
+     apply transaction explicitly rolls back on an exception, and applying setup leaves a sentinel
+     source file byte-for-byte unchanged while preview work remains disposable under `/work`.
 
 3. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
    config-and-secrets backups, migration smoke coverage, synthetic-media integration
@@ -338,26 +341,66 @@ the replacement workflow is trustworthy.
      positioning statement, screenshots, quickstart links, and clear safety guarantees over
      generic promotion.
 
-7. **Blind quality calibration ("placebo panel")** — help a user pick the lowest quality preset
-   that is transparent *to them*, without the "higher must be better" bias that wastes storage.
-   Per library, choose a representative file (video, audio, or image) and encode a short
-   representative segment at each preset tier. Present the candidates unlabelled and in randomised
-   order alongside the untouched original; the user judges them — ideally an ABX trial ("is X the
-   original or the encode?") repeated a few times, which is far more defensible than a single guess
-   — then a Reveal button shows the true tiers and each candidate's VMAF/SSIM score. The outcome
-   feeds straight back into the library's quality slider ("use this tier for this library").
+7. **Blind quality calibration ("placebo panel"): video, audio, and image slices done** — help a user choose
+   the most space-efficient quality that they cannot reliably distinguish from their own source,
+   without revealing the setting or estimated saving early. The design is informed by the source,
+   observer, presentation, repetition, and paired-comparison principles in
+   [ITU-R BT.500](https://www.itu.int/rec/R-REC-BT.500-15-202305-I/en) and
+   [ITU-T P.910](https://www.itu.int/rec/T-REC-P.910-202310-I/en); it is a personal calibration aid,
+   not a standards-conformant laboratory study or a claim of perceptual equivalence.
 
-   - **Bias controls are the point.** Randomise order per session, hide size/bitrate and labels
-     until reveal, and loudness-match audio candidates (a louder encode always sounds "better").
-     Video and image candidates share one viewport, zoom, and playback position.
-   - **Per media kind.** Video reuses the frame-synced compare panel ("Play both") and the
-     preview-clip mechanism so only a short segment is encoded, not the whole file; audio uses
-     instant, level-matched switching; images use a synced zoom/pan toggle.
-   - **Cheap and safe by construction.** Candidates are short, on-demand encodes written to `/work`
-     and cleaned up afterwards; the original is only ever read. Nothing here can replace or delete
-     a file, so it sits entirely outside the safety-critical path.
-   - **Honest results.** Showing the VMAF/SSIM score at reveal lets a user correlate what they can
-     actually perceive with the metric — the whole justification for trusting a lower default floor.
+   - **Shipped for SDR video.** A saved video library can use one chosen, probed source. Optimisarr
+     prepares 12-second early, middle, and late clips for the four complete library-slider presets,
+     presents the original as a fixed reference beside four shuffled anonymous candidates, and
+     asks the user to classify each candidate once as Indistinguishable, Acceptable, or Visibly worse. The most
+     compressed acceptable candidate is recommended; if none is acceptable, the current setting is kept.
+   - **Bias and interaction controls are shipped.** The setting, encoder and saving remain hidden
+     until every candidate classification is complete. The original is marked so every judgement has
+     a stable baseline; candidate quality labels remain blind. The reference and lettered candidates share
+     one large viewport and relative playback position, support mouse, keyboard, and touch controls,
+     and native playback fails closed if any sample cannot be decoded. Video supports browser
+     fullscreen for close inspection. Applying
+     the recommendation is a separate, explicit action and is refused if the library's relevant
+     settings changed during the session.
+   - **Long-GOP reference alignment is shipped.** Video candidates retain each preset's complete
+     output contract while their original-side references remain a bit-for-bit stream
+     copy, including the preceding keyframe packets required to decode a mid-file scene; Optimisarr
+     records that hidden pre-roll, verifies the intended 12-second window, and starts playback at
+     the matching frame. References live for the session and are removed with its other disposable
+     work. A shared accessible 0–12-second control hides raw container duration from the observer.
+     This prevents false Duration/Tail failures without weakening either gate, revealing the
+     original, or introducing a second-generation reference encode.
+   - **HDR video is shipped with a fail-closed presentation contract.** Non-Dolby-Vision HDR is
+     offered only when the library preserves HDR, the browser reports an HDR-capable display path,
+     and the user confirms the intended display is presenting HDR. This follows the signal and
+     viewing-condition principles in [ITU-R BT.2100](https://www.itu.int/rec/R-REC-BT.2100) and uses
+     the W3C `video-dynamic-range`/`dynamic-range` capability signal. It does not silently tone-map
+     or claim a laboratory-grade HDR result. Dolby Vision remains excluded because its RPU dynamic
+     metadata cannot safely survive Optimisarr's current re-encode path.
+   - **Level-matched audio is shipped.** Music and mixed libraries can test Opus, AAC, or MP3
+     bitrate ladders using three repeatable 15-second excerpts. Each original-side excerpt is a
+     lossless FLAC derivative; the full lineup is measured with EBU R128 integrated loudness and
+     every version is attenuated to the quietest one in the browser, preserving files and avoiding
+     clipping. Instant reference/A–E switching keeps relative playback position. This follows the
+     hidden-reference and controlled-listening principles in
+     [ITU-R BS.1116](https://www.itu.int/rec/R-REC-BS.1116-3-201502-I/en) and the measurement method
+     in [EBU Tech 3341](https://tech.ebu.ch/publications/tech3341).
+   - **Synchronized image comparison is shipped.** Photo and mixed libraries can test five output
+     quality levels against a lossless PNG derivative in one shared viewport. Reference/A–E switching keeps
+     zoom and pan identical, all streams preload and fail closed, and animated images are excluded.
+     This follows the observer-controlled comparison principles in
+     [ISO 20462-1](https://www.iso.org/standard/38330.html) without claiming laboratory compliance.
+   - **Cheap and safe by construction is shipped.** Candidates are disposable jobs isolated under
+     `/work/calibration`; they bypass normal candidate scheduling but still receive structural
+     verification. They cannot replace, move, or delete a source and are hidden from the normal
+     queue. Every saved Film, TV, Music, Photo, and mixed library exposes the compatible personal
+     check from its own configuration page. Leaving the full-page lab or restarting Optimisarr removes the
+     session's database rows and scratch files. The original is only read.
+   - **Next research and implementation.** Select representative sources using spatial/temporal
+     complexity rather than file size alone and support a small multi-source result; correlate the
+     revealed choice with sampled VMAF without turning the metric into a hint. Extend toward a
+     multi-source result only after each media kind remains separately validated rather than
+     stretching one perception method across unlike tasks.
 
 8. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
    low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why

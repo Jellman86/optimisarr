@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { api, type HardwareCapability, type Library, type LibraryAccess, type Settings, type SetupPath, type SetupReadiness, type SetupStorageRelationship, type ToolCheck } from '../api'
+  import { api, type HardwareCapability, type Library, type LibraryAccess, type MediaFile, type Settings, type SetupApplyReceipt, type SetupPath, type SetupReadiness, type SetupRecommendation, type SetupStorageRelationship, type ToolCheck } from '../api'
   import { i18n, plural, t } from '../i18n/i18n.svelte'
   import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
   import { formatSize } from '../format'
   import { setup } from '../stores/setup.svelte'
   import BrandMark from '../components/BrandMark.svelte'
   import Icon from '../components/Icon.svelte'
+  import PreviewCompare from '../components/PreviewCompare.svelte'
   import Libraries from './Libraries.svelte'
+  import { router } from '../stores/ui.svelte'
 
   let viewStep = $state(setup.state?.currentStep ?? 1)
   let busy = $state(false)
@@ -27,10 +29,31 @@
   let configuringLibraryId = $state<number | null>(null)
   let retesting = $state(false)
   let retestMessage = $state<string | null>(null)
+  let recommendation = $state<SetupRecommendation | null>(null)
+  let useRecommendedEncoder = $state(false)
+  let applyRecommendedVmaf = $state(false)
+  let applyRecommendedSchedule = $state(false)
+  let representative = $state<MediaFile | null>(null)
+  let previewing = $state(false)
+  let receipt = $state<SetupApplyReceipt | null>(null)
+  let originalEncoderMode = 'Auto'
+  let originalHardwareDecode = false
+  const DRAFT_KEY = 'optimisarr.setup.plan.v1'
+
+  type SetupDraft = {
+    dryRunMode: boolean
+    maxConcurrentJobs: number
+    useRecommendedEncoder: boolean
+    applyRecommendedVmaf: boolean
+    applyRecommendedSchedule: boolean
+  }
 
   const requiredToolsReady = $derived(tools.length > 0 && tools.every((tool) => !tool.required || tool.available))
   const requiredPathsReady = $derived(paths.length > 0 && paths.every((path) => path.issue === 'none'))
   const libraryPathsReady = $derived(allLibraryPathsReady(libraries, libraryAccess))
+  const concurrencyError = $derived(settings && (!Number.isFinite(settings.maxConcurrentJobs) || settings.maxConcurrentJobs < 1)
+    ? i18n.m.settings.validation_max_jobs
+    : null)
   const stepNames = $derived([
     i18n.m.setup.step_welcome,
     i18n.m.setup.step_readiness,
@@ -50,11 +73,12 @@
     }
     error = null
     try {
-      const [readiness, hardwareResult, libraryResults, settingsResult] = await Promise.all([
+      const [readiness, hardwareResult, libraryResults, settingsResult, inventoryResult] = await Promise.all([
         api.setupReadiness(),
         api.hardware().catch(() => null),
         api.libraries(),
         api.settings(),
+        api.inventory({ show: 'eligible', page: 1, pageSize: 1 }).catch(() => null),
       ])
       tools = readiness.tools
       paths = readiness.paths
@@ -66,7 +90,12 @@
       }
       databaseAvailable = readiness.databaseAvailable
       hardware = hardwareResult
+      recommendation = readiness.recommendation
       settings = settingsResult
+      originalEncoderMode = settingsResult.encoderMode
+      originalHardwareDecode = settingsResult.hardwareDecode
+      restoreDraft(settingsResult, readiness.recommendation)
+      representative = inventoryResult?.items[0]?.file ?? null
       await setLibraries(libraryResults)
       if (announce) retestMessage = i18n.m.setup.retest_complete
     } catch (err) {
@@ -136,15 +165,21 @@
       await showError(i18n.m.setup.settings_required_error)
       return
     }
+    if (viewStep === 4 && concurrencyError) {
+      await showError(concurrencyError)
+      return
+    }
 
     busy = true
     try {
-      if (viewStep === 4 && settings) {
-        settings = await api.saveSettings(settings)
-      }
-
-      if (viewStep === 5) {
-        await setup.complete()
+      if (viewStep === 5 && settings) {
+        receipt = await api.applySetup({
+          settings,
+          useRecommendedEncoder,
+          applyRecommendedVmaf,
+          applyRecommendedSchedule,
+        })
+        localStorage.removeItem(DRAFT_KEY)
         return
       }
 
@@ -204,6 +239,60 @@
       quarantineAtomic: access.atomicWithQuarantine,
     })
   }
+
+  function acceptEncoderRecommendation() {
+    if (!settings || !recommendation) return
+    if (useRecommendedEncoder) {
+      settings.encoderMode = originalEncoderMode
+      settings.hardwareDecode = originalHardwareDecode
+      useRecommendedEncoder = false
+      return
+    }
+    settings.encoderMode = recommendation.encoderMode
+    settings.hardwareDecode = recommendation.hardwareDecode
+    useRecommendedEncoder = true
+  }
+
+  function changeStep(step: number) {
+    error = null
+    viewStep = step
+  }
+
+  async function leaveReceipt(path: string) {
+    router.go(path)
+    await setup.load()
+  }
+
+  function restoreDraft(target: Settings, nextRecommendation: SetupRecommendation) {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (!raw) return
+      const draft = JSON.parse(raw) as Partial<SetupDraft>
+      if (typeof draft.dryRunMode === 'boolean') target.dryRunMode = draft.dryRunMode
+      if (typeof draft.maxConcurrentJobs === 'number') target.maxConcurrentJobs = draft.maxConcurrentJobs
+      applyRecommendedVmaf = draft.applyRecommendedVmaf === true
+      applyRecommendedSchedule = draft.applyRecommendedSchedule === true
+      if (draft.useRecommendedEncoder === true) {
+        target.encoderMode = nextRecommendation.encoderMode
+        target.hardwareDecode = nextRecommendation.hardwareDecode
+        useRecommendedEncoder = true
+      }
+    } catch {
+      localStorage.removeItem(DRAFT_KEY)
+    }
+  }
+
+  $effect(() => {
+    if (!settings || receipt) return
+    const draft: SetupDraft = {
+      dryRunMode: settings.dryRunMode,
+      maxConcurrentJobs: Number(settings.maxConcurrentJobs),
+      useRecommendedEncoder,
+      applyRecommendedVmaf,
+      applyRecommendedSchedule,
+    }
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  })
 </script>
 
 <div class="min-h-dvh bg-slate-100 px-4 py-5 text-slate-800 sm:px-6 sm:py-8 dark:bg-slate-950 dark:text-slate-200">
@@ -242,7 +331,25 @@
     </aside>
 
     <main class="flex min-w-0 flex-col px-5 py-6 sm:px-8 sm:py-8 md:px-10" id="setup-content">
-      {#if configuringLibraryId !== null}
+      {#if receipt}
+        <div class="flex flex-1 flex-col justify-center" aria-live="polite">
+          <div class="max-w-2xl">
+            <span class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <Icon name="check" class="h-6 w-6" />
+            </span>
+            <h1 class="mt-5 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{i18n.m.setup.receipt_heading}</h1>
+            <p class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{t(i18n.m.setup.receipt_body, { count: receipt.libraryCount })}</p>
+            <div class="mt-7 flex flex-wrap gap-3">
+              <button class="btn btn-primary min-h-11" onclick={() => void leaveReceipt('/inventory')}>
+                {i18n.m.setup.review_candidates}
+              </button>
+              <button class="btn min-h-11" onclick={() => void leaveReceipt('/')}>
+                {i18n.m.setup.open_dashboard}
+              </button>
+            </div>
+          </div>
+        </div>
+      {:else if configuringLibraryId !== null}
         <Libraries
           embeddedEditorId={configuringLibraryId}
           onEmbeddedClose={() => (configuringLibraryId = null)}
@@ -458,7 +565,10 @@
               </label>
               <div class="grid gap-2 py-4 sm:grid-cols-[1fr_9rem] sm:items-center">
                 <div><div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.concurrent_title}</div><div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.setup.concurrent_body}</div></div>
-                <input class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} aria-label={i18n.m.setup.concurrent_title} />
+                <div>
+                  <input class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} aria-label={i18n.m.setup.concurrent_title} aria-invalid={concurrencyError ? 'true' : undefined} aria-describedby={concurrencyError ? 'setup-concurrency-error' : undefined} />
+                  {#if concurrencyError}<p id="setup-concurrency-error" class="mt-1 text-xs text-red-700 dark:text-red-300">{concurrencyError}</p>{/if}
+                </div>
               </div>
               <div class="py-4">
                 <div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.automation_title}</div>
@@ -466,16 +576,65 @@
               </div>
             </div>
           {/if}
+
+          {#if recommendation && settings}
+            <section class="mt-8 max-w-2xl" aria-labelledby="recommendations-heading">
+              <h2 id="recommendations-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.recommended_heading}</h2>
+              <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.recommended_body}</p>
+              <div class="mt-3 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                <div class="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <div>
+                    <div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.encoder_mode}</div>
+                    <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{recommendation.encoderMode} · {recommendation.hardwareDecode ? i18n.m.settings.hardware_decode : i18n.m.common.off}</div>
+                  </div>
+                  <button class="btn min-h-11" type="button" onclick={acceptEncoderRecommendation} aria-pressed={useRecommendedEncoder}>
+                    {useRecommendedEncoder ? i18n.m.setup.recommendation_applied : i18n.m.setup.use_recommendation}
+                  </button>
+                </div>
+                <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
+                  <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={applyRecommendedVmaf} />
+                  <span>
+                    <span class="block font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.vmaf_label}: {recommendation.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</span>
+                    <span class="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_hint}</span>
+                  </span>
+                </label>
+                <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
+                  <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={applyRecommendedSchedule} />
+                  <span>
+                    <span class="block font-semibold text-slate-800 dark:text-slate-100">{i18n.m.nav.schedule}: {recommendation.scheduleStart}–{recommendation.scheduleEnd}</span>
+                    <span class="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.automation_body}</span>
+                  </span>
+                </label>
+              </div>
+            </section>
+          {/if}
+
+          <section class="mt-8 max-w-2xl" aria-labelledby="preview-heading">
+            <h2 id="preview-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.shared.preview}</h2>
+            <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.shared.preview_safety}</p>
+            {#if representative}
+              <button class="btn mt-3 min-h-11" type="button" onclick={() => (previewing = true)}>
+                <Icon name="play" class="h-4 w-4" />
+                {i18n.m.shared.preview}
+              </button>
+            {:else}
+              <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">{i18n.m.shared.candidates_empty}</p>
+            {/if}
+          </section>
         {:else}
           <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-400">{i18n.m.setup.review_eyebrow}</p>
           <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.review_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.review_body}</p>
 
-          <dl class="mt-7 max-w-2xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_system}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd></div>
-            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd></div>
-            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd></div>
-            <div class="grid gap-1 py-4 sm:grid-cols-[10rem_1fr]"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_queue}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd></div>
+          <dl class="mt-7 max-w-3xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.network_title}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.network_body}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.storage_heading}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.encoder_mode}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.encoderMode ?? '—'} · {plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{applyRecommendedVmaf && recommendation?.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.nav.schedule}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{applyRecommendedSchedule && recommendation ? `${recommendation.scheduleStart}–${recommendation.scheduleEnd}` : i18n.m.setup.skipped}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.tab_connections}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
           </dl>
         {/if}
       </div>
@@ -490,3 +649,12 @@
     </main>
   </div>
 </div>
+
+{#if previewing && representative}
+  <PreviewCompare
+    mediaFileId={representative.id}
+    mediaKind={representative.mediaKind}
+    relativePath={representative.relativePath}
+    onClose={() => (previewing = false)}
+  />
+{/if}

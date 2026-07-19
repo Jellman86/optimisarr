@@ -142,7 +142,8 @@ public sealed class QualityScoreCommandBuilderTests
             "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
             new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                DistortedStartSeconds: 300, ReferenceStartSeconds: 300, MeasureDurationSeconds: 120),
+                DistortedStartSeconds: 300, ReferenceStartSeconds: 300, MeasureDurationSeconds: 120,
+                ReferenceFrameRate: 24000d / 1001d),
             threads: 4);
 
         var args = command.Arguments;
@@ -152,8 +153,24 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Equal("/work/output.mkv", ValueAfter(args, "-i", occurrence: 1));
         Assert.Equal("295", ValueAfter(args, "-ss", occurrence: 2));
         Assert.Equal("/data/original.mkv", ValueAfter(args, "-i", occurrence: 2));
+        Assert.Equal(2, command.FilterGraph.Split("fps=fps=23.976023976023978:start_time=0").Length - 1);
         Assert.Equal(2, command.FilterGraph.Split("trim=start=5:duration=120").Length - 1);
         Assert.Equal("120", ValueAfter(args, "-t", occurrence: 1));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-23.976)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void Invalid_reference_frame_rate_is_rejected(double frameRate)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceFrameRate: frameRate),
+            threads: 1));
     }
 
     [Fact]

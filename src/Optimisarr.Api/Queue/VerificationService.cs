@@ -22,16 +22,33 @@ public sealed record OriginalSnapshot(
     string? ExpectedVideoCodec = null,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
-    IReadOnlyList<int>? RemovedAudioStreamIndexes = null);
+    IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
+    // Subtitle-relative indexes the kept-languages rule removed on purpose; verification
+    // expects exactly those tracks gone (and, unlike audio, tolerates zero remaining).
+    IReadOnlyList<int>? RemovedSubtitleStreamIndexes = null,
+    // True for a track-cleanup job, whose promise includes an unchanged container type.
+    bool ContainerMustMatch = false);
 
 /// <summary>A completed verification: the report plus the measured output size.</summary>
 public sealed record VerificationOutcome(
     VerificationReport Report,
     long OutputSizeBytes,
-    string? VmafSampling = null);
+    string? VmafSampling = null,
+    double ReferenceStartSeconds = 0);
 
-/// <summary>The preview clip window to use when building a verification reference segment.</summary>
-public sealed record VerificationClip(int Seconds, int? StartSeconds, string ReferencePath);
+/// <summary>The disposable clip window used to build a preview or calibration reference.</summary>
+public sealed record VerificationClip(
+    int Seconds,
+    int? StartSeconds,
+    string ReferencePath,
+    bool RetainReference = false,
+    bool VideoOnly = false);
+
+internal static class VerificationClipLifecycle
+{
+    public static bool DeleteReferenceAfterVerification(VerificationClip clip) =>
+        !clip.RetainReference;
+}
 
 /// <summary>
 /// Gathers the real-world evidence a converted output is healthy — a full software
@@ -43,6 +60,7 @@ public sealed class VerificationService(
     MediaProbeService probe,
     DecodeHealthCheck decode,
     TimestampIntegrityCheck timestamps,
+    ReferenceFrameAlignmentProbe referenceAlignment,
     QualityScoreService quality,
     LoudnessService loudness,
     ImageQualityService imageQuality,
@@ -58,9 +76,10 @@ public sealed class VerificationService(
         IProgress<double>? qualityProgress = null,
         VmafAcceleration vmafAcceleration = VmafAcceleration.None)
     {
-        var reference = clip is null
-            ? original
+        var preparedReference = clip is null
+            ? new PreparedReference(original, 0)
             : await CreateReferenceClipAsync(original, clip, cancellationToken);
+        var reference = preparedReference.Snapshot;
 
         try
         {
@@ -75,6 +94,17 @@ public sealed class VerificationService(
             // A quick re-probe of the original (no decode) gives its audio shape so we can
             // catch a silent downmix or sample-rate drop in the output.
             var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
+            // A container can continue long after a damaged picture stream. Read the original's
+            // actual packet endpoint for normal jobs so tail verification compares video with
+            // video and can report source corruption separately. Disposable clips have their own
+            // deliberately bounded/reference-offset timeline, so keep their established checks.
+            var originalTimestampResult = reference.Kind == MediaKind.Video && clip is null
+                ? await timestamps.CheckAsync(reference.Path, cancellationToken)
+                : TimestampCheckResult.NotMeasured;
+            var referenceVideoDuration = ReferenceVideoDurationForVerification(
+                originalProbe,
+                originalTimestampResult,
+                reference.DurationSeconds);
 
             // When the job removed tracks by language, the audio the output promised to retain
             // is the kept tracks — so channel/sample-rate expectations come from those, not from
@@ -89,7 +119,7 @@ public sealed class VerificationService(
             string? vmafSampling = null;
             if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
-                var windows = clip is null && reference.DurationSeconds is { } total
+                var windows = clip is null && referenceVideoDuration is { } total
                     ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)
                     : [VmafWindow.Full];
                 vmafSampling = windows.Count == 1 && windows[0] == VmafWindow.Full
@@ -115,6 +145,7 @@ public sealed class VerificationService(
                         clip?.StartSeconds,
                         window.StartSeconds,
                         window.DurationSeconds,
+                        referenceVideoDuration,
                         policy.VmafFrameSubsample,
                         vmafAcceleration,
                         policy,
@@ -180,7 +211,11 @@ public sealed class VerificationService(
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
                 OriginalDurationSeconds: reference.DurationSeconds,
-                OutputDurationSeconds: outputProbe.DurationSeconds,
+                OutputDurationSeconds: OutputDurationForVerification(
+                    outputProbe,
+                    reference.Kind,
+                    clip?.VideoOnly == true,
+                    timestampResult),
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
                 OriginalSubtitleTrackCount: reference.SubtitleTrackCount,
@@ -221,6 +256,8 @@ public sealed class VerificationService(
                 NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
                 TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
                 OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
+                OriginalTimestampsMeasured: originalTimestampResult.Measured,
+                OriginalLastPresentationSeconds: originalTimestampResult.LastPresentationSeconds,
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,
@@ -251,16 +288,43 @@ public sealed class VerificationService(
                 OriginalBitsPerRawSample: originalProbe.BitsPerRawSample,
                 OutputBitsPerRawSample: outputProbe.BitsPerRawSample,
                 OriginalVideoProfile: originalProbe.VideoProfile,
-                OutputVideoProfile: outputProbe.VideoProfile);
+                OutputVideoProfile: outputProbe.VideoProfile,
+                SubtitleTracksRemoved: reference.RemovedSubtitleStreamIndexes?.Count ?? 0,
+                RequireContainerUnchanged: reference.ContainerMustMatch,
+                OriginalContainer: originalProbe.Container,
+                OutputContainer: outputProbe.Container,
+                ExpectedAudioLanguages: reference.RemovedAudioStreamIndexes is { Count: > 0 }
+                    ? KeptLanguages(
+                        originalProbe.AudioTracks.Select(track => track.Language).ToList(),
+                        reference.RemovedAudioStreamIndexes)
+                    : null,
+                OutputAudioLanguages: reference.RemovedAudioStreamIndexes is { Count: > 0 }
+                    ? outputProbe.AudioTracks.Select(track => track.Language).ToList()
+                    : null,
+                ExpectedSubtitleLanguages: reference.RemovedSubtitleStreamIndexes is { Count: > 0 }
+                    ? KeptLanguages(originalProbe.SubtitleLanguages, reference.RemovedSubtitleStreamIndexes)
+                    : null,
+                OutputSubtitleLanguages: reference.RemovedSubtitleStreamIndexes is { Count: > 0 }
+                    ? outputProbe.SubtitleLanguages
+                    : null,
+                ExpectedAudioCodecs: reference.ContainerMustMatch
+                    ? KeptValues(
+                        originalProbe.AudioTracks.Select(track => track.Codec).ToList(),
+                        reference.RemovedAudioStreamIndexes)
+                    : null,
+                OutputAudioCodecs: reference.ContainerMustMatch
+                    ? outputProbe.AudioTracks.Select(track => track.Codec).ToList()
+                    : null);
 
             return new VerificationOutcome(
                 VerificationEvaluator.Evaluate(input, policy),
                 outputSize,
-                vmafSampling);
+                vmafSampling,
+                preparedReference.PresentationOffsetSeconds);
         }
         finally
         {
-            if (clip is not null)
+            if (clip is not null && VerificationClipLifecycle.DeleteReferenceAfterVerification(clip))
             {
                 TryDelete(reference.Path);
             }
@@ -284,6 +348,52 @@ public sealed class VerificationService(
             .ToList();
     }
 
+    private static IReadOnlyList<string?> KeptLanguages(
+        IReadOnlyList<string?> languages,
+        IReadOnlyList<int> removedIndexes) =>
+        languages.Where((_, index) => !removedIndexes.Contains(index)).ToList();
+
+    private static IReadOnlyList<string?> KeptValues(
+        IReadOnlyList<string?> values,
+        IReadOnlyList<int>? removedIndexes) =>
+        removedIndexes is not { Count: > 0 }
+            ? values
+            : values.Where((_, index) => !removedIndexes.Contains(index)).ToList();
+
+    internal static double? OutputDurationForVerification(
+        MediaProbeResult outputProbe,
+        MediaKind kind,
+        bool videoOnlyReference,
+        TimestampCheckResult? timestamps = null)
+    {
+        if (kind != MediaKind.Video || !videoOnlyReference)
+        {
+            return outputProbe.DurationSeconds;
+        }
+
+        // A sampled encode may retain the source's non-zero stream epoch. In that case ffprobe's
+        // format duration is the absolute end timestamp (and copied subtitle/attachment streams can
+        // extend it further), not the amount of picture content encoded. The packet scan already
+        // provides the authoritative video endpoint used by Tail integrity, so compare its span
+        // against the exact calibration window too.
+        if (timestamps?.LastPresentationSeconds is { } last)
+        {
+            return Math.Max(0, last - (outputProbe.VideoStartSeconds ?? 0));
+        }
+
+        return outputProbe.VideoDurationSeconds ?? outputProbe.DurationSeconds;
+    }
+
+    internal static double? ReferenceVideoDurationForVerification(
+        MediaProbeResult originalProbe,
+        TimestampCheckResult originalTimestamps,
+        double? fallbackDurationSeconds) =>
+        originalTimestamps.LastPresentationSeconds is { } last and > 0
+            ? Math.Max(0, last - (originalProbe.VideoStartSeconds ?? 0))
+            : originalProbe.VideoDurationSeconds is > 0
+                ? originalProbe.VideoDurationSeconds
+                : fallbackDurationSeconds;
+
     private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,
         string outputPath,
@@ -293,6 +403,7 @@ public sealed class VerificationService(
         int? referenceStartSeconds,
         int? clipStartSeconds,
         int? clipDurationSeconds,
+        double? referenceVideoDurationSeconds,
         int frameSubsample,
         VmafAcceleration acceleration,
         VerificationPolicy policy,
@@ -313,11 +424,12 @@ public sealed class VerificationService(
             // A clip-VMAF window seeks both inputs to its start; otherwise only the reference seek
             // (a preview) applies to the reference input.
             ReferenceStartSeconds: clipStartSeconds ?? referenceStartSeconds,
-            ReferenceDurationSeconds: originalProbe.DurationSeconds,
+            ReferenceDurationSeconds: referenceVideoDurationSeconds,
             DistortedStartSeconds: clipStartSeconds,
             MeasureDurationSeconds: clipDurationSeconds,
             FrameSubsample: frameSubsample,
-            Acceleration: acceleration);
+            Acceleration: acceleration,
+            ReferenceFrameRate: originalProbe.VideoFrameRate);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,
@@ -340,17 +452,17 @@ public sealed class VerificationService(
             target.Report(Math.Clamp((index + value) / count, 0, 0.999));
     }
 
-    private async Task<OriginalSnapshot> CreateReferenceClipAsync(
+    private async Task<PreparedReference> CreateReferenceClipAsync(
         OriginalSnapshot original,
         VerificationClip clip,
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(clip.ReferencePath)!);
-        var args = PreviewReferenceClipCommandBuilder.Build(
-            original.Path,
-            clip.ReferencePath,
-            clip.Seconds,
-            clip.StartSeconds);
+        var args = original.Kind == MediaKind.Audio
+            ? PreviewReferenceClipCommandBuilder.BuildAudio(
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds)
+            : PreviewReferenceClipCommandBuilder.Build(
+                original.Path, clip.ReferencePath, clip.Seconds, clip.StartSeconds, clip.VideoOnly);
 
         var run = await RunReferenceClipAsync(args, cancellationToken);
         if (run.ExitCode != 0)
@@ -360,16 +472,37 @@ public sealed class VerificationService(
         }
 
         var clipProbe = await probe.ProbeAsync(clip.ReferencePath, cancellationToken);
-        return original with
+        var probedDuration = clipProbe.DurationSeconds
+            ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds)
+            ?? clip.Seconds;
+        var snapshot = original with
         {
             Path = clip.ReferencePath,
             SizeBytes = TryGetSize(clip.ReferencePath),
-            DurationSeconds = clipProbe.DurationSeconds ?? ClipDurationFallback(original.DurationSeconds, clip.Seconds),
+            // Stream copy necessarily retains packets from the preceding keyframe. The candidate
+            // still represents the requested window, so verify against that window rather than
+            // mistaking harmless decode pre-roll for a truncated encode.
+            DurationSeconds = clip.VideoOnly ? clip.Seconds : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
             IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr
         };
+        var presentationOffset = 0.0;
+        if (clip.VideoOnly && clip.StartSeconds is { } start and > 0)
+        {
+            presentationOffset = await referenceAlignment.MeasureAsync(
+                    original.Path,
+                    start,
+                    cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Could not align the original calibration reference to the requested source frame.");
+        }
+        return new PreparedReference(snapshot, presentationOffset);
     }
+
+    private sealed record PreparedReference(
+        OriginalSnapshot Snapshot,
+        double PresentationOffsetSeconds);
 
     private async Task<(int ExitCode, string? Error)> RunReferenceClipAsync(
         IReadOnlyList<string> arguments,

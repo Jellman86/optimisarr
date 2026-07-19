@@ -165,8 +165,24 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int>("Attempt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("CalibrationClipSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CalibrationClipStartSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("CalibrationReferenceStartSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<Guid?>("CalibrationSessionId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("EffectiveVideoQuality")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("EnqueueReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("EnqueuedAt")
                         .HasColumnType("TEXT");
@@ -183,6 +199,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<DateTimeOffset?>("FinishedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IgnoreMediaActivity")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("LibraryId")
                         .HasColumnType("INTEGER");
@@ -204,6 +223,16 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<int>("QualityRetryCount")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int?>("RequestedAudioBitrateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("RequestedImageQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RequestedRuleProfile")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("RequestedVideoQuality")
                         .HasColumnType("INTEGER");
@@ -246,6 +275,8 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CalibrationSessionId");
 
                     b.HasIndex("MediaFileId");
 
@@ -317,6 +348,10 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("KeepAudioLanguages")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeepSubtitleLanguages")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
@@ -521,6 +556,10 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SubtitleLanguages")
+                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("SubtitleTrackCount")

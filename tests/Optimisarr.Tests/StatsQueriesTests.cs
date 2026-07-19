@@ -77,6 +77,9 @@ public sealed class StatsQueriesTests : IDisposable
             {
                 db.Jobs.Add(new Job { MediaFileId = fileId, Status = status });
             }
+            db.Jobs.Add(new Job { MediaFileId = fileId, Type = JobType.Preview, Status = JobStatus.Queued });
+            db.Jobs.Add(new Job { MediaFileId = fileId, Type = JobType.Calibration, Status = JobStatus.Transcoding });
+            db.Jobs.Add(new Job { MediaFileId = fileId, Type = JobType.Calibration, Status = JobStatus.Failed });
             await db.SaveChangesAsync();
         }
 

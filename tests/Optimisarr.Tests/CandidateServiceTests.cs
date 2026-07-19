@@ -105,6 +105,40 @@ public sealed class CandidateServiceTests : IDisposable
         Assert.Equal("Already optimised", result.Reason);
     }
 
+    [Theory]
+    [InlineData(JobType.Preview)]
+    [InlineData(JobType.Calibration)]
+    public async Task Disposable_comparison_history_does_not_change_candidate_eligibility(JobType type)
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library
+            {
+                Name = "Films",
+                Path = "/data/films",
+                RuleProfile = RuleProfile.ConservativeHevc
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "a.mkv", videoCodec: "h264");
+            file.ModifiedAt = DateTimeOffset.Parse("2026-06-01T00:00:00Z");
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+            db.Jobs.Add(new Job
+            {
+                MediaFileId = file.Id,
+                LibraryId = type == JobType.Preview ? library.Id : null,
+                Type = type,
+                Status = JobStatus.Completed,
+                FinishedAt = DateTimeOffset.Parse("2026-06-01T01:00:00Z")
+            });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True(Single(await EvaluateAsync(libraryId: null), "a.mkv").Eligible);
+    }
+
     [Fact]
     public async Task A_file_with_a_failed_job_is_held_back_until_retried()
     {

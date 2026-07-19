@@ -150,4 +150,54 @@ public sealed class RuleResolverTests
 
         Assert.True(CandidateEvaluator.Evaluate(hdrFile, rules).IsEligible);
     }
+
+    [Fact]
+    public void Keep_subtitle_languages_override_layers_onto_the_profile_default()
+    {
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc,
+            new RuleOverrides { KeepSubtitleLanguages = new[] { "eng" } });
+
+        Assert.Equal(new[] { "eng" }, resolved.KeepSubtitleLanguages);
+        Assert.Empty(RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None).KeepSubtitleLanguages);
+    }
+
+    [Fact]
+    public void Track_cleanup_ignores_a_library_container_override()
+    {
+        // The profile's whole promise is "container unchanged"; a stale per-library
+        // override must not silently reintroduce a remux.
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.TrackCleanup, new RuleOverrides { TargetContainer = "mkv" });
+
+        Assert.Null(resolved.TargetContainer);
+    }
+
+    [Fact]
+    public void Track_cleanup_ignores_every_stale_encoding_override()
+    {
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.TrackCleanup,
+            new RuleOverrides
+            {
+                TargetVideoCodec = "h264",
+                TargetContainer = "mp4",
+                VideoAudioCodec = "aac",
+                VideoAudioBitrateKbps = 64,
+                DownmixToStereo = true,
+                MinFileSizeBytes = 10_000,
+                MaxHeight = 720,
+                Hdr = HdrHandling.Exclude,
+                OptimiseDolbyVision = true
+            });
+
+        Assert.Null(resolved.TargetVideoCodec);
+        Assert.Null(resolved.TargetContainer);
+        Assert.Null(resolved.VideoAudioCodec);
+        Assert.False(resolved.DownmixToStereo);
+        Assert.Equal(0, resolved.MinFileSizeBytes);
+        Assert.Null(resolved.MaxHeight);
+        Assert.Equal(HdrHandling.Preserve, resolved.Hdr);
+        Assert.False(resolved.OptimiseDolbyVision);
+    }
 }

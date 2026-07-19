@@ -295,7 +295,8 @@ internal static class MediaAndQueueEndpoints
         // from the API without reading container logs. Optionally scoped to one library.
         app.MapGet("/api/jobs/failures", async (int? libraryId, OptimisarrDbContext db, CancellationToken cancellationToken) =>
             Results.Ok(await JobQueries.SummariseFailuresAsync(db, cancellationToken, libraryId)))
-        .WithName("JobFailureSummary");
+        .WithName("JobFailureSummary")
+        .Produces<IReadOnlyList<FailureGroupDto>>();
 
         // The captured ffmpeg log (non-progress stderr) for a failed job, as plain text, so the full reason
         // is available from the API without container access. 404 when the job is unknown or has no log
@@ -304,7 +305,7 @@ internal static class MediaAndQueueEndpoints
         {
             var log = await db.Jobs
                 .AsNoTracking()
-                .Where(job => job.Id == id)
+                .Where(job => job.Id == id && job.Status == JobStatus.Failed)
                 .Select(job => job.ProcessLog)
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -380,7 +381,10 @@ internal static class MediaAndQueueEndpoints
                 .ToHashSet();
 
             var terminal = await db.Jobs
-                .Where(j => statuses.Contains(j.Status))
+                // Failed preview/calibration rows keep only diagnostic evidence. Clearing errored
+                // removes those rows alongside normal failures without exposing them in the queue.
+                .Where(j => statuses.Contains(j.Status)
+                    && (j.Type == JobType.Normal || j.Status == JobStatus.Failed))
                 .ToListAsync(cancellationToken);
 
             var clearable = terminal.Where(j => JobClearing.IsClearable(j, liveRollbackJobIds)).ToList();
@@ -420,7 +424,9 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -451,7 +457,9 @@ internal static class MediaAndQueueEndpoints
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });
@@ -485,7 +493,9 @@ internal static class MediaAndQueueEndpoints
             CancellationToken cancellationToken,
             bool higherQuality = false) =>
         {
-            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+            var job = await db.Jobs.FirstOrDefaultAsync(
+                j => j.Id == id && j.Type == JobType.Normal,
+                cancellationToken);
             if (job is null)
             {
                 return ApiErrors.NotFound("job.notFound", $"No job with id {id}.", new { id });

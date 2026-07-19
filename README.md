@@ -33,7 +33,7 @@ for rollback rather than deleted immediately.
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
 
 ## Project status
 
@@ -68,7 +68,7 @@ no support SLA or promise of a release schedule.
   AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
   target codec** (e.g. a huge HEVC remux) above a size you set.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
-  job, or **automatically after repeated failures** — managed per library on an
+  job, or **automatically after an unrecoverable or repeated failure** — managed per library on an
   **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.
 - A **Dashboard** leading with a persistent lifetime **space-saved** total (resettable),
   what's in flight, and live CPU/GPU usage while a job encodes.
@@ -76,6 +76,13 @@ no support SLA or promise of a release schedule.
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
   as segment-only; audio and image previews run in full.
+- A per-library, full-page **Personal quality check** compares a marked original reference with the
+  relevant anonymous candidates, then finds the most compressed setting the user
+  classifies as indistinguishable or acceptable on their own equipment.
+  Video compares the full library-slider presets across frame-aligned early/middle/late scenes
+  (including fail-closed HDR handling), music uses level-matched excerpts, and still images keep
+  zoom and pan synchronized. Results change only the saved preset/quality after an explicit Apply;
+  no source is queued, replaced, moved, or deleted.
 - Video replacement verifies the resolved codec, exact resolution, pixel bit depth, chroma sampling,
   and encoder profile in addition to full decode, timing, HDR/colour, stream, size, and VMAF gates.
 - Music defaults to **AAC 128 kbps in M4A**, preserving common attached cover art, tags, and timed
@@ -183,10 +190,14 @@ support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU
 failure retries in software. VMAF verification is off by default for video re-encodes and skipped
 for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
-bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
+bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame
 subsampling reduce runtime; every-frame scoring remains the safest default. VMAF-only failures get
-one encoder-aware higher-quality retry, and the report records the effective quality and sampling context.
+one encoder-aware higher-quality retry, then auto-exclude if that recovery still produces a measured
+score below the gate; missing/unusable measurements fail closed without triggering that recovery.
+An output that fails the size-saving gate auto-excludes immediately rather than silently lowering the
+configured quality; combined size and VMAF failures do the same because the safe recovery directions
+conflict. The report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
 (Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the

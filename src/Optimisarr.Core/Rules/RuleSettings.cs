@@ -20,9 +20,11 @@ public sealed record RuleSettings
 
     /// <summary>
     /// The container to remux/mux into (e.g. "mkv"). A file whose container already
-    /// matches is considered clean for remux-only profiles.
+    /// matches is considered clean for remux-only profiles. <c>null</c> means the
+    /// output keeps the source's container — used by the track-cleanup profile,
+    /// whose promise is that nothing but unwanted tracks changes.
     /// </summary>
-    public string TargetContainer { get; init; } = "mkv";
+    public string? TargetContainer { get; init; } = "mkv";
 
     /// <summary>Files smaller than this are not worth optimising.</summary>
     public long MinFileSizeBytes { get; init; }
@@ -104,6 +106,15 @@ public sealed record RuleSettings
     /// nothing is removed — see <see cref="Queue.AudioTrackSelection"/>.
     /// </summary>
     public IReadOnlyList<string> KeepAudioLanguages { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// The subtitle languages a video job keeps (ISO 639 codes); tracks in any other
+    /// language are removed from the output. Empty (the default) keeps every track.
+    /// Tracks whose language is unknown are always kept. Unlike audio there is no
+    /// keep-at-least-one guard — subtitles are optional streams, so a file may end
+    /// with none. See <see cref="Queue.SubtitleTrackSelection"/>.
+    /// </summary>
+    public IReadOnlyList<string> KeepSubtitleLanguages { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// When <c>true</c>, already-lossy audio (e.g. a 320 kbps MP3) is also eligible for

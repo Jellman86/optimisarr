@@ -83,6 +83,25 @@ export type SetupReadiness = {
   paths: SetupPath[]
   storageRelationships: SetupStorageRelationship[]
   tools: ToolCheck[]
+  recommendation: SetupRecommendation
+}
+
+export type SetupRecommendation = {
+  encoderMode: 'Cpu' | 'NvidiaNvenc' | 'IntelQsv' | 'Vaapi'
+  hardwareDecode: boolean
+  vmafTier: 'Off' | 'Balanced'
+  scheduleStart: string
+  scheduleEnd: string
+  encoderReason: 'nvidia' | 'intel' | 'vaapi' | 'cpu'
+  vmafReason: 'cuda-balanced' | 'cpu-cost' | 'unavailable'
+}
+
+export type SetupApplyReceipt = {
+  state: SetupState
+  libraryCount: number
+  settingsApplied: boolean
+  recommendationsApplied: boolean
+  alreadyApplied: boolean
 }
 
 export type ToolCheck = {
@@ -128,6 +147,7 @@ export type LibraryRules = {
   videoAudioBitrateKbps: number | null
   downmixToStereo: boolean
   keepAudioLanguages: string | null
+  keepSubtitleLanguages: string | null
   reencodeLossyAudio: boolean
   targetImageFormat: string | null
   imageQuality: number | null
@@ -213,6 +233,7 @@ export function newLibraryDefaults(): SaveLibrary {
     videoAudioBitrateKbps: null,
     downmixToStereo: false,
     keepAudioLanguages: null,
+    keepSubtitleLanguages: null,
     reencodeLossyAudio: false,
     targetImageFormat: null,
     imageQuality: null,
@@ -380,6 +401,112 @@ export type PreviewComparison = {
   verificationReportJson: string | null
 }
 
+export type CalibrationSource = {
+  mediaFileId: number
+  relativePath: string
+  durationSeconds: number
+  width: number | null
+  height: number | null
+  mediaKind: 'Video' | 'Audio' | 'Image'
+  isHdr: boolean
+}
+
+export type CalibrationSample = {
+  sampleNumber: number
+  sampleCount: number
+  durationSeconds: number
+  url: string
+  startSeconds: number
+  gainDb: number
+}
+
+export type CalibrationVariant = {
+  name: string
+  isOriginal: boolean
+  samples: CalibrationSample[]
+  diagnostics: CalibrationVariantDiagnostics | null
+}
+
+export type CalibrationVariantDiagnostics = {
+  profile: string | null
+  codec: string | null
+  container: string | null
+  requestedQuality: number | null
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
+}
+
+export type CalibrationClassification = 'Indistinguishable' | 'Acceptable' | 'VisiblyWorse'
+
+export type CalibrationVariantResult = {
+  name: string
+  isOriginal: boolean
+  profile: string | null
+  codec: string | null
+  container: string | null
+  quality: number | null
+  classification: CalibrationClassification
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
+  estimatedSavingPercent: number | null
+  recommended: boolean
+  vmaf: CalibrationVmafResult | null
+}
+
+export type CalibrationVmafSample = {
+  sampleNumber: number
+  measured: boolean
+  mean: number | null
+  harmonicMean: number | null
+  fifthPercentile: number | null
+  minimum: number | null
+  frameCount: number | null
+  modelVersion: string | null
+  preprocessing: string | null
+  error: string | null
+}
+
+export type CalibrationVmafResult = {
+  measuredSamples: number
+  totalSamples: number
+  mean: number | null
+  harmonicMean: number | null
+  fifthPercentile: number | null
+  minimum: number | null
+  frameCount: number | null
+  modelVersion: string | null
+  preprocessing: string | null
+  samples: CalibrationVmafSample[]
+}
+
+export type CalibrationResult = {
+  recommendedQuality: number | null
+  recommendedProfile: string | null
+  encoder: string | null
+  qualityMode: string | null
+  effectiveQuality: number | null
+  estimatedSavingPercent: number | null
+  outcome: string
+  applied: boolean
+  variants: CalibrationVariantResult[]
+}
+
+export type CalibrationSession = {
+  id: string
+  libraryId: number
+  mediaFileId: number
+  source: string
+  mediaKind: 'Video' | 'Audio' | 'Image'
+  status: 'Preparing' | 'Comparing' | 'Revealed' | 'Applied' | 'Failed'
+  preparationProgress: number
+  preparationState: 'Waiting' | 'Working'
+  error: string | null
+  variants: CalibrationVariant[]
+  result: CalibrationResult | null
+}
+
 export type Job = {
   id: number
   mediaFileId: number
@@ -389,6 +516,7 @@ export type Job = {
   priority: number
   progress: number
   errorMessage: string | null
+  enqueueReason: string | null
   failureCategory: string | null
   ffmpegArguments: string | null
   videoEncoder: string | null
@@ -417,7 +545,15 @@ export type FailureSample = {
   jobId: number
   mediaFileId: number
   relativePath: string | null
+  jobType: 'Normal' | 'Preview' | 'Calibration'
   errorMessage: string | null
+  verificationChecks: FailureVerificationCheck[]
+}
+
+export type FailureVerificationCheck = {
+  name: string
+  outcome: 'Passed' | 'Failed'
+  detail: string
 }
 
 export type FailureGroup = {
@@ -695,6 +831,8 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
     case 'setup.completion.invalid': return i18n.m.setup.error_save
+    case 'setup.library.required': return i18n.m.setup.library_required_error
+    case 'setup.library.unavailable': return i18n.m.setup.required_tools_error
     default: return error
   }
 }
@@ -725,6 +863,12 @@ export const api = {
   advanceSetup: (completedStep: number) =>
     request<SetupState>('/api/setup/progress', { method: 'PUT', body: JSON.stringify({ completedStep }) }),
   completeSetup: () => request<SetupState>('/api/setup/complete', { method: 'POST' }),
+  applySetup: (body: {
+    settings: Settings
+    useRecommendedEncoder: boolean
+    applyRecommendedVmaf: boolean
+    applyRecommendedSchedule: boolean
+  }) => request<SetupApplyReceipt>('/api/setup/apply', { method: 'POST', body: JSON.stringify(body) }),
   restartSetup: () => request<SetupState>('/api/setup/restart', { method: 'POST' }),
   tools: () => request<{ tools: ToolCheck[] }>('/api/system/tools').then((r) => r.tools),
   hardware: (refresh = false) =>
@@ -759,6 +903,23 @@ export const api = {
   deletePreview: (jobId: number) => request<void>(`/api/preview/${jobId}`, { method: 'DELETE' }),
   mediaContentUrl: (mediaFileId: number) => `/api/media/${mediaFileId}/content`,
   previewContentUrl: (jobId: number) => `/api/preview/${jobId}/content`,
+
+  calibrationSources: (libraryId: number) =>
+    request<CalibrationSource[]>(`/api/libraries/${libraryId}/calibration/sources`),
+  startCalibration: (libraryId: number, mediaFileId: number, hdrPlaybackConfirmed = false, diagnosticsEnabled = true, ignoreActiveStreams = false) =>
+    request<CalibrationSession>(`/api/libraries/${libraryId}/calibration`, {
+      method: 'POST', body: JSON.stringify({ mediaFileId, hdrPlaybackConfirmed, diagnosticsEnabled, ignoreActiveStreams }),
+    }),
+  calibrations: () => request<CalibrationSession[]>('/api/calibration'),
+  calibration: (id: string) => request<CalibrationSession>(`/api/calibration/${id}`),
+  classifyCalibration: (id: string, classifications: Record<string, CalibrationClassification>) =>
+    request<CalibrationSession>(`/api/calibration/${id}/classifications`, {
+      method: 'POST', body: JSON.stringify({ classifications }),
+    }),
+  applyCalibration: (id: string) =>
+    request<CalibrationSession>(`/api/calibration/${id}/apply`, { method: 'POST' }),
+  deleteCalibration: (id: string) =>
+    request<void>(`/api/calibration/${id}`, { method: 'DELETE' }),
 
   candidates: (libraryId?: number) =>
     request<Candidate[]>(`/api/candidates${libraryId ? `?libraryId=${libraryId}` : ''}`),

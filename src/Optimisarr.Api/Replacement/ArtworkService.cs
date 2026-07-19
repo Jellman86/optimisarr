@@ -214,7 +214,7 @@ public sealed class ArtworkService(
             .AsNoTracking()
             .Include(j => j.MediaFile)!
             .ThenInclude(m => m!.Library)
-            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+            .FirstOrDefaultAsync(j => j.Id == jobId && j.Type == JobType.Normal, cancellationToken);
         if (job?.MediaFile?.Library is not { } library)
         {
             return None;

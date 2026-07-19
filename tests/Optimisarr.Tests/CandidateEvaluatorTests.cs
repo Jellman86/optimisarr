@@ -612,4 +612,131 @@ public sealed class CandidateEvaluatorTests
 
         Assert.False(decision.IsEligible);
     }
+
+    [Fact]
+    public void Remux_cleanup_offers_a_container_clean_file_with_removable_subtitles()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.RemuxCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File() with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("1 subtitle track(s) (fra)", decision.Reason);
+    }
+
+    [Fact]
+    public void Track_cleanup_counts_subtitle_removals_toward_eligibility()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File() with { SubtitleLanguages = new string?[] { "fra", "spa" } };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("2 subtitle track(s) (fra, spa)", decision.Reason);
+    }
+
+    [Fact]
+    public void Track_cleanup_names_both_kinds_of_removals_in_one_reason()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" },
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File() with
+        {
+            AudioLanguages = new string?[] { "eng", "fra", "deu" },
+            SubtitleLanguages = new string?[] { "spa" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+        Assert.Contains("2 audio track(s) (fra, deu) + 1 subtitle track(s) (spa)", decision.Reason);
+    }
+
+    [Fact]
+    public void Track_cleanup_skips_everything_when_no_kept_languages_are_configured()
+    {
+        var media = File() with { AudioLanguages = new string?[] { "eng", "fra" } };
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup);
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("nothing to remove", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Track_cleanup_is_eligible_only_when_tracks_are_removable()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        var removable = File() with { AudioLanguages = new string?[] { "eng", "fra" } };
+        var clean = File() with { AudioLanguages = new string?[] { "eng" } };
+
+        var eligible = CandidateEvaluator.Evaluate(removable, rules);
+        Assert.True(eligible.IsEligible);
+        Assert.Contains("1 audio track(s) (fra)", eligible.Reason);
+        Assert.False(CandidateEvaluator.Evaluate(clean, rules).IsEligible);
+    }
+
+    [Fact]
+    public void Track_cleanup_stays_conservative_when_languages_were_never_captured()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+        var media = File() with { AudioLanguages = null };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("re-probe", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Track_cleanup_never_sends_audio_or_images_to_their_encode_pipelines()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepAudioLanguages = new[] { "eng" }
+        };
+
+        Assert.False(CandidateEvaluator.Evaluate(AudioFile("flac"), rules).IsEligible);
+        Assert.False(CandidateEvaluator.Evaluate(
+            ImageFile("png", frameCount: 1, pixelFormat: "rgb24"), rules).IsEligible);
+    }
+
+    [Fact]
+    public void Track_cleanup_can_stream_copy_dolby_vision_without_the_reencode_opt_in()
+    {
+        var rules = RuleProfileDefaults.For(RuleProfile.TrackCleanup) with
+        {
+            KeepSubtitleLanguages = new[] { "eng" }
+        };
+        var media = File(isHdr: true, isDolbyVision: true) with
+        {
+            SubtitleLanguages = new string?[] { "eng", "fra" }
+        };
+
+        var decision = CandidateEvaluator.Evaluate(media, rules);
+
+        Assert.True(decision.IsEligible);
+    }
 }

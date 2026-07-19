@@ -12,6 +12,12 @@ public static class VmafRetryPolicy
             return false;
         }
 
+        return report.Vmaf?.Measured == true && IsSoleVmafFailure(report);
+    }
+
+    /// <summary>Whether VMAF is the report's only failed gate.</summary>
+    public static bool IsSoleVmafFailure(VerificationReport report)
+    {
         var failed = report.Checks.Where(check => check.Outcome == CheckOutcome.Failed).ToList();
         return failed.Count == 1 && string.Equals(failed[0].Name, VmafCheckName, StringComparison.Ordinal);
     }

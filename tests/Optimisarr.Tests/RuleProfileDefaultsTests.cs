@@ -92,6 +92,18 @@ public sealed class RuleProfileDefaultsTests
     }
 
     [Fact]
+    public void Track_cleanup_never_reencodes_and_keeps_the_source_container()
+    {
+        var settings = RuleProfileDefaults.For(RuleProfile.TrackCleanup);
+
+        Assert.Null(settings.TargetVideoCodec);
+        Assert.Null(settings.TargetContainer);
+        Assert.Null(settings.DefaultCrf);
+        Assert.Equal(0, settings.MinFileSizeBytes);
+        Assert.Equal(HdrHandling.Preserve, settings.Hdr);
+    }
+
+    [Fact]
     public void Every_profile_has_defaults()
     {
         foreach (var profile in Enum.GetValues<RuleProfile>())

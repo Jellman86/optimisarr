@@ -1,5 +1,6 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
 
@@ -30,6 +31,26 @@ public static class VerificationEvaluator
             checks.Add(DurationWithinTolerance(input, policy));
             checks.Add(AudioRetained(input, policy));
             checks.Add(SubtitlesRetained(input, policy));
+
+            if (input.ExpectedAudioLanguages is not null)
+            {
+                checks.Add(LanguagesRetained(
+                    "Audio languages", input.ExpectedAudioLanguages, input.OutputAudioLanguages));
+            }
+
+            if (input.ExpectedSubtitleLanguages is not null)
+            {
+                checks.Add(LanguagesRetained(
+                    "Subtitle languages", input.ExpectedSubtitleLanguages, input.OutputSubtitleLanguages));
+            }
+
+            // Only registered when the job promised an unchanged container (track cleanup),
+            // so ordinary remuxes/transcodes don't get a noisy not-applicable line.
+            if (input.RequireContainerUnchanged)
+            {
+                checks.Add(ContainerUnchanged(input));
+                checks.Add(AudioCodecsPreserved(input));
+            }
         }
 
         // Music metadata and embedded artwork are part of the media, not decoration. Audio-only
@@ -105,20 +126,32 @@ public static class VerificationEvaluator
             checks.Add(MonotonicTimestamps(input));
         }
 
+        // Keep malformed source timelines distinct from output truncation. A file whose audio or
+        // container continues materially beyond its final video packet is unsafe to optimise, but
+        // blaming that inherited gap on the new encode sends the operator in the wrong direction.
+        if (isVideo
+            && input.OriginalTimestampsMeasured
+            && input.OriginalLastPresentationSeconds is not null
+            && input.OriginalDurationSeconds is > 0)
+        {
+            checks.Add(SourceVideoTimelineComplete(input));
+        }
+
         // A truncated/partial last GOP shows up as the output's video ending well before
         // the source runtime. It needs the source duration and the output's real last
         // presentation time, so it is checked only when both are known.
         if (isVideo
             && input.TimestampsMeasured
             && input.OutputLastPresentationSeconds is not null
-            && input.OriginalDurationSeconds is > 0)
+            && OriginalVideoSpanSeconds(input) is > 0)
         {
             checks.Add(TailComplete(input));
         }
 
         // Remuxes copy the encoded frames unchanged, so VMAF is both redundant and expensive.
         // Non-video media use their applicable audio/image gates instead.
-        if (policy.RequiresVmaf(input.Kind, input.VideoReencoded))
+        var vmafRequested = policy.RequiresVmaf(input.Kind, input.VideoReencoded);
+        if (vmafRequested && policy.QualityGateEnabled)
         {
             checks.Add(PerceptualQuality(input, policy));
         }
@@ -133,7 +166,11 @@ public static class VerificationEvaluator
             checks.Add(NoClippingIntroduced(input, policy));
         }
 
-        return new VerificationReport(checks);
+        return new VerificationReport(
+            checks,
+            Vmaf: vmafRequested
+                ? new VmafEvidence(input.QualityMeasured, input.QualityError, input.QualityScores)
+                : null);
     }
 
     private static VerificationCheck AudioMetadataPreserved(VerificationInput input)
@@ -318,19 +355,48 @@ public static class VerificationEvaluator
         const double absoluteFloorSeconds = 1.0;
         const double tolerancePercent = 2.0;
 
-        var original = input.OriginalDurationSeconds!.Value;
-        var lastPresentation = input.OutputLastPresentationSeconds!.Value;
+        var original = OriginalVideoSpanSeconds(input)!.Value;
+        var lastPresentation = Math.Max(
+            0,
+            input.OutputLastPresentationSeconds!.Value - (input.OutputVideoStartSeconds ?? 0));
         var shortfall = original - lastPresentation;
         var shortfallPercent = shortfall / original * 100.0;
         var detail = string.Format(
             CultureInfo.InvariantCulture,
-            "Output video ends at {0:0.###}s of the source's {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
+            "Output video spans {0:0.###}s against the source video's {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
             lastPresentation, original, Math.Max(shortfallPercent, 0), tolerancePercent);
 
         return shortfall > absoluteFloorSeconds && shortfallPercent > tolerancePercent
             ? Fail("Tail integrity", $"{detail} The final GOP looks truncated.")
             : Pass("Tail integrity", detail);
     }
+
+    private static VerificationCheck SourceVideoTimelineComplete(VerificationInput input)
+    {
+        const double absoluteFloorSeconds = 1.0;
+        const double tolerancePercent = 2.0;
+
+        var containerDuration = input.OriginalDurationSeconds!.Value;
+        var videoDuration = OriginalVideoSpanSeconds(input)!.Value;
+        var shortfall = containerDuration - videoDuration;
+        var shortfallPercent = shortfall / containerDuration * 100.0;
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "The source video ends at {0:0.###}s while its container lasts {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
+            videoDuration,
+            containerDuration,
+            Math.Max(shortfallPercent, 0),
+            tolerancePercent);
+
+        return shortfall > absoluteFloorSeconds && shortfallPercent > tolerancePercent
+            ? Fail("Source video timeline", $"{detail} The source appears corrupt or has a materially incomplete picture stream.")
+            : Pass("Source video timeline", detail);
+    }
+
+    private static double? OriginalVideoSpanSeconds(VerificationInput input) =>
+        input.OriginalTimestampsMeasured && input.OriginalLastPresentationSeconds is { } last
+            ? Math.Max(0, last - (input.OriginalVideoStartSeconds ?? 0))
+            : input.OriginalDurationSeconds;
 
     private static VerificationCheck AvSync(VerificationInput input)
     {
@@ -723,6 +789,19 @@ public static class VerificationEvaluator
     private static VerificationCheck SubtitlesRetained(VerificationInput input, VerificationPolicy policy)
     {
         var detail = $"Original {input.OriginalSubtitleTrackCount} subtitle track(s), output {input.OutputSubtitleTrackCount}.";
+
+        if (input.SubtitleTracksRemoved > 0)
+        {
+            // The plan is exact: an encode that drops a stream beyond the plan must fail even
+            // when the policy does not require retention, and unlike audio a zero-subtitle
+            // output is legitimate (no minimum-one floor — an all-foreign set goes entirely).
+            var expected = Math.Max(input.OriginalSubtitleTrackCount - input.SubtitleTracksRemoved, 0);
+            detail += $" {input.SubtitleTracksRemoved} track(s) intentionally removed by the kept-languages rule.";
+            return input.OutputSubtitleTrackCount == expected
+                ? Pass("Subtitle tracks", detail)
+                : Fail("Subtitle tracks", $"{detail} Expected exactly {expected} track(s) after the planned removal.");
+        }
+
         if (!policy.RequireSubtitlesRetained)
         {
             return Pass("Subtitle tracks", $"{detail} Retention not required by policy.");
@@ -731,6 +810,83 @@ public static class VerificationEvaluator
         return input.OutputSubtitleTrackCount >= input.OriginalSubtitleTrackCount
             ? Pass("Subtitle tracks", detail)
             : Fail("Subtitle tracks", $"{detail} Subtitle tracks were lost.");
+    }
+
+    private static VerificationCheck LanguagesRetained(
+        string name,
+        IReadOnlyList<string?> expected,
+        IReadOnlyList<string?>? output)
+    {
+        if (output is null || output.Count != expected.Count)
+        {
+            return Fail(
+                name,
+                $"Expected language evidence for {expected.Count} retained track(s), output reported {output?.Count ?? 0}.");
+        }
+
+        for (var index = 0; index < expected.Count; index++)
+        {
+            // An unknown source tag was deliberately preserved, but its identity cannot be
+            // compared honestly. The exact stream-count gate still proves that no extra stream
+            // disappeared. Known identifiers, however, must survive in positional order.
+            if (!TrackLanguages.TryCanonicaliseKnown(expected[index], out var expectedLanguage))
+            {
+                continue;
+            }
+
+            if (!TrackLanguages.TryCanonicaliseKnown(output[index], out var outputLanguage)
+                || !string.Equals(expectedLanguage, outputLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(
+                    name,
+                    $"Retained track {index + 1} changed language from {expectedLanguage} to {output[index] ?? "unknown"}.");
+            }
+        }
+
+        return Pass(name, $"Verified the language identity of {expected.Count} retained track(s).");
+    }
+
+    // ffprobe's format_name is a demuxer name shared by every extension it serves, so a
+    // straight comparison holds exactly when the container type is genuinely the same.
+    private static VerificationCheck ContainerUnchanged(VerificationInput input)
+    {
+        var detail = $"Original \"{input.OriginalContainer}\", output \"{input.OutputContainer}\".";
+        return input.OutputContainer is not null
+            && string.Equals(input.OriginalContainer, input.OutputContainer, StringComparison.OrdinalIgnoreCase)
+            ? Pass("Container unchanged", detail)
+            : Fail("Container unchanged", $"{detail} The container type must not change under this profile.");
+    }
+
+    private static VerificationCheck AudioCodecsPreserved(VerificationInput input)
+    {
+        const string name = "Audio codecs unchanged";
+        if (input.ExpectedAudioCodecs is null || input.OutputAudioCodecs is null)
+        {
+            return Fail(name, "Source/output audio codec evidence could not be compared.");
+        }
+
+        if (input.ExpectedAudioCodecs.Count != input.OutputAudioCodecs.Count)
+        {
+            return Fail(
+                name,
+                $"Expected {input.ExpectedAudioCodecs.Count} retained audio codec(s), output reported {input.OutputAudioCodecs.Count}.");
+        }
+
+        for (var index = 0; index < input.ExpectedAudioCodecs.Count; index++)
+        {
+            if (string.IsNullOrWhiteSpace(input.ExpectedAudioCodecs[index])
+                || !string.Equals(
+                    input.ExpectedAudioCodecs[index],
+                    input.OutputAudioCodecs[index],
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(
+                    name,
+                    $"Retained audio track {index + 1} changed codec from {input.ExpectedAudioCodecs[index] ?? "unknown"} to {input.OutputAudioCodecs[index] ?? "unknown"}.");
+            }
+        }
+
+        return Pass(name, $"All {input.ExpectedAudioCodecs.Count} retained audio codec(s) are unchanged.");
     }
 
     private static VerificationCheck SizeReduced(VerificationInput input, VerificationPolicy policy)

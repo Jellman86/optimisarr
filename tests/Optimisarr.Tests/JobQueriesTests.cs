@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -74,7 +75,29 @@ public sealed class JobQueriesTests : IDisposable
     }
 
     [Fact]
-    public async Task ListAsync_excludes_preview_jobs()
+    public async Task ListAsync_surfaces_why_a_job_was_enqueued()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+            var job = Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            job.EnqueueReason = "h264 → hevc";
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
+
+        Assert.Equal("h264 → hevc", Assert.Single(jobs).EnqueueReason);
+    }
+
+    [Fact]
+    public async Task ListAsync_excludes_disposable_comparison_jobs()
     {
         await using (var db = new OptimisarrDbContext(_options))
         {
@@ -83,19 +106,23 @@ public sealed class JobQueriesTests : IDisposable
             await db.SaveChangesAsync();
             db.MediaFiles.Add(MediaFile(library.Id, id: 1));
             db.MediaFiles.Add(MediaFile(library.Id, id: 2));
+            db.MediaFiles.Add(MediaFile(library.Id, id: 3));
             await db.SaveChangesAsync();
 
             db.Jobs.Add(Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow));
             var preview = Job(id: 2, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
             preview.Type = JobType.Preview;
             db.Jobs.Add(preview);
+            var calibration = Job(id: 3, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            calibration.Type = JobType.Calibration;
+            db.Jobs.Add(calibration);
             await db.SaveChangesAsync();
         }
 
         await using var readDb = new OptimisarrDbContext(_options);
         var jobs = await JobQueries.ListAsync(readDb, CancellationToken.None);
 
-        // The preview job is hidden from the normal queue list.
+        // Interactive previews and blind-calibration clips are hidden from the normal queue list.
         Assert.Equal(1, Assert.Single(jobs).Id);
     }
 
@@ -182,6 +209,37 @@ public sealed class JobQueriesTests : IDisposable
         var groups = await JobQueries.SummariseFailuresAsync(readDb, CancellationToken.None);
 
         Assert.Equal("Verification", Assert.Single(groups).Category);
+    }
+
+    [Fact]
+    public async Task SummariseFailuresAsync_exposes_disposable_comparison_verification_details()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+
+            var job = Failed(id: 1, "Verification failed: Duration; Tail integrity");
+            job.Type = JobType.Calibration;
+            job.LibraryId = null;
+            job.VerificationReportJson =
+                """{"checks":[{"name":"Duration","outcome":"Failed","detail":"Original 17.4s, output 12s."},{"name":"Tail integrity","outcome":"Failed","detail":"Output video ends at 11.96s of the source's 17.4s."}]}""";
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var group = Assert.Single(await JobQueries.SummariseFailuresAsync(readDb, CancellationToken.None));
+        var sample = Assert.Single(group.Samples);
+
+        Assert.Equal("Calibration", sample.JobType);
+        Assert.Equal(2, sample.VerificationChecks.Count);
+        Assert.All(sample.VerificationChecks, check => Assert.Equal(CheckOutcome.Failed.ToString(), check.Outcome));
+        Assert.Contains(sample.VerificationChecks, check =>
+            check.Name == "Duration" && check.Detail.Contains("17.4s", StringComparison.Ordinal));
     }
 
     [Fact]

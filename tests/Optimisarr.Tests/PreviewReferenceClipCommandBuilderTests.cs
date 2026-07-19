@@ -1,4 +1,5 @@
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Domain;
 
 namespace Optimisarr.Tests;
 
@@ -37,6 +38,70 @@ public sealed class PreviewReferenceClipCommandBuilderTests
 
         Assert.DoesNotContain("-ss", args);
         Assert.Equal("60", args[IndexOf(args, "-t") + 1]);
+    }
+
+    [Fact]
+    public void Video_only_reference_keeps_the_original_video_bitstream_without_unrelated_tracks()
+    {
+        var args = PreviewReferenceClipCommandBuilder.Build(
+            "/data/tv/Episode.mkv",
+            "/work/calibration/reference.mkv",
+            12,
+            281,
+            videoOnly: true);
+
+        Assert.Equal("0:v:0", args[IndexOf(args, "-map") + 1]);
+        Assert.Equal("copy", args[IndexOf(args, "-c:v") + 1]);
+        Assert.DoesNotContain("-c:a", args);
+        Assert.DoesNotContain("-c:s", args);
+    }
+
+    [Fact]
+    public void Calibration_reference_survives_verification_but_preview_reference_does_not()
+    {
+        var preview = new VerificationClip(60, 1800, "/work/preview/reference.mkv");
+        var calibration = new VerificationClip(
+            12,
+            281,
+            "/work/calibration/reference.mkv",
+            RetainReference: true,
+            VideoOnly: true);
+
+        Assert.True(VerificationClipLifecycle.DeleteReferenceAfterVerification(preview));
+        Assert.False(VerificationClipLifecycle.DeleteReferenceAfterVerification(calibration));
+    }
+
+    [Fact]
+    public void Complete_video_preset_keeps_a_video_only_frame_aligned_reference()
+    {
+        var clip = QueueDispatcher.BuildVerificationClip(
+            isDisposable: true,
+            isCalibration: true,
+            MediaKind.Video,
+            clipSeconds: 12,
+            clipStartSeconds: 281,
+            "/work/calibration/session/job/candidate.mp4");
+
+        Assert.NotNull(clip);
+        Assert.True(clip.VideoOnly);
+        Assert.True(clip.RetainReference);
+        Assert.Equal(12, clip.Seconds);
+        Assert.Equal(281, clip.StartSeconds);
+    }
+
+    [Fact]
+    public void Audio_reference_is_a_single_lossless_flac_stream_for_native_browser_playback()
+    {
+        var args = PreviewReferenceClipCommandBuilder.BuildAudio(
+            "/data/music/track.wav",
+            "/work/calibration/reference.flac",
+            15,
+            30);
+
+        Assert.Equal("0:a:0", args[IndexOf(args, "-map") + 1]);
+        Assert.Equal("flac", args[IndexOf(args, "-c:a") + 1]);
+        Assert.Equal("15", args[IndexOf(args, "-t") + 1]);
+        Assert.Equal("/work/calibration/reference.flac", args[^1]);
     }
 
     private static int IndexOf(IReadOnlyList<string> args, string value) =>

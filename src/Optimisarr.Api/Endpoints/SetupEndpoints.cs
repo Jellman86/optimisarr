@@ -25,12 +25,14 @@ internal static class SetupEndpoints
         app.MapGet("/api/setup/readiness", async (
             OptimisarrDbContext db,
             ToolDetectionService tools,
+            HardwareCapabilityService hardware,
             SettingsStore settings,
             IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             var databaseAvailable = await db.Database.CanConnectAsync(cancellationToken);
             var toolResults = await tools.DetectAsync(cancellationToken);
+            var hardwareResult = await hardware.DetectAsync(cancellationToken);
             var workPath = WorkPaths.Resolve(environment);
             var quarantinePath = TrashPaths.Resolve(environment);
             var minFreeDiskBytes = databaseAvailable
@@ -66,6 +68,10 @@ internal static class SetupEndpoints
             var ready = databaseAvailable
                 && paths.All(path => path.Issue == "none")
                 && toolResults.All(tool => !tool.Required || tool.Available);
+            var recommendation = SetupRecommendationPolicy.Recommend(
+                hardwareResult.Encoders,
+                toolResults.Any(tool => tool.Name == "FFmpeg (VMAF)" && tool.Available),
+                toolResults.Any(tool => tool.Name == "FFmpeg (CUDA VMAF)" && tool.Available));
 
             return Results.Ok(new SetupReadinessDto(
                 databaseAvailable,
@@ -73,7 +79,8 @@ internal static class SetupEndpoints
                 DeploymentPlatformDetector.ToWireValue(DeploymentPlatformDetector.DetectCurrent()),
                 paths,
                 storageRelationships,
-                toolResults));
+                toolResults,
+                SetupRecommendationDto.From(recommendation)));
         })
         .WithName("GetSetupReadiness");
 
@@ -116,6 +123,126 @@ internal static class SetupEndpoints
         })
         .WithName("CompleteSetup");
 
+        app.MapPost("/api/setup/apply", async (
+            SetupApplyRequest request,
+            OptimisarrDbContext db,
+            SettingsStore settings,
+            ToolDetectionService tools,
+            HardwareCapabilityService hardware,
+            CancellationToken cancellationToken) =>
+        {
+            var state = await settings.GetSetupStateAsync(cancellationToken);
+            var libraryCount = await db.Libraries.CountAsync(cancellationToken);
+            if (state.Completed)
+            {
+                return Results.Ok(new SetupApplyReceiptDto(
+                    SetupStateDto.From(state),
+                    libraryCount,
+                    SettingsApplied: false,
+                    RecommendationsApplied: false,
+                    AlreadyApplied: true));
+            }
+
+            if (state.CompletedStep != SetupState.StepCount - 1)
+            {
+                return ApiErrors.BadRequest(
+                    "setup.completion.invalid",
+                    "Setup can be applied only from the final review step.");
+            }
+
+            if (!SettingsRequestParser.TryParse(request.Settings, out var queueSettings, out var error))
+            {
+                return ApiErrors.BadRequest(error!.Code, error.Message);
+            }
+
+            var libraries = await db.Libraries.OrderBy(library => library.Id).ToListAsync(cancellationToken);
+            if (libraries.Count == 0)
+            {
+                return ApiErrors.BadRequest("setup.library.required", "Add at least one library before applying setup.");
+            }
+
+            var unavailable = libraries.FirstOrDefault(library =>
+            {
+                var (exists, readable, writable) = PathAccessProbe.Probe(library.Path);
+                return !exists || !readable || !writable;
+            });
+            if (unavailable is not null)
+            {
+                return ApiErrors.BadRequest(
+                    "setup.library.unavailable",
+                    $"The library path is not ready: {unavailable.Path}",
+                    new { path = unavailable.Path });
+            }
+
+            SetupRecommendation? recommendation = null;
+            if (request.UseRecommendedEncoder
+                || request.ApplyRecommendedVmaf
+                || request.ApplyRecommendedSchedule)
+            {
+                var toolResults = await tools.DetectAsync(cancellationToken);
+                var hardwareResult = await hardware.DetectAsync(cancellationToken);
+                recommendation = SetupRecommendationPolicy.Recommend(
+                    hardwareResult.Encoders,
+                    toolResults.Any(tool => tool.Name == "FFmpeg (VMAF)" && tool.Available),
+                    toolResults.Any(tool => tool.Name == "FFmpeg (CUDA VMAF)" && tool.Available));
+            }
+
+            if (request.UseRecommendedEncoder && recommendation is not null)
+            {
+                queueSettings = queueSettings with
+                {
+                    EncoderMode = recommendation.EncoderMode,
+                    HardwareDecode = recommendation.HardwareDecode
+                };
+            }
+
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                await settings.SetQueueSettingsAsync(queueSettings, cancellationToken);
+
+                foreach (var library in libraries)
+                {
+                    var changed = false;
+                    if (request.ApplyRecommendedVmaf
+                        && recommendation is not null
+                        && library.MediaType is Optimisarr.Core.Domain.MediaType.Film or Optimisarr.Core.Domain.MediaType.Tv)
+                    {
+                        ApplyVmafRecommendation(library, recommendation.VmafTier);
+                        changed = true;
+                    }
+                    if (request.ApplyRecommendedSchedule && recommendation is not null)
+                    {
+                        library.AutoEnqueueWindowStart = recommendation.ScheduleStart;
+                        library.AutoEnqueueWindowEnd = recommendation.ScheduleEnd;
+                        changed = true;
+                    }
+                    if (changed)
+                    {
+                        library.UpdatedAt = DateTimeOffset.UtcNow;
+                    }
+                }
+
+                await db.SaveChangesAsync(cancellationToken);
+                state = state.Complete();
+                await settings.SetSetupStateAsync(state, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+
+            return Results.Ok(new SetupApplyReceiptDto(
+                SetupStateDto.From(state),
+                libraries.Count,
+                SettingsApplied: true,
+                RecommendationsApplied: recommendation is not null,
+                AlreadyApplied: false));
+        })
+        .WithName("ApplySetupPlan");
+
         app.MapPost("/api/setup/restart", async (
             SettingsStore settings,
             CancellationToken cancellationToken) =>
@@ -126,9 +253,28 @@ internal static class SetupEndpoints
         })
         .WithName("RestartSetup");
     }
+
+    private static void ApplyVmafRecommendation(Optimisarr.Data.Library library, SetupVmafTier tier)
+    {
+        library.VmafQualityGateEnabled = tier == SetupVmafTier.Balanced;
+        if (tier == SetupVmafTier.Balanced)
+        {
+            library.MinVmafHarmonicMean = 85;
+            library.MinVmafMin = 70;
+            library.MinVmafCatastrophicMin = 40;
+            library.ClipVmafEnabled = true;
+            library.VmafFrameSubsample = 1;
+        }
+    }
 }
 
 internal sealed record SetupProgressDto(int CompletedStep);
+
+internal sealed record SetupApplyRequest(
+    SettingsDto Settings,
+    bool UseRecommendedEncoder,
+    bool ApplyRecommendedVmaf,
+    bool ApplyRecommendedSchedule);
 
 internal sealed record SetupReadinessDto(
     bool DatabaseAvailable,
@@ -136,7 +282,34 @@ internal sealed record SetupReadinessDto(
     string Platform,
     IReadOnlyList<SetupPathDto> Paths,
     IReadOnlyList<SetupStorageRelationshipDto> StorageRelationships,
-    IReadOnlyList<ToolCheckResult> Tools);
+    IReadOnlyList<ToolCheckResult> Tools,
+    SetupRecommendationDto Recommendation);
+
+internal sealed record SetupRecommendationDto(
+    string EncoderMode,
+    bool HardwareDecode,
+    string VmafTier,
+    string ScheduleStart,
+    string ScheduleEnd,
+    string EncoderReason,
+    string VmafReason)
+{
+    public static SetupRecommendationDto From(SetupRecommendation recommendation) => new(
+        recommendation.EncoderMode.ToString(),
+        recommendation.HardwareDecode,
+        recommendation.VmafTier.ToString(),
+        recommendation.ScheduleStart.ToString("HH:mm"),
+        recommendation.ScheduleEnd.ToString("HH:mm"),
+        recommendation.EncoderReason,
+        recommendation.VmafReason);
+}
+
+internal sealed record SetupApplyReceiptDto(
+    SetupStateDto State,
+    int LibraryCount,
+    bool SettingsApplied,
+    bool RecommendationsApplied,
+    bool AlreadyApplied);
 
 internal sealed record SetupPathDto(
     string Name,

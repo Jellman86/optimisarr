@@ -13,6 +13,7 @@ public sealed record MediaProbeResult(
     bool Success,
     string? Container,
     double? DurationSeconds,
+    double? VideoDurationSeconds,
     string? VideoCodec,
     int? Width,
     int? Height,
@@ -21,6 +22,7 @@ public sealed record MediaProbeResult(
     IReadOnlyList<AudioTrackInfo> AudioTracks,
     int AudioTrackCount,
     int SubtitleTrackCount,
+    IReadOnlyList<string?> SubtitleLanguages,
     bool HasImageSubtitles,
     bool IsHdr,
     bool IsDolbyVision,
@@ -40,11 +42,12 @@ public sealed record MediaProbeResult(
     IReadOnlyDictionary<string, string> FormatTags,
     bool? IsVariableFrameRate,
     string? VideoProfile,
-    string? Error)
+    string? Error,
+    double? VideoFrameRate = null)
 {
     public static MediaProbeResult Failure(string error) =>
-        new(false, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
-            0, 0, false, false, false, 0, 0, null,
+        new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
+            0, 0, Array.Empty<string?>(), false, false, false, 0, 0, null,
             null, null, null, null, null, null, MediaKind.Unknown, null, null, 0,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), null, null, error);
 }
@@ -165,6 +168,7 @@ public sealed class MediaProbeService
         }
 
         string? videoCodec = null;
+        double? videoDuration = null;
         int? width = null;
         int? height = null;
         int? frameCount = null;
@@ -174,6 +178,7 @@ public sealed class MediaProbeService
         var audioCodecs = new List<string>();
         var audioTracks = new List<AudioTrackInfo>();
         var subtitleCount = 0;
+        var subtitleLanguages = new List<string?>();
         var hasImageSubtitles = false;
         var maxAudioChannels = 0;
         var maxAudioSampleRate = 0;
@@ -188,6 +193,7 @@ public sealed class MediaProbeService
         var attachedPictureCount = 0;
         bool? isVariableFrameRate = null;
         string? videoProfile = null;
+        double? videoFrameRate = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -215,6 +221,7 @@ public sealed class MediaProbeService
                             break;
                         }
                         videoCodec = codecName;
+                        videoDuration = ReadDurationSeconds(stream);
                         if (stream.TryGetProperty("width", out var w) && w.TryGetInt32(out var widthValue))
                         {
                             width = widthValue;
@@ -240,6 +247,7 @@ public sealed class MediaProbeService
                         pixelFormat = ReadString(stream, "pix_fmt");
                         bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
                         isVariableFrameRate = DetectVariableFrameRate(stream);
+                        videoFrameRate = ReadVideoFrameRate(stream);
                         videoProfile = ReadString(stream, "profile");
                         videoStart = ReadStartTime(stream);
                         break;
@@ -277,6 +285,7 @@ public sealed class MediaProbeService
                         break;
                     case "subtitle":
                         subtitleCount++;
+                        subtitleLanguages.Add(ReadLanguageTag(stream));
                         if (SubtitleClassifier.IsImageBased(codecName))
                         {
                             hasImageSubtitles = true;
@@ -298,6 +307,7 @@ public sealed class MediaProbeService
             true,
             container,
             duration,
+            videoDuration,
             videoCodec,
             width,
             height,
@@ -306,6 +316,7 @@ public sealed class MediaProbeService
             audioTracks,
             audioCodecs.Count,
             subtitleCount,
+            subtitleLanguages,
             hasImageSubtitles,
             isHdr,
             isDolbyVision,
@@ -325,7 +336,8 @@ public sealed class MediaProbeService
             formatTags,
             isVariableFrameRate,
             videoProfile,
-            null);
+            null,
+            videoFrameRate);
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still
@@ -433,6 +445,45 @@ public sealed class MediaProbeService
             ? parsed
             : null;
 
+    // Container duration can be extended by an encoded audio frame or codec delay. Keep the
+    // picture stream's own duration separately so short calibration clips are judged against the
+    // video window the user will actually compare, rather than harmless audio/container padding.
+    private static double? ReadDurationSeconds(JsonElement stream)
+    {
+        if (stream.TryGetProperty("duration", out var duration))
+        {
+            var text = duration.ValueKind == JsonValueKind.String ? duration.GetString() : duration.GetRawText();
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                && seconds >= 0)
+            {
+                return seconds;
+            }
+        }
+
+        if (stream.TryGetProperty("duration_ts", out var durationTicks)
+            && long.TryParse(
+                durationTicks.ValueKind == JsonValueKind.String ? durationTicks.GetString() : durationTicks.GetRawText(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var ticks)
+            && ReadRational(stream, "time_base") is { } timeBase
+            && timeBase > 0)
+        {
+            return ticks * timeBase;
+        }
+
+        if (stream.TryGetProperty("tags", out var tags)
+            && tags.ValueKind == JsonValueKind.Object
+            && tags.TryGetProperty("DURATION", out var taggedDuration)
+            && taggedDuration.ValueKind == JsonValueKind.String
+            && TimeSpan.TryParse(taggedDuration.GetString(), CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed.TotalSeconds;
+        }
+
+        return null;
+    }
+
     private static bool? DetectVariableFrameRate(JsonElement stream)
     {
         var nominal = ReadRational(stream, "r_frame_rate");
@@ -445,6 +496,18 @@ public sealed class MediaProbeService
         // r_frame_rate and avg_frame_rate can differ minutely because of duration rounding.
         // Require a 0.1% divergence before treating it as positive VFR evidence.
         return Math.Abs(nominal.Value - average.Value) / nominal.Value > 0.001;
+    }
+
+    // VMAF compares frames positionally. Preserve ffprobe's average picture cadence so both the
+    // source and independently encoded output can be resampled onto one deterministic timeline
+    // before scoring; otherwise differently rounded stream timebases can select adjacent frames.
+    private static double? ReadVideoFrameRate(JsonElement stream)
+    {
+        var frameRate = ReadRational(stream, "avg_frame_rate")
+            ?? ReadRational(stream, "r_frame_rate");
+        return frameRate is > 0 && double.IsFinite(frameRate.Value) && frameRate <= 1_000
+            ? frameRate
+            : null;
     }
 
     private static double? ReadRational(JsonElement element, string property)

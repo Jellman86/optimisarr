@@ -1,3 +1,4 @@
+using System.Globalization;
 using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Core.Verification;
@@ -42,7 +43,8 @@ public sealed record QualityMeasurementContext(
     int? DistortedStartSeconds = null,
     int? MeasureDurationSeconds = null,
     int FrameSubsample = 1,
-    VmafAcceleration Acceleration = VmafAcceleration.None);
+    VmafAcceleration Acceleration = VmafAcceleration.None,
+    double? ReferenceFrameRate = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -83,6 +85,13 @@ public static class QualityScoreCommandBuilder
                 nameof(context),
                 $"VMAF frame subsampling must be between 1 and {MaximumFrameSubsample}.");
         }
+        if (context.ReferenceFrameRate is { } frameRate
+            && (!double.IsFinite(frameRate) || frameRate <= 0 || frameRate > 1_000))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(context),
+                "VMAF reference frame rate must be finite and between 0 and 1000 fps.");
+        }
 
         // The established HDR path uses software zscale/tonemap and preserves 10-bit frames.
         // None of the accelerated graphs can reproduce that preparation exactly, so correctness
@@ -102,7 +111,8 @@ public static class QualityScoreCommandBuilder
         var preprocessing = DescribePreprocessing(
             colourPreprocessing,
             acceleration,
-            context.FrameSubsample);
+            context.FrameSubsample,
+            context.ReferenceFrameRate);
         var scale =
             $"scale={context.ReferenceWidth}:{context.ReferenceHeight}:" +
             "flags=bicubic:in_range=auto:out_range=tv";
@@ -112,9 +122,15 @@ public static class QualityScoreCommandBuilder
         var distortedInputStart = InputSeek(context.DistortedStartSeconds, context.MeasureDurationSeconds);
         var referenceInputStart = InputSeek(context.ReferenceStartSeconds, context.MeasureDurationSeconds);
         var distortedTimeline = TimelinePreparation(
-            context.DistortedStartSeconds, distortedInputStart, context.MeasureDurationSeconds);
+            context.DistortedStartSeconds,
+            distortedInputStart,
+            context.MeasureDurationSeconds,
+            context.ReferenceFrameRate);
         var referenceTimeline = TimelinePreparation(
-            context.ReferenceStartSeconds, referenceInputStart, context.MeasureDurationSeconds);
+            context.ReferenceStartSeconds,
+            referenceInputStart,
+            context.MeasureDurationSeconds,
+            context.ReferenceFrameRate);
         var normalise = $"{scale},format={pixelFormat}";
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
@@ -236,18 +252,28 @@ public static class QualityScoreCommandBuilder
     private static string TimelinePreparation(
         int? windowStartSeconds,
         int? inputStartSeconds,
-        int? windowDurationSeconds)
+        int? windowDurationSeconds,
+        double? referenceFrameRate)
     {
+        // ffprobe frequently reports a millisecond source timebase while the encode uses an exact
+        // codec clock (for example 1/1000 versus 1/24000). Trimming those timelines directly can
+        // choose adjacent pictures and collapse VMAF at motion or scene changes. Resample both
+        // decoded inputs onto the source cadence first; start_time=0 gives each pre-rolled input
+        // the same frame grid without guessing or accepting the best of several quality scores.
+        var cadence = referenceFrameRate is { } frameRate
+            ? $"fps=fps={frameRate.ToString("G17", CultureInfo.InvariantCulture)}:start_time=0,"
+            : string.Empty;
         var alignment = windowStartSeconds is { } start && windowDurationSeconds is > 0
             ? $"trim=start={start - (inputStartSeconds ?? 0)}:duration={windowDurationSeconds.Value},"
             : string.Empty;
-        return $"{alignment}settb=AVTB,setpts=PTS-STARTPTS";
+        return $"{cadence}{alignment}settb=AVTB,setpts=PTS-STARTPTS";
     }
 
     private static string DescribePreprocessing(
         string colourPreprocessing,
         VmafAcceleration acceleration,
-        int frameSubsample)
+        int frameSubsample,
+        double? referenceFrameRate)
     {
         var hardware = acceleration switch
         {
@@ -256,8 +282,11 @@ public static class QualityScoreCommandBuilder
             VmafAcceleration.Vaapi => "VA-API decode + CPU VMAF",
             _ => null
         };
+        var cadence = referenceFrameRate is { } frameRate
+            ? $"{frameRate.ToString("0.###", CultureInfo.InvariantCulture)} fps aligned"
+            : null;
         var sampling = frameSubsample > 1 ? $"every {frameSubsample}th frame" : null;
-        return string.Join(" · ", new[] { colourPreprocessing, hardware, sampling }
+        return string.Join(" · ", new[] { colourPreprocessing, hardware, cadence, sampling }
             .Where(part => part is not null));
     }
 

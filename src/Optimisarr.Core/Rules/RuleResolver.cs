@@ -11,6 +11,20 @@ public static class RuleResolver
     {
         var settings = RuleProfileDefaults.For(profile);
 
+        // Track cleanup is a deliberately narrow, lossless contract. Do not let overrides left
+        // behind by a previous encoding profile silently turn it into a transcode, remux, resize,
+        // HDR exclusion, or media-type conversion. Only path exclusions and the two language
+        // policies are relevant to this mode.
+        if (profile == Domain.RuleProfile.TrackCleanup)
+        {
+            return settings with
+            {
+                ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+                KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
+                KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages
+            };
+        }
+
         return settings with
         {
             MinFileSizeBytes = overrides.MinFileSizeBytes ?? settings.MinFileSizeBytes,
@@ -27,6 +41,7 @@ public static class RuleResolver
             VideoAudioBitrateKbps = overrides.VideoAudioBitrateKbps ?? settings.VideoAudioBitrateKbps,
             DownmixToStereo = overrides.DownmixToStereo ?? settings.DownmixToStereo,
             KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
+            KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages,
             ReencodeLossyAudio = overrides.ReencodeLossyAudio ?? settings.ReencodeLossyAudio,
             TargetImageFormat = Normalise(overrides.TargetImageFormat) ?? settings.TargetImageFormat,
             ImageQuality = overrides.ImageQuality ?? settings.ImageQuality,

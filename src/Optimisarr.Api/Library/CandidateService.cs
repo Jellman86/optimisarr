@@ -193,7 +193,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
             file.AttachedPictureCount,
             file.SubtitleTrackCount ?? 0,
             file.MaxAudioChannels,
-            AudioTrackSelection.ParseTrackLanguages(file.AudioLanguages));
+            TrackLanguages.ParseTrackLanguages(file.AudioLanguages),
+            TrackLanguages.ParseTrackLanguages(file.SubtitleLanguages));
         var codec = file.MediaKind == MediaKind.Audio ? audioCodec : file.VideoCodec;
         return (media, codec);
     }
@@ -236,7 +237,8 @@ public sealed class CandidateService(OptimisarrDbContext db)
         int? libraryId, CancellationToken cancellationToken)
     {
         var query = db.Jobs.AsNoTracking()
-            .Where(job => job.FinishedAt != null
+            .Where(job => job.Type == JobType.Normal
+                && job.FinishedAt != null
                 && (job.Status == JobStatus.Completed || job.Status == JobStatus.Failed));
         if (libraryId is not null)
         {

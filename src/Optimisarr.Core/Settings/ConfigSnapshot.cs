@@ -61,7 +61,8 @@ public sealed record LibrarySnapshot(
     bool? VmafQualityGateEnabled = null,
     double? MinVmafCatastrophicMin = null,
     bool? ClipVmafEnabled = null,
-    int? VmafFrameSubsample = null);
+    int? VmafFrameSubsample = null,
+    string? KeepSubtitleLanguages = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

@@ -436,6 +436,25 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Video_only_clip_maps_and_encodes_only_the_primary_video()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            ClipSeconds = 12,
+            ClipStartSeconds = 281,
+            VideoOnly = true
+        });
+
+        Assert.Contains(("-map", "0:v:0"), MapPairs(args));
+        Assert.DoesNotContain(("-map", "0"), MapPairs(args));
+        Assert.DoesNotContain("-c:a", args);
+        Assert.DoesNotContain("-c:s", args);
+        Assert.DoesNotContain("-0:t", args);
+        Assert.DoesNotContain("-0:d", args);
+        Assert.Equal("libx265", args[IndexOf(args, "-c:v:0") + 1]);
+    }
+
+    [Fact]
     public void Excludes_the_removed_audio_tracks_from_a_video_re_encode()
     {
         var args = FfmpegCommandBuilder.Build(
@@ -464,6 +483,33 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(Reencode());
 
         Assert.DoesNotContain(args, argument => argument.StartsWith("-0:a:"));
+    }
+
+    [Fact]
+    public void Excludes_the_removed_subtitle_tracks_alongside_audio()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: null, crf: null, preset: null) with
+            {
+                RemoveAudioStreamIndexes = new[] { 1 },
+                RemoveSubtitleStreamIndexes = new[] { 0, 2 }
+            });
+
+        Assert.Contains(("-map", "-0:a:1"), MapPairs(args));
+        Assert.Contains(("-map", "-0:s:0"), MapPairs(args));
+        Assert.Contains(("-map", "-0:s:2"), MapPairs(args));
+        // Still a pure stream copy: the kept tracks are not re-encoded.
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+        // The exclusions follow the blanket "-map 0" so they actually remove those streams.
+        Assert.True(IndexOf(args, "0") < ((List<string>)args).IndexOf("-0:s:0"));
+    }
+
+    [Fact]
+    public void Removes_no_subtitle_tracks_by_default()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode());
+
+        Assert.DoesNotContain(args, argument => argument.StartsWith("-0:s:"));
     }
 
     [Theory]

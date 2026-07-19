@@ -29,7 +29,8 @@ public static class TranscodeSpecResolver
         string? sourceImageCodec = null,
         int sourceMaxAudioChannels = 0,
         bool sourceIsVariableFrameRate = false,
-        IReadOnlyList<string?>? sourceAudioLanguages = null)
+        IReadOnlyList<string?>? sourceAudioLanguages = null,
+        IReadOnlyList<string?>? sourceSubtitleLanguages = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -73,9 +74,14 @@ public static class TranscodeSpecResolver
         // stream survives instead of aborting the encode. Any other target container already holds them.
         var copyingAudio = rules.VideoAudioCodec is null;
         var audioForcesMkv = sourceHasMp4IncompatibleAudio && copyingAudio;
-        var container = (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(rules.TargetContainer)
-            ? "mkv"
-            : rules.TargetContainer;
+        // A null target container means "keep the source container" (the track-cleanup
+        // promise). Every kept stream already lives in that container, so the MP4
+        // image-subtitle / incompatible-audio fallback does not apply.
+        var container = rules.TargetContainer is null
+            ? Path.GetExtension(relativePath).TrimStart('.')
+            : (sourceHasImageSubtitles || audioForcesMkv) && IsMp4Container(rules.TargetContainer)
+                ? "mkv"
+                : rules.TargetContainer;
         var outputPath = BuildOutputPath(workRoot, relativePath, container);
 
         // Tone-map only when re-encoding an HDR source under a library that asks for it.
@@ -92,6 +98,9 @@ public static class TranscodeSpecResolver
         var removedAudio = sourceAudioLanguages is null
             ? Array.Empty<int>()
             : AudioTrackSelection.SelectRemovals(sourceAudioLanguages, rules.KeepAudioLanguages);
+        var removedSubtitles = sourceSubtitleLanguages is null
+            ? Array.Empty<int>()
+            : SubtitleTrackSelection.SelectRemovals(sourceSubtitleLanguages, rules.KeepSubtitleLanguages);
 
         return new TranscodeSpec(
             inputPath,
@@ -108,7 +117,8 @@ public static class TranscodeSpecResolver
             SourceIsVariableFrameRate: sourceIsVariableFrameRate,
             // A downmix needs an audio re-encode; a copied track keeps its layout.
             DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo,
-            RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null);
+            RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null,
+            RemoveSubtitleStreamIndexes: removedSubtitles.Count > 0 ? removedSubtitles : null);
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

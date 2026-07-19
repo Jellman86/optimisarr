@@ -56,6 +56,8 @@ public sealed record VerificationInput(
     int NonMonotonicTimestampCount = 0,
     string? TimestampRegressionDetail = null,
     double? OutputLastPresentationSeconds = null,
+    bool OriginalTimestampsMeasured = false,
+    double? OriginalLastPresentationSeconds = null,
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
     bool AudioDownmixed = false,
@@ -88,4 +90,21 @@ public sealed record VerificationInput(
     int? OriginalBitsPerRawSample = null,
     int? OutputBitsPerRawSample = null,
     string? OriginalVideoProfile = null,
-    string? OutputVideoProfile = null);
+    string? OutputVideoProfile = null,
+    // How many subtitle tracks the kept-languages rule removed on purpose; the retention
+    // gate then expects exactly that many fewer, regardless of the policy's subtitle flag.
+    int SubtitleTracksRemoved = 0,
+    // A track-cleanup job promises the container type is untouched; both values are the
+    // probes' format_name so a silent remux fails verification.
+    bool RequireContainerUnchanged = false,
+    string? OriginalContainer = null,
+    string? OutputContainer = null,
+    // Positional language identities expected after an intentional removal. Known languages must
+    // survive at the same retained position; unknown values remain protected by the exact count
+    // gate because their identity cannot be proved safely.
+    IReadOnlyList<string?>? ExpectedAudioLanguages = null,
+    IReadOnlyList<string?>? OutputAudioLanguages = null,
+    IReadOnlyList<string?>? ExpectedSubtitleLanguages = null,
+    IReadOnlyList<string?>? OutputSubtitleLanguages = null,
+    IReadOnlyList<string?>? ExpectedAudioCodecs = null,
+    IReadOnlyList<string?>? OutputAudioCodecs = null);

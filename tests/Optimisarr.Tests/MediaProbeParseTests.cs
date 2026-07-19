@@ -1,5 +1,7 @@
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
 
@@ -35,6 +37,47 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_retains_the_average_video_frame_rate_for_frame_aligned_quality_measurement()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "h264",
+              "r_frame_rate": "24000/1001",
+              "avg_frame_rate": "24000/1001"
+            }
+          ],
+          "format": { "duration": "1200.000000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(24000d / 1001d, result.VideoFrameRate);
+    }
+
+    [Fact]
+    public void Video_duration_for_sampling_prefers_the_picture_timeline_over_the_container()
+    {
+        var probe = MediaProbeService.Parse("""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "duration": "2881.366000" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "2881.366000" }
+          ],
+          "format": { "duration": "2881.366000" }
+        }
+        """, ".mkv");
+
+        Assert.Equal(2362.85, VerificationService.ReferenceVideoDurationForVerification(
+            probe,
+            new TimestampCheckResult(true, 0, null, 2362.85),
+            fallbackDurationSeconds: 2881.366));
+    }
+
+    [Fact]
     public void Parse_tolerates_missing_optional_fields()
     {
         var result = MediaProbeService.Parse("""{ "streams": [], "format": {} }""");
@@ -45,6 +88,81 @@ public sealed class MediaProbeParseTests
         Assert.Null(result.VideoCodec);
         Assert.Empty(result.AudioCodecs);
         Assert.Equal(0, result.SubtitleTrackCount);
+    }
+
+    [Fact]
+    public void Calibration_video_duration_uses_the_picture_stream_instead_of_audio_padded_container()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "duration": "12.000000" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "12.531000" }
+          ],
+          "format": { "format_name": "mov,mp4", "duration": "12.531000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mp4");
+
+        Assert.Equal(12.0, result.VideoDurationSeconds);
+        Assert.Equal(12.0, VerificationService.OutputDurationForVerification(
+            result, MediaKind.Video, videoOnlyReference: true));
+        Assert.Equal(12.531, VerificationService.OutputDurationForVerification(
+            result, MediaKind.Video, videoOnlyReference: false));
+    }
+
+    [Fact]
+    public void Calibration_video_duration_uses_the_measured_picture_span_when_timestamps_are_not_zero_based()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "av1", "start_time": "9.558000" },
+            { "codec_type": "audio", "codec_name": "aac", "start_time": "9.495000" }
+          ],
+          "format": { "format_name": "matroska,webm", "start_time": "9.495000", "duration": "22.929000" }
+        }
+        """;
+        var result = MediaProbeService.Parse(json, ".mkv");
+        var timestamps = new TimestampCheckResult(
+            Measured: true,
+            NonMonotonicCount: 0,
+            FirstRegressionDetail: null,
+            LastPresentationSeconds: 21.486);
+
+        Assert.Equal(11.928, VerificationService.OutputDurationForVerification(
+            result,
+            MediaKind.Video,
+            videoOnlyReference: true,
+            timestamps)!.Value,
+            precision: 3);
+        Assert.Equal(22.929, VerificationService.OutputDurationForVerification(
+            result,
+            MediaKind.Video,
+            videoOnlyReference: false,
+            timestamps));
+    }
+
+    [Fact]
+    public void Parse_reads_matroska_video_duration_tag_with_nanosecond_precision()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "av1",
+              "tags": { "DURATION": "00:00:12.031000000" }
+            }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "12.531000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(12.031, result.VideoDurationSeconds);
     }
 
     [Fact]
@@ -135,6 +253,29 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new[] { "truehd", "aac", "ac3" }, result.AudioCodecs);
         Assert.Equal(8, result.MaxAudioChannels);
         Assert.Equal(48000, result.MaxAudioSampleRate);
+    }
+
+    [Fact]
+    public void Parse_captures_subtitle_languages_positionally()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "width": 1920, "height": 1080 },
+            { "codec_type": "subtitle", "codec_name": "subrip", "tags": { "language": "ENG" } },
+            { "codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle" },
+            { "codec_type": "subtitle", "codec_name": "subrip", "tags": { "language": "fra" } }
+          ],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        // Index = subtitle-relative stream position; an untagged track stays null so
+        // the order lines up with the file's subtitle streams.
+        Assert.Equal(new string?[] { "eng", null, "fra" }, result.SubtitleLanguages);
+        Assert.Equal(3, result.SubtitleTrackCount);
     }
 
     [Fact]

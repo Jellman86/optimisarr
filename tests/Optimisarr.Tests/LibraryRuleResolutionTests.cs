@@ -54,4 +54,61 @@ public sealed class LibraryRuleResolutionTests
 
         Assert.Empty(rules.KeepAudioLanguages);
     }
+
+    [Fact]
+    public void Stored_kept_subtitle_languages_resolve_into_the_rules()
+    {
+        var library = new Library
+        {
+            Name = "Films", Path = "/data/films", RuleProfile = RuleProfile.ConservativeHevc,
+            KeepSubtitleLanguages = "eng, jpn"
+        };
+
+        var rules = LibraryRuleResolution.Resolve(library);
+
+        Assert.Equal(new[] { "eng", "jpn" }, rules.KeepSubtitleLanguages);
+        Assert.Empty(LibraryRuleResolution.Resolve(
+            new Library { Name = "F", Path = "/f", RuleProfile = RuleProfile.ConservativeHevc }).KeepSubtitleLanguages);
+    }
+
+    [Fact]
+    public void Calibration_slider_preset_replaces_stale_video_codec_and_container_overrides()
+    {
+        var library = new Library
+        {
+            Name = "Films",
+            Path = "/data/films",
+            RuleProfile = RuleProfile.ConservativeHevc,
+            TargetVideoCodec = "hevc",
+            TargetContainer = "mp4"
+        };
+
+        var rules = LibraryRuleResolution.ResolveVideoPreset(library, RuleProfile.ExperimentalAv1);
+
+        Assert.Equal("av1", rules.TargetVideoCodec);
+        Assert.Equal("mkv", rules.TargetContainer);
+        Assert.Equal(30, rules.DefaultCrf);
+    }
+
+    [Fact]
+    public void Scotts_calibration_preset_resolves_the_same_complete_bundle_as_the_slider()
+    {
+        var library = new Library
+        {
+            Name = "Films",
+            Path = "/data/films",
+            RuleProfile = RuleProfile.CompatibilityH264,
+            VideoAudioCodec = "copy",
+            DownmixToStereo = false
+        };
+
+        var rules = LibraryRuleResolution.ResolveVideoPreset(library, RuleProfile.ScottsSettings);
+
+        Assert.Equal("hevc", rules.TargetVideoCodec);
+        Assert.Equal("mp4", rules.TargetContainer);
+        Assert.Equal("aac", rules.VideoAudioCodec);
+        Assert.Equal(96, rules.VideoAudioBitrateKbps);
+        Assert.True(rules.DownmixToStereo);
+        Assert.Equal(HdrHandling.Preserve, rules.Hdr);
+    }
 }

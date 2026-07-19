@@ -18,6 +18,10 @@ placing jobs in the queue. Docker's health check uses this readiness endpoint.
 Use **Settings → Tools** to verify the required FFmpeg/ffprobe executables, the optional
 `libvmaf` measurement capability, and the actual encoder test result. For a failed job,
 open Queue details and read the FFmpeg error and verification report before retrying.
+The Queue **Failures** tab and `GET /api/jobs/failures` also include failed preview and personal
+quality comparisons. Each sample identifies its job type and returns structured failed verification
+checks with the measured detail; closing the comparison removes its media but retains that small
+diagnostic row until **Clear errored** is used.
 
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
@@ -45,7 +49,8 @@ Verification failures mean the original is still in place. Read the Queue detail
 sheet before retrying:
 
 - **Duration**, **tail integrity**, or **timestamp integrity** failures usually
-  indicate a truncated or malformed output.
+  indicate a truncated or malformed output. In a personal quality check, inspect the structured
+  failure details: the reference and candidate should describe the same requested sample window.
 - **Audio retained**, **subtitle retained**, **A/V sync**, **loudness**, and
   **true peak** failures indicate stream or audio changes outside the configured
   policy.
@@ -53,7 +58,11 @@ sheet before retrying:
   Either leave the file alone or change the library rules deliberately.
 - **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled
   on the library configuration page); image **SSIM/metadata** failures come from the default-on
-  image gates. When a gate is enabled, a missing measurement fails closed.
+  image gates. When a gate is enabled, a missing measurement fails closed, but an unmeasured VMAF
+  result does not trigger a higher-quality re-encode or immediate automatic exclusion.
+- **Source video timeline** means the original's picture packets end materially before its declared
+  container duration. Optimisarr leaves that source untouched and does not misreport the inherited
+  gap as an output-tail truncation.
 
 Use **Retry** only after changing the underlying cause: preset, hardware mode,
 source file, mount access, or verification policy. Use **Exclude** for files you

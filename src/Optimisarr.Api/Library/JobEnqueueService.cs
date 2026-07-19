@@ -38,7 +38,9 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
 
         var eligibleIds = eligible.Select(candidate => candidate.MediaFileId).ToHashSet();
         var alreadyActive = (await db.Jobs
-                .Where(job => eligibleIds.Contains(job.MediaFileId) && ActiveStatuses.Contains(job.Status))
+                .Where(job => job.Type == JobType.Normal
+                    && eligibleIds.Contains(job.MediaFileId)
+                    && ActiveStatuses.Contains(job.Status))
                 .Select(job => job.MediaFileId)
                 .ToListAsync(cancellationToken))
             .ToHashSet();
@@ -72,6 +74,7 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
                 LibraryId = candidate.LibraryId,
                 Status = JobStatus.Queued,
                 Priority = library.Priority,
+                EnqueueReason = Truncate(candidate.Reason),
                 EnqueuedAt = now,
                 UpdatedAt = now
             });
@@ -81,4 +84,9 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
         await db.SaveChangesAsync(cancellationToken);
         return new EnqueueResult(enqueued, eligible.Count - enqueued - importing, ineligible, importing);
     }
+
+    // The reason column is bounded; an overlong reason keeps its head, which carries
+    // the meaningful part ("Remove N audio track(s) (…").
+    private static string? Truncate(string? reason) =>
+        reason is { Length: > 512 } ? reason[..512] : reason;
 }

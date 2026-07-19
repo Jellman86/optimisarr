@@ -34,7 +34,7 @@
     imageFormats: [],
   })
 
-  // Named queue-priority levels, so the card uses a dropdown instead of a raw number.
+  // Named queue-priority levels, so the slider reads as a word rather than a raw number.
   const priorityLevels = $derived([
     { value: 2, label: i18n.m.libraries.priority_highest },
     { value: 1, label: i18n.m.libraries.priority_high },
@@ -66,6 +66,7 @@
     ExperimentalAv1: i18n.m.libraries.preset_experimental_av1,
     RemuxCleanup: i18n.m.libraries.preset_remux_cleanup,
     ScottsSettings: i18n.m.libraries.preset_scotts_settings,
+    TrackCleanup: i18n.m.libraries.preset_track_cleanup,
   })
 
   // The re-encode profiles form a single compatibility→efficiency axis, shown as a slider so the
@@ -93,6 +94,7 @@
     ExperimentalAv1: i18n.m.libraries.profile_experimental_av1,
     RemuxCleanup: i18n.m.libraries.profile_remux_cleanup,
     ScottsSettings: i18n.m.libraries.profile_scotts_settings,
+    TrackCleanup: i18n.m.libraries.profile_track_cleanup,
   })
   function profileLabel(profile: string): string {
     return profileLabels[profile] ?? profile
@@ -253,8 +255,8 @@
   let summaries = $state<Record<number, { eligible: number; skipped: number }>>({})
   let form = $state<SaveLibrary>(blankForm())
 
-  const MAX_AUDIO_LANGUAGE_LIST_LENGTH = 256
-  type AudioLanguageInput = {
+  const MAX_LANGUAGE_LIST_LENGTH = 256
+  type LanguageListInput = {
     codes: string[]
     normalised: string | null
     syntaxValid: boolean
@@ -263,7 +265,7 @@
 
   // Mirrors the backend's storage validation so the form can explain a bad value before Save.
   // The API remains authoritative; this is immediate, accessible operator feedback.
-  function parseAudioLanguageInput(value: string | null): AudioLanguageInput {
+  function parseLanguageListInput(value: string | null): LanguageListInput {
     const raw = value?.trim() ?? ''
     if (!raw) return { codes: [], normalised: null, syntaxValid: true, tooLong: false }
 
@@ -278,11 +280,11 @@
       codes,
       normalised,
       syntaxValid: true,
-      tooLong: normalised.length > MAX_AUDIO_LANGUAGE_LIST_LENGTH,
+      tooLong: normalised.length > MAX_LANGUAGE_LIST_LENGTH,
     }
   }
 
-  const audioLanguageInput = $derived(parseAudioLanguageInput(form.keepAudioLanguages))
+  const audioLanguageInput = $derived(parseLanguageListInput(form.keepAudioLanguages))
   const audioLanguageError = $derived(
     !audioLanguageInput.syntaxValid
       ? i18n.m.libraries.keep_audio_langs_invalid
@@ -294,8 +296,21 @@
   function normaliseAudioLanguageInput() {
     if (!audioLanguageError) form.keepAudioLanguages = audioLanguageInput.normalised
   }
-  // Advanced (encoding/eligibility) settings are collapsed by default to keep the
-  // common case simple; opened automatically when editing a library that uses them.
+
+  const subtitleLanguageInput = $derived(parseLanguageListInput(form.keepSubtitleLanguages))
+  const subtitleLanguageError = $derived(
+    !subtitleLanguageInput.syntaxValid
+      ? i18n.m.libraries.keep_audio_langs_invalid
+      : subtitleLanguageInput.tooLong
+        ? i18n.m.libraries.keep_audio_langs_too_long
+        : null,
+  )
+
+  function normaliseSubtitleLanguageInput() {
+    if (!subtitleLanguageError) form.keepSubtitleLanguages = subtitleLanguageInput.normalised
+  }
+  // Advanced (encoding/eligibility) settings always start collapsed, for both Add and Edit, so the
+  // simple choice is what a library opens on.
   let showAdvanced = $state(false)
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
@@ -342,6 +357,13 @@
     return type === 'Photo' || type === 'Other'
   }
 
+  function setMediaType(type: string) {
+    form.mediaType = type
+    if (!isVideoType(type) && (form.ruleProfile === 'TrackCleanup' || form.ruleProfile === 'RemuxCleanup')) {
+      form.ruleProfile = 'ConservativeHevc'
+    }
+  }
+
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
   // Music, images for Photo, and everything for a mixed "Other" library that may hold any of them.
   const showVideoOptions = $derived(isVideoType(form.mediaType))
@@ -349,6 +371,25 @@
   const showImageOptions = $derived(isImageType(form.mediaType))
 
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
+  const isTrackCleanupProfile = $derived(form.ruleProfile === 'TrackCleanup')
+  // Both no-encode profiles take the compatibility→efficiency slider out of play.
+  const isNoEncodeProfile = $derived(isRemuxProfile || isTrackCleanupProfile)
+  // Track cleanup does nothing until at least one kept-language rule is set; surface
+  // that honestly in the form rather than letting the operator save a no-op library.
+  const trackCleanupNeedsLanguages = $derived(
+    isTrackCleanupProfile && !form.keepAudioLanguages?.trim() && !form.keepSubtitleLanguages?.trim(),
+  )
+
+  // Save is offered only for a named, located library with no outstanding validation error and at
+  // least one edit to persist. Derived once so every Save control shares exactly one definition.
+  const canSave = $derived(
+    !!form.name
+      && !!form.path
+      && isDirty
+      && !audioLanguageError
+      && !subtitleLanguageError
+      && !(!isNoEncodeProfile && vmafError),
+  )
 
   // Custom mode lets the operator fine-tune codec/container themselves instead of following a
   // preset. It is the honest framing for an override — a deliberate "Custom" config — rather than a
@@ -358,7 +399,7 @@
   // hoisted function declaration below, so referencing it here is fine.)
   let customSelected = $state(false)
   const isCustom = $derived(
-    showVideoOptions && !isRemuxProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
+    showVideoOptions && !isNoEncodeProfile && (customSelected || form.targetVideoCodec != null || form.targetContainer != null),
   )
   function selectPresetMode() {
     customSelected = false
@@ -400,16 +441,26 @@
     }
   }
 
-  function toggleRemux(checked: boolean) {
-    // Ticking Remux switches off re-encoding; unticking returns to the Balanced default.
-    form.ruleProfile = checked ? 'RemuxCleanup' : 'ConservativeHevc'
+  type ProcessingMode = 'encode' | 'remux' | 'track-cleanup'
+  const processingMode = $derived<ProcessingMode>(
+    isTrackCleanupProfile ? 'track-cleanup' : isRemuxProfile ? 'remux' : 'encode',
+  )
+
+  function setProcessingMode(mode: ProcessingMode) {
+    form.ruleProfile = mode === 'track-cleanup'
+      ? 'TrackCleanup'
+      : mode === 'remux'
+        ? 'RemuxCleanup'
+        : encodeProfiles.includes(form.ruleProfile)
+          ? form.ruleProfile
+          : 'ConservativeHevc'
   }
 
   // The slider only picks a baseline profile; an explicit codec/container override in Advanced
   // takes precedence, so the slider can imply a codec that isn't actually used. Surface that
   // divergence instead of hiding it — the slider stays editable (it still sets the baseline the
   // non-overridden values follow).
-  const presetOverridden = $derived(!isRemuxProfile && (form.targetVideoCodec != null || form.targetContainer != null))
+  const presetOverridden = $derived(!isNoEncodeProfile && (form.targetVideoCodec != null || form.targetContainer != null))
 
   function overrideSummary(): string {
     const parts: string[] = []
@@ -636,6 +687,7 @@
       videoAudioBitrateKbps: library.videoAudioBitrateKbps,
       downmixToStereo: library.downmixToStereo,
       keepAudioLanguages: library.keepAudioLanguages,
+      keepSubtitleLanguages: library.keepSubtitleLanguages,
       reencodeLossyAudio: library.reencodeLossyAudio,
       targetImageFormat: library.targetImageFormat,
       imageQuality: library.imageQuality,
@@ -704,6 +756,7 @@
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
       videoAudioBitrateKbps: toNullableNumber(form.videoAudioBitrateKbps),
       keepAudioLanguages: audioLanguageInput.normalised,
+      keepSubtitleLanguages: subtitleLanguageInput.normalised,
       targetImageFormat: emptyToNull(form.targetImageFormat),
       imageQuality: toNullableNumber(form.imageQuality),
       imageDownscaleValue: Number(form.imageDownscaleValue) || 0,
@@ -724,7 +777,7 @@
   async function save() {
     error = null
     message = null
-    if (audioLanguageError) return
+    if (audioLanguageError || subtitleLanguageError || (!isNoEncodeProfile && vmafError)) return
     try {
       if (editingId === 0) {
         // Replace /new with the canonical editor URL so Back returns to the library list. The
@@ -851,16 +904,8 @@
           <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{form.mediaType}</span>
           {#if showVideoOptions}<span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(form.ruleProfile)}</span>{/if}
         {/if}
-        <div class="hidden items-center gap-2 sm:flex">
-          <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!vmafError}>
-            <Icon name="check" class="h-4 w-4" />
-            {i18n.m.libraries.save}
-          </button>
-          <button class="btn" onclick={cancelEdit}>
-            <Icon name="x" class="h-4 w-4" />
-            {i18n.m.libraries.cancel}
-          </button>
-        </div>
+        <!-- Save/Cancel live only in the sticky action bar at the foot of the form, so the page
+             never shows two competing copies of the same pair. -->
       </div>
     </div>
   </header>
@@ -894,7 +939,78 @@
   />
 {/if}
 
+  <!-- The keep-language rules. Rendered inside Advanced > Video for encode/remux modes, but
+       hoisted to the top of the form for Track cleanup, whose entire behaviour is these two
+       fields — a collapsed drawer must never hide the only control a mode has. -->
+  {#snippet keepLanguageFields()}
+    <!-- Keep-languages track removal applies to copied and re-encoded audio alike; tracks
+         with no language tag are never removed, and a file where nothing matches is left
+         untouched, so the output always keeps at least one audio track. -->
+    <div class="mt-4">
+      <label class="label" for="lib-keep-audio-languages">{i18n.m.libraries.keep_audio_langs} <InfoTip text={i18n.m.libraries.keep_audio_langs_tip} /></label>
+      <input
+        id="lib-keep-audio-languages"
+        class="input"
+        type="text"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck={false}
+        maxlength={MAX_LANGUAGE_LIST_LENGTH}
+        placeholder={i18n.m.libraries.keep_audio_langs_ph}
+        aria-invalid={audioLanguageError ? 'true' : 'false'}
+        aria-describedby="lib-keep-audio-languages-hint{audioLanguageError ? ' lib-keep-audio-languages-error' : ''}"
+        aria-errormessage={audioLanguageError ? 'lib-keep-audio-languages-error' : undefined}
+        bind:value={form.keepAudioLanguages}
+        onblur={normaliseAudioLanguageInput}
+      />
+      <p id="lib-keep-audio-languages-hint" class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
+      {#if audioLanguageError}
+        <p id="lib-keep-audio-languages-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{audioLanguageError}</p>
+      {:else if audioLanguageInput.codes.length > 0}
+        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+          <span class="text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_selected}</span>
+          {#each audioLanguageInput.codes as code (code)}
+            <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <!-- Subtitle removal mirrors the audio rule, with one honest difference: there is no
+         keep-at-least-one guard, so a file whose subtitles are all foreign ends with none. -->
+    <div class="mt-4">
+      <label class="label" for="lib-keep-subtitle-languages">{i18n.m.libraries.keep_subtitle_langs} <InfoTip text={i18n.m.libraries.keep_subtitle_langs_tip} /></label>
+      <input
+        id="lib-keep-subtitle-languages"
+        class="input"
+        type="text"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck={false}
+        maxlength={MAX_LANGUAGE_LIST_LENGTH}
+        placeholder={i18n.m.libraries.keep_subtitle_langs_ph}
+        aria-invalid={subtitleLanguageError ? 'true' : 'false'}
+        aria-describedby="lib-keep-subtitle-languages-hint{subtitleLanguageError ? ' lib-keep-subtitle-languages-error' : ''}"
+        aria-errormessage={subtitleLanguageError ? 'lib-keep-subtitle-languages-error' : undefined}
+        bind:value={form.keepSubtitleLanguages}
+        onblur={normaliseSubtitleLanguageInput}
+      />
+      <p id="lib-keep-subtitle-languages-hint" class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_subtitle_langs_hint}</p>
+      {#if subtitleLanguageError}
+        <p id="lib-keep-subtitle-languages-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{subtitleLanguageError}</p>
+      {:else if subtitleLanguageInput.codes.length > 0}
+        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+          <span class="text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_selected}</span>
+          {#each subtitleLanguageInput.codes as code (code)}
+            <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/snippet}
+
 {#snippet configForm()}
+  <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_library}</h3>
   <div class="grid gap-4 sm:grid-cols-2">
     <div>
       <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
@@ -909,7 +1025,7 @@
     </div>
     <div>
       <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
-      <select id="lib-type" class="input" bind:value={form.mediaType}>
+      <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
         {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
       </select>
     </div>
@@ -919,51 +1035,77 @@
        The compatibility→efficiency axis is a *video* decision (it picks H.264/HEVC/AV1), so a
        Music (audio-only) library shows its audio default instead. Exact codec/container/CRF/audio
        knobs live under Advanced options. -->
-  <div class="mt-4">
+  <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
     <div class="flex items-center gap-2">
       <span class="label mb-0">{i18n.m.libraries.preset_label} <InfoTip text={i18n.m.libraries.preset_tip} /></span>
     </div>
 
     {#if showVideoOptions}
-      <label class="flex cursor-pointer items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          class="checkbox mt-0.5"
-          checked={isRemuxProfile}
-          onchange={(e) => toggleRemux(e.currentTarget.checked)}
-        />
-        <span>
-          {i18n.m.libraries.remux_label}
-          <span class="mt-0.5 block text-xs font-normal text-slate-400">
-            {i18n.m.libraries.remux_hint}
-          </span>
-        </span>
-      </label>
+      <!-- items-start: the three hints differ a lot in length, and a stretched grid left the two
+           shorter cards with a block of dead space under their text. -->
+      <fieldset class="grid items-start gap-2 sm:grid-cols-3">
+        <legend class="sr-only">{i18n.m.libraries.processing_mode}</legend>
+        {#each [
+          { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
+          { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
+          { value: 'track-cleanup', label: i18n.m.libraries.track_cleanup_label, hint: i18n.m.libraries.track_cleanup_hint },
+        ] as mode}
+          <label class="min-h-24 cursor-pointer rounded-lg border p-3 transition-colors {processingMode === mode.value ? 'border-cyan-500 bg-cyan-50/70 ring-1 ring-cyan-500 dark:bg-cyan-950/20' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'}">
+            <span class="flex items-start gap-2">
+              <input
+                type="radio"
+                name="processing-mode"
+                class="mt-0.5 accent-cyan-600"
+                value={mode.value}
+                checked={processingMode === mode.value}
+                onchange={() => setProcessingMode(mode.value as ProcessingMode)}
+              />
+              <span>
+                <span class="block text-sm font-medium text-slate-800 dark:text-slate-100">{mode.label}</span>
+                <span class="mt-1 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">{mode.hint}</span>
+              </span>
+            </span>
+          </label>
+        {/each}
+      </fieldset>
 
-      <div class="mt-3 {isRemuxProfile ? 'pointer-events-none opacity-40' : ''}">
+      {#if trackCleanupNeedsLanguages}
+        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">{i18n.m.libraries.track_cleanup_needs_languages}</p>
+      {/if}
+
+      <!-- The two fields the warning above refers to. Track cleanup does nothing else, so they
+           belong in the main flow rather than behind Advanced. -->
+      {#if isTrackCleanupProfile}
+        {@render keepLanguageFields()}
+      {/if}
+
+      {#if !isNoEncodeProfile}
+      <div class="mt-3">
         <input
           type="range"
           min="0"
           max={encodeStopLabels.length - 1}
           step="1"
-          class="w-full"
+          class="w-full accent-cyan-600"
           aria-label={i18n.m.libraries.slider_aria}
           value={encodeStop}
-          disabled={isRemuxProfile}
           oninput={(e) => setEncodeStop(e.currentTarget.value)}
         />
         <!-- Every position is explicit: each stop shows the codec it resolves to, with the active
              stop highlighted and its full container/CRF spelled out in the "Selects:" row below. -->
         <div class="mt-1 flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
           {#each encodeStopLabels as stop, i}
-            {@const active = !isRemuxProfile && encodeStop === i}
+            {@const active = !isNoEncodeProfile && encodeStop === i}
             <span class="flex flex-col {i === 0 ? 'items-start' : i === encodeStopLabels.length - 1 ? 'items-end text-right' : 'items-center text-center'}">
               <span class={active ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
-              <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : '—'}</span>
+              <!-- The Custom stop has no codec of its own until it is selected; leave it blank
+                   rather than showing a dash that reads as a missing value. -->
+              <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : ''}</span>
             </span>
           {/each}
         </div>
       </div>
+      {/if}
 
       <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
         {isCustom
@@ -974,6 +1116,9 @@
       <!-- Explicit, concrete selection so the slider isn't a mystery. -->
       <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
         <span class="text-slate-400">{i18n.m.libraries.selects}</span>
+        {#if isTrackCleanupProfile}
+          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{i18n.m.libraries.track_cleanup_badge}</span>
+        {:else}
         <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.codec}</span>
         {#if !isRemuxProfile}
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container}</span>
@@ -982,6 +1127,7 @@
           {/if}
         {:else}
           <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.container_badge, { container: effectiveVideoSpec.container })}</span>
+        {/if}
         {/if}
       </div>
 
@@ -1030,9 +1176,28 @@
         {i18n.m.libraries.music_note}
       </p>
     {/if}
+
+    {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
+      <div class="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+        <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <!-- Same name as the action button: one feature, one term. -->
+            <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.calibration.eyebrow}</p>
+            <p class="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.intro}</p>
+          </div>
+          <button
+            type="button"
+            class="btn min-h-11 flex-shrink-0"
+            disabled={isDirty}
+            title={isDirty ? i18n.m.libraries.unsaved : i18n.m.calibration.eyebrow}
+            onclick={() => router.go(`/libraries/${editingId}/quality-check`)}
+          >{i18n.m.calibration.eyebrow}</button>
+        </div>
+      </div>
+    {/if}
   </div>
 
-  {#if showVideoOptions && !isRemuxProfile}
+  {#if showVideoOptions && !isNoEncodeProfile}
     <section class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
       <div class="max-w-3xl">
         <div>
@@ -1054,7 +1219,8 @@
             <option value="archival">{i18n.m.settings.vmaf_preset_archival}</option>
             <option value="custom">{i18n.m.libraries.stop_custom}</option>
           </select>
-          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.vmaf_thresholds_tip}</p>
+          <!-- The InfoTip on the label already explains the policy; the selected mode is described
+               once, below, rather than twice around the control. -->
         </div>
 
         <div class="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
@@ -1113,7 +1279,9 @@
 
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
-  <div class="mt-5 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
+  <div class="mt-6 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
+    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_automation}</h3>
+
     <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />
 
     <Toggle
@@ -1147,7 +1315,7 @@
   <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. The header and
        body form one tinted, bordered "drawer" so the Advanced zone is clearly set apart from the
        simple controls above. -->
-  <div class="mt-5 overflow-hidden rounded-xl border {showAdvanced ? 'border-slate-300 dark:border-slate-600' : 'border-slate-200 dark:border-slate-700'}">
+  <div class="mt-6 overflow-hidden rounded-xl border {showAdvanced ? 'border-slate-300 dark:border-slate-600' : 'border-slate-200 dark:border-slate-700'}">
     <button
       type="button"
       class="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60 {showAdvanced ? 'bg-slate-100/80 dark:bg-slate-800/70' : ''}"
@@ -1170,6 +1338,7 @@
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.video}</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.video_desc}</p>
 
+        {#if !isTrackCleanupProfile}
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.target_codec_tip} /></label>
@@ -1244,40 +1413,15 @@
             />
           </div>
         </div>
+        {/if}
 
-        <!-- Keep-languages track removal applies to copied and re-encoded audio alike; tracks
-             with no language tag are never removed, and a file where nothing matches is left
-             untouched, so the output always keeps at least one audio track. -->
-        <div class="mt-4">
-          <label class="label" for="lib-keep-audio-languages">{i18n.m.libraries.keep_audio_langs} <InfoTip text={i18n.m.libraries.keep_audio_langs_tip} /></label>
-          <input
-            id="lib-keep-audio-languages"
-            class="input"
-            type="text"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck={false}
-            maxlength={MAX_AUDIO_LANGUAGE_LIST_LENGTH}
-            placeholder={i18n.m.libraries.keep_audio_langs_ph}
-            aria-invalid={audioLanguageError ? 'true' : 'false'}
-            aria-describedby="lib-keep-audio-languages-hint{audioLanguageError ? ' lib-keep-audio-languages-error' : ''}"
-            aria-errormessage={audioLanguageError ? 'lib-keep-audio-languages-error' : undefined}
-            bind:value={form.keepAudioLanguages}
-            onblur={normaliseAudioLanguageInput}
-          />
-          <p id="lib-keep-audio-languages-hint" class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
-          {#if audioLanguageError}
-            <p id="lib-keep-audio-languages-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{audioLanguageError}</p>
-          {:else if audioLanguageInput.codes.length > 0}
-            <div class="mt-2 flex flex-wrap items-center gap-1.5">
-              <span class="text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_selected}</span>
-              {#each audioLanguageInput.codes as code (code)}
-                <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <!-- Track cleanup renders these near the top of the form instead: they are the whole of
+             what that mode does, so they must not sit behind a collapsed drawer. -->
+        {#if !isTrackCleanupProfile}
+          {@render keepLanguageFields()}
+        {/if}
 
+        {#if !isTrackCleanupProfile}
         <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
              under an HEVC target). Off by default; the size-saving gate still protects the original. -->
         <div class="mt-4">
@@ -1329,10 +1473,11 @@
             </span>
           </label>
         </div>
+        {/if}
       </section>
       {/if}
 
-      {#if showAudioOptions}
+      {#if showAudioOptions && !isTrackCleanupProfile}
       <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
       <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio}</h3>
@@ -1372,7 +1517,7 @@
       </section>
       {/if}
 
-      {#if showImageOptions}
+      {#if showImageOptions && !isTrackCleanupProfile}
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.images}</h3>
@@ -1451,7 +1596,7 @@
       </section>
       {/if}
 
-      {#if showVideoOptions || showAudioOptions}
+      {#if !isTrackCleanupProfile && (showVideoOptions || showAudioOptions)}
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="py-6">
@@ -1481,7 +1626,7 @@
             </div>
             <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
           </div>
-          {#if showVideoOptions}
+          {#if showVideoOptions && !isTrackCleanupProfile}
           <div>
             <label class="label" for="lib-maxheight">{i18n.m.libraries.skip_above} <InfoTip text={i18n.m.libraries.skip_above_tip} /></label>
             <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
@@ -1489,10 +1634,12 @@
             </select>
           </div>
           {/if}
+          {#if !isTrackCleanupProfile}
           <div>
             <label class="label" for="lib-minsize">{i18n.m.libraries.min_file_size} <InfoTip text={i18n.m.libraries.min_file_size_tip} /></label>
             <input id="lib-minsize" class="input" type="number" min="0" placeholder={i18n.m.libraries.profile_default_ph} bind:value={minSizeMb} />
           </div>
+          {/if}
         </div>
         <div class="mt-4">
           <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip text={i18n.m.libraries.exclude_paths_tip} /></label>
@@ -1531,8 +1678,12 @@
     </div>
   {/if}
   </div>
-  <div class="-mx-5 mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
-    <button class="btn btn-primary" onclick={save} disabled={!form.name || !form.path || !isDirty || !!audioLanguageError || !!vmafError}>
+  <!-- Sticky, because Advanced options make this form far taller than the viewport and Save must
+       stay reachable. The negative bottom offsets cancel the scroll container's own padding
+       (p-4/sm:p-6/lg:p-8) so the pinned bar meets the bottom of the viewport, rather than leaving a
+       strip of the form scrolling visibly beneath it. -->
+  <div class="sticky -bottom-4 -mx-5 mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:-bottom-6 sm:-mx-6 sm:px-6 lg:-bottom-8 dark:border-slate-700 dark:bg-slate-900">
+    <button class="btn btn-primary" onclick={save} disabled={!canSave}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
     </button>

@@ -145,10 +145,12 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.VideoAudioCodec = snapshot.VideoAudioCodec;
             library.VideoAudioBitrateKbps = snapshot.VideoAudioBitrateKbps;
             library.DownmixToStereo = snapshot.DownmixToStereo;
-            // Validation has already accepted the list; store the same lower-case, de-duplicated
+            // Validation has already accepted the lists; store the same lower-case, de-duplicated
             // representation as the library API so imports cannot create a second shape.
-            _ = AudioTrackSelection.TryNormaliseLanguageList(snapshot.KeepAudioLanguages, out var keepAudioLanguages);
+            _ = TrackLanguages.TryNormaliseLanguageList(snapshot.KeepAudioLanguages, out var keepAudioLanguages);
             library.KeepAudioLanguages = keepAudioLanguages;
+            _ = TrackLanguages.TryNormaliseLanguageList(snapshot.KeepSubtitleLanguages, out var keepSubtitleLanguages);
+            library.KeepSubtitleLanguages = keepSubtitleLanguages;
             library.ReencodeLossyAudio = snapshot.ReencodeLossyAudio;
             // Configs exported before AVIF was withdrawn remain importable; move the stale target
             // to the same proven WebP fallback as the database migration.
@@ -376,7 +378,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.VmafQualityGateEnabled,
         library.MinVmafCatastrophicMin,
         library.ClipVmafEnabled,
-        library.VmafFrameSubsample);
+        library.VmafFrameSubsample,
+        library.KeepSubtitleLanguages);
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

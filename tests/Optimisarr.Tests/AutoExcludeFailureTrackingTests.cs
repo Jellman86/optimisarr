@@ -1,14 +1,15 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
+using Optimisarr.Core.Scheduling;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
 
 /// <summary>
 /// Exercises the dispatcher's per-file failure tracking against a real database, without standing
-/// up the whole background worker: a file that fails enough times is auto-excluded, and a success
-/// clears the streak.
+/// up the whole background worker: deterministic failures exclude immediately, other failures use
+/// the threshold, and a success clears the streak.
 /// </summary>
 public sealed class AutoExcludeFailureTrackingTests : IDisposable
 {
@@ -62,6 +63,40 @@ public sealed class AutoExcludeFailureTrackingTests : IDisposable
         Assert.Empty(db.Exclusions);
     }
 
+    [Theory]
+    [InlineData(ImmediateAutoExclusionReason.SizeSaving, "size-saving gate")]
+    [InlineData(ImmediateAutoExclusionReason.VmafAfterHigherQualityRetry, "higher-quality retry")]
+    [InlineData(ImmediateAutoExclusionReason.VmafAtMaximumQuality, "maximum encoder quality")]
+    public async Task A_deterministic_terminal_failure_is_auto_excluded_immediately(
+        ImmediateAutoExclusionReason reason,
+        string expectedReason)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var (job, file) = await SeedAsync(db);
+
+        await QueueDispatcher.ApplyFailureTrackingAsync(db, job, JobStatus.Failed, reason);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(1, (await db.MediaFiles.SingleAsync()).FailureCount);
+        var exclusion = Assert.Single(db.Exclusions);
+        Assert.Equal(ExclusionSource.RepeatedFailures, exclusion.Source);
+        Assert.Equal(file.Path, exclusion.Path);
+        Assert.Contains(expectedReason, exclusion.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_cancelled_job_does_not_count_toward_auto_exclusion()
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var (job, _) = await SeedAsync(db);
+
+        await QueueDispatcher.ApplyFailureTrackingAsync(db, job, JobStatus.Cancelled);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(0, (await db.MediaFiles.SingleAsync()).FailureCount);
+        Assert.Empty(db.Exclusions);
+    }
+
     [Fact]
     public async Task An_already_excluded_file_is_not_excluded_twice()
     {
@@ -77,6 +112,24 @@ public sealed class AutoExcludeFailureTrackingTests : IDisposable
         await db.SaveChangesAsync();
 
         Assert.Single(db.Exclusions);   // still just the original manual one
+    }
+
+    [Theory]
+    [InlineData(JobType.Preview)]
+    [InlineData(JobType.Calibration)]
+    public async Task Disposable_comparison_work_never_changes_a_files_failure_streak(JobType type)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var (job, file) = await SeedAsync(db);
+        job.Type = type;
+        file.FailureCount = 2;
+
+        await QueueDispatcher.ApplyFailureTrackingAsync(db, job, JobStatus.Failed);
+        await QueueDispatcher.ApplyFailureTrackingAsync(db, job, JobStatus.Completed);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(2, (await db.MediaFiles.SingleAsync()).FailureCount);
+        Assert.Empty(db.Exclusions);
     }
 
     private static async Task<(Job Job, MediaFile File)> SeedAsync(OptimisarrDbContext db)

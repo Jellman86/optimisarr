@@ -147,6 +147,37 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Scan_clears_stale_track_languages_when_a_file_changes()
+    {
+        WriteMediaFile("Movie.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var media = await db.MediaFiles.SingleAsync();
+            media.AudioLanguages = "eng, fra";
+            media.SubtitleLanguages = "eng, spa";
+            await db.SaveChangesAsync();
+        }
+
+        // The file changed on disk, so every probe result — including the track
+        // languages the removal rules rely on — is stale and must be re-read.
+        var fullPath = Path.Combine(_root, "Movie.mkv");
+        File.WriteAllText(fullPath, "different content");
+        File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddMinutes(-30));
+
+        await ScanAsync(library);
+
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var media = await db.MediaFiles.SingleAsync();
+            Assert.Null(media.AudioLanguages);
+            Assert.Null(media.SubtitleLanguages);
+        }
+    }
+
     private async Task<Library> CreateLibraryAsync()
     {
         await using var db = new OptimisarrDbContext(_options);

@@ -279,6 +279,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 RuleProfile = RuleProfile.CompatibilityH264, Priority = 2, MaxHeight = 1080,
                 VideoAudioCodec = "aac", VideoAudioBitrateKbps = 160, DownmixToStereo = true,
                 KeepAudioLanguages = " ENG, jpn, eng ",
+                KeepSubtitleLanguages = " ENG ",
                 ReencodeLossyAudio = true,
                 VmafQualityGateEnabled = true,
                 MinVmafHarmonicMean = 91,
@@ -322,6 +323,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(160, library.VideoAudioBitrateKbps);
         Assert.True(library.DownmixToStereo);
         Assert.Equal("eng, jpn", library.KeepAudioLanguages);
+        Assert.Equal("eng", library.KeepSubtitleLanguages);
         Assert.True(library.ReencodeLossyAudio);
         Assert.True(library.VmafQualityGateEnabled);
         Assert.Equal(91, library.MinVmafHarmonicMean);

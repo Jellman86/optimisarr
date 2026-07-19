@@ -45,6 +45,7 @@ builder.Services.AddSingleton<LibraryScanner>();
 builder.Services.AddSingleton(new MediaProbeService(ffprobe));
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
+builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
 // different binary from the transcoding ffmpeg (e.g. jellyfin-ffmpeg). Point it via
 // OPTIMISARR_FFMPEG_VMAF; falls back to "ffmpeg" on PATH. A purpose-built CUDA variant may be
@@ -55,6 +56,7 @@ builder.Services.AddSingleton(new ToolDetectionService(transcodeFfmpeg, vmafFfmp
 builder.Services.AddSingleton(new QualityScoreService(vmafFfmpeg, cudaVmafFfmpeg));
 builder.Services.AddSingleton(new LoudnessService(vmafFfmpeg));
 builder.Services.AddSingleton(new ImageQualityService(vmafFfmpeg));
+builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpeg));
 // The portable image marker is written/read with exiftool (ffmpeg's still encoders drop
 // -metadata). Point at a specific binary via OPTIMISARR_EXIFTOOL; falls back to "exiftool" on PATH.
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
@@ -68,6 +70,8 @@ builder.Services.AddScoped<InventoryQueries>();
 builder.Services.AddScoped<ArrActivityService>();
 builder.Services.AddScoped<JobEnqueueService>();
 builder.Services.AddScoped<PreviewService>();
+builder.Services.AddSingleton<ICalibrationRandomizer, CryptographicCalibrationRandomizer>();
+builder.Services.AddSingleton<BlindCalibrationService>();
 builder.Services.AddScoped<LibraryRefreshService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderConnectService>();
@@ -83,6 +87,7 @@ builder.Services.AddSingleton<ActiveEncodeRegistry>();
 builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BlindCalibrationService>());
 builder.Services.AddHostedService<SystemMetricsBroadcaster>();
 builder.Services.AddHostedService<QuarantinePurgeWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
@@ -194,6 +199,8 @@ app.MapHealthEndpoints(adminToken, configDirectory);
 app.MapSystemEndpoints();
 
 app.MapLibraryEndpoints();
+
+app.MapCalibrationEndpoints();
 
 app.MapMediaAndQueueEndpoints();
 
@@ -329,6 +336,7 @@ internal sealed record SaveLibraryRequest(
     int? VideoAudioBitrateKbps,
     bool? DownmixToStereo,
     string? KeepAudioLanguages,
+    string? KeepSubtitleLanguages,
     bool? ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -385,6 +393,7 @@ internal sealed record LibraryDto(
     int? VideoAudioBitrateKbps,
     bool DownmixToStereo,
     string? KeepAudioLanguages,
+    string? KeepSubtitleLanguages,
     bool ReencodeLossyAudio,
     string? TargetImageFormat,
     int? ImageQuality,
@@ -434,6 +443,7 @@ internal sealed record LibraryDto(
         library.VideoAudioBitrateKbps,
         library.DownmixToStereo,
         library.KeepAudioLanguages,
+        library.KeepSubtitleLanguages,
         library.ReencodeLossyAudio,
         library.TargetImageFormat,
         library.ImageQuality,

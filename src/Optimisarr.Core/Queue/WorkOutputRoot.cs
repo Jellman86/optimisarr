@@ -20,4 +20,8 @@ public static class WorkOutputRoot
     /// </summary>
     public static string ForPreview(string workRoot, int jobId) =>
         $"{workRoot.TrimEnd('/', '\\')}/preview/{jobId}";
+
+    /// <summary>Disposable calibration output, isolated from previews and replaceable work.</summary>
+    public static string ForCalibration(string workRoot, Guid sessionId, int jobId) =>
+        $"{workRoot.TrimEnd('/', '\\')}/calibration/{sessionId:N}/{jobId}";
 }
