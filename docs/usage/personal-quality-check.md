@@ -40,11 +40,11 @@ verification stages, but the displayed percentage never moves backwards.
 
 The original is clearly marked as the fixed reference. Encoded candidates are shuffled and labelled
 only with letters. Their settings, encoder, bitrate, and estimated saving normally remain hidden.
-The temporary **stream verification** switch is currently on by default to help validate the feature.
-For video, it uses one native browser player and changes that element's media resource on every
-selection. Native controls, the element's resolved `currentSrc`, and **Open exact resource in browser**
-let you confirm the browser requested and opened the selected stream. This deliberately reveals the
-active preset/format, so turn it off for a blind check.
+The optional **stream verification** switch is off by default so the check remains blind. Turn it on
+only when you need to prove which file the browser is playing. For video, it uses one native browser
+player and changes that element's media resource on every selection. Native controls, the element's
+resolved `currentSrc`, and **Open exact resource in browser** let you confirm the browser requested
+and opened the selected stream. This deliberately reveals the active preset and format.
 
 - Switch between **Original** and the lettered candidates while examining the same moment. Video and audio keep one shared relative
   position, and a switch is not shown until the destination stream has sought to the matching frame.
@@ -88,6 +88,9 @@ if the relevant library codec, preset, or quality changed during the session.
 | HDR viewing check blocks preparation | Use an HDR-capable browser/display and keep the library's HDR handling set to Preserve. |
 | Preparation fails | Check `/work` space and permissions, then **Settings → Tools** for encoder availability. |
 | A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
+
+For video sources above 8-bit, the Compatibility H.264 candidate currently produces H.264 High 10
+rather than broadly compatible 8-bit H.264. See [Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
 
 Leaving the quality lab removes its session and scratch media. Abandoned sessions expire after two
 hours, and restarting Optimisarr discards all remaining sessions. See the

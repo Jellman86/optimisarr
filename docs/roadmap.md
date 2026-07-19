@@ -4,7 +4,7 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-16)
+## Up next (priority order, updated 2026-07-19)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -91,12 +91,11 @@ the replacement workflow is trustworthy.
      WebP, CFR/VFR video, frame-aligned preview VMAF, metadata, quality, stream-structure, and
      decode assertions.
 
-   - **Endpoint modularization: done.** All 73 endpoints are extracted into nine
-     `src/Optimisarr.Api/Endpoints/*.cs` extension methods (settings, integration, exclusion, health,
-     system, library, stats, replacement, media/queue), leaving `Program.cs` a 418-line composition
-     root (down from 1,960). A pure move verified by the byte-identical generated OpenAPI document and
-     the full test suite; the few endpoints that need startup locals (`adminToken`, `configDirectory`)
-     take them as parameters, and the range-aware file server is a shared `FileServing` helper.
+   - **Endpoint modularization: done.** API routes are extracted into focused
+     `src/Optimisarr.Api/Endpoints/*.cs` extension methods, including the later Setup and Calibration
+     modules, leaving `Program.cs` as the composition root. The move and subsequent modules are
+     protected by the generated OpenAPI document and full test suite; endpoints that need startup
+     locals take them as parameters, and shared behaviours remain in endpoint helpers.
 
    - **Large-library API scalability.** `/api/jobs` and `/api/media` now have server-side
      filtering and pagination (`status`, `search`/`category`, date, `page`/`pageSize`, total in
@@ -420,9 +419,9 @@ the replacement workflow is trustworthy.
      representative **clip** instead of the whole file (reuse the preview-clip mechanism — the
      biggest single win); optionally **hardware-decode the two inputs** with QSV/VAAPI to offload
      decode while VMAF stays on the CPU; expose an `n_subsample` setting (less scoring work by measuring every
-     Nth frame, with the caveat that it can step over the single bad frame the per-frame-minimum
-     floor exists to catch); and drop the incidental PSNR/SSIM report features when only the gate
-     decision is needed. All accelerated paths fall back to software, HDR stays on its established
+     Nth frame, with the caveat that it can step over a bad frame the catastrophic floor exists to
+     catch). The incidental PSNR/SSIM video measurements were dropped when only the VMAF gate decision
+     is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
 

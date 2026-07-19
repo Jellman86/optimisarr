@@ -31,6 +31,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 ## Troubleshooting and project information
 
 - [Troubleshooting](troubleshooting/diagnostics.md) - health/readiness, stalled jobs, failed verification, GPU detection, and stale UI.
+- [Known issues](../KNOWN_ISSUES.md) - reproducible problems still present in the current release.
 - [Security policy](../SECURITY.md)
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)

@@ -33,7 +33,7 @@ for rollback rather than deleted immediately.
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [known issues](KNOWN_ISSUES.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
 
 ## Project status
 
@@ -66,7 +66,9 @@ no support SLA or promise of a release schedule.
 - **Optimisation presets** per library (Compatibility H.264 / Balanced HEVC /
   Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR preserved and
   AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
-  target codec** (e.g. a huge HEVC remux) above a size you set.
+  target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
+  has a [known High 10 limitation](KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit)
+  when the source is above 8-bit.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
   job, or **automatically after an unrecoverable or repeated failure** — managed per library on an
   **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.
@@ -178,10 +180,11 @@ but a reverse proxy remains the recommended public-access boundary.
 
 ## Hardware acceleration (GPU)
 
-Transcoding runs through a bundled **jellyfin-ffmpeg**, which ships NVENC plus the Intel
-iHD driver and oneVPL runtime — so NVIDIA, Intel (incl. iGPUs like the N100), and AMD GPUs
-work without installing host driver packages. The encoder is picked by the global **encoder
-mode** (Settings → Auto by default); the **Tools** page shows what each GPU actually supports
+Transcoding runs through a bundled **jellyfin-ffmpeg**, which includes FFmpeg support for NVENC and
+VA-API plus the Intel iHD/oneVPL userspace stack. The host must still provide a compatible kernel
+driver, device mapping, permissions, and (for NVIDIA) container runtime. The encoder is picked by the
+global **encoder mode** (Settings → Auto by default); the **Tools** page shows what each GPU
+actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
 with `libvmaf`; the Tools page reports that optional capability independently. An optional
@@ -248,6 +251,7 @@ published Docker image also bundles GPL-licensed FFmpeg distributions
 ## Project references
 
 - [Changelog](CHANGELOG.md)
+- [Known issues](KNOWN_ISSUES.md)
 - [Product and architecture](docs/product-and-architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Engineering standards](CLAUDE.md)
