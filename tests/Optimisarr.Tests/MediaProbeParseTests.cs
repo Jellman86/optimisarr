@@ -1,6 +1,7 @@
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
 
@@ -33,6 +34,47 @@ public sealed class MediaProbeParseTests
         Assert.Equal(new[] { "eac3", "aac" }, result.AudioCodecs);
         Assert.Equal(2, result.AudioTrackCount);
         Assert.Equal(1, result.SubtitleTrackCount);
+    }
+
+    [Fact]
+    public void Parse_retains_the_average_video_frame_rate_for_frame_aligned_quality_measurement()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "h264",
+              "r_frame_rate": "24000/1001",
+              "avg_frame_rate": "24000/1001"
+            }
+          ],
+          "format": { "duration": "1200.000000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(24000d / 1001d, result.VideoFrameRate);
+    }
+
+    [Fact]
+    public void Video_duration_for_sampling_prefers_the_picture_timeline_over_the_container()
+    {
+        var probe = MediaProbeService.Parse("""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "duration": "2881.366000" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "2881.366000" }
+          ],
+          "format": { "duration": "2881.366000" }
+        }
+        """, ".mkv");
+
+        Assert.Equal(2362.85, VerificationService.ReferenceVideoDurationForVerification(
+            probe,
+            new TimestampCheckResult(true, 0, null, 2362.85),
+            fallbackDurationSeconds: 2881.366));
     }
 
     [Fact]

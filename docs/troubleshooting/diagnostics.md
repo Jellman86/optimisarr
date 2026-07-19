@@ -58,7 +58,11 @@ sheet before retrying:
   Either leave the file alone or change the library rules deliberately.
 - **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled
   on the library configuration page); image **SSIM/metadata** failures come from the default-on
-  image gates. When a gate is enabled, a missing measurement fails closed.
+  image gates. When a gate is enabled, a missing measurement fails closed, but an unmeasured VMAF
+  result does not trigger a higher-quality re-encode or immediate automatic exclusion.
+- **Source video timeline** means the original's picture packets end materially before its declared
+  container duration. Optimisarr leaves that source untouched and does not misreport the inherited
+  gap as an output-tail truncation.
 
 Use **Retry** only after changing the underlying cause: preset, hardware mode,
 source file, mount access, or verification policy. Use **Exclude** for files you

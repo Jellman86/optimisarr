@@ -138,7 +138,8 @@ excluding orientation, embedded previews, and stale raster dimensions from the o
 
 No libvmaf model or filter configuration is required in the UI. Optimisarr prepares
 both streams at the original's resolution with bicubic scaling, aligns their
-timebases and starting timestamps, normalises colour range and pixel format, and
+timebases and starting timestamps, resamples both onto the source's measured picture cadence before
+selecting sampled windows, normalises colour range and pixel format, and
 uses bounded automatic threading. It selects Netflix's `vmaf_v0.6.1` HDTV model
 for HD material and `vmaf_4k_v0.6.1` when either source axis reaches UHD. If a job
 intentionally converts HDR to SDR, the reference receives the same production
@@ -163,9 +164,11 @@ HDR; preserving or tone-mapping it is an explicit library-profile choice.
 Encoder quality values are not assumed to be portable between implementations. Software uses the
 profile CRF directly; QSV ICQ, NVENC CQ and VA-API QP receive conservative family-specific headroom.
 The requested and effective values are stored with each job. When VMAF is the only failed gate,
-Optimisarr makes one automatic higher-quality retry. If that recovery still fails VMAF, the file is
+Optimisarr makes one automatic higher-quality retry only after a real score was measured. If that
+recovery still produces a measured score below the VMAF gate, the file is
 automatically excluded from future optimisation and remains reversible from the library's **Excluded**
-tab. A size-saving failure excludes immediately instead of silently lowering the configured quality;
+tab. Missing or unusable VMAF evidence fails closed but cannot trigger that quality retry or immediate
+VMAF exclusion. A size-saving failure excludes immediately instead of silently lowering the configured quality;
 the same applies when size and VMAF both fail because higher quality would worsen size while lower
 quality would worsen VMAF. Other technical or transient failures retain the three-terminal-failure
 threshold. Cancelled work and jobs interrupted by a worker restart do not count toward exclusion.

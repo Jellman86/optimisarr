@@ -12,7 +12,7 @@ public static class VmafRetryPolicy
             return false;
         }
 
-        return IsSoleVmafFailure(report);
+        return report.Vmaf?.Measured == true && IsSoleVmafFailure(report);
     }
 
     /// <summary>Whether VMAF is the report's only failed gate.</summary>

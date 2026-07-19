@@ -55,9 +55,9 @@ public sealed class AutoExclusionPolicyTests
         int effectiveQuality,
         ImmediateAutoExclusionReason expected)
     {
-        var report = new VerificationReport([
-            new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "low")
-        ]);
+        var report = new VerificationReport(
+            [new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "low")],
+            Vmaf: new VmafEvidence(true, null, new QualityScores(80, 75, 0, null, null)));
 
         Assert.Equal(expected, AutoExclusionPolicy.ImmediateReason(
             report,
@@ -72,6 +72,18 @@ public sealed class AutoExclusionPolicyTests
             new VerificationCheck("Duration", CheckOutcome.Failed, "short"),
             new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "low")
         ]);
+
+        Assert.Equal(
+            ImmediateAutoExclusionReason.None,
+            AutoExclusionPolicy.ImmediateReason(report, qualityRetryCount: 1, effectiveQuality: 17));
+    }
+
+    [Fact]
+    public void An_unmeasured_vmaf_failure_is_not_immediately_excluded()
+    {
+        var report = new VerificationReport(
+            [new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "no comparable frames")],
+            Vmaf: new VmafEvidence(false, "no comparable frames", null));
 
         Assert.Equal(
             ImmediateAutoExclusionReason.None,

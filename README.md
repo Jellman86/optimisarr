@@ -190,10 +190,11 @@ support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU
 failure retries in software. VMAF verification is off by default for video re-encodes and skipped
 for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
-bicubic scaling, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
+bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame
 subsampling reduce runtime; every-frame scoring remains the safest default. VMAF-only failures get
-one encoder-aware higher-quality retry, then auto-exclude if that recovery still misses the gate.
+one encoder-aware higher-quality retry, then auto-exclude if that recovery still produces a measured
+score below the gate; missing/unusable measurements fail closed without triggering that recovery.
 An output that fails the size-saving gate auto-excludes immediately rather than silently lowering the
 configured quality; combined size and VMAF failures do the same because the safe recovery directions
 conflict. The report records the effective quality and sampling context.

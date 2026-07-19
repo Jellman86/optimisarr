@@ -192,7 +192,8 @@ public sealed class QualityScoreService(
 
         if (!File.Exists(logPath))
         {
-            return QualityResult.Failed("libvmaf produced no log; this ffmpeg build may lack libvmaf support.");
+            return QualityResult.Failed(
+                "libvmaf produced no log because no comparable video frames were available.");
         }
 
         var json = await File.ReadAllTextAsync(logPath, cancellationToken);
@@ -207,7 +208,7 @@ public sealed class QualityScoreService(
         }
 
         return scores is null
-            ? QualityResult.Failed("libvmaf log contained no usable VMAF score.")
+            ? QualityResult.Failed("libvmaf log contained no comparable video frames or usable VMAF score.")
             : QualityResult.Ok(scores) with { Acceleration = context.Acceleration };
     }
 

@@ -290,6 +290,9 @@ Before replacement, all required checks must pass:
 - ffprobe can parse it.
 - FFmpeg full decode returns success.
 - Duration delta is within tolerance.
+- The source picture stream reaches its declared container timeline; source corruption is reported
+  separately from an output-tail failure.
+- The output picture stream reaches the source picture stream's actual endpoint.
 - Required video stream exists.
 - Required audio streams are present or intentionally converted.
 - Required subtitle streams are present or intentionally converted.
@@ -301,6 +304,9 @@ long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
 segment-only; full queue jobs always verify against the complete original.
+Sampled VMAF places the independently encoded source and output on the source's measured frame
+cadence before trimming each window, preventing differing FFmpeg timebases from pairing adjacent
+frames at motion or scene changes.
 
 Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
 complete output contract of each library-slider preset, including codec, container, and audio rules.

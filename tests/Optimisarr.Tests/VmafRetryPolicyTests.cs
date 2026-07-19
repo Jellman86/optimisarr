@@ -7,10 +7,12 @@ public sealed class VmafRetryPolicyTests
     [Fact]
     public void An_isolated_vmaf_rejection_gets_one_higher_quality_retry()
     {
-        var report = new VerificationReport([
-            new VerificationCheck("Decode health", CheckOutcome.Passed, "ok"),
-            new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "low")
-        ]);
+        var report = new VerificationReport(
+            [
+                new VerificationCheck("Decode health", CheckOutcome.Passed, "ok"),
+                new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "low")
+            ],
+            Vmaf: new VmafEvidence(true, null, new QualityScores(80, 75, 0, null, null)));
 
         Assert.True(VmafRetryPolicy.ShouldRetry(report, retryCount: 0, effectiveQuality: 20));
         Assert.False(VmafRetryPolicy.ShouldRetry(report, retryCount: 1, effectiveQuality: 17));
@@ -23,6 +25,16 @@ public sealed class VmafRetryPolicyTests
             new VerificationCheck("Duration", CheckOutcome.Failed, "short"),
             new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "low")
         ]);
+
+        Assert.False(VmafRetryPolicy.ShouldRetry(report, retryCount: 0, effectiveQuality: 20));
+    }
+
+    [Fact]
+    public void An_unmeasured_vmaf_failure_does_not_waste_an_encode_retry()
+    {
+        var report = new VerificationReport(
+            [new VerificationCheck("Perceptual quality (VMAF)", CheckOutcome.Failed, "no comparable frames")],
+            Vmaf: new VmafEvidence(false, "no comparable frames", null));
 
         Assert.False(VmafRetryPolicy.ShouldRetry(report, retryCount: 0, effectiveQuality: 20));
     }

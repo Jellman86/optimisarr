@@ -56,6 +56,8 @@ public sealed record VerificationInput(
     int NonMonotonicTimestampCount = 0,
     string? TimestampRegressionDetail = null,
     double? OutputLastPresentationSeconds = null,
+    bool OriginalTimestampsMeasured = false,
+    double? OriginalLastPresentationSeconds = null,
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
     bool AudioDownmixed = false,

@@ -710,6 +710,48 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void A_short_source_video_timeline_is_reported_as_source_corruption_not_output_truncation()
+    {
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 2881.366,
+            OutputDurationSeconds = 2881.365,
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 2362.9,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 2361.568
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Source video timeline"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
+        Assert.Contains(
+            "source video ends",
+            report.Checks.Single(check => check.Name == "Source video timeline").Detail,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Tail_integrity_compares_against_the_source_video_endpoint_when_available()
+    {
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 3600,
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 3599.96,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 3400
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Source video timeline"));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, "Tail integrity"));
+        Assert.Contains("source video's", report.Checks.Single(check => check.Name == "Tail integrity").Detail);
+    }
+
+    [Fact]
     public void A_sub_two_percent_shortfall_is_within_tolerance()
     {
         // 30s of 3600s is 0.83%, under the 2% tail tolerance — reorder/last-frame slack.

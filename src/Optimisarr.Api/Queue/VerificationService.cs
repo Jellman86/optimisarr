@@ -94,6 +94,17 @@ public sealed class VerificationService(
             // A quick re-probe of the original (no decode) gives its audio shape so we can
             // catch a silent downmix or sample-rate drop in the output.
             var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
+            // A container can continue long after a damaged picture stream. Read the original's
+            // actual packet endpoint for normal jobs so tail verification compares video with
+            // video and can report source corruption separately. Disposable clips have their own
+            // deliberately bounded/reference-offset timeline, so keep their established checks.
+            var originalTimestampResult = reference.Kind == MediaKind.Video && clip is null
+                ? await timestamps.CheckAsync(reference.Path, cancellationToken)
+                : TimestampCheckResult.NotMeasured;
+            var referenceVideoDuration = ReferenceVideoDurationForVerification(
+                originalProbe,
+                originalTimestampResult,
+                reference.DurationSeconds);
 
             // When the job removed tracks by language, the audio the output promised to retain
             // is the kept tracks — so channel/sample-rate expectations come from those, not from
@@ -108,7 +119,7 @@ public sealed class VerificationService(
             string? vmafSampling = null;
             if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
-                var windows = clip is null && reference.DurationSeconds is { } total
+                var windows = clip is null && referenceVideoDuration is { } total
                     ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)
                     : [VmafWindow.Full];
                 vmafSampling = windows.Count == 1 && windows[0] == VmafWindow.Full
@@ -134,6 +145,7 @@ public sealed class VerificationService(
                         clip?.StartSeconds,
                         window.StartSeconds,
                         window.DurationSeconds,
+                        referenceVideoDuration,
                         policy.VmafFrameSubsample,
                         vmafAcceleration,
                         policy,
@@ -243,6 +255,8 @@ public sealed class VerificationService(
                 NonMonotonicTimestampCount: timestampResult.NonMonotonicCount,
                 TimestampRegressionDetail: timestampResult.FirstRegressionDetail,
                 OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
+                OriginalTimestampsMeasured: originalTimestampResult.Measured,
+                OriginalLastPresentationSeconds: originalTimestampResult.LastPresentationSeconds,
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,
@@ -353,6 +367,16 @@ public sealed class VerificationService(
             ? outputProbe.VideoDurationSeconds ?? outputProbe.DurationSeconds
             : outputProbe.DurationSeconds;
 
+    internal static double? ReferenceVideoDurationForVerification(
+        MediaProbeResult originalProbe,
+        TimestampCheckResult originalTimestamps,
+        double? fallbackDurationSeconds) =>
+        originalTimestamps.LastPresentationSeconds is { } last and > 0
+            ? Math.Max(0, last - (originalProbe.VideoStartSeconds ?? 0))
+            : originalProbe.VideoDurationSeconds is > 0
+                ? originalProbe.VideoDurationSeconds
+                : fallbackDurationSeconds;
+
     private static async Task<QualityResult> MeasureQualityAsync(
         OriginalSnapshot reference,
         string outputPath,
@@ -362,6 +386,7 @@ public sealed class VerificationService(
         int? referenceStartSeconds,
         int? clipStartSeconds,
         int? clipDurationSeconds,
+        double? referenceVideoDurationSeconds,
         int frameSubsample,
         VmafAcceleration acceleration,
         VerificationPolicy policy,
@@ -382,11 +407,12 @@ public sealed class VerificationService(
             // A clip-VMAF window seeks both inputs to its start; otherwise only the reference seek
             // (a preview) applies to the reference input.
             ReferenceStartSeconds: clipStartSeconds ?? referenceStartSeconds,
-            ReferenceDurationSeconds: originalProbe.DurationSeconds,
+            ReferenceDurationSeconds: referenceVideoDurationSeconds,
             DistortedStartSeconds: clipStartSeconds,
             MeasureDurationSeconds: clipDurationSeconds,
             FrameSubsample: frameSubsample,
-            Acceleration: acceleration);
+            Acceleration: acceleration,
+            ReferenceFrameRate: originalProbe.VideoFrameRate);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

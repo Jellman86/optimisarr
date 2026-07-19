@@ -126,13 +126,24 @@ public static class VerificationEvaluator
             checks.Add(MonotonicTimestamps(input));
         }
 
+        // Keep malformed source timelines distinct from output truncation. A file whose audio or
+        // container continues materially beyond its final video packet is unsafe to optimise, but
+        // blaming that inherited gap on the new encode sends the operator in the wrong direction.
+        if (isVideo
+            && input.OriginalTimestampsMeasured
+            && input.OriginalLastPresentationSeconds is not null
+            && input.OriginalDurationSeconds is > 0)
+        {
+            checks.Add(SourceVideoTimelineComplete(input));
+        }
+
         // A truncated/partial last GOP shows up as the output's video ending well before
         // the source runtime. It needs the source duration and the output's real last
         // presentation time, so it is checked only when both are known.
         if (isVideo
             && input.TimestampsMeasured
             && input.OutputLastPresentationSeconds is not null
-            && input.OriginalDurationSeconds is > 0)
+            && OriginalVideoSpanSeconds(input) is > 0)
         {
             checks.Add(TailComplete(input));
         }
@@ -344,19 +355,48 @@ public static class VerificationEvaluator
         const double absoluteFloorSeconds = 1.0;
         const double tolerancePercent = 2.0;
 
-        var original = input.OriginalDurationSeconds!.Value;
-        var lastPresentation = input.OutputLastPresentationSeconds!.Value;
+        var original = OriginalVideoSpanSeconds(input)!.Value;
+        var lastPresentation = Math.Max(
+            0,
+            input.OutputLastPresentationSeconds!.Value - (input.OutputVideoStartSeconds ?? 0));
         var shortfall = original - lastPresentation;
         var shortfallPercent = shortfall / original * 100.0;
         var detail = string.Format(
             CultureInfo.InvariantCulture,
-            "Output video ends at {0:0.###}s of the source's {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
+            "Output video spans {0:0.###}s against the source video's {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
             lastPresentation, original, Math.Max(shortfallPercent, 0), tolerancePercent);
 
         return shortfall > absoluteFloorSeconds && shortfallPercent > tolerancePercent
             ? Fail("Tail integrity", $"{detail} The final GOP looks truncated.")
             : Pass("Tail integrity", detail);
     }
+
+    private static VerificationCheck SourceVideoTimelineComplete(VerificationInput input)
+    {
+        const double absoluteFloorSeconds = 1.0;
+        const double tolerancePercent = 2.0;
+
+        var containerDuration = input.OriginalDurationSeconds!.Value;
+        var videoDuration = OriginalVideoSpanSeconds(input)!.Value;
+        var shortfall = containerDuration - videoDuration;
+        var shortfallPercent = shortfall / containerDuration * 100.0;
+        var detail = string.Format(
+            CultureInfo.InvariantCulture,
+            "The source video ends at {0:0.###}s while its container lasts {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
+            videoDuration,
+            containerDuration,
+            Math.Max(shortfallPercent, 0),
+            tolerancePercent);
+
+        return shortfall > absoluteFloorSeconds && shortfallPercent > tolerancePercent
+            ? Fail("Source video timeline", $"{detail} The source appears corrupt or has a materially incomplete picture stream.")
+            : Pass("Source video timeline", detail);
+    }
+
+    private static double? OriginalVideoSpanSeconds(VerificationInput input) =>
+        input.OriginalTimestampsMeasured && input.OriginalLastPresentationSeconds is { } last
+            ? Math.Max(0, last - (input.OriginalVideoStartSeconds ?? 0))
+            : input.OriginalDurationSeconds;
 
     private static VerificationCheck AvSync(VerificationInput input)
     {

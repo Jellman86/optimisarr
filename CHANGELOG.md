@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **Video verification now compares the same frames and identifies damaged sources honestly.**
+  Sampled VMAF places the source and output on the source's measured frame cadence before trimming,
+  preventing millisecond-versus-codec timebases from pairing adjacent pictures and producing false
+  zero scores at movement or cuts. Tail verification now compares the output with the source video's
+  actual packet endpoint and reports a source picture stream that ends early as **Source video
+  timeline**, rather than blaming the encode for the container's audio-only remainder. Unmeasured
+  VMAF evidence still fails closed, but no longer triggers a pointless higher-quality retry or an
+  immediate automatic exclusion.
 - **The personal quality check is no longer part-English for translated installs.** Eleven strings
   on that screen were hardcoded in the component instead of going through the locale files,
   including the **Temporary stream verification** and **Ignore active media streams for this check**

@@ -42,7 +42,8 @@ public sealed record MediaProbeResult(
     IReadOnlyDictionary<string, string> FormatTags,
     bool? IsVariableFrameRate,
     string? VideoProfile,
-    string? Error)
+    string? Error,
+    double? VideoFrameRate = null)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
@@ -192,6 +193,7 @@ public sealed class MediaProbeService
         var attachedPictureCount = 0;
         bool? isVariableFrameRate = null;
         string? videoProfile = null;
+        double? videoFrameRate = null;
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -245,6 +247,7 @@ public sealed class MediaProbeService
                         pixelFormat = ReadString(stream, "pix_fmt");
                         bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
                         isVariableFrameRate = DetectVariableFrameRate(stream);
+                        videoFrameRate = ReadVideoFrameRate(stream);
                         videoProfile = ReadString(stream, "profile");
                         videoStart = ReadStartTime(stream);
                         break;
@@ -333,7 +336,8 @@ public sealed class MediaProbeService
             formatTags,
             isVariableFrameRate,
             videoProfile,
-            null);
+            null,
+            videoFrameRate);
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still
@@ -492,6 +496,18 @@ public sealed class MediaProbeService
         // r_frame_rate and avg_frame_rate can differ minutely because of duration rounding.
         // Require a 0.1% divergence before treating it as positive VFR evidence.
         return Math.Abs(nominal.Value - average.Value) / nominal.Value > 0.001;
+    }
+
+    // VMAF compares frames positionally. Preserve ffprobe's average picture cadence so both the
+    // source and independently encoded output can be resampled onto one deterministic timeline
+    // before scoring; otherwise differently rounded stream timebases can select adjacent frames.
+    private static double? ReadVideoFrameRate(JsonElement stream)
+    {
+        var frameRate = ReadRational(stream, "avg_frame_rate")
+            ?? ReadRational(stream, "r_frame_rate");
+        return frameRate is > 0 && double.IsFinite(frameRate.Value) && frameRate <= 1_000
+            ? frameRate
+            : null;
     }
 
     private static double? ReadRational(JsonElement element, string property)

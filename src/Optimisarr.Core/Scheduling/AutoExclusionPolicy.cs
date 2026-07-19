@@ -53,7 +53,7 @@ public static class AutoExclusionPolicy
             return ImmediateAutoExclusionReason.SizeSaving;
         }
 
-        if (!VmafRetryPolicy.IsSoleVmafFailure(report))
+        if (report.Vmaf?.Measured != true || !VmafRetryPolicy.IsSoleVmafFailure(report))
         {
             return ImmediateAutoExclusionReason.None;
         }
