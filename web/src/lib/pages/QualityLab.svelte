@@ -514,7 +514,7 @@
 </script>
 
 <svelte:head>
-  <title>{i18n.m.calibration.lab_title} · Optimisarr</title>
+  <title>{i18n.m.calibration.eyebrow} · Optimisarr</title>
 </svelte:head>
 
 <div class="quality-lab min-h-full">
@@ -524,8 +524,9 @@
         <Icon name="arrow-left" class="h-4 w-4" />
         {i18n.m.calibration.back_to_library}
       </button>
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.eyebrow}</p>
-      <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl dark:text-white">{i18n.m.calibration.lab_title}</h1>
+      <!-- One name for the feature: the button that navigates here says "Personal quality check",
+           so the page it lands on says the same. A separate eyebrow would only repeat it. -->
+      <h1 class="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl dark:text-white">{i18n.m.calibration.eyebrow}</h1>
       <p class="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-400">
         {library?.name ? `${library.name} · ` : ''}{i18n.m.calibration.lab_intro}
       </p>
@@ -570,11 +571,11 @@
           {/if}
           <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
-            <span><strong class="block">Temporary stream verification</strong><span class="mt-0.5 block text-xs opacity-80">Uses one native video player and exposes its exact media resource, so the comparison will not be blind.</span></span>
+            <span><strong class="block">{i18n.m.calibration.diag_verify_label}</strong><span class="mt-0.5 block text-xs opacity-80">{i18n.m.calibration.diag_verify_hint}</span></span>
           </label>
           <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
             <input class="mt-1" type="checkbox" bind:checked={ignoreActiveStreams} />
-            <span><strong class="block">Ignore active media streams for this check</strong><span class="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">Allows these disposable samples to run while Plex, Jellyfin, or Emby is playing. Normal optimisation work stays paused.</span></span>
+            <span><strong class="block">{i18n.m.calibration.ignore_streams_label}</strong><span class="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">{i18n.m.calibration.ignore_streams_hint}</span></span>
           </label>
           <button class="btn btn-primary mt-6 min-h-11" disabled={busy || !hdrReady} onclick={start}>
             {busy ? i18n.m.calibration.starting : i18n.m.calibration.start}
@@ -651,7 +652,7 @@
                     onerror={() => (playbackError = true)}
                   ></video>
                 {/key}
-                {#if switching}<div class="absolute inset-0 flex items-center justify-center bg-black text-sm font-medium text-cyan-200" aria-live="polite">Loading exact video resource…</div>{/if}
+                {#if switching}<div class="absolute inset-0 flex items-center justify-center bg-black text-sm font-medium text-cyan-200" aria-live="polite">{i18n.m.calibration.loading_resource}</div>{/if}
               {:else}
                 {#each variants as variant}
                   <audio src={variant.samples[activeScene]?.url} preload="auto" class="absolute inset-0 h-full w-full object-contain" class:invisible={variant.name !== activeName} onloadedmetadata={(event: Event) => registerAudioPlayer(variant.name, event)} ontimeupdate={updatePosition} onplay={() => variant.name === activeName && (playing = true)} onpause={() => variant.name === activeName && (playing = false)} onerror={() => (playbackError = true)}></audio>
@@ -670,22 +671,22 @@
             {:else if activeSample && !(session.mediaKind === 'Video' && diagnosticsEnabled)}
               <div class="flex items-center gap-3"><button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-cyan-500 text-slate-950 hover:bg-cyan-400" aria-label={playing ? i18n.m.calibration.pause_sample : i18n.m.calibration.play_sample} onclick={togglePlayback}><Icon name={playing ? 'pause' : 'play'} class="h-5 w-5" /></button><input class="min-h-11 min-w-0 flex-1 accent-cyan-400" type="range" min="0" max={activeSample.durationSeconds} step="0.05" value={playbackPosition} aria-label={i18n.m.calibration.sample_position} oninput={(event) => seek(Number(event.currentTarget.value))} /><span class="w-20 text-right font-mono text-xs text-slate-400">{playbackPosition.toFixed(1)} / {activeSample.durationSeconds}s</span></div>
             {:else if activeSample}
-              <p class="text-center text-xs text-slate-400">Playback is controlled by the browser’s native video controls above.</p>
+              <p class="text-center text-xs text-slate-400">{i18n.m.calibration.native_controls_note}</p>
             {/if}
           </div>
           {#if activeDiagnostics && activeSample}
             <div class="border-t border-amber-800/70 bg-amber-950/40 px-4 py-3 text-amber-100" aria-live="polite">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <strong class="text-xs uppercase tracking-[0.16em] text-amber-300">Stream diagnostics</strong>
+                <strong class="text-xs uppercase tracking-[0.16em] text-amber-300">{i18n.m.calibration.stream_diagnostics}</strong>
                 <span class="font-mono text-xs">{diagnosticSummary()}</span>
               </div>
               <dl class="mt-2 grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-[7rem_minmax(0,1fr)]">
-                <dt class="text-amber-300/80">Requested route</dt><dd class="break-all font-mono">{activeSample.url}</dd>
+                <dt class="text-amber-300/80">{i18n.m.calibration.requested_route}</dt><dd class="break-all font-mono">{activeSample.url}</dd>
                 <dt class="text-amber-300/80">video.currentSrc</dt><dd class="break-all font-mono">{browserStreamUrl || 'Waiting for the video element…'}</dd>
-                <dt class="text-amber-300/80">Playback time</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · scene {activeScene + 1}</dd>
+                <dt class="text-amber-300/80">{i18n.m.calibration.playback_time}</dt><dd class="font-mono">{playbackPosition.toFixed(3)}s · {t(i18n.m.calibration.scene_button, { number: activeScene + 1 })}</dd>
               </dl>
               {#if session.mediaKind === 'Video' && browserStreamUrl}
-                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-amber-600/70 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-900/60 focus-visible:outline-2 focus-visible:outline-amber-300" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">Open exact resource in browser</a>
+                <a class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-amber-600/70 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-900/60 focus-visible:outline-2 focus-visible:outline-amber-300" href={browserStreamUrl} target="_blank" rel="noopener noreferrer" aria-label="Open exact video resource">{i18n.m.calibration.open_exact_resource}</a>
               {/if}
             </div>
           {/if}
@@ -698,7 +699,7 @@
         {/if}
 
         <section class="card p-4 sm:p-5">
-          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-slate-900 dark:text-white">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.calibration.sample_deck_hint}</p></div><span class="text-xs text-slate-400">Select a sample, then rate it</span></div>
+          <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h2 class="font-semibold text-slate-900 dark:text-white">{i18n.m.calibration.sample_deck}</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.calibration.sample_deck_hint}</p></div><span class="text-xs text-slate-400">{i18n.m.calibration.select_then_rate}</span></div>
           <div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}

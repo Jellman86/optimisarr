@@ -4,6 +4,44 @@
 
 ### Fixed
 
+- **The personal quality check is no longer part-English for translated installs.** Eleven strings
+  on that screen were hardcoded in the component instead of going through the locale files,
+  including the **Temporary stream verification** and **Ignore active media streams for this check**
+  options and the sample-deck instruction — so every non-English user saw them in English next to
+  correctly translated text. They now resolve through `i18n` and ship in all ten languages. The
+  locale audit only validates the locale files, so it could not catch strings that never reached
+  them.
+- **The personal quality check now has one name.** The page introduced itself as "Quality lab"
+  under an eyebrow reading "Personal quality check", while the control that opens it said a third
+  thing. The heading, the browser tab, the library card, and its button now all say **Personal
+  quality check**.
+- **Track cleanup no longer points at controls it hides.** Selecting "Only remove unwanted
+  audio/subtitle languages" warns that the preset does nothing until a keep-language rule is set —
+  but **Keep audio languages** and **Keep subtitle languages** lived inside the collapsed Advanced
+  drawer, so the warning referred to fields that were not on the page. They are now rendered
+  directly beneath that warning whenever track cleanup is selected, and stay in Advanced > Video for
+  the encode and remux modes that treat them as a refinement.
+
+### Changed
+
+- **The library configuration form is easier to scan.** Every top-level group is now named the way
+  the Advanced sections already were — **Library** for the name, path, and media type, and
+  **Automation** for the enabled/auto-optimise/auto-replace switches, which previously floated
+  between the quality policy and Advanced with no heading of their own. Save and Cancel appeared
+  twice on the same screen, in the header and again at the foot of the form; there is now one pair,
+  in an action bar that stays pinned to the bottom of the viewport so Save remains reachable when
+  Advanced options make the form several screens tall. The perceptual-quality control no longer
+  repeats itself in a paragraph above and below the picker, the "Custom" stop on the quality slider
+  no longer renders a dash where a codec would go, and the calibration card, its button, and its
+  tooltip all now call the feature **Personal quality check** instead of alternating with "Blind
+  quality calibration". The gap between top-level groups was three different values (16/20/24px)
+  with dividers on some boundaries and not others; it is now one rhythm, matching the uniform
+  spacing the Advanced sections already used. The three processing-mode cards no longer stretch to
+  the height of the longest one, which had left the two shorter cards with a block of dead space.
+  No rule, default, or safety gate changed.
+
+### Fixed
+
 - **Unrecoverable quality and size failures no longer burn repeated full encodes.** A VMAF-only
   rejection still receives one encoder-aware higher-quality retry, but a second VMAF rejection now
   auto-excludes the file. Size-saving failures—including combined size and VMAF failures—exclude
