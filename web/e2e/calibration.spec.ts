@@ -164,7 +164,7 @@ test('quality check marks the original reference while keeping media-specific ca
   // empty video response. Video timing and fullscreen have their own focused regression below.
   await openLab(page, 'Image')
 
-  await expect(page.getByRole('heading', { name: 'Quality lab' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Personal quality check' })).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Original reference', exact: true })).toBeVisible()
   for (const name of names.slice(1)) await expect(page.getByRole('button', { name, exact: true })).toBeVisible()

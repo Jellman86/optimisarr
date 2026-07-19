@@ -64,9 +64,9 @@ test('track cleanup is an exclusive mode and exposes only its relevant video con
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).not.toBeChecked()
   await expect(page.getByLabel('VMAF quality')).toHaveCount(0)
 
-  await page.getByRole('button', { name: /Advanced options/ }).click()
   await expect(page.getByLabel('Keep audio languages')).toBeVisible()
   await expect(page.getByLabel('Keep subtitle languages')).toBeVisible()
+  await page.getByRole('button', { name: /Advanced options/ }).click()
   await expect(page.getByLabel('Target codec')).toHaveCount(0)
   await expect(page.getByLabel('Minimum file size')).toHaveCount(0)
 
@@ -80,12 +80,10 @@ test('invalid subtitle language syntax cannot be saved', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')
   await page.getByRole('radio', { name: /Only remove unwanted audio\/subtitle languages/ }).check()
-  await page.getByRole('button', { name: /Advanced options/ }).click()
 
   await page.getByLabel('Keep subtitle languages').fill('english')
   await expect(page.getByRole('alert')).toHaveText('Use comma-separated 2- or 3-letter language codes only.')
-  await expect(page.getByRole('button', { name: 'Save' })).toHaveCount(2)
-  for (const button of await page.getByRole('button', { name: 'Save' }).all()) {
-    await expect(button).toBeDisabled()
-  }
+  const save = page.getByRole('button', { name: 'Save' })
+  await expect(save).toHaveCount(1)
+  await expect(save).toBeDisabled()
 })
