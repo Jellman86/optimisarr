@@ -56,11 +56,15 @@ Preset guide:
 
 | Goal | Preset |
 |---|---|
-| Maximum playback compatibility | Compatibility H.264 |
+| Maximum playback compatibility for 8-bit sources | Compatibility H.264 |
 | General space saving | Balanced / Conservative HEVC |
 | Smallest files and slower encodes | Efficiency AV1 |
 | Scott's compatibility-first setup | Scott's Settings |
 | No re-encode, container cleanup only | Remux / cleanup |
+
+Compatibility H.264 currently preserves 9-bit and 10-bit sources as H.264 High 10, which is not the
+same broad playback target as 8-bit H.264. Prefer HEVC or AV1 for those sources and see
+[Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
 
 VMAF policy guide:
 

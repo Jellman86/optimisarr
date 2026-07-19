@@ -52,7 +52,10 @@ There is no Intel/AMD/NPU backend for VMAF's feature extractors.
 VA-API H.264 paths cannot preserve a 10-bit source, so an H.264 target uses the bundled 10-bit
 `libx264` encoder for that file instead of silently converting it to 8-bit. An explicitly selected
 hardware mode fails before encoding and asks you to use Auto/CPU or choose HEVC/AV1. Sources above
-10-bit fail closed because no supported H.264 encoder can preserve them.
+10-bit fail closed because no supported H.264 encoder can preserve them. The preserved H.264 High 10
+output is less widely playable, can be slower, and can be larger than the source; it is therefore not
+the broad 8-bit compatibility promise normally associated with the preset. See
+[Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
 
 NVIDIA is the only full scoring-acceleration path. Supply an FFmpeg build with `libvmaf_cuda`,
 FFmpeg NVIDIA codec support, and `scale_cuda` through `OPTIMISARR_FFMPEG_VMAF_CUDA`; Optimisarr then

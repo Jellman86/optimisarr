@@ -275,7 +275,8 @@ See the Phase 12 section for the remaining optional polish.
   per-encoder rate control — NVENC `-cq`, QSV `-global_quality`, VAAPI `-qp` — instead of `-crf`
   for all). Transcoding runs through **jellyfin-ffmpeg** (bundles the Intel iHD driver + oneVPL and
   NVENC), and the compose example documents `/dev/dri` + the render group, so **Intel QSV/VA-API
-  (e.g. an N100) and AMD VA-API** are wired — pending on-hardware validation (see KNOWN_ISSUES).
+  (e.g. an N100) and AMD VA-API** are wired — pending on-hardware validation (see the
+  [hardware validation matrix](../setup/hardware-validation-matrix.md)).
   Encoder availability is now **confirmed by a real test encode** per encoder (cached, with a Tools
   Refresh to re-probe) rather than inferred from device-node presence, so the capability list reflects
   what actually works. **Intel QSV is now validated on real hardware** — hardware *encode* and
@@ -286,16 +287,17 @@ See the Phase 12 section for the remaining optional polish.
   automatic software-decode retry for sources the GPU can't decode. **Live, unprivileged CPU/GPU
   metrics** stream to the Queue graph over SignalR — `/proc/stat` for CPU and per-process DRM fdinfo
   (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
-  Remaining: hardware-specific preset notes; AMD VA-API on-hardware validation; optional NVIDIA
-  (`cuda`) decode acceleration.
+  Remaining: hardware-specific preset notes; AMD VA-API on-hardware validation; and optional
+  NVIDIA hardware decode for normal transcodes.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/
   Apprise); config-and-secrets backup/import.
-- **Phase 9 (Gold-Standard Verification): feature-complete.** Default-on VMAF gate (plus PSNR/SSIM
-  signals), always-on HDR/colour/A-V-sync/timestamp/tail integrity gates, audio channel/
-  sample-rate retention, opt-in EBU R128 loudness + true-peak clipping gates, per-library VMAF
-  overrides. All gate logic pure and unit tested.
+- **Phase 9 (Gold-Standard Verification): feature-complete.** Per-library, opt-in VMAF gate;
+  always-on HDR/colour/A-V-sync/timestamp/tail integrity gates; audio channel/sample-rate
+  retention; and opt-in EBU R128 loudness plus true-peak clipping gates. All gate logic is pure and
+  unit tested. Legacy PSNR/SSIM report fields remain nullable; current video perceptual gating uses
+  VMAF only.
 - **Phase 10 (Multi-Media Optimisation): feature-complete.** Media-kind detection;
   lossless-audio optimisation with per-library audio codec/bitrate; **audio-codec selection for
   video transcodes** (AAC default); **stereo downmix** across both pipelines; **any-source
@@ -593,10 +595,10 @@ defensible, evidence-backed guarantee that the converted file is as good as it
 needs to be — so replacing an original is a decision the user can fully trust.
 This deepens Phase 4 rather than replacing it; every existing gate stays.
 
-Status: feature-complete. The output is scored against the original with `libvmaf`
-(default-on, fail-closed VMAF gate with harmonic-mean and per-frame-minimum floors, plus
-PSNR/SSIM as corroborating signals), and the image bundles a dedicated libvmaf-enabled static
-FFmpeg alongside Jellyfin FFmpeg so the gate can run without disturbing the transcode path. Always-on
+Status: feature-complete. Video re-encodes can be scored against the original with an opt-in,
+fail-closed `libvmaf` gate using harmonic-mean, fifth-percentile, and catastrophic-frame floors.
+The image bundles a dedicated libvmaf-enabled static FFmpeg so the gate can run without disturbing
+the transcode path. Always-on
 gates cover **HDR preservation** (an HDR original whose library preserves HDR must keep
 its HDR10/HDR10+/HLG/Dolby Vision signal, while an intentional tone-map to SDR passes),
 **colour primaries/transfer/matrix** preservation, **A/V sync**, **monotonic decode
@@ -609,13 +611,13 @@ last container-integrity item. All gate logic is pure and unit tested.
 
 Deliverables:
 
-- **Perceptual/structural quality scoring** of the output against the original:
-  VMAF (with model selection), plus SSIM and PSNR as corroborating signals,
-  computed by FFmpeg's `libvmaf`/filters and parsed by a pure, unit-tested
-  evaluator. A configurable minimum VMAF gate (conservative default) blocks
-  replacement when quality drops too far. **Done:** harmonic-mean and per-frame minimum floors,
-  PSNR/SSIM corroboration, automatic HDTV/UHD model selection, deterministic stream alignment,
-  and HDR-to-SDR reference preparation are implemented and exercised in final-container CI.
+- **Perceptual/structural quality scoring** of the output against the original: VMAF with automatic
+  model selection, computed by FFmpeg's `libvmaf` filter and parsed by a pure, unit-tested evaluator.
+  A configurable per-library policy blocks replacement when quality drops too far. **Done:**
+  harmonic-mean, fifth-percentile, and catastrophic-frame floors; automatic HDTV/UHD model
+  selection; deterministic stream alignment; and HDR-to-SDR reference preparation are implemented
+  and exercised in final-container CI. The older incidental PSNR/SSIM report fields remain nullable
+  and are no longer requested during video scoring.
 - **Per-frame decode integrity**, not just a single full-decode pass: count and
   surface decoder errors/corrupt frames, dropped/duplicated frames, and any
   packet-level read errors over the whole file.
@@ -760,8 +762,8 @@ Deliverables:
   auto-cleaned afterwards.
 - **Side-by-side compare UI**: original vs optimised players in sync (or matched
   frame thumbnails), plus a statistics panel — file size and % change, bitrate,
-  codec/container, resolution, audio layout, and the Phase 9 quality scores
-  (VMAF/SSIM) and verification summary.
+  codec/container, resolution, audio layout, the VMAF result when enabled, and the verification
+  summary.
 - **Clip mode: done.** Video previews encode a 60-second middle segment for fast turnaround, verify
   against the same segment of the original, and label scores as segment-only.
 - **Apply-from-preview**: if happy, the same settings are already saved; the
@@ -770,8 +772,8 @@ Deliverables:
   the existing worker with a "preview" job type that is exempt from replacement.
 - **Quarantine compare-to-approve (related, on the Quarantine page). Core done.** Each replacement
   on the Quarantine page expands into a compare panel showing the quarantined original against the
-  in-place replacement — size + saving % and the full Phase 9 verification report (the measured
-  VMAF/SSIM, duration, audio-retention, etc. gates) — so an operator can **approve** (here: delete
+  in-place replacement — size + saving % and the full Phase 9 verification report (VMAF when
+  enabled, duration, audio-retention, and other gates) — so an operator can **approve** (here: delete
   the quarantined original now to reclaim space, keeping the replacement) or **reject** (roll back to
   the original) from one screen. Reuses the existing rollback and quarantine-purge services — a
   review UI over actions that already exist, never a new destructive path. The **visual** half

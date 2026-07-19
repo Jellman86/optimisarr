@@ -49,8 +49,9 @@ and mode of files Optimisarr creates, so replaced media keeps ownership your oth
 
 ## Hardware transcoding
 
-Optimisarr bundles `jellyfin-ffmpeg` (the Intel iHD driver + oneVPL/libvpl), so no host driver
-packages are needed — only device and group access.
+Optimisarr bundles the Intel userspace media stack with `jellyfin-ffmpeg`; Unraid must still expose a
+working host kernel driver and render device. The container needs device and group access, but no
+additional Intel userspace driver package inside the container.
 
 ### Intel QSV / VA-API, or AMD VA-API
 

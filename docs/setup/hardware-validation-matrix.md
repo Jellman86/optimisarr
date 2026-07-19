@@ -5,7 +5,7 @@ the command path and fallback behaviour are covered by automated tests; it does 
 physical GPU has completed an Optimisarr job. **Validated** means a real container completed the
 listed path and the evidence was observed outside a mock.
 
-Last reviewed: **2026-07-15**.
+Last reviewed: **2026-07-19**.
 
 | Platform | Encode | Hardware decode | VMAF path | Live metrics | Last real-host validation | Evidence and known limits |
 |---|---|---|---|---|---|---|
@@ -14,6 +14,10 @@ Last reviewed: **2026-07-15**.
 | Intel N100 / QSV | Validated | Validated | QSV decode + CPU VMAF is implemented and unit-tested; current real-host revalidation pending | Validated through unprivileged DRM fdinfo | 2026-06 | A 4K manual encode reduced host CPU use from about 142% to 22% with render/video engines active; see the [engineering history](../engineering/history.md#phase-7-gpu-support). The recent sampled-VMAF alignment change still needs a clean host run recorded here. |
 | Intel VA-API | Implemented and unit-tested | Implemented and unit-tested | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo | Pending | Shares `/dev/dri` plumbing with QSV, but QSV evidence is not VA-API evidence. Do not mark validated from device detection or a successful encoder probe alone. |
 | AMD VA-API | Implemented and unit-tested | Implemented and unit-tested | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo with sysfs fallback | Pending | This is the highest-priority hardware gap. No AMD GPU model, driver, encode, decode, VMAF, or metrics run has been recorded. |
+
+These rows cover only codec and bit-depth combinations supported by the selected hardware encoder.
+For example, Optimisarr deliberately keeps sources above 8-bit away from the listed hardware H.264
+paths; see the [Compatibility H.264 known issue](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
 
 ## What counts as validation
 

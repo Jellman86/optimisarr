@@ -180,7 +180,7 @@ researched quality target; anything can be fine-tuned under **Advanced options**
 
 | Preset | Targets |
 |---|---|
-| Compatibility (H.264) | H.264 / MP4 with channel-aware AAC — plays everywhere, larger files. |
+| Compatibility (H.264) | H.264 / MP4 with channel-aware AAC — broad compatibility for 8-bit sources, larger files. Sources above 8-bit have a [known High 10 limitation](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit). |
 | Balanced (HEVC) | HEVC (H.265) / MP4 at CRF 24 with channel-aware AAC — a good default. |
 | Efficiency (AV1) | AV1 / MKV — smallest files, slower to encode. |
 | **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR preserved**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; the same AAC 96 kbps stereo target applies to a music library. |
