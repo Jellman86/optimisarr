@@ -113,6 +113,38 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Calibration_video_duration_uses_the_measured_picture_span_when_timestamps_are_not_zero_based()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "av1", "start_time": "9.558000" },
+            { "codec_type": "audio", "codec_name": "aac", "start_time": "9.495000" }
+          ],
+          "format": { "format_name": "matroska,webm", "start_time": "9.495000", "duration": "22.929000" }
+        }
+        """;
+        var result = MediaProbeService.Parse(json, ".mkv");
+        var timestamps = new TimestampCheckResult(
+            Measured: true,
+            NonMonotonicCount: 0,
+            FirstRegressionDetail: null,
+            LastPresentationSeconds: 21.486);
+
+        Assert.Equal(11.928, VerificationService.OutputDurationForVerification(
+            result,
+            MediaKind.Video,
+            videoOnlyReference: true,
+            timestamps)!.Value,
+            precision: 3);
+        Assert.Equal(22.929, VerificationService.OutputDurationForVerification(
+            result,
+            MediaKind.Video,
+            videoOnlyReference: false,
+            timestamps));
+    }
+
+    [Fact]
     public void Parse_reads_matroska_video_duration_tag_with_nanosecond_precision()
     {
         const string json = """

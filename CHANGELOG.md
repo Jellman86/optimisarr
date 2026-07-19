@@ -12,6 +12,10 @@
   timeline**, rather than blaming the encode for the container's audio-only remainder. Unmeasured
   VMAF evidence still fails closed, but no longer triggers a pointless higher-quality retry or an
   immediate automatic exclusion.
+- **Personal quality-check clips with a non-zero media epoch no longer fail Duration.** The
+  verifier now compares the measured picture span with the exact calibration window instead of
+  mistaking an absolute end timestamp—or copied subtitle/attachment padding—for clip runtime.
+  Full-file jobs retain their existing container-duration check.
 - **The personal quality check is no longer part-English for translated installs.** Eleven strings
   on that screen were hardcoded in the component instead of going through the locale files,
   including the **Temporary stream verification** and **Ignore active media streams for this check**
