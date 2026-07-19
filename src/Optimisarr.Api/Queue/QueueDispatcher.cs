@@ -852,9 +852,13 @@ public sealed class QueueDispatcher(
         EncoderQuality? videoQuality = null;
         if (spec.VideoCodec is not null)
         {
+            var sourceBitDepth = PixelFormatInfo.Parse(
+                media.PixelFormat,
+                media.BitsPerRawSample)?.BitDepth;
             var videoEncoder = await ResolveVideoEncoderAsync(
                 spec.VideoCodec,
                 queueSettings.EncoderMode,
+                sourceBitDepth,
                 cancellationToken);
             if (videoEncoder is { Succeeded: false })
             {
@@ -1643,6 +1647,7 @@ public sealed class QueueDispatcher(
     private async Task<EncoderSelection> ResolveVideoEncoderAsync(
         string? targetCodec,
         EncoderMode encoderMode,
+        int? sourceBitDepth,
         CancellationToken cancellationToken)
     {
         if (targetCodec is null)
@@ -1651,7 +1656,7 @@ public sealed class QueueDispatcher(
         }
 
         var detected = await hardware.DetectAsync(cancellationToken);
-        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders);
+        return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth);
     }
 
     // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc); the
