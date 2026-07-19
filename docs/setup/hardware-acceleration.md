@@ -48,6 +48,12 @@ selection: Intel QSV and VA-API can decode both inputs before downloading frames
 That GPU-to-RAM copy means hardware decode is not guaranteed to be faster; benchmark it on the host.
 There is no Intel/AMD/NPU backend for VMAF's feature extractors.
 
+**Auto** also keeps the always-on video bit-depth gate honest. The supported NVENC, Intel QSV, and
+VA-API H.264 paths cannot preserve a 10-bit source, so an H.264 target uses the bundled 10-bit
+`libx264` encoder for that file instead of silently converting it to 8-bit. An explicitly selected
+hardware mode fails before encoding and asks you to use Auto/CPU or choose HEVC/AV1. Sources above
+10-bit fail closed because no supported H.264 encoder can preserve them.
+
 NVIDIA is the only full scoring-acceleration path. Supply an FFmpeg build with `libvmaf_cuda`,
 FFmpeg NVIDIA codec support, and `scale_cuda` through `OPTIMISARR_FFMPEG_VMAF_CUDA`; Optimisarr then
 uses NVDEC and keeps both SDR streams in CUDA memory. HDR remains on the software path so its 10-bit

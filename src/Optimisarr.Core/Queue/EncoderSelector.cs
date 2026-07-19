@@ -13,7 +13,8 @@ public static class EncoderSelector
     public static EncoderSelection Select(
         string targetCodec,
         EncoderMode mode,
-        IReadOnlyList<EncoderCapability> capabilities)
+        IReadOnlyList<EncoderCapability> capabilities,
+        int? sourceBitDepth = null)
     {
         var codec = NormaliseCodec(targetCodec);
         if (codec is null)
@@ -21,9 +22,24 @@ public static class EncoderSelector
             return EncoderSelection.Failure($"No known encoder for target codec '{targetCodec}'.");
         }
 
-        var preferredModes = mode switch
+        if (codec == "h264" && sourceBitDepth is > 10)
         {
-            EncoderMode.Auto => new[] { "NVIDIA NVENC", "Intel QSV", "VAAPI", "CPU" },
+            return EncoderSelection.Failure(
+                $"No supported H.264 encoder can preserve a {sourceBitDepth}-bit source. Choose HEVC or AV1.");
+        }
+
+        var requiresHighBitDepthCpuH264 = codec == "h264" && sourceBitDepth is > 8 and <= 10;
+        if (requiresHighBitDepthCpuH264 && mode is not (EncoderMode.Auto or EncoderMode.Cpu))
+        {
+            return EncoderSelection.Failure(
+                $"{ModeName(mode)} H.264 cannot preserve a {sourceBitDepth}-bit source. " +
+                "Use Auto or CPU mode, or choose HEVC or AV1.");
+        }
+
+        string[] preferredModes = mode switch
+        {
+            EncoderMode.Auto when requiresHighBitDepthCpuH264 => ["CPU"],
+            EncoderMode.Auto => ["NVIDIA NVENC", "Intel QSV", "VAAPI", "CPU"],
             EncoderMode.Cpu => ["CPU"],
             EncoderMode.NvidiaNvenc => ["NVIDIA NVENC"],
             EncoderMode.IntelQsv => ["Intel QSV"],
@@ -47,6 +63,14 @@ public static class EncoderSelector
         return EncoderSelection.Failure($"No available {modeName} encoder for target codec '{codec}'.");
     }
 
+    private static string ModeName(EncoderMode mode) => mode switch
+    {
+        EncoderMode.NvidiaNvenc => "NVIDIA NVENC",
+        EncoderMode.IntelQsv => "Intel QSV",
+        EncoderMode.Vaapi => "VAAPI",
+        _ => mode.ToString()
+    };
+
     private static string? NormaliseCodec(string codec) => codec.Trim().ToLowerInvariant() switch
     {
         "hevc" or "h265" or "x265" => "hevc",
@@ -55,4 +79,3 @@ public static class EncoderSelector
         _ => null
     };
 }
-

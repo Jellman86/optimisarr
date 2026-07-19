@@ -34,6 +34,48 @@ public sealed class EncoderSelectorTests
     }
 
     [Fact]
+    public void Auto_uses_cpu_h264_when_hardware_cannot_preserve_source_bit_depth()
+    {
+        var selection = EncoderSelector.Select(
+            "h264", EncoderMode.Auto, Capabilities, sourceBitDepth: 10);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("libx264", selection.EncoderName);
+    }
+
+    [Fact]
+    public void Auto_keeps_hardware_h264_for_an_eight_bit_source()
+    {
+        var selection = EncoderSelector.Select(
+            "h264", EncoderMode.Auto, Capabilities, sourceBitDepth: 8);
+
+        Assert.True(selection.Succeeded);
+        Assert.Equal("h264_qsv", selection.EncoderName);
+    }
+
+    [Fact]
+    public void Forced_hardware_h264_rejects_a_source_whose_depth_it_cannot_preserve()
+    {
+        var selection = EncoderSelector.Select(
+            "h264", EncoderMode.IntelQsv, Capabilities, sourceBitDepth: 10);
+
+        Assert.False(selection.Succeeded);
+        Assert.Contains("cannot preserve", selection.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10-bit", selection.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void H264_fails_closed_when_no_supported_encoder_can_preserve_the_source_depth()
+    {
+        var selection = EncoderSelector.Select(
+            "h264", EncoderMode.Auto, Capabilities, sourceBitDepth: 12);
+
+        Assert.False(selection.Succeeded);
+        Assert.Contains("No supported H.264 encoder", selection.Error, StringComparison.Ordinal);
+        Assert.Contains("12-bit", selection.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Requested_hardware_mode_must_support_the_target_codec()
     {
         var selection = EncoderSelector.Select("av1", EncoderMode.NvidiaNvenc, Capabilities);

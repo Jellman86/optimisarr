@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- **Ten-bit H.264 sources no longer reach an incompatible hardware encoder.** In **Auto** mode,
+  an H.264 target now selects the bundled 10-bit-capable `libx264` encoder when preserving the
+  source depth rules out NVENC, Intel QSV, and VA-API. A forced hardware mode fails before FFmpeg
+  starts with an actionable explanation instead of reaching frame zero and reporting `Function not
+  implemented`; sources above 10-bit fail closed because no supported H.264 path can preserve them.
 - **Video verification now compares the same frames and identifies damaged sources honestly.**
   Sampled VMAF places the source and output on the source's measured frame cadence before trimming,
   preventing millisecond-versus-codec timebases from pairing adjacent pictures and producing false
