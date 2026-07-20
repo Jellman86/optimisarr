@@ -159,6 +159,11 @@
   time (e.g. `h264 → hevc`, `Remove 2 audio track(s) (fra, deu) not in the kept languages`) and
   the Queue page shows it on the active-job card and each row. Track-removal reasons name the
   languages being removed, not just counts.
+
+  The Track Cleanup, subtitle-language, and queue-reason features above were contributed by
+  [@smidley](https://github.com/smidley) in [PR #29](https://github.com/Jellman86/optimisarr/pull/29),
+  building on their original audio-language contribution.
+
 - **A full-page personal quality lab for video.** A saved video library can prepare short,
   disposable samples from the beginning, middle, and end of a representative file, then compare a
   marked original reference and four shuffled anonymous candidates covering the library's real
@@ -280,7 +285,8 @@
   obtains a fresh successful source probe before FFmpeg,
   so already-clean remuxes become eligible for fast stream-copy cleanup. The accessible library
   control validates and normalises input before save in every locale, and config backup/restore
-  uses the same validator. Migration `AddKeepAudioLanguages`.
+  uses the same validator. Migration `AddKeepAudioLanguages`. Contributed by
+  [@smidley](https://github.com/smidley) in [PR #28](https://github.com/Jellman86/optimisarr/pull/28).
 
 ### Fixed
 
