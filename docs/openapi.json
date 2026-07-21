@@ -3272,6 +3272,38 @@
         ]
       }
     },
+    "/api/queue/pause": {
+      "post": {
+        "operationId": "PauseQueue",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/queue/resume": {
+      "post": {
+        "operationId": "ResumeQueue",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
     "/api/queue/status": {
       "get": {
         "operationId": "GetQueueDispatchStatus",
