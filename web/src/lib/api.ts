@@ -342,6 +342,9 @@ export type ConfigImportResult = {
 export type QueueStatus = Settings & {
   canStart: boolean
   blockedReason: string | null
+  // True only while the operator has manually paused the queue (running encodes are suspended
+  // in place); the automatic gates (playback, low disk) never set this.
+  manuallyPaused: boolean
   runningJobs: number
   // True when at least one running job is using a hardware (GPU) video encoder.
   hardwareAccelerated: boolean
@@ -972,6 +975,8 @@ export const api = {
       method: 'POST', body: JSON.stringify(confirmedPreview),
     }),
   queueStatus: () => request<QueueStatus>('/api/queue/status'),
+  pauseQueue: () => request<QueueStatus>('/api/queue/pause', { method: 'POST' }),
+  resumeQueue: () => request<QueueStatus>('/api/queue/resume', { method: 'POST' }),
   exportSettings: () => request<ConfigSnapshot>('/api/settings/export'),
   importSettings: (snapshot: ConfigSnapshot) =>
     request<ConfigImportResult>('/api/settings/import', { method: 'POST', body: JSON.stringify(snapshot) }),

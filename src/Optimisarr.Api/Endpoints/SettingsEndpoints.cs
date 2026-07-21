@@ -110,5 +110,25 @@ internal static class SettingsEndpoints
             return Results.Ok(QueueStatusDto.From(status));
         })
         .WithName("GetQueueDispatchStatus");
+
+        // The operator's manual pause: stops new work from dispatching and suspends the running
+        // encodes in place (no progress is lost). Persists until resumed, across restarts.
+        app.MapPost("/api/queue/pause", async (
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
+        {
+            await dispatcher.PauseQueueAsync(cancellationToken);
+            return Results.Ok(QueueStatusDto.From(await dispatcher.GetDispatchStatusAsync(cancellationToken)));
+        })
+        .WithName("PauseQueue");
+
+        app.MapPost("/api/queue/resume", async (
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
+        {
+            await dispatcher.ResumeQueueAsync(cancellationToken);
+            return Results.Ok(QueueStatusDto.From(await dispatcher.GetDispatchStatusAsync(cancellationToken)));
+        })
+        .WithName("ResumeQueue");
     }
 }

@@ -378,6 +378,14 @@ quarantine: {
       'Gestione della coda in pausa: {reason}. Le codifiche attuali saranno completate in sicurezza; questa impostazione impedisce solo l’avvio di nuovi processi.',
     waiting_window:
       '{reason} — imposta la finestra su 00:00–00:00 (tutto il giorno) o disattiva “Ottimizza automaticamente” sulla libreria per avviare ora.',
+    now_paused: 'In pausa',
+    pause_queue: 'Metti in pausa la coda',
+    resume_queue: 'Riprendi la coda',
+    pause_queue_title:
+      'Sospende le codifiche in corso così come sono e impedisce l’avvio di nuovi processi, liberando il server per altri lavori. Nessun progresso va perso.',
+    resume_queue_title: 'Riprende le codifiche sospese dal punto in cui si erano fermate e ricomincia a distribuire i processi.',
+    paused_manually_hint: 'Riprendi la coda per continuare da dove si era fermata.',
+    error_pause: 'Impossibile modificare lo stato di pausa della coda.',
     filter_all: 'Tutti',
     filter_active: 'Attivi',
     filter_completed: 'Completati',

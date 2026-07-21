@@ -387,6 +387,14 @@ export const de: Messages = {
       'Die Warteschlangen-Ausführung ist pausiert: {reason}. Laufende Kodierungen dürfen sicher abgeschlossen werden; dies verhindert nur den Start neuer Aufgaben.',
     waiting_window:
       '{reason} — setzen Sie das Fenster auf 00:00–00:00 (ganztägig) oder deaktivieren Sie „Automatisch optimieren“ für die Bibliothek, um jetzt auszuführen.',
+    now_paused: 'Pausiert',
+    pause_queue: 'Warteschlange pausieren',
+    resume_queue: 'Warteschlange fortsetzen',
+    pause_queue_title:
+      'Hält die laufenden Kodierungen an Ort und Stelle an und startet keine neuen Aufgaben, damit der Server für andere Arbeiten frei ist. Es geht kein Fortschritt verloren.',
+    resume_queue_title: 'Setzt die angehaltenen Kodierungen an derselben Stelle fort und startet wieder neue Aufgaben.',
+    paused_manually_hint: 'Setzen Sie die Warteschlange fort, um dort weiterzumachen, wo sie angehalten wurde.',
+    error_pause: 'Der Pausenstatus der Warteschlange konnte nicht geändert werden.',
     filter_all: 'Alle',
     filter_active: 'Aktiv',
     filter_completed: 'Abgeschlossen',

@@ -523,6 +523,14 @@ export const en = {
       'Queue dispatch is paused: {reason}. Existing encodes are allowed to finish safely; this only prevents new jobs from starting.',
     waiting_window:
       '{reason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.',
+    now_paused: 'Paused',
+    pause_queue: 'Pause queue',
+    resume_queue: 'Resume queue',
+    pause_queue_title:
+      'Suspend the running encodes in place and stop new jobs from starting, freeing the server for other work. No encode progress is lost.',
+    resume_queue_title: 'Continue the suspended encodes where they stopped and start dispatching jobs again.',
+    paused_manually_hint: 'Resume the queue to continue where it left off.',
+    error_pause: 'Could not change the queue pause state.',
     filter_all: 'All',
     filter_active: 'Active',
     filter_completed: 'Completed',
