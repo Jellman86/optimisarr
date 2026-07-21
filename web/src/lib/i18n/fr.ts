@@ -380,6 +380,14 @@ dispatch_paused:
   'La file d’attente est en pause : {reason}. Les encodages en cours se terminent en toute sécurité ; seuls les nouveaux travaux sont bloqués.',
 waiting_window:
   '{reason} — définissez la plage sur 00:00–00:00 (toute la journée) ou désactivez “Optimiser automatiquement” sur la médiathèque pour exécuter maintenant.',
+now_paused: 'En pause',
+pause_queue: 'Suspendre la file',
+resume_queue: 'Reprendre la file',
+pause_queue_title:
+  'Suspend les encodages en cours sur place et empêche le démarrage de nouveaux travaux, libérant le serveur pour d’autres tâches. Aucune progression n’est perdue.',
+resume_queue_title: 'Reprend les encodages suspendus là où ils se sont arrêtés et relance la distribution des travaux.',
+paused_manually_hint: 'Reprenez la file pour continuer là où elle s’est arrêtée.',
+error_pause: 'Impossible de modifier l’état de pause de la file.',
 filter_all: 'Tous',
 filter_active: 'Actifs',
 filter_completed: 'Terminés',

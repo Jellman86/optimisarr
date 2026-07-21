@@ -23,6 +23,13 @@ public static class SettingKeys
     public const string EncoderMode = "queue.encoderMode";
 
     /// <summary>
+    /// Whether the operator has manually paused the queue. Operational state, not configuration:
+    /// deliberately absent from the portable settings so an imported backup never pauses (or
+    /// resumes) a server behind the operator's back.
+    /// </summary>
+    public const string QueuePaused = "queue.paused";
+
+    /// <summary>
     /// Whether to hardware-decode the source when a hardware encoder is in use, falling back
     /// to software decode automatically if the GPU cannot decode a given source.
     /// </summary>

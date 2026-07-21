@@ -383,6 +383,14 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
       'El envío de la cola está pausado: {reason}. Los codificados existentes pueden terminar con seguridad; esto solo impide que comiencen nuevos trabajos.',
     waiting_window:
       '{reason} — ajusta la ventana a 00:00–00:00 (todo el día) o desactiva “Optimizar automáticamente” en la biblioteca para ejecutar ahora.',
+    now_paused: 'En pausa',
+    pause_queue: 'Pausar la cola',
+    resume_queue: 'Reanudar la cola',
+    pause_queue_title:
+      'Suspende las codificaciones en curso tal como están y evita que se inicien nuevos trabajos, liberando el servidor para otras tareas. No se pierde ningún progreso.',
+    resume_queue_title: 'Continúa las codificaciones suspendidas donde se detuvieron y vuelve a repartir trabajos.',
+    paused_manually_hint: 'Reanuda la cola para continuar donde se quedó.',
+    error_pause: 'No se pudo cambiar el estado de pausa de la cola.',
     filter_all: 'Todos',
     filter_active: 'Activos',
     filter_completed: 'Completados',

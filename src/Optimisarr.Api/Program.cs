@@ -83,6 +83,8 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ActivityMonitor>();
 builder.Services.AddSingleton<ActiveEncodeRegistry>();
+builder.Services.AddSingleton<IProcessSignals, PosixProcessSignals>();
+builder.Services.AddSingleton<QueuePauseControl>();
 // Singleton so its resolved-artwork cache survives across requests.
 builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<QueueDispatcher>();
@@ -276,6 +278,7 @@ internal sealed record SettingsDto(
 internal sealed record QueueStatusDto(
     bool CanStart,
     string? BlockedReason,
+    bool ManuallyPaused,
     int RunningJobs,
     int MaxConcurrentJobs,
     long MinFreeDiskBytes,
@@ -289,6 +292,7 @@ internal sealed record QueueStatusDto(
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
         status.BlockedReason,
+        status.ManuallyPaused,
         status.RunningJobs,
         status.MaxConcurrentJobs,
         status.MinFreeDiskBytes,
