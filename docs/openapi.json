@@ -674,6 +674,119 @@
         ],
         "type": "object"
       },
+      "QueueStatusDto": {
+        "properties": {
+          "blockedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canStart": {
+            "type": "boolean"
+          },
+          "cpuThreadLimit": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "encoderMode": {
+            "type": "string"
+          },
+          "freeDiskBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "hardwareAccelerated": {
+            "type": "boolean"
+          },
+          "manualPauseMode": {
+            "type": "string"
+          },
+          "manuallyPaused": {
+            "type": "boolean"
+          },
+          "maxConcurrentJobs": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "minFreeDiskBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "pauseFailedEncodeCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "runningEncodesSuspended": {
+            "type": "boolean"
+          },
+          "runningJobs": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "suspendedEncodeCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "waitingReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workRoot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "canStart",
+          "blockedReason",
+          "manuallyPaused",
+          "manualPauseMode",
+          "runningEncodesSuspended",
+          "suspendedEncodeCount",
+          "pauseFailedEncodeCount",
+          "runningJobs",
+          "maxConcurrentJobs",
+          "minFreeDiskBytes",
+          "cpuThreadLimit",
+          "encoderMode",
+          "hardwareAccelerated",
+          "freeDiskBytes",
+          "workRoot",
+          "waitingReason"
+        ],
+        "type": "object"
+      },
       "SaveActivityWatcherRequest": {
         "properties": {
           "apiToken": {
@@ -3277,6 +3390,13 @@
         "operationId": "PauseQueue",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusDto"
+                }
+              }
+            },
             "description": "OK"
           },
           "401": {
@@ -3293,10 +3413,27 @@
         "operationId": "ResumeQueue",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusDto"
+                }
+              }
+            },
             "description": "OK"
           },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

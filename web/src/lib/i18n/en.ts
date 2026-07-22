@@ -527,9 +527,9 @@ export const en = {
     pause_queue: 'Pause queue',
     resume_queue: 'Resume queue',
     pause_queue_title:
-      'Suspend the running encodes in place and stop new jobs from starting, freeing the server for other work. No encode progress is lost.',
-    resume_queue_title: 'Continue the suspended encodes where they stopped and start dispatching jobs again.',
-    paused_manually_hint: 'Resume the queue to continue where it left off.',
+      'Stop new jobs and automatic replacement. Where supported, running encodes are suspended without losing progress; verification already underway finishes.',
+    resume_queue_title: 'Resume any suspended encodes, then allow new jobs and automatic replacement again.',
+    paused_manually_hint: 'Use Resume queue to allow new work.',
     error_pause: 'Could not change the queue pause state.',
     filter_all: 'All',
     filter_active: 'Active',

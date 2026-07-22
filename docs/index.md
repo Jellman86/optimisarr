@@ -44,7 +44,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 | Dashboard | Check service health, lifetime savings, queue counts, and live CPU/GPU usage while a job encodes. |
 | Libraries | Add paths, choose presets, run a personal quality check, scan, enqueue, configure automation, review candidates, and manage exclusions. |
 | Inventory | Inspect discovered files and understand why each one is eligible or skipped. |
-| Queue | Watch jobs, read verification reports, retry or exclude failures, and replace verified outputs. |
+| Queue | Watch or manually pause jobs, read verification reports, retry or exclude failures, and replace verified outputs. |
 | Quarantine | Compare replacements with originals, roll back, approve, or clear finished history. |
 | Settings | Tune queue limits, verification gates, replacement policy, integrations, notifications, tools, and backup/import. |
 

@@ -382,9 +382,9 @@ quarantine: {
     pause_queue: 'Metti in pausa la coda',
     resume_queue: 'Riprendi la coda',
     pause_queue_title:
-      'Sospende le codifiche in corso così come sono e impedisce l’avvio di nuovi processi, liberando il server per altri lavori. Nessun progresso va perso.',
-    resume_queue_title: 'Riprende le codifiche sospese dal punto in cui si erano fermate e ricomincia a distribuire i processi.',
-    paused_manually_hint: 'Riprendi la coda per continuare da dove si era fermata.',
+      'Blocca i nuovi processi e la sostituzione automatica. Dove supportato, sospende le codifiche in corso senza perdere i progressi; una verifica già avviata viene completata.',
+    resume_queue_title: 'Riprende le codifiche sospese e poi consente di nuovo processi e sostituzioni automatiche.',
+    paused_manually_hint: 'Usa Riprendi la coda per consentire nuovi processi.',
     error_pause: 'Impossibile modificare lo stato di pausa della coda.',
     filter_all: 'Tutti',
     filter_active: 'Attivi',

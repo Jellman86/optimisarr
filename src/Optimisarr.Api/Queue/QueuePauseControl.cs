@@ -3,13 +3,8 @@ using Optimisarr.Api.Realtime;
 
 namespace Optimisarr.Api.Queue;
 
-/// <summary>
-/// Sends POSIX job-control signals to a process. Abstracted so the pause behaviour is unit
-/// testable without real processes, and so platforms without <c>kill(2)</c> degrade cleanly.
-/// </summary>
 public interface IProcessSignals
 {
-    /// <summary>Whether this platform can suspend and resume processes at all.</summary>
     bool Supported { get; }
 
     bool TrySuspend(int pid);
@@ -17,15 +12,9 @@ public interface IProcessSignals
     bool TryResume(int pid);
 }
 
-/// <summary>
-/// Suspends and resumes processes with SIGSTOP/SIGCONT via libc's <c>kill(2)</c>. The container
-/// image and WSL run Linux; macOS covers local development. Anywhere else reports unsupported,
-/// and the pause degrades to only blocking new work.
-/// </summary>
+/// <summary>Sends POSIX job-control signals to a single known child process.</summary>
 public sealed class PosixProcessSignals : IProcessSignals
 {
-    // The job-control signals are numbered differently per kernel: Linux SIGSTOP=19/SIGCONT=18,
-    // macOS SIGSTOP=17/SIGCONT=19.
     private static readonly int? Sigstop = OperatingSystem.IsLinux() ? 19 : OperatingSystem.IsMacOS() ? 17 : null;
     private static readonly int? Sigcont = OperatingSystem.IsLinux() ? 18 : OperatingSystem.IsMacOS() ? 19 : null;
 
@@ -35,23 +24,32 @@ public sealed class PosixProcessSignals : IProcessSignals
 
     public bool TryResume(int pid) => Sigcont is { } signal && Send(pid, signal);
 
-    // kill(2) treats pid 0 and negative pids as process-group broadcasts; only ever signal a
-    // single, known process.
+    // kill(2) treats zero and negative pids as process-group broadcasts. Only signal the exact
+    // positive pid registered immediately after Optimisarr starts its own ffmpeg child.
     private static bool Send(int pid, int signal) => pid > 0 && Kill(pid, signal) == 0;
 
-    // DllImport rather than LibraryImport: the source-generated marshaller would force
-    // AllowUnsafeBlocks onto the whole project for one int-only syscall.
     [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
     private static extern int Kill(int pid, int signal);
 }
 
+public sealed record QueueResumeResult(bool Resumed, int FailedEncodeCount)
+{
+    public static QueueResumeResult Success { get; } = new(true, 0);
+}
+
+public sealed record QueuePauseSnapshot(
+    bool IsPaused,
+    string Mode,
+    bool RunningEncodesSuspended,
+    int RunningEncodeCount,
+    int SuspendedEncodeCount,
+    int FailedEncodeCount,
+    string? BlockedReason);
+
 /// <summary>
-/// The operator's manual pause switch for the queue. Pausing blocks new work from dispatching
-/// (via <see cref="Optimisarr.Core.Scheduling.DispatchPolicyEvaluator"/>) and immediately
-/// suspends the running transcode processes, so the server's CPU/GPU are freed for work
-/// Optimisarr cannot detect — without losing encode progress. Resuming continues them in place.
-/// A singleton shared by the dispatcher (which reports each ffmpeg it starts) and the pause
-/// endpoints.
+/// Owns the in-memory manual-pause state and the exact set of ffmpeg children that Optimisarr
+/// successfully suspended. Dispatch is not reopened until every still-running suspended child
+/// accepts SIGCONT; failures remain visible and retryable instead of stranding an encode silently.
 /// </summary>
 public sealed class QueuePauseControl(
     ActiveEncodeRegistry encodes,
@@ -59,7 +57,9 @@ public sealed class QueuePauseControl(
     ILogger<QueuePauseControl> logger)
 {
     private readonly Lock _gate = new();
+    private readonly HashSet<int> _suspendedPids = [];
     private bool _paused;
+    private bool _resumeFailed;
 
     public bool IsPaused
     {
@@ -72,10 +72,18 @@ public sealed class QueuePauseControl(
         }
     }
 
-    /// <summary>The dispatch-blocked reason shown while paused, honest about what pausing did.</summary>
-    public string BlockedReason => signals.Supported
-        ? "Paused by the operator — running encodes are suspended until the queue is resumed."
-        : "Paused by the operator — running encodes will finish, and nothing new will start.";
+    public QueuePauseSnapshot Snapshot
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return BuildSnapshot();
+            }
+        }
+    }
+
+    public string? BlockedReason => Snapshot.BlockedReason;
 
     public void Pause()
     {
@@ -87,64 +95,197 @@ public sealed class QueuePauseControl(
             }
 
             _paused = true;
-            SignalAll(suspend: true);
+            _resumeFailed = false;
+            foreach (var pid in encodes.Pids)
+            {
+                TrySuspend(pid);
+            }
         }
     }
 
-    public void Resume()
+    public QueueResumeResult Resume() => ResumeCore(reopenDispatch: true);
+
+    /// <summary>Lets a stopping host drain children without clearing the durable dispatch pause.</summary>
+    public QueueResumeResult ResumeProcessesForShutdown() => ResumeCore(reopenDispatch: false);
+
+    private QueueResumeResult ResumeCore(bool reopenDispatch)
     {
         lock (_gate)
         {
             if (!_paused)
             {
-                return;
+                return QueueResumeResult.Success;
             }
 
-            _paused = false;
-            SignalAll(suspend: false);
+            if (!signals.Supported)
+            {
+                _paused = !reopenDispatch;
+                _resumeFailed = false;
+                _suspendedPids.Clear();
+                return QueueResumeResult.Success;
+            }
+
+            var active = encodes.Pids.ToHashSet();
+            _suspendedPids.RemoveWhere(pid => !active.Contains(pid));
+            var failed = 0;
+            foreach (var pid in _suspendedPids.ToArray())
+            {
+                if (TryResume(pid) || !encodes.Pids.Contains(pid))
+                {
+                    _suspendedPids.Remove(pid);
+                    continue;
+                }
+
+                failed++;
+                logger.LogWarning(
+                    "Could not resume encode process {Pid}; queue dispatch remains paused so the operator can retry.",
+                    pid);
+            }
+
+            if (failed > 0)
+            {
+                _resumeFailed = true;
+                return new QueueResumeResult(false, failed);
+            }
+
+            _paused = !reopenDispatch;
+            _resumeFailed = false;
+            _suspendedPids.Clear();
+            return QueueResumeResult.Success;
         }
     }
 
-    /// <summary>
-    /// Reported by the dispatcher right after it starts an ffmpeg process, so one that comes up
-    /// while paused (e.g. claimed just before the pause landed) is suspended straight away
-    /// instead of running until the next pause.
-    /// </summary>
+    /// <summary>Closes the start-versus-pause race for an ffmpeg child claimed just beforehand.</summary>
     public void OnEncodeStarted(int pid)
     {
         lock (_gate)
         {
             if (_paused)
             {
-                Signal(pid, suspend: true);
+                // A long pause can outlive a child and the OS may reuse its numeric pid. This
+                // callback represents a new process generation, so never trust an old delivery.
+                _suspendedPids.Remove(pid);
+                TrySuspend(pid);
             }
         }
     }
 
-    private void SignalAll(bool suspend)
+    private void TrySuspend(int pid)
     {
-        foreach (var pid in encodes.Pids)
-        {
-            Signal(pid, suspend);
-        }
-    }
-
-    private void Signal(int pid, bool suspend)
-    {
-        if (!signals.Supported)
+        if (!signals.Supported || _suspendedPids.Contains(pid))
         {
             return;
         }
 
-        // Best effort per process: one that exited between the click and the signal is simply
-        // gone, and must not stop the others from being signalled.
-        var delivered = suspend ? signals.TrySuspend(pid) : signals.TryResume(pid);
-        if (!delivered)
+        bool delivered;
+        try
         {
-            logger.LogWarning(
-                "Could not {Action} encode process {Pid}; it most likely already exited.",
-                suspend ? "suspend" : "resume",
-                pid);
+            delivered = signals.TrySuspend(pid);
         }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not signal encode process {Pid} to suspend.", pid);
+            return;
+        }
+
+        if (delivered)
+        {
+            _suspendedPids.Add(pid);
+            return;
+        }
+
+        logger.LogWarning(
+            "Could not suspend encode process {Pid}; it may have exited or rejected the signal.",
+            pid);
+    }
+
+    private bool TryResume(int pid)
+    {
+        try
+        {
+            return signals.TryResume(pid);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not signal encode process {Pid} to resume.", pid);
+            return false;
+        }
+    }
+
+    private QueuePauseSnapshot BuildSnapshot()
+    {
+        if (!_paused)
+        {
+            return new QueuePauseSnapshot(false, "inactive", false, encodes.Count, 0, 0, null);
+        }
+
+        var active = encodes.Pids.ToHashSet();
+        var suspended = _suspendedPids.Count(active.Contains);
+        var failed = Math.Max(0, active.Count - suspended);
+        var verificationNote = encodes.VerificationInProgress
+            ? " Verification already in progress will finish."
+            : string.Empty;
+
+        if (!signals.Supported)
+        {
+            return new QueuePauseSnapshot(
+                true,
+                "dispatchOnly",
+                false,
+                active.Count,
+                0,
+                active.Count,
+                "Paused by the operator — running encodes will finish because process suspension is unavailable; nothing new will start."
+                + verificationNote);
+        }
+
+        if (_resumeFailed)
+        {
+            var resumeFailures = Math.Max(1, suspended);
+            return new QueuePauseSnapshot(
+                true,
+                "partial",
+                false,
+                active.Count,
+                suspended,
+                resumeFailures,
+                $"Queue dispatch remains paused because {resumeFailures} running encode(s) could not be resumed. Retry Resume queue."
+                + verificationNote);
+        }
+
+        if (failed > 0)
+        {
+            return new QueuePauseSnapshot(
+                true,
+                "partial",
+                false,
+                active.Count,
+                suspended,
+                failed,
+                $"Queue dispatch is paused, but {failed} of {active.Count} running encode(s) could not be suspended and may still be working."
+                + verificationNote);
+        }
+
+        if (active.Count == 0)
+        {
+            return new QueuePauseSnapshot(
+                true,
+                "suspended",
+                false,
+                0,
+                0,
+                0,
+                "Paused by the operator — nothing new will start." + verificationNote);
+        }
+
+        return new QueuePauseSnapshot(
+            true,
+            "suspended",
+            active.Count > 0,
+            active.Count,
+            suspended,
+            0,
+            "Paused by the operator — running encodes are suspended until the queue is resumed."
+            + verificationNote);
     }
 }

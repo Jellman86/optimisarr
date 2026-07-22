@@ -387,9 +387,9 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     pause_queue: 'Pausar la cola',
     resume_queue: 'Reanudar la cola',
     pause_queue_title:
-      'Suspende las codificaciones en curso tal como están y evita que se inicien nuevos trabajos, liberando el servidor para otras tareas. No se pierde ningún progreso.',
-    resume_queue_title: 'Continúa las codificaciones suspendidas donde se detuvieron y vuelve a repartir trabajos.',
-    paused_manually_hint: 'Reanuda la cola para continuar donde se quedó.',
+      'Detiene los trabajos nuevos y el reemplazo automático. Cuando el sistema lo permite, suspende las codificaciones sin perder progreso; la verificación que ya está en curso termina.',
+    resume_queue_title: 'Reanuda las codificaciones suspendidas y después permite nuevos trabajos y reemplazos automáticos.',
+    paused_manually_hint: 'Usa Reanudar la cola para permitir nuevos trabajos.',
     error_pause: 'No se pudo cambiar el estado de pausa de la cola.',
     filter_all: 'Todos',
     filter_active: 'Activos',

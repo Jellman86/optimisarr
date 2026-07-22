@@ -138,6 +138,24 @@ curl -fsS http://localhost:8787/api/jobs
 Use `waitingReason` and `blockedReason` from `/api/queue/status` to understand
 why jobs are not starting.
 
+### Pause and Resume Queue Work
+
+Manual pause is operational state, not portable configuration. It persists across restarts but is
+not included in a settings export. Pausing prevents new jobs and automatic replacements from
+starting. On Linux and macOS, Optimisarr also suspends running transcodes in place; verification
+already underway finishes. Other platforms use a dispatch-only pause and report that limitation.
+
+```bash
+curl -fsS -X POST http://localhost:8787/api/queue/pause
+curl -fsS -X POST http://localhost:8787/api/queue/resume
+```
+
+The response is the current queue status. `manualPauseMode` is `inactive`, `suspended`, `partial`,
+or `dispatchOnly`. `runningEncodesSuspended`, `suspendedEncodeCount`, and
+`pauseFailedEncodeCount` distinguish a complete process suspension from a partial or unsupported
+one. A resume that cannot continue every still-running suspended process returns `409` and keeps
+dispatch paused so the operation can be retried safely.
+
 ### Replace a Verified Job
 
 Replacement is state-changing. It is refused while dry-run mode is enabled and
@@ -210,7 +228,6 @@ Health response:
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
-| `GET` | `/api/queue/status` | Queue dispatch state, blockers, running count, hardware flag, and free work disk. |
 
 Settings fields include:
 
@@ -374,6 +391,9 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/libraries/{id}/enqueue` | Enqueue eligible files for one library. |
+| `GET` | `/api/queue/status` | Read dispatch blockers and the exact manual-pause/suspension state. |
+| `POST` | `/api/queue/pause` | Pause new dispatch and automatic replacement; suspend running transcodes where supported. |
+| `POST` | `/api/queue/resume` | Resume suspended transcodes, then reopen dispatch and automatic replacement. |
 | `GET` | `/api/jobs` | List queue jobs. Optional filters `status`, `libraryId`, `category`, `since`, `until`, and paging `page`/`pageSize`. |
 | `GET` | `/api/jobs?status=Failed` | List jobs filtered by status. |
 | `GET` | `/api/jobs/failures` | Failure summary for normal work and failed preview/personal-quality comparisons. Optional `libraryId` scopes it to one library. Samples identify `jobType` and include structured failed `verificationChecks` (`name`, `outcome`, and measured `detail`). |

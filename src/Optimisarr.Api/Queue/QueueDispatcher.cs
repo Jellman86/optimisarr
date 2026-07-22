@@ -31,7 +31,7 @@ public sealed class QueueDispatcher(
     VerificationService verification,
     HardwareCapabilityService hardware,
     ActivityMonitor activityMonitor,
-    QueuePauseControl pauseControl,
+    QueuePauseManager pauseManager,
     ImageMarkerService imageMarker,
     ImageComparisonReferenceService imageReference,
     TranscodeOptions transcodeOptions,
@@ -92,6 +92,18 @@ public sealed class QueueDispatcher(
             "Queue is draining {Count} active job(s) before shutdown; no new jobs will start.",
             _running.Count);
 
+        var released = await pauseManager.ReleaseProcessesForShutdownAsync(CancellationToken.None);
+        if (!released.Resumed)
+        {
+            logger.LogWarning(
+                "Could not resume {Count} suspended encode(s) for shutdown drain; cancelling active jobs for safe recovery.",
+                released.FailedEncodeCount);
+            foreach (var source in _running.Values)
+            {
+                source.Cancel();
+            }
+        }
+
         try
         {
             while (!_running.IsEmpty && !cancellationToken.IsCancellationRequested)
@@ -120,7 +132,7 @@ public sealed class QueueDispatcher(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await RestorePersistedPauseAsync(stoppingToken);
+        await pauseManager.RestoreAsync(stoppingToken);
         await PurgeDisposableJobsAsync(stoppingToken);
         await RecoverInterruptedJobsAsync(stoppingToken);
         await PurgeAbandonedWorkAsync(stoppingToken);
@@ -134,7 +146,7 @@ public sealed class QueueDispatcher(
                 // the toggle was turned on (or left there by a transient replace failure) are picked
                 // up here, not just jobs that verify after the toggle. A manual pause holds this
                 // sweep too — its bulk file moves are exactly the load the operator paused to avoid.
-                if (!pauseControl.IsPaused)
+                if (!pauseManager.IsPaused)
                 {
                     await ReconcileAutoReplaceAsync(stoppingToken);
                 }
@@ -310,7 +322,8 @@ public sealed class QueueDispatcher(
                     candidate.Status,
                     candidate.VerificationPassed,
                     candidate.AutoReplace,
-                    queueSettings.DryRunMode))
+                    queueSettings.DryRunMode,
+                    pauseManager.IsPaused))
                 .OrderBy(candidate => candidate.Id)
                 .Take(AutoReplaceReconcileBatch)
                 .Select(candidate => candidate.Id)
@@ -325,9 +338,18 @@ public sealed class QueueDispatcher(
         var replaced = 0;
         foreach (var jobId in jobIds)
         {
-            await using var replaceScope = scopeFactory.CreateAsyncScope();
-            var replacement = replaceScope.ServiceProvider.GetRequiredService<ReplacementService>();
-            var result = await replacement.ReplaceAsync(jobId, cancellationToken);
+            var guarded = await pauseManager.TryRunAutomaticActionAsync(async () =>
+            {
+                await using var replaceScope = scopeFactory.CreateAsyncScope();
+                var replacement = replaceScope.ServiceProvider.GetRequiredService<ReplacementService>();
+                return await replacement.ReplaceAsync(jobId, cancellationToken);
+            }, cancellationToken);
+            if (!guarded.Started)
+            {
+                break;
+            }
+
+            var result = guarded.Value!;
             if (result.Kind == ReplacementResultKind.Success)
             {
                 replaced++;
@@ -961,7 +983,7 @@ public sealed class QueueDispatcher(
         // counters, and flag whether it uses a hardware encoder for the sidebar indicator.
         using var registration = encodes.Track(process.Id, hardwareEncoder);
         // A job claimed just before a manual pause landed must not keep encoding through it.
-        pauseControl.OnEncodeStarted(process.Id);
+        pauseManager.OnEncodeStarted(process.Id);
 
         // Drain stdout so the pipe never blocks; progress and errors come on stderr.
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -1437,9 +1459,18 @@ public sealed class QueueDispatcher(
         // folder) leaves the job ReadyToReplace for a manual retry rather than touching the original.
         if (work.AutoReplace && !dryRunMode)
         {
-            await using var scope = scopeFactory.CreateAsyncScope();
-            var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
-            var result = await replacement.ReplaceAsync(jobId, CancellationToken.None);
+            var guarded = await pauseManager.TryRunAutomaticActionAsync(async () =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var replacement = scope.ServiceProvider.GetRequiredService<ReplacementService>();
+                return await replacement.ReplaceAsync(jobId, CancellationToken.None);
+            }, CancellationToken.None);
+            if (!guarded.Started)
+            {
+                return;
+            }
+
+            var result = guarded.Value!;
             if (result.Kind == ReplacementResultKind.Success)
             {
                 logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace).", jobId);
@@ -1531,10 +1562,15 @@ public sealed class QueueDispatcher(
             ? await DescribeWindowWaitAsync(cancellationToken)
             : null;
 
+        var pause = pauseManager.Snapshot;
         return new QueueDispatchStatus(
             decision.CanStart,
             decision.BlockedReason,
-            pauseControl.IsPaused,
+            pause.IsPaused,
+            pause.Mode,
+            pause.RunningEncodesSuspended,
+            pause.SuspendedEncodeCount,
+            pause.FailedEncodeCount,
             _running.Count,
             settings.MaxConcurrentJobs,
             settings.MinFreeDiskBytes,
@@ -1636,46 +1672,28 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
-    /// Manually pauses the queue: no new work dispatches (including the auto-replace sweep) and
-    /// the running transcode processes are suspended in place, freeing CPU/GPU for server work
-    /// Optimisarr cannot detect without losing encode progress. Persists so a restart stays paused.
+    /// Manually pauses the queue: no new dispatch or automatic replacement starts, and supported
+    /// platforms suspend running transcodes without losing progress. Verification already underway
+    /// is allowed to finish and is disclosed in the returned status.
     /// </summary>
     public async Task PauseQueueAsync(CancellationToken cancellationToken)
     {
-        pauseControl.Pause();
-        await PersistPauseAsync(true, cancellationToken);
-        logger.LogInformation("Queue paused by the operator; running encodes suspended.");
+        await pauseManager.PauseAsync(cancellationToken);
+        logger.LogInformation("Queue paused by the operator: {Reason}", pauseManager.Snapshot.BlockedReason);
         await NotifyAsync();
     }
 
-    /// <summary>Resumes a manually paused queue: suspended encodes continue where they stopped.</summary>
-    public async Task ResumeQueueAsync(CancellationToken cancellationToken)
+    /// <summary>Resumes suspended encodes and only then reopens durable queue dispatch.</summary>
+    public async Task<QueueResumeResult> ResumeQueueAsync(CancellationToken cancellationToken)
     {
-        pauseControl.Resume();
-        await PersistPauseAsync(false, cancellationToken);
-        logger.LogInformation("Queue resumed by the operator.");
+        var result = await pauseManager.ResumeAsync(cancellationToken);
         await NotifyAsync();
-        Wake();
-    }
-
-    // An operator who paused the queue to keep the server free expects a container restart to
-    // stay paused, not to quietly resume encoding.
-    private async Task RestorePersistedPauseAsync(CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
-        if (await settings.GetQueuePausedAsync(cancellationToken))
+        if (result.Resumed)
         {
-            pauseControl.Pause();
-            logger.LogInformation("Queue remains paused from the previous session (manual pause).");
+            logger.LogInformation("Queue resumed by the operator.");
+            Wake();
         }
-    }
-
-    private async Task PersistPauseAsync(bool paused, CancellationToken cancellationToken)
-    {
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var settings = scope.ServiceProvider.GetRequiredService<SettingsStore>();
-        await settings.SetQueuePausedAsync(paused, cancellationToken);
+        return result;
     }
 
     private async Task<QueueSettings> GetQueueSettingsAsync(CancellationToken cancellationToken)
@@ -1695,8 +1713,8 @@ public sealed class QueueDispatcher(
             activity.Active,
             activity.Reason,
             ignoreServicesActivity,
-            pauseControl.IsPaused,
-            pauseControl.BlockedReason);
+            pauseManager.IsPaused,
+            pauseManager.Snapshot.BlockedReason);
 
     private async Task<EncoderSelection> ResolveVideoEncoderAsync(
         string? targetCodec,
@@ -1820,6 +1838,10 @@ public sealed record QueueDispatchStatus(
     // True only for the operator's manual pause, so the UI can offer Resume — the automatic
     // gates (playback, low disk) clear themselves and must not.
     bool ManuallyPaused,
+    string ManualPauseMode,
+    bool RunningEncodesSuspended,
+    int SuspendedEncodeCount,
+    int PauseFailedEncodeCount,
     int RunningJobs,
     int MaxConcurrentJobs,
     long MinFreeDiskBytes,

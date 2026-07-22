@@ -4,13 +4,14 @@
 
 ### Added
 
-- **The queue can now be paused manually.** A **Pause queue** button on the Queue page suspends
-  the running encodes in place (SIGSTOP, no progress lost) and stops new jobs — including the
-  automatic replace sweep — from starting, so the server is free for work Optimisarr cannot
-  detect, such as backups or maintenance. **Resume queue** continues the suspended encodes
-  exactly where they stopped. The pause persists across restarts, is reported honestly in the
-  queue banner and the now-encoding card, and is separate from the automatic playback/disk
-  gates, which still clear themselves. (`POST /api/queue/pause`, `POST /api/queue/resume`.)
+- **The queue can now be paused manually.** The **Pause queue** control at the top right of Queue
+  blocks new jobs and automatic replacements, then suspends running transcodes where the platform
+  supports POSIX process signals without losing progress. Verification already underway finishes;
+  unsupported or partial suspension is reported explicitly. **Resume queue** must successfully
+  continue every still-running suspended process before dispatch reopens. The state persists across
+  restarts without holding container shutdown on a stopped child, concurrent transitions and
+  automatic replacement are serialized, and the API exposes the exact mode and process counts.
+  (`POST /api/queue/pause`, `POST /api/queue/resume`.) Contributed by Scott Brant.
 
 ### Changed
 

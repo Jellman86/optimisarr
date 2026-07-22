@@ -102,8 +102,7 @@
     return [speedLabel(progress.speed), etaLabel(progress.etaSeconds)].filter(Boolean).join(' · ')
   }
 
-  // The manual pause switch: pausing suspends running encodes in place and stops new dispatch;
-  // resuming continues them where they stopped. The endpoint returns the fresh queue status.
+  // The endpoint returns the exact suspension outcome so unsupported/partial states stay honest.
   async function togglePause() {
     if (!queueStatus || pauseBusy) return
     pauseBusy = true
@@ -111,7 +110,9 @@
       queueStatus = queueStatus.manuallyPaused ? await api.resumeQueue() : await api.pauseQueue()
       error = null
     } catch (err) {
-      error = err instanceof Error ? err.message : i18n.m.queue.error_pause
+      const message = err instanceof Error ? err.message : i18n.m.queue.error_pause
+      await load()
+      error = message
     } finally {
       pauseBusy = false
     }
@@ -432,13 +433,14 @@
   </div>
   {#if queueStatus}
     <button
-      class="btn {queueStatus.manuallyPaused ? 'btn-primary' : ''}"
+      class="btn min-w-32 justify-center {queueStatus.manuallyPaused ? 'btn-primary' : ''}"
       onclick={togglePause}
       disabled={pauseBusy}
+      aria-busy={pauseBusy}
       title={queueStatus.manuallyPaused ? i18n.m.queue.resume_queue_title : i18n.m.queue.pause_queue_title}
     >
       <Icon name={queueStatus.manuallyPaused ? 'play' : 'pause'} class="h-4 w-4" />
-      {queueStatus.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}
+      {pauseBusy ? i18n.m.common.loading_short : queueStatus.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}
     </button>
   {/if}
 </header>
@@ -498,7 +500,7 @@
               <div class="min-w-0">
                 <!-- A suspended encode is stopped, not encoding — say so where the stage label sits.
                      Verification is never suspended (it finishes naturally), so it keeps its label. -->
-                {#if queueStatus?.manuallyPaused && job.status === 'Transcoding'}
+                {#if queueStatus?.runningEncodesSuspended && job.status === 'Transcoding'}
                   <div class="text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
                     {i18n.m.queue.now_paused}
                   </div>
@@ -586,7 +588,9 @@
        reason from the backend states exactly what pausing did on this platform. -->
   <div class="card mb-4 flex flex-wrap items-center gap-2 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
     <Icon name="pause" class="h-4 w-4 shrink-0" />
-    <span>{queueStatus.blockedReason} {i18n.m.queue.paused_manually_hint}</span>
+    <span>
+      {queueStatus.blockedReason}{#if queueStatus.manualPauseMode === 'suspended'}{' '}{i18n.m.queue.paused_manually_hint}{/if}
+    </span>
   </div>
 {:else if queueStatus && !queueStatus.canStart}
   <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">

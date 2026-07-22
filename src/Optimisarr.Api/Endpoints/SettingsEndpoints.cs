@@ -120,15 +120,23 @@ internal static class SettingsEndpoints
             await dispatcher.PauseQueueAsync(cancellationToken);
             return Results.Ok(QueueStatusDto.From(await dispatcher.GetDispatchStatusAsync(cancellationToken)));
         })
-        .WithName("PauseQueue");
+        .WithName("PauseQueue")
+        .Produces<QueueStatusDto>();
 
         app.MapPost("/api/queue/resume", async (
             QueueDispatcher dispatcher,
             CancellationToken cancellationToken) =>
         {
-            await dispatcher.ResumeQueueAsync(cancellationToken);
-            return Results.Ok(QueueStatusDto.From(await dispatcher.GetDispatchStatusAsync(cancellationToken)));
+            var resumed = await dispatcher.ResumeQueueAsync(cancellationToken);
+            return resumed.Resumed
+                ? Results.Ok(QueueStatusDto.From(await dispatcher.GetDispatchStatusAsync(cancellationToken)))
+                : ApiErrors.Conflict(
+                    "queue.resumeFailed",
+                    "One or more running encodes could not be resumed. Queue dispatch remains paused; retry Resume queue.",
+                    new { count = resumed.FailedEncodeCount });
         })
-        .WithName("ResumeQueue");
+        .WithName("ResumeQueue")
+        .Produces<QueueStatusDto>()
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 }

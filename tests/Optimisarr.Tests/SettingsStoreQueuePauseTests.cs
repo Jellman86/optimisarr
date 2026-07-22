@@ -49,5 +49,22 @@ public sealed class SettingsStoreQueuePauseTests : IDisposable
         Assert.False(await new SettingsStore(readDb).GetQueuePausedAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Queue_pause_is_operational_state_and_is_not_exported_or_imported()
+    {
+        await using var db = CreateDb();
+        var settings = new SettingsStore(db);
+        await settings.SetQueuePausedAsync(true, CancellationToken.None);
+
+        var exported = await settings.ExportSettingsAsync(CancellationToken.None);
+        var imported = await settings.ImportSettingsAsync(
+            new Dictionary<string, string> { [SettingKeys.QueuePaused] = bool.FalseString },
+            CancellationToken.None);
+
+        Assert.DoesNotContain(SettingKeys.QueuePaused, exported.Keys);
+        Assert.Equal(0, imported);
+        Assert.True(await settings.GetQueuePausedAsync(CancellationToken.None));
+    }
+
     public void Dispose() => _connection.Dispose();
 }

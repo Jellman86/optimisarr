@@ -391,9 +391,9 @@ export const de: Messages = {
     pause_queue: 'Warteschlange pausieren',
     resume_queue: 'Warteschlange fortsetzen',
     pause_queue_title:
-      'Hält die laufenden Kodierungen an Ort und Stelle an und startet keine neuen Aufgaben, damit der Server für andere Arbeiten frei ist. Es geht kein Fortschritt verloren.',
-    resume_queue_title: 'Setzt die angehaltenen Kodierungen an derselben Stelle fort und startet wieder neue Aufgaben.',
-    paused_manually_hint: 'Setzen Sie die Warteschlange fort, um dort weiterzumachen, wo sie angehalten wurde.',
+      'Stoppt neue Aufgaben und automatische Ersetzungen. Wenn das System es unterstützt, werden laufende Kodierungen ohne Fortschrittsverlust angehalten; eine bereits laufende Verifizierung wird beendet.',
+    resume_queue_title: 'Setzt angehaltene Kodierungen fort und erlaubt danach wieder neue Aufgaben und automatische Ersetzungen.',
+    paused_manually_hint: 'Mit „Warteschlange fortsetzen“ werden neue Aufgaben wieder zugelassen.',
     error_pause: 'Der Pausenstatus der Warteschlange konnte nicht geändert werden.',
     filter_all: 'Alle',
     filter_active: 'Aktiv',

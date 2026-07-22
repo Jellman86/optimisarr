@@ -342,9 +342,12 @@ export type ConfigImportResult = {
 export type QueueStatus = Settings & {
   canStart: boolean
   blockedReason: string | null
-  // True only while the operator has manually paused the queue (running encodes are suspended
-  // in place); the automatic gates (playback, low disk) never set this.
+  // True only for the operator's durable pause; automatic playback/disk gates never set this.
   manuallyPaused: boolean
+  manualPauseMode: 'inactive' | 'suspended' | 'partial' | 'dispatchOnly'
+  runningEncodesSuspended: boolean
+  suspendedEncodeCount: number
+  pauseFailedEncodeCount: number
   runningJobs: number
   // True when at least one running job is using a hardware (GPU) video encoder.
   hardwareAccelerated: boolean
@@ -849,6 +852,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.imageSsim.range': return i18n.m.settings.validation_ssim
     case 'settings.quarantineRetention.nonNegative': return i18n.m.settings.validation_cleanup
     case 'settings.cleanupPreviewChanged': return i18n.m.settings.cleanup_preview_changed
+    case 'queue.resumeFailed': return i18n.m.queue.error_pause
     case 'settings.encoderMode.invalid': return i18n.m.settings.validation_encoder
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
