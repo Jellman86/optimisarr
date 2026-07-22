@@ -206,6 +206,8 @@ Health response:
 |---|---|---|
 | `GET` | `/api/settings` | Read global queue, verification, and replacement settings. |
 | `PUT` | `/api/settings` | Save global settings. Body is the full settings object. |
+| `GET` | `/api/settings/cleanup` | Preview files and bytes currently eligible under the saved cleanup policy without changing anything. |
+| `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
 | `GET` | `/api/settings/export` | Export configuration snapshot. Contains provider secrets. |
 | `POST` | `/api/settings/import` | Validate and merge a configuration snapshot. |
 | `GET` | `/api/queue/status` | Queue dispatch state, blockers, running count, hardware flag, and free work disk. |
@@ -242,6 +244,20 @@ Settings fields include:
   "replacementQuarantineRetentionDays": 0
 }
 ```
+
+`replacementQuarantineRetentionDays` retains its historical wire name for API and
+configuration-backup compatibility. It is the general cleanup-retention window:
+the startup/six-hour sweep applies it to quarantined originals and failed outputs
+under `/work`. A value of `0` retains both indefinitely. Expiring a failed output
+clears only its scratch file and path; its job diagnostics and measured output size
+remain available through the jobs and failures APIs.
+
+The cleanup preview counts only records the shared timed-cleanup policy can act on
+and measures files that currently exist on disk. Dry-run excludes quarantined
+originals but still includes eligible failed scratch outputs. The `POST` endpoint
+re-evaluates eligibility and requires it to match the submitted preview. If a retry
+or background sweep changed the policy, counts, or bytes, it returns `409` without
+deleting anything so the operator can review and confirm the new preview.
 
 ## Libraries and Inventory
 

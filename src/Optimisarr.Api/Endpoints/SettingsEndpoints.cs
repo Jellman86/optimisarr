@@ -51,6 +51,34 @@ internal static class SettingsEndpoints
         })
         .WithName("UpdateSettings");
 
+        app.MapGet("/api/settings/cleanup", async (
+            TimedCleanupService cleanup,
+            CancellationToken cancellationToken) =>
+        {
+            var preview = await cleanup.PreviewExpiredAsync(cancellationToken);
+            return Results.Ok(preview);
+        })
+        .WithName("PreviewTimedCleanup")
+        .Produces<TimedCleanupPreview>();
+
+        app.MapPost("/api/settings/cleanup", async (
+            TimedCleanupPreview confirmedPreview,
+            TimedCleanupService cleanup,
+            CancellationToken cancellationToken) =>
+        {
+            // Refuse a stale confirmation instead of deleting a different set of files than the
+            // operator reviewed. The client refreshes and asks for confirmation again.
+            var attempt = await cleanup.RunConfirmedExpiredAsync(confirmedPreview, cancellationToken);
+            return attempt.Result is null
+                ? ApiErrors.Conflict(
+                    "settings.cleanupPreviewChanged",
+                    "Reclaimable files changed. Review the updated cleanup preview and confirm again.")
+                : Results.Ok(attempt.Result);
+        })
+        .WithName("RunTimedCleanup")
+        .Produces<TimedCleanupRunResult>()
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         // Settings backup contains configuration and provider credentials but never media,
         // job, replacement, quarantine, or rollback data. Treat the downloaded JSON as secret material.
         app.MapGet("/api/settings/export", async (

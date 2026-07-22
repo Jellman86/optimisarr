@@ -73,7 +73,10 @@ public static class SettingKeys
     /// <summary>Whether replacement and quarantine purge actions are blocked while optimisation can still be tested.</summary>
     public const string DryRunMode = "replacement.dryRunMode";
 
-    /// <summary>How many days quarantined originals should be retained; 0 means indefinitely.</summary>
+    /// <summary>
+    /// How many days quarantined originals and failed work outputs should be retained; 0 means
+    /// indefinitely. The persisted key keeps its original name for upgrade and backup compatibility.
+    /// </summary>
     public const string ReplacementQuarantineRetentionDays = "replacement.quarantineRetentionDays";
 
     /// <summary>Stable client identifier Optimisarr presents to Plex during the OAuth/PIN flow.</summary>

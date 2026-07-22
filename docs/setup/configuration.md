@@ -259,10 +259,21 @@ only after validating a small manual batch for that library.
 
 **Dry-run mode** is a global replacement safety switch. It leaves scanning,
 queueing, transcoding, verification, previews, and rollback available, but blocks
-manual replacement, auto-replace, and quarantine purge. Use it for first passes
-over a real library when you want evidence without any original-file changes.
+manual replacement, auto-replace, and quarantine-original purge. Expired failed
+outputs under `/work` are still cleaned because that never touches an original.
+Use dry-run for first passes over a real library when you want evidence without
+any original-file changes.
 
-Quarantine retention is not a backup policy; retain independent backups of
+**Cleanup retention** applies one simple retention window to quarantined originals
+and failed outputs under `/work`. The timed sweep runs at startup and every six
+hours. When a failed output expires, its job row, verification report, FFmpeg log,
+failure classification, and measured output size remain available for diagnosis;
+only the reproducible scratch file is removed. A value of `0` keeps both kinds of
+file indefinitely. The reclaimable-space preview beside the setting uses the saved
+policy and current file sizes. **Clean up now** applies that same policy immediately
+after a confirmation; it does not bypass the retention window or dry-run protection.
+
+Cleanup retention is not a backup policy; retain independent backups of
 irreplaceable media and `/config`.
 
 ## Excluded files

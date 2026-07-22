@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Timed cleanup now prevents failed outputs from filling `/work`.** The existing retention
+  sweep and setting now cover both quarantined originals and failed normal-job outputs. Expired
+  scratch files are removed at startup or on the six-hour sweep, while the failed job, output-size
+  evidence, verification report, classification, FFmpeg arguments, and process log remain available
+  for diagnosis. Active, queued, verifying, ready-to-replace, completed, calibration, outside-root,
+  and shared work paths are protected. Dry-run continues to protect every original but does not
+  retain reproducible failed scratch indefinitely. The setting is now presented as **Cleanup
+  retention**; its persisted and API names remain compatible with existing installs and backups.
+  Settings now previews the exact eligible disk usage with separate failed-work and quarantine
+  totals, and **Clean up now** applies the same saved policy after a permanent-deletion warning.
+  A changed preview is rejected without deleting anything, so every run matches the files and
+  space the operator actually confirmed.
+
 ## 0.2.5 — 2026-07-19
 
 ### Fixed

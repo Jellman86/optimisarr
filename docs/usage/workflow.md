@@ -160,6 +160,13 @@ low free space in `/work`.
 
 Open a row when a job fails or finishes.
 
+Failed outputs remain under `/work` long enough to inspect. **Settings → General →
+Replacement and cleanup → Cleanup retention** controls when the timed sweep removes
+their scratch files; the failure report and FFmpeg log remain in Optimisarr. The
+same panel shows the space currently eligible for cleanup. Use **Clean up now** to
+run the saved policy immediately after reviewing the failed-work/quarantine
+breakdown and permanent-deletion confirmation.
+
 ![Queue detail sheet opened from a job row](../images/optimisarr-queue-detail-dark.png)
 
 Use the row actions carefully:

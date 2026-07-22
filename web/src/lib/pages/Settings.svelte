@@ -2,6 +2,7 @@
   import {
     api,
     type Settings,
+    type TimedCleanupPreview,
     type ActivityWatcher,
     type ActivityWatcherType,
     type SaveActivityWatcher,
@@ -384,6 +385,11 @@
   let saving = $state(false)
   let error = $state<string | null>(null)
   let message = $state<string | null>(null)
+  let cleanupPreview = $state<TimedCleanupPreview | null>(null)
+  let cleanupLoading = $state(false)
+  let cleaning = $state(false)
+  let cleanupError = $state<string | null>(null)
+  let cleanupMessage = $state<string | null>(null)
 
   $effect(() => {
     void load()
@@ -398,6 +404,7 @@
     try {
       settings = await api.settings()
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
+      await loadCleanupPreview()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.settings.error_load
     } finally {
@@ -419,14 +426,73 @@
         verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
         verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
         verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
+        replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
       message = i18n.m.settings.saved
+      await loadCleanupPreview()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.settings.error_save
     } finally {
       saving = false
+    }
+  }
+
+  async function loadCleanupPreview() {
+    cleanupLoading = true
+    cleanupError = null
+    try {
+      cleanupPreview = await api.timedCleanupPreview()
+    } catch (err) {
+      cleanupPreview = null
+      cleanupError = err instanceof Error ? err.message : i18n.m.settings.cleanup_error_load
+    } finally {
+      cleanupLoading = false
+    }
+  }
+
+  function cleanupPolicyHasUnsavedChanges() {
+    if (!cleanupPreview) return false
+    return Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)) !== cleanupPreview.retentionDays
+      || settings.dryRunMode !== cleanupPreview.dryRunMode
+  }
+
+  async function cleanUpNow() {
+    if (!cleanupPreview || cleanupPreview.totalCount === 0 || cleanupPolicyHasUnsavedChanges()) return
+
+    const confirmCopy = cleanupPreview.totalCount === 1
+      ? i18n.m.settings.cleanup_confirm_one
+      : i18n.m.settings.cleanup_confirm_other
+    const confirmed = confirm(tr(confirmCopy, {
+      space: formatSize(cleanupPreview.totalBytes),
+      count: cleanupPreview.totalCount,
+      failedCount: cleanupPreview.failedOutputCount,
+      failedSpace: formatSize(cleanupPreview.failedOutputBytes),
+      quarantineCount: cleanupPreview.quarantinedOriginalCount,
+      quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes),
+    }))
+    if (!confirmed) return
+
+    cleaning = true
+    cleanupError = null
+    cleanupMessage = null
+    try {
+      const result = await api.runTimedCleanup(cleanupPreview)
+      const completeCopy = result.cleanedCount === 1
+        ? i18n.m.settings.cleanup_complete_one
+        : i18n.m.settings.cleanup_complete_other
+      cleanupMessage = tr(completeCopy, {
+        count: result.cleanedCount,
+        space: formatSize(result.reclaimedBytes),
+      })
+      await loadCleanupPreview()
+    } catch (err) {
+      const failure = err instanceof Error ? err.message : i18n.m.settings.cleanup_error_run
+      await loadCleanupPreview()
+      cleanupError = failure
+    } finally {
+      cleaning = false
     }
   }
 
@@ -682,11 +748,53 @@
         hint={i18n.m.settings.cross_fs_hint}
       />
     </div>
-    <div class="mt-5 max-w-[16rem] border-t border-slate-200 pt-5 dark:border-slate-800">
-      <label class="label" for="quarantine-retention">{i18n.m.settings.quarantine_retention} <InfoTip text={i18n.m.settings.quarantine_retention_tip} /></label>
-      <div class="flex min-w-0 items-center gap-2">
-        <input id="quarantine-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
+    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+      <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
+      <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
+        <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
         <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
+      </div>
+
+      <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_reclaimable}</p>
+            {#if cleanupLoading}
+              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_calculating}</p>
+            {:else if cleanupPreview}
+              <p class="mt-0.5 text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{formatSize(cleanupPreview.totalBytes)}</p>
+              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {tr(i18n.m.settings.cleanup_breakdown, {
+                  failedCount: cleanupPreview.failedOutputCount,
+                  failedSpace: formatSize(cleanupPreview.failedOutputBytes),
+                  quarantineCount: cleanupPreview.quarantinedOriginalCount,
+                  quarantineSpace: formatSize(cleanupPreview.quarantinedOriginalBytes),
+                })}
+              </p>
+            {/if}
+          </div>
+          <button
+            class="btn btn-danger min-h-10"
+            onclick={cleanUpNow}
+            disabled={cleanupLoading || cleaning || !cleanupPreview || cleanupPreview.totalCount === 0 || cleanupPolicyHasUnsavedChanges()}
+          >
+            {cleaning ? i18n.m.settings.cleanup_running : i18n.m.settings.cleanup_now}
+          </button>
+        </div>
+
+        {#if cleanupPreview?.retentionDays === 0}
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_indefinite}</p>
+        {:else if cleanupPreview && cleanupPreview.totalCount === 0}
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_none}</p>
+        {/if}
+        {#if cleanupPolicyHasUnsavedChanges()}
+          <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">{i18n.m.settings.cleanup_save_first}</p>
+        {/if}
+        {#if cleanupPreview?.dryRunMode}
+          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_dry_run}</p>
+        {/if}
+        {#if cleanupError}<p class="mt-2 text-xs text-red-600 dark:text-red-400">{cleanupError}</p>{/if}
+        {#if cleanupMessage}<p class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{cleanupMessage}</p>{/if}
       </div>
     </div>
   </div>

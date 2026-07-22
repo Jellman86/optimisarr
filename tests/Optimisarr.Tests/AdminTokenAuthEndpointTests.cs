@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
@@ -33,6 +34,8 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [Theory]
     [InlineData("GET", "/api/settings")]
     [InlineData("PUT", "/api/settings")]
+    [InlineData("GET", "/api/settings/cleanup")]
+    [InlineData("POST", "/api/settings/cleanup")]
     [InlineData("GET", "/api/settings/export")]   // contains provider secrets
     [InlineData("POST", "/api/settings/import")]
     [InlineData("GET", "/api/setup")]
@@ -87,6 +90,23 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         using var response = await client.GetAsync("/api/settings");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cleanup_preview_can_be_confirmed_through_the_real_api_contract()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using var previewResponse = await client.GetAsync("/api/settings/cleanup");
+        var preview = await previewResponse.Content.ReadAsStringAsync();
+
+        using var runResponse = await client.PostAsync(
+            "/api/settings/cleanup",
+            new StringContent(preview, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        Assert.Contains("\"planToken\"", preview);
+        Assert.Equal(HttpStatusCode.OK, runResponse.StatusCode);
     }
 
     [Fact]

@@ -35,8 +35,9 @@ No copyrighted material is used.
 | `/api/ready` returns `503` | Read the JSON reason first. It usually points to an unwritable `/config`, `/work`, or `/trash` mount, a database migration/open failure, or missing FFmpeg/ffprobe. Fix readiness before queueing jobs. |
 | Library cannot scan | Container path exists below `/data`; PUID/PGID can read it. |
 | Replace fails / "cannot write" | The library folder must be writable by PUID/PGID. Optimisarr checks access when you add or save a library and again during scans; check the reported error and the mount ownership. |
-| Replace/approve says dry-run mode is enabled | Dry-run mode is on under **Settings → General → Replacement**. Jobs can still transcode and verify, but originals and quarantined originals are not moved or purged until dry-run is disabled. |
+| Replace/approve says dry-run mode is enabled | Dry-run mode is on under **Settings → General → Replacement and cleanup**. Jobs can still transcode and verify, but originals and quarantined originals are not moved or purged until dry-run is disabled. Expired failed `/work` outputs can still be cleaned because originals are untouched. |
 | Jobs do not start | A library's auto-optimise window being closed (its jobs only run in-window), the concurrency limit, activity pause, or free `/work` space. The Queue shows a reason when a backlog is waiting on a window. |
+| `/work` keeps growing | Set **Cleanup retention** above `0` and save. The panel shows what is currently reclaimable; **Clean up now** runs the same policy after confirmation. The startup/six-hour sweep also removes expired failed outputs while preserving their job reports and logs. Active and ready-to-replace outputs are never removed. |
 | GPU mode unavailable | Device mapping/NVIDIA toolkit, group permissions, then Tools test encode. |
 | Replacement cannot be atomic | Put `/data`, `/work`, and `/trash` on one filesystem or explicitly allow fallback. |
 | No rollback available | Original may have been approved or purged by retention; restore from backup. |

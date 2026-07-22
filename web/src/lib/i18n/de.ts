@@ -398,7 +398,7 @@ export const de: Messages = {
     clearing: 'Wird gelöscht …',
     clear_queue: 'Warteschlange leeren ({count})',
     clear_errored_title:
-      'Fehlgeschlagene und abgebrochene Aufgaben aus der Liste entfernen. Dateien bleiben markiert, damit sie nie erneut optimiert werden; Aufgaben, die noch eine Rücknahme halten, bleiben erhalten.',
+      'Fehlgeschlagene und abgebrochene Aufgaben samt Diagnose und behaltenen /work-Ausgaben entfernen. Originale bleiben unberührt und dauerhafte Ausschlüsse bestehen.',
     clear_errored: 'Fehlerhafte löschen ({count})',
     clear_completed_title_available: 'Abgeschlossene Aufgaben entfernen, deren Rücknahme nicht mehr verfügbar ist.',
     clear_completed_title_protected:
@@ -522,7 +522,7 @@ export const de: Messages = {
     validation_loudness: 'Die Lautheitsdrift-Toleranz darf nicht negativ sein.',
     validation_true_peak: 'Die True-Peak-Obergrenze muss ein endlicher dBTP-Wert sein.',
     validation_ssim: 'Der Bild-SSIM-Grenzwert muss zwischen 0 und 1 liegen.',
-    validation_quarantine: 'Die Aufbewahrungsdauer der Quarantäne darf nicht negativ sein.',
+    validation_cleanup: 'Die Aufbewahrungsdauer für die Bereinigung darf nicht negativ sein.',
     validation_encoder: 'Der Encoder-Modus muss Auto, CPU, NVIDIA NVENC, Intel QSV oder VA-API sein.',
     validation_import: 'Die Konfigurationsdatei ist ungültig.',
     saved: 'Einstellungen gespeichert.',
@@ -614,17 +614,35 @@ export const de: Messages = {
     exif_hint:
       'Nur Foto-/Bildaufgaben: lässt die Aufgabe fehlschlagen, wenn die Neukodierung das eingebettete ICC-Farbprofil oder EXIF des Originals verwirft (liest beides mit exiftool). Meldet nur Verlust — eine Ausgabe darf Metadaten hinzugewinnen.',
     exif_note: 'Kein Schwellenwert — es wird lediglich verlangt, dass das Farbprofil und EXIF des Originals erhalten bleiben.',
-    replacement_title: 'Ersetzung',
-    replacement_desc: 'Wie eine geprüfte Ausgabe an die Stelle Ihres Originals tritt und wie lange das Original danach aufbewahrt wird.',
+    replacement_title: 'Ersetzung und Bereinigung',
+    replacement_desc: 'Wie geprüfte Ausgaben Originale ersetzen und wie lange Quarantäne-Originale und fehlgeschlagene Arbeitsausgaben aufbewahrt werden.',
     dry_run: 'Probelauf-Modus',
     dry_run_hint:
-      'Scannen, Einreihen, Transkodieren und Prüfen wie gewohnt, aber niemals Originale ersetzen oder in Quarantäne befindliche Originale löschen. Geprüfte Ausgaben bleiben zur Überprüfung bei „Bereit zum Ersetzen“ stehen.',
+      'Scannen, Einreihen, Transkodieren und Prüfen wie gewohnt, aber niemals Originale ersetzen oder Quarantäne-Originale löschen. Geprüfte Ausgaben bleiben zur Überprüfung bei „Bereit zum Ersetzen“ stehen. Abgelaufene fehlgeschlagene Arbeitsausgaben werden weiterhin bereinigt, da Originale unberührt bleiben.',
     cross_fs: 'Dateisystemübergreifende Ersetzung erlauben',
     cross_fs_hint:
       'Weicht auf Kopieren-und-Löschen statt eines atomaren Verschiebens aus. Deaktiviert ist sicherer; nur für bewusste Split-Mount-Layouts aktivieren.',
-    quarantine_retention: 'Quarantäne-Aufbewahrung',
-    quarantine_retention_tip:
-      'Wie lange in Quarantäne befindliche Originale aufbewahrt werden, bevor sie zur Freigabe von Speicher gelöscht werden. 0 behält sie unbegrenzt (jederzeit rückgängig machbar).',
+    cleanup_retention: 'Bereinigungsaufbewahrung',
+    cleanup_retention_tip:
+      'Wie lange Quarantäne-Originale und fehlgeschlagene /work-Ausgaben vor dem Löschen aufbewahrt werden. Jobdiagnosen bleiben erhalten. 0 bewahrt beides unbegrenzt auf.',
+    cleanup_reclaimable: 'Jetzt freigebbar',
+    cleanup_calculating: 'Wird berechnet…',
+    cleanup_breakdown: 'Fehlgeschlagene Arbeit: {failedSpace} ({failedCount}) · Quarantäne: {quarantineSpace} ({quarantineCount})',
+    cleanup_now: 'Jetzt bereinigen',
+    cleanup_running: 'Bereinigung läuft…',
+    cleanup_indefinite: 'Die Aufbewahrung ist unbegrenzt; keine Dateien sind bereinigungsfähig.',
+    cleanup_none: 'Derzeit ist nichts alt genug für die Bereinigung.',
+    cleanup_save_first: 'Speichere die Bereinigungs- oder Testlauf-Einstellung, um die Vorschau neu zu berechnen.',
+    cleanup_dry_run: 'Der Testlauf schützt Quarantäne-Originale; diese Vorschau enthält nur fehlgeschlagene Arbeitsausgaben.',
+    cleanup_confirm_one:
+      'Jetzt {space} aus diesem aufbewahrten Element bereinigen?\n\nFehlgeschlagene Arbeit: {failedSpace} ({failedCount}). Jobverlauf, Berichte und Protokolle bleiben erhalten.\nQuarantäne-Originale: {quarantineSpace} ({quarantineCount}). Diese Originale werden dauerhaft gelöscht und können nicht mehr wiederhergestellt werden.',
+    cleanup_confirm_other:
+      'Jetzt {space} aus {count} aufbewahrten Elementen bereinigen?\n\nFehlgeschlagene Arbeit: {failedSpace} ({failedCount}). Jobverlauf, Berichte und Protokolle bleiben erhalten.\nQuarantäne-Originale: {quarantineSpace} ({quarantineCount}). Diese Originale werden dauerhaft gelöscht und können nicht mehr wiederhergestellt werden.',
+    cleanup_complete_one: '1 Element bereinigt und {space} freigegeben.',
+    cleanup_complete_other: '{count} Elemente bereinigt und {space} freigegeben.',
+    cleanup_error_load: 'Der freigebbare Speicher konnte nicht berechnet werden.',
+    cleanup_error_run: 'Bereinigung fehlgeschlagen.',
+    cleanup_preview_changed: 'Die bereinigungsfähigen Dateien haben sich geändert. Prüfe die aktualisierte Vorschau und bestätige erneut.',
     days: 'Tage',
     save_settings: 'Einstellungen speichern',
     save_note: 'Speichert alle Optionen auf diesem Tab. Verbindungen und Benachrichtigungen werden separat gespeichert.',

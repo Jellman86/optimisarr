@@ -297,6 +297,24 @@ export type Settings = {
   replacementQuarantineRetentionDays: number
 }
 
+export type TimedCleanupPreview = {
+  retentionDays: number
+  dryRunMode: boolean
+  failedOutputCount: number
+  failedOutputBytes: number
+  quarantinedOriginalCount: number
+  quarantinedOriginalBytes: number
+  planToken: string
+  totalCount: number
+  totalBytes: number
+}
+
+export type TimedCleanupRunResult = {
+  preview: TimedCleanupPreview
+  cleanedCount: number
+  reclaimedBytes: number
+}
+
 export type ConfigSnapshot = {
   version: number
   exportedAt: string
@@ -826,7 +844,8 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'settings.loudnessDrift.nonNegative': return i18n.m.settings.validation_loudness
     case 'settings.truePeak.finite': return i18n.m.settings.validation_true_peak
     case 'settings.imageSsim.range': return i18n.m.settings.validation_ssim
-    case 'settings.quarantineRetention.nonNegative': return i18n.m.settings.validation_quarantine
+    case 'settings.quarantineRetention.nonNegative': return i18n.m.settings.validation_cleanup
+    case 'settings.cleanupPreviewChanged': return i18n.m.settings.cleanup_preview_changed
     case 'settings.encoderMode.invalid': return i18n.m.settings.validation_encoder
     case 'settings.import.invalid': return i18n.m.settings.validation_import
     case 'setup.step.invalid': return i18n.m.setup.error_save
@@ -947,6 +966,11 @@ export const api = {
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (body: Settings) =>
     request<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  timedCleanupPreview: () => request<TimedCleanupPreview>('/api/settings/cleanup'),
+  runTimedCleanup: (confirmedPreview: TimedCleanupPreview) =>
+    request<TimedCleanupRunResult>('/api/settings/cleanup', {
+      method: 'POST', body: JSON.stringify(confirmedPreview),
+    }),
   queueStatus: () => request<QueueStatus>('/api/queue/status'),
   exportSettings: () => request<ConfigSnapshot>('/api/settings/export'),
   importSettings: (snapshot: ConfigSnapshot) =>
