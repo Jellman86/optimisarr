@@ -5,6 +5,20 @@ namespace Optimisarr.Tests;
 
 public sealed class FfmpegCommandBuilderTests
 {
+    [Fact]
+    public void Every_job_requests_machine_readable_progress_without_human_stats()
+    {
+        foreach (var spec in new[] { Reencode(), AudioReencode(), ImageReencode() })
+        {
+            var args = FfmpegCommandBuilder.Build(spec);
+
+            Assert.Equal("pipe:1", args[IndexOf(args, "-progress") + 1]);
+            Assert.Contains("-nostats", args);
+            Assert.True(IndexOf(args, "-progress") < IndexOf(args, "-i"));
+            Assert.True(IndexOf(args, "-nostats") < IndexOf(args, "-i"));
+        }
+    }
+
     private static TranscodeSpec AudioReencode() =>
         new(
             InputPath: "/data/music/Track.flac",

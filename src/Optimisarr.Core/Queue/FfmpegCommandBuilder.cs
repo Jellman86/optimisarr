@@ -74,7 +74,15 @@ public static class FfmpegCommandBuilder
         string? optimisedMarker = null,
         bool hardwareDecode = false)
     {
-        var args = new List<string> { "-y" };
+        var args = new List<string>
+        {
+            "-y",
+            // Human-readable stderr stats are presentation-oriented and their in-place line
+            // framing varies by environment. The machine protocol is newline-delimited, stable,
+            // and leaves stderr exclusively available for warnings and failure diagnostics.
+            "-progress", "pipe:1",
+            "-nostats"
+        };
 
         if (threads > 0)
         {

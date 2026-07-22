@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.7 — 2026-07-22
+
+### Fixed
+
+- **Active encodes now report progress from FFmpeg's machine-readable protocol.** Video, audio,
+  and image jobs no longer depend on terminal-style stderr updates that can remain buffered in a
+  container and leave the progress bar at zero. The first measurable movement is persisted even
+  when it is below one percent, live speed/FPS/ETA continues at FFmpeg's update cadence, timestamp
+  discontinuities cannot move the bar backwards, and progress delivery failures no longer stop the
+  process pipes from being consumed. Stderr is kept separately as bounded diagnostic evidence, so
+  switching progress transports does not hide encode warnings or failure details.
+
+### Changed
+
+- **Runtime and build dependencies are current for this release.** The aligned ASP.NET Core and
+  Entity Framework Core packages move from 10.0.9 to 10.0.10, while the OpenAPI and test tooling,
+  Svelte, Tailwind CSS, Vite, and frontend validation packages receive their compatible minor or
+  patch updates. GitHub Actions now uses the current setup actions for .NET and Node.js. These
+  maintenance updates do not change Optimisarr's configuration, database schema, or safety model.
+
 ## 0.2.6 — 2026-07-22
 
 ### Added
