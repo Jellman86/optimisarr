@@ -78,18 +78,22 @@ builder.Services.AddScoped<ProviderConnectService>();
 builder.Services.AddSingleton<ReplacementCoordinator>();
 builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<LifetimeStatsStore>();
-builder.Services.AddScoped<QuarantinePurgeService>();
+builder.Services.AddScoped<TimedCleanupService>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ActivityMonitor>();
 builder.Services.AddSingleton<ActiveEncodeRegistry>();
+builder.Services.AddSingleton<IProcessSignals, PosixProcessSignals>();
+builder.Services.AddSingleton<QueuePauseControl>();
+builder.Services.AddSingleton<IQueuePauseStateStore, QueuePauseStateStore>();
+builder.Services.AddSingleton<QueuePauseManager>();
 // Singleton so its resolved-artwork cache survives across requests.
 builder.Services.AddSingleton<ArtworkService>();
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BlindCalibrationService>());
 builder.Services.AddHostedService<SystemMetricsBroadcaster>();
-builder.Services.AddHostedService<QuarantinePurgeWorker>();
+builder.Services.AddHostedService<TimedCleanupWorker>();
 builder.Services.AddHostedService<AutoEnqueueWorker>();
 builder.Services.AddHostedService<LibraryScanWorker>();
 builder.Services.AddHostedService<MediaProbeWorker>();
@@ -276,6 +280,11 @@ internal sealed record SettingsDto(
 internal sealed record QueueStatusDto(
     bool CanStart,
     string? BlockedReason,
+    bool ManuallyPaused,
+    string ManualPauseMode,
+    bool RunningEncodesSuspended,
+    int SuspendedEncodeCount,
+    int PauseFailedEncodeCount,
     int RunningJobs,
     int MaxConcurrentJobs,
     long MinFreeDiskBytes,
@@ -289,6 +298,11 @@ internal sealed record QueueStatusDto(
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
         status.BlockedReason,
+        status.ManuallyPaused,
+        status.ManualPauseMode,
+        status.RunningEncodesSuspended,
+        status.SuspendedEncodeCount,
+        status.PauseFailedEncodeCount,
         status.RunningJobs,
         status.MaxConcurrentJobs,
         status.MinFreeDiskBytes,

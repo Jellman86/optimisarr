@@ -15,9 +15,11 @@ public static class AutoReplacePolicy
         JobStatus status,
         bool? verificationPassed,
         bool libraryAutoReplace,
-        bool dryRunMode) =>
+        bool dryRunMode,
+        bool manuallyPaused = false) =>
         status == JobStatus.ReadyToReplace
         && verificationPassed == true
         && libraryAutoReplace
-        && !dryRunMode;
+        && !dryRunMode
+        && !manuallyPaused;
 }

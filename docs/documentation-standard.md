@@ -93,7 +93,7 @@ Screenshots must be current, specific, and useful:
 ## Style
 
 - Use plain English, active voice, and `you` for instructions.
-- Use exact UI labels in bold, for example **Settings → General → Replacement**.
+- Use exact UI labels in bold, for example **Settings → General → Replacement and cleanup**.
 - Use monospace for paths, commands, endpoints, environment variables, enum
   values, and file names.
 - Prefer "Optimisarr does X" over vague passive phrasing.

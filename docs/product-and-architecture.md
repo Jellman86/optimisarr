@@ -45,6 +45,14 @@ The core promise is:
   8. Move original to quarantine.
   9. Record rollback metadata.
 
+The timed retention sweep runs at startup and every six hours. One cleanup window
+covers quarantined originals and failed `/work` outputs. It never removes active or
+ready-to-replace work; expired failed scratch is detached from its retained job row
+so reports and FFmpeg evidence remain queryable. The settings preview and manual
+cleanup endpoint use the same eligibility checks; the manual path re-evaluates its
+plan at execution time, refuses a stale browser confirmation, and reports bytes
+actually reclaimed.
+
 ### Out of scope for MVP
 
 - Distributed workers.

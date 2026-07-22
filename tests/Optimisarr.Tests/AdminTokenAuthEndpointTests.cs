@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
@@ -33,8 +34,12 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [Theory]
     [InlineData("GET", "/api/settings")]
     [InlineData("PUT", "/api/settings")]
+    [InlineData("GET", "/api/settings/cleanup")]
+    [InlineData("POST", "/api/settings/cleanup")]
     [InlineData("GET", "/api/settings/export")]   // contains provider secrets
     [InlineData("POST", "/api/settings/import")]
+    [InlineData("POST", "/api/queue/pause")]
+    [InlineData("POST", "/api/queue/resume")]
     [InlineData("GET", "/api/setup")]
     [InlineData("GET", "/api/setup/readiness")]
     [InlineData("PUT", "/api/setup/progress")]
@@ -87,6 +92,53 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         using var response = await client.GetAsync("/api/settings");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cleanup_preview_can_be_confirmed_through_the_real_api_contract()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using var previewResponse = await client.GetAsync("/api/settings/cleanup");
+        var preview = await previewResponse.Content.ReadAsStringAsync();
+
+        using var runResponse = await client.PostAsync(
+            "/api/settings/cleanup",
+            new StringContent(preview, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        Assert.Contains("\"planToken\"", preview);
+        Assert.Equal(HttpStatusCode.OK, runResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Manual_queue_pause_and_resume_round_trip_through_the_real_api_contract()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        try
+        {
+            using var pause = await client.PostAsync("/api/queue/pause", content: null);
+            var paused = JsonNode.Parse(await pause.Content.ReadAsStringAsync())!.AsObject();
+            Assert.Equal(HttpStatusCode.OK, pause.StatusCode);
+            Assert.True(paused["manuallyPaused"]!.GetValue<bool>());
+            Assert.Equal("suspended", paused["manualPauseMode"]!.GetValue<string>());
+            Assert.False(paused["runningEncodesSuspended"]!.GetValue<bool>());
+
+            var status = JsonNode.Parse(await client.GetStringAsync("/api/queue/status"))!.AsObject();
+            Assert.True(status["manuallyPaused"]!.GetValue<bool>());
+
+            using var resume = await client.PostAsync("/api/queue/resume", content: null);
+            var resumed = JsonNode.Parse(await resume.Content.ReadAsStringAsync())!.AsObject();
+            Assert.Equal(HttpStatusCode.OK, resume.StatusCode);
+            Assert.False(resumed["manuallyPaused"]!.GetValue<bool>());
+            Assert.Equal("inactive", resumed["manualPauseMode"]!.GetValue<string>());
+        }
+        finally
+        {
+            await client.PostAsync("/api/queue/resume", content: null);
+        }
     }
 
     [Fact]

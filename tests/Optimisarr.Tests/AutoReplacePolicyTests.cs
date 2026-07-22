@@ -35,6 +35,17 @@ public sealed class AutoReplacePolicyTests
             dryRunMode: true));
     }
 
+    [Fact]
+    public void Skips_while_the_operator_has_paused_the_queue()
+    {
+        Assert.False(AutoReplacePolicy.ShouldReconcile(
+            JobStatus.ReadyToReplace,
+            verificationPassed: true,
+            libraryAutoReplace: true,
+            dryRunMode: false,
+            manuallyPaused: true));
+    }
+
     [Theory]
     [InlineData(JobStatus.Queued)]
     [InlineData(JobStatus.Transcoding)]

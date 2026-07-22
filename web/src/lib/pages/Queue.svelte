@@ -27,6 +27,7 @@
   let excludingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
   let clearingPending = $state(false)
+  let pauseBusy = $state(false)
   let expandedId = $state<number | null>(null)
   let filter = $state<'all' | 'active' | 'completed' | 'failed' | 'verified' | 'verifyFailed'>('all')
   // Queue (live work) vs Failures (failed jobs grouped by reason, with the captured ffmpeg log).
@@ -99,6 +100,22 @@
   function telemetryLabel(progress: JobProgress | undefined): string {
     if (!progress) return ''
     return [speedLabel(progress.speed), etaLabel(progress.etaSeconds)].filter(Boolean).join(' · ')
+  }
+
+  // The endpoint returns the exact suspension outcome so unsupported/partial states stay honest.
+  async function togglePause() {
+    if (!queueStatus || pauseBusy) return
+    pauseBusy = true
+    try {
+      queueStatus = queueStatus.manuallyPaused ? await api.resumeQueue() : await api.pauseQueue()
+      error = null
+    } catch (err) {
+      const message = err instanceof Error ? err.message : i18n.m.queue.error_pause
+      await load()
+      error = message
+    } finally {
+      pauseBusy = false
+    }
   }
 
   async function cancel(job: Job) {
@@ -406,12 +423,26 @@
   let pendingCount = $derived(jobs.filter((j) => j.status === 'Queued' || j.status === 'ReadyToReplace').length)
 </script>
 
-<header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400">
-    {i18n.m.queue.subtitle}
-    {#if activeCount > 0}<span class="text-slate-400">{t(i18n.m.queue.active_suffix, { count: activeCount })}</span>{/if}
-  </p>
+<header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h1>
+    <p class="text-sm text-slate-500 dark:text-slate-400">
+      {i18n.m.queue.subtitle}
+      {#if activeCount > 0}<span class="text-slate-400">{t(i18n.m.queue.active_suffix, { count: activeCount })}</span>{/if}
+    </p>
+  </div>
+  {#if queueStatus}
+    <button
+      class="btn min-w-32 justify-center {queueStatus.manuallyPaused ? 'btn-primary' : ''}"
+      onclick={togglePause}
+      disabled={pauseBusy}
+      aria-busy={pauseBusy}
+      title={queueStatus.manuallyPaused ? i18n.m.queue.resume_queue_title : i18n.m.queue.pause_queue_title}
+    >
+      <Icon name={queueStatus.manuallyPaused ? 'play' : 'pause'} class="h-4 w-4" />
+      {pauseBusy ? i18n.m.common.loading_short : queueStatus.manuallyPaused ? i18n.m.queue.resume_queue : i18n.m.queue.pause_queue}
+    </button>
+  {/if}
 </header>
 
 <!-- Queue | Failures: live work and the diagnostics view for failed jobs live together, so the
@@ -467,9 +498,17 @@
           <div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="min-w-0">
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
-                  {job.status === 'Transcoding' ? i18n.m.queue.now_encoding : job.status === 'Probing' ? i18n.m.queue.now_probing : i18n.m.queue.now_verifying}
-                </div>
+                <!-- A suspended encode is stopped, not encoding — say so where the stage label sits.
+                     Verification is never suspended (it finishes naturally), so it keeps its label. -->
+                {#if queueStatus?.runningEncodesSuspended && job.status === 'Transcoding'}
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                    {i18n.m.queue.now_paused}
+                  </div>
+                {:else}
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                    {job.status === 'Transcoding' ? i18n.m.queue.now_encoding : job.status === 'Probing' ? i18n.m.queue.now_probing : i18n.m.queue.now_verifying}
+                  </div>
+                {/if}
                 <div class="truncate font-medium text-slate-800 dark:text-slate-100" title={job.relativePath ?? ''}>
                   {heroTitle(job.relativePath) ?? jobName(job)}
                 </div>
@@ -543,7 +582,17 @@
 
 <!-- Only surface dispatch state when it needs attention (paused, or a backlog stalled on a
      closed window). The healthy "ready · N running · work free" line was noise, so it's dropped. -->
-{#if queueStatus && !queueStatus.canStart}
+{#if queueStatus?.manuallyPaused}
+  <!-- The manual pause suspends running encodes, unlike the automatic gates below, which let
+       them finish — so it gets its own banner rather than the dispatch_paused wording. The
+       reason from the backend states exactly what pausing did on this platform. -->
+  <div class="card mb-4 flex flex-wrap items-center gap-2 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+    <Icon name="pause" class="h-4 w-4 shrink-0" />
+    <span>
+      {queueStatus.blockedReason}{#if queueStatus.manualPauseMode === 'suspended'}{' '}{i18n.m.queue.paused_manually_hint}{/if}
+    </span>
+  </div>
+{:else if queueStatus && !queueStatus.canStart}
   <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
     {t(i18n.m.queue.dispatch_paused, { reason: queueStatus.blockedReason ?? '' })}
   </div>

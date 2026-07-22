@@ -243,6 +243,19 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         return identifier;
     }
 
+    /// <summary>Whether the operator manually paused the queue (persists across restarts).</summary>
+    public async Task<bool> GetQueuePausedAsync(CancellationToken cancellationToken)
+    {
+        var setting = await db.AppSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.QueuePaused, cancellationToken);
+
+        return ParseBool(setting?.Value, fallback: false);
+    }
+
+    public Task SetQueuePausedAsync(bool paused, CancellationToken cancellationToken) =>
+        UpsertAsync(SettingKeys.QueuePaused, paused.ToString(CultureInfo.InvariantCulture), cancellationToken);
+
     /// <summary>Sets the global concurrency limit. Clamped to at least 1.</summary>
     public async Task SetMaxConcurrentJobsAsync(int value, CancellationToken cancellationToken)
     {

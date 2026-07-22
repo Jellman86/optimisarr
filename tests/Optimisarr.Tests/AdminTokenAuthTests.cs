@@ -25,6 +25,7 @@ public sealed class AdminTokenAuthTests
 
     [Theory]
     [InlineData("/api/settings")]
+    [InlineData("/api/settings/cleanup")]
     [InlineData("/api/settings/export")]
     [InlineData("/api/jobs/1/replace")]
     [InlineData("/hubs/jobs")]

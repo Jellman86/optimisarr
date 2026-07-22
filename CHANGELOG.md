@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.6 — 2026-07-22
+
+### Added
+
+- **The queue can now be paused manually.** The **Pause queue** control at the top right of Queue
+  blocks new jobs and automatic replacements, then suspends running transcodes where the platform
+  supports POSIX process signals without losing progress. Verification already underway finishes;
+  unsupported or partial suspension is reported explicitly. **Resume queue** must successfully
+  continue every still-running suspended process before dispatch reopens. The state persists across
+  restarts without holding container shutdown on a stopped child, concurrent transitions and
+  automatic replacement are serialized, and the API exposes the exact mode and process counts.
+  (`POST /api/queue/pause`, `POST /api/queue/resume`.) Contributed by Scott Brant.
+
+### Changed
+
+- **Timed cleanup now prevents failed outputs from filling `/work`.** The existing retention
+  sweep and setting now cover both quarantined originals and failed normal-job outputs. Expired
+  scratch files are removed at startup or on the six-hour sweep, while the failed job, output-size
+  evidence, verification report, classification, FFmpeg arguments, and process log remain available
+  for diagnosis. Active, queued, verifying, ready-to-replace, completed, calibration, outside-root,
+  and shared work paths are protected. Dry-run continues to protect every original but does not
+  retain reproducible failed scratch indefinitely. The setting is now presented as **Cleanup
+  retention**; its persisted and API names remain compatible with existing installs and backups.
+  Settings now previews the exact eligible disk usage with separate failed-work and quarantine
+  totals, and **Clean up now** applies the same saved policy after a permanent-deletion warning.
+  A changed preview is rejected without deleting anything, so every run matches the files and
+  space the operator actually confirmed.
+
 ## 0.2.5 — 2026-07-19
 
 ### Fixed

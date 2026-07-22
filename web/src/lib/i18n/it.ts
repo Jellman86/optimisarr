@@ -378,6 +378,14 @@ quarantine: {
       'Gestione della coda in pausa: {reason}. Le codifiche attuali saranno completate in sicurezza; questa impostazione impedisce solo l’avvio di nuovi processi.',
     waiting_window:
       '{reason} — imposta la finestra su 00:00–00:00 (tutto il giorno) o disattiva “Ottimizza automaticamente” sulla libreria per avviare ora.',
+    now_paused: 'In pausa',
+    pause_queue: 'Metti in pausa la coda',
+    resume_queue: 'Riprendi la coda',
+    pause_queue_title:
+      'Blocca i nuovi processi e la sostituzione automatica. Dove supportato, sospende le codifiche in corso senza perdere i progressi; una verifica già avviata viene completata.',
+    resume_queue_title: 'Riprende le codifiche sospese e poi consente di nuovo processi e sostituzioni automatiche.',
+    paused_manually_hint: 'Usa Riprendi la coda per consentire nuovi processi.',
+    error_pause: 'Impossibile modificare lo stato di pausa della coda.',
     filter_all: 'Tutti',
     filter_active: 'Attivi',
     filter_completed: 'Completati',
@@ -389,7 +397,7 @@ quarantine: {
     clearing: 'Pulizia…',
     clear_queue: 'Pulisci coda ({count})',
     clear_errored_title:
-      'Rimuovi i processi falliti e annullati dalla lista. I file rimangono contrassegnati, quindi non verranno mai riottimizzati; qualsiasi processo che mantiene il rollback non viene rimosso.',
+      'Rimuove i processi falliti e annullati, la diagnostica e gli output /work conservati. Gli originali restano intatti e le esclusioni permanenti rimangono.',
     clear_errored: 'Pulisci errori ({count})',
     clear_completed_title_available: 'Rimuovi i processi completati di cui il rollback non è più disponibile.',
     clear_completed_title_protected:
@@ -513,7 +521,7 @@ quarantine: {
     validation_loudness: 'La tolleranza di drift del volume non può essere negativa.',
     validation_true_peak: 'Il limite del true-peak deve essere un valore dBTP finito.',
     validation_ssim: 'La soglia SSIM delle immagini deve essere tra 0 e 1.',
-    validation_quarantine: 'I giorni di conservazione in quarantena non possono essere negativi.',
+    validation_cleanup: 'I giorni di conservazione per la pulizia non possono essere negativi.',
     validation_encoder: 'La modalità encoder deve essere Auto, CPU, NVIDIA NVENC, Intel QSV o VA-API.',
     validation_import: 'Il file di configurazione non è valido.',
     saved: 'Impostazioni salvate.',
@@ -605,17 +613,35 @@ quarantine: {
     exif_hint:
       "Solo lavori foto/immagini: fallisce il lavoro se la ricodifica elimina il profilo colore ICC o il EXIF originale (li legge entrambi con exiftool). Segnala solo perdita — un output può aggiungere metadati.",
     exif_note: "Nessuna soglia — richiede solo che profilo colore e EXIF originali sopravvivano.",
-    replacement_title: 'Sostituzione',
-    replacement_desc: 'Come un output verificato sostituisce l’originale e quanto a lungo l’originale viene conservato.',
+    replacement_title: 'Sostituzione e pulizia',
+    replacement_desc: 'Come gli output verificati sostituiscono gli originali e per quanto tempo vengono conservati gli originali in quarantena e gli output di lavoro non riusciti.',
     dry_run: 'Modalità dry-run',
     dry_run_hint:
-      'Scansiona, mette in coda, transcodifica e verifica normalmente, ma non sostituisce mai gli originali né elimina quelli in quarantena. Gli output verificati si fermano a Pronto per la sostituzione per revisione.',
+      'Scansiona, mette in coda, transcodifica e verifica normalmente, ma non sostituisce mai gli originali né elimina quelli in quarantena. Gli output verificati si fermano a Pronto per la sostituzione per revisione. Gli output di lavoro non riusciti e scaduti vengono comunque rimossi perché gli originali restano intatti.',
     cross_fs: 'Permetti sostituzione tra filesystem',
     cross_fs_hint:
       'Usa copia+elimina invece di una mossa atomica. Disattivato è più sicuro; attiva solo per configurazioni multi-mount intenzionali.',
-    quarantine_retention: 'Conservazione in quarantena',
-    quarantine_retention_tip:
-      'Quanto a lungo gli originali in quarantena vengono conservati prima di essere eliminati per liberare spazio. 0 li tiene indefinitamente (puoi ripristinare in qualsiasi momento).',
+    cleanup_retention: 'Conservazione per la pulizia',
+    cleanup_retention_tip:
+      'Per quanto tempo conservare gli originali in quarantena e gli output /work non riusciti prima di eliminarli. I dati diagnostici restano disponibili. 0 conserva entrambi indefinitamente.',
+    cleanup_reclaimable: 'Recuperabile ora',
+    cleanup_calculating: 'Calcolo in corso…',
+    cleanup_breakdown: 'Lavoro non riuscito: {failedSpace} ({failedCount}) · Quarantena: {quarantineSpace} ({quarantineCount})',
+    cleanup_now: 'Pulisci ora',
+    cleanup_running: 'Pulizia in corso…',
+    cleanup_indefinite: 'La conservazione è illimitata, quindi nessun file è idoneo.',
+    cleanup_none: 'Al momento nulla è abbastanza vecchio da essere rimosso.',
+    cleanup_save_first: 'Salva l’impostazione di pulizia o della modalità simulazione per ricalcolare l’anteprima.',
+    cleanup_dry_run: 'La modalità simulazione protegge gli originali in quarantena; l’anteprima include solo gli output di lavoro non riusciti.',
+    cleanup_confirm_one:
+      'Pulire ora {space} da questo elemento conservato?\n\nLavoro non riuscito: {failedSpace} ({failedCount}). Cronologia, rapporti e log restano disponibili.\nOriginali in quarantena: {quarantineSpace} ({quarantineCount}). Verranno eliminati definitivamente e non potranno più essere ripristinati.',
+    cleanup_confirm_other:
+      'Pulire ora {space} da {count} elementi conservati?\n\nLavoro non riuscito: {failedSpace} ({failedCount}). Cronologia, rapporti e log restano disponibili.\nOriginali in quarantena: {quarantineSpace} ({quarantineCount}). Verranno eliminati definitivamente e non potranno più essere ripristinati.',
+    cleanup_complete_one: 'Rimosso 1 elemento e recuperati {space}.',
+    cleanup_complete_other: 'Rimossi {count} elementi e recuperati {space}.',
+    cleanup_error_load: 'Impossibile calcolare lo spazio recuperabile.',
+    cleanup_error_run: 'Pulizia non riuscita.',
+    cleanup_preview_changed: 'I file recuperabili sono cambiati. Controlla l’anteprima aggiornata e conferma di nuovo.',
     days: 'giorni',
     save_settings: 'Salva impostazioni',
     save_note: 'Salva tutte le opzioni di questa scheda. Connessioni e notifiche si salvano separatamente.',

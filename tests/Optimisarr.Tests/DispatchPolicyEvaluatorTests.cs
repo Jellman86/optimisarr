@@ -62,6 +62,58 @@ public sealed class DispatchPolicyEvaluatorTests
         Assert.Null(decision.BlockedReason);
     }
 
+    [Fact]
+    public void Blocks_while_manually_paused()
+    {
+        var decision = DispatchPolicyEvaluator.Evaluate(0, null, manuallyPaused: true);
+
+        Assert.False(decision.CanStart);
+        Assert.NotNull(decision.BlockedReason);
+    }
+
+    [Fact]
+    public void Manual_pause_reports_the_reason_it_was_given()
+    {
+        var decision = DispatchPolicyEvaluator.Evaluate(
+            0, null, manuallyPaused: true, manuallyPausedReason: "Paused by the operator.");
+
+        Assert.Equal("Paused by the operator.", decision.BlockedReason);
+    }
+
+    // The operator's explicit pause is the most actionable explanation, so it outranks the
+    // automatic gates when several block at once.
+    [Fact]
+    public void Manual_pause_outranks_the_activity_and_disk_gates()
+    {
+        var decision = DispatchPolicyEvaluator.Evaluate(
+            minFreeDiskBytes: 10_000_000_000,
+            freeDiskBytes: 1,
+            servicesActive: true,
+            servicesActiveReason: "Plex is streaming.",
+            manuallyPaused: true,
+            manuallyPausedReason: "Paused by the operator.");
+
+        Assert.False(decision.CanStart);
+        Assert.Equal("Paused by the operator.", decision.BlockedReason);
+    }
+
+    // The interactive bypass exists to let quality-lab samples run during playback; it must not
+    // override the operator explicitly asking for the server back.
+    [Fact]
+    public void Manual_pause_outranks_the_interactive_bypass()
+    {
+        var decision = DispatchPolicyEvaluator.Evaluate(
+            0,
+            null,
+            servicesActive: true,
+            ignoreServicesActivity: true,
+            manuallyPaused: true,
+            manuallyPausedReason: "Paused by the operator.");
+
+        Assert.False(decision.CanStart);
+        Assert.Equal("Paused by the operator.", decision.BlockedReason);
+    }
+
     // WithinWindow is the shared window check used for per-library auto-optimise windows.
     [Fact]
     public void WithinWindow_same_day_is_inclusive_of_start_and_exclusive_of_end()

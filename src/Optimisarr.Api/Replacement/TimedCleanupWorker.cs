@@ -1,14 +1,12 @@
 namespace Optimisarr.Api.Replacement;
 
 /// <summary>
-/// Runs the quarantine retention policy on a slow cadence (and once at startup).
-/// Retention is measured in days, so a periodic sweep is plenty — there is no need
-/// to react instantly. Failures are logged and the loop continues; a missed sweep is
-/// caught by the next one.
+/// Applies the shared cleanup retention window every six hours and once at startup. A missed sweep
+/// is harmless: failures are logged and the next pass catches the same expired files.
 /// </summary>
-public sealed class QuarantinePurgeWorker(
+public sealed class TimedCleanupWorker(
     IServiceScopeFactory scopeFactory,
-    ILogger<QuarantinePurgeWorker> logger) : BackgroundService
+    ILogger<TimedCleanupWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(6);
 
@@ -19,8 +17,8 @@ public sealed class QuarantinePurgeWorker(
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var purge = scope.ServiceProvider.GetRequiredService<QuarantinePurgeService>();
-                await purge.PurgeExpiredAsync(stoppingToken);
+                var cleanup = scope.ServiceProvider.GetRequiredService<TimedCleanupService>();
+                await cleanup.PurgeExpiredAsync(stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -28,7 +26,7 @@ public sealed class QuarantinePurgeWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Quarantine retention sweep failed");
+                logger.LogError(ex, "Timed retention cleanup failed");
             }
 
             try { await Task.Delay(SweepInterval, stoppingToken); }

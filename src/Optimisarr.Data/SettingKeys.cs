@@ -23,6 +23,13 @@ public static class SettingKeys
     public const string EncoderMode = "queue.encoderMode";
 
     /// <summary>
+    /// Whether the operator has manually paused the queue. Operational state, not configuration:
+    /// deliberately absent from the portable settings so an imported backup never pauses (or
+    /// resumes) a server behind the operator's back.
+    /// </summary>
+    public const string QueuePaused = "queue.paused";
+
+    /// <summary>
     /// Whether to hardware-decode the source when a hardware encoder is in use, falling back
     /// to software decode automatically if the GPU cannot decode a given source.
     /// </summary>
@@ -73,7 +80,10 @@ public static class SettingKeys
     /// <summary>Whether replacement and quarantine purge actions are blocked while optimisation can still be tested.</summary>
     public const string DryRunMode = "replacement.dryRunMode";
 
-    /// <summary>How many days quarantined originals should be retained; 0 means indefinitely.</summary>
+    /// <summary>
+    /// How many days quarantined originals and failed work outputs should be retained; 0 means
+    /// indefinitely. The persisted key keeps its original name for upgrade and backup compatibility.
+    /// </summary>
     public const string ReplacementQuarantineRetentionDays = "replacement.quarantineRetentionDays";
 
     /// <summary>Stable client identifier Optimisarr presents to Plex during the OAuth/PIN flow.</summary>

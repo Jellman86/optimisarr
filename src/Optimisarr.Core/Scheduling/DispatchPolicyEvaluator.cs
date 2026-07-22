@@ -21,8 +21,18 @@ public static class DispatchPolicyEvaluator
         long? freeDiskBytes,
         bool servicesActive = false,
         string? servicesActiveReason = null,
-        bool ignoreServicesActivity = false)
+        bool ignoreServicesActivity = false,
+        bool manuallyPaused = false,
+        string? manuallyPausedReason = null)
     {
+        // The operator's explicit pause outranks the automatic gates and the interactive
+        // bypass: its reason is the one the operator acted on, and the one that tells them
+        // how to undo it.
+        if (manuallyPaused)
+        {
+            return new DispatchDecision(false, manuallyPausedReason ?? "The queue is paused.");
+        }
+
         if (servicesActive && !ignoreServicesActivity)
         {
             return new DispatchDecision(false,

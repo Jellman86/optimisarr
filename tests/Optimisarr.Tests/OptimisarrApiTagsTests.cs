@@ -6,6 +6,7 @@ public class OptimisarrApiTagsTests
 {
     [Theory]
     [InlineData("/api/settings", "Settings")]
+    [InlineData("/api/settings/cleanup", "Settings")]
     [InlineData("/api/settings/export", "Settings")]
     [InlineData("/api/queue/status", "Settings")]
     [InlineData("/api/setup", "Setup")]
@@ -33,6 +34,7 @@ public class OptimisarrApiTagsTests
 
     [Theory]
     [InlineData("/api/settings/export")]
+    [InlineData("/api/settings/cleanup")]
     [InlineData("/api/jobs/1/replace")]
     [InlineData("/api/replacements/1/rollback")]
     [InlineData("/api/libraries/1/enqueue")]

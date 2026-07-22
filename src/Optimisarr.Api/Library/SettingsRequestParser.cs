@@ -31,7 +31,8 @@ internal static class SettingsRequestParser
         if (request.VerificationMinimumImageSsim is < 0 or > 1)
             return Fail("settings.imageSsim.range", "Image SSIM threshold must be between 0 and 1.", out error);
         if (request.ReplacementQuarantineRetentionDays < 0)
-            return Fail("settings.quarantineRetention.nonNegative", "Quarantine retention days cannot be negative.", out error);
+            // Keep the established API code alongside the persisted/wire setting name.
+            return Fail("settings.quarantineRetention.nonNegative", "Cleanup retention days cannot be negative.", out error);
         if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
             return Fail("settings.encoderMode.invalid", "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi.", out error);
 

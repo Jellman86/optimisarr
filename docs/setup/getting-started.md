@@ -53,7 +53,7 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 
 ## First workflow
 
-1. Enable **Dry-run mode** in **Settings → General → Replacement**.
+1. Enable **Dry-run mode** in **Settings → General → Replacement and cleanup**.
 2. Add a library below `/data/media` and select its media type and rule profile.
 3. Scan it; newly found files are probed in the background.
 4. Review the explicit eligibility reason in **Inventory**.
@@ -64,6 +64,10 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 7. Disable dry-run only after the reports look right, then replace outputs you
    have reviewed. Originals remain in **Quarantine**
    until approved or retention purges them.
+
+Set **Cleanup retention** after choosing how long you need for rollback and failed-output
+inspection. The same window applies to quarantined originals and failed `/work` outputs;
+`0` keeps both indefinitely.
 
 After that manual test, optional **Auto-optimise** and **Auto-replace** settings
 can automate the same workflow per library. See [configuration and scheduling](configuration.md)

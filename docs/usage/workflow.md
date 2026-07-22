@@ -158,7 +158,30 @@ The Queue tells you why work is running or waiting. Common waiting reasons are a
 closed auto-optimise window, an activity watcher pause, concurrency limits, or
 low free space in `/work`.
 
+Use **Pause queue** at the top right of the Queue page when you need Optimisarr to yield the server
+for maintenance or other work. It stops new jobs and automatic replacements from starting. On the
+Linux container and on macOS, running transcodes are suspended in place without losing progress;
+on an unsupported platform, they finish and the banner says that the pause is dispatch-only.
+Verification already underway also finishes, and an automatic replacement already in its protected
+quarantine sequence finishes before the pause is acknowledged. Once the paused banner appears, no
+new automatic replacement can begin. The pause survives a restart until you select **Resume queue**.
+
+The banner reports partial signal failures instead of claiming every encode stopped. If Resume
+cannot continue an active FFmpeg process, dispatch stays paused; select **Resume queue** again after
+checking the container log.
+
+During a container update, Optimisarr temporarily continues suspended transcodes so the normal
+graceful drain can complete; it does not clear the saved pause. The restarted container therefore
+stays paused until you explicitly resume it.
+
 Open a row when a job fails or finishes.
+
+Failed outputs remain under `/work` long enough to inspect. **Settings → General →
+Replacement and cleanup → Cleanup retention** controls when the timed sweep removes
+their scratch files; the failure report and FFmpeg log remain in Optimisarr. The
+same panel shows the space currently eligible for cleanup. Use **Clean up now** to
+run the saved policy immediately after reviewing the failed-work/quarantine
+breakdown and permanent-deletion confirmation.
 
 ![Queue detail sheet opened from a job row](../images/optimisarr-queue-detail-dark.png)
 

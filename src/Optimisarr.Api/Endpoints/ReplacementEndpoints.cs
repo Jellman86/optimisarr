@@ -100,7 +100,7 @@ internal static class ReplacementEndpoints
         // for the retention window. The replacement is kept; this only discards the rollback path.
         app.MapPost("/api/replacements/{id:int}/approve", async (
             int id,
-            QuarantinePurgeService purge,
+            TimedCleanupService purge,
             CancellationToken cancellationToken) =>
         {
             var result = await purge.PurgeOneAsync(id, cancellationToken);

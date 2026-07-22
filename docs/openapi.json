@@ -34,6 +34,23 @@
         ],
         "type": "object"
       },
+      "ApiError": {
+        "properties": {
+          "args": {},
+          "code": {
+            "type": "string"
+          },
+          "details": {},
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "error"
+        ],
+        "type": "object"
+      },
       "ArrConnectionSnapshot": {
         "properties": {
           "apiKey": {
@@ -654,6 +671,119 @@
         },
         "required": [
           "token"
+        ],
+        "type": "object"
+      },
+      "QueueStatusDto": {
+        "properties": {
+          "blockedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canStart": {
+            "type": "boolean"
+          },
+          "cpuThreadLimit": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "encoderMode": {
+            "type": "string"
+          },
+          "freeDiskBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "hardwareAccelerated": {
+            "type": "boolean"
+          },
+          "manualPauseMode": {
+            "type": "string"
+          },
+          "manuallyPaused": {
+            "type": "boolean"
+          },
+          "maxConcurrentJobs": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "minFreeDiskBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "pauseFailedEncodeCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "runningEncodesSuspended": {
+            "type": "boolean"
+          },
+          "runningJobs": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "suspendedEncodeCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "waitingReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workRoot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "canStart",
+          "blockedReason",
+          "manuallyPaused",
+          "manualPauseMode",
+          "runningEncodesSuspended",
+          "suspendedEncodeCount",
+          "pauseFailedEncodeCount",
+          "runningJobs",
+          "maxConcurrentJobs",
+          "minFreeDiskBytes",
+          "cpuThreadLimit",
+          "encoderMode",
+          "hardwareAccelerated",
+          "freeDiskBytes",
+          "workRoot",
+          "waitingReason"
         ],
         "type": "object"
       },
@@ -1348,13 +1478,118 @@
           "mediaFileId"
         ],
         "type": "object"
+      },
+      "TimedCleanupPreview": {
+        "properties": {
+          "dryRunMode": {
+            "type": "boolean"
+          },
+          "failedOutputBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "failedOutputCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "planToken": {
+            "type": "string"
+          },
+          "quarantinedOriginalBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "quarantinedOriginalCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "retentionDays": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "totalBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "totalCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "retentionDays",
+          "dryRunMode",
+          "failedOutputCount",
+          "failedOutputBytes",
+          "quarantinedOriginalCount",
+          "quarantinedOriginalBytes",
+          "planToken"
+        ],
+        "type": "object"
+      },
+      "TimedCleanupRunResult": {
+        "properties": {
+          "cleanedCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "preview": {
+            "$ref": "#/components/schemas/TimedCleanupPreview"
+          },
+          "reclaimedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "preview",
+          "cleanedCount",
+          "reclaimedBytes"
+        ],
+        "type": "object"
       }
     }
   },
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.5.0"
+    "version": "0.2.6.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -3150,6 +3385,62 @@
         ]
       }
     },
+    "/api/queue/pause": {
+      "post": {
+        "operationId": "PauseQueue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/queue/resume": {
+      "post": {
+        "operationId": "ResumeQueue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
     "/api/queue/status": {
       "get": {
         "operationId": "GetQueueDispatchStatus",
@@ -3384,6 +3675,70 @@
           },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/cleanup": {
+      "get": {
+        "operationId": "PreviewTimedCleanup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimedCleanupPreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Settings"
+        ]
+      },
+      "post": {
+        "operationId": "RunTimedCleanup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimedCleanupPreview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimedCleanupRunResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

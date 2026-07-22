@@ -523,6 +523,14 @@ export const en = {
       'Queue dispatch is paused: {reason}. Existing encodes are allowed to finish safely; this only prevents new jobs from starting.',
     waiting_window:
       '{reason} — set the window to 00:00–00:00 (all day) or disable “Optimise automatically” on the library to run now.',
+    now_paused: 'Paused',
+    pause_queue: 'Pause queue',
+    resume_queue: 'Resume queue',
+    pause_queue_title:
+      'Stop new jobs and automatic replacement. Where supported, running encodes are suspended without losing progress; verification already underway finishes.',
+    resume_queue_title: 'Resume any suspended encodes, then allow new jobs and automatic replacement again.',
+    paused_manually_hint: 'Use Resume queue to allow new work.',
+    error_pause: 'Could not change the queue pause state.',
     filter_all: 'All',
     filter_active: 'Active',
     filter_completed: 'Completed',
@@ -534,7 +542,7 @@ export const en = {
     clearing: 'Clearing…',
     clear_queue: 'Clear queue ({count})',
     clear_errored_title:
-      'Remove failed and cancelled jobs from the list. Files stay tagged so they are never re-optimised; any job still holding a rollback is kept.',
+      'Remove failed and cancelled jobs, their diagnostics, and retained /work outputs. Originals are untouched and durable exclusions remain.',
     clear_errored: 'Clear errored ({count})',
     clear_completed_title_available: 'Remove completed jobs whose rollback is no longer available.',
     clear_completed_title_protected:
@@ -659,7 +667,7 @@ export const en = {
     validation_loudness: 'Loudness drift tolerance cannot be negative.',
     validation_true_peak: 'True-peak ceiling must be a finite dBTP value.',
     validation_ssim: 'Image SSIM threshold must be between 0 and 1.',
-    validation_quarantine: 'Quarantine retention days cannot be negative.',
+    validation_cleanup: 'Cleanup retention days cannot be negative.',
     validation_encoder: 'Encoder mode must be Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API.',
     validation_import: 'The config file is invalid.',
     saved: 'Settings saved.',
@@ -751,17 +759,35 @@ export const en = {
     exif_hint:
       "Photo/image jobs only: fails the job when the re-encode drops the original's embedded ICC colour profile or EXIF (reads both with exiftool). Only flags loss — an output may gain metadata.",
     exif_note: "No threshold — it simply requires the original's colour profile and EXIF to survive.",
-    replacement_title: 'Replacement',
-    replacement_desc: 'How a verified output takes the place of your original, and how long the original is kept afterwards.',
+    replacement_title: 'Replacement and cleanup',
+    replacement_desc: 'How verified outputs replace originals, and how long quarantined originals and failed scratch outputs are retained.',
     dry_run: 'Dry-run mode',
     dry_run_hint:
-      'Scan, queue, transcode, and verify normally, but never replace originals or purge quarantined originals. Verified outputs stop at Ready to replace for review.',
+      'Scan, queue, transcode, and verify normally, but never replace originals or purge quarantined originals. Verified outputs stop at Ready to replace for review. Expired failed scratch outputs are still cleaned because originals are untouched.',
     cross_fs: 'Allow cross-filesystem replacement',
     cross_fs_hint:
       'Falls back to copy-plus-delete instead of an atomic move. Off is safer; enable only for intentional split-mount layouts.',
-    quarantine_retention: 'Quarantine retention',
-    quarantine_retention_tip:
-      'How long quarantined originals are kept before they are purged to free space. 0 keeps them indefinitely (roll back any time).',
+    cleanup_retention: 'Cleanup retention',
+    cleanup_retention_tip:
+      'How long quarantined originals and failed /work outputs are kept before being removed to free space. Failed-job diagnostics remain. 0 keeps both indefinitely.',
+    cleanup_reclaimable: 'Reclaimable now',
+    cleanup_calculating: 'Calculating…',
+    cleanup_breakdown: 'Failed work: {failedSpace} ({failedCount}) · Quarantine: {quarantineSpace} ({quarantineCount})',
+    cleanup_now: 'Clean up now',
+    cleanup_running: 'Cleaning up…',
+    cleanup_indefinite: 'Retention is indefinite, so no files are eligible.',
+    cleanup_none: 'Nothing is currently old enough to clean up.',
+    cleanup_save_first: 'Save the cleanup or dry-run setting to recalculate this preview.',
+    cleanup_dry_run: 'Dry-run protects quarantined originals; this preview includes failed scratch outputs only.',
+    cleanup_confirm_one:
+      'Clean up {space} from this retained item now?\n\nFailed work: {failedSpace} ({failedCount}). The job history, reports, and logs remain.\nQuarantined originals: {quarantineSpace} ({quarantineCount}). These originals are permanently deleted and can no longer be rolled back.',
+    cleanup_confirm_other:
+      'Clean up {space} across {count} retained items now?\n\nFailed work: {failedSpace} ({failedCount}). The job history, reports, and logs remain.\nQuarantined originals: {quarantineSpace} ({quarantineCount}). These originals are permanently deleted and can no longer be rolled back.',
+    cleanup_complete_one: 'Cleaned up 1 item and reclaimed {space}.',
+    cleanup_complete_other: 'Cleaned up {count} items and reclaimed {space}.',
+    cleanup_error_load: 'Unable to calculate reclaimable space.',
+    cleanup_error_run: 'Cleanup failed.',
+    cleanup_preview_changed: 'Reclaimable files changed. Review the updated preview and confirm again.',
     days: 'days',
     save_settings: 'Save settings',
     save_note: 'Saves every option on this tab. Connections and notifications save on their own.',
@@ -932,7 +958,7 @@ export const en = {
     window_end: 'Window end',
     window_hint: 'Equal times = any time. Eligible files are queued and run while inside the window.',
     auto_replace_label: 'Replace automatically when verified',
-    auto_replace_hint: 'When a job passes every verification gate, replace the original without waiting for a manual Replace. The original is still quarantined first and can be rolled back (kept for the quarantine-retention period). Off by default.',
+    auto_replace_hint: 'When a job passes every verification gate, replace the original without waiting for a manual Replace. The original is still quarantined first and can be rolled back during the cleanup-retention period. Off by default.',
     advanced: 'Advanced options',
     advanced_hint: 'codec, quality, limits',
     video: 'Video',

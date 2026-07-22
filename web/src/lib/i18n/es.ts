@@ -383,6 +383,14 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
       'El envío de la cola está pausado: {reason}. Los codificados existentes pueden terminar con seguridad; esto solo impide que comiencen nuevos trabajos.',
     waiting_window:
       '{reason} — ajusta la ventana a 00:00–00:00 (todo el día) o desactiva “Optimizar automáticamente” en la biblioteca para ejecutar ahora.',
+    now_paused: 'En pausa',
+    pause_queue: 'Pausar la cola',
+    resume_queue: 'Reanudar la cola',
+    pause_queue_title:
+      'Detiene los trabajos nuevos y el reemplazo automático. Cuando el sistema lo permite, suspende las codificaciones sin perder progreso; la verificación que ya está en curso termina.',
+    resume_queue_title: 'Reanuda las codificaciones suspendidas y después permite nuevos trabajos y reemplazos automáticos.',
+    paused_manually_hint: 'Usa Reanudar la cola para permitir nuevos trabajos.',
+    error_pause: 'No se pudo cambiar el estado de pausa de la cola.',
     filter_all: 'Todos',
     filter_active: 'Activos',
     filter_completed: 'Completados',
@@ -394,7 +402,7 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     clearing: 'Limpiando…',
     clear_queue: 'Limpiar cola ({count})',
     clear_errored_title:
-      'Eliminar trabajos fallidos y cancelados de la lista. Los archivos permanecen etiquetados para que nunca se reoptimicen; cualquier trabajo que aún tenga una reversión se conserva.',
+      'Elimina trabajos fallidos y cancelados, sus diagnósticos y las salidas retenidas en /work. Los originales no se tocan y las exclusiones permanentes se conservan.',
     clear_errored: 'Limpiar con errores ({count})',
     clear_completed_title_available: 'Eliminar trabajos completados cuyo reversión ya no está disponible.',
     clear_completed_title_protected:
@@ -518,7 +526,7 @@ validation_vmaf_subsample: 'El muestreo de fotogramas VMAF debe estar entre 1 y 
 validation_loudness: 'La tolerancia de deriva de sonoridad no puede ser negativa.',
 validation_true_peak: 'El techo de true-peak debe ser un valor dBTP finito.',
 validation_ssim: 'El umbral de SSIM de imagen debe estar entre 0 y 1.',
-validation_quarantine: 'Los días de retención en cuarentena no pueden ser negativos.',
+validation_cleanup: 'Los días de retención de limpieza no pueden ser negativos.',
 validation_encoder: 'El modo de codificador debe ser Auto, CPU, NVIDIA NVENC, Intel QSV o VA-API.',
 validation_import: 'El archivo de configuración no es válido.',
 saved: 'Ajustes guardados.',
@@ -610,17 +618,35 @@ true_peak_tip:
     exif_hint:
       "Solo para trabajos de fotos/imágenes: falla el trabajo si al re-codificar se pierde el perfil de color ICC o EXIF incrustado del original (lee ambos con exiftool). Solo marca pérdida — una salida puede ganar metadata.",
     exif_note: "Sin umbral — simplemente requiere que sobrevivan el perfil de color y el EXIF del original.",
-    replacement_title: 'Reemplazo',
-    replacement_desc: 'Cómo una salida verificada reemplaza tu original, y cuánto tiempo se conserva el original después.',
+    replacement_title: 'Reemplazo y limpieza',
+    replacement_desc: 'Cómo las salidas verificadas reemplazan los originales y cuánto tiempo se conservan los originales en cuarentena y las salidas de trabajo fallidas.',
     dry_run: 'Modo de simulación',
     dry_run_hint:
-      'Escanea, coloca en cola, transcodifica y verifica normalmente, pero nunca reemplaza originales ni purga originales en cuarentena. Las salidas verificadas se quedan en Listo para reemplazar para revisión.',
+      'Escanea, coloca en cola, transcodifica y verifica normalmente, pero nunca reemplaza originales ni purga originales en cuarentena. Las salidas verificadas se quedan en Listo para reemplazar para revisión. Las salidas de trabajo fallidas vencidas sí se limpian porque los originales no se tocan.',
     cross_fs: 'Permitir reemplazo entre sistemas de archivos',
     cross_fs_hint:
       'Cambia a copiar y eliminar en vez de mover de forma atómica. Desactivado es más seguro; activa solo para diseños intencionales con montajes separados.',
-    quarantine_retention: 'Retención en cuarentena',
-    quarantine_retention_tip:
-      'Cuánto tiempo se guardan los originales en cuarentena antes de ser eliminados para liberar espacio. 0 los conserva indefinidamente (puedes retroceder en cualquier momento).',
+    cleanup_retention: 'Retención de limpieza',
+    cleanup_retention_tip:
+      'Cuánto tiempo se guardan los originales en cuarentena y las salidas fallidas de /work antes de eliminarlos. Los diagnósticos se conservan. 0 guarda ambos indefinidamente.',
+    cleanup_reclaimable: 'Recuperable ahora',
+    cleanup_calculating: 'Calculando…',
+    cleanup_breakdown: 'Trabajo fallido: {failedSpace} ({failedCount}) · Cuarentena: {quarantineSpace} ({quarantineCount})',
+    cleanup_now: 'Limpiar ahora',
+    cleanup_running: 'Limpiando…',
+    cleanup_indefinite: 'La retención es indefinida, por lo que no hay archivos aptos.',
+    cleanup_none: 'Actualmente nada tiene la antigüedad necesaria para limpiarse.',
+    cleanup_save_first: 'Guarda el ajuste de limpieza o modo de prueba para recalcular esta vista previa.',
+    cleanup_dry_run: 'El modo de prueba protege los originales en cuarentena; esta vista solo incluye salidas de trabajo fallidas.',
+    cleanup_confirm_one:
+      '¿Limpiar ahora {space} de este elemento retenido?\n\nTrabajo fallido: {failedSpace} ({failedCount}). El historial, los informes y los registros se conservan.\nOriginales en cuarentena: {quarantineSpace} ({quarantineCount}). Estos originales se eliminan permanentemente y ya no podrán restaurarse.',
+    cleanup_confirm_other:
+      '¿Limpiar ahora {space} de {count} elementos retenidos?\n\nTrabajo fallido: {failedSpace} ({failedCount}). El historial, los informes y los registros se conservan.\nOriginales en cuarentena: {quarantineSpace} ({quarantineCount}). Estos originales se eliminan permanentemente y ya no podrán restaurarse.',
+    cleanup_complete_one: 'Se limpió 1 elemento y se recuperaron {space}.',
+    cleanup_complete_other: 'Se limpiaron {count} elementos y se recuperaron {space}.',
+    cleanup_error_load: 'No se pudo calcular el espacio recuperable.',
+    cleanup_error_run: 'La limpieza ha fallado.',
+    cleanup_preview_changed: 'Los archivos recuperables han cambiado. Revisa la vista actualizada y confirma de nuevo.',
     days: 'días',
     save_settings: 'Guardar ajustes',
     save_note: 'Guarda todas las opciones en esta pestaña. Conexiones y notificaciones se guardan por separado.',
