@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.7 — 2026-07-22
 
 ### Fixed
 
@@ -11,6 +11,14 @@
   discontinuities cannot move the bar backwards, and progress delivery failures no longer stop the
   process pipes from being consumed. Stderr is kept separately as bounded diagnostic evidence, so
   switching progress transports does not hide encode warnings or failure details.
+
+### Changed
+
+- **Runtime and build dependencies are current for this release.** The aligned ASP.NET Core and
+  Entity Framework Core packages move from 10.0.9 to 10.0.10, while the OpenAPI and test tooling,
+  Svelte, Tailwind CSS, Vite, and frontend validation packages receive their compatible minor or
+  patch updates. GitHub Actions now uses the current setup actions for .NET and Node.js. These
+  maintenance updates do not change Optimisarr's configuration, database schema, or safety model.
 
 ## 0.2.6 — 2026-07-22
 
