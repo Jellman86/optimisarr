@@ -985,9 +985,10 @@ public sealed class QueueDispatcher(
         // A job claimed just before a manual pause landed must not keep encoding through it.
         pauseManager.OnEncodeStarted(process.Id);
 
-        // Drain stdout so the pipe never blocks; progress and errors come on stderr.
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = ReadStderrAsync(process, jobId, durationSeconds, cancellationToken);
+        // FFmpeg's machine-readable progress protocol is isolated on stdout. Stderr remains a
+        // diagnostic stream, and both pipes are consumed concurrently so neither can block FFmpeg.
+        var progressTask = ReadProgressAsync(process, jobId, durationSeconds, cancellationToken);
+        var stderrTask = ReadStderrAsync(process, cancellationToken);
 
         try
         {
@@ -996,10 +997,20 @@ public sealed class QueueDispatcher(
         catch (OperationCanceledException)
         {
             KillQuietly(process);
+            try
+            {
+                // Observe both readers after terminating their writer. Cancellation is already the
+                // outcome, so any shutdown-only pipe exception must not replace it.
+                await Task.WhenAll(progressTask, stderrTask);
+            }
+            catch (Exception)
+            {
+                // The original cancellation remains authoritative.
+            }
             throw;
         }
 
-        await stdoutTask;
+        await progressTask;
         var stderr = await stderrTask;
         return process.ExitCode == 0
             ? new FfmpegRun(process.ExitCode, null, null)
@@ -1008,54 +1019,103 @@ public sealed class QueueDispatcher(
 
     private sealed record FfmpegStderr(string? Tail, string? Log);
 
-    // Reads ffmpeg's stderr, pushing live progress/speed/ETA from its "time=" lines (throttled),
-    // keeping the last few lines for a one-line failure message, and collecting the non-progress
-    // lines into a bounded log so the full reason is recoverable from the API on failure.
-    private async Task<FfmpegStderr> ReadStderrAsync(
+    // Reads the stable -progress protocol from stdout. Persisted progress is throttled to roughly
+    // one-percent steps, while live telemetry is sent for every block. Both paths fail independently
+    // and recover on the next block so a transient database or SignalR error cannot stop pipe
+    // consumption and deadlock an otherwise healthy encode.
+    private async Task ReadProgressAsync(
         Process process,
         int jobId,
         double? durationSeconds,
         CancellationToken cancellationToken)
     {
+        var parser = new FfmpegProgressProtocolParser();
+        var lastObserved = 0.0;
+        var lastPersisted = 0.0;
+        var hasPersisted = false;
+        var persistenceWarningLogged = false;
+        var broadcastWarningLogged = false;
+
+        string? line;
+        while ((line = await process.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
+        {
+            if (parser.ParseLine(line) is not { } sample
+                || durationSeconds is not > 0
+                || sample.ElapsedSeconds is not { } elapsed)
+            {
+                continue;
+            }
+
+            // Some inputs contain discontinuous timestamps. Never let one make the visible or
+            // persisted bar move backwards.
+            var progress = Math.Max(
+                lastObserved,
+                Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999));
+            lastObserved = progress;
+
+            if (progress > lastPersisted && (!hasPersisted || progress - lastPersisted >= 0.01))
+            {
+                try
+                {
+                    await UpdateProgressAsync(jobId, progress);
+                    lastPersisted = progress;
+                    hasPersisted = true;
+                }
+                catch (Exception ex)
+                {
+                    if (!persistenceWarningLogged)
+                    {
+                        logger.LogWarning(
+                            ex,
+                            "Job {JobId}: progress persistence failed; continuing to consume FFmpeg progress",
+                            jobId);
+                        persistenceWarningLogged = true;
+                    }
+                }
+            }
+
+            var eta = sample.Speed is { } speed
+                ? FfmpegProgressParser.EstimateRemainingSeconds(
+                    durationSeconds.Value,
+                    progress * durationSeconds.Value,
+                    speed)
+                : null;
+            try
+            {
+                await BroadcastProgressAsync(jobId, progress, sample.Fps, sample.Speed, eta);
+            }
+            catch (Exception ex)
+            {
+                if (!broadcastWarningLogged)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Job {JobId}: live progress broadcast failed; continuing to consume FFmpeg progress",
+                        jobId);
+                    broadcastWarningLogged = true;
+                }
+            }
+        }
+    }
+
+    // Keeps the last few stderr lines for a one-line failure message and the complete bounded
+    // diagnostic stream for the API. Progress is on stdout, so no warning or error is filtered out.
+    private static async Task<FfmpegStderr> ReadStderrAsync(
+        Process process,
+        CancellationToken cancellationToken)
+    {
         var tail = new Queue<string>();
         var log = new FfmpegLogBuffer();
-        var lastReported = 0.0;
 
         string? line;
         while ((line = await process.StandardError.ReadLineAsync(cancellationToken)) is not null)
         {
-            var sample = FfmpegProgressParser.Parse(line);
-            var isProgress = sample.ElapsedSeconds is not null;
-
-            // The progress frames are the bulk of stderr; keep only the substantive lines in the log.
-            if (!isProgress)
-            {
-                log.Append(line);
-            }
-
+            log.Append(line);
             tail.Enqueue(line);
             while (tail.Count > 12)
             {
                 tail.Dequeue();
             }
-
-            if (durationSeconds is not > 0 || sample.ElapsedSeconds is not { } elapsed)
-            {
-                continue;
-            }
-
-            var progress = Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999);
-            if (progress - lastReported < 0.01)
-            {
-                continue;
-            }
-
-            lastReported = progress;
-            await UpdateProgressAsync(jobId, progress);
-            var eta = sample.Speed is { } speed
-                ? FfmpegProgressParser.EstimateRemainingSeconds(durationSeconds.Value, elapsed, speed)
-                : null;
-            await BroadcastProgressAsync(jobId, progress, sample.Fps, sample.Speed, eta);
         }
 
         return new FfmpegStderr(

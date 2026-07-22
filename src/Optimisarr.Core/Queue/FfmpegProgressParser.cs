@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace Optimisarr.Core.Queue;
 
-/// <summary>A single progress reading scraped from one line of FFmpeg's stderr.</summary>
+/// <summary>A normalised progress reading from FFmpeg's human or machine-readable output.</summary>
 public sealed record FfmpegProgressSample(double? ElapsedSeconds, double? Fps, double? Speed);
 
 /// <summary>

@@ -4,10 +4,10 @@ namespace Optimisarr.Core.Queue;
 
 /// <summary>
 /// Accumulates the lines worth keeping from an ffmpeg run — its stream mapping, warnings, and the
-/// error that ended it — bounded so a long run can never grow without limit. The caller appends only
-/// the non-progress lines (the thousands of "time=" progress frames are filtered out upstream). The
-/// first <c>headLimit</c> and last <c>tailLimit</c> lines are kept and the middle is elided, so both
-/// the command/stream setup and the final failure survive. Pure and unit tested.
+/// error that ended it — bounded so a long run can never grow without limit. Machine-readable
+/// progress is carried on a separate pipe, leaving every stderr line available here. The first
+/// <c>headLimit</c> and last <c>tailLimit</c> lines are kept and the middle is elided, so both the
+/// command/stream setup and the final failure survive. Pure and unit tested.
 /// </summary>
 public sealed class FfmpegLogBuffer(int headLimit = 200, int tailLimit = 200)
 {

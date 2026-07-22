@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Active encodes now report progress from FFmpeg's machine-readable protocol.** Video, audio,
+  and image jobs no longer depend on terminal-style stderr updates that can remain buffered in a
+  container and leave the progress bar at zero. The first measurable movement is persisted even
+  when it is below one percent, live speed/FPS/ETA continues at FFmpeg's update cadence, timestamp
+  discontinuities cannot move the bar backwards, and progress delivery failures no longer stop the
+  process pipes from being consumed. Stderr is kept separately as bounded diagnostic evidence, so
+  switching progress transports does not hide encode warnings or failure details.
+
 ## 0.2.6 — 2026-07-22
 
 ### Added
