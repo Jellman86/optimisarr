@@ -353,6 +353,8 @@ quarantine: {
     error_clear: 'Pulizia fallita',
     error_clear_queue: 'Pulizia della coda fallita',
     error_replace: 'Sostituzione fallita',
+    error_replace_all: 'Impossibile sostituire tutti i processi pronti',
+    bulk_replace_failed: 'Non è stato possibile sostituire {count} processo/i pronto/i. Controlla gli elementi rimanenti nella coda.',
     eta_seconds: '~{seconds}s rimanenti',
     eta_duration: '~{duration} rimanenti',
     job_fallback: 'Processo {id}',
@@ -366,6 +368,8 @@ quarantine: {
       'Cancellare {count} processi in attesa (in coda + pronti a sostituire) e interrompere qualsiasi processo attivo?\n\nNessun file originale viene modificato. I processi pronti a sostituire perdono l’output ottimizzato e verranno nuovamente codificati se accodati.',
     confirm_replace:
       'Sostituire l’originale con l’output verificato?\n\nL’originale viene prima spostato in quarantena e potrà essere ripristinato in qualsiasi momento.',
+    confirm_replace_all:
+      'Sostituire tutti i {count} output verificati?\n\nOgni originale viene spostato in quarantena prima della sostituzione e può essere ripristinato in qualsiasi momento.',
     now_encoding: 'Codifica in corso',
     now_probing: 'Analisi in corso',
     now_verifying: 'Verifica in corso',
@@ -392,6 +396,8 @@ quarantine: {
     filter_failed: 'Falliti',
     filter_verified: 'Verificati',
     filter_verify_failed: 'Verifica fallita',
+    replace_all_title: 'Sostituisci tutti gli output verificati pronti, spostando prima ogni originale in quarantena.',
+    replace_all: 'Sostituisci tutto ({count})',
     clear_queue_title:
       'Reimposta la coda: rimuovi tutti i processi in coda e pronti a sostituire e interrompi qualsiasi processo attivo. I file originali non vengono modificati.',
     clearing: 'Pulizia…',

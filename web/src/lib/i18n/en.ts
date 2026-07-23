@@ -498,6 +498,8 @@ export const en = {
     error_clear: 'Clear failed',
     error_clear_queue: 'Clear queue failed',
     error_replace: 'Replace failed',
+    error_replace_all: 'Unable to replace all ready jobs',
+    bulk_replace_failed: '{count} ready job(s) could not be replaced. Review the remaining queue items.',
     eta_seconds: '~{seconds}s left',
     eta_duration: '~{duration} left',
     job_fallback: 'Job {id}',
@@ -511,6 +513,8 @@ export const en = {
       'Clear {count} pending jobs (queued + ready-to-replace) and stop anything running?\n\nNo original files are touched. Ready-to-replace jobs lose their optimised output and will be re-encoded if enqueued again.',
     confirm_replace:
       'Replace the original with the verified output?\n\nThe original is moved to quarantine first and can be rolled back at any time.',
+    confirm_replace_all:
+      'Replace all {count} verified outputs?\n\nEach original is moved to quarantine before replacement and can be rolled back at any time.',
     now_encoding: 'Now encoding',
     now_probing: 'Now probing',
     now_verifying: 'Now verifying',
@@ -537,6 +541,8 @@ export const en = {
     filter_failed: 'Failed',
     filter_verified: 'Verified',
     filter_verify_failed: 'Verification failed',
+    replace_all_title: 'Replace every verified ready output, moving each original to quarantine first.',
+    replace_all: 'Replace all ({count})',
     clear_queue_title:
       'Reset the queue: remove all queued and ready-to-replace jobs and stop anything running. No original files are touched.',
     clearing: 'Clearing…',

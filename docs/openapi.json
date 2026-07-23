@@ -80,6 +80,58 @@
         ],
         "type": "object"
       },
+      "BulkReplacementFailure": {
+        "properties": {
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "message"
+        ],
+        "type": "object"
+      },
+      "BulkReplacementResult": {
+        "properties": {
+          "attempted": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/BulkReplacementFailure"
+            },
+            "type": "array"
+          },
+          "replaced": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "attempted",
+          "replaced",
+          "failures"
+        ],
+        "type": "object"
+      },
       "CalibrationClassificationsRequest": {
         "properties": {
           "classifications": {
@@ -2543,6 +2595,29 @@
                     "$ref": "#/components/schemas/FailureGroupDto"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Queue"
+        ]
+      }
+    },
+    "/api/jobs/replace-ready": {
+      "post": {
+        "operationId": "ReplaceReadyJobs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkReplacementResult"
                 }
               }
             },

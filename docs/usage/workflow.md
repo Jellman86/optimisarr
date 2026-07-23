@@ -204,6 +204,8 @@ Use the row actions carefully:
 - **Exclude** when you do not want that file offered again.
 - **Remove** clears a queue entry when it is safe to clear.
 - **Replace** appears only after verification passes and dry-run is off.
+- **Replace all** uses one confirmation for every verified, ready output. Each original still moves to
+  Quarantine independently; if any item cannot be replaced, Queue remains open so you can review it.
 
 ## 7. Review exclusions
 

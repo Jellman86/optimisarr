@@ -588,6 +588,12 @@ export type FailureGroup = {
   samples: FailureSample[]
 }
 
+export type BulkReplacementResult = {
+  attempted: number
+  replaced: number
+  failures: Array<{ jobId: number; message: string }>
+}
+
 export type Replacement = {
   id: number
   jobId: number
@@ -1040,6 +1046,8 @@ export const api = {
   clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
+  replaceReadyJobs: () =>
+    request<BulkReplacementResult>('/api/jobs/replace-ready', { method: 'POST' }),
   replaceFromJob: (id: number) =>
     request<Replacement>(`/api/jobs/${id}/replace`, { method: 'POST' }),
 

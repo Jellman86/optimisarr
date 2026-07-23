@@ -64,6 +64,79 @@ public sealed class ReplacementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Replace_ready_replaces_every_verified_ready_job_and_skips_unverified_jobs()
+    {
+        var (firstOriginal, firstOutput) = WriteFiles("First.avi", "First.mkv", "FIRST-ORIGINAL", "FIRST-NEW");
+        var (secondOriginal, secondOutput) = WriteFiles("Second.avi", "Second.mkv", "SECOND-ORIGINAL", "SECOND-NEW");
+        var (unverifiedOriginal, unverifiedOutput) = WriteFiles("Unverified.avi", "Unverified.mkv", "UNVERIFIED-ORIGINAL", "UNVERIFIED-NEW");
+        await SeedReadyJobAsync(firstOriginal, firstOutput, verificationPassed: true);
+        await SeedReadyJobAsync(secondOriginal, secondOutput, verificationPassed: true);
+        await SeedReadyJobAsync(unverifiedOriginal, unverifiedOutput, verificationPassed: false);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var result = await NewService(db).ReplaceReadyAsync(CancellationToken.None);
+
+        Assert.Equal(2, result.Attempted);
+        Assert.Equal(2, result.Replaced);
+        Assert.Empty(result.Failures);
+        Assert.Equal("FIRST-NEW", File.ReadAllText(Path.Combine(_dataDir, "First.mkv")));
+        Assert.Equal("SECOND-NEW", File.ReadAllText(Path.Combine(_dataDir, "Second.mkv")));
+        Assert.Equal("UNVERIFIED-ORIGINAL", File.ReadAllText(unverifiedOriginal));
+        Assert.Equal("UNVERIFIED-NEW", File.ReadAllText(unverifiedOutput));
+    }
+
+    [Fact]
+    public async Task Replace_ready_continues_after_a_job_cannot_be_replaced()
+    {
+        var (missingOriginal, missingOutput) = WriteFiles("Missing.avi", "Missing.mkv", "MISSING-ORIGINAL", "MISSING-NEW");
+        var failedJobId = await SeedReadyJobAsync(missingOriginal, missingOutput, verificationPassed: true);
+        File.Delete(missingOutput);
+        var (goodOriginal, goodOutput) = WriteFiles("Good.avi", "Good.mkv", "GOOD-ORIGINAL", "GOOD-NEW");
+        await SeedReadyJobAsync(goodOriginal, goodOutput, verificationPassed: true);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var result = await NewService(db).ReplaceReadyAsync(CancellationToken.None);
+
+        Assert.Equal(2, result.Attempted);
+        Assert.Equal(1, result.Replaced);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal(failedJobId, failure.JobId);
+        Assert.Equal("GOOD-NEW", File.ReadAllText(Path.Combine(_dataDir, "Good.mkv")));
+        Assert.Equal("MISSING-ORIGINAL", File.ReadAllText(missingOriginal));
+    }
+
+    [Fact]
+    public async Task Replace_ready_continues_after_an_unexpected_job_exception()
+    {
+        var (failingOriginal, failingOutput) = WriteFiles("Failing.avi", "Failing.mkv", "FAILING-ORIGINAL", "FAILING-NEW");
+        var failedJobId = await SeedReadyJobAsync(failingOriginal, failingOutput, verificationPassed: true);
+        var (goodOriginal, goodOutput) = WriteFiles("AfterException.avi", "AfterException.mkv", "GOOD-ORIGINAL", "GOOD-NEW");
+        await SeedReadyJobAsync(goodOriginal, goodOutput, verificationPassed: true);
+        var moveProbeCalls = 0;
+
+        await using var db = new OptimisarrDbContext(_options);
+        var service = NewService(
+            db,
+            canMoveAtomically: (_, _) =>
+            {
+                if (Interlocked.Increment(ref moveProbeCalls) == 1)
+                {
+                    throw new IOException("Atomic move probe failed unexpectedly.");
+                }
+
+                return true;
+            });
+        var result = await service.ReplaceReadyAsync(CancellationToken.None);
+
+        Assert.Equal(2, result.Attempted);
+        Assert.Equal(1, result.Replaced);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal(failedJobId, failure.JobId);
+        Assert.Equal("GOOD-NEW", File.ReadAllText(Path.Combine(_dataDir, "AfterException.mkv")));
+        Assert.Equal("FAILING-ORIGINAL", File.ReadAllText(failingOriginal));
+    }
+
+    [Fact]
     public async Task Replace_handles_an_unchanged_container_by_replacing_in_place()
     {
         var (originalPath, outputPath) = WriteFiles("Show.mkv", "Show.mkv", "OLD", "NEW");

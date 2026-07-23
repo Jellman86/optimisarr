@@ -358,6 +358,8 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     error_clear: 'Limpiar falló',
     error_clear_queue: 'Limpiar cola falló',
     error_replace: 'Reemplazar falló',
+    error_replace_all: 'No se pudieron reemplazar todos los trabajos listos',
+    bulk_replace_failed: 'No se pudieron reemplazar {count} trabajo(s) listo(s). Revisa los elementos restantes de la cola.',
     eta_seconds: '~{seconds}s restantes',
     eta_duration: '~{duration} restantes',
     job_fallback: 'Trabajo {id}',
@@ -371,6 +373,8 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
       '¿Limpiar {count} trabajos pendientes (en cola + listos para reemplazar) y detener todo lo que esté en ejecución?\n\nNo se modifican los archivos originales. Los trabajos listos para reemplazar pierden su salida optimizada y se volverán a codificar si se ponen en cola de nuevo.',
     confirm_replace:
       '¿Reemplazar el original con la salida verificada?\n\nEl original se mueve primero a la cuarentena y se puede revertir en cualquier momento.',
+    confirm_replace_all:
+      '¿Reemplazar las {count} salidas verificadas?\n\nCada original se mueve a la cuarentena antes del reemplazo y se puede revertir en cualquier momento.',
     now_encoding: 'Codificando ahora',
     now_probing: 'Sondeando ahora',
     now_verifying: 'Verificando ahora',
@@ -397,6 +401,8 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     filter_failed: 'Fallidos',
     filter_verified: 'Verificados',
     filter_verify_failed: 'Verificación fallida',
+    replace_all_title: 'Reemplazar todas las salidas verificadas listas, moviendo antes cada original a la cuarentena.',
+    replace_all: 'Reemplazar todo ({count})',
     clear_queue_title:
       'Restablecer la cola: eliminar todos los trabajos en cola y listos para reemplazar y detener todo lo que esté en ejecución. No se modifican los archivos originales.',
     clearing: 'Limpiando…',

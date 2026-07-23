@@ -542,6 +542,16 @@ internal static class MediaAndQueueEndpoints
 
         app.MapExclusionEndpoints();
 
+        app.MapPost("/api/jobs/replace-ready", async (
+            ReplacementService replacement,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await replacement.ReplaceReadyAsync(cancellationToken);
+            return Results.Ok(result);
+        })
+        .WithName("ReplaceReadyJobs")
+        .Produces<BulkReplacementResult>(StatusCodes.Status200OK);
+
         // Phase 5: safe replacement. A verified ReadyToReplace job can replace its
         // original — the original is quarantined first and the move is recorded so it can
         // always be rolled back.

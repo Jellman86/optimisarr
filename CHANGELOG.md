@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- **Verified queue outputs can now be replaced as one reviewed batch.** Queue shows **Replace all**
+  when one or more normal jobs are verified and ready. One confirmation snapshots the eligible jobs,
+  moves every original to quarantine through the existing rollback-safe replacement path, and opens
+  Quarantine once after the batch succeeds. A failed item does not stop later safe replacements; the
+  Queue stays open and reports the remaining failures for review. The same operation is available as
+  `POST /api/jobs/replace-ready` and skips unverified or no-longer-ready jobs.
+
 ### Fixed
 
 - **Encoder effort can no longer send an incompatible preset to FFmpeg.** The per-library control

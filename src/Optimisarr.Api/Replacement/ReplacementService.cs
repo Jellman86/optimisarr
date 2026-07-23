@@ -38,6 +38,13 @@ public sealed record ReplacementActionResult(
         new(ReplacementResultKind.Failed, message, null, permanent);
 }
 
+public sealed record BulkReplacementFailure(int JobId, string Message);
+
+public sealed record BulkReplacementResult(
+    int Attempted,
+    int Replaced,
+    IReadOnlyList<BulkReplacementFailure> Failures);
+
 /// <summary>
 /// Performs the only destructive step in Optimisarr — putting a verified output in
 /// place of an original — and makes it reversible. The original is moved to
@@ -105,6 +112,55 @@ public sealed class ReplacementService
         _notifications = notifications;
         _lifetime = new LifetimeStatsStore(db);
         _coordinator = coordinator ?? new ReplacementCoordinator();
+    }
+
+    public async Task<BulkReplacementResult> ReplaceReadyAsync(CancellationToken cancellationToken)
+    {
+        var jobIds = await _db.Jobs
+            .AsNoTracking()
+            .Where(job => job.Type == JobType.Normal
+                && job.Status == JobStatus.ReadyToReplace
+                && job.VerificationPassed == true)
+            .OrderBy(job => job.Id)
+            .Select(job => job.Id)
+            .ToListAsync(cancellationToken);
+
+        var replaced = 0;
+        var failures = new List<BulkReplacementFailure>();
+        foreach (var jobId in jobIds)
+        {
+            ReplacementActionResult result;
+            try
+            {
+                result = await ReplaceAsync(jobId, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected failure while replacing ready job {JobId}", jobId);
+                _db.ChangeTracker.Clear();
+                failures.Add(new BulkReplacementFailure(
+                    jobId,
+                    $"Unexpected replacement failure: {ex.Message}"));
+                continue;
+            }
+
+            if (result.Kind == ReplacementResultKind.Success)
+            {
+                replaced++;
+            }
+            else
+            {
+                failures.Add(new BulkReplacementFailure(
+                    jobId,
+                    result.Message ?? "The job could not be replaced."));
+            }
+        }
+
+        return new BulkReplacementResult(jobIds.Count, replaced, failures);
     }
 
     public async Task<ReplacementActionResult> ReplaceAsync(int jobId, CancellationToken cancellationToken)

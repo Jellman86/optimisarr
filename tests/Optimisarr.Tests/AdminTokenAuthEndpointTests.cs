@@ -56,6 +56,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("DELETE", "/api/calibration/00000000-0000-0000-0000-000000000000")]
     [InlineData("POST", "/api/jobs/clear")]
     [InlineData("POST", "/api/jobs/clear-pending")]
+    [InlineData("POST", "/api/jobs/replace-ready")]
     [InlineData("POST", "/api/jobs/1/cancel")]
     [InlineData("POST", "/api/jobs/1/retry")]
     [InlineData("DELETE", "/api/jobs/1")]

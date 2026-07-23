@@ -156,17 +156,22 @@ or `dispatchOnly`. `runningEncodesSuspended`, `suspendedEncodeCount`, and
 one. A resume that cannot continue every still-running suspended process returns `409` and keeps
 dispatch paused so the operation can be retried safely.
 
-### Replace a Verified Job
+### Replace Verified Jobs
 
 Replacement is state-changing. It is refused while dry-run mode is enabled and
 should only be automated after you trust the library rules.
 
 ```bash
 curl -fsS -X POST http://localhost:8787/api/jobs/42/replace
+
+# Replace every normal job that is currently verified and ready.
+curl -fsS -X POST http://localhost:8787/api/jobs/replace-ready
 ```
 
-The response is a replacement/quarantine record. Keep the returned `id` if you
-want to approve or roll back later.
+The single-job response is a replacement/quarantine record. Keep the returned `id` if you want to
+approve or roll back later. The bulk response reports `attempted`, `replaced`, and a `failures` array;
+each eligible job still creates its own replacement record and rollback remains per file. A failure
+does not prevent later eligible jobs in the snapshot from being replaced.
 
 ### Roll Back or Approve a Replacement
 
@@ -407,6 +412,7 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
 | `DELETE` | `/api/jobs/{id}` | Remove a clearable job. |
 | `POST` | `/api/jobs/{id}/retry` | Retry a failed or cancelled job. |
+| `POST` | `/api/jobs/replace-ready` | Replace all currently verified, ready normal jobs through the rollback-safe quarantine path; report per-job failures without stopping later replacements. |
 | `POST` | `/api/jobs/clear?scope=errored` | Clear failed jobs. Scope can be `errored`, `finished`, or `all`. |
 | `POST` | `/api/jobs/clear-pending` | Clear queued and ready-to-replace jobs and stop running work. |
 
@@ -467,6 +473,7 @@ Example body:
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/jobs/{id}/replace` | Replace the original for a verified job. Refused in dry-run mode. |
+| `POST` | `/api/jobs/replace-ready` | Replace all currently verified, ready normal jobs. Each original is quarantined and recorded independently; unverified or no-longer-ready jobs are skipped. |
 | `GET` | `/api/replacements` | List quarantine/replacement records. |
 | `GET` | `/api/replacements/{id}` | Read one replacement with verification details. |
 | `GET` | `/api/replacements/{id}/original/content` | Stream the quarantined original for comparison. |

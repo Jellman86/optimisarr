@@ -362,6 +362,8 @@ export const de: Messages = {
     error_clear: 'Löschen fehlgeschlagen',
     error_clear_queue: 'Leeren der Warteschlange fehlgeschlagen',
     error_replace: 'Ersetzen fehlgeschlagen',
+    error_replace_all: 'Nicht alle bereiten Aufgaben konnten ersetzt werden',
+    bulk_replace_failed: '{count} bereite Aufgabe(n) konnte(n) nicht ersetzt werden. Prüfe die verbleibenden Warteschlangeneinträge.',
     eta_seconds: 'noch ~{seconds}s',
     eta_duration: 'noch ~{duration}',
     job_fallback: 'Aufgabe {id}',
@@ -375,6 +377,8 @@ export const de: Messages = {
       '{count} ausstehende Aufgaben (eingereiht + bereit zum Ersetzen) löschen und alles Laufende stoppen?\n\nEs werden keine Originaldateien angetastet. Aufgaben mit Status „Bereit zum Ersetzen“ verlieren ihre optimierte Ausgabe und werden bei erneutem Einreihen neu kodiert.',
     confirm_replace:
       'Das Original durch die geprüfte Ausgabe ersetzen?\n\nDas Original wird zuerst in Quarantäne verschoben und kann jederzeit rückgängig gemacht werden.',
+    confirm_replace_all:
+      'Alle {count} geprüften Ausgaben ersetzen?\n\nJedes Original wird vor dem Ersetzen in Quarantäne verschoben und kann jederzeit wiederhergestellt werden.',
     now_encoding: 'Kodiert gerade',
     now_probing: 'Analysiert gerade',
     now_verifying: 'Prüft gerade',
@@ -401,6 +405,8 @@ export const de: Messages = {
     filter_failed: 'Fehlgeschlagen',
     filter_verified: 'Geprüft',
     filter_verify_failed: 'Prüfung fehlgeschlagen',
+    replace_all_title: 'Alle geprüften, bereiten Ausgaben ersetzen und jedes Original zuerst in Quarantäne verschieben.',
+    replace_all: 'Alle ersetzen ({count})',
     clear_queue_title:
       'Warteschlange zurücksetzen: alle eingereihten und zum Ersetzen bereiten Aufgaben entfernen und alles Laufende stoppen. Es werden keine Originaldateien angetastet.',
     clearing: 'Wird gelöscht …',
