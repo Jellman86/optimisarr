@@ -280,7 +280,7 @@ deleting anything so the operator can review and confirm the new preview.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/library-options` | Available media types, presets, codecs, containers, HDR modes, encoders, and image formats. |
+| `GET` | `/api/library-options` | Available media types, rule profiles, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
 | `GET` | `/api/libraries` | List configured libraries. |
 | `GET` | `/api/libraries/{id}/access` | Check whether the configured path exists and is readable/writable. |
 | `POST` | `/api/libraries` | Create a library. |
@@ -310,6 +310,7 @@ Create and update library bodies use the same shape. Common fields:
   "targetContainer": null,
   "hdrHandling": null,
   "qualityCrf": null,
+  "encoderPreset": "balanced",
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
   "downmixToStereo": false,
@@ -323,7 +324,11 @@ Create and update library bodies use the same shape. Common fields:
 ```
 
 Use `/api/library-options` for valid enum values. Unknown or invalid values are
-rejected.
+rejected. `encoderPreset` retains its historical API name but new clients should store a portable
+encoder effort: `quick`, `balanced`, `efficient`, or `null` for the encoder default. Former
+x264/x265 values, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain accepted and are preserved
+exactly for backwards compatibility; dispatch resolves a safe equivalent if another encoder family
+is selected.
 
 ## Preview
 
@@ -409,7 +414,9 @@ Job responses include status, progress, priority, FFmpeg arguments, selected
 encoder, output size, verification result, verification report JSON, the
 classified failure category (when failed), and timestamps. When paging is used,
 the total number of matches before paging is returned in the `X-Total-Count`
-response header.
+response header. Failure categories are `SizeSaving`, `Verification`,
+`ContainerIncompatibility`, `BitmapSubtitles`, `ReplacementCollision`, `SourceMissing`,
+`InvalidConfiguration`, and `Other`.
 
 Failed preview and personal-quality jobs never appear in the normal queue feed. Their scratch media
 is still deleted, but the small failed row remains available to `/api/jobs/failures`,

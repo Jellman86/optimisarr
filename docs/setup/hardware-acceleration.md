@@ -20,6 +20,24 @@ measurement. Runtime failures fall back to software, and a measured hardware-dec
 the selected quality floor is confirmed in software before the output is rejected. The Queue shows
 the selected encoder on each job.
 
+## Encoder effort
+
+The per-library **Encoder effort** setting describes intent rather than storing a raw FFmpeg
+preset. Optimisarr resolves it after the exact encoder has been selected:
+
+| Effort | x264/x265 | SVT-AV1 | NVIDIA NVENC | Intel QSV | VAAPI |
+|---|---|---:|---|---|---|
+| Fast | `fast` | `10` | `p2` | `fast` | Driver default |
+| Balanced | `medium` | `8` | `p4` | `medium` | Driver default |
+| Efficient | `slow` | `6` | `p7` | `slow` | Driver default |
+
+This is particularly important in **Auto** mode, where the encoder depends on the target codec,
+proved host capabilities, and source bit depth. Existing libraries, API requests, and imported
+backups may retain a former x264/x265 value, NVENC `p1`–`p7`, or SVT-AV1 `0`–`13` preset. That exact
+value remains in force on its native encoder and stays visibly labelled as legacy until the operator
+chooses a portable effort; another encoder family receives its closest safe equivalent. Any
+unrecognised value is rejected before a job can reach FFmpeg.
+
 ## Intel and AMD
 
 Map `/dev/dri` and set `RENDER_GID` to the host render-node group:

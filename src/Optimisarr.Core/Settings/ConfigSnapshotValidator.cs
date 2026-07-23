@@ -55,6 +55,11 @@ public static class ConfigSnapshotValidator
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
             }
+            if (!EncoderPresetPolicy.TryNormaliseSelection(library.EncoderPreset, out _))
+            {
+                errors.Add(
+                    $"{where} encoder effort must be encoder default, quick, balanced, efficient, or a recognised legacy preset.");
+            }
             if (!TrackLanguages.TryNormaliseLanguageList(library.KeepAudioLanguages, out _))
             {
                 errors.Add(

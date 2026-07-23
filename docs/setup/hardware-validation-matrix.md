@@ -42,7 +42,8 @@ away a hardware-specific error without a reproducible fixture.
 
 ## Automated coverage
 
-The repository continuously checks encoder selection and command construction, encoder-family rate
-controls, QSV/VA-API device initialisation, hardware-decode fallback classification, VMAF CUDA/QSV/
-VA-API graphs, capability parsing, and all three metrics parsers. These tests protect the implemented
+The repository continuously checks encoder selection and command construction, portable
+encoder-effort mapping for x264/x265, SVT-AV1, NVENC, QSV and VAAPI, encoder-family rate controls,
+QSV/VA-API device initialisation, hardware-decode fallback classification, VMAF CUDA/QSV/VA-API
+graphs, capability parsing, and all three metrics parsers. These tests protect the implemented
 contract; this matrix exists because none of them can prove a driver and physical GPU work together.

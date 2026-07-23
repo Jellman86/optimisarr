@@ -450,7 +450,7 @@ internal sealed record LibraryDto(
         library.OptimiseDolbyVision,
         library.ExcludePaths,
         library.QualityCrf,
-        library.EncoderPreset,
+        NormaliseEncoderPreset(library.EncoderPreset),
         library.AudioTargetCodec,
         library.AudioBitrateKbps,
         library.VideoAudioCodec,
@@ -481,6 +481,11 @@ internal sealed record LibraryDto(
         fileCount,
         library.CreatedAt,
         library.UpdatedAt);
+
+    private static string? NormaliseEncoderPreset(string? value) =>
+        EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)
+            ? normalised
+            : value;
 }
 
 // Exposed so the test host (WebApplicationFactory) and EF tooling can locate the entry assembly.

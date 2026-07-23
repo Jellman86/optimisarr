@@ -95,6 +95,27 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     }
 
     [Fact]
+    public async Task Library_options_expose_only_portable_encoder_efforts()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        var options = JsonNode.Parse(await client.GetStringAsync("/api/library-options"))!.AsObject();
+        var efforts = options["encoderPresets"]!.AsArray()
+            .Select(value => value!.GetValue<string>())
+            .ToArray();
+
+        Assert.Equal(["quick", "balanced", "efficient"], efforts);
+        Assert.DoesNotContain("veryslow", efforts);
+        var legacy = options["legacyEncoderPresets"]!.AsArray()
+            .Select(value => value!.GetValue<string>())
+            .ToArray();
+        Assert.Contains("veryslow", legacy);
+        Assert.Contains("p7", legacy);
+        Assert.Contains("13", legacy);
+    }
+
+    [Fact]
     public async Task Cleanup_preview_can_be_confirmed_through_the_real_api_contract()
     {
         var client = _api.CreateClient();

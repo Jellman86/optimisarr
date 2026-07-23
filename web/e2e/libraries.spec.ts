@@ -16,12 +16,12 @@ const library = {
   autoEnqueueWindowEnd: '00:00', autoReplace: false, lastAutoEnqueueAt: null, fileCount: 1,
 }
 
-async function mockLibraries(page: Page) {
+async function mockLibraries(page: Page, configuredLibrary = library) {
   await page.route('**/api/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
-    if (path === '/api/libraries') return json(route, [library])
+    if (path === '/api/libraries') return json(route, [configuredLibrary])
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'Music'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
@@ -34,18 +34,19 @@ async function mockLibraries(page: Page) {
       ],
       hdrHandlings: ['Exclude', 'Preserve', 'TonemapToSdr'],
       videoCodecs: ['h264', 'hevc', 'av1'], containers: ['mp4', 'mkv'],
-      encoderPresets: ['medium'], imageFormats: ['webp'],
+      encoderPresets: ['quick', 'balanced', 'efficient'], legacyEncoderPresets: ['veryslow'],
+      imageFormats: ['webp'],
     })
     if (path === '/api/candidates/summary') return json(route, [{ libraryId: 1, eligible: 0, skipped: 1 }])
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
     if (path === '/api/libraries/1/access') return json(route, {
-      path: library.path, exists: true, readable: true, writable: true, ok: true,
+      path: configuredLibrary.path, exists: true, readable: true, writable: true, ok: true,
       message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/',
       fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000,
       atomicWithWork: true, atomicWithQuarantine: true,
     })
     if (path === '/api/libraries/1' && route.request().method() === 'PUT') {
-      return json(route, { ...library, ...route.request().postDataJSON() })
+      return json(route, { ...configuredLibrary, ...route.request().postDataJSON() })
     }
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
   })
@@ -86,4 +87,34 @@ test('invalid subtitle language syntax cannot be saved', async ({ page }) => {
   const save = page.getByRole('button', { name: 'Save' })
   await expect(save).toHaveCount(1)
   await expect(save).toBeDisabled()
+})
+
+test('encoder effort uses portable choices rather than raw ffmpeg presets', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+
+  const effort = page.getByLabel('Encoder effort')
+  await expect(effort.locator('option')).toHaveText([
+    'Encoder default',
+    'Fast',
+    'Balanced',
+    'Efficient',
+  ])
+  await effort.selectOption('efficient')
+  await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled()
+})
+
+test('a recognised legacy preset stays visible and valid until deliberately changed', async ({ page }) => {
+  await mockLibraries(page, { ...library, encoderPreset: 'veryslow' })
+  await page.goto('/#/libraries/1/configure')
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+
+  const effort = page.getByLabel('Encoder effort')
+  await expect(effort).toHaveValue('veryslow')
+  await expect(effort.locator('option').first()).toHaveText('Encoder default')
+  await expect(effort.getByText('Legacy exact value: veryslow')).toHaveCount(1)
+
+  await page.getByLabel('Name').fill('Films archive')
+  await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled()
 })

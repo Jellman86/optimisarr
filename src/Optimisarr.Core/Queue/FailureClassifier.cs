@@ -12,6 +12,7 @@ public enum FailureCategory
     BitmapSubtitles,
     ReplacementCollision,
     SourceMissing,
+    InvalidConfiguration,
     Other
 }
 
@@ -58,6 +59,13 @@ public static class FailureClassifier
             return FailureCategory.SourceMissing;
         }
 
+        if (Has("Invalid encoder effort")
+            || Has("Encoder effort") && Has("cannot be resolved")
+            || Has("Error setting option preset"))
+        {
+            return FailureCategory.InvalidConfiguration;
+        }
+
         if (Has("Verification failed"))
         {
             return FailureCategory.Verification;
@@ -75,6 +83,7 @@ public static class FailureClassifier
         FailureCategory.BitmapSubtitles => "Image-based subtitles the MP4 container can't store",
         FailureCategory.ReplacementCollision => "Destination already occupied by another optimised file",
         FailureCategory.SourceMissing => "Source or verified output no longer on disk",
+        FailureCategory.InvalidConfiguration => "A saved option is not valid for the selected encoder",
         _ => "Other / unclassified"
     };
 }

@@ -104,7 +104,7 @@ async function mockApp(page: Page, mediaKind: CalibrationMediaKind = 'Video', de
     if (path === '/api/auth/status') return json(route, { required: false })
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/libraries') return json(route, [currentLibrary])
-    if (path === '/api/library-options') return json(route, { mediaTypes: [currentLibrary.mediaType], ruleProfiles: ['ConservativeHevc'], ruleProfileSpecs: [], hdrHandlings: ['Exclude'], videoCodecs: ['hevc'], containers: ['mp4'], encoderPresets: ['medium'], imageFormats: ['webp'] })
+    if (path === '/api/library-options') return json(route, { mediaTypes: [currentLibrary.mediaType], ruleProfiles: ['ConservativeHevc'], ruleProfileSpecs: [], hdrHandlings: ['Exclude'], videoCodecs: ['hevc'], containers: ['mp4'], encoderPresets: ['quick', 'balanced', 'efficient'], legacyEncoderPresets: [], imageFormats: ['webp'] })
     if (path === '/api/candidates/summary') return json(route, [{ libraryId: 1, eligible: 1, skipped: 0 }])
     if (path === '/api/candidates' || path === '/api/exclusions') return json(route, [])
     if (path === '/api/libraries/1/access') return json(route, { path: currentLibrary.path, exists: true, readable: true, writable: true, ok: true, message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/', fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000, atomicWithWork: true, atomicWithQuarantine: true })

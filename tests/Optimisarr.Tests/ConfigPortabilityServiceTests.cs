@@ -189,6 +189,25 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Import_preserves_a_recognised_legacy_encoder_preset()
+    {
+        var snapshot = EmptySnapshot() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, "p7", false, null)
+            ]
+        };
+
+        var result = await ImportAsync(snapshot);
+
+        Assert.True(result.Applied);
+        await using var db = CreateDb();
+        Assert.Equal("p7", (await db.Libraries.SingleAsync()).EncoderPreset);
+    }
+
+    [Fact]
     public async Task Import_materialises_legacy_global_vmaf_settings_without_persisting_them()
     {
         var snapshot = EmptySnapshot() with

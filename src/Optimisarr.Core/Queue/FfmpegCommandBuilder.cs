@@ -271,7 +271,8 @@ public static class FfmpegCommandBuilder
 
         AppendQualityArguments(args, family, spec.Crf);
 
-        // VAAPI encoders have no x264-style -preset; the others accept one when configured.
+        // The dispatcher has already resolved the portable effort onto this exact encoder's
+        // vocabulary. VAAPI has no cross-codec equivalent and therefore receives no preset.
         if (family != EncoderFamily.Vaapi && !string.IsNullOrWhiteSpace(spec.Preset))
         {
             args.Add("-preset");

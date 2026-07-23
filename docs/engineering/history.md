@@ -287,7 +287,9 @@ See the Phase 12 section for the remaining optional polish.
   automatic software-decode retry for sources the GPU can't decode. **Live, unprivileged CPU/GPU
   metrics** stream to the Queue graph over SignalR — `/proc/stat` for CPU and per-process DRM fdinfo
   (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
-  Remaining: hardware-specific preset notes; AMD VA-API on-hardware validation; and optional
+  Portable Fast/Balanced/Efficient encoder effort now resolves onto the selected x264/x265,
+  SVT-AV1, NVENC, or QSV vocabulary at dispatch; VAAPI keeps its driver default, and invalid legacy
+  or API values fail before FFmpeg. Remaining: AMD VA-API on-hardware validation and optional
   NVIDIA hardware decode for normal transcodes.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
@@ -508,14 +510,15 @@ Deliverables:
 - Compose examples:
   - NVIDIA GPU reservation
   - `/dev/dri` Intel/AMD mapping
-- Encoder presets with quality/speed notes. **Partly done** (CPU presets exist;
-  hardware-specific notes still to come).
+- Portable encoder effort with quality/speed notes: **Done.** Fast/Balanced/Efficient resolves onto
+  valid x264/x265, SVT-AV1, NVENC, or QSV presets after encoder selection; VAAPI uses its driver
+  default, and save/import/dispatch share the same validation policy.
 - Startup warnings when selected GPU mode is unavailable. **Done for jobs** (jobs
   fail before FFmpeg starts with a clear unavailable-encoder reason).
 
 Exit criteria:
 
-- The app can detect available encoders and prevent invalid preset selection.
+- The app can detect available encoders and prevent invalid preset selection. **Done.**
 - A GPU-enabled compose example is documented and tested.
 
 ## Phase 8: Library Integration

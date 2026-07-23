@@ -271,6 +271,7 @@ export type LibraryOptions = {
   videoCodecs: string[]
   containers: string[]
   encoderPresets: string[]
+  legacyEncoderPresets: string[]
   imageFormats: string[]
 }
 

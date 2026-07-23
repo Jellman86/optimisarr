@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Encoder effort can no longer send an incompatible preset to FFmpeg.** The per-library control
+  now stores the portable choices **Fast**, **Balanced**, and **Efficient**, then resolves them only
+  after Auto or an explicit mode has selected the exact encoder. x264/x265, SVT-AV1, NVIDIA NVENC,
+  and Intel QSV each receive their own valid preset vocabulary; VAAPI keeps its driver default.
+  Existing CPU names, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain visible and retain their
+  exact native behaviour until deliberately replaced; when another encoder family is selected they
+  resolve to its closest safe effort. Unknown values fail before FFmpeg starts with an actionable
+  **Invalid configuration** reason. Config backups, the API, all translated library controls, and
+  defensive FFmpeg error interpretation use the same policy.
+
 ## 0.2.7 — 2026-07-22
 
 ### Fixed
