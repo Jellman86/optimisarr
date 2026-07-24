@@ -60,7 +60,7 @@ public static class FfmpegCommandBuilder
     /// copy as well as a re-encode.
     /// </param>
     /// <param name="hardwareDecode">
-    /// When <c>true</c> and a hardware (QSV/VAAPI) encoder is in use, the source is also
+    /// When <c>true</c> and a hardware (NVENC/QSV/VAAPI) encoder is in use, the source is also
     /// decoded on the GPU (<c>-hwaccel</c>) so frames never round-trip through system memory —
     /// removing the software-decode CPU cost on large sources. Skipped when an HDR→SDR
     /// tone-map is requested, because that filter runs in software and needs frames in system
@@ -101,7 +101,7 @@ public static class FfmpegCommandBuilder
         // Hardware decode only makes sense alongside a hardware encoder, and only when no
         // software-only tone-map needs the frames in system memory.
         var useHardwareDecode = hardwareDecode
-            && family is EncoderFamily.Qsv or EncoderFamily.Vaapi
+            && family is EncoderFamily.Nvenc or EncoderFamily.Qsv or EncoderFamily.Vaapi
             && !spec.TonemapToSdr;
 
         AppendHardwareDeviceInit(args, family, useHardwareDecode);
@@ -458,13 +458,22 @@ public static class FfmpegCommandBuilder
         : EncoderFamily.Cpu;
 
     // VAAPI/QSV need a hardware device declared before the input. The render node is the
-    // conventional default; CPU and NVENC (which encodes from software-decoded frames) need none.
+    // conventional default; CUDA uses the first GPU exposed to the container.
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
     private static void AppendHardwareDeviceInit(List<string> args, EncoderFamily family, bool hardwareDecode)
     {
         switch (family)
         {
+            case EncoderFamily.Nvenc when hardwareDecode:
+                // Let FFmpeg select the source codec's NVDEC implementation and keep its CUDA
+                // frames on the GPU for NVENC. This is the NVIDIA-documented zero-copy path;
+                // forcing a *_cuvid decoder would unnecessarily couple the command to the codec.
+                args.Add("-hwaccel");
+                args.Add("cuda");
+                args.Add("-hwaccel_output_format");
+                args.Add("cuda");
+                break;
             case EncoderFamily.Vaapi:
                 args.Add("-vaapi_device");
                 args.Add(DefaultRenderDevice);

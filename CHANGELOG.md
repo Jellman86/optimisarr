@@ -4,6 +4,11 @@
 
 ### Added
 
+- **NVIDIA transcodes can now decode on the GPU as well as encode there.** When Hardware decoding
+  is enabled, an NVENC job uses NVDEC through FFmpeg's CUDA hardware-acceleration path and keeps
+  decoded frames in GPU memory through the encode. Unsupported source codecs, profiles, or GPU
+  setups automatically retry once with software decoding, and HDR-to-SDR jobs retain their existing
+  software tone-map path.
 - **Verified queue outputs can now be replaced as one reviewed batch.** Queue shows **Replace all**
   when one or more normal jobs are verified and ready. One confirmation snapshots the eligible jobs,
   moves every original to quarantine through the existing rollback-safe replacement path, and opens

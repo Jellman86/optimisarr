@@ -289,8 +289,9 @@ See the Phase 12 section for the remaining optional polish.
   (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
   Portable Fast/Balanced/Efficient encoder effort now resolves onto the selected x264/x265,
   SVT-AV1, NVENC, or QSV vocabulary at dispatch; VAAPI keeps its driver default, and invalid legacy
-  or API values fail before FFmpeg. Remaining: AMD VA-API on-hardware validation and optional
-  NVIDIA hardware decode for normal transcodes.
+  or API values fail before FFmpeg. NVIDIA normal transcodes now use the documented NVDEC/CUDA
+  path when Hardware decoding is enabled, with the same software-decode fallback; physical-host
+  validation remains pending. Remaining: AMD VA-API and NVIDIA NVDEC on-hardware validation.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/

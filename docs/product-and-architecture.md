@@ -261,7 +261,8 @@ encoder families.
 
 When a hardware encoder is selected, the source is also decoded on the GPU
 (`-hwaccel` + matching `-hwaccel_output_format`), keeping frames on the GPU end to
-end instead of decoding in software and uploading. This is on by default
+end instead of decoding in software and uploading. NVIDIA uses FFmpeg's generic CUDA/NVDEC path;
+QSV and VA-API use their matching hardware surfaces. This is on by default
 (`queue.hardwareDecode`) and only applies to a hardware encoder. It is skipped for
 HDR→SDR tone-map jobs, whose tone-map filter runs in software and needs frames in
 system memory. Because not every source codec/profile can be hardware-decoded, a

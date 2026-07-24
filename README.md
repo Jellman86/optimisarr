@@ -102,7 +102,8 @@ no support SLA or promise of a release schedule.
 - **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
   per-encoder availability **confirmed by a real test encode** (not just inferred), and the
   encoder used shown per job (GPU/CPU) on the Queue.
-- **GPU hardware decoding** (QSV/VA-API) of the source as well as the encode, on by default,
+- **GPU hardware decoding** (NVIDIA NVDEC, QSV, and VA-API) of the source as well as the encode,
+  on by default,
   with automatic CPU-decode fallback for sources the GPU can't decode — so a large 4K encode no
   longer burns a CPU core just on software decode. Skipped for HDR→SDR tonemap jobs (the tonemap
   runs in software).
@@ -119,7 +120,8 @@ no support SLA or promise of a release schedule.
 
 Still planned (see the [roadmap](docs/roadmap.md) and maintained
 [hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation
-for AMD VA-API. Intel QSV has been tested on real hardware for both encoding and decoding.
+for AMD VA-API and NVIDIA NVDEC. Intel QSV has been tested on real hardware for both encoding and
+decoding.
 
 ## Before you start
 
@@ -213,11 +215,11 @@ runs — GPU stats are read **without any elevated privileges** (per-process DRM
 Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is
 needed**; hosts where no unprivileged source applies simply show "GPU stats unavailable".
 
-- **NVIDIA (NVENC):** install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+- **NVIDIA (NVENC/NVDEC):** install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
   on the host and run with `--gpus all`. You **must** also set
-  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` — without the `video` capability the NVENC
-  library isn't injected and encoding fails with `Cannot load libnvidia-encode.so.1` even though
-  `nvidia-smi` works.
+  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` — the `video` capability exposes NVENC and
+  NVDEC; without it encoding fails with `Cannot load libnvidia-encode.so.1` even though `nvidia-smi`
+  works.
 - **Intel (QSV / VA-API) and AMD (VA-API):** map the render node and add the container to the
   host's `render` group:
 

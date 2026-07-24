@@ -55,8 +55,16 @@ Settings after Tools has validated the encoder.
 
 Install NVIDIA Container Toolkit and configure `NVIDIA_VISIBLE_DEVICES=all` and
 `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. The `video` capability is
-required for NVENC. Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
+required for NVENC and NVDEC. Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
 and select a hardware mode only after Tools reports success.
+
+With **Hardware decoding** enabled (the default), an NVENC transcode uses FFmpeg's
+`-hwaccel cuda -hwaccel_output_format cuda` path. FFmpeg selects the compatible NVDEC decoder for
+the source codec and keeps the decoded frames in CUDA memory for NVENC; Optimisarr does not force a
+codec-specific `*_cuvid` decoder. If the source codec or profile is unsupported, device setup fails,
+or the CUDA decode path cannot initialise, the job deletes the partial work output and retries once
+with software decoding. HDR-to-SDR work always uses software decoding because its tone-map filter
+needs frames in system memory.
 
 For systems with no GPU, use the [CPU-only Compose example](../../compose.cpu.example.yml).
 

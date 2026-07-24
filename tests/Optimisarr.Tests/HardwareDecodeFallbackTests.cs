@@ -9,6 +9,8 @@ public sealed class HardwareDecodeFallbackTests
     [InlineData("Error while opening decoder for input stream")]
     [InlineData("Impossible to convert between the formats supported by the filter")]
     [InlineData("[AVHWDeviceContext] Device creation failed: -22")]
+    [InlineData("No device available for decoder: device type cuda needed for codec h264")]
+    [InlineData("Device setup failed for decoder on input stream #0:0 : Operation not permitted")]
     public void Retries_in_software_for_a_hardware_decode_failure(string stderr)
     {
         Assert.True(HardwareDecodeFallback.ShouldRetryInSoftware(stderr));
