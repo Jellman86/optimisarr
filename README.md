@@ -8,6 +8,12 @@
   <a href="#quick-start-docker">Quick Start</a> •
   <a href="#hardware-acceleration-gpu">Hardware Acceleration</a>
 </p>
+<p align="center">
+  <a href="https://github.com/Jellman86/optimisarr" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/%E2%AD%90%20Enjoying%20Optimisarr%3F-Star%20the%20project-F4C430?style=for-the-badge&labelColor=F4C430&color=D4A017&logo=github&logoColor=000000" alt="Star Optimisarr on GitHub">
+  </a>
+</p>
+<p align="center"><sub>If Optimisarr is useful to you, starring the repo helps more people discover it.</sub></p>
 
 **Optimisarr is a self-hosted, Docker-based FFmpeg media-library optimiser.**
 It finds eligible video, audio, and image files, transcodes them to reduce
