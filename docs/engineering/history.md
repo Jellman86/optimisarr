@@ -304,8 +304,9 @@ See the Phase 12 section for the remaining optional polish.
   Portable Fast/Balanced/Efficient encoder effort now resolves onto the selected x264/x265,
   SVT-AV1, NVENC, or QSV vocabulary at dispatch; VAAPI keeps its driver default, and invalid legacy
   or API values fail before FFmpeg. NVIDIA normal transcodes now use the documented NVDEC/CUDA
-  path when Hardware decoding is enabled, with the same software-decode fallback; physical-host
-  validation remains pending. Remaining: AMD VA-API and NVIDIA NVDEC on-hardware validation.
+  path when Hardware decoding is enabled, with the same software-decode fallback. Physical decoder
+  utilisation was confirmed on 2026-07-24, while the full NVIDIA evidence bundle and CUDA VMAF run
+  remain pending. Remaining: AMD VA-API and complete NVIDIA/QSV validation evidence.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/
