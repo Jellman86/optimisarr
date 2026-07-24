@@ -43,7 +43,7 @@ public static class BlindCalibrationPolicy
         return !isHdr || hdrHandling == HdrHandling.Preserve && hdrPlaybackConfirmed;
     }
 
-    public static BlindCalibrationPlan VideoPlan(double durationSeconds)
+    public static BlindCalibrationPlan VideoPlan(double durationSeconds, int? sourceBitDepth)
     {
         if (!double.IsFinite(durationSeconds) || durationSeconds < SampleSeconds * 4)
         {
@@ -61,11 +61,14 @@ public static class BlindCalibrationPolicy
             RuleProfile.ConservativeHevc,
             RuleProfile.CompatibilityH264
         };
-        var settings = profiles.Select(profile =>
-        {
-            var rules = RuleProfileDefaults.For(profile);
-            return new CalibrationSetting(profile.ToString(), rules.DefaultCrf!.Value, profile);
-        }).ToList();
+        var settings = profiles
+            .Where(profile => profile != RuleProfile.CompatibilityH264 || sourceBitDepth is <= 8)
+            .Select(profile =>
+            {
+                var rules = RuleProfileDefaults.For(profile);
+                return new CalibrationSetting(profile.ToString(), rules.DefaultCrf!.Value, profile);
+            })
+            .ToList();
 
         return new BlindCalibrationPlan(settings, RepresentativeSamples(durationSeconds, SampleSeconds));
     }

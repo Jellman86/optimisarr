@@ -690,7 +690,7 @@ export const pt: Messages = {
     priority_lowest: "Mais baixo",
     resolution_no_limit: "Sem limite",
     preset_conservative_hevc: "HEVC (H.265) com AAC ajustado aos canais em MP4 — economiza espaço e reproduz em praticamente todos os telefones, TVs e dispositivos Apple. Um bom padrão.",
-    preset_compatibility_h264: "H.264 com AAC ajustado aos canais em MP4 — reproduz literalmente em qualquer lugar, ao custo de arquivos maiores.",
+    preset_compatibility_h264: "H.264 com AAC ajustado aos canais em MP4 para ampla compatibilidade de 8 bits. Fontes acima de 8 bits são ignoradas; use HEVC Equilibrado ou AV1 Eficiência para preservar a profundidade de bits.",
     preset_experimental_av1: "Arquivos menores usando AV1 em MKV, onde o hardware permitir. Mais lento para codificar. (Áudio Opus recomendado.)",
     preset_remux_cleanup: "Somente limpeza de contêiner — sem recodificação. Rápido e sem perdas.",
     preset_track_cleanup: 'Remove apenas faixas de áudio/legendas fora dos idiomas mantidos — sem recodificação, contêiner inalterado.',

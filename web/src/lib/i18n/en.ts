@@ -879,7 +879,7 @@ export const en = {
     priority_lowest: 'Lowest',
     resolution_no_limit: 'No limit',
     preset_conservative_hevc: 'Space-saving HEVC (H.265) with channel-aware AAC in MP4 — plays on virtually all phones, TVs, and Apple devices. A good default.',
-    preset_compatibility_h264: 'H.264 with channel-aware AAC in MP4 — plays literally everywhere, at the cost of larger files.',
+    preset_compatibility_h264: 'H.264 with channel-aware AAC in MP4 for broad 8-bit compatibility. Sources above 8-bit are skipped; use Balanced HEVC or Efficiency AV1 to preserve bit depth.',
     preset_experimental_av1: 'Smallest files using AV1 in MKV, where hardware allows. Slower to encode. (Opus audio recommended.)',
     preset_remux_cleanup: 'Container cleanup only — no re-encode. Fast and lossless.',
     preset_track_cleanup: 'Removes audio/subtitle tracks outside the kept languages only — no re-encode, container unchanged.',

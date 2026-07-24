@@ -16,8 +16,8 @@ Last reviewed: **2026-07-24**.
 | AMD VA-API | Implemented and unit-tested | Implemented and unit-tested | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo with sysfs fallback | Pending | This is the highest-priority hardware gap. No AMD GPU model, driver, encode, decode, VMAF, or metrics run has been recorded. |
 
 These rows cover only codec and bit-depth combinations supported by the selected hardware encoder.
-For example, Optimisarr deliberately keeps sources above 8-bit away from the listed hardware H.264
-paths; see the [Compatibility H.264 known issue](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
+Optimisarr deliberately skips H.264 output for sources above 8-bit before any listed hardware H.264
+path is selected.
 
 ## What counts as validation
 

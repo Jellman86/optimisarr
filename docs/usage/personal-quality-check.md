@@ -89,8 +89,9 @@ if the relevant library codec, preset, or quality changed during the session.
 | Preparation fails | Check `/work` space and permissions, then **Settings → Tools** for encoder availability. |
 | A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
 
-For video sources above 8-bit, the Compatibility H.264 candidate currently produces H.264 High 10
-rather than broadly compatible 8-bit H.264. See [Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
+For video sources above 8-bit, the quality check omits Compatibility H.264 because H.264 High 10 is
+not the preset's broad 8-bit playback target. The HEVC, AV1, and Scott's Settings candidates remain
+available and preserve the source bit depth.
 
 Leaving the quality lab removes its session and scratch media. Abandoned sessions expire after two
 hours, and restarting Optimisarr discards all remaining sessions. See the

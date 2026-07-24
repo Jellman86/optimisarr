@@ -18,6 +18,14 @@
 
 ### Fixed
 
+- **Compatibility H.264 no longer creates poorly supported High 10 output.** Normal and preview
+  eligibility now leaves video above 8-bit untouched and recommends Balanced HEVC or Efficiency AV1
+  instead of preserving it as H.264 High 10 or silently reducing its bit depth. Unknown bit depth
+  fails closed until the source is re-probed, effective custom H.264 targets cannot bypass the guard,
+  and personal quality checks omit the incompatible H.264 candidate while keeping their remaining
+  depth-preserving comparisons. The preset description and operator documentation now state the
+  8-bit boundary explicitly; existing encoder and replacement-verification gates remain as defensive
+  backstops.
 - **Encoder effort can no longer send an incompatible preset to FFmpeg.** The per-library control
   now stores the portable choices **Fast**, **Balanced**, and **Efficient**, then resolves them only
   after Auto or an explicit mode has selected the exact encoder. x264/x265, SVT-AV1, NVIDIA NVENC,

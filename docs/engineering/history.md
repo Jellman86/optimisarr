@@ -3,6 +3,20 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Recently shipped (2026-07-24) — Compatibility H.264 now keeps its 8-bit promise.** Candidate
+eligibility rejects an effective H.264 target when the probed source is above 8-bit, and fails closed
+with re-probe guidance when bit depth cannot be confirmed. The original remains untouched and the
+operator is directed to Balanced HEVC or Efficiency AV1 instead; Optimisarr neither creates poorly
+supported H.264 High 10 output nor silently discards precision through a 10-to-8-bit conversion.
+Custom H.264 overrides use the same guard, while the lower-level encoder and verification checks
+remain defensive backstops.
+
+Personal quality checks apply the same policy before creating disposable work: the H.264 comparison
+is omitted for higher or unknown bit depths, while HEVC, AV1, and Scott's Settings remain available.
+The preset description, all translated library controls, usage/setup guidance, hardware notes,
+changelog, and known-issues record now state the boundary consistently. Unit, candidate-service, and
+authenticated calibration endpoint coverage exercise the normal and calibration paths.
+
 **Recently shipped (2026-07-16) — blind calibration across video, audio, and images.** Libraries can
 now run a full-page quality check with one marked original reference and media-specific anonymous candidates,
 without exposing candidate settings or estimated saving before every candidate is classified. Video uses three 12-second

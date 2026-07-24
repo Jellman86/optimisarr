@@ -19,9 +19,12 @@ public sealed class CandidateEvaluatorTests
         MediaKind kind = MediaKind.Video,
         string? audioCodec = null,
         double? durationSeconds = null,
-        bool isDolbyVision = false) =>
+        bool isDolbyVision = false,
+        string? pixelFormat = "yuv420p",
+        int? bitsPerRawSample = 8) =>
         new(container, videoCodec, width, height, sizeBytes, isHdr, relativePath, optimisedMarker, kind,
-            audioCodec, DurationSeconds: durationSeconds, IsDolbyVision: isDolbyVision);
+            audioCodec, DurationSeconds: durationSeconds, IsDolbyVision: isDolbyVision,
+            PixelFormat: pixelFormat, BitsPerRawSample: bitsPerRawSample);
 
     private static MediaProperties AudioFile(
         string audioCodec,
@@ -347,6 +350,64 @@ public sealed class CandidateEvaluatorTests
         Assert.True(decision.IsEligible);
         Assert.Contains("h264", decision.Reason);
         Assert.Contains("hevc", decision.Reason);
+    }
+
+    [Fact]
+    public void H264_target_skips_a_ten_bit_source_before_transcoding()
+    {
+        var h264 = RuleProfileDefaults.For(RuleProfile.CompatibilityH264);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "hevc", pixelFormat: "yuv420p10le", bitsPerRawSample: 10),
+            h264);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("limited to 8-bit", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("10-bit", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("HEVC", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AV1", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void H264_target_keeps_an_eight_bit_source_eligible()
+    {
+        var h264 = RuleProfileDefaults.For(RuleProfile.CompatibilityH264);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "hevc", pixelFormat: "yuv420p", bitsPerRawSample: 8),
+            h264);
+
+        Assert.True(decision.IsEligible);
+    }
+
+    [Theory]
+    [InlineData("h264")]
+    [InlineData("avc")]
+    [InlineData("x264")]
+    public void Custom_h264_aliases_cannot_bypass_the_ten_bit_guard(string targetCodec)
+    {
+        var custom = Hevc with { TargetVideoCodec = targetCodec };
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "hevc", pixelFormat: "yuv420p10le", bitsPerRawSample: 10),
+            custom);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("limited to 8-bit", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void H264_target_skips_a_source_whose_bit_depth_cannot_be_proven()
+    {
+        var h264 = RuleProfileDefaults.For(RuleProfile.CompatibilityH264);
+
+        var decision = CandidateEvaluator.Evaluate(
+            File(videoCodec: "hevc", pixelFormat: null, bitsPerRawSample: null),
+            h264);
+
+        Assert.False(decision.IsEligible);
+        Assert.Contains("bit depth could not be confirmed", decision.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("re-probe", decision.Reason, StringComparison.OrdinalIgnoreCase);
     }
 
     // ~1.6 Mbps for 1080p ≈ 0.8 bits per pixel-second — well below the HEVC profile's 1.0 floor.

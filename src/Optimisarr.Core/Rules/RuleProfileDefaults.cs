@@ -44,8 +44,9 @@ public static class RuleProfileDefaults
             VideoAudioCodec = "aac",
             VideoAudioBitrateKbps = 160
         },
-        // Maximum compatibility: H.264 + AAC in MP4 plays literally everywhere, at the cost of
-        // larger files. x264 CRF 20 is visually transparent at 1080p.
+        // Broad 8-bit compatibility: H.264 + AAC in MP4, at the cost of larger files. Sources above
+        // 8-bit are rejected during eligibility instead of producing poorly supported High 10 output.
+        // x264 CRF 20 is visually transparent at 1080p.
         RuleProfile.CompatibilityH264 => new RuleSettings
         {
             Profile = profile,

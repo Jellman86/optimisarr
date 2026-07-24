@@ -75,9 +75,9 @@ Optimisarr resolves that choice only after selecting the actual encoder for the 
 uses valid x264/x265, SVT-AV1, NVIDIA NVENC, or Intel QSV syntax even in **Auto** mode; VAAPI uses its
 driver default because it has no consistent cross-codec preset.
 
-Compatibility H.264 currently preserves 9-bit and 10-bit sources as H.264 High 10, which is not the
-same broad playback target as 8-bit H.264. Prefer HEVC or AV1 for those sources and see
-[Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
+Compatibility H.264 is limited to proven 8-bit sources. A source above 8-bit is skipped with guidance
+to choose Balanced HEVC or Efficiency AV1, which preserves its bit depth without silently changing
+the selected preset. A source whose bit depth cannot be confirmed is skipped until it is re-probed.
 
 VMAF policy guide:
 

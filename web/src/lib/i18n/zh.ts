@@ -690,7 +690,7 @@ export const zh: Messages = {
     priority_lowest: "最低",
     resolution_no_limit: "无限制",
     preset_conservative_hevc: "MP4 中节省空间的 HEVC (H.265) 与声道感知 AAC — 几乎可以在所有手机、电视和 Apple 设备上播放，是很好的默认选择。",
-    preset_compatibility_h264: "MP4 中的 H.264 与声道感知 AAC — 几乎可以在任何地方播放，但文件更大。",
+    preset_compatibility_h264: "MP4 中的 H.264 与声道感知 AAC，适用于广泛的 8 位兼容性。高于 8 位的源文件会被跳过；请使用均衡 HEVC 或高效 AV1 来保留位深。",
     preset_experimental_av1: "在硬件允许的情况下，在 MKV 中使用 AV1 的最小文件。编码速度较慢。 （推荐使用Opus音频。）",
     preset_remux_cleanup: "仅容器清理——不重新编码。快速且无损。",
     preset_track_cleanup: '仅删除保留语言之外的音频/字幕轨道 — 不重新编码，容器保持不变。',

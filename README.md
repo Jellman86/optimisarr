@@ -67,8 +67,8 @@ no support SLA or promise of a release schedule.
   Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR preserved and
   AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
   target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
-  has a [known High 10 limitation](KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit)
-  when the source is above 8-bit.
+  is limited to proven 8-bit sources; higher or unknown bit depths are left untouched with guidance
+  to use HEVC or AV1 instead.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
   job, or **automatically after an unrecoverable or repeated failure** — managed per library on an
   **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.

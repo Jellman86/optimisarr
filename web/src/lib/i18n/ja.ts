@@ -690,7 +690,7 @@ export const ja: Messages = {
     priority_lowest: "最低",
     resolution_no_limit: "制限なし",
     preset_conservative_hevc: "MP4 の省スペース HEVC (H.265) とチャンネル数対応 AAC — 事実上すべての電話、テレビ、Apple デバイスで再生できます。良いデフォルトです。",
-    preset_compatibility_h264: "MP4 の H.264 とチャンネル数対応 AAC — ファイルは大きくなりますが、文字通りどこでも再生できます。",
+    preset_compatibility_h264: "MP4 の H.264 とチャンネル数対応 AAC により、8 ビットで幅広い互換性を実現します。8 ビットを超えるソースはスキップされます。ビット深度を保持するには Balanced HEVC または Efficiency AV1 を使用してください。",
     preset_experimental_av1: "ハードウェアが許可する場合、MKV の AV1 を使用する最小ファイル。エンコードが遅くなります。 (Opus オーディオを推奨)",
     preset_remux_cleanup: "コンテナのクリーンアップのみ - 再エンコードなし。高速かつロスレス。",
     preset_track_cleanup: '保持する言語以外の音声・字幕トラックのみを削除します — 再エンコードなし、コンテナは変更されません。',

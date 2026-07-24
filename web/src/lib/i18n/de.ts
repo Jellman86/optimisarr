@@ -741,7 +741,7 @@ export const de: Messages = {
     priority_lowest: 'Niedrigste',
     resolution_no_limit: 'Keine Grenze',
     preset_conservative_hevc: 'Platzsparendes HEVC (H.265) mit kanalbewusstem AAC in MP4 — läuft auf praktisch allen Smartphones, TVs und Apple-Geräten. Ein guter Standard.',
-    preset_compatibility_h264: 'H.264 mit kanalbewusstem AAC in MP4 — läuft buchstäblich überall, auf Kosten größerer Dateien.',
+    preset_compatibility_h264: 'H.264 mit kanalbewusstem AAC in MP4 für breite 8-Bit-Kompatibilität. Quellen über 8 Bit werden übersprungen; Balanced HEVC oder Efficiency AV1 bewahren die Bittiefe.',
     preset_experimental_av1: 'Kleinste Dateien mit AV1 in MKV, sofern die Hardware es zulässt. Langsamer zu kodieren. (Opus-Audio empfohlen.)',
     preset_remux_cleanup: 'Nur Container-Bereinigung — keine Neukodierung. Schnell und verlustfrei.',
     preset_track_cleanup: 'Entfernt nur Audio-/Untertitelspuren außerhalb der behaltenen Sprachen — keine Neukodierung, Container unverändert.',

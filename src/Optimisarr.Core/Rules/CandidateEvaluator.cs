@@ -1,6 +1,7 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Core.Rules;
 
@@ -225,6 +226,24 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped($"Resolution {height}p above limit ({maxHeight}p)");
         }
 
+        if (IsH264(rules.TargetVideoCodec))
+        {
+            var sourceBitDepth = PixelFormatInfo.Parse(media.PixelFormat, media.BitsPerRawSample)?.BitDepth;
+            if (sourceBitDepth is null)
+            {
+                return CandidateDecision.Skipped(
+                    "Source bit depth could not be confirmed. Re-probe the file before using Compatibility H.264, " +
+                    "or choose Balanced HEVC or Efficiency AV1");
+            }
+
+            if (sourceBitDepth is > 8)
+            {
+                return CandidateDecision.Skipped(
+                    $"Compatibility H.264 is limited to 8-bit sources; this source is {sourceBitDepth}-bit. " +
+                    "Choose Balanced HEVC or Efficiency AV1 to preserve its bit depth");
+            }
+        }
+
         // Profiles with no target codec never re-encode; they act on containers and,
         // when kept-languages rules are set, on unwanted tracks. Unknown languages stay
         // conservative: no data, no removal.
@@ -363,6 +382,8 @@ public static class CandidateEvaluator
             "m4v" => "mp4",
             var other => other
         };
+
+    private static bool IsH264(string? codec) => codec?.Trim().ToLowerInvariant() is "h264" or "avc" or "x264";
 
     private static string FormatSize(long bytes)
     {
