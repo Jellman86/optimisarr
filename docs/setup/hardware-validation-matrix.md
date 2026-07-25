@@ -5,19 +5,19 @@ the command path and fallback behaviour are covered by automated tests; it does 
 physical GPU has completed an Optimisarr job. **Validated** means a real container completed the
 listed path and the evidence was observed outside a mock.
 
-Last reviewed: **2026-07-19**.
+Last reviewed: **2026-07-24**.
 
 | Platform | Encode | Hardware decode | VMAF path | Live metrics | Last real-host validation | Evidence and known limits |
 |---|---|---|---|---|---|---|
 | CPU (`libx264`/`libx265`) | Validated in every final-image CI run | Not applicable | Validated: software decode and CPU `libvmaf` | Validated: `/proc/stat` CPU usage | Every CI run | The [container smoke test](../../scripts/ci_container_smoke.sh) performs real transcodes, decode checks, and VMAF comparisons in the built image. It cannot validate a GPU. |
-| NVIDIA RTX 4070 / NVENC | Validated | Not implemented for normal transcodes; NVENC currently consumes software-decoded frames | Implemented and unit-tested for NVDEC + `libvmaf_cuda`; real-host validation pending | Implemented and parser-tested through `nvidia-smi`; real-host graph evidence not retained | 2026-06 (encode only) | A manual transcode reported 52–81% encoder utilisation; see the [engineering history](../engineering/history.md#phase-7-gpu-support). The exact driver, fixture, result log, and validation date were not retained, so this must be rerun before claiming current-version coverage. |
+| NVIDIA RTX 4070 / NVENC | Validated | Decoder utilisation confirmed on a physical NVIDIA device for the `dev` NVDEC/CUDA path; automated fallback coverage remains in place | Implemented and unit-tested for NVDEC + `libvmaf_cuda`; real-host validation pending | Physical decoder activity observed; the full graph evidence bundle is not retained | 2026-07-24 (NVDEC activity) | An external tester confirmed that decoder activity is now visible where it was absent before ([issue evidence](https://github.com/Jellman86/optimisarr/issues/38#issuecomment-5071443854)). That closes the implementation issue, but the exact image digest, driver, fixture, fallback run, CUDA VMAF result, and full job evidence required by the checklist below were not retained; those broader claims remain pending. |
 | Intel N100 / QSV | Validated | Validated | QSV decode + CPU VMAF is implemented and unit-tested; current real-host revalidation pending | Validated through unprivileged DRM fdinfo | 2026-06 | A 4K manual encode reduced host CPU use from about 142% to 22% with render/video engines active; see the [engineering history](../engineering/history.md#phase-7-gpu-support). The recent sampled-VMAF alignment change still needs a clean host run recorded here. |
 | Intel VA-API | Implemented and unit-tested | Implemented and unit-tested | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo | Pending | Shares `/dev/dri` plumbing with QSV, but QSV evidence is not VA-API evidence. Do not mark validated from device detection or a successful encoder probe alone. |
 | AMD VA-API | Implemented and unit-tested | Implemented and unit-tested | VA-API decode + CPU VMAF is implemented and unit-tested | Implemented and parser-tested through DRM fdinfo with sysfs fallback | Pending | This is the highest-priority hardware gap. No AMD GPU model, driver, encode, decode, VMAF, or metrics run has been recorded. |
 
 These rows cover only codec and bit-depth combinations supported by the selected hardware encoder.
-For example, Optimisarr deliberately keeps sources above 8-bit away from the listed hardware H.264
-paths; see the [Compatibility H.264 known issue](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
+Optimisarr deliberately skips H.264 output for sources above 8-bit before any listed hardware H.264
+path is selected.
 
 ## What counts as validation
 
@@ -42,7 +42,8 @@ away a hardware-specific error without a reproducible fixture.
 
 ## Automated coverage
 
-The repository continuously checks encoder selection and command construction, encoder-family rate
-controls, QSV/VA-API device initialisation, hardware-decode fallback classification, VMAF CUDA/QSV/
-VA-API graphs, capability parsing, and all three metrics parsers. These tests protect the implemented
+The repository continuously checks encoder selection and command construction, portable
+encoder-effort mapping for x264/x265, SVT-AV1, NVENC, QSV and VAAPI, encoder-family rate controls,
+NVDEC/CUDA, QSV, and VA-API device initialisation, hardware-decode fallback classification, VMAF
+CUDA/QSV/VA-API graphs, capability parsing, and all three metrics parsers. These tests protect the implemented
 contract; this matrix exists because none of them can prove a driver and physical GPU work together.

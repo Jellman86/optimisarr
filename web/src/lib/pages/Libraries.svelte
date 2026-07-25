@@ -31,6 +31,7 @@
     videoCodecs: [],
     containers: [],
     encoderPresets: [],
+    legacyEncoderPresets: [],
     imageFormats: [],
   })
 
@@ -224,6 +225,16 @@
     if (hdr === 'Preserve') return i18n.m.libraries.hdr_preserve
     return hdr
   }
+
+  const encoderEffortLabels: Record<string, string> = $derived({
+    quick: i18n.m.libraries.encoder_effort_fast,
+    balanced: i18n.m.libraries.encoder_effort_balanced,
+    efficient: i18n.m.libraries.encoder_effort_efficient,
+  })
+  function encoderEffortLabel(effort: string): string {
+    return encoderEffortLabels[effort] ?? effort
+  }
+
   const FLASH_KEY = 'optimisarr.library.flash'
   function takeFlashMessage(): string | null {
     const value = sessionStorage.getItem(FLASH_KEY)
@@ -379,6 +390,17 @@
   const trackCleanupNeedsLanguages = $derived(
     isTrackCleanupProfile && !form.keepAudioLanguages?.trim() && !form.keepSubtitleLanguages?.trim(),
   )
+  const encoderEffortError = $derived(
+    options.encoderPresets.length > 0
+      && form.encoderPreset != null
+      && !options.encoderPresets.includes(form.encoderPreset)
+      && !options.legacyEncoderPresets.includes(form.encoderPreset)
+      ? t(i18n.m.libraries.encoder_effort_invalid, { value: form.encoderPreset })
+      : null,
+  )
+  const encoderEffortIsLegacy = $derived(
+    form.encoderPreset != null && options.legacyEncoderPresets.includes(form.encoderPreset),
+  )
 
   // Save is offered only for a named, located library with no outstanding validation error and at
   // least one edit to persist. Derived once so every Save control shares exactly one definition.
@@ -388,6 +410,7 @@
       && isDirty
       && !audioLanguageError
       && !subtitleLanguageError
+      && !encoderEffortError
       && !(!isNoEncodeProfile && vmafError),
   )
 
@@ -777,7 +800,7 @@
   async function save() {
     error = null
     message = null
-    if (audioLanguageError || subtitleLanguageError || (!isNoEncodeProfile && vmafError)) return
+    if (audioLanguageError || subtitleLanguageError || encoderEffortError || (!isNoEncodeProfile && vmafError)) return
     try {
       if (editingId === 0) {
         // Replace /new with the canonical editor URL so Back returns to the library list. The
@@ -1363,10 +1386,26 @@
           </div>
           <div>
             <label class="label" for="lib-preset">{i18n.m.libraries.encoder_preset} <InfoTip text={i18n.m.libraries.encoder_preset_tip} /></label>
-            <select id="lib-preset" class="input" bind:value={form.encoderPreset}>
+            <select
+              id="lib-preset"
+              class="input"
+              aria-invalid={encoderEffortError ? 'true' : 'false'}
+              aria-describedby={encoderEffortError ? 'lib-encoder-effort-error' : undefined}
+              bind:value={form.encoderPreset}
+            >
               <option value={null}>{i18n.m.libraries.encoder_default}</option>
-              {#each options.encoderPresets as preset}<option value={preset}>{preset}</option>{/each}
+              {#if (encoderEffortError || encoderEffortIsLegacy) && form.encoderPreset}
+                <option value={form.encoderPreset}>
+                  {encoderEffortIsLegacy
+                    ? t(i18n.m.libraries.encoder_effort_legacy, { value: form.encoderPreset })
+                    : form.encoderPreset}
+                </option>
+              {/if}
+              {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
             </select>
+            {#if encoderEffortError}
+              <p id="lib-encoder-effort-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{encoderEffortError}</p>
+            {/if}
           </div>
         </div>
 

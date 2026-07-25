@@ -271,6 +271,7 @@ export type LibraryOptions = {
   videoCodecs: string[]
   containers: string[]
   encoderPresets: string[]
+  legacyEncoderPresets: string[]
   imageFormats: string[]
 }
 
@@ -587,6 +588,12 @@ export type FailureGroup = {
   samples: FailureSample[]
 }
 
+export type BulkReplacementResult = {
+  attempted: number
+  replaced: number
+  failures: Array<{ jobId: number; message: string }>
+}
+
 export type Replacement = {
   id: number
   jobId: number
@@ -632,7 +639,7 @@ export type SaveActivityWatcher = {
   refreshOnReplace: boolean
 }
 
-export type NotificationType = 'Webhook' | 'Discord' | 'Ntfy' | 'Apprise'
+export type NotificationType = 'Webhook' | 'Discord' | 'Telegram' | 'Ntfy' | 'Apprise'
 
 export type NotificationTarget = {
   id: number
@@ -655,6 +662,11 @@ export type SaveNotificationTarget = {
   enabled: boolean
   notifyOnReplacement: boolean
   notifyOnFailure: boolean
+}
+
+export type NotificationTestResult = {
+  ok: boolean
+  error: string | null
 }
 
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
@@ -829,7 +841,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'watcher.validation': return i18n.m.common.api_watcher_invalid
     case 'watcher.type.invalid': return i18n.m.common.api_watcher_type_invalid
     case 'notification.notFound': return t(i18n.m.common.api_notification_not_found, args)
-    case 'notification.validation': return i18n.m.common.api_notification_invalid
+    case 'notification.validation': return error
     case 'arr.notFound': return t(i18n.m.common.api_arr_not_found, args)
     case 'arr.validation': return i18n.m.common.api_arr_invalid
     case 'plex.signIn.start': return i18n.m.common.api_plex_start_failed
@@ -1000,6 +1012,8 @@ export const api = {
     request<NotificationTarget>(`/api/notification-targets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteNotificationTarget: (id: number) =>
     request<void>(`/api/notification-targets/${id}`, { method: 'DELETE' }),
+  testNotificationTarget: (id: number) =>
+    request<NotificationTestResult>(`/api/notification-targets/${id}/test`, { method: 'POST' }),
 
   arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
   createArrConnection: (body: SaveArrConnection) =>
@@ -1039,6 +1053,8 @@ export const api = {
   clearPendingJobs: () => request<{ cleared: number }>('/api/jobs/clear-pending', { method: 'POST' }),
   enqueueLibrary: (id: number) =>
     request<EnqueueResult>(`/api/libraries/${id}/enqueue`, { method: 'POST' }),
+  replaceReadyJobs: () =>
+    request<BulkReplacementResult>('/api/jobs/replace-ready', { method: 'POST' }),
   replaceFromJob: (id: number) =>
     request<Replacement>(`/api/jobs/${id}/replace`, { method: 'POST' }),
 

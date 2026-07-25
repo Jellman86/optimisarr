@@ -139,7 +139,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.OptimiseDolbyVision = snapshot.OptimiseDolbyVision ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.QualityCrf = snapshot.QualityCrf;
-            library.EncoderPreset = snapshot.EncoderPreset;
+            _ = EncoderPresetPolicy.TryNormaliseSelection(snapshot.EncoderPreset, out var encoderPreset);
+            library.EncoderPreset = encoderPreset;
             library.AudioTargetCodec = snapshot.AudioTargetCodec;
             library.AudioBitrateKbps = snapshot.AudioBitrateKbps;
             library.VideoAudioCodec = snapshot.VideoAudioCodec;
@@ -351,7 +352,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.HdrHandling?.ToString(),
         library.ExcludePaths,
         library.QualityCrf,
-        library.EncoderPreset,
+        NormaliseEncoderPreset(library.EncoderPreset),
         library.MoveOnComplete,
         library.TargetFolder,
         library.MinVmafHarmonicMean,
@@ -380,6 +381,11 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ClipVmafEnabled,
         library.VmafFrameSubsample,
         library.KeepSubtitleLanguages);
+
+    private static string? NormaliseEncoderPreset(string? value) =>
+        EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)
+            ? normalised
+            : value;
 
     private static ActivityWatcherSnapshot ToSnapshot(ActivityWatcher watcher) => new(
         watcher.Name,

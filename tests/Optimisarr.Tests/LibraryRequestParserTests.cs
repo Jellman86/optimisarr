@@ -6,7 +6,9 @@ public sealed class LibraryRequestParserTests
 {
     // A baseline valid request; the path must exist because the parser verifies it.
     private static SaveLibraryRequest Request(
-        string? keepAudioLanguages = null, string? keepSubtitleLanguages = null) => new(
+        string? keepAudioLanguages = null,
+        string? keepSubtitleLanguages = null,
+        string? encoderPreset = null) => new(
         Name: "Films",
         Path: Path.GetTempPath(),
         MediaType: "Film",
@@ -23,7 +25,7 @@ public sealed class LibraryRequestParserTests
         OptimiseDolbyVision: null,
         ExcludePaths: null,
         QualityCrf: null,
-        EncoderPreset: null,
+        EncoderPreset: encoderPreset,
         AudioTargetCodec: null,
         AudioBitrateKbps: null,
         VideoAudioCodec: null,
@@ -87,6 +89,29 @@ public sealed class LibraryRequestParserTests
 
         Assert.False(ok);
         Assert.Contains("catastrophic", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("quick", "quick")]
+    [InlineData("fast", "fast")]
+    [InlineData("P7", "p7")]
+    [InlineData("very slow", null)]
+    public void Encoder_effort_is_normalised_or_rejected(string value, string? expected)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request(encoderPreset: value),
+            out var parsed,
+            out var error);
+
+        if (expected is null)
+        {
+            Assert.False(ok);
+            Assert.Contains("encoder effort", error, StringComparison.OrdinalIgnoreCase);
+            return;
+        }
+
+        Assert.True(ok, error);
+        Assert.Equal(expected, parsed.EncoderPreset);
     }
 
     [Fact]

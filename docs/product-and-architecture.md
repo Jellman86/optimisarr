@@ -249,11 +249,20 @@ Users should be able to pick:
 - Intel QSV h264/hevc/av1 when supported.
 - VAAPI h264/hevc/av1 when supported.
 
+New library configuration stores a portable encoder-effort intent rather than a raw backend preset.
+After the exact encoder has been selected for a file, a pure policy maps Fast/Balanced/Efficient to
+valid x264/x265, SVT-AV1, NVENC, or QSV syntax. VAAPI retains its driver default. Recognised
+encoder-specific values from earlier releases remain explicit and preserve native behaviour until
+the operator changes them. Request validation, config import/export, dispatch, and the UI share this
+policy so an incompatible value fails before FFmpeg and Auto mode can safely choose different
+encoder families.
+
 #### Hardware decoding
 
 When a hardware encoder is selected, the source is also decoded on the GPU
 (`-hwaccel` + matching `-hwaccel_output_format`), keeping frames on the GPU end to
-end instead of decoding in software and uploading. This is on by default
+end instead of decoding in software and uploading. NVIDIA uses FFmpeg's generic CUDA/NVDEC path;
+QSV and VA-API use their matching hardware surfaces. This is on by default
 (`queue.hardwareDecode`) and only applies to a hardware encoder. It is skipped for
 HDR→SDR tone-map jobs, whose tone-map filter runs in software and needs frames in
 system memory. Because not every source codec/profile can be hardware-decoded, a

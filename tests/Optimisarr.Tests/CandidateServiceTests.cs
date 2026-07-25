@@ -383,6 +383,37 @@ public sealed class CandidateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EvaluateFile_projects_source_bit_depth_into_h264_eligibility()
+    {
+        int fileId;
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library
+            {
+                Name = "Compatibility films",
+                Path = "/data/films",
+                RuleProfile = RuleProfile.CompatibilityH264
+            };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+
+            var file = Probed(library.Id, "ten-bit.mkv", videoCodec: "hevc");
+            file.PixelFormat = "yuv420p10le";
+            file.BitsPerRawSample = 10;
+            db.MediaFiles.Add(file);
+            await db.SaveChangesAsync();
+            fileId = file.Id;
+        }
+
+        await using var read = new OptimisarrDbContext(_options);
+        var decision = await new CandidateService(read).EvaluateFileAsync(fileId, CancellationToken.None);
+
+        Assert.NotNull(decision);
+        Assert.False(decision!.IsEligible);
+        Assert.Contains("10-bit", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task EvaluateFile_skips_an_excluded_file()
     {
         int fileId;

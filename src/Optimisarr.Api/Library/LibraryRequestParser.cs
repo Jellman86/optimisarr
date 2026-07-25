@@ -129,6 +129,12 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (!EncoderPresetPolicy.TryNormaliseSelection(request.EncoderPreset, out var encoderPreset))
+        {
+            error = "Encoder effort must be encoder default, quick, balanced, efficient, or a recognised legacy preset.";
+            return false;
+        }
+
         if (request.MinVmafHarmonicMean is < 0 or > 100
             || request.MinVmafMin is < 0 or > 100
             || request.MinVmafCatastrophicMin is < 0 or > 100)
@@ -278,7 +284,7 @@ internal static class LibraryRequestParser
             request.OptimiseDolbyVision ?? false,
             Trim(request.ExcludePaths),
             request.QualityCrf,
-            Trim(request.EncoderPreset),
+            encoderPreset,
             audioTargetCodec is null ? null : audioTargetCodec.ToLowerInvariant(),
             request.AudioBitrateKbps,
             videoAudioCodec is null ? null : videoAudioCodec.ToLowerInvariant(),

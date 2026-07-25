@@ -65,6 +65,7 @@ RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
     | grep -Eq '^[[:space:]].*[[:space:]]libvmaf[[:space:]]'
 
 COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
+COPY --chmod=0755 scripts/nvenc_benchmark.sh /app/scripts/nvenc-benchmark
 COPY --from=api-build /app/publish/ /app/
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8787 \

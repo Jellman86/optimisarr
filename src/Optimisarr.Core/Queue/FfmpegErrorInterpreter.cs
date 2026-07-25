@@ -28,6 +28,13 @@ public static class FfmpegErrorInterpreter
                 + "MKV to keep those subtitles, or remove them. The original was not touched.";
         }
 
+        if (stderr.Contains("Error setting option preset", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Invalid encoder effort: FFmpeg rejected the saved preset for the selected encoder. "
+                + "Edit the library and choose Encoder default, Fast, Balanced, or Efficient. "
+                + "The original was not touched.";
+        }
+
         return null;
     }
 }

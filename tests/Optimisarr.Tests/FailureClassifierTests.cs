@@ -13,6 +13,8 @@ public sealed class FailureClassifierTests
     [InlineData("Replacement would collide with an existing file at /data/x.mp4", FailureCategory.ReplacementCollision)]
     [InlineData("The verified output is missing from the work directory.", FailureCategory.SourceMissing)]
     [InlineData("The original file no longer exists: /data/x.mkv", FailureCategory.SourceMissing)]
+    [InlineData("Invalid encoder effort 'very slow'. Choose encoder default.", FailureCategory.InvalidConfiguration)]
+    [InlineData("Encoder effort 'efficient' cannot be resolved for encoder 'future'.", FailureCategory.InvalidConfiguration)]
     [InlineData("ffmpeg exited with code 1: something unrecognised", FailureCategory.Other)]
     public void Classifies_known_failure_messages(string message, FailureCategory expected)
     {

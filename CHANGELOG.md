@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.2.8 — 2026-07-25
+
+### Added
+
+- **Every saved notification target now has a Test action.** Settings → Notifications can send a
+  clearly labelled test through Webhook, Discord, Telegram, ntfy, or Apprise without waiting for a
+  media event. Success and provider rejection are shown inline, and invalid target settings now show
+  the API's specific reason instead of a generic validation message.
+- **Telegram is now a first-class notification target.** Settings → Notifications accepts a bot
+  token plus a numeric chat ID or public `@channelusername`, then sends replacement and failure
+  alerts directly through Telegram's official Bot API. When existing artwork is available,
+  Optimisarr uploads the title poster, audio cover, or image thumbnail with the caption; a missing,
+  slow or oversized image falls back before upload, and an image Telegram explicitly identifies as
+  invalid or unsupported falls back after rejection. Ambiguous timeouts, rate limits, and server
+  errors are not retried to avoid duplicate notifications. The token stays write-only,
+  targets are validated before saving, message limits are enforced, and the
+  existing best-effort delivery policy keeps notification failures out of the media workflow.
+- **NVIDIA contributors can now run one guided quality comparison from the `dev` container.** The
+  packaged helper creates `/data/Optimisarr-NVENC-Test`, asks for exactly three short 8-bit SDR clips,
+  and compares the current Efficient baseline with multipass, lookahead, spatial-AQ, and temporal-AQ
+  variants for H.264 and HEVC NVENC. It leaves every source unchanged, validates and VMAF-scores each
+  output, records size and sub-second speed measurements, samples both NVENC and overall GPU use,
+  treats hardware-rejected optional variants as capability skips with privacy-safe diagnostics,
+  removes temporary encodes by default, and writes one timestamped text report with source names and
+  paths omitted. Initial GTX 1080 results found no advanced combination that consistently improved
+  both quality and size, so production encoding remains unchanged and the helper is retained for
+  evidence from future hardware generations.
+- **NVIDIA transcodes can now decode on the GPU as well as encode there.** When Hardware decoding
+  is enabled, an NVENC job uses NVDEC through FFmpeg's CUDA hardware-acceleration path and keeps
+  decoded frames in GPU memory through the encode. Unsupported source codecs, profiles, or GPU
+  setups automatically retry once with software decoding, and HDR-to-SDR jobs retain their existing
+  software tone-map path.
+- **Verified queue outputs can now be replaced as one reviewed batch.** Queue shows **Replace all**
+  when one or more normal jobs are verified and ready. One confirmation snapshots the eligible jobs,
+  moves every original to quarantine through the existing rollback-safe replacement path, and opens
+  Quarantine once after the batch succeeds. A failed item does not stop later safe replacements; the
+  Queue stays open and reports the remaining failures for review. The same operation is available as
+  `POST /api/jobs/replace-ready` and skips unverified or no-longer-ready jobs.
+
+### Fixed
+
+- **Compatibility H.264 no longer creates poorly supported High 10 output.** Normal and preview
+  eligibility now leaves video above 8-bit untouched and recommends Balanced HEVC or Efficiency AV1
+  instead of preserving it as H.264 High 10 or silently reducing its bit depth. Unknown bit depth
+  fails closed until the source is re-probed, effective custom H.264 targets cannot bypass the guard,
+  and personal quality checks omit the incompatible H.264 candidate while keeping their remaining
+  depth-preserving comparisons. The preset description and operator documentation now state the
+  8-bit boundary explicitly; existing encoder and replacement-verification gates remain as defensive
+  backstops.
+- **Encoder effort can no longer send an incompatible preset to FFmpeg.** The per-library control
+  now stores the portable choices **Fast**, **Balanced**, and **Efficient**, then resolves them only
+  after Auto or an explicit mode has selected the exact encoder. x264/x265, SVT-AV1, NVIDIA NVENC,
+  and Intel QSV each receive their own valid preset vocabulary; VAAPI keeps its driver default.
+  Existing CPU names, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain visible and retain their
+  exact native behaviour until deliberately replaced; when another encoder family is selected they
+  resolve to its closest safe effort. Unknown values fail before FFmpeg starts with an actionable
+  **Invalid configuration** reason. Config backups, the API, all translated library controls, and
+  defensive FFmpeg error interpretation use the same policy.
+
 ## 0.2.7 — 2026-07-22
 
 ### Fixed

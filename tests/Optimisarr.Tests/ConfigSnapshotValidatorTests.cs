@@ -172,6 +172,25 @@ public sealed class ConfigSnapshotValidatorTests
         Assert.Contains(result.Errors, error => error.Contains("fifth-percentile floor cannot exceed"));
     }
 
+    [Fact]
+    public void A_library_with_an_unknown_encoder_effort_is_rejected()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, "not-a-preset", false, null)
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("encoder effort"));
+    }
+
     private static ConfigSnapshot Empty() => new(
         ConfigSnapshot.CurrentVersion,
         DateTimeOffset.UnixEpoch,

@@ -73,7 +73,7 @@ public sealed class Library
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }
 
-    /// <summary>Encoder speed/quality preset (e.g. "medium", "slow"). Null uses the encoder default.</summary>
+    /// <summary>Portable encoder effort; recognised legacy presets remain valid until changed. Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 
     /// <summary>Overrides the codec lossless audio is re-encoded to (e.g. "opus", "aac", "mp3"). Null uses the default.</summary>

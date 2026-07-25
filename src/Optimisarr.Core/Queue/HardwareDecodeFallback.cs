@@ -18,6 +18,8 @@ public static class HardwareDecodeFallback
         "error while opening decoder",
         "no decoder surfaces left",
         "device creation failed",
+        "no device available for decoder",
+        "device setup failed for decoder",
         "decoder not found",
         "no usable decoder",
         "init_hw_device",

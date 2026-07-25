@@ -156,17 +156,22 @@ or `dispatchOnly`. `runningEncodesSuspended`, `suspendedEncodeCount`, and
 one. A resume that cannot continue every still-running suspended process returns `409` and keeps
 dispatch paused so the operation can be retried safely.
 
-### Replace a Verified Job
+### Replace Verified Jobs
 
 Replacement is state-changing. It is refused while dry-run mode is enabled and
 should only be automated after you trust the library rules.
 
 ```bash
 curl -fsS -X POST http://localhost:8787/api/jobs/42/replace
+
+# Replace every normal job that is currently verified and ready.
+curl -fsS -X POST http://localhost:8787/api/jobs/replace-ready
 ```
 
-The response is a replacement/quarantine record. Keep the returned `id` if you
-want to approve or roll back later.
+The single-job response is a replacement/quarantine record. Keep the returned `id` if you want to
+approve or roll back later. The bulk response reports `attempted`, `replaced`, and a `failures` array;
+each eligible job still creates its own replacement record and rollback remains per file. A failure
+does not prevent later eligible jobs in the snapshot from being replaced.
 
 ### Roll Back or Approve a Replacement
 
@@ -280,7 +285,7 @@ deleting anything so the operator can review and confirm the new preview.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/library-options` | Available media types, presets, codecs, containers, HDR modes, encoders, and image formats. |
+| `GET` | `/api/library-options` | Available media types, rule profiles, codecs, containers, HDR modes, portable encoder-effort choices, and image formats. |
 | `GET` | `/api/libraries` | List configured libraries. |
 | `GET` | `/api/libraries/{id}/access` | Check whether the configured path exists and is readable/writable. |
 | `POST` | `/api/libraries` | Create a library. |
@@ -310,6 +315,7 @@ Create and update library bodies use the same shape. Common fields:
   "targetContainer": null,
   "hdrHandling": null,
   "qualityCrf": null,
+  "encoderPreset": "balanced",
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
   "downmixToStereo": false,
@@ -323,7 +329,11 @@ Create and update library bodies use the same shape. Common fields:
 ```
 
 Use `/api/library-options` for valid enum values. Unknown or invalid values are
-rejected.
+rejected. `encoderPreset` retains its historical API name but new clients should store a portable
+encoder effort: `quick`, `balanced`, `efficient`, or `null` for the encoder default. Former
+x264/x265 values, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain accepted and are preserved
+exactly for backwards compatibility; dispatch resolves a safe equivalent if another encoder family
+is selected.
 
 ## Preview
 
@@ -402,6 +412,7 @@ otherwise timing can become a side channel. Submit exactly one `Indistinguishabl
 | `POST` | `/api/jobs/{id}/cancel` | Cancel an active job. |
 | `DELETE` | `/api/jobs/{id}` | Remove a clearable job. |
 | `POST` | `/api/jobs/{id}/retry` | Retry a failed or cancelled job. |
+| `POST` | `/api/jobs/replace-ready` | Replace all currently verified, ready normal jobs through the rollback-safe quarantine path; report per-job failures without stopping later replacements. |
 | `POST` | `/api/jobs/clear?scope=errored` | Clear failed jobs. Scope can be `errored`, `finished`, or `all`. |
 | `POST` | `/api/jobs/clear-pending` | Clear queued and ready-to-replace jobs and stop running work. |
 
@@ -409,7 +420,9 @@ Job responses include status, progress, priority, FFmpeg arguments, selected
 encoder, output size, verification result, verification report JSON, the
 classified failure category (when failed), and timestamps. When paging is used,
 the total number of matches before paging is returned in the `X-Total-Count`
-response header.
+response header. Failure categories are `SizeSaving`, `Verification`,
+`ContainerIncompatibility`, `BitmapSubtitles`, `ReplacementCollision`, `SourceMissing`,
+`InvalidConfiguration`, and `Other`.
 
 Failed preview and personal-quality jobs never appear in the normal queue feed. Their scratch media
 is still deleted, but the small failed row remains available to `/api/jobs/failures`,
@@ -460,6 +473,7 @@ Example body:
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/jobs/{id}/replace` | Replace the original for a verified job. Refused in dry-run mode. |
+| `POST` | `/api/jobs/replace-ready` | Replace all currently verified, ready normal jobs. Each original is quarantined and recorded independently; unverified or no-longer-ready jobs are skipped. |
 | `GET` | `/api/replacements` | List quarantine/replacement records. |
 | `GET` | `/api/replacements/{id}` | Read one replacement with verification details. |
 | `GET` | `/api/replacements/{id}/original/content` | Stream the quarantined original for comparison. |

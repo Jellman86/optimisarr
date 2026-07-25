@@ -62,9 +62,22 @@ Preset guide:
 | Scott's compatibility-first setup | Scott's Settings |
 | No re-encode, container cleanup only | Remux / cleanup |
 
-Compatibility H.264 currently preserves 9-bit and 10-bit sources as H.264 High 10, which is not the
-same broad playback target as 8-bit H.264. Prefer HEVC or AV1 for those sources and see
-[Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
+Under **Advanced options → Video**, **Encoder effort** is portable across encoder modes:
+
+| Choice | Behaviour |
+|---|---|
+| Encoder default | Let the selected encoder or driver choose |
+| Fast | Prefer shorter encoding time |
+| Balanced | Use a middle speed/compression trade-off |
+| Efficient | Spend more encoding time improving compression |
+
+Optimisarr resolves that choice only after selecting the actual encoder for the file. It therefore
+uses valid x264/x265, SVT-AV1, NVIDIA NVENC, or Intel QSV syntax even in **Auto** mode; VAAPI uses its
+driver default because it has no consistent cross-codec preset.
+
+Compatibility H.264 is limited to proven 8-bit sources. A source above 8-bit is skipped with guidance
+to choose Balanced HEVC or Efficiency AV1, which preserves its bit depth without silently changing
+the selected preset. A source whose bit depth cannot be confirmed is skipped until it is re-probed.
 
 VMAF policy guide:
 
@@ -191,6 +204,8 @@ Use the row actions carefully:
 - **Exclude** when you do not want that file offered again.
 - **Remove** clears a queue entry when it is safe to clear.
 - **Replace** appears only after verification passes and dry-run is off.
+- **Replace all** uses one confirmation for every verified, ready output. Each original still moves to
+  Quarantine independently; if any item cannot be replaced, Queue remains open so you can review it.
 
 ## 7. Review exclusions
 

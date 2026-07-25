@@ -3,6 +3,40 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Recently shipped (2026-07-25) — repeatable NVENC profile evidence.** The `dev` image includes a
+guided NVIDIA quality-comparison harness created for issue #37. It prepares a dedicated folder under
+`/data`, accepts exactly three short 8-bit SDR samples, and compares the current P7/CQ baseline with
+isolated multipass, lookahead, spatial-AQ, and temporal-AQ variants for H.264 and HEVC. Every output
+must decode and receives VMAF, size, millisecond elapsed-time, and sampled NVENC-engine and overall
+GPU measurements. Hardware-rejected optional variants are capability skips with privacy-safe
+diagnostics; a baseline, decode, or VMAF failure remains a real failure. The timestamped text report
+omits source names and paths, the originals remain read-only, and temporary outputs are removed
+unless the tester explicitly retains them. Hermetic shell tests exercise the complete report flow
+without a GPU, and final-image packaging remains covered by CI.
+
+Criz24 supplied the first physical report from a GeForce GTX 1080. Across three anonymous samples,
+the advanced combinations produced no consistent quality-and-size improvement: H.264 multipass
+traded a small mean-VMAF reduction for about 2.7% aggregate size reduction, spatial AQ helped one
+sample but increased its size and was inconsistent elsewhere, HEVC multipass/lookahead were
+effectively neutral, and HEVC temporal AQ was unavailable. That evidence closes the proposed raw
+advanced-control direction without changing production encoding. The benchmark remains packaged for
+future hardware generations where a materially different result could justify one tested,
+capability-gated profile.
+
+**Recently shipped (2026-07-24) — Compatibility H.264 now keeps its 8-bit promise.** Candidate
+eligibility rejects an effective H.264 target when the probed source is above 8-bit, and fails closed
+with re-probe guidance when bit depth cannot be confirmed. The original remains untouched and the
+operator is directed to Balanced HEVC or Efficiency AV1 instead; Optimisarr neither creates poorly
+supported H.264 High 10 output nor silently discards precision through a 10-to-8-bit conversion.
+Custom H.264 overrides use the same guard, while the lower-level encoder and verification checks
+remain defensive backstops.
+
+Personal quality checks apply the same policy before creating disposable work: the H.264 comparison
+is omitted for higher or unknown bit depths, while HEVC, AV1, and Scott's Settings remain available.
+The preset description, all translated library controls, usage/setup guidance, hardware notes,
+changelog, and known-issues record now state the boundary consistently. Unit, candidate-service, and
+authenticated calibration endpoint coverage exercise the normal and calibration paths.
+
 **Recently shipped (2026-07-16) — blind calibration across video, audio, and images.** Libraries can
 now run a full-page quality check with one marked original reference and media-specific anonymous candidates,
 without exposing candidate settings or estimated saving before every candidate is classified. Video uses three 12-second
@@ -287,8 +321,12 @@ See the Phase 12 section for the remaining optional polish.
   automatic software-decode retry for sources the GPU can't decode. **Live, unprivileged CPU/GPU
   metrics** stream to the Queue graph over SignalR — `/proc/stat` for CPU and per-process DRM fdinfo
   (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
-  Remaining: hardware-specific preset notes; AMD VA-API on-hardware validation; and optional
-  NVIDIA hardware decode for normal transcodes.
+  Portable Fast/Balanced/Efficient encoder effort now resolves onto the selected x264/x265,
+  SVT-AV1, NVENC, or QSV vocabulary at dispatch; VAAPI keeps its driver default, and invalid legacy
+  or API values fail before FFmpeg. NVIDIA normal transcodes now use the documented NVDEC/CUDA
+  path when Hardware decoding is enabled, with the same software-decode fallback. Physical decoder
+  utilisation was confirmed on 2026-07-24, while the full NVIDIA evidence bundle and CUDA VMAF run
+  remain pending. Remaining: AMD VA-API and complete NVIDIA/QSV validation evidence.
 - **Phase 8 (Library Integration): feature-complete.** Authenticated Plex (OAuth/PIN),
   Jellyfin (Quick Connect/API key), and Emby (API key) connections; targeted re-scan after a
   replacement/rollback; Sonarr/Radarr import-aware exclusions; notifications (webhook/ntfy/
@@ -508,14 +546,15 @@ Deliverables:
 - Compose examples:
   - NVIDIA GPU reservation
   - `/dev/dri` Intel/AMD mapping
-- Encoder presets with quality/speed notes. **Partly done** (CPU presets exist;
-  hardware-specific notes still to come).
+- Portable encoder effort with quality/speed notes: **Done.** Fast/Balanced/Efficient resolves onto
+  valid x264/x265, SVT-AV1, NVENC, or QSV presets after encoder selection; VAAPI uses its driver
+  default, and save/import/dispatch share the same validation policy.
 - Startup warnings when selected GPU mode is unavailable. **Done for jobs** (jobs
   fail before FFmpeg starts with a clear unavailable-encoder reason).
 
 Exit criteria:
 
-- The app can detect available encoders and prevent invalid preset selection.
+- The app can detect available encoders and prevent invalid preset selection. **Done.**
 - A GPU-enabled compose example is documented and tested.
 
 ## Phase 8: Library Integration

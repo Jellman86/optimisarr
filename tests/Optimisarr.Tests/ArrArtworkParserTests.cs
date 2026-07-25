@@ -12,17 +12,17 @@ public sealed class ArrArtworkParserTests
         { "coverType": "poster", "remoteUrl": "https://image.tmdb.org/t/p/original/gxk2024.jpg", "url": "/MediaCover/15/poster.jpg" }
       ] },
       { "title": "Godzilla", "year": 2014, "images": [
-        { "coverType": "poster", "remoteUrl": "https://image.tmdb.org/t/p/original/godzilla2014.jpg" }
+        { "coverType": "poster", "remoteUrl": "https://image.tmdb.org/t/p/original/godzilla2014.jpg", "url": "/MediaCover/16/poster.jpg" }
       ] }
     ]
     """;
 
     [Fact]
-    public void Radarr_returns_the_poster_remote_url_for_a_title_and_year_match()
+    public void Radarr_returns_the_local_poster_path_for_a_title_and_year_match()
     {
         // Punctuation/spacing differ from the parsed file title — the match must normalise both.
-        Assert.Equal("https://image.tmdb.org/t/p/original/gxk2024.jpg",
-            ArrArtworkParser.PosterRemoteUrl(RadarrJson, "Godzilla x Kong - The New Empire", 2024));
+        Assert.Equal("/MediaCover/15/poster.jpg",
+            ArrArtworkParser.PosterPath(RadarrJson, "Godzilla x Kong - The New Empire", 2024));
     }
 
     [Fact]
@@ -30,18 +30,18 @@ public sealed class ArrArtworkParserTests
     {
         var json = """
         [
-          { "title": "Godzilla", "year": 1998, "images": [ { "coverType": "poster", "remoteUrl": "old.jpg" } ] },
-          { "title": "Godzilla", "year": 2014, "images": [ { "coverType": "poster", "remoteUrl": "new.jpg" } ] }
+          { "title": "Godzilla", "year": 1998, "images": [ { "coverType": "poster", "url": "/MediaCover/1/poster.jpg" } ] },
+          { "title": "Godzilla", "year": 2014, "images": [ { "coverType": "poster", "url": "/MediaCover/2/poster.jpg" } ] }
         ]
         """;
-        Assert.Equal("new.jpg", ArrArtworkParser.PosterRemoteUrl(json, "Godzilla", 2014));
+        Assert.Equal("/MediaCover/2/poster.jpg", ArrArtworkParser.PosterPath(json, "Godzilla", 2014));
     }
 
     [Fact]
     public void Falls_back_to_a_title_match_when_year_is_unknown()
     {
-        Assert.Equal("https://image.tmdb.org/t/p/original/godzilla2014.jpg",
-            ArrArtworkParser.PosterRemoteUrl(RadarrJson, "Godzilla", null));
+        Assert.Equal("/MediaCover/16/poster.jpg",
+            ArrArtworkParser.PosterPath(RadarrJson, "Godzilla", null));
     }
 
     [Fact]
@@ -51,25 +51,33 @@ public sealed class ArrArtworkParserTests
         [
           { "title": "Breaking Bad", "year": 2008, "images": [
             { "coverType": "banner", "remoteUrl": "banner.jpg" },
-            { "coverType": "poster", "remoteUrl": "https://artworks.thetvdb.com/bb-poster.jpg" }
+            { "coverType": "poster", "remoteUrl": "https://artworks.thetvdb.com/bb-poster.jpg", "url": "/MediaCover/7/poster.jpg" }
           ] }
         ]
         """;
-        Assert.Equal("https://artworks.thetvdb.com/bb-poster.jpg",
-            ArrArtworkParser.PosterRemoteUrl(json, "Breaking Bad", 2008));
+        Assert.Equal("/MediaCover/7/poster.jpg",
+            ArrArtworkParser.PosterPath(json, "Breaking Bad", 2008));
+    }
+
+    [Fact]
+    public void Rejects_an_absolute_poster_url_from_an_arr_response()
+    {
+        var json = """[ { "title": "Heat", "year": 1995, "images": [ { "coverType": "poster", "url": "http://169.254.169.254/latest/meta-data" } ] } ]""";
+
+        Assert.Null(ArrArtworkParser.PosterPath(json, "Heat", 1995));
     }
 
     [Fact]
     public void Returns_null_when_the_match_has_no_poster_image()
     {
         var json = """[ { "title": "Godzilla", "year": 2014, "images": [ { "coverType": "fanart", "remoteUrl": "f.jpg" } ] } ]""";
-        Assert.Null(ArrArtworkParser.PosterRemoteUrl(json, "Godzilla", 2014));
+        Assert.Null(ArrArtworkParser.PosterPath(json, "Godzilla", 2014));
     }
 
     [Fact]
     public void Returns_null_when_nothing_matches_the_title()
     {
-        Assert.Null(ArrArtworkParser.PosterRemoteUrl(RadarrJson, "A Different Film", 2024));
+        Assert.Null(ArrArtworkParser.PosterPath(RadarrJson, "A Different Film", 2024));
     }
 
     [Theory]
@@ -79,12 +87,12 @@ public sealed class ArrArtworkParserTests
     [InlineData("[]")]
     public void Returns_null_for_bad_or_empty_payloads(string json)
     {
-        Assert.Null(ArrArtworkParser.PosterRemoteUrl(json, "Godzilla", 2014));
+        Assert.Null(ArrArtworkParser.PosterPath(json, "Godzilla", 2014));
     }
 
     [Fact]
     public void Returns_null_when_the_title_is_missing()
     {
-        Assert.Null(ArrArtworkParser.PosterRemoteUrl(RadarrJson, null, 2024));
+        Assert.Null(ArrArtworkParser.PosterPath(RadarrJson, null, 2024));
     }
 }

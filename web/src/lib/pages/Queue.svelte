@@ -23,6 +23,7 @@
   let cancellingId = $state<number | null>(null)
   let removingId = $state<number | null>(null)
   let replacingId = $state<number | null>(null)
+  let replacingAll = $state(false)
   let retryingId = $state<number | null>(null)
   let excludingId = $state<number | null>(null)
   let clearingScope = $state<'errored' | 'finished' | null>(null)
@@ -398,6 +399,27 @@
     expandedId = expandedId === job.id ? null : job.id
   }
 
+  async function replaceAll() {
+    if (!confirm(t(i18n.m.queue.confirm_replace_all, { count: readyToReplaceCount.toLocaleString() }))) {
+      return
+    }
+    replacingAll = true
+    try {
+      const result = await api.replaceReadyJobs()
+      selectedJobId = null
+      await load()
+      if (result.failures.length > 0) {
+        error = t(i18n.m.queue.bulk_replace_failed, { count: result.failures.length.toLocaleString() })
+      } else if (result.replaced > 0) {
+        router.go('/quarantine')
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : i18n.m.queue.error_replace_all
+    } finally {
+      replacingAll = false
+    }
+  }
+
   async function replace(job: Job) {
     if (!confirm(i18n.m.queue.confirm_replace)) {
       return
@@ -415,6 +437,9 @@
   }
 
   let activeCount = $derived(jobs.filter((j) => isActive(j.status)).length)
+  let readyToReplaceCount = $derived(
+    jobs.filter((job) => job.status === 'ReadyToReplace' && job.verificationPassed === true).length,
+  )
   // Two clear buckets: finished = completed; errored = failed or cancelled.
   let finishedClearable = $derived(jobs.filter((j) => j.status === 'Completed' && j.clearable).length)
   let finishedProtected = $derived(jobs.filter((j) => j.status === 'Completed' && !j.clearable).length)
@@ -616,6 +641,17 @@
       </button>
     {/each}
     <div class="ml-auto flex items-center gap-2">
+      {#if readyToReplaceCount > 0}
+        <button
+          class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs"
+          onclick={replaceAll}
+          disabled={replacingAll || replacingId !== null}
+          title={i18n.m.queue.replace_all_title}
+        >
+          <Icon name="replace" class="h-4 w-4" />
+          {replacingAll ? i18n.m.queue.action_replacing : t(i18n.m.queue.replace_all, { count: readyToReplaceCount.toLocaleString() })}
+        </button>
+      {/if}
       {#if pendingCount > 0}
         <button
           class="btn btn-ghost inline-flex items-center gap-1 px-3 py-1 text-xs"
@@ -748,7 +784,7 @@
             <td class="px-4 py-2 text-right">
               <div class="flex justify-end gap-1">
                 {#if job.status === 'ReadyToReplace' && job.verificationPassed}
-                  <button class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); replace(job) }} disabled={replacingId === job.id}>
+                  <button class="btn btn-primary inline-flex items-center gap-1 px-3 py-1 text-xs" onclick={(e) => { e.stopPropagation(); replace(job) }} disabled={replacingAll || replacingId === job.id}>
                     <Icon name="replace" class="h-3.5 w-3.5" />
                     {replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}
                   </button>

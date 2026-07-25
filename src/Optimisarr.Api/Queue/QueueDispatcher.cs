@@ -894,6 +894,13 @@ public sealed class QueueDispatcher(
             }
 
             videoEncoderName = videoEncoder.EncoderName;
+            var videoPreset = EncoderPresetPolicy.Resolve(videoEncoderName, spec.Preset);
+            if (!videoPreset.Succeeded)
+            {
+                throw new InvalidOperationException(videoPreset.Error);
+            }
+            spec = spec with { Preset = videoPreset.FfmpegPreset };
+
             if (spec.Crf is { } requestedQuality)
             {
                 videoQuality = EncoderQualityPolicy.Resolve(
@@ -911,6 +918,26 @@ public sealed class QueueDispatcher(
                 videoQuality?.Effective,
                 videoQuality?.Requested,
                 videoQuality?.RetryCount);
+            if (videoPreset.Effort is not null)
+            {
+                if (videoPreset.FfmpegPreset is null)
+                {
+                    logger.LogInformation(
+                        "Job {JobId} requested {Effort} encoder effort; '{Encoder}' uses its driver default",
+                        jobId,
+                        videoPreset.Effort,
+                        videoEncoderName);
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Job {JobId} resolved {Effort} encoder effort to preset '{Preset}' for '{Encoder}'",
+                        jobId,
+                        videoPreset.Effort,
+                        videoPreset.FfmpegPreset,
+                        videoEncoderName);
+                }
+            }
         }
 
         // The primary command honours the hardware-decode setting; the builder only applies it

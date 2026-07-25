@@ -20,6 +20,24 @@ measurement. Runtime failures fall back to software, and a measured hardware-dec
 the selected quality floor is confirmed in software before the output is rejected. The Queue shows
 the selected encoder on each job.
 
+## Encoder effort
+
+The per-library **Encoder effort** setting describes intent rather than storing a raw FFmpeg
+preset. Optimisarr resolves it after the exact encoder has been selected:
+
+| Effort | x264/x265 | SVT-AV1 | NVIDIA NVENC | Intel QSV | VAAPI |
+|---|---|---:|---|---|---|
+| Fast | `fast` | `10` | `p2` | `fast` | Driver default |
+| Balanced | `medium` | `8` | `p4` | `medium` | Driver default |
+| Efficient | `slow` | `6` | `p7` | `slow` | Driver default |
+
+This is particularly important in **Auto** mode, where the encoder depends on the target codec,
+proved host capabilities, and source bit depth. Existing libraries, API requests, and imported
+backups may retain a former x264/x265 value, NVENC `p1`–`p7`, or SVT-AV1 `0`–`13` preset. That exact
+value remains in force on its native encoder and stays visibly labelled as legacy until the operator
+chooses a portable effort; another encoder family receives its closest safe equivalent. Any
+unrecognised value is rejected before a job can reach FFmpeg.
+
 ## Intel and AMD
 
 Map `/dev/dri` and set `RENDER_GID` to the host render-node group:
@@ -37,8 +55,16 @@ Settings after Tools has validated the encoder.
 
 Install NVIDIA Container Toolkit and configure `NVIDIA_VISIBLE_DEVICES=all` and
 `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. The `video` capability is
-required for NVENC. Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
+required for NVENC and NVDEC. Use the [NVIDIA Compose example](../../compose.nvidia.example.yml)
 and select a hardware mode only after Tools reports success.
+
+With **Hardware decoding** enabled (the default), an NVENC transcode uses FFmpeg's
+`-hwaccel cuda -hwaccel_output_format cuda` path. FFmpeg selects the compatible NVDEC decoder for
+the source codec and keeps the decoded frames in CUDA memory for NVENC; Optimisarr does not force a
+codec-specific `*_cuvid` decoder. If the source codec or profile is unsupported, device setup fails,
+or the CUDA decode path cannot initialise, the job deletes the partial work output and retries once
+with software decoding. HDR-to-SDR work always uses software decoding because its tone-map filter
+needs frames in system memory.
 
 For systems with no GPU, use the [CPU-only Compose example](../../compose.cpu.example.yml).
 
@@ -48,14 +74,12 @@ selection: Intel QSV and VA-API can decode both inputs before downloading frames
 That GPU-to-RAM copy means hardware decode is not guaranteed to be faster; benchmark it on the host.
 There is no Intel/AMD/NPU backend for VMAF's feature extractors.
 
-**Auto** also keeps the always-on video bit-depth gate honest. The supported NVENC, Intel QSV, and
-VA-API H.264 paths cannot preserve a 10-bit source, so an H.264 target uses the bundled 10-bit
-`libx264` encoder for that file instead of silently converting it to 8-bit. An explicitly selected
-hardware mode fails before encoding and asks you to use Auto/CPU or choose HEVC/AV1. Sources above
-10-bit fail closed because no supported H.264 encoder can preserve them. The preserved H.264 High 10
-output is less widely playable, can be slower, and can be larger than the source; it is therefore not
-the broad 8-bit compatibility promise normally associated with the preset. See
-[Known issues](../../KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit).
+The always-on video bit-depth gate also keeps the H.264 compatibility promise honest. Normal,
+preview, and personal-quality work never queues H.264 output for a source above 8-bit; the source is
+left untouched with guidance to use HEVC or AV1 instead. A source whose bit depth cannot be proved is
+also skipped until it is re-probed. The lower-level encoder checks remain as a defensive backstop:
+supported NVENC, Intel QSV, and VA-API H.264 paths cannot preserve a 10-bit source, and Optimisarr
+never silently converts one to 8-bit.
 
 NVIDIA is the only full scoring-acceleration path. Supply an FFmpeg build with `libvmaf_cuda`,
 FFmpeg NVIDIA codec support, and `scale_cuda` through `OPTIMISARR_FFMPEG_VMAF_CUDA`; Optimisarr then
@@ -67,3 +91,9 @@ and tone-map preparation is unchanged. See FFmpeg's official
 GPU usage graphs require an unprivileged metrics source. Intel/AMD are read from
 DRM fdinfo and NVIDIA from `nvidia-smi`; if neither is available, encoding can
 still work while the UI reports GPU stats unavailable.
+
+Contributors with a physical NVIDIA system can run the packaged
+[NVENC quality comparison](nvenc-quality-comparison.md). It creates a private test folder under the
+mapped storage root, leaves all supplied clips unchanged, and produces one anonymous text report for
+[issue #37](https://github.com/Jellman86/optimisarr/issues/37). The comparison does not alter normal
+Optimisarr encoding settings.

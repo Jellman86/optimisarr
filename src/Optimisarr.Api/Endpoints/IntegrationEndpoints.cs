@@ -165,19 +165,24 @@ internal static class IntegrationEndpoints
                 return ApiErrors.NotFound("notification.notFound", $"No notification target with id {id}.", new { id });
             }
 
-            if (!NotificationTargetRequestParser.TryParse(request, out var parsed, out var error))
+            if (!NotificationTargetRequestParser.TryParse(
+                request,
+                out var parsed,
+                out var error,
+                hasStoredTelegramToken: target.Type == NotificationType.Telegram
+                    && !string.IsNullOrWhiteSpace(target.Token)))
             {
                 return ApiErrors.BadRequest("notification.validation", error!);
             }
 
+            var updatedToken = NotificationTargetRequestParser.ResolveTokenForUpdate(
+                target.Type, target.Token, parsed);
             target.Name = parsed.Name;
             target.Type = parsed.Type;
             target.Url = parsed.Url;
-            // A blank token on update keeps the stored secret rather than wiping it.
-            if (parsed.Token is not null)
-            {
-                target.Token = parsed.Token;
-            }
+            // Blank keeps a credential only while editing the same provider. A provider change clears
+            // the old secret so, for example, a Telegram bot token can never become a webhook bearer.
+            target.Token = updatedToken;
             target.Enabled = parsed.Enabled;
             target.NotifyOnReplacement = parsed.NotifyOnReplacement;
             target.NotifyOnFailure = parsed.NotifyOnFailure;
@@ -204,6 +209,18 @@ internal static class IntegrationEndpoints
             return Results.NoContent();
         })
         .WithName("DeleteNotificationTarget");
+
+        app.MapPost("/api/notification-targets/{id:int}/test", async (
+            int id,
+            NotificationService notifications,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await notifications.TestAsync(id, cancellationToken);
+            return result is null
+                ? ApiErrors.NotFound("notification.notFound", $"No notification target with id {id}.", new { id })
+                : Results.Ok(result);
+        })
+        .WithName("TestNotificationTarget");
 
         // Sonarr/Radarr connections: managers Optimisarr asks about in-progress imports so a
         // file isn't optimised while an import is landing in its folder. Keys are write-only.

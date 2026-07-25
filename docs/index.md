@@ -16,6 +16,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Safe replacement and rollback](operations/safe-replacement.md) - what has to pass before an original is moved, and how rollback works.
 - [Configuration and scheduling](setup/configuration.md) - queue limits, verification gates, per-library automation, exclusions, and backup.
 - [Hardware acceleration](setup/hardware-acceleration.md)
+- [Run the NVIDIA quality comparison](setup/nvenc-quality-comparison.md) - create an anonymous NVENC benchmark report without changing the supplied clips.
 - [Running behind a reverse proxy](setup/reverse-proxy.md)
 - [Media-server integrations](integrations/media-servers.md) - Plex, Jellyfin, Emby, Sonarr, Radarr, and notifications.
 

@@ -238,7 +238,9 @@ internal sealed class BlindCalibrationService(
         {
             MediaKind.Audio => BlindCalibrationPolicy.AudioPlan(duration, rules.TargetAudioCodec),
             MediaKind.Image => BlindCalibrationPolicy.ImagePlan(),
-            _ => BlindCalibrationPolicy.VideoPlan(duration)
+            _ => BlindCalibrationPolicy.VideoPlan(
+                duration,
+                PixelFormatInfo.Parse(media.PixelFormat, media.BitsPerRawSample)?.BitDepth)
         };
         if (media.MediaKind == MediaKind.Video)
         {

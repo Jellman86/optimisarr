@@ -8,6 +8,12 @@
   <a href="#quick-start-docker">Quick Start</a> •
   <a href="#hardware-acceleration-gpu">Hardware Acceleration</a>
 </p>
+<p align="center">
+  <a href="https://github.com/Jellman86/optimisarr" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/%E2%AD%90%20Enjoying%20Optimisarr%3F-Star%20the%20project-F4C430?style=for-the-badge&labelColor=F4C430&color=D4A017&logo=github&logoColor=000000" alt="Star Optimisarr on GitHub">
+  </a>
+</p>
+<p align="center"><sub>If Optimisarr is useful to you, starring the repo helps more people discover it.</sub></p>
 
 **Optimisarr is a self-hosted, Docker-based FFmpeg media-library optimiser.**
 It finds eligible video, audio, and image files, transcodes them to reduce
@@ -67,8 +73,8 @@ no support SLA or promise of a release schedule.
   Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR preserved and
   AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
   target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
-  has a [known High 10 limitation](KNOWN_ISSUES.md#compatibility-h264-is-not-broadly-compatible-for-sources-above-8-bit)
-  when the source is above 8-bit.
+  is limited to proven 8-bit sources; higher or unknown bit depths are left untouched with guidance
+  to use HEVC or AV1 instead.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
   job, or **automatically after an unrecoverable or repeated failure** — managed per library on an
   **Excluded** tab. Durable (keyed by path) and reversible; originals untouched.
@@ -93,13 +99,17 @@ no support SLA or promise of a release schedule.
 - Hardware capability detection for FFmpeg accelerators, CPU encoders, NVIDIA
   NVENC, Intel QSV, VAAPI, NVIDIA runtime, and `/dev/dri` mapping.
 - Global encoder mode selection for Auto, CPU, NVIDIA NVENC, Intel QSV, and VAAPI.
+- Per-library **Encoder effort** choices that resolve after the actual encoder is selected, mapping
+  one portable Fast/Balanced/Efficient intent onto valid x264/x265, SVT-AV1, NVENC, or QSV presets
+  while VAAPI safely retains its driver default.
 - Configurable verification gates for duration tolerance, audio/subtitle
   retention, and required size reduction.
 
 - **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
   per-encoder availability **confirmed by a real test encode** (not just inferred), and the
   encoder used shown per job (GPU/CPU) on the Queue.
-- **GPU hardware decoding** (QSV/VA-API) of the source as well as the encode, on by default,
+- **GPU hardware decoding** (NVIDIA NVDEC, QSV, and VA-API) of the source as well as the encode,
+  on by default,
   with automatic CPU-decode fallback for sources the GPU can't decode — so a large 4K encode no
   longer burns a CPU core just on software decode. Skipped for HDR→SDR tonemap jobs (the tonemap
   runs in software).
@@ -112,11 +122,12 @@ no support SLA or promise of a release schedule.
 - Optional **service-activity pauses** (Plex/Jellyfin/Emby), **dry-run mode**,
   configurable replacement/quarantine policy with a retention window, and **library
   integrations** (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions,
-  notifications, config-and-secrets backup/import).
+  webhook/Discord/Telegram/ntfy/Apprise notifications, config-and-secrets backup/import).
 
 Still planned (see the [roadmap](docs/roadmap.md) and maintained
 [hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation
-for AMD VA-API. Intel QSV has been tested on real hardware for both encoding and decoding.
+for AMD VA-API and NVIDIA NVDEC. Intel QSV has been tested on real hardware for both encoding and
+decoding.
 
 ## Before you start
 
@@ -210,11 +221,11 @@ runs — GPU stats are read **without any elevated privileges** (per-process DRM
 Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is
 needed**; hosts where no unprivileged source applies simply show "GPU stats unavailable".
 
-- **NVIDIA (NVENC):** install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+- **NVIDIA (NVENC/NVDEC):** install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
   on the host and run with `--gpus all`. You **must** also set
-  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` — without the `video` capability the NVENC
-  library isn't injected and encoding fails with `Cannot load libnvidia-encode.so.1` even though
-  `nvidia-smi` works.
+  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility` — the `video` capability exposes NVENC and
+  NVDEC; without it encoding fails with `Cannot load libnvidia-encode.so.1` even though `nvidia-smi`
+  works.
 - **Intel (QSV / VA-API) and AMD (VA-API):** map the render node and add the container to the
   host's `render` group:
 

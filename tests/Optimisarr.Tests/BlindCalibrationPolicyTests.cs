@@ -30,7 +30,7 @@ public sealed class BlindCalibrationPolicyTests
     [Fact]
     public void Video_plan_uses_the_four_library_slider_presets_and_three_windows()
     {
-        var plan = BlindCalibrationPolicy.VideoPlan(durationSeconds: 1_200);
+        var plan = BlindCalibrationPolicy.VideoPlan(durationSeconds: 1_200, sourceBitDepth: 8);
 
         Assert.Equal(
             [
@@ -50,11 +50,24 @@ public sealed class BlindCalibrationPolicyTests
             plan.Samples);
     }
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(null)]
+    public void Video_plan_omits_h264_when_source_depth_is_not_proven_safe(int? sourceBitDepth)
+    {
+        var plan = BlindCalibrationPolicy.VideoPlan(durationSeconds: 1_200, sourceBitDepth: sourceBitDepth);
+
+        Assert.DoesNotContain(plan.Settings, setting => setting.VideoProfile == RuleProfile.CompatibilityH264);
+        Assert.Equal(
+            [RuleProfile.ExperimentalAv1, RuleProfile.ScottsSettings, RuleProfile.ConservativeHevc],
+            plan.Settings.Select(setting => setting.VideoProfile));
+    }
+
     [Fact]
     public void Video_plan_rejects_a_source_too_short_for_representative_windows()
     {
         var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            BlindCalibrationPolicy.VideoPlan(47.9));
+            BlindCalibrationPolicy.VideoPlan(47.9, sourceBitDepth: 8));
 
         Assert.Contains("48 seconds", error.Message, StringComparison.Ordinal);
     }
@@ -65,7 +78,7 @@ public sealed class BlindCalibrationPolicyTests
     public void Video_plan_rejects_a_non_finite_duration(double durationSeconds)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            BlindCalibrationPolicy.VideoPlan(durationSeconds));
+            BlindCalibrationPolicy.VideoPlan(durationSeconds, sourceBitDepth: 8));
     }
 
     [Theory]
@@ -121,7 +134,7 @@ public sealed class BlindCalibrationPolicyTests
     [Fact]
     public void Preference_result_selects_the_most_compressed_acceptable_quality()
     {
-        var plan = BlindCalibrationPolicy.VideoPlan(1_200);
+        var plan = BlindCalibrationPolicy.VideoPlan(1_200, sourceBitDepth: 8);
         var ratings = new Dictionary<string, CalibrationPreference>
         {
             [RuleProfile.ExperimentalAv1.ToString()] = CalibrationPreference.VisiblyWorse,

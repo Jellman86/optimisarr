@@ -7,17 +7,18 @@ namespace Optimisarr.Core.Activity;
 /// HTTP) so it is unit tested; the API layer fetches the list and proxies the chosen image. Radarr
 /// and Sonarr already hold the artwork for the files they manage, so this is an exact, local source
 /// — matched on a normalised title and, when known, the year — rather than a fuzzy media-server
-/// search. Prefers the poster's <c>remoteUrl</c> (a public TMDB/TVDB CDN URL needing no API key).
+/// search. Returns only Arr's relative poster path so the API layer can fetch it through the
+/// explicitly configured Arr connection rather than trusting an arbitrary remote URL from JSON.
 /// </summary>
 public static class ArrArtworkParser
 {
     /// <summary>
-    /// The poster <c>remoteUrl</c> for the title in a Radarr <c>/api/v3/movie</c> or Sonarr
+    /// The relative poster <c>url</c> for the title in a Radarr <c>/api/v3/movie</c> or Sonarr
     /// <c>/api/v3/series</c> response (both are arrays of items carrying <c>title</c>, <c>year</c>,
     /// and an <c>images</c> array). Returns an exact title+year match in preference to a title-only
     /// match, and null when nothing matches or the match has no poster.
     /// </summary>
-    public static string? PosterRemoteUrl(string? json, string? title, int? year)
+    public static string? PosterPath(string? json, string? title, int? year)
     {
         if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(title))
         {
@@ -50,7 +51,7 @@ public static class ArrArtworkParser
                     continue;
                 }
 
-                var poster = PosterUrl(item);
+                var poster = PosterPath(item);
                 if (poster is null)
                 {
                     continue;
@@ -68,7 +69,7 @@ public static class ArrArtworkParser
         }
     }
 
-    private static string? PosterUrl(JsonElement item)
+    private static string? PosterPath(JsonElement item)
     {
         if (!item.TryGetProperty("images", out var images) || images.ValueKind != JsonValueKind.Array)
         {
@@ -79,16 +80,23 @@ public static class ArrArtworkParser
         {
             if (GetString(image, "coverType") == "poster")
             {
-                var remote = GetString(image, "remoteUrl");
-                if (!string.IsNullOrEmpty(remote))
+                var path = GetString(image, "url");
+                if (IsTrustedRelativePath(path))
                 {
-                    return remote;
+                    return path;
                 }
             }
         }
 
         return null;
     }
+
+    private static bool IsTrustedRelativePath(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value[0] == '/'
+        && !value.StartsWith("//", StringComparison.Ordinal)
+        && !value.Contains('\\')
+        && Uri.TryCreate(value, UriKind.Relative, out _);
 
     // Compare titles ignoring case, punctuation, and spacing so "Godzilla x Kong: The New Empire"
     // matches "Godzilla x Kong - The New Empire".

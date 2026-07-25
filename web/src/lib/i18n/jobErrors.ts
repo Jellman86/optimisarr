@@ -14,6 +14,7 @@ export function jobFailureDescription(
     case 'bitmapsubtitles': return messages.queue.failure_bitmap_subtitles
     case 'replacementcollision': return messages.queue.failure_replacement_collision
     case 'sourcemissing': return messages.queue.failure_source_missing
+    case 'invalidconfiguration': return messages.queue.failure_invalid_configuration
     case 'other': return messages.queue.failure_other
     default: return fallback || messages.queue.job_failed
   }

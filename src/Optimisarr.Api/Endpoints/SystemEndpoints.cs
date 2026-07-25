@@ -115,12 +115,12 @@ internal static class SystemEndpoints
             containers = new[] { "mkv", "mp4" },
             // Image targets proven against the exact FFmpeg build used for production jobs.
             imageFormats = ImageTarget.EncodableFormats,
-            // x264/x265 speed presets; slower = smaller files for the same quality.
-            encoderPresets = new[]
-            {
-                "ultrafast", "superfast", "veryfast", "faster", "fast",
-                "medium", "slow", "slower", "veryslow"
-            }
+            // Portable effort choices. The dispatcher resolves these after selecting the exact
+            // encoder, so Auto mode never forwards an x264 value to NVENC/QSV/SVT-AV1.
+            encoderPresets = EncoderPresetPolicy.Selections,
+            // Recognised values from earlier releases and direct API use. The UI keeps an existing
+            // one visible until the operator deliberately replaces it with a portable choice.
+            legacyEncoderPresets = EncoderPresetPolicy.LegacySelections
         }))
         .WithName("GetLibraryOptions");
     }

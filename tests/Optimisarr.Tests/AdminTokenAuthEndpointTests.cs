@@ -38,6 +38,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("POST", "/api/settings/cleanup")]
     [InlineData("GET", "/api/settings/export")]   // contains provider secrets
     [InlineData("POST", "/api/settings/import")]
+    [InlineData("POST", "/api/notification-targets/1/test")]
     [InlineData("POST", "/api/queue/pause")]
     [InlineData("POST", "/api/queue/resume")]
     [InlineData("GET", "/api/setup")]
@@ -56,6 +57,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("DELETE", "/api/calibration/00000000-0000-0000-0000-000000000000")]
     [InlineData("POST", "/api/jobs/clear")]
     [InlineData("POST", "/api/jobs/clear-pending")]
+    [InlineData("POST", "/api/jobs/replace-ready")]
     [InlineData("POST", "/api/jobs/1/cancel")]
     [InlineData("POST", "/api/jobs/1/retry")]
     [InlineData("DELETE", "/api/jobs/1")]
@@ -92,6 +94,27 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         using var response = await client.GetAsync("/api/settings");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Library_options_expose_only_portable_encoder_efforts()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        var options = JsonNode.Parse(await client.GetStringAsync("/api/library-options"))!.AsObject();
+        var efforts = options["encoderPresets"]!.AsArray()
+            .Select(value => value!.GetValue<string>())
+            .ToArray();
+
+        Assert.Equal(["quick", "balanced", "efficient"], efforts);
+        Assert.DoesNotContain("veryslow", efforts);
+        var legacy = options["legacyEncoderPresets"]!.AsArray()
+            .Select(value => value!.GetValue<string>())
+            .ToArray();
+        Assert.Contains("veryslow", legacy);
+        Assert.Contains("p7", legacy);
+        Assert.Contains("13", legacy);
     }
 
     [Fact]
@@ -327,6 +350,8 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 VideoCodec = "h264",
                 Width = 1_920,
                 Height = 1_080,
+                PixelFormat = "yuv420p",
+                BitsPerRawSample = 8,
                 ProbedAt = DateTimeOffset.UtcNow
             };
             db.MediaFiles.Add(media);
@@ -536,6 +561,77 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             Assert.False(db.Jobs.Any(job => job.CalibrationSessionId == sessionId));
         }
         Assert.Equal("calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
+    }
+
+    [Fact]
+    public async Task Ten_bit_video_calibration_omits_the_incompatible_h264_candidate()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var directory = Path.Combine(
+            Path.GetDirectoryName(_api.LibraryDirectory)!,
+            "ten-bit-calibration-library-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var sourcePath = Path.Combine(directory, "ten-bit-source.mkv");
+        await File.WriteAllTextAsync(sourcePath, "ten-bit-calibration-source-must-remain-unchanged");
+
+        using var created = await client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Ten-bit calibration library",
+            path = directory,
+            mediaType = "Film",
+            ruleProfile = "ConservativeHevc"
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var libraryId = JsonNode.Parse(await created.Content.ReadAsStringAsync())!["id"]!.GetValue<int>();
+
+        int mediaFileId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                LibraryId = libraryId,
+                Path = sourcePath,
+                RelativePath = "ten-bit-source.mkv",
+                SizeBytes = new FileInfo(sourcePath).Length,
+                ModifiedAt = DateTimeOffset.UtcNow,
+                Status = MediaFileStatus.Probed,
+                MediaKind = MediaKind.Video,
+                DurationSeconds = 1_200,
+                VideoCodec = "hevc",
+                Width = 1_920,
+                Height = 1_080,
+                PixelFormat = "yuv420p10le",
+                BitsPerRawSample = 10,
+                ProbedAt = DateTimeOffset.UtcNow
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            mediaFileId = media.Id;
+        }
+
+        using var started = await client.PostAsJsonAsync(
+            $"/api/libraries/{libraryId}/calibration",
+            new { mediaFileId, ignoreActiveStreams = true });
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var session = JsonNode.Parse(await started.Content.ReadAsStringAsync())!.AsObject();
+        var sessionId = session["id"]!.GetValue<Guid>();
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
+            Assert.Equal(9, jobs.Count);
+            Assert.DoesNotContain(jobs, job => job.RequestedRuleProfile == RuleProfile.CompatibilityH264);
+            Assert.Equal(
+                [RuleProfile.ConservativeHevc, RuleProfile.ExperimentalAv1, RuleProfile.ScottsSettings],
+                jobs.Select(job => job.RequestedRuleProfile!.Value).Distinct().Order().ToArray());
+        }
+
+        using var deleted = await client.DeleteAsync($"/api/calibration/{sessionId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal("ten-bit-calibration-source-must-remain-unchanged", await File.ReadAllTextAsync(sourcePath));
     }
 
     [Fact]

@@ -19,6 +19,22 @@ public sealed class FfmpegErrorInterpreterTests
         Assert.Contains("original was not touched", message);
     }
 
+    [Fact]
+    public void Explains_a_rejected_encoder_preset_as_configuration_not_media_failure()
+    {
+        const string stderr =
+            "[hevc_nvenc @ 0x123] Unable to parse option value \"veryslow\"\n"
+            + "[hevc_nvenc @ 0x123] Error setting option preset to value veryslow.\n"
+            + "Error opening encoder - maybe incorrect parameters such as bit_rate, rate, width or height.";
+
+        var message = FfmpegErrorInterpreter.Explain(stderr);
+
+        Assert.NotNull(message);
+        Assert.Contains("Invalid encoder effort", message);
+        Assert.Contains("library", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("original was not touched", message);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

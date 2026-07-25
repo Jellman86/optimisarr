@@ -1,10 +1,14 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Activity;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.IO;
 using Optimisarr.Core.Library;
+using Optimisarr.Core.Notifications;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Replacement;
@@ -21,8 +25,10 @@ namespace Optimisarr.Api.Replacement;
 public sealed class ArtworkService(
     IServiceScopeFactory scopeFactory,
     IHttpClientFactory httpClientFactory,
-    TranscodeOptions transcodeOptions)
+    TranscodeOptions transcodeOptions) : INotificationArtworkProvider
 {
+    public const string HttpClientName = "ArtworkFetch";
+
     private sealed record Resolved(string? Url, string? AuthHeaderName, string? AuthHeaderValue);
 
     private static readonly Resolved None = new(null, null, null);
@@ -34,6 +40,9 @@ public sealed class ArtworkService(
     // cover-less file every time, while a fixed/re-probed file recovers without a long wait.
     private static readonly TimeSpan NegativeTtl = TimeSpan.FromMinutes(30);
     private const int ThumbnailHeight = 240;
+    private const int ArtworkMaxBytes = 10 * 1024 * 1024;
+    private const int MetadataMaxBytes = 16 * 1024 * 1024;
+    private const int FfmpegErrorMaxBytes = 64 * 1024;
 
     private readonly string _ffmpeg = transcodeOptions.Ffmpeg;
     private readonly ConcurrentDictionary<int, (Resolved Value, DateTime At)> _backdropCache = new();
@@ -67,6 +76,32 @@ public sealed class ArtworkService(
             MediaKind.Image => await ExtractAsync(mediaFileId, media.Path, MediaThumbnail.ImageThumbnailArguments(media.Path, ThumbnailHeight), cancellationToken),
             _ => await GetVideoPosterAsync(mediaFileId, cancellationToken),
         };
+    }
+
+    /// <summary>
+    /// Finds the affected media file by path and reuses its existing UI thumbnail source for a
+    /// notification. Telegram artwork is deliberately opportunistic: anything absent, non-image,
+    /// or above the Bot API's 10 MB photo limit becomes a plain-text notification instead.
+    /// </summary>
+    public async Task<NotificationImage?> TryGetAsync(string path, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var mediaId = await db.MediaFiles
+            .AsNoTracking()
+            .Where(file => file.Path == path)
+            .Select(file => (int?)file.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (mediaId is null)
+        {
+            return null;
+        }
+
+        var artwork = await GetThumbnailAsync(mediaId.Value, cancellationToken);
+        return artwork is { Bytes.Length: > 0 and <= ArtworkMaxBytes }
+            && artwork.Value.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                ? new NotificationImage(artwork.Value.Bytes, artwork.Value.ContentType)
+                : null;
     }
 
     private async Task<(byte[] Bytes, string ContentType)?> GetVideoPosterAsync(int mediaFileId, CancellationToken cancellationToken)
@@ -127,22 +162,54 @@ public sealed class ArtworkService(
             using var process = new Process { StartInfo = info };
             process.Start();
 
-            using var buffer = new MemoryStream();
-            var copy = process.StandardOutput.BaseStream.CopyToAsync(buffer, timeout.Token);
-            var error = process.StandardError.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
-            await copy;
-            await error;
-
-            var bytes = buffer.ToArray();
-            var contentType = MediaThumbnail.DetectImageContentType(bytes);
-            if (process.ExitCode != 0 || contentType is null)
+            try
             {
-                _noThumbnail[mediaFileId] = DateTime.UtcNow;
-                return null;
-            }
+                var bytesTask = BoundedStreamReader.ReadAsync(
+                    process.StandardOutput.BaseStream, ArtworkMaxBytes, timeout.Token);
+                var errorTask = BoundedStreamReader.ReadAsync(
+                    process.StandardError.BaseStream, FfmpegErrorMaxBytes, timeout.Token);
+                var exitTask = process.WaitForExitAsync(timeout.Token);
+                var pending = new List<Task> { bytesTask, errorTask, exitTask };
+                var exceededLimit = false;
 
-            return (bytes, contentType);
+                while (pending.Count > 0)
+                {
+                    var completed = await Task.WhenAny(pending);
+                    pending.Remove(completed);
+                    if ((completed == bytesTask && await bytesTask is null)
+                        || (completed == errorTask && await errorTask is null))
+                    {
+                        exceededLimit = true;
+                        process.Kill(entireProcessTree: true);
+                        break;
+                    }
+
+                    if (completed == exitTask)
+                    {
+                        break;
+                    }
+                }
+
+                await process.WaitForExitAsync(timeout.Token);
+                var bytes = await bytesTask;
+                var errorBytes = await errorTask;
+                var contentType = bytes is null ? null : MediaThumbnail.DetectImageContentType(bytes);
+                if (exceededLimit
+                    || errorBytes is null
+                    || process.ExitCode != 0
+                    || bytes is null
+                    || contentType is null)
+                {
+                    _noThumbnail[mediaFileId] = DateTime.UtcNow;
+                    return null;
+                }
+
+                return (bytes, contentType);
+            }
+            finally
+            {
+                await EnsureProcessStoppedAsync(process);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -150,6 +217,39 @@ public sealed class ArtworkService(
             // cancelled is not caught here, so it is not mistaken for a missing thumbnail.
             _noThumbnail[mediaFileId] = DateTime.UtcNow;
             return null;
+        }
+    }
+
+    private static async Task EnsureProcessStoppedAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+        catch (Win32Exception)
+        {
+            // Continue to the bounded wait; the process may have exited during the kill attempt.
+        }
+
+        using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await process.WaitForExitAsync(shutdown.Token);
+        }
+        catch (InvalidOperationException)
+        {
+            // The process exited between the state check and wait registration.
+        }
+        catch (OperationCanceledException)
+        {
+            // The kill was attempted; do not let cleanup mask the caller's cancellation or timeout.
         }
     }
 
@@ -175,8 +275,7 @@ public sealed class ArtworkService(
 
         try
         {
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
+            var client = httpClientFactory.CreateClient(HttpClientName);
             using var request = new HttpRequestMessage(HttpMethod.Get, resolved.Url);
             request.Headers.TryAddWithoutValidation("Accept", "image/*");
             if (resolved.AuthHeaderName is not null)
@@ -184,8 +283,10 @@ public sealed class ArtworkService(
                 request.Headers.TryAddWithoutValidation(resolved.AuthHeaderName, resolved.AuthHeaderValue);
             }
 
-            using var response = await client.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            using var response = await client.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode
+                || response.Content.Headers.ContentLength is > ArtworkMaxBytes)
             {
                 return null;
             }
@@ -196,13 +297,27 @@ public sealed class ArtworkService(
                 return null;
             }
 
-            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-            return bytes.Length > 0 ? (bytes, contentType) : null;
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var bytes = await BoundedStreamReader.ReadAsync(stream, ArtworkMaxBytes, cancellationToken);
+            return bytes is { Length: > 0 } ? (bytes, contentType) : null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return null;
         }
+    }
+
+    private static async Task<string?> ReadBoundedTextAsync(
+        HttpContent content, int maxBytes, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is { } contentLength && contentLength > maxBytes)
+        {
+            return null;
+        }
+
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
+        var bytes = await BoundedStreamReader.ReadAsync(stream, maxBytes, cancellationToken);
+        return bytes is null ? null : Encoding.UTF8.GetString(bytes);
     }
 
     private async Task<Resolved> ResolveBackdropAsync(int jobId, CancellationToken cancellationToken)
@@ -252,10 +367,10 @@ public sealed class ArtworkService(
         var isTv = library.MediaType == MediaType.Tv;
 
         // Radarr/Sonarr first: an exact, local match keyed to the file the manager already imported.
-        var posterUrl = await ResolveArrPosterAsync(db, isTv, title, cancellationToken);
-        if (posterUrl is not null)
+        var arrPoster = await ResolveArrPosterAsync(db, isTv, title, cancellationToken);
+        if (arrPoster.Url is not null)
         {
-            return new Resolved(posterUrl, null, null);   // a public CDN remoteUrl, no auth needed
+            return arrPoster;
         }
 
         return await ResolveFromWatcherAsync(db, isTv, title, poster: true, cancellationToken);
@@ -267,7 +382,7 @@ public sealed class ArtworkService(
             ? MediaTitleParser.Parse(relativePath, library.MediaType == MediaType.Tv)
             : null;
 
-    private async Task<string?> ResolveArrPosterAsync(
+    private async Task<Resolved> ResolveArrPosterAsync(
         OptimisarrDbContext db, bool isTv, MediaTitle title, CancellationToken cancellationToken)
     {
         var arrType = isTv ? ArrConnectionType.Sonarr : ArrConnectionType.Radarr;
@@ -278,11 +393,14 @@ public sealed class ArtworkService(
             .FirstOrDefaultAsync(cancellationToken);
         if (arr is null || string.IsNullOrEmpty(arr.ApiKey))
         {
-            return null;
+            return None;
         }
 
         var json = await GetArrListAsync(arr, cancellationToken);
-        return ArrArtworkParser.PosterRemoteUrl(json, title.Title, title.Year);
+        var path = ArrArtworkParser.PosterPath(json, title.Title, title.Year);
+        return path is null
+            ? None
+            : new Resolved($"{arr.BaseUrl.TrimEnd('/')}{path}", "X-Api-Key", arr.ApiKey);
     }
 
     private async Task<string?> GetArrListAsync(ArrConnection arr, CancellationToken cancellationToken)
@@ -295,18 +413,23 @@ public sealed class ArtworkService(
         var path = arr.Type == ArrConnectionType.Radarr ? "/api/v3/movie" : "/api/v3/series";
         try
         {
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
+            var client = httpClientFactory.CreateClient(HttpClientName);
             using var request = new HttpRequestMessage(HttpMethod.Get, $"{arr.BaseUrl.TrimEnd('/')}{path}");
             request.Headers.TryAddWithoutValidation("Accept", "application/json");
             request.Headers.TryAddWithoutValidation("X-Api-Key", arr.ApiKey);
-            using var response = await client.SendAsync(request, cancellationToken);
+            using var response = await client.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 return null;
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var json = await ReadBoundedTextAsync(response.Content, MetadataMaxBytes, cancellationToken);
+            if (json is null)
+            {
+                return null;
+            }
+
             _arrListCache[arr.Id] = (json, DateTime.UtcNow);
             return json;
         }
@@ -332,8 +455,7 @@ public sealed class ArtworkService(
         var root = watcher.BaseUrl.TrimEnd('/');
         try
         {
-            var client = httpClientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(10);
+            var client = httpClientFactory.CreateClient(HttpClientName);
 
             if (watcher.Type == ActivityWatcherType.Plex)
             {
@@ -343,13 +465,18 @@ public sealed class ArtworkService(
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.TryAddWithoutValidation("Accept", "application/json");
                 request.Headers.TryAddWithoutValidation("X-Plex-Token", watcher.ApiToken);
-                using var response = await client.SendAsync(request, cancellationToken);
+                using var response = await client.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     return None;
                 }
 
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var json = await ReadBoundedTextAsync(response.Content, MetadataMaxBytes, cancellationToken);
+                if (json is null)
+                {
+                    return None;
+                }
                 var art = poster
                     ? ArtworkSearchParser.PlexPosterPath(json, isTv, title.Year)
                     : ArtworkSearchParser.PlexArtPath(json, isTv, title.Year);
@@ -362,13 +489,18 @@ public sealed class ArtworkService(
             using var jfRequest = new HttpRequestMessage(HttpMethod.Get, search);
             jfRequest.Headers.TryAddWithoutValidation("Accept", "application/json");
             jfRequest.Headers.TryAddWithoutValidation("X-Emby-Token", watcher.ApiToken);
-            using var jfResponse = await client.SendAsync(jfRequest, cancellationToken);
+            using var jfResponse = await client.SendAsync(
+                jfRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!jfResponse.IsSuccessStatusCode)
             {
                 return None;
             }
 
-            var jfJson = await jfResponse.Content.ReadAsStringAsync(cancellationToken);
+            var jfJson = await ReadBoundedTextAsync(jfResponse.Content, MetadataMaxBytes, cancellationToken);
+            if (jfJson is null)
+            {
+                return None;
+            }
             var path = poster
                 ? ArtworkSearchParser.JellyfinPosterPath(jfJson, isTv, title.Year)
                 : ArtworkSearchParser.JellyfinBackdropPath(jfJson, isTv, title.Year);

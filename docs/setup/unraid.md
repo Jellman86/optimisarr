@@ -59,7 +59,7 @@ Keep the **/dev/dri** device mapping in the template (remove it if the host has 
 the render group with `stat -c '%g' /dev/dri/renderD128` and, if the app can't open the device, add
 `--group-add <that-gid>` under **Extra Parameters**.
 
-### NVIDIA NVENC
+### NVIDIA NVENC and NVDEC
 
 Install the **Nvidia-Driver** plugin, then under **Extra Parameters** add `--runtime=nvidia`, and set
 these variables (Add another Variable):
@@ -67,8 +67,8 @@ these variables (Add another Variable):
 - `NVIDIA_VISIBLE_DEVICES=all`
 - `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`
 
-`video` is required — without it NVENC fails with *"Cannot load libnvidia-encode.so.1"* even though
-`nvidia-smi` works.
+`video` is required for hardware encoding and decoding — without it NVENC fails with *"Cannot load
+libnvidia-encode.so.1"* even though `nvidia-smi` works, and NVDEC is unavailable.
 
 Optimisarr confirms each encoder with a tiny real test encode at startup, so a present-but-broken
 driver reads as unavailable rather than failing jobs later.

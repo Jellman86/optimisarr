@@ -275,7 +275,7 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("24", args[IndexOf(args, "-cq") + 1]);
         Assert.Equal("0", args[IndexOf(args, "-b:v") + 1]);
         Assert.Equal("vbr", args[IndexOf(args, "-rc") + 1]);
-        // NVENC encodes from software-decoded frames; no hardware device init needed.
+        // With hardware decode off, NVENC needs no explicit device initialisation.
         Assert.DoesNotContain("-vaapi_device", args);
         Assert.DoesNotContain("-init_hw_device", args);
     }
@@ -345,6 +345,32 @@ public sealed class FfmpegCommandBuilderTests
         // The encoder is still QSV with its constant-quality knob.
         Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v:0") + 1]);
         Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
+    }
+
+    [Fact]
+    public void Nvenc_hardware_decode_uses_nvdec_and_keeps_frames_in_cuda_memory()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_nvenc", hardwareDecode: true);
+
+        var hwaccelIndex = IndexOf(args, "-hwaccel");
+        Assert.Equal("cuda", args[hwaccelIndex + 1]);
+        Assert.Equal("cuda", args[IndexOf(args, "-hwaccel_output_format") + 1]);
+        Assert.True(hwaccelIndex < IndexOf(args, "-i"));
+
+        Assert.DoesNotContain("-filter:v:0", args);
+        Assert.Equal("hevc_nvenc", args[IndexOf(args, "-c:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Nvenc_hardware_decode_off_keeps_software_decoding()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_nvenc", hardwareDecode: false);
+
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("-hwaccel_output_format", args);
+        Assert.Equal("hevc_nvenc", args[IndexOf(args, "-c:v:0") + 1]);
     }
 
     [Fact]

@@ -21,6 +21,9 @@ public static class NotificationMessages
     public static NotificationMessage JobFailed(string path, string error) =>
         new("Optimisarr: job failed", $"{path}\n{error}");
 
+    public static NotificationMessage Test() =>
+        new("Optimisarr: test notification", "Your notification target is working.");
+
     internal static string Humanize(long bytes)
     {
         var negative = bytes < 0;
