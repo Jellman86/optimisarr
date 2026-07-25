@@ -91,3 +91,9 @@ and tone-map preparation is unchanged. See FFmpeg's official
 GPU usage graphs require an unprivileged metrics source. Intel/AMD are read from
 DRM fdinfo and NVIDIA from `nvidia-smi`; if neither is available, encoding can
 still work while the UI reports GPU stats unavailable.
+
+Contributors with a physical NVIDIA system can run the packaged
+[NVENC quality comparison](nvenc-quality-comparison.md). It creates a private test folder under the
+mapped storage root, leaves all supplied clips unchanged, and produces one anonymous text report for
+[issue #37](https://github.com/Jellman86/optimisarr/issues/37). The comparison does not alter normal
+Optimisarr encoding settings.

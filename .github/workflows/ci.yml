@@ -59,6 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - run: bash scripts/test_nvenc_benchmark.sh
       - run: python3 scripts/check_docs.py
       - run: |
           for file in compose*.example.yml; do
