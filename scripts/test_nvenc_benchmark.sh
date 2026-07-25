@@ -44,6 +44,12 @@ if [[ "$args" == *" encoder=h264_nvenc "* || "$args" == *" encoder=hevc_nvenc "*
   printf '%s\n' '  -multipass <int>' '  -rc-lookahead <int>' '  -spatial_aq <boolean>' '  -temporal_aq <boolean>' '  -aq-strength <int>'
   exit 0
 fi
+if [[ ${FAKE_HEVC_TEMPORAL_UNSUPPORTED:-0} == 1 \
+  && "$args" == *" -c:v hevc_nvenc "* \
+  && "$args" == *" -temporal_aq 1 "* ]]; then
+  printf '%s\n' '[hevc_nvenc] No NVENC capable devices found' >&2
+  exit 1
+fi
 if [[ "$args" == *" -f null - "* ]]; then
   exit 0
 fi
@@ -82,8 +88,8 @@ exit 1
 EOF
 cat > "$fake_bin/nvidia-smi" <<'EOF'
 #!/usr/bin/env bash
-if [[ " $* " == *" utilization.gpu,memory.used "* ]]; then
-  printf '42, 2048\n'
+if [[ " $* " == *"utilization.encoder,utilization.gpu,memory.used"* ]]; then
+  printf '37, 42, 2048\n'
 else
   printf 'NVIDIA Test GPU, 555.12, 8192 MiB\n'
 fi
@@ -114,6 +120,10 @@ grep -q 'Options: -multipass fullres -rc-lookahead 32 -spatial_aq 1 -aq-strength
 grep -q 'Options: -multipass fullres -rc-lookahead 32 -temporal_aq 1' "$report" || \
   fail "the report should record the exact temporal AQ options"
 grep -q '95.123' "$report" || fail "the report should include the measured VMAF score"
+grep -Eq 'Time: [0-9]+[.][0-9]{3} seconds' "$report" || \
+  fail "the report should retain sub-second timing precision"
+grep -q 'average encoder 37.0%; peak encoder 37.0%; average GPU 42.0%; peak GPU 42.0%; peak memory 2048 MiB' \
+  "$report" || fail "the report should measure encoder-specific GPU activity"
 if grep -q 'private-family-name' "$report"; then
   fail "the report must not expose source filenames"
 fi
@@ -137,6 +147,29 @@ grep -q 'Status: FAILED — VMAF measurement could not be completed' "$failed_vm
   fail "a missing quality measurement should be reported as a failed comparison"
 grep -q '30 comparison(s) failed' "$failed_vmaf_report" || \
   fail "the summary should count every missing VMAF measurement"
+
+unsupported_root="$temp_root/unsupported-run"
+mkdir -p "$unsupported_root/input"
+printf x > "$unsupported_root/input/calm.mkv"
+printf x > "$unsupported_root/input/motion.mp4"
+printf x > "$unsupported_root/input/dark.mov"
+FAKE_HEVC_TEMPORAL_UNSUPPORTED=1 \
+OPTIMISARR_NVENC_BENCHMARK_ROOT="$unsupported_root" \
+OPTIMISARR_FFMPEG="$fake_bin/ffmpeg" \
+OPTIMISARR_FFPROBE="$fake_bin/ffprobe" \
+OPTIMISARR_FFMPEG_VMAF="$fake_bin/ffmpeg-vmaf" \
+OPTIMISARR_NVIDIA_SMI="$fake_bin/nvidia-smi" \
+bash "$harness" >/dev/null
+unsupported_report="$(find "$unsupported_root/results" -maxdepth 1 -type f -name 'optimisarr-nvenc-results-*.txt')"
+[[ $(grep -c 'Status: skipped — GPU or driver does not support this option combination' "$unsupported_report") -eq 3 ]] || \
+  fail "unsupported optional variants should be capability skips rather than benchmark failures"
+[[ $(grep -c 'Detail: NVENC reported no capable devices' "$unsupported_report") -eq 3 ]] || \
+  fail "capability skips should include a privacy-safe diagnostic detail"
+grep -q '3 comparison(s) skipped because the GPU or driver did not support them' "$unsupported_report" || \
+  fail "the summary should count capability skips"
+if grep -q 'comparison(s) failed' "$unsupported_report"; then
+  fail "capability skips alone must not make the benchmark report failures"
+fi
 
 grep -qF 'COPY --chmod=0755 scripts/nvenc_benchmark.sh /app/scripts/nvenc-benchmark' \
   "$repo_root/Dockerfile" || fail "the final image should include the benchmark harness"

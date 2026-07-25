@@ -3,15 +3,25 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
-**Recently shipped (2026-07-25) — repeatable NVENC profile evidence.** The `dev` image now includes a
-guided NVIDIA quality-comparison harness for issue #37. It prepares a dedicated folder under `/data`,
-accepts exactly three short 8-bit SDR samples, and compares the current P7/CQ baseline with isolated
-multipass, lookahead, spatial-AQ, and temporal-AQ variants for H.264 and HEVC. Every output must decode
-and receives VMAF, size, elapsed-time, and sampled GPU measurements. The timestamped text report omits
-source names and paths, the originals remain read-only, and temporary outputs are removed unless the
-tester explicitly retains them. Hermetic shell tests exercise the complete report flow without a GPU,
-and final-image packaging remains covered by CI; physical quality results are still required before
-any production encoder profile changes.
+**Recently shipped (2026-07-25) — repeatable NVENC profile evidence.** The `dev` image includes a
+guided NVIDIA quality-comparison harness created for issue #37. It prepares a dedicated folder under
+`/data`, accepts exactly three short 8-bit SDR samples, and compares the current P7/CQ baseline with
+isolated multipass, lookahead, spatial-AQ, and temporal-AQ variants for H.264 and HEVC. Every output
+must decode and receives VMAF, size, millisecond elapsed-time, and sampled NVENC-engine and overall
+GPU measurements. Hardware-rejected optional variants are capability skips with privacy-safe
+diagnostics; a baseline, decode, or VMAF failure remains a real failure. The timestamped text report
+omits source names and paths, the originals remain read-only, and temporary outputs are removed
+unless the tester explicitly retains them. Hermetic shell tests exercise the complete report flow
+without a GPU, and final-image packaging remains covered by CI.
+
+Criz24 supplied the first physical report from a GeForce GTX 1080. Across three anonymous samples,
+the advanced combinations produced no consistent quality-and-size improvement: H.264 multipass
+traded a small mean-VMAF reduction for about 2.7% aggregate size reduction, spatial AQ helped one
+sample but increased its size and was inconsistent elsewhere, HEVC multipass/lookahead were
+effectively neutral, and HEVC temporal AQ was unavailable. That evidence closes the proposed raw
+advanced-control direction without changing production encoding. The benchmark remains packaged for
+future hardware generations where a materially different result could justify one tested,
+capability-gated profile.
 
 **Recently shipped (2026-07-24) — Compatibility H.264 now keeps its 8-bit promise.** Candidate
 eligibility rejects an effective H.264 target when the probed source is above 8-bit, and fails closed

@@ -21,8 +21,12 @@
   packaged helper creates `/data/Optimisarr-NVENC-Test`, asks for exactly three short 8-bit SDR clips,
   and compares the current Efficient baseline with multipass, lookahead, spatial-AQ, and temporal-AQ
   variants for H.264 and HEVC NVENC. It leaves every source unchanged, validates and VMAF-scores each
-  output, records size, speed, GPU use, and failures, removes temporary encodes by default, and writes
-  one timestamped text report with source names and paths omitted.
+  output, records size and sub-second speed measurements, samples both NVENC and overall GPU use,
+  treats hardware-rejected optional variants as capability skips with privacy-safe diagnostics,
+  removes temporary encodes by default, and writes one timestamped text report with source names and
+  paths omitted. Initial GTX 1080 results found no advanced combination that consistently improved
+  both quality and size, so production encoding remains unchanged and the helper is retained for
+  evidence from future hardware generations.
 - **NVIDIA transcodes can now decode on the GPU as well as encode there.** When Hardware decoding
   is enabled, an NVENC job uses NVDEC through FFmpeg's CUDA hardware-acceleration path and keeps
   decoded frames in GPU memory through the encode. Unsupported source codecs, profiles, or GPU

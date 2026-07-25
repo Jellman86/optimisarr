@@ -135,28 +135,63 @@ variant_arguments() {
   esac
 }
 
-classify_encode_failure() {
+encode_failure_kind() {
   local log="$1"
   if grep -qi 'cannot load libcuda' "$log"; then
-    printf 'CUDA driver could not be loaded'
+    printf 'driver'
   elif grep -qiE 'no capable devices|no nvenc capable devices' "$log"; then
-    printf 'No compatible NVIDIA encoder was available'
+    printf 'unsupported'
   elif grep -qiE 'invalid argument|option not found|not supported' "$log"; then
-    printf 'The GPU or FFmpeg rejected this option combination'
+    printf 'unsupported'
   else
-    printf 'FFmpeg could not complete this encode'
+    printf 'encode'
+  fi
+}
+
+encode_failure_message() {
+  case "$1" in
+    driver) printf 'CUDA driver could not be loaded' ;;
+    unsupported) printf 'GPU or driver does not support this option combination' ;;
+    *) printf 'FFmpeg could not complete this encode' ;;
+  esac
+}
+
+encode_failure_detail() {
+  local log="$1"
+  if grep -qi 'cannot load libcuda' "$log"; then
+    printf 'FFmpeg could not load libcuda'
+  elif grep -qiE 'no capable devices|no nvenc capable devices' "$log"; then
+    printf 'NVENC reported no capable devices'
+  elif grep -qi 'option not found' "$log"; then
+    printf 'FFmpeg reported that an option was not found'
+  elif grep -qi 'not supported' "$log"; then
+    printf 'FFmpeg reported that the option combination is not supported'
+  elif grep -qi 'invalid argument' "$log"; then
+    printf 'FFmpeg rejected an invalid argument'
+  else
+    printf 'No privacy-safe diagnostic was available'
+  fi
+}
+
+sample_gpu() {
+  local sample
+  if sample="$("$nvidia_smi" --id=0 --query-gpu=utilization.encoder,utilization.gpu,memory.used \
+    --format=csv,noheader,nounits 2>/dev/null)"; then
+    printf '%s\n' "$sample"
+  elif sample="$("$nvidia_smi" --id=0 --query-gpu=utilization.gpu,memory.used \
+    --format=csv,noheader,nounits 2>/dev/null)"; then
+    printf ', %s\n' "$sample"
   fi
 }
 
 start_gpu_sampler() {
   local log="$1"
+  sample_gpu >"$log"
   (
-    while true; do
-      "$nvidia_smi" --query-gpu=utilization.gpu,memory.used \
-        --format=csv,noheader,nounits 2>/dev/null || true
-      sleep 1
+    while sleep 0.1; do
+      sample_gpu
     done
-  ) >"$log" &
+  ) >>"$log" &
   gpu_sampler_pid=$!
 }
 
@@ -174,12 +209,29 @@ summarise_gpu_samples() {
     {
       gsub(/[^0-9.]/, "", $1)
       gsub(/[^0-9.]/, "", $2)
-      if ($1 != "") { total += $1; count++; if ($1 > peak) peak = $1 }
-      if ($2 != "" && $2 > memory) memory = $2
+      gsub(/[^0-9.]/, "", $3)
+      if ($1 != "") {
+        encoder_total += $1
+        encoder_count++
+        if ($1 > encoder_peak) encoder_peak = $1
+      }
+      if ($2 != "") {
+        gpu_total += $2
+        gpu_count++
+        if ($2 > gpu_peak) gpu_peak = $2
+      }
+      if ($3 != "" && $3 > memory) memory = $3
     }
     END {
-      if (count == 0) print "unavailable"
-      else printf "average GPU %.1f%%; peak GPU %.1f%%; peak memory %.0f MiB", total / count, peak, memory
+      if (gpu_count == 0) {
+        print "unavailable"
+      } else if (encoder_count == 0) {
+        printf "encoder utilisation unavailable; average GPU %.1f%%; peak GPU %.1f%%; peak memory %.0f MiB",
+          gpu_total / gpu_count, gpu_peak, memory
+      } else {
+        printf "average encoder %.1f%%; peak encoder %.1f%%; average GPU %.1f%%; peak GPU %.1f%%; peak memory %.0f MiB",
+          encoder_total / encoder_count, encoder_peak, gpu_total / gpu_count, gpu_peak, memory
+      }
     }
   ' "$log"
 }
@@ -199,14 +251,14 @@ extract_vmaf_mean() {
 
 {
   printf 'Optimisarr NVENC quality comparison\n'
-  printf 'Harness version: 1\n'
+  printf 'Harness version: 2\n'
   printf 'Run time (UTC): %s\n' "$timestamp"
   printf 'Inputs: 3 anonymous samples; first %s seconds of each\n' "$clip_seconds"
   printf 'Quality: CQ %s; preset P7; uncapped VBR\n' "$quality"
   printf 'Original files changed: no\n'
   printf 'Temporary outputs retained: %s\n\n' "$keep_outputs"
   printf 'NVIDIA environment\n'
-  "$nvidia_smi" --query-gpu=name,driver_version,memory.total \
+  "$nvidia_smi" --id=0 --query-gpu=name,driver_version,memory.total \
     --format=csv,noheader 2>/dev/null || printf 'Unavailable\n'
   printf '\nFFmpeg\n'
   "$ffmpeg" -version 2>/dev/null | head -n 1
@@ -214,6 +266,7 @@ extract_vmaf_mean() {
 } > "$report_tmp"
 
 failures=0
+skips=0
 for sample_index in "${!input_files[@]}"; do
   source_file="${input_files[$sample_index]}"
   source_duration="$($ffprobe -v error -select_streams v:0 -show_entries format=duration \
@@ -230,8 +283,8 @@ for sample_index in "${!input_files[@]}"; do
       encode_log="$work_dir/encode-$sample_index-$encoder-$variant_index.log"
       gpu_log="$work_dir/gpu-$sample_index-$encoder-$variant_index.log"
       vmaf_log="$work_dir/vmaf-$sample_index-$encoder-$variant_index.json"
-      start_time="$(date +%s)"
       start_gpu_sampler "$gpu_log"
+      start_time_ns="$(date +%s%N)"
 
       set +e
       "$ffmpeg" -nostdin -hide_banner -v warning -y \
@@ -240,10 +293,11 @@ for sample_index in "${!input_files[@]}"; do
         "${extra_arguments[@]}" "$output" >"$encode_log" 2>&1
       encode_status=$?
       set -e
+      end_time_ns="$(date +%s%N)"
       stop_gpu_sampler
-      end_time="$(date +%s)"
-      elapsed=$((end_time - start_time))
-      (( elapsed > 0 )) || elapsed=1
+      elapsed_ms=$(((end_time_ns - start_time_ns + 500000) / 1000000))
+      (( elapsed_ms > 0 )) || elapsed_ms=1
+      elapsed_seconds="$(awk -v milliseconds="$elapsed_ms" 'BEGIN { printf "%.3f", milliseconds / 1000 }')"
       gpu_summary="$(summarise_gpu_samples "$gpu_log")"
 
       if [[ ${#extra_arguments[@]} -eq 0 ]]; then
@@ -254,9 +308,18 @@ for sample_index in "${!input_files[@]}"; do
       printf '    %s\n' "${variant_names[$variant_index]}" >> "$report_tmp"
       printf '      Options: %s\n' "$option_summary" >> "$report_tmp"
       if [[ $encode_status -ne 0 ]]; then
-        printf '      Status: FAILED — %s\n' "$(classify_encode_failure "$encode_log")" >> "$report_tmp"
+        failure_kind="$(encode_failure_kind "$encode_log")"
+        failure_message="$(encode_failure_message "$failure_kind")"
+        failure_detail="$(encode_failure_detail "$encode_log")"
+        if [[ $variant_index -gt 0 && $failure_kind == unsupported ]]; then
+          printf '      Status: skipped — %s\n' "$failure_message" >> "$report_tmp"
+          skips=$((skips + 1))
+        else
+          printf '      Status: FAILED — %s\n' "$failure_message" >> "$report_tmp"
+          failures=$((failures + 1))
+        fi
+        printf '      Detail: %s\n' "$failure_detail" >> "$report_tmp"
         printf '      GPU: %s\n' "$gpu_summary" >> "$report_tmp"
-        failures=$((failures + 1))
         continue
       fi
 
@@ -282,12 +345,12 @@ for sample_index in "${!input_files[@]}"; do
       fi
 
       output_size="$(stat -c '%s' "$output")"
-      speed="$(awk -v duration="$measured_duration" -v elapsed="$elapsed" \
-        'BEGIN { printf "%.2f", duration / elapsed }')"
+      speed="$(awk -v duration="$measured_duration" -v milliseconds="$elapsed_ms" \
+        'BEGIN { printf "%.2f", duration * 1000 / milliseconds }')"
       if [[ $vmaf_mean == unavailable ]]; then
         {
           printf '      Status: FAILED — VMAF measurement could not be completed\n'
-          printf '      Time: %s seconds (%sx real time)\n' "$elapsed" "$speed"
+          printf '      Time: %s seconds (%sx real time)\n' "$elapsed_seconds" "$speed"
           printf '      Output size: %s bytes\n' "$output_size"
           printf '      VMAF mean: unavailable\n'
           printf '      GPU: %s\n' "$gpu_summary"
@@ -298,7 +361,7 @@ for sample_index in "${!input_files[@]}"; do
 
       {
         printf '      Status: completed and decoded successfully\n'
-        printf '      Time: %s seconds (%sx real time)\n' "$elapsed" "$speed"
+        printf '      Time: %s seconds (%sx real time)\n' "$elapsed_seconds" "$speed"
         printf '      Output size: %s bytes\n' "$output_size"
         printf '      VMAF mean: %s\n' "$vmaf_mean"
         printf '      GPU: %s\n' "$gpu_summary"
@@ -310,9 +373,17 @@ done
 {
   printf '\nSummary\n'
   if [[ $failures -eq 0 ]]; then
-    printf 'All comparisons completed and decoded successfully.\n'
+    if [[ $skips -eq 0 ]]; then
+      printf 'All comparisons completed and decoded successfully.\n'
+    else
+      printf '%s comparison(s) skipped because the GPU or driver did not support them.\n' "$skips"
+      printf 'All supported comparisons completed and decoded successfully.\n'
+    fi
   else
     printf '%s comparison(s) failed. The successful results above are still useful.\n' "$failures"
+    if [[ $skips -gt 0 ]]; then
+      printf '%s comparison(s) skipped because the GPU or driver did not support them.\n' "$skips"
+    fi
   fi
   printf 'Source filenames and paths were intentionally omitted for privacy.\n'
 } >> "$report_tmp"
