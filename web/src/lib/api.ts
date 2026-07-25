@@ -664,6 +664,11 @@ export type SaveNotificationTarget = {
   notifyOnFailure: boolean
 }
 
+export type NotificationTestResult = {
+  ok: boolean
+  error: string | null
+}
+
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
 
 export type ArrConnection = {
@@ -836,7 +841,7 @@ function apiErrorMessage(payload: unknown, status: number): string {
     case 'watcher.validation': return i18n.m.common.api_watcher_invalid
     case 'watcher.type.invalid': return i18n.m.common.api_watcher_type_invalid
     case 'notification.notFound': return t(i18n.m.common.api_notification_not_found, args)
-    case 'notification.validation': return i18n.m.common.api_notification_invalid
+    case 'notification.validation': return error
     case 'arr.notFound': return t(i18n.m.common.api_arr_not_found, args)
     case 'arr.validation': return i18n.m.common.api_arr_invalid
     case 'plex.signIn.start': return i18n.m.common.api_plex_start_failed
@@ -1007,6 +1012,8 @@ export const api = {
     request<NotificationTarget>(`/api/notification-targets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteNotificationTarget: (id: number) =>
     request<void>(`/api/notification-targets/${id}`, { method: 'DELETE' }),
+  testNotificationTarget: (id: number) =>
+    request<NotificationTestResult>(`/api/notification-targets/${id}/test`, { method: 'POST' }),
 
   arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
   createArrConnection: (body: SaveArrConnection) =>

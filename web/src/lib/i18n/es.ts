@@ -716,6 +716,9 @@ true_peak_tip:
     optional: '(opcional)',
     notify_replaced: 'Notificar cuando se reemplace un archivo',
     notify_failed: 'Notificar cuando falle un trabajo',
+    send_test: 'Probar',
+    notification_test_success: 'Notificación de prueba enviada.',
+    notification_test_failed: 'No se pudo enviar la notificación de prueba.',
     add_target_btn: 'Añadir destino',
 backup_title: 'Copia de seguridad y restauración',
     backup_desc:

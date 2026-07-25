@@ -720,6 +720,9 @@ export const de: Messages = {
     optional: '(optional)',
     notify_replaced: 'Benachrichtigen, wenn eine Datei ersetzt wird',
     notify_failed: 'Benachrichtigen, wenn eine Aufgabe fehlschlägt',
+    send_test: 'Testen',
+    notification_test_success: 'Testbenachrichtigung gesendet.',
+    notification_test_failed: 'Die Testbenachrichtigung konnte nicht gesendet werden.',
     add_target_btn: 'Ziel hinzufügen',
     backup_title: 'Sicherung & Wiederherstellung',
     backup_desc:

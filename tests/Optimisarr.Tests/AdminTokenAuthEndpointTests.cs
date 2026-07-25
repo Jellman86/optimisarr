@@ -38,6 +38,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("POST", "/api/settings/cleanup")]
     [InlineData("GET", "/api/settings/export")]   // contains provider secrets
     [InlineData("POST", "/api/settings/import")]
+    [InlineData("POST", "/api/notification-targets/1/test")]
     [InlineData("POST", "/api/queue/pause")]
     [InlineData("POST", "/api/queue/resume")]
     [InlineData("GET", "/api/setup")]

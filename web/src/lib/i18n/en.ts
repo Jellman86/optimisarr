@@ -857,6 +857,9 @@ export const en = {
     optional: '(optional)',
     notify_replaced: 'Notify when a file is replaced',
     notify_failed: 'Notify when a job fails',
+    send_test: 'Test',
+    notification_test_success: 'Test notification sent.',
+    notification_test_failed: 'The test notification could not be sent.',
     add_target_btn: 'Add target',
     backup_title: 'Backup & restore',
     backup_desc:

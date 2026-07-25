@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Core.Domain;
@@ -145,6 +146,80 @@ public sealed class NotificationServiceTests : IDisposable
         Assert.Equal(1, handler.RequestCount);
     }
 
+    [Theory]
+    [InlineData(NotificationType.Webhook, "https://hook/x", null)]
+    [InlineData(NotificationType.Discord, "https://discord.com/api/webhooks/123/token", null)]
+    [InlineData(NotificationType.Telegram, "-1001234567890", "123456:ABC_def-123")]
+    [InlineData(NotificationType.Ntfy, "https://ntfy.sh/topic", null)]
+    [InlineData(NotificationType.Apprise, "https://apprise/notify/key", null)]
+    public async Task Test_sends_a_clearly_labelled_message_through_every_provider(
+        NotificationType type,
+        string url,
+        string? token)
+    {
+        var id = await SeedAsync(type, url, enabled: false, onReplace: false, onFailure: false, token);
+        var handler = new RecordingHandler();
+
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new NotificationService(
+            db,
+            new StubHttpClientFactory(handler),
+            new StubArtworkProvider(null),
+            NullLogger<NotificationService>.Instance);
+        var result = await service.TestAsync(id, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result.Ok);
+        var request = Assert.Single(handler.Requests);
+        Assert.Contains("working", request.Body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Test_reports_provider_rejection_without_throwing()
+    {
+        var id = await SeedAsync(
+            NotificationType.Webhook, "https://hook/x", enabled: true, onReplace: true, onFailure: true);
+        var handler = new RecordingHandler(HttpStatusCode.BadRequest);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new NotificationService(
+            db,
+            new StubHttpClientFactory(handler),
+            new StubArtworkProvider(null),
+            NullLogger<NotificationService>.Instance);
+        var result = await service.TestAsync(id, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.False(result.Ok);
+        Assert.NotNull(result.Error);
+    }
+
+    [Fact]
+    public async Task Test_failure_logs_do_not_expose_destination_secrets_or_exception_details()
+    {
+        const string sensitiveSentinel = "destination-redaction-sentinel";
+        var id = await SeedAsync(
+            NotificationType.Discord,
+            $"https://discord.com/api/webhooks/123/{sensitiveSentinel}",
+            enabled: true,
+            onReplace: true,
+            onFailure: true);
+        var logger = new RecordingLogger<NotificationService>();
+
+        await using var db = new OptimisarrDbContext(_options);
+        var service = new NotificationService(
+            db,
+            new StubHttpClientFactory(new ThrowingHandler($"request failed for {sensitiveSentinel}")),
+            new StubArtworkProvider(null),
+            logger);
+        var result = await service.TestAsync(id, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.False(result.Ok);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Message.Contains(sensitiveSentinel, StringComparison.Ordinal));
+        Assert.All(logger.Entries, entry => Assert.Null(entry.Exception));
+    }
+
     [Fact]
     public async Task A_failing_target_does_not_throw()
     {
@@ -166,7 +241,7 @@ public sealed class NotificationServiceTests : IDisposable
         await service.NotifyReplacementAsync("/data/Heat.mkv", 2_000_000_000, 1_000_000_000, CancellationToken.None);
     }
 
-    private async Task SeedAsync(
+    private async Task<int> SeedAsync(
         NotificationType type,
         string url,
         bool enabled,
@@ -175,7 +250,7 @@ public sealed class NotificationServiceTests : IDisposable
         string? token = null)
     {
         await using var db = new OptimisarrDbContext(_options);
-        db.NotificationTargets.Add(new NotificationTarget
+        var target = new NotificationTarget
         {
             Name = $"{type}",
             Type = type,
@@ -184,8 +259,10 @@ public sealed class NotificationServiceTests : IDisposable
             Enabled = enabled,
             NotifyOnReplacement = onReplace,
             NotifyOnFailure = onFailure
-        });
+        };
+        db.NotificationTargets.Add(target);
         await db.SaveChangesAsync();
+        return target.Id;
     }
 
     private sealed record CapturedRequest(string Uri, string Body, string ContentType);
@@ -221,15 +298,32 @@ public sealed class NotificationServiceTests : IDisposable
             Task.FromResult(image);
     }
 
-    private sealed class ThrowingHandler : HttpMessageHandler
+    private sealed class ThrowingHandler(string message = "connection refused") : HttpMessageHandler
     {
         public int RequestCount { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestCount++;
-            throw new HttpRequestException("connection refused");
+            throw new HttpRequestException(message);
         }
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((formatter(state, exception), exception));
     }
 
     private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory

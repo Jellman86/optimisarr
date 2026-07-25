@@ -4,6 +4,10 @@
 
 ### Added
 
+- **Every saved notification target now has a Test action.** Settings → Notifications can send a
+  clearly labelled test through Webhook, Discord, Telegram, ntfy, or Apprise without waiting for a
+  media event. Success and provider rejection are shown inline, and invalid target settings now show
+  the API's specific reason instead of a generic validation message.
 - **Telegram is now a first-class notification target.** Settings → Notifications accepts a bot
   token plus a numeric chat ID or public `@channelusername`, then sends replacement and failure
   alerts directly through Telegram's official Bot API. When existing artwork is available,

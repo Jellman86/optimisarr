@@ -9,6 +9,8 @@ using Optimisarr.Data;
 
 namespace Optimisarr.Api.Replacement;
 
+public sealed record NotificationTestResult(bool Ok, string? Error);
+
 /// <summary>
 /// Sends best-effort notifications to the configured targets when a file is replaced
 /// or a job fails. Like the library refresh, this never affects the operation that
@@ -50,6 +52,36 @@ public sealed class NotificationService(
             path,
             NotificationMessages.JobFailed(path, error),
             cancellationToken);
+
+    public async Task<NotificationTestResult?> TestAsync(int targetId, CancellationToken cancellationToken)
+    {
+        var target = await db.NotificationTargets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == targetId, cancellationToken);
+        if (target is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var spec = NotificationRequestBuilder.Build(
+                target.Type,
+                target.Url,
+                target.Token,
+                "test",
+                NotificationMessages.Test());
+            var outcome = await TryPostAsync(target, spec, cancellationToken);
+            return outcome == DeliveryOutcome.Delivered
+                ? new NotificationTestResult(true, null)
+                : new NotificationTestResult(false, "The provider rejected the test notification.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Could not test notification target {Name}", target.Name);
+            return new NotificationTestResult(false, "The test notification could not be sent.");
+        }
+    }
 
     private async Task DispatchAsync(
         Func<NotificationTarget, bool> wantsEvent,
@@ -121,7 +153,7 @@ public sealed class NotificationService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Could not notify {Name} ({Url})", target.Name, target.Url);
+            logger.LogWarning("Could not notify {Name}", target.Name);
         }
     }
 
@@ -160,7 +192,7 @@ public sealed class NotificationService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Could not notify {Name} ({Url})", target.Name, target.Url);
+            logger.LogWarning("Could not notify {Name}", target.Name);
             return DeliveryOutcome.Failed;
         }
     }

@@ -33,6 +33,15 @@ public sealed class NotificationMessagesTests
         Assert.Contains("/data/x.mkv", message.Body);
         Assert.Contains("ffmpeg exited", message.Body);
     }
+
+    [Fact]
+    public void Test_message_is_clearly_labelled()
+    {
+        var message = NotificationMessages.Test();
+
+        Assert.Equal("Optimisarr: test notification", message.Title);
+        Assert.Contains("working", message.Body, StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 public sealed class NotificationRequestBuilderTests

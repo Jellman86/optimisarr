@@ -711,6 +711,9 @@ quarantine: {
     optional: '(opzionale)',
     notify_replaced: 'Notifica quando un file viene sostituito',
     notify_failed: 'Notifica quando un lavoro fallisce',
+    send_test: 'Test',
+    notification_test_success: 'Notifica di test inviata.',
+    notification_test_failed: 'Impossibile inviare la notifica di test.',
     add_target_btn: 'Aggiungi target',
 backup_title: 'Backup e ripristino',
     backup_desc:

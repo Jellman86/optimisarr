@@ -48,9 +48,11 @@
 
   let targets = $state<NotificationTarget[]>([])
   let targetError = $state<string | null>(null)
+  let targetMessage = $state<string | null>(null)
   let editingTargetId = $state<number | null>(null)
   let targetDraft = $state<SaveNotificationTarget>(emptyTarget())
   let savingTarget = $state(false)
+  let testingTargetId = $state<number | null>(null)
   let restartingSetup = $state(false)
   let hasStoredTelegramToken = $derived(editingTargetId !== null && targets.some(
     (target) => target.id === editingTargetId && target.type === 'Telegram' && target.hasToken,
@@ -82,6 +84,7 @@
   async function saveTarget() {
     savingTarget = true
     targetError = null
+    targetMessage = null
     try {
       if (editingTargetId === null) await api.createNotificationTarget(targetDraft)
       else await api.updateNotificationTarget(editingTargetId, targetDraft)
@@ -104,6 +107,21 @@
       await loadTargets()
     } catch (err) {
       targetError = err instanceof Error ? err.message : i18n.m.settings.error_remove_target
+    }
+  }
+
+  async function testTarget(t: NotificationTarget) {
+    testingTargetId = t.id
+    targetError = null
+    targetMessage = null
+    try {
+      const result = await api.testNotificationTarget(t.id)
+      if (result.ok) targetMessage = i18n.m.settings.notification_test_success
+      else targetError = result.error ?? i18n.m.settings.notification_test_failed
+    } catch (err) {
+      targetError = err instanceof Error ? err.message : i18n.m.settings.notification_test_failed
+    } finally {
+      testingTargetId = null
     }
   }
 
@@ -1040,6 +1058,9 @@
     {#if targetError}
       <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{targetError}</div>
     {/if}
+    {#if targetMessage}
+      <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400" aria-live="polite">{targetMessage}</div>
+    {/if}
 
     {#if targets.length > 0}
       <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
@@ -1055,6 +1076,9 @@
               {#if t.type === 'Telegram' && !t.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_no_token}</span>{/if}
               {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.settings.badge_replaced}</span>{/if}
               {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_failed}</span>{/if}
+              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
+                {testingTargetId === t.id ? i18n.m.settings.testing : i18n.m.settings.send_test}
+              </button>
               <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
               <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
             </div>

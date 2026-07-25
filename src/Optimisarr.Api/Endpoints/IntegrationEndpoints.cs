@@ -210,6 +210,18 @@ internal static class IntegrationEndpoints
         })
         .WithName("DeleteNotificationTarget");
 
+        app.MapPost("/api/notification-targets/{id:int}/test", async (
+            int id,
+            NotificationService notifications,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await notifications.TestAsync(id, cancellationToken);
+            return result is null
+                ? ApiErrors.NotFound("notification.notFound", $"No notification target with id {id}.", new { id })
+                : Results.Ok(result);
+        })
+        .WithName("TestNotificationTarget");
+
         // Sonarr/Radarr connections: managers Optimisarr asks about in-progress imports so a
         // file isn't optimised while an import is landing in its folder. Keys are write-only.
         app.MapGet("/api/arr-connections", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>

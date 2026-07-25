@@ -34,7 +34,9 @@ if no suitable image is available or it is too large, Optimisarr sends plain tex
 If Telegram explicitly rejects an uploaded image as invalid or unsupported, Optimisarr retries the
 same notification as text. It does not retry ambiguous timeouts, rate limits, or server failures,
 because the photo request may already have succeeded. Targets can notify on
-replacement and on job failure.
+replacement and on job failure. After saving a target, use **Test** to send a clearly
+labelled test through that provider immediately. Optimisarr reports success or a short
+failure reason inline.
 
 ### Telegram setup
 
