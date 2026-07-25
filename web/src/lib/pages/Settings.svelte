@@ -41,7 +41,7 @@
   // A visit to the old /tools route lands on Settings with the Tools tab open.
   let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
 
-  const notificationTypes: NotificationType[] = ['Webhook', 'Discord', 'Ntfy', 'Apprise']
+  const notificationTypes: NotificationType[] = ['Webhook', 'Discord', 'Telegram', 'Ntfy', 'Apprise']
   const emptyTarget = (): SaveNotificationTarget => ({
     name: '', type: 'Webhook', url: '', token: '', enabled: true, notifyOnReplacement: true, notifyOnFailure: true,
   })
@@ -52,6 +52,10 @@
   let targetDraft = $state<SaveNotificationTarget>(emptyTarget())
   let savingTarget = $state(false)
   let restartingSetup = $state(false)
+  let hasStoredTelegramToken = $derived(editingTargetId !== null && targets.some(
+    (target) => target.id === editingTargetId && target.type === 'Telegram' && target.hasToken,
+  ))
+  let telegramTokenRequired = $derived(targetDraft.type === 'Telegram' && !hasStoredTelegramToken)
 
   async function loadTargets() {
     try {
@@ -1048,6 +1052,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
               {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
+              {#if t.type === 'Telegram' && !t.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_no_token}</span>{/if}
               {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.settings.badge_replaced}</span>{/if}
               {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_failed}</span>{/if}
               <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
@@ -1076,23 +1081,33 @@
           </select>
         </div>
         <div>
-          <label class="label" for="target-url">{i18n.m.settings.url}</label>
+          <label class="label" for="target-url">{targetDraft.type === 'Telegram' ? i18n.m.settings.chat_id : i18n.m.settings.url}</label>
           <input
             id="target-url"
             class="input"
-            placeholder={targetDraft.type === 'Discord' ? i18n.m.settings.discord_url_ph : i18n.m.settings.ntfy_url_ph}
+            placeholder={targetDraft.type === 'Telegram'
+              ? i18n.m.settings.telegram_chat_id_ph
+              : targetDraft.type === 'Discord'
+                ? i18n.m.settings.discord_url_ph
+                : i18n.m.settings.ntfy_url_ph}
             bind:value={targetDraft.url}
           />
           {#if targetDraft.type === 'Discord'}
             <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.discord_hint}</p>
+          {:else if targetDraft.type === 'Telegram'}
+            <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.telegram_hint}</p>
           {/if}
         </div>
         <div>
-          <label class="label" for="target-token">{i18n.m.settings.token} <span class="text-slate-400">{i18n.m.settings.optional}</span></label>
+          <label class="label" for="target-token">
+            {targetDraft.type === 'Telegram' ? i18n.m.settings.bot_token : i18n.m.settings.token}
+            {#if targetDraft.type !== 'Telegram'}<span class="text-slate-400">{i18n.m.settings.optional}</span>{/if}
+          </label>
           <input
             id="target-token"
             class="input"
             type="password"
+            required={telegramTokenRequired}
             placeholder={editingTargetId === null ? '' : i18n.m.settings.keep_current}
             bind:value={targetDraft.token}
           />
@@ -1104,7 +1119,7 @@
         <Toggle bind:checked={targetDraft.notifyOnFailure} label={i18n.m.settings.notify_failed} />
       </div>
       <div class="mt-4 flex items-center gap-2">
-        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveTarget} disabled={savingTarget}>
+        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveTarget} disabled={savingTarget || (telegramTokenRequired && !targetDraft.token.trim())}>
           {savingTarget ? i18n.m.settings.saving : editingTargetId === null ? i18n.m.settings.add_target_btn : i18n.m.settings.save_changes}
         </button>
         {#if editingTargetId !== null}

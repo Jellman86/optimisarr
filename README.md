@@ -122,7 +122,7 @@ no support SLA or promise of a release schedule.
 - Optional **service-activity pauses** (Plex/Jellyfin/Emby), **dry-run mode**,
   configurable replacement/quarantine policy with a retention window, and **library
   integrations** (Plex/Jellyfin/Emby re-scan, Sonarr/Radarr import-aware exclusions,
-  notifications, config-and-secrets backup/import).
+  webhook/Discord/Telegram/ntfy/Apprise notifications, config-and-secrets backup/import).
 
 Still planned (see the [roadmap](docs/roadmap.md) and maintained
 [hardware validation matrix](docs/setup/hardware-validation-matrix.md)): real-hardware validation

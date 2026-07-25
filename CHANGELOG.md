@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Telegram is now a first-class notification target.** Settings → Notifications accepts a bot
+  token plus a numeric chat ID or public `@channelusername`, then sends replacement and failure
+  alerts directly through Telegram's official Bot API. When existing artwork is available,
+  Optimisarr uploads the title poster, audio cover, or image thumbnail with the caption; a missing,
+  slow or oversized image falls back before upload, and an image Telegram explicitly identifies as
+  invalid or unsupported falls back after rejection. Ambiguous timeouts, rate limits, and server
+  errors are not retried to avoid duplicate notifications. The token stays write-only,
+  targets are validated before saving, message limits are enforced, and the
+  existing best-effort delivery policy keeps notification failures out of the media workflow.
 - **NVIDIA contributors can now run one guided quality comparison from the `dev` container.** The
   packaged helper creates `/data/Optimisarr-NVENC-Test`, asks for exactly three short 8-bit SDR clips,
   and compares the current Efficient baseline with multipass, lookahead, spatial-AQ, and temporal-AQ

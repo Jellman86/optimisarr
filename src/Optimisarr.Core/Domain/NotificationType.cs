@@ -13,5 +13,8 @@ public enum NotificationType
     Apprise = 2,
 
     /// <summary>A Discord webhook URL; posts an embed so the title and body render natively.</summary>
-    Discord = 3
+    Discord = 3,
+
+    /// <summary>A Telegram bot; posts plain text to a configured chat through the Bot API.</summary>
+    Telegram = 4
 }

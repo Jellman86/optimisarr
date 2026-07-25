@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Notifications;
 
@@ -81,6 +82,69 @@ public sealed class NotificationRequestBuilderTests
         Assert.Contains("\"title\":\"Title here\"", request.Body);
         Assert.Contains("\"body\":\"Body here\"", request.Body);
         Assert.DoesNotContain("event", request.Body);
+    }
+
+    [Fact]
+    public void Telegram_posts_plain_text_to_the_bot_send_message_endpoint()
+    {
+        var request = NotificationRequestBuilder.Build(
+            NotificationType.Telegram, "-1001234567890", "123456:ABC_def-123", "replacement", Message);
+
+        Assert.Equal("https://api.telegram.org/bot123456:ABC_def-123/sendMessage", request.Url);
+        Assert.Equal("application/json", request.ContentType);
+        Assert.Empty(request.Headers);
+
+        using var payload = JsonDocument.Parse(request.Body);
+        Assert.Equal("-1001234567890", payload.RootElement.GetProperty("chat_id").GetString());
+        Assert.Equal("Title here\n\nBody here", payload.RootElement.GetProperty("text").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("parse_mode", out _));
+    }
+
+    [Fact]
+    public void Telegram_limits_plain_text_messages_to_4096_characters()
+    {
+        var message = new NotificationMessage("Title", new string('x', 5_000));
+
+        var request = NotificationRequestBuilder.Build(
+            NotificationType.Telegram, "-1001234567890", "123456:ABC_def-123", "failure", message);
+
+        using var payload = JsonDocument.Parse(request.Body);
+        var text = payload.RootElement.GetProperty("text").GetString()!;
+        Assert.Equal(4_096, text.Length);
+        Assert.EndsWith("…", text);
+    }
+
+    [Fact]
+    public void Telegram_posts_available_artwork_as_a_photo_with_a_plain_text_caption()
+    {
+        var image = new NotificationImage([0xFF, 0xD8, 0xFF], "image/jpeg");
+
+        var request = NotificationRequestBuilder.Build(
+            NotificationType.Telegram, "-1001234567890", "123456:ABC_def-123", "replacement", Message, image);
+
+        Assert.Equal("https://api.telegram.org/bot123456:ABC_def-123/sendPhoto", request.Url);
+        Assert.Equal("multipart/form-data", request.ContentType);
+        Assert.Equal("-1001234567890", request.FormFields!["chat_id"]);
+        Assert.Equal("Title here\n\nBody here", request.FormFields["caption"]);
+        Assert.False(request.FormFields.ContainsKey("parse_mode"));
+        Assert.Equal("photo", request.Upload!.FieldName);
+        Assert.Equal("artwork.jpg", request.Upload.FileName);
+        Assert.Equal("image/jpeg", request.Upload.ContentType);
+        Assert.Equal(image.Bytes, request.Upload.Bytes);
+    }
+
+    [Fact]
+    public void Telegram_limits_photo_captions_to_1024_characters()
+    {
+        var image = new NotificationImage([0xFF, 0xD8, 0xFF], "image/jpeg");
+        var message = new NotificationMessage("Title", new string('x', 2_000));
+
+        var request = NotificationRequestBuilder.Build(
+            NotificationType.Telegram, "-1001234567890", "123456:ABC_def-123", "replacement", message, image);
+
+        var caption = request.FormFields!["caption"];
+        Assert.Equal(1_024, caption.Length);
+        Assert.EndsWith("…", caption);
     }
 
     [Fact]

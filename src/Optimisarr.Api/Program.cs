@@ -80,6 +80,17 @@ builder.Services.AddScoped<ReplacementService>();
 builder.Services.AddScoped<LifetimeStatsStore>();
 builder.Services.AddScoped<TimedCleanupService>();
 builder.Services.AddHttpClient();
+// Telegram bot tokens and some webhook secrets live in request URLs. Suppress the framework's
+// full-URL HTTP logging for notification delivery; NotificationService emits secret-safe status logs.
+builder.Services.AddHttpClient(NotificationService.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .RemoveAllLoggers();
+// Artwork is fetched only from explicitly configured services. Do not follow redirects to an
+// untrusted host, do not log token-bearing image URLs, and retain the existing 10-second UI budget.
+builder.Services.AddHttpClient(ArtworkService.HttpClientName, client =>
+    client.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .RemoveAllLoggers();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ActivityMonitor>();
 builder.Services.AddSingleton<ActiveEncodeRegistry>();
@@ -89,6 +100,8 @@ builder.Services.AddSingleton<IQueuePauseStateStore, QueuePauseStateStore>();
 builder.Services.AddSingleton<QueuePauseManager>();
 // Singleton so its resolved-artwork cache survives across requests.
 builder.Services.AddSingleton<ArtworkService>();
+builder.Services.AddSingleton<INotificationArtworkProvider>(
+    services => services.GetRequiredService<ArtworkService>());
 builder.Services.AddSingleton<QueueDispatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueDispatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BlindCalibrationService>());

@@ -49,10 +49,17 @@ public sealed record ParsedNotificationTarget(
 
 public static class NotificationTargetRequestParser
 {
+    public static string? ResolveTokenForUpdate(
+        NotificationType existingType,
+        string? existingToken,
+        ParsedNotificationTarget parsed) =>
+        parsed.Token ?? (existingType == parsed.Type ? existingToken : null);
+
     public static bool TryParse(
         SaveNotificationTargetRequest request,
         out ParsedNotificationTarget parsed,
-        out string? error)
+        out string? error,
+        bool hasStoredTelegramToken = false)
     {
         parsed = null!;
         error = null;
@@ -66,12 +73,20 @@ public static class NotificationTargetRequestParser
 
         if (!Enum.TryParse<NotificationType>(request.Type, ignoreCase: true, out var type))
         {
-            error = "Type must be one of Webhook, Ntfy, Apprise, or Discord.";
+            error = "Type must be one of Webhook, Discord, Telegram, Ntfy, or Apprise.";
             return false;
         }
 
         var url = request.Url?.Trim();
-        if (string.IsNullOrWhiteSpace(url)
+        if (type == NotificationType.Telegram)
+        {
+            if (!IsTelegramChatId(url))
+            {
+                error = "Telegram chat ID must be a numeric ID or an @channel username.";
+                return false;
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(url)
             || !Uri.TryCreate(url, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
@@ -80,11 +95,51 @@ public static class NotificationTargetRequestParser
         }
 
         var token = string.IsNullOrWhiteSpace(request.Token) ? null : request.Token.Trim();
+        if (type == NotificationType.Telegram
+            && (token is null ? !hasStoredTelegramToken : !IsTelegramBotToken(token)))
+        {
+            error = "A valid Telegram bot token is required.";
+            return false;
+        }
+
         parsed = new ParsedNotificationTarget(
-            name, type, url, token,
+            name, type, url!, token,
             request.Enabled ?? true,
             request.NotifyOnReplacement ?? true,
             request.NotifyOnFailure ?? true);
         return true;
+    }
+
+    private static bool IsTelegramBotToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var separator = value.IndexOf(':');
+        return separator > 0
+            && separator < value.Length - 1
+            && value[..separator].All(char.IsAsciiDigit)
+            && value[(separator + 1)..]
+                .All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-');
+    }
+
+    private static bool IsTelegramChatId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (long.TryParse(value, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var numericId))
+        {
+            return numericId != 0;
+        }
+
+        return value.Length is >= 6 and <= 33
+            && value[0] == '@'
+            && value[1..].All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
     }
 }
