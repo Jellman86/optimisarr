@@ -78,6 +78,26 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Disposable_video_verification_uses_the_requested_window_not_stream_copy_preroll()
+    {
+        var probe = MediaProbeService.Parse("""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "duration": "63.541000" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "60.000000" }
+          ],
+          "format": { "duration": "63.541000" }
+        }
+        """, ".mkv");
+
+        Assert.Equal(60, VerificationService.ReferenceVideoDurationForVerification(
+            probe,
+            TimestampCheckResult.NotMeasured,
+            fallbackDurationSeconds: 63.541,
+            exactClipDurationSeconds: 60));
+    }
+
+    [Fact]
     public void Parse_tolerates_missing_optional_fields()
     {
         var result = MediaProbeService.Parse("""{ "streams": [], "format": {} }""");

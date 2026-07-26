@@ -55,7 +55,9 @@ actually reclaimed.
 
 ### Out of scope for MVP
 
-- Distributed workers.
+- Distributed workers in the MVP. Optional registered Windows and macOS compute sidecars are
+  planned as a post-MVP extension; the main container remains the safety authority and the
+  complete single-host default (see the [roadmap](roadmap.md)).
 - Cloud storage.
 - Full plugin marketplace.
 - Automatic download client integration.

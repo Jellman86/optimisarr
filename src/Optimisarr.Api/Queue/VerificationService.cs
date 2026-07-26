@@ -104,7 +104,8 @@ public sealed class VerificationService(
             var referenceVideoDuration = ReferenceVideoDurationForVerification(
                 originalProbe,
                 originalTimestampResult,
-                reference.DurationSeconds);
+                reference.DurationSeconds,
+                clip is not null && reference.Kind == MediaKind.Video ? clip.Seconds : null);
 
             // When the job removed tracks by language, the audio the output promised to retain
             // is the kept tracks — so channel/sample-rate expectations come from those, not from
@@ -387,8 +388,11 @@ public sealed class VerificationService(
     internal static double? ReferenceVideoDurationForVerification(
         MediaProbeResult originalProbe,
         TimestampCheckResult originalTimestamps,
-        double? fallbackDurationSeconds) =>
-        originalTimestamps.LastPresentationSeconds is { } last and > 0
+        double? fallbackDurationSeconds,
+        double? exactClipDurationSeconds = null) =>
+        exactClipDurationSeconds is > 0
+            ? exactClipDurationSeconds
+            : originalTimestamps.LastPresentationSeconds is { } last and > 0
             ? Math.Max(0, last - (originalProbe.VideoStartSeconds ?? 0))
             : originalProbe.VideoDurationSeconds is > 0
                 ? originalProbe.VideoDurationSeconds
@@ -482,7 +486,7 @@ public sealed class VerificationService(
             // Stream copy necessarily retains packets from the preceding keyframe. The candidate
             // still represents the requested window, so verify against that window rather than
             // mistaking harmless decode pre-roll for a truncated encode.
-            DurationSeconds = clip.VideoOnly ? clip.Seconds : probedDuration,
+            DurationSeconds = original.Kind == MediaKind.Video ? clip.Seconds : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
             IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr

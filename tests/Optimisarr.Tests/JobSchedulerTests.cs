@@ -93,4 +93,33 @@ public sealed class JobSchedulerTests
 
         Assert.Equal([2], started);
     }
+
+    [Fact]
+    public void Interactive_preview_bypasses_the_library_background_window()
+    {
+        var preview = new QueuedJob(
+            1,
+            LibraryId: 2,
+            Priority: int.MaxValue,
+            EnqueuedAt: T0,
+            IgnoreLibraryWindow: true);
+
+        Assert.True(JobScheduler.CanRunInLibraryWindow(
+            preview,
+            windowStart: new TimeOnly(0, 0),
+            windowEnd: new TimeOnly(9, 0),
+            now: new TimeOnly(21, 0)));
+    }
+
+    [Fact]
+    public void Normal_job_still_waits_for_its_closed_library_window()
+    {
+        var normal = new QueuedJob(1, LibraryId: 2, Priority: 0, EnqueuedAt: T0);
+
+        Assert.False(JobScheduler.CanRunInLibraryWindow(
+            normal,
+            windowStart: new TimeOnly(0, 0),
+            windowEnd: new TimeOnly(9, 0),
+            now: new TimeOnly(21, 0)));
+    }
 }

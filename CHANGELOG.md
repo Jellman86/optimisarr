@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Intel QSV previews now compare the same source frames.** Short disposable video previews and
+  personal-quality clips keep hardware encoding but use software source decoding, avoiding the
+  reordered frames QSV can expose before a long-GOP input seek. The main encode pipeline retains
+  hardware decoding. Preview reference pre-roll is also excluded from duration and tail decisions,
+  so a copied preceding keyframe cannot make an exact 60-second candidate look truncated.
+- **An explicitly requested Preview no longer waits for the library's overnight optimise window.**
+  It still respects queue concurrency, free-space protection, manual pause, and active-media
+  blocking; only the background-work schedule is bypassed.
+
+### Changed
+
+- **The roadmap now defines optional Windows and macOS compute sidecars.** The planned
+  distributed-transcoding design keeps the main container in control of scheduling and all
+  replacement actions, while registered workers may receive read-only media, encode and VMAF-score
+  candidates, and return hash-bound results. It also records secure pairing, resumable or
+  shared-storage delivery, capability-aware leases, fail-closed verification, native packaging,
+  and cross-platform acceptance requirements.
+- **Per-title VMAF-guided quality targeting is now a bounded research item.** The proposed
+  opt-in workflow uses a small number of representative test encodes to select an encoder-specific
+  quality value before the one full encode, while preserving the normal full-output verification
+  and replacement gates.
+
 ## 0.2.8 — 2026-07-25
 
 ### Added

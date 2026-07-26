@@ -407,7 +407,8 @@ public sealed class QueueDispatcher(
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
-                    job.Type == JobType.Calibration && job.IgnoreMediaActivity))
+                    job.Type == JobType.Calibration && job.IgnoreMediaActivity,
+                    job.Type == JobType.Preview))
                 .ToListAsync(stoppingToken);
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -433,9 +434,18 @@ public sealed class QueueDispatcher(
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
         var runnable = queued
-            .Where(job => job.LibraryId is not { } libraryId
-                || !autoWindows.TryGetValue(libraryId, out var window)
-                || DispatchPolicyEvaluator.WithinWindow(window.Start, window.End, nowLocal))
+            .Where(job =>
+            {
+                var window = job.LibraryId is { } libraryId
+                    && autoWindows.TryGetValue(libraryId, out var configuredWindow)
+                        ? configuredWindow
+                        : ((TimeOnly Start, TimeOnly End)?)null;
+                return JobScheduler.CanRunInLibraryWindow(
+                    job,
+                    window?.Start,
+                    window?.End,
+                    nowLocal);
+            })
             .ToList();
 
         var toStart = JobScheduler.SelectJobsToStart(
@@ -940,12 +950,19 @@ public sealed class QueueDispatcher(
             }
         }
 
-        // The primary command honours the hardware-decode setting; the builder only applies it
-        // when a hardware encoder is in use and no software tone-map is needed. When it does
-        // apply, also build the software-decode equivalent so a source the GPU cannot decode can
-        // be retried transparently rather than failing the job.
+        // The primary command honours the hardware-decode setting except for short disposable
+        // video comparisons: exact source-frame selection matters more there, and hardware decoder
+        // reordering around an input seek can move the clip several frames before its VMAF
+        // reference. Hardware encoding remains enabled. Normal jobs retain the existing
+        // hardware-decode path and transparent software fallback.
+        var hardwareDecode = HardwareDecodePolicy.ShouldUse(
+            queueSettings.HardwareDecode,
+            isDisposable,
+            spec.Kind,
+            spec.VideoCodec,
+            spec.ClipSeconds);
         var primaryArguments = FfmpegCommandBuilder.Build(
-            spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, queueSettings.HardwareDecode);
+            spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, hardwareDecode);
         var softwareArguments = FfmpegCommandBuilder.Build(
             spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, hardwareDecode: false);
         var usedHardwareDecode = !primaryArguments.SequenceEqual(softwareArguments);
@@ -1371,7 +1388,7 @@ public sealed class QueueDispatcher(
         {
             var vmafAcceleration = VmafAccelerationSelector.Select(
                 work.VideoEncoder,
-                settings.HardwareDecode);
+                work.SoftwareDecodeArguments is not null);
             outcome = await verification.VerifyAsync(
                 work.Original,
                 outputPath,

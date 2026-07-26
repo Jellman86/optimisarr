@@ -346,7 +346,9 @@ is selected.
 | `GET` | `/api/preview/{jobId}/content` | Stream preview output for comparison. |
 
 Long video previews may be segment-only. The response includes `clipped: true`
-when the verification report is for a sample rather than the whole file.
+when the verification report is for a sample rather than the whole file. A user-requested Preview
+bypasses its library's automatic optimise window, but still waits for queue capacity, minimum free
+space, a manual pause, or active-media protection.
 
 ## Personal blind quality calibration
 
@@ -428,7 +430,9 @@ Failed preview and personal-quality jobs never appear in the normal queue feed. 
 is still deleted, but the small failed row remains available to `/api/jobs/failures`,
 `/api/jobs/{id}/log`, and the diagnostics bundle until `POST /api/jobs/clear?scope=errored` removes
 it. This makes an interactive failure diagnosable without retaining candidate media or reading the
-application database directly.
+application database directly. Start with `/api/jobs/failures`, find the sample whose `jobType` is
+`Preview`, then use its `jobId` with `/api/preview/{jobId}` for the complete verification report or
+`/api/jobs/{jobId}/log` for captured process output.
 
 Common job states include `Queued`, `Probing`, `Transcoding`, `Verifying`,
 `ReadyToReplace`, `Completed`, `Failed`, and `Cancelled`. A job is re-checked
