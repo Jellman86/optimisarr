@@ -94,6 +94,13 @@ public sealed class Job
     /// <summary>Encoder-specific quality value passed to FFmpeg for the current attempt.</summary>
     public int? EffectiveVideoQuality { get; set; }
 
+    /// <summary>
+    /// Encoder-specific value selected by the adaptive preparation pass. Persisted so crash,
+    /// automatic, and operator retries remain anchored to the proved per-title choice instead of
+    /// silently reverting to the library baseline.
+    /// </summary>
+    public int? AdaptiveVideoQuality { get; set; }
+
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 

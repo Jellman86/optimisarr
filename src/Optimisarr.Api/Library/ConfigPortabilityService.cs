@@ -175,6 +175,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MinVmafCatastrophicMin = snapshot.MinVmafCatastrophicMin ?? legacyVmafPolicy.Catastrophic;
             library.ClipVmafEnabled = snapshot.ClipVmafEnabled ?? legacyVmafPolicy.ClipEnabled;
             library.VmafFrameSubsample = snapshot.VmafFrameSubsample ?? legacyVmafPolicy.FrameSubsample;
+            library.VideoQualityStrategy = ParseEnum<VideoQualityStrategy>(snapshot.VideoQualityStrategy);
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
             library.AutoEnqueueWindowEnd = ParseWindowTime(snapshot.AutoEnqueueWindowEnd);
@@ -380,7 +381,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MinVmafCatastrophicMin,
         library.ClipVmafEnabled,
         library.VmafFrameSubsample,
-        library.KeepSubtitleLanguages);
+        library.KeepSubtitleLanguages,
+        library.VideoQualityStrategy.ToString());
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

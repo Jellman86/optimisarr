@@ -35,6 +35,13 @@ internal static class SettingsRequestParser
             return Fail("settings.quarantineRetention.nonNegative", "Cleanup retention days cannot be negative.", out error);
         if (!Enum.TryParse<EncoderMode>(request.EncoderMode, ignoreCase: true, out var encoderMode))
             return Fail("settings.encoderMode.invalid", "Encoder mode must be one of Auto, Cpu, NvidiaNvenc, IntelQsv, or Vaapi.", out error);
+        var hdrToneMapMode = HdrToneMapMode.Software;
+        if (!string.IsNullOrWhiteSpace(request.HdrToneMapMode)
+            && (!Enum.TryParse(request.HdrToneMapMode, ignoreCase: true, out hdrToneMapMode)
+                || !Enum.IsDefined(hdrToneMapMode)))
+        {
+            return Fail("settings.hdrToneMapMode.invalid", "HDR tone-map mode must be Software or Hardware.", out error);
+        }
 
         settings = new QueueSettings(
             request.MaxConcurrentJobs,
@@ -43,6 +50,7 @@ internal static class SettingsRequestParser
             request.LibraryScanIntervalHours,
             encoderMode,
             request.HardwareDecode,
+            hdrToneMapMode,
             new VerificationPolicy(
                 request.VerificationDurationTolerancePercent,
                 request.VerificationRequireAudioRetained,

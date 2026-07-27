@@ -22,4 +22,19 @@ public sealed class VmafWindowPlannerTests
     {
         Assert.Equal([VmafWindow.Full], VmafWindowPlanner.Plan(duration, enabled));
     }
+
+    [Fact]
+    public void Adaptive_samples_are_bounded_and_deterministic()
+    {
+        Assert.Equal(
+            [new VmafWindow(220, 40), new VmafWindow(1_180, 40), new VmafWindow(2_140, 40)],
+            VmafWindowPlanner.PlanAdaptive(2_400));
+    }
+
+    [Fact]
+    public void Adaptive_sampling_deduplicates_overlapping_short_title_windows()
+    {
+        Assert.Equal([new VmafWindow(0, 30)], VmafWindowPlanner.PlanAdaptive(30));
+        Assert.Empty(VmafWindowPlanner.PlanAdaptive(0));
+    }
 }

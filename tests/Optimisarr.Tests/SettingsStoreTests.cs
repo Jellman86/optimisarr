@@ -33,6 +33,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(1, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
         Assert.True(settings.HardwareDecode);
+        Assert.Equal(HdrToneMapMode.Software, settings.HdrToneMapMode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
@@ -65,6 +66,7 @@ public sealed class SettingsStoreTests : IDisposable
                 LibraryScanIntervalHours: 6,
                 EncoderMode: EncoderMode.NvidiaNvenc,
                 HardwareDecode: false,
+                HdrToneMapMode: HdrToneMapMode.Hardware,
                 VerificationPolicy: new(
                     DurationTolerancePercent: 2.5,
                     RequireAudioRetained: false,
@@ -97,6 +99,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(6, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.NvidiaNvenc, settings.EncoderMode);
         Assert.False(settings.HardwareDecode);
+        Assert.Equal(HdrToneMapMode.Hardware, settings.HdrToneMapMode);
         Assert.Equal(2.5, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.False(settings.VerificationPolicy.RequireAudioRetained);
         Assert.True(settings.VerificationPolicy.RequireSubtitlesRetained);
@@ -137,6 +140,7 @@ public sealed class SettingsStoreTests : IDisposable
                 new AppSetting { Key = SettingKeys.MinFreeDiskBytes, Value = "-1" },
                 new AppSetting { Key = SettingKeys.CpuThreadLimit, Value = "-2" },
                 new AppSetting { Key = SettingKeys.EncoderMode, Value = "gpu-but-not-real" },
+                new AppSetting { Key = SettingKeys.HdrToneMapMode, Value = "999" },
                 new AppSetting { Key = SettingKeys.VerificationDurationTolerancePercent, Value = "-0.1" },
                 new AppSetting { Key = SettingKeys.VerificationRequireAudioRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSubtitlesRetained, Value = "maybe" },
@@ -156,6 +160,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(1, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
         Assert.True(settings.HardwareDecode);
+        Assert.Equal(HdrToneMapMode.Software, settings.HdrToneMapMode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);

@@ -111,8 +111,9 @@ no support SLA or promise of a release schedule.
 - **GPU hardware decoding** (NVIDIA NVDEC, QSV, and VA-API) of the source as well as the encode,
   on by default,
   with automatic CPU-decode fallback for sources the GPU can't decode — so a large 4K encode no
-  longer burns a CPU core just on software decode. Skipped for HDR→SDR tonemap jobs (the tonemap
-  runs in software).
+  longer burns a CPU core just on software decode. HDR→SDR jobs use the established software colour
+  pipeline by default; an opt-in can use Intel QSV or VA-API tone mapping end to end for a freshly
+  confirmed HDR10/PQ source, with one automatic software retry when the hardware filter cannot run.
 - A **"now encoding" hero panel** with a live progress bar, fps/speed/ETA, and a **live CPU/GPU
   usage graph** while a job encodes (sampled with **unprivileged** reads only; no root or extra
   container capabilities). Click any job for a **detail view** showing the resolved encoder, the
@@ -203,6 +204,11 @@ with `libvmaf`; the Tools page reports that optional capability independently. A
 support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
 failure retries in software. VMAF verification is off by default for video re-encodes and skipped
 for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
+The same editor presents two mutually exclusive video-quality paths: the default **Fixed library
+quality**, or experimental **Adaptive per-title VMAF**, which tests up to four encoder values across
+bounded early/middle/late video-only samples before the full encode, then chooses the smallest
+measured passing candidate. Adaptive preparation falls back to Fixed when evidence is unavailable
+or contradictory and never replaces final verification.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame

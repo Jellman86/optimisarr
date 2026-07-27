@@ -479,30 +479,30 @@ the replacement workflow is trustworthy.
      unchanged. Real Windows and macOS hardware evidence is required before either platform is
      described as supported.
 
-10. **Adaptive per-title VMAF quality targeting: research and prototype.** Investigate the workflow
-    Mike described in issue #26: before committing to a full encode, run a bounded set of short
-    representative encodes at different encoder-specific quality values, measure them with the
-    library's VMAF policy, and select the most space-efficient value that meets the target. This
-    would complement the personal blind-quality check: one calibrates the person's library-level
+10. **Adaptive per-title VMAF quality targeting: validate the experimental implementation.** The
+    initial opt-in implementation of Mike's issue #26 workflow now runs a bounded set of short
+    representative encodes at different encoder-specific quality values, measures them with the
+    library's VMAF policy, and selects the smallest actually encoded passing candidate. This
+    complements the personal blind-quality check: one calibrates the person's library-level
     preference, while this feature adapts that chosen target to the complexity of an individual
     title.
 
-    - **Explicit opt-in with an honest cost.** Keep today's resolved library quality as the simple
-      default. Per-title targeting performs extra decode/encode/VMAF work before the full encode, so
-      the UI must estimate and show that preparation cost and let the operator disable or cancel it.
+    - **Explicit opt-in with an honest cost.** Fixed remains the default. The per-library radio path
+      states the upper bound of four qualities across three 40-second scenes and the Queue uses its
+      probing stage during preparation. Cancellation follows the normal active-job control.
     - **Representative evidence, not a favourable frame search.** Reuse deterministic early, middle,
-      and late windows selected before any scores are known. Apply the complete output contract
+      and late windows selected before any scores are known. Apply the complete picture contract
       (codec, bit depth, resolution, HDR treatment, encoder effort, and relevant filters) to every
-      probe so a cheap surrogate encode cannot select a value the real job does not reproduce.
-    - **Bounded search that does not assume perfect monotonicity.** Use encoder-family-specific safe
-      bounds and at most a small fixed number of probes. Bracket the gate, retain every measured
-      result, and fail back to the library setting when noisy hardware scores, unsupported values,
-      or a non-monotonic result make the choice ambiguous. Never loop until a preferred answer
-      appears.
-    - **Cache only an exact decision.** A result may be reused only when the source identity, output
-      contract, encoder and device, tool/model versions, sampling policy, and VMAF thresholds all
-      match. Any relevant change invalidates it; another title cannot inherit the selected raw
-      quality value.
+      video-only probe so a cheap surrogate encode cannot select a value the real job does not
+      reproduce and unrelated copied tracks cannot distort the size comparison.
+    - **Bounded search that does not assume perfect monotonicity or output size.** Use
+      encoder-family-specific safe bounds and at most a small fixed number of probes. Bracket the
+      gate, retain every measured candidate's encoded video bytes and VMAF result, and fail back to
+      the library setting when noisy hardware scores, unsupported values, or a non-monotonic result
+      make the choice ambiguous. Never loop until a preferred answer appears.
+    - **Do not share a decision.** The prototype deliberately does not cache across work. Its
+      selected raw value is bound to the job only so recovery retries remain anchored to it; another
+      title always gathers its own evidence.
     - **The final output still has to prove itself.** A sampled search chooses a candidate setting;
       it never authorises replacement. The resulting full encode still runs the structural, decode,
       duration, tail, stream, size, and configured final VMAF gates. The existing single
@@ -510,7 +510,7 @@ the replacement workflow is trustworthy.
       hold for the complete title.
     - **Prototype acceptance.** Compare total work, selected quality, size, VMAF, and repeatability
       against the fixed-setting path across CPU, QSV, NVENC, and VA-API evidence where hardware is
-      available. Ship only if the bounded search saves meaningful space or avoids failures without
+      available. Promote it from experimental only if the bounded search saves meaningful space or avoids failures without
       creating surprising encode time, unstable choices, or weaker verification.
 
 

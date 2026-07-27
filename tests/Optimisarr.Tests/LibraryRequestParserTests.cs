@@ -51,7 +51,54 @@ public sealed class LibraryRequestParserTests
         AutoEnqueueEnabled: null,
         AutoEnqueueWindowStart: null,
         AutoEnqueueWindowEnd: null,
-        AutoReplace: null);
+        AutoReplace: null,
+        VideoQualityStrategy: null);
+
+    [Fact]
+    public void Omitted_quality_strategy_defaults_to_fixed()
+    {
+        var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.VideoQualityStrategy.Fixed, parsed.VideoQualityStrategy);
+    }
+
+    [Fact]
+    public void Adaptive_quality_requires_an_enabled_vmaf_target()
+    {
+        var request = Request() with { VideoQualityStrategy = "AdaptiveVmaf" };
+
+        var ok = LibraryRequestParser.TryParse(request, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("VMAF target", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Adaptive_quality_is_accepted_for_a_video_reencode_with_vmaf()
+    {
+        var request = Request() with
+        {
+            VideoQualityStrategy = "AdaptiveVmaf",
+            VmafQualityGateEnabled = true
+        };
+
+        var ok = LibraryRequestParser.TryParse(request, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.VideoQualityStrategy.AdaptiveVmaf, parsed.VideoQualityStrategy);
+    }
+
+    [Fact]
+    public void Undefined_numeric_quality_strategy_is_rejected()
+    {
+        var request = Request() with { VideoQualityStrategy = "999" };
+
+        var ok = LibraryRequestParser.TryParse(request, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Unknown video quality strategy", error);
+    }
 
     [Fact]
     public void Complete_vmaf_override_is_preserved()

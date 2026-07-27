@@ -244,14 +244,11 @@ Settings fields include:
   "libraryScanIntervalHours": 1,
   "encoderMode": "Auto",
   "hardwareDecode": true,
+  "hdrToneMapMode": "Software",
   "verificationDurationTolerancePercent": 1,
   "verificationRequireAudioRetained": true,
   "verificationRequireSubtitlesRetained": false,
   "verificationRequireSizeReduction": true,
-  "verificationQualityGateEnabled": false,
-  "verificationMinimumVmafHarmonicMean": 93,
-  "verificationMinimumVmafMin": 80,
-  "verificationMinimumVmafCatastrophicMin": 50,
   "verificationAudioLoudnessGateEnabled": false,
   "verificationMaxLoudnessDriftLufs": 1,
   "verificationAudioClippingGateEnabled": false,
@@ -259,8 +256,6 @@ Settings fields include:
   "verificationImageQualityGateEnabled": true,
   "verificationMinimumImageSsim": 0.95,
   "verificationImageMetadataGateEnabled": true,
-  "verificationClipVmafEnabled": false,
-  "verificationVmafFrameSubsample": 1,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -315,6 +310,7 @@ Create and update library bodies use the same shape. Common fields:
   "targetContainer": null,
   "hdrHandling": null,
   "qualityCrf": null,
+  "videoQualityStrategy": "Fixed",
   "encoderPreset": "balanced",
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
@@ -333,7 +329,10 @@ rejected. `encoderPreset` retains its historical API name but new clients should
 encoder effort: `quick`, `balanced`, `efficient`, or `null` for the encoder default. Former
 x264/x265 values, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain accepted and are preserved
 exactly for backwards compatibility; dispatch resolves a safe equivalent if another encoder family
-is selected.
+is selected. `videoQualityStrategy` accepts `Fixed` (the backwards-compatible default) or
+`AdaptiveVmaf`. `AdaptiveVmaf` is accepted only for a video re-encode library whose
+`vmafQualityGateEnabled` value is `true`; invalid combinations return `400` rather than silently
+changing the requested policy.
 
 ## Preview
 

@@ -54,8 +54,19 @@ did before and logs a warning at startup.
 Each library has its own root, media type, rule profile, and processing policy.
 The Inventory explains why every file is eligible or skipped.
 
-**Configure** opens a dedicated page for that library. Video libraries can disable VMAF or select a
-named quality tier. **Custom** exposes the
+**Configure** opens a dedicated page for that library. A video re-encode library first chooses one
+of two mutually exclusive quality paths:
+
+- **Fixed library quality** (default) uses the preset/custom quality directly, then runs the normal
+  full-output verification and one bounded VMAF-only recovery retry.
+- **Adaptive per-title VMAF** (experimental) first encodes deterministic early, middle, and late
+  video-only samples at no more than four encoder-specific values and selects the smallest measured
+  candidate that clears the library target. Missing or contradictory evidence falls back to Fixed;
+  the final file still runs every normal verification gate.
+
+Adaptive mode adds up to twelve 40-second sample encodes before each full encode, so it is an
+explicit per-library opt-in and requires VMAF to be enabled. Video libraries can otherwise disable
+VMAF or select a named quality tier. **Custom** exposes the
 harmonic-mean, fifth-percentile, and catastrophic-frame floors plus full/clip scoring and the frame
 sampling interval. VMAF has no global setting: every video library owns its policy. Upgrades copy
 the former global policy into each existing library so behaviour does not change unexpectedly.
@@ -68,6 +79,7 @@ the former global policy into each existing library so behaviour does not change
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
 | Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes. Runtime failures fall back to CPU decode, and a below-floor accelerated VMAF result is confirmed in software before rejection. |
+| HDR tone-map engine | Software is the compatible default. Hardware uses Intel QSV or VA-API for a freshly confirmed non-Dolby-Vision HDR10/PQ source under an existing **Tone-map to SDR** library rule when hardware decoding is active, and retries once with software if that path fails. HLG, Dolby Vision, unknown transfer metadata, VMAF-gated work, and disposable comparisons retain the software transform. |
 
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
@@ -147,7 +159,8 @@ tone-map before comparison; HDR-preserving jobs keep both streams in the matchin
 HDR transfer domain. SDR jobs follow the selected encoder's hardware decode path when Hardware
 decoding is enabled: QSV/VA-API download decoded frames for CPU VMAF, while a compatible NVIDIA
 build can use NVDEC, `scale_cuda`, and `libvmaf_cuda` end to end. Hardware attempts always retry in
-software on failure, and HDR always uses the established software colour pipeline. Only VMAF is
+software on failure. A VMAF-gated HDR→SDR job always uses the established software production
+tone-map so its reference receives the identical transform. Only VMAF is
 requested during this gate; the older incidental PSNR/SSIM report fields remain nullable. The model,
 sampling interval, and preparation used are recorded in the result.
 
@@ -163,7 +176,11 @@ HDR; preserving or tone-mapping it is an explicit library-profile choice.
 
 Encoder quality values are not assumed to be portable between implementations. Software uses the
 profile CRF directly; QSV ICQ, NVENC CQ and VA-API QP receive conservative family-specific headroom.
-The requested and effective values are stored with each job. When VMAF is the only failed gate,
+The requested and effective values are stored with each job. Adaptive mode persists its selected
+encoder-specific value on the job so a crash, ordinary retry, or higher-quality recovery cannot
+silently revert to the library baseline; the selection is not shared with another title. Candidate
+comparison uses actual encoded video bytes, not a cross-encoder assumption about quality-number
+size. When VMAF is the only failed gate,
 Optimisarr makes one automatic higher-quality retry only after a real score was measured. If that
 recovery still produces a measured score below the VMAF gate, the file is
 automatically excluded from future optimisation and remains reversible from the library's **Excluded**

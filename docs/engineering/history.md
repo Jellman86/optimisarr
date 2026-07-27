@@ -3,6 +3,18 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Experimental on dev (2026-07-27) — per-library adaptive VMAF quality path.** Video re-encode
+libraries can keep the fixed preset/custom quality or explicitly opt into a bounded per-title search.
+The editor presents the alternatives as radio cards with their actual processing paths and cost.
+Adaptive preparation uses the production FFmpeg contract and canonical VMAF scorer over
+deterministic early/middle/late windows, brackets at most four encoder-specific values, and falls
+back to the fixed quality when evidence is missing or non-monotonic. Probes contain only the primary
+video, and the final choice is the smallest actually encoded passing sample rather than an assumed
+CRF/CQ/ICQ/QP-to-size mapping. The chosen value is job-bound for safe crash and quality-retry
+recovery; it is never shared across titles. The complete output still runs every structural, decode,
+duration, tail, stream, size, and configured VMAF gate before replacement. Cross-family evidence
+remains required before the experimental label can be removed.
+
 **Recently shipped (2026-07-25) — repeatable NVENC profile evidence.** The `dev` image includes a
 guided NVIDIA quality-comparison harness created for issue #37. It prepares a dedicated folder under
 `/data`, accepts exactly three short 8-bit SDR samples, and compares the current P7/CQ baseline with
@@ -317,8 +329,11 @@ See the Phase 12 section for the remaining optional polish.
   *decode* both confirmed on an Intel iGPU host (CPU dropped from ~142% to ~22% on a 4K encode with
   the render/video engines busy). **GPU hardware decoding** is wired and on by default
   (`queue.hardwareDecode`): when a hardware encoder is in use the source is decoded on the GPU
-  (`-hwaccel` + `-hwaccel_output_format`, no `hwupload`), skipped for HDR→SDR tonemap jobs, with an
-  automatic software-decode retry for sources the GPU can't decode. **Live, unprivileged CPU/GPU
+  (`-hwaccel` + `-hwaccel_output_format`, no `hwupload`). HDR→SDR uses software by default; an
+  opt-in QSV/VA-API VPP path freshly confirms non-Dolby-Vision HDR10/PQ before keeping supported
+  work on GPU surfaces; HLG, Dolby Vision, unknown metadata, disposable comparisons, and VMAF-gated
+  jobs retain their like-for-like software path. Recognised hardware setup failures retry once with
+  software decode and tone mapping. **Live, unprivileged CPU/GPU
   metrics** stream to the Queue graph over SignalR — `/proc/stat` for CPU and per-process DRM fdinfo
   (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
   Portable Fast/Balanced/Efficient encoder effort now resolves onto the selected x264/x265,

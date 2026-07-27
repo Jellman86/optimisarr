@@ -252,6 +252,7 @@ internal sealed record SettingsDto(
     int LibraryScanIntervalHours,
     string EncoderMode,
     bool HardwareDecode,
+    string? HdrToneMapMode,
     double VerificationDurationTolerancePercent,
     bool VerificationRequireAudioRetained,
     bool VerificationRequireSubtitlesRetained,
@@ -274,6 +275,7 @@ internal sealed record SettingsDto(
         settings.LibraryScanIntervalHours,
         settings.EncoderMode.ToString(),
         settings.HardwareDecode,
+        settings.HdrToneMapMode.ToString(),
         settings.VerificationPolicy.DurationTolerancePercent,
         settings.VerificationPolicy.RequireAudioRetained,
         settings.VerificationPolicy.RequireSubtitlesRetained,
@@ -382,7 +384,8 @@ internal sealed record SaveLibraryRequest(
     bool? AutoEnqueueEnabled,
     string? AutoEnqueueWindowStart,
     string? AutoEnqueueWindowEnd,
-    bool? AutoReplace);
+    bool? AutoReplace,
+    string? VideoQualityStrategy = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -436,6 +439,7 @@ internal sealed record LibraryDto(
     double? MinVmafCatastrophicMin,
     bool? ClipVmafEnabled,
     int? VmafFrameSubsample,
+    string VideoQualityStrategy,
     bool AutoEnqueueEnabled,
     string AutoEnqueueWindowStart,
     string AutoEnqueueWindowEnd,
@@ -486,6 +490,7 @@ internal sealed record LibraryDto(
         library.MinVmafCatastrophicMin,
         library.ClipVmafEnabled,
         library.VmafFrameSubsample,
+        library.VideoQualityStrategy.ToString(),
         library.AutoEnqueueEnabled,
         library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
         library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture),

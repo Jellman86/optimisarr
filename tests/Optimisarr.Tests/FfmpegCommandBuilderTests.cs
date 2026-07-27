@@ -404,6 +404,68 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
+    public void Qsv_hardware_tone_mapping_keeps_hdr_frames_on_the_gpu_and_outputs_rec709()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(tonemap: true),
+            videoEncoder: "hevc_qsv",
+            hardwareDecode: true,
+            hardwareToneMap: true);
+
+        Assert.Equal("qsv", args[IndexOf(args, "-hwaccel") + 1]);
+        Assert.Equal("qsv", args[IndexOf(args, "-hwaccel_output_format") + 1]);
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
+        Assert.Contains("vpp_qsv=tonemap=1", chain);
+        Assert.Contains("format=nv12", chain);
+        Assert.Contains("out_color_matrix=bt709", chain);
+        Assert.Contains("out_color_primaries=bt709", chain);
+        Assert.Contains("out_color_transfer=bt709", chain);
+        Assert.DoesNotContain("zscale", chain);
+        Assert.DoesNotContain("hwupload", chain);
+    }
+
+    [Fact]
+    public void Vaapi_hardware_tone_mapping_keeps_hdr_frames_on_the_gpu_and_outputs_rec709()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(tonemap: true),
+            videoEncoder: "hevc_vaapi",
+            hardwareDecode: true,
+            hardwareToneMap: true);
+
+        Assert.Equal("vaapi", args[IndexOf(args, "-hwaccel") + 1]);
+        Assert.Equal("vaapi", args[IndexOf(args, "-hwaccel_output_format") + 1]);
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
+        Assert.Contains("tonemap_vaapi=", chain);
+        Assert.Contains("format=nv12", chain);
+        Assert.Contains("matrix=bt709", chain);
+        Assert.Contains("primaries=bt709", chain);
+        Assert.Contains("transfer=bt709", chain);
+        Assert.DoesNotContain("zscale", chain);
+        Assert.DoesNotContain("hwupload", chain);
+    }
+
+    [Theory]
+    [InlineData("hevc_qsv", false)]
+    [InlineData("hevc_nvenc", true)]
+    [InlineData("libx265", true)]
+    public void Unsupported_hardware_tone_map_requests_keep_the_software_filter(
+        string encoder,
+        bool hardwareDecode)
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(tonemap: true),
+            videoEncoder: encoder,
+            hardwareDecode: hardwareDecode,
+            hardwareToneMap: true);
+
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
+        Assert.Contains(HdrToneMap.Filter, chain);
+        Assert.DoesNotContain("vpp_qsv", chain);
+        Assert.DoesNotContain("tonemap_vaapi", chain);
+    }
+
+    [Fact]
     public void Hardware_decode_is_ignored_for_a_software_encoder()
     {
         // A CPU encoder has no GPU device, so the flag is a no-op even when requested.

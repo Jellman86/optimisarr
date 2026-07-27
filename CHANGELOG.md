@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added
+
+- **Video libraries can opt into adaptive per-title VMAF quality selection.** A clear pair of
+  library-level radio paths keeps the existing fixed quality as the default or runs an experimental,
+  bounded preparation search across deterministic early/middle/late scenes. Adaptive mode tests at
+  most four encoder-specific values, compares the real encoded video bytes of every passing
+  candidate rather than assuming a quality number is smaller, rejects non-monotonic VMAF evidence,
+  and falls back to the library value when sampling is unavailable or ambiguous. It then performs
+  the normal full encode and every existing verification gate. Its selected value survives
+  automatic and operator retries so the one higher-quality recovery step cannot accidentally
+  discard or lower the proved choice.
+- **HDR-to-SDR jobs can now opt into Intel hardware tone mapping.** The existing per-library HDR
+  drop-down still decides whether media is tone-mapped; a separate Settings → General → Queue
+  control chooses the compatible software engine or supported QSV/VA-API VPP. Hardware mode first
+  freshly confirms a non-Dolby-Vision HDR10/PQ source, then keeps decode, colour conversion, and
+  encode on GPU surfaces. HLG, Dolby Vision, unknown colour metadata, preview/personal-quality
+  clips, and VMAF-gated work retain their compatible frame- and colour-matched software paths.
+  A recognised filter or driver failure deletes partial output and retries once through software.
+  Software remains the default, NVIDIA retains software tone mapping, and every normal verification
+  gate remains unchanged.
+
 ### Fixed
 
 - **Intel QSV previews now compare the same source frames.** Short disposable video previews and
@@ -21,10 +42,9 @@
   candidates, and return hash-bound results. It also records secure pairing, resumable or
   shared-storage delivery, capability-aware leases, fail-closed verification, native packaging,
   and cross-platform acceptance requirements.
-- **Per-title VMAF-guided quality targeting is now a bounded research item.** The proposed
-  opt-in workflow uses a small number of representative test encodes to select an encoder-specific
-  quality value before the one full encode, while preserving the normal full-output verification
-  and replacement gates.
+- **Per-title VMAF-guided quality targeting remains an experimental validation item.** The initial
+  bounded implementation is available for opt-in testing; release support still requires evidence
+  across CPU, QSV, NVENC, and VA-API that its extra work produces stable, worthwhile choices.
 
 ## 0.2.8 — 2026-07-25
 

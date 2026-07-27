@@ -30,6 +30,34 @@ public sealed class MigrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Existing_libraries_migrate_to_the_fixed_quality_path()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath}")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260717193930_AddCalibrationActivityBypass");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Films', '/data/films', 'Film', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(
+            Optimisarr.Core.Queue.VideoQualityStrategy.Fixed,
+            (await db.Libraries.SingleAsync()).VideoQualityStrategy);
+    }
+
+    [Fact]
     public async Task Avif_library_overrides_migrate_to_the_proven_webp_target()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);

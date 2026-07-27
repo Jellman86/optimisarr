@@ -639,6 +639,10 @@
               "string"
             ]
           },
+          "videoQualityStrategy": {
+            "default": "Fixed",
+            "type": "string"
+          },
           "vmafFrameSubsample": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1213,6 +1217,12 @@
               "string"
             ]
           },
+          "videoQualityStrategy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "vmafFrameSubsample": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1351,6 +1361,12 @@
           "hardwareDecode": {
             "type": "boolean"
           },
+          "hdrToneMapMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "libraryScanIntervalHours": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1447,6 +1463,7 @@
           "libraryScanIntervalHours",
           "encoderMode",
           "hardwareDecode",
+          "hdrToneMapMode",
           "verificationDurationTolerancePercent",
           "verificationRequireAudioRetained",
           "verificationRequireSubtitlesRetained",

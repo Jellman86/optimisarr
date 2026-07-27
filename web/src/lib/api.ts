@@ -163,6 +163,7 @@ export type LibraryRules = {
   minVmafCatastrophicMin: number | null
   clipVmafEnabled: boolean | null
   vmafFrameSubsample: number | null
+  videoQualityStrategy: 'Fixed' | 'AdaptiveVmaf'
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
@@ -249,6 +250,7 @@ export function newLibraryDefaults(): SaveLibrary {
     minVmafCatastrophicMin: null,
     clipVmafEnabled: null,
     vmafFrameSubsample: null,
+    videoQualityStrategy: 'Fixed',
     autoEnqueueEnabled: false,
     autoEnqueueWindowStart: '00:00',
     autoEnqueueWindowEnd: '00:00',
@@ -282,6 +284,7 @@ export type Settings = {
   libraryScanIntervalHours: number
   encoderMode: string
   hardwareDecode: boolean
+  hdrToneMapMode: 'Software' | 'Hardware'
   verificationDurationTolerancePercent: number
   verificationRequireAudioRetained: boolean
   verificationRequireSubtitlesRetained: boolean

@@ -386,6 +386,7 @@
     libraryScanIntervalHours: 1,
     encoderMode: 'Auto',
     hardwareDecode: true,
+    hdrToneMapMode: 'Software',
     verificationDurationTolerancePercent: 1,
     verificationRequireAudioRetained: true,
     verificationRequireSubtitlesRetained: false,
@@ -663,13 +664,23 @@
       </div>
     </div>
 
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-800 sm:grid-cols-2">
       <Toggle
         bind:checked={settings.hardwareDecode}
         label={i18n.m.settings.hardware_decode}
         hint={i18n.m.settings.hardware_decode_hint}
       />
-      <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+      <div>
+        <label class="label" for="hdr-tone-map-mode">
+          {i18n.m.settings.hdr_tone_map_mode}
+          <InfoTip text={i18n.m.settings.hdr_tone_map_mode_tip} />
+        </label>
+        <select id="hdr-tone-map-mode" class="input" bind:value={settings.hdrToneMapMode}>
+          <option value="Software">{i18n.m.settings.hdr_tone_map_software}</option>
+          <option value="Hardware">{i18n.m.settings.hdr_tone_map_hardware}</option>
+        </select>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
         {i18n.m.settings.auto_run_before}<button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
     </div>

@@ -161,8 +161,10 @@ Verification should use:
 - Decode health check with FFmpeg using `-v error -f null -`.
 - Duration tolerance checks.
 - Video/audio/subtitle stream policy checks.
-- Opt-in VMAF for video re-encodes (off by default and configured per library), with default-on SSIM
-  for still-image re-encodes.
+- Opt-in VMAF for video re-encodes (off by default and configured per library). A library may use
+  its fixed quality directly or explicitly opt into a bounded per-title search across deterministic
+  early/middle/late samples; the search falls back on missing or non-monotonic evidence and never
+  bypasses final verification. Still-image re-encodes use default-on SSIM instead.
 
 ### Container shape
 
@@ -265,11 +267,14 @@ When a hardware encoder is selected, the source is also decoded on the GPU
 (`-hwaccel` + matching `-hwaccel_output_format`), keeping frames on the GPU end to
 end instead of decoding in software and uploading. NVIDIA uses FFmpeg's generic CUDA/NVDEC path;
 QSV and VA-API use their matching hardware surfaces. This is on by default
-(`queue.hardwareDecode`) and only applies to a hardware encoder. It is skipped for
-HDR→SDR tone-map jobs, whose tone-map filter runs in software and needs frames in
-system memory. Because not every source codec/profile can be hardware-decoded, a
-decode-setup failure is retried once with the software-decode command rather than
-failing the job.
+(`queue.hardwareDecode`) and only applies to a hardware encoder. HDR→SDR jobs use
+the established software colour transform by default. The opt-in
+`queue.hdrToneMapMode=Hardware` freshly confirms a non-Dolby-Vision HDR10/PQ source before it
+keeps supported QSV/VA-API decode, VPP tone mapping, and encode on GPU surfaces. HLG, Dolby Vision,
+unknown transfer metadata, disposable comparisons, and VMAF-gated jobs retain the software
+production transform. Because source codec/profile, filter, and driver support varies, a recognised
+hardware setup failure is retried once with software decode and tone mapping rather than failing
+the job.
 
 #### Live resource metrics
 

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 
 namespace Optimisarr.Core.Settings;
 
@@ -49,8 +50,29 @@ public static class ConfigSnapshotValidator
             var where = $"Library #{i + 1}";
             RequireText(library.Name, $"{where} name", errors);
             RequireText(library.Path, $"{where} path", errors);
-            RequireEnum<MediaType>(library.MediaType, $"{where} media type", errors);
-            RequireEnum<RuleProfile>(library.RuleProfile, $"{where} rule profile", errors);
+            var validMediaType = RequireEnum<MediaType>(
+                library.MediaType, $"{where} media type", errors, out var mediaType);
+            var validRuleProfile = RequireEnum<RuleProfile>(
+                library.RuleProfile, $"{where} rule profile", errors, out var ruleProfile);
+            var validQualityStrategy = RequireEnum<VideoQualityStrategy>(
+                library.VideoQualityStrategy,
+                $"{where} video quality strategy",
+                errors,
+                out var videoQualityStrategy);
+            if (validQualityStrategy && videoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
+            {
+                if (library.VmafQualityGateEnabled != true)
+                {
+                    errors.Add($"{where} adaptive VMAF quality requires an enabled per-library VMAF target.");
+                }
+                if ((validMediaType && mediaType is MediaType.Music or MediaType.Photo)
+                    || (validRuleProfile
+                        && RuleProfileDefaults.For(ruleProfile).TargetVideoCodec is null
+                        && string.IsNullOrWhiteSpace(library.TargetVideoCodec)))
+                {
+                    errors.Add($"{where} adaptive VMAF quality applies only to video re-encode libraries.");
+                }
+            }
             if (library.HdrHandling is not null)
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
@@ -165,7 +187,8 @@ public static class ConfigSnapshotValidator
     private static bool RequireEnum<T>(string? value, string label, List<string> errors, out T parsed)
         where T : struct, Enum
     {
-        if (!Enum.TryParse<T>(value, ignoreCase: true, out parsed))
+        if (!Enum.TryParse<T>(value, ignoreCase: true, out parsed)
+            || !Enum.IsDefined(parsed))
         {
             errors.Add($"{label} is not valid: {value}.");
             return false;

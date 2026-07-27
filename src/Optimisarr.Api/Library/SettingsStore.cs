@@ -15,6 +15,7 @@ public sealed record QueueSettings(
     int LibraryScanIntervalHours,
     EncoderMode EncoderMode,
     bool HardwareDecode,
+    HdrToneMapMode HdrToneMapMode,
     VerificationPolicy VerificationPolicy,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
@@ -52,6 +53,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.LibraryScanIntervalHours,
         SettingKeys.EncoderMode,
         SettingKeys.HardwareDecode,
+        SettingKeys.HdrToneMapMode,
         SettingKeys.VerificationDurationTolerancePercent,
         SettingKeys.VerificationRequireAudioRetained,
         SettingKeys.VerificationRequireSubtitlesRetained,
@@ -150,6 +152,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.LibraryScanIntervalHours
                 || setting.Key == SettingKeys.EncoderMode
                 || setting.Key == SettingKeys.HardwareDecode
+                || setting.Key == SettingKeys.HdrToneMapMode
                 || setting.Key == SettingKeys.VerificationDurationTolerancePercent
                 || setting.Key == SettingKeys.VerificationRequireAudioRetained
                 || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
@@ -176,6 +179,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             // builder skips it where it cannot apply, and the dispatcher falls back to
             // software decode if a given source cannot be hardware-decoded.
             ParseBool(settings.GetValueOrDefault(SettingKeys.HardwareDecode), fallback: true),
+            // Opt-in because the established software path is the compatibility baseline.
+            ParseEnum(settings.GetValueOrDefault(SettingKeys.HdrToneMapMode), HdrToneMapMode.Software),
             new VerificationPolicy(
                 ParseDouble(
                     settings.GetValueOrDefault(SettingKeys.VerificationDurationTolerancePercent),
@@ -273,6 +278,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.LibraryScanIntervalHours] = Math.Max(1, settings.LibraryScanIntervalHours).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.EncoderMode] = settings.EncoderMode.ToString(),
             [SettingKeys.HardwareDecode] = settings.HardwareDecode.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.HdrToneMapMode] = settings.HdrToneMapMode.ToString(),
             [SettingKeys.VerificationDurationTolerancePercent] =
                 Math.Max(0, settings.VerificationPolicy.DurationTolerancePercent).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.VerificationRequireAudioRetained] =
@@ -430,5 +436,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
 
     private static T ParseEnum<T>(string? value, T fallback)
         where T : struct, Enum =>
-        Enum.TryParse<T>(value, ignoreCase: true, out var parsed) ? parsed : fallback;
+        Enum.TryParse<T>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : fallback;
 }

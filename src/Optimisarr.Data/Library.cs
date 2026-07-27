@@ -73,6 +73,12 @@ public sealed class Library
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }
 
+    /// <summary>
+    /// Whether video re-encodes use the resolved library quality directly or run a bounded
+    /// per-title VMAF search first. Fixed is the conservative, backwards-compatible default.
+    /// </summary>
+    public VideoQualityStrategy VideoQualityStrategy { get; set; } = VideoQualityStrategy.Fixed;
+
     /// <summary>Portable encoder effort; recognised legacy presets remain valid until changed. Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 

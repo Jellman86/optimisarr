@@ -140,6 +140,7 @@ internal static class LibraryEndpoints
                 MinVmafCatastrophicMin = parsed.MinVmafCatastrophicMin,
                 ClipVmafEnabled = parsed.ClipVmafEnabled,
                 VmafFrameSubsample = parsed.VmafFrameSubsample,
+                VideoQualityStrategy = parsed.VideoQualityStrategy,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
                 AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd,
@@ -213,6 +214,7 @@ internal static class LibraryEndpoints
             library.MinVmafCatastrophicMin = parsed.MinVmafCatastrophicMin;
             library.ClipVmafEnabled = parsed.ClipVmafEnabled;
             library.VmafFrameSubsample = parsed.VmafFrameSubsample;
+            library.VideoQualityStrategy = parsed.VideoQualityStrategy;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
             library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;

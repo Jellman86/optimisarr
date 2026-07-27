@@ -1,5 +1,6 @@
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Api.Library;
@@ -44,6 +45,7 @@ internal readonly record struct ParsedLibrary(
     double? MinVmafCatastrophicMin,
     bool? ClipVmafEnabled,
     int? VmafFrameSubsample,
+    VideoQualityStrategy VideoQualityStrategy,
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
     TimeOnly AutoEnqueueWindowEnd,
@@ -88,10 +90,37 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var videoQualityStrategy = VideoQualityStrategy.Fixed;
+        if (!string.IsNullOrWhiteSpace(request.VideoQualityStrategy)
+            && (!Enum.TryParse(request.VideoQualityStrategy, ignoreCase: true, out videoQualityStrategy)
+                || !Enum.IsDefined(videoQualityStrategy)))
+        {
+            error =
+                $"Unknown video quality strategy: {request.VideoQualityStrategy}. " +
+                $"Expected one of {string.Join(", ", Enum.GetNames<VideoQualityStrategy>())}.";
+            return false;
+        }
+
         if (ruleProfile == RuleProfile.TrackCleanup && mediaType is MediaType.Music or MediaType.Photo)
         {
             error = "Track cleanup applies only to Film, TV, or mixed libraries that can contain video files.";
             return false;
+        }
+
+        if (videoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
+        {
+            var profileReencodesVideo = RuleProfileDefaults.For(ruleProfile).TargetVideoCodec is not null;
+            var requestReencodesVideo = !string.IsNullOrWhiteSpace(request.TargetVideoCodec) || profileReencodesVideo;
+            if (mediaType is MediaType.Music or MediaType.Photo || !requestReencodesVideo)
+            {
+                error = "Adaptive VMAF quality applies only to libraries that re-encode video.";
+                return false;
+            }
+            if (request.VmafQualityGateEnabled != true)
+            {
+                error = "Adaptive VMAF quality requires a per-library VMAF target.";
+                return false;
+            }
         }
 
         HdrHandling? hdrHandling = null;
@@ -307,6 +336,7 @@ internal static class LibraryRequestParser
             request.MinVmafCatastrophicMin,
             request.ClipVmafEnabled,
             request.VmafFrameSubsample,
+            videoQualityStrategy,
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,
