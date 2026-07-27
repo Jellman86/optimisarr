@@ -13,7 +13,8 @@ const library = {
   targetFolder: null, moveOverwrite: false, minVmafHarmonicMean: null, minVmafMin: null,
   vmafQualityGateEnabled: false, minVmafCatastrophicMin: null, clipVmafEnabled: null,
   vmafFrameSubsample: null, autoEnqueueEnabled: false, autoEnqueueWindowStart: '00:00',
-  autoEnqueueWindowEnd: '00:00', autoReplace: false, lastAutoEnqueueAt: null, fileCount: 1,
+  autoEnqueueWindowEnd: '00:00', autoReplace: false, videoQualityStrategy: 'Fixed',
+  lastAutoEnqueueAt: null, fileCount: 1,
 }
 
 async function mockLibraries(page: Page, configuredLibrary = library) {
@@ -60,7 +61,8 @@ test('track cleanup is an exclusive mode and exposes only its relevant video con
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')
 
-  await expect(page.getByRole('radio')).toHaveCount(3)
+  const processingModes = page.getByRole('group', { name: 'Processing mode' })
+  await expect(processingModes.getByRole('radio')).toHaveCount(3)
   await page.getByRole('radio', { name: /Only remove unwanted audio\/subtitle languages/ }).check()
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).not.toBeChecked()
   await expect(page.getByLabel('VMAF quality')).toHaveCount(0)
@@ -72,9 +74,26 @@ test('track cleanup is an exclusive mode and exposes only its relevant video con
   await expect(page.getByLabel('Minimum file size')).toHaveCount(0)
 
   await page.getByLabel('Media type').selectOption('Music')
-  await expect(page.getByRole('radio')).toHaveCount(0)
+  await expect(processingModes).toHaveCount(0)
   await page.getByLabel('Media type').selectOption('Film')
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).toBeChecked()
+})
+
+test('adaptive quality path enables a concrete VMAF target and remains exclusive', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const fixed = page.getByRole('radio', { name: /Fixed library quality/ })
+  const adaptive = page.getByRole('radio', { name: /Adaptive per-title VMAF/ })
+  await expect(fixed).toBeChecked()
+  await adaptive.check()
+
+  await expect(adaptive).toBeChecked()
+  await expect(fixed).not.toBeChecked()
+  const vmafQuality = page.locator('#lib-vmaf-policy')
+  await expect(vmafQuality).toHaveValue('lossless')
+  await expect(vmafQuality.locator('option[value="off"]')).toBeDisabled()
+  await expect(page.getByText(/Extra work before every full encode/)).toBeVisible()
 })
 
 test('invalid subtitle language syntax cannot be saved', async ({ page }) => {
