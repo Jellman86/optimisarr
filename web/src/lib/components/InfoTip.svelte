@@ -3,19 +3,24 @@
   // operational screens can keep their explanations without a wall of always-on text.
   // Backed by a real button for keyboard/screen-reader access; the bubble is presentational.
   import Icon from './Icon.svelte'
+  import { i18n } from '../i18n/i18n.svelte'
 
   let {
     text,
-    label = 'More information',
+    label,
     class: cls = '',
   }: { text: string; label?: string; class?: string } = $props()
+
+  const accessibleLabel = $derived(label ?? i18n.m.common.more_information)
 </script>
 
-<span class="group relative inline-flex align-middle {cls}">
+<!-- Negative margin preserves the compact visual rhythm while the real button supplies a
+     44 × 44 px pointer target around the deliberately small information glyph. -->
+<span class="group relative -m-[15px] inline-flex align-middle {cls}">
   <button
     type="button"
-    class="inline-flex text-slate-400 transition-colors hover:text-slate-600 focus-visible:text-cyan-600 focus-visible:outline-none dark:text-slate-500 dark:hover:text-slate-300"
-    aria-label={label}
+    class="inline-flex h-11 w-11 items-center justify-center text-slate-400 transition-colors hover:text-slate-600 focus-visible:text-cyan-600 focus-visible:outline-none dark:text-slate-500 dark:hover:text-slate-300"
+    aria-label={accessibleLabel}
     onclick={(e) => {
       // Never let the icon toggle a surrounding label/row or submit a form.
       e.preventDefault()

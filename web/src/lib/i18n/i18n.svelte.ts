@@ -41,6 +41,10 @@ function isLocale(code: string): code is LocaleCode {
   return code in LOADERS
 }
 
+function setDocumentLanguage(code: LocaleCode) {
+  if (typeof document !== 'undefined') document.documentElement.lang = code
+}
+
 function detectInitial(): LocaleCode {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -63,6 +67,7 @@ function createI18n() {
     if (sequence !== loadSequence) return
     locale = code
     messages = loaded
+    setDocumentLanguage(code)
     if (!persist) return
     try {
       localStorage.setItem(STORAGE_KEY, code)
@@ -72,6 +77,7 @@ function createI18n() {
   }
 
   const initial = detectInitial()
+  setDocumentLanguage(initial)
   if (initial !== 'en') void apply(initial, false)
 
   return {
@@ -91,6 +97,17 @@ function createI18n() {
 }
 
 export const i18n = createI18n()
+
+export function mediaTypeLabel(mediaType: string, messages: Messages): string {
+  switch (mediaType) {
+    case 'Film': return messages.common.media_type_film
+    case 'TV': return messages.common.media_type_tv
+    case 'Music': return messages.common.media_type_music
+    case 'Photo': return messages.common.media_type_photo
+    case 'Other': return messages.common.media_type_other
+    default: return mediaType
+  }
+}
 
 // Fill `{token}` placeholders in a resolved message. Unknown tokens are left as-is
 // so a missing value is visible rather than silently dropped.

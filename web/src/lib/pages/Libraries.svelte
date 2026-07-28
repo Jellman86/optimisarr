@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
-  import { i18n, t } from '../i18n/i18n.svelte'
+  import { i18n, mediaTypeLabel, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -994,7 +994,7 @@
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2">
         {#if editingId !== 0}
-          <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{form.mediaType}</span>
+          <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
           {#if showVideoOptions}<span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(form.ruleProfile)}</span>{/if}
         {/if}
         <!-- Save/Cancel live only in the sticky action bar at the foot of the form, so the page
@@ -1118,13 +1118,13 @@
         <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
         <div class="flex gap-2">
           <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
-          <button type="button" class="btn flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
+          <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
         </div>
       </div>
       <div>
         <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
         <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
-          {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
+          {#each options.mediaTypes as type}<option value={type}>{mediaTypeLabel(type, i18n.m)}</option>{/each}
         </select>
       </div>
     </div>
@@ -1697,7 +1697,7 @@
             <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
             <div class="flex gap-2">
               <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
-              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
+              <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
             </div>
           </div>
           <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
@@ -2076,11 +2076,11 @@
     data-library-actions
     class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} z-10 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-6"
   >
-    <button class="btn btn-primary" onclick={save} disabled={!canSave}>
+    <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
     </button>
-    <button class="btn" onclick={cancelEdit}>
+    <button class="btn min-h-11" onclick={cancelEdit}>
       <Icon name="x" class="h-4 w-4" />
       {i18n.m.libraries.cancel}
     </button>
@@ -2141,7 +2141,7 @@
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
-              <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{library.mediaType}</span>
+              <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
               <!-- The rule profile is a video preset; only show it for video libraries (it is
                    meaningless for Music/Photo, which use their own audio/image rules). -->
               {#if isVideoType(library.mediaType)}

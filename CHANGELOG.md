@@ -32,6 +32,11 @@
 
 ### Fixed
 
+- **Translated setup now stays accessible inside the complete library editor.** The active locale
+  updates the document language for assistive technology, media-type names are translated without
+  changing the stable API values saved for each library, and compact Browse, Save, Cancel, and
+  information controls expose 44 px touch targets. Browser coverage now opens the real embedded
+  editor from first-run setup and verifies its localisation, mobile reflow, and control geometry.
 - **Video previews now stay on the same source frame and report honest progress.** The preview API
   exposes the exact middle-sample start and duration, and the two native browser players share one
   source-relative clock for their initial position, play, pause, seek, playback rate, and drift
