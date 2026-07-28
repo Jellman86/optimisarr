@@ -26,7 +26,7 @@
   </button>
   <span
     role="tooltip"
-    class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-72 max-w-[80vw] -translate-x-1/2 rounded-md bg-slate-800 px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-slate-100 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-slate-700"
+    class="pointer-events-none fixed inset-x-4 bottom-4 z-50 w-auto max-w-none rounded-md bg-slate-800 px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-slate-100 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-slate-700 sm:inset-x-auto sm:right-4 sm:w-72"
   >
     {text}
   </span>

@@ -22,14 +22,6 @@ internal static class SettingsRequestParser
             return Fail("settings.cpuThreadLimit.nonNegative", "CPU thread limit cannot be negative.", out error);
         if (request.LibraryScanIntervalHours < 1)
             return Fail("settings.libraryScanIntervalHours.minimum", "Library scan interval must be at least 1 hour.", out error);
-        if (request.VerificationDurationTolerancePercent < 0)
-            return Fail("settings.verificationDurationTolerance.nonNegative", "Verification duration tolerance cannot be negative.", out error);
-        if (request.VerificationMaxLoudnessDriftLufs < 0)
-            return Fail("settings.loudnessDrift.nonNegative", "Loudness drift tolerance cannot be negative.", out error);
-        if (!double.IsFinite(request.VerificationMaxTruePeakDbtp))
-            return Fail("settings.truePeak.finite", "True-peak ceiling must be a finite dBTP value.", out error);
-        if (request.VerificationMinimumImageSsim is < 0 or > 1)
-            return Fail("settings.imageSsim.range", "Image SSIM threshold must be between 0 and 1.", out error);
         if (request.ReplacementQuarantineRetentionDays < 0)
             // Keep the established API code alongside the persisted/wire setting name.
             return Fail("settings.quarantineRetention.nonNegative", "Cleanup retention days cannot be negative.", out error);
@@ -51,24 +43,7 @@ internal static class SettingsRequestParser
             encoderMode,
             request.HardwareDecode,
             hdrToneMapMode,
-            new VerificationPolicy(
-                request.VerificationDurationTolerancePercent,
-                request.VerificationRequireAudioRetained,
-                request.VerificationRequireSubtitlesRetained,
-                request.VerificationRequireSizeReduction,
-                VerificationPolicy.Default.QualityGateEnabled,
-                VerificationPolicy.Default.MinimumVmafHarmonicMean,
-                VerificationPolicy.Default.MinimumVmafMin,
-                VerificationPolicy.Default.MinimumVmafCatastrophicMin,
-                request.VerificationAudioLoudnessGateEnabled,
-                request.VerificationMaxLoudnessDriftLufs,
-                request.VerificationAudioClippingGateEnabled,
-                request.VerificationMaxTruePeakDbtp,
-                request.VerificationImageQualityGateEnabled,
-                request.VerificationMinimumImageSsim,
-                request.VerificationImageMetadataGateEnabled,
-                VerificationPolicy.Default.ClipVmafEnabled,
-                VerificationPolicy.Default.VmafFrameSubsample),
+            VerificationPolicy.Default,
             request.ReplacementAllowCrossFilesystem,
             request.DryRunMode,
             request.ReplacementQuarantineRetentionDays);

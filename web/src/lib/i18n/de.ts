@@ -582,7 +582,7 @@ export const de: Messages = {
     gates_title: 'Prüfungs-Gates',
     gates_desc:
       'Jede Aufgabe muss bereits eine Dekodier-Gesundheitsprüfung bestehen, von ffprobe lesbar sein und einen Videostream behalten. Diese optionalen Gates fügen strengere Prüfungen hinzu, bevor eine Ausgabe ein Original ersetzen darf. Jedes schlägt sicher fehl — kann eine Messung nicht durchgeführt werden, schlägt die Aufgabe fehl, statt eine fehlerhafte Ersetzung zu riskieren.',
-    always_on: 'Immer aktive Prüfungen',
+    always_on: 'Grundlegende Prüfungen',
     duration_tolerance: 'Dauer-Toleranz',
     duration_tolerance_tip: 'Wie stark die Laufzeit der Ausgabe vom Original abweichen darf, bevor die Aufgabe fehlschlägt.',
     require_audio: 'Alle Audiospuren müssen erhalten bleiben',
@@ -800,6 +800,7 @@ export const de: Messages = {
     name_ph: 'Filme',
     section_library: 'Bibliothek',
     section_automation: 'Automatisierung',
+    verification_intro: 'Diese Prüfungen legen fest, was diese Bibliothek vor dem Ersetzen akzeptiert. Es werden nur für den Medientyp relevante Prüfungen angezeigt; jede aktivierte Messung schlägt im Zweifel fehl.',
     path: 'Pfad',
     path_ph: 'Ordner wählen …',
     browse: 'Durchsuchen',

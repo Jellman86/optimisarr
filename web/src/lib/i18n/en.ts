@@ -719,7 +719,7 @@ export const en = {
     gates_title: 'Verification gates',
     gates_desc:
       "Every job must already pass a decode-health check, be readable by ffprobe, and keep a video stream. These optional gates add stricter checks before an output may replace an original. Each fails closed — if a measurement can't be taken, the job fails rather than risk a bad replacement.",
-    always_on: 'Always-on checks',
+    always_on: 'Core checks',
     duration_tolerance: 'Duration tolerance',
     duration_tolerance_tip: "How far the output's runtime may drift from the original before the job fails.",
     require_audio: 'Require all audio tracks to be retained',
@@ -937,6 +937,7 @@ export const en = {
     name: 'Name',
     section_library: 'Library',
     section_automation: 'Automation',
+    verification_intro: 'These gates define what this library accepts before replacement. Only checks relevant to its media type are shown; every enabled measurement fails closed.',
     name_ph: 'Films',
     path: 'Path',
     path_ph: 'Choose a folder…',

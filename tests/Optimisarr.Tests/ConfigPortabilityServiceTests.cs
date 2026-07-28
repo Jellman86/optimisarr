@@ -208,7 +208,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Import_materialises_legacy_global_vmaf_settings_without_persisting_them()
+    public async Task Import_materialises_legacy_global_verification_settings_without_persisting_them()
     {
         var snapshot = EmptySnapshot() with
         {
@@ -219,7 +219,18 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 ["verification.minimumVmafMin"] = "72",
                 ["verification.minimumVmafCatastrophicMin"] = "42",
                 ["verification.clipVmafEnabled"] = "True",
-                ["verification.vmafFrameSubsample"] = "3"
+                ["verification.vmafFrameSubsample"] = "3",
+                [SettingKeys.VerificationDurationTolerancePercent] = "2.5",
+                [SettingKeys.VerificationRequireAudioRetained] = "False",
+                [SettingKeys.VerificationRequireSubtitlesRetained] = "True",
+                [SettingKeys.VerificationRequireSizeReduction] = "False",
+                [SettingKeys.VerificationAudioLoudnessGateEnabled] = "True",
+                [SettingKeys.VerificationMaxLoudnessDriftLufs] = "1.5",
+                [SettingKeys.VerificationAudioClippingGateEnabled] = "True",
+                [SettingKeys.VerificationMaxTruePeakDbtp] = "-1",
+                [SettingKeys.VerificationImageQualityGateEnabled] = "False",
+                [SettingKeys.VerificationMinimumImageSsim] = "0.98",
+                [SettingKeys.VerificationImageMetadataGateEnabled] = "False"
             },
             Libraries =
             [
@@ -232,7 +243,18 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                     MinVmafMin: 90,
                     MinVmafCatastrophicMin: 70,
                     ClipVmafEnabled: false,
-                    VmafFrameSubsample: 1)
+                    VmafFrameSubsample: 1,
+                    DurationTolerancePercent: 0.5,
+                    RequireAudioRetained: true,
+                    RequireSubtitlesRetained: false,
+                    RequireSizeReduction: true,
+                    AudioLoudnessGateEnabled: false,
+                    MaxLoudnessDriftLufs: 0.5,
+                    AudioClippingGateEnabled: false,
+                    MaxTruePeakDbtp: 0,
+                    ImageQualityGateEnabled: true,
+                    MinimumImageSsim: 0.99,
+                    ImageMetadataGateEnabled: true)
             ]
         };
 
@@ -248,6 +270,17 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(42, films.MinVmafCatastrophicMin);
         Assert.True(films.ClipVmafEnabled);
         Assert.Equal(3, films.VmafFrameSubsample);
+        Assert.Equal(2.5, films.DurationTolerancePercent);
+        Assert.False(films.RequireAudioRetained);
+        Assert.True(films.RequireSubtitlesRetained);
+        Assert.False(films.RequireSizeReduction);
+        Assert.True(films.AudioLoudnessGateEnabled);
+        Assert.Equal(1.5, films.MaxLoudnessDriftLufs);
+        Assert.True(films.AudioClippingGateEnabled);
+        Assert.Equal(-1, films.MaxTruePeakDbtp);
+        Assert.False(films.ImageQualityGateEnabled);
+        Assert.Equal(0.98, films.MinimumImageSsim);
+        Assert.False(films.ImageMetadataGateEnabled);
 
         var archive = await db.Libraries.SingleAsync(library => library.Path == "/data/archive");
         Assert.False(archive.VmafQualityGateEnabled);
@@ -256,6 +289,17 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(70, archive.MinVmafCatastrophicMin);
         Assert.False(archive.ClipVmafEnabled);
         Assert.Equal(1, archive.VmafFrameSubsample);
+        Assert.Equal(0.5, archive.DurationTolerancePercent);
+        Assert.True(archive.RequireAudioRetained);
+        Assert.False(archive.RequireSubtitlesRetained);
+        Assert.True(archive.RequireSizeReduction);
+        Assert.False(archive.AudioLoudnessGateEnabled);
+        Assert.Equal(0.5, archive.MaxLoudnessDriftLufs);
+        Assert.False(archive.AudioClippingGateEnabled);
+        Assert.Equal(0, archive.MaxTruePeakDbtp);
+        Assert.True(archive.ImageQualityGateEnabled);
+        Assert.Equal(0.99, archive.MinimumImageSsim);
+        Assert.True(archive.ImageMetadataGateEnabled);
         Assert.Empty(await db.AppSettings.ToListAsync());
     }
 
@@ -306,6 +350,17 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 MinVmafCatastrophicMin = 48,
                 ClipVmafEnabled = true,
                 VmafFrameSubsample = 2,
+                DurationTolerancePercent = 0.75,
+                RequireAudioRetained = false,
+                RequireSubtitlesRetained = true,
+                RequireSizeReduction = false,
+                AudioLoudnessGateEnabled = true,
+                MaxLoudnessDriftLufs = 0.5,
+                AudioClippingGateEnabled = true,
+                MaxTruePeakDbtp = -1,
+                ImageQualityGateEnabled = false,
+                MinimumImageSsim = 0.99,
+                ImageMetadataGateEnabled = false,
                 VideoQualityStrategy = VideoQualityStrategy.AdaptiveVmaf,
                 AutoEnqueueEnabled = true,
                 AutoEnqueueWindowStart = new TimeOnly(1, 0),
@@ -351,6 +406,17 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.Equal(48, library.MinVmafCatastrophicMin);
         Assert.True(library.ClipVmafEnabled);
         Assert.Equal(2, library.VmafFrameSubsample);
+        Assert.Equal(0.75, library.DurationTolerancePercent);
+        Assert.False(library.RequireAudioRetained);
+        Assert.True(library.RequireSubtitlesRetained);
+        Assert.False(library.RequireSizeReduction);
+        Assert.True(library.AudioLoudnessGateEnabled);
+        Assert.Equal(0.5, library.MaxLoudnessDriftLufs);
+        Assert.True(library.AudioClippingGateEnabled);
+        Assert.Equal(-1, library.MaxTruePeakDbtp);
+        Assert.False(library.ImageQualityGateEnabled);
+        Assert.Equal(0.99, library.MinimumImageSsim);
+        Assert.False(library.ImageMetadataGateEnabled);
         Assert.Equal(VideoQualityStrategy.AdaptiveVmaf, library.VideoQualityStrategy);
         Assert.True(library.AutoEnqueueEnabled);
         Assert.Equal(new TimeOnly(1, 0), library.AutoEnqueueWindowStart);

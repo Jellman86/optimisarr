@@ -191,6 +191,26 @@
     return null
   })
 
+  const verificationError = $derived.by<string | null>(() => {
+    if (!Number.isFinite(Number(form.durationTolerancePercent))
+      || Number(form.durationTolerancePercent) < 0) {
+      return i18n.m.settings.validation_duration
+    }
+    if (!Number.isFinite(Number(form.maxLoudnessDriftLufs))
+      || Number(form.maxLoudnessDriftLufs) < 0) {
+      return i18n.m.settings.validation_loudness
+    }
+    if (!Number.isFinite(Number(form.maxTruePeakDbtp))) {
+      return i18n.m.settings.validation_true_peak
+    }
+    if (!Number.isFinite(Number(form.minimumImageSsim))
+      || Number(form.minimumImageSsim) < 0
+      || Number(form.minimumImageSsim) > 1) {
+      return i18n.m.settings.validation_ssim
+    }
+    return null
+  })
+
   function setVmafMode(mode: VmafMode) {
     if (mode === 'off' && form.videoQualityStrategy === 'AdaptiveVmaf') return
     vmafCustomSelected = mode === 'custom'
@@ -422,7 +442,8 @@
       && !audioLanguageError
       && !subtitleLanguageError
       && !encoderEffortError
-      && !(!isNoEncodeProfile && vmafError),
+      && !(!isNoEncodeProfile && vmafError)
+      && !verificationError,
   )
 
   // Custom mode lets the operator fine-tune codec/container themselves instead of following a
@@ -697,6 +718,11 @@
   }
 
   function startEdit(library: Library) {
+    // A cached UI can briefly talk to an older API during a rolling container update, and
+    // version-one test/config clients may omit fields introduced with per-library policy.
+    // Normalise those omissions before binding controls so the editor remains usable and
+    // preserves the same conservative defaults as the API and database migration.
+    const defaults = newLibraryDefaults()
     form = {
       name: library.name,
       path: library.path,
@@ -737,7 +763,30 @@
       minVmafCatastrophicMin: library.minVmafCatastrophicMin,
       clipVmafEnabled: library.clipVmafEnabled,
       vmafFrameSubsample: library.vmafFrameSubsample,
-      videoQualityStrategy: library.videoQualityStrategy,
+      durationTolerancePercent:
+        library.durationTolerancePercent ?? defaults.durationTolerancePercent,
+      requireAudioRetained:
+        library.requireAudioRetained ?? defaults.requireAudioRetained,
+      requireSubtitlesRetained:
+        library.requireSubtitlesRetained ?? defaults.requireSubtitlesRetained,
+      requireSizeReduction:
+        library.requireSizeReduction ?? defaults.requireSizeReduction,
+      audioLoudnessGateEnabled:
+        library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
+      maxLoudnessDriftLufs:
+        library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      audioClippingGateEnabled:
+        library.audioClippingGateEnabled ?? defaults.audioClippingGateEnabled,
+      maxTruePeakDbtp:
+        library.maxTruePeakDbtp ?? defaults.maxTruePeakDbtp,
+      imageQualityGateEnabled:
+        library.imageQualityGateEnabled ?? defaults.imageQualityGateEnabled,
+      minimumImageSsim:
+        library.minimumImageSsim ?? defaults.minimumImageSsim,
+      imageMetadataGateEnabled:
+        library.imageMetadataGateEnabled ?? defaults.imageMetadataGateEnabled,
+      videoQualityStrategy:
+        library.videoQualityStrategy ?? defaults.videoQualityStrategy,
       autoEnqueueEnabled: library.autoEnqueueEnabled,
       autoEnqueueWindowStart: library.autoEnqueueWindowStart,
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
@@ -800,6 +849,10 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      durationTolerancePercent: Number(form.durationTolerancePercent),
+      maxLoudnessDriftLufs: Number(form.maxLoudnessDriftLufs),
+      maxTruePeakDbtp: Number(form.maxTruePeakDbtp),
+      minimumImageSsim: Number(form.minimumImageSsim),
     }
   }
 
@@ -812,7 +865,11 @@
   async function save() {
     error = null
     message = null
-    if (audioLanguageError || subtitleLanguageError || encoderEffortError || (!isNoEncodeProfile && vmafError)) return
+    if (audioLanguageError
+      || subtitleLanguageError
+      || encoderEffortError
+      || verificationError
+      || (!isNoEncodeProfile && vmafError)) return
     try {
       if (editingId === 0) {
         // Replace /new with the canonical editor URL so Back returns to the library list. The
@@ -1390,9 +1447,166 @@
     </section>
   {/if}
 
+  <section class="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-900/20 sm:p-5">
+    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      {i18n.m.settings.gates_title}
+    </h3>
+    <p class="mt-1 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      {i18n.m.libraries.verification_intro}
+    </p>
+
+    <div class="mt-4 grid gap-4 xl:grid-cols-2">
+      <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+        <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {i18n.m.settings.always_on}
+        </legend>
+
+        {#if showVideoOptions || showAudioOptions}
+          <div class="mb-4 max-w-[16rem]">
+            <label class="label" for="lib-duration-tolerance">
+              {i18n.m.settings.duration_tolerance}
+              <InfoTip text={i18n.m.settings.duration_tolerance_tip} />
+            </label>
+            <div class="flex min-w-0 items-center gap-2">
+              <input
+                id="lib-duration-tolerance"
+                class="input min-w-0 flex-1"
+                type="number"
+                min="0"
+                step="0.1"
+                aria-invalid={verificationError === i18n.m.settings.validation_duration}
+                aria-describedby="lib-verification-error"
+                bind:value={form.durationTolerancePercent}
+              />
+              <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
+            </div>
+          </div>
+        {/if}
+
+        <div class="grid gap-3 {showVideoOptions || showAudioOptions ? 'border-t border-slate-200 pt-4 dark:border-slate-800' : ''}">
+          {#if showVideoOptions || showAudioOptions}
+            <Toggle bind:checked={form.requireAudioRetained} label={i18n.m.settings.require_audio} />
+          {/if}
+          {#if showVideoOptions}
+            <Toggle bind:checked={form.requireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
+          {/if}
+          <Toggle bind:checked={form.requireSizeReduction} label={i18n.m.settings.require_smaller} />
+        </div>
+      </fieldset>
+
+      {#if showVideoOptions || showAudioOptions}
+        <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {i18n.m.libraries.audio}
+          </legend>
+
+          <Toggle
+            bind:checked={form.audioLoudnessGateEnabled}
+            label={i18n.m.settings.loudness_label}
+            hint={i18n.m.settings.loudness_hint}
+          />
+          {#if form.audioLoudnessGateEnabled}
+            <div class="mt-4 max-w-[16rem]">
+              <label class="label" for="lib-loudness-drift">{i18n.m.settings.loudness_max}</label>
+              <div class="flex min-w-0 items-center gap-2">
+                <input
+                  id="lib-loudness-drift"
+                  class="input min-w-0 flex-1"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  aria-invalid={verificationError === i18n.m.settings.validation_loudness}
+                  aria-describedby="lib-verification-error"
+                  bind:value={form.maxLoudnessDriftLufs}
+                />
+                <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
+              </div>
+            </div>
+          {/if}
+
+          <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <Toggle
+              bind:checked={form.audioClippingGateEnabled}
+              label={i18n.m.settings.clipping_label}
+              hint={i18n.m.settings.clipping_hint}
+            />
+            {#if form.audioClippingGateEnabled}
+              <div class="mt-4 max-w-[16rem]">
+                <label class="label" for="lib-true-peak">
+                  {i18n.m.settings.true_peak}
+                  <InfoTip text={i18n.m.settings.true_peak_tip} />
+                </label>
+                <div class="flex min-w-0 items-center gap-2">
+                  <input
+                    id="lib-true-peak"
+                    class="input min-w-0 flex-1"
+                    type="number"
+                    step="0.1"
+                    aria-invalid={verificationError === i18n.m.settings.validation_true_peak}
+                    aria-describedby="lib-verification-error"
+                    bind:value={form.maxTruePeakDbtp}
+                  />
+                  <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
+                </div>
+              </div>
+            {/if}
+          </div>
+        </fieldset>
+      {/if}
+
+      {#if showImageOptions}
+        <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {i18n.m.libraries.images}
+          </legend>
+
+          <Toggle
+            bind:checked={form.imageQualityGateEnabled}
+            label={i18n.m.settings.ssim_label}
+            hint={i18n.m.settings.ssim_hint}
+          />
+          {#if form.imageQualityGateEnabled}
+            <div class="mt-4 max-w-[16rem]">
+              <label class="label" for="lib-image-ssim">
+                {i18n.m.settings.ssim_min}
+                <InfoTip text={i18n.m.settings.ssim_min_tip} />
+              </label>
+              <input
+                id="lib-image-ssim"
+                class="input"
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                aria-invalid={verificationError === i18n.m.settings.validation_ssim}
+                aria-describedby="lib-verification-error"
+                bind:value={form.minimumImageSsim}
+              />
+            </div>
+          {/if}
+
+          <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <Toggle
+              bind:checked={form.imageMetadataGateEnabled}
+              label={i18n.m.settings.exif_label}
+              hint={i18n.m.settings.exif_hint}
+            />
+            <p class="mt-3 text-xs text-slate-400">{i18n.m.settings.exif_note}</p>
+          </div>
+        </fieldset>
+      {/if}
+    </div>
+
+    {#if verificationError}
+      <p id="lib-verification-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">
+        {verificationError}
+      </p>
+    {/if}
+  </section>
+
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
-  <div class="mt-6 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
+  <div class="mt-6 space-y-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700 sm:p-5">
     <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_automation}</h3>
 
     <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />

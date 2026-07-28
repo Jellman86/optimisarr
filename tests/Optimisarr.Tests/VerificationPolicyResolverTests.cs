@@ -8,7 +8,7 @@ public sealed class VerificationPolicyResolverTests
         VerificationPolicy.Default with { QualityGateEnabled = true, MinimumVmafHarmonicMean = 93, MinimumVmafMin = 80 };
 
     [Fact]
-    public void No_overrides_returns_the_global_policy()
+    public void No_overrides_returns_the_baseline_policy()
     {
         var resolved = VerificationPolicyResolver.Resolve(GateOn, Overrides());
 
@@ -26,7 +26,7 @@ public sealed class VerificationPolicyResolverTests
     }
 
     [Fact]
-    public void A_single_override_leaves_the_other_at_the_global_value()
+    public void A_single_override_leaves_the_other_at_the_baseline_value()
     {
         var resolved = VerificationPolicyResolver.Resolve(GateOn, Overrides(harmonic: 96));
 
@@ -35,7 +35,7 @@ public sealed class VerificationPolicyResolverTests
     }
 
     [Fact]
-    public void A_library_can_enable_the_gate_when_the_global_default_is_off()
+    public void A_library_can_enable_the_gate_when_the_baseline_default_is_off()
     {
         var disabled = VerificationPolicy.Default with { QualityGateEnabled = false };
 
@@ -46,7 +46,7 @@ public sealed class VerificationPolicyResolverTests
     }
 
     [Fact]
-    public void A_library_can_disable_the_gate_when_the_global_default_is_on()
+    public void A_library_can_disable_the_gate_when_the_baseline_default_is_on()
     {
         var resolved = VerificationPolicyResolver.Resolve(GateOn, Overrides(enabled: false));
 
@@ -70,12 +70,86 @@ public sealed class VerificationPolicyResolverTests
         Assert.Equal(10, resolved.VmafFrameSubsample);
     }
 
+    [Fact]
+    public void A_library_owns_every_configurable_verification_gate()
+    {
+        var resolved = VerificationPolicyResolver.Resolve(
+            VerificationPolicy.Default,
+            Overrides(
+                durationTolerancePercent: 2.5,
+                requireAudioRetained: false,
+                requireSubtitlesRetained: true,
+                requireSizeReduction: false,
+                audioLoudnessGateEnabled: true,
+                maxLoudnessDriftLufs: 1.5,
+                audioClippingGateEnabled: true,
+                maxTruePeakDbtp: -1,
+                imageQualityGateEnabled: false,
+                minimumImageSsim: 0.98,
+                imageMetadataGateEnabled: false));
+
+        Assert.Equal(2.5, resolved.DurationTolerancePercent);
+        Assert.False(resolved.RequireAudioRetained);
+        Assert.True(resolved.RequireSubtitlesRetained);
+        Assert.False(resolved.RequireSizeReduction);
+        Assert.True(resolved.AudioLoudnessGateEnabled);
+        Assert.Equal(1.5, resolved.MaxLoudnessDriftLufs);
+        Assert.True(resolved.AudioClippingGateEnabled);
+        Assert.Equal(-1, resolved.MaxTruePeakDbtp);
+        Assert.False(resolved.ImageQualityGateEnabled);
+        Assert.Equal(0.98, resolved.MinimumImageSsim);
+        Assert.False(resolved.ImageMetadataGateEnabled);
+    }
+
+    [Fact]
+    public void Non_vmaf_numeric_overrides_are_clamped_to_their_safe_ranges()
+    {
+        var resolved = VerificationPolicyResolver.Resolve(
+            VerificationPolicy.Default,
+            Overrides(
+                durationTolerancePercent: -1,
+                maxLoudnessDriftLufs: -2,
+                minimumImageSsim: 4));
+
+        Assert.Equal(0, resolved.DurationTolerancePercent);
+        Assert.Equal(0, resolved.MaxLoudnessDriftLufs);
+        Assert.Equal(1, resolved.MinimumImageSsim);
+    }
+
     private static VerificationPolicyOverrides Overrides(
         bool? enabled = null,
         double? harmonic = null,
         double? fifth = null,
         double? catastrophic = null,
         bool? clip = null,
-        int? frameSubsample = null) =>
-        new(enabled, harmonic, fifth, catastrophic, clip, frameSubsample);
+        int? frameSubsample = null,
+        double? durationTolerancePercent = null,
+        bool? requireAudioRetained = null,
+        bool? requireSubtitlesRetained = null,
+        bool? requireSizeReduction = null,
+        bool? audioLoudnessGateEnabled = null,
+        double? maxLoudnessDriftLufs = null,
+        bool? audioClippingGateEnabled = null,
+        double? maxTruePeakDbtp = null,
+        bool? imageQualityGateEnabled = null,
+        double? minimumImageSsim = null,
+        bool? imageMetadataGateEnabled = null) =>
+        new(
+            enabled,
+            harmonic,
+            fifth,
+            catastrophic,
+            clip,
+            frameSubsample,
+            durationTolerancePercent,
+            requireAudioRetained,
+            requireSubtitlesRetained,
+            requireSizeReduction,
+            audioLoudnessGateEnabled,
+            maxLoudnessDriftLufs,
+            audioClippingGateEnabled,
+            maxTruePeakDbtp,
+            imageQualityGateEnabled,
+            minimumImageSsim,
+            imageMetadataGateEnabled);
 }

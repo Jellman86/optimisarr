@@ -227,7 +227,7 @@ Health response:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/settings` | Read global queue, verification, and replacement settings. |
+| `GET` | `/api/settings` | Read global queue, hardware, and replacement settings. |
 | `PUT` | `/api/settings` | Save global settings. Body is the full settings object. |
 | `GET` | `/api/settings/cleanup` | Preview files and bytes currently eligible under the saved cleanup policy without changing anything. |
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
@@ -245,17 +245,6 @@ Settings fields include:
   "encoderMode": "Auto",
   "hardwareDecode": true,
   "hdrToneMapMode": "Software",
-  "verificationDurationTolerancePercent": 1,
-  "verificationRequireAudioRetained": true,
-  "verificationRequireSubtitlesRetained": false,
-  "verificationRequireSizeReduction": true,
-  "verificationAudioLoudnessGateEnabled": false,
-  "verificationMaxLoudnessDriftLufs": 1,
-  "verificationAudioClippingGateEnabled": false,
-  "verificationMaxTruePeakDbtp": 0,
-  "verificationImageQualityGateEnabled": true,
-  "verificationMinimumImageSsim": 0.95,
-  "verificationImageMetadataGateEnabled": true,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -312,6 +301,23 @@ Create and update library bodies use the same shape. Common fields:
   "qualityCrf": null,
   "videoQualityStrategy": "Fixed",
   "encoderPreset": "balanced",
+  "vmafQualityGateEnabled": false,
+  "minVmafHarmonicMean": 93,
+  "minVmafMin": 80,
+  "minVmafCatastrophicMin": 50,
+  "clipVmafEnabled": false,
+  "vmafFrameSubsample": 1,
+  "durationTolerancePercent": 1,
+  "requireAudioRetained": true,
+  "requireSubtitlesRetained": false,
+  "requireSizeReduction": true,
+  "audioLoudnessGateEnabled": false,
+  "maxLoudnessDriftLufs": 1,
+  "audioClippingGateEnabled": false,
+  "maxTruePeakDbtp": 0,
+  "imageQualityGateEnabled": true,
+  "minimumImageSsim": 0.95,
+  "imageMetadataGateEnabled": true,
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
   "downmixToStereo": false,
@@ -333,6 +339,12 @@ is selected. `videoQualityStrategy` accepts `Fixed` (the backwards-compatible de
 `AdaptiveVmaf`. `AdaptiveVmaf` is accepted only for a video re-encode library whose
 `vmafQualityGateEnabled` value is `true`; invalid combinations return `400` rather than silently
 changing the requested policy.
+
+Verification fields are owned by each library. The API accepts the complete shape for every media
+type, but the UI shows only applicable controls: video can configure subtitle retention and VMAF,
+video and audio can configure duration and audio-fidelity gates, and images can configure SSIM and
+EXIF/ICC retention. Omitted verification fields use conservative defaults. Existing databases and
+version-one configuration backups materialise their former global values into each library.
 
 ## Preview
 

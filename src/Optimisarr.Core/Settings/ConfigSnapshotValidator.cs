@@ -119,6 +119,10 @@ public static class ConfigSnapshotValidator
             RequireRange(library.MinVmafMin, 0, 100, $"{where} VMAF fifth-percentile floor", errors);
             RequireRange(library.MinVmafCatastrophicMin, 0, 100, $"{where} VMAF catastrophic floor", errors);
             RequireRange(library.VmafFrameSubsample, 1, 10, $"{where} VMAF frame sampling interval", errors);
+            RequireRange(library.DurationTolerancePercent, 0, double.MaxValue, $"{where} duration tolerance", errors);
+            RequireRange(library.MaxLoudnessDriftLufs, 0, double.MaxValue, $"{where} loudness drift tolerance", errors);
+            RequireFinite(library.MaxTruePeakDbtp, $"{where} true-peak ceiling", errors);
+            RequireRange(library.MinimumImageSsim, 0, 1, $"{where} image SSIM floor", errors);
             if (library.MinVmafCatastrophicMin is { } catastrophic
                 && library.MinVmafMin is { } fifth
                 && catastrophic > fifth)
@@ -175,6 +179,14 @@ public static class ConfigSnapshotValidator
         if (string.IsNullOrWhiteSpace(value))
         {
             errors.Add($"{label} is required.");
+        }
+    }
+
+    private static void RequireFinite(double? value, string label, List<string> errors)
+    {
+        if (value is { } number && !double.IsFinite(number))
+        {
+            errors.Add($"{label} must be finite.");
         }
     }
 

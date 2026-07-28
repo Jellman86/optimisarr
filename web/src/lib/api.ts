@@ -163,6 +163,17 @@ export type LibraryRules = {
   minVmafCatastrophicMin: number | null
   clipVmafEnabled: boolean | null
   vmafFrameSubsample: number | null
+  durationTolerancePercent: number
+  requireAudioRetained: boolean
+  requireSubtitlesRetained: boolean
+  requireSizeReduction: boolean
+  audioLoudnessGateEnabled: boolean
+  maxLoudnessDriftLufs: number
+  audioClippingGateEnabled: boolean
+  maxTruePeakDbtp: number
+  imageQualityGateEnabled: boolean
+  minimumImageSsim: number
+  imageMetadataGateEnabled: boolean
   videoQualityStrategy: 'Fixed' | 'AdaptiveVmaf'
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
@@ -250,6 +261,17 @@ export function newLibraryDefaults(): SaveLibrary {
     minVmafCatastrophicMin: null,
     clipVmafEnabled: null,
     vmafFrameSubsample: null,
+    durationTolerancePercent: 1,
+    requireAudioRetained: true,
+    requireSubtitlesRetained: false,
+    requireSizeReduction: true,
+    audioLoudnessGateEnabled: false,
+    maxLoudnessDriftLufs: 1,
+    audioClippingGateEnabled: false,
+    maxTruePeakDbtp: 0,
+    imageQualityGateEnabled: true,
+    minimumImageSsim: 0.95,
+    imageMetadataGateEnabled: true,
     videoQualityStrategy: 'Fixed',
     autoEnqueueEnabled: false,
     autoEnqueueWindowStart: '00:00',
@@ -285,17 +307,6 @@ export type Settings = {
   encoderMode: string
   hardwareDecode: boolean
   hdrToneMapMode: 'Software' | 'Hardware'
-  verificationDurationTolerancePercent: number
-  verificationRequireAudioRetained: boolean
-  verificationRequireSubtitlesRetained: boolean
-  verificationRequireSizeReduction: boolean
-  verificationAudioLoudnessGateEnabled: boolean
-  verificationMaxLoudnessDriftLufs: number
-  verificationAudioClippingGateEnabled: boolean
-  verificationMaxTruePeakDbtp: number
-  verificationImageQualityGateEnabled: boolean
-  verificationMinimumImageSsim: number
-  verificationImageMetadataGateEnabled: boolean
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number

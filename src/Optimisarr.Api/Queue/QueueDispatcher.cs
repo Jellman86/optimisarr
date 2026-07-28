@@ -705,12 +705,7 @@ public sealed class QueueDispatcher(
         bool MoveOverwrite,
         int MediaFileId,
         OriginalSnapshot Original,
-        double? MinVmafHarmonicMean,
-        double? MinVmafMin,
-        bool? VmafQualityGateEnabled,
-        double? MinVmafCatastrophicMin,
-        bool? ClipVmafEnabled,
-        int? VmafFrameSubsample,
+        VerificationPolicy VerificationPolicy,
         VideoQualityStrategy VideoQualityStrategy,
         int? AdaptiveVideoQuality,
         bool AutoReplace,
@@ -729,6 +724,30 @@ public sealed class QueueDispatcher(
             arguments = Arguments;
         }
     }
+
+    private static VerificationPolicy ResolveVerificationPolicy(
+        VerificationPolicy baseline,
+        Optimisarr.Data.Library? library) =>
+        VerificationPolicyResolver.Resolve(
+            baseline,
+            new VerificationPolicyOverrides(
+                library?.VmafQualityGateEnabled,
+                library?.MinVmafHarmonicMean,
+                library?.MinVmafMin,
+                library?.MinVmafCatastrophicMin,
+                library?.ClipVmafEnabled,
+                library?.VmafFrameSubsample,
+                library?.DurationTolerancePercent,
+                library?.RequireAudioRetained,
+                library?.RequireSubtitlesRetained,
+                library?.RequireSizeReduction,
+                library?.AudioLoudnessGateEnabled,
+                library?.MaxLoudnessDriftLufs,
+                library?.AudioClippingGateEnabled,
+                library?.MaxTruePeakDbtp,
+                library?.ImageQualityGateEnabled,
+                library?.MinimumImageSsim,
+                library?.ImageMetadataGateEnabled));
 
     private async Task<JobWork?> LoadWorkAsync(int jobId, CancellationToken cancellationToken)
     {
@@ -1001,8 +1020,10 @@ public sealed class QueueDispatcher(
             spec.ClipSeconds);
         string? hardwareToneMapTransfer = null;
         var hardwareToneMapDolbyVision = media.IsDolbyVision;
-        var vmafQualityGateEnabled =
-            library?.VmafQualityGateEnabled ?? queueSettings.VerificationPolicy.QualityGateEnabled;
+        var verificationPolicy = ResolveVerificationPolicy(
+            queueSettings.VerificationPolicy,
+            library);
+        var vmafQualityGateEnabled = verificationPolicy.QualityGateEnabled;
         var needsHardwareToneMapConfirmation = queueSettings.HdrToneMapMode == HdrToneMapMode.Hardware
             && hardwareDecode
             && spec.TonemapToSdr
@@ -1080,12 +1101,7 @@ public sealed class QueueDispatcher(
             library?.MoveOverwrite ?? false,
             media.Id,
             original,
-            library?.MinVmafHarmonicMean,
-            library?.MinVmafMin,
-            library?.VmafQualityGateEnabled,
-            library?.MinVmafCatastrophicMin,
-            library?.ClipVmafEnabled,
-            library?.VmafFrameSubsample,
+            verificationPolicy,
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
             job.AdaptiveVideoQuality,
             library?.AutoReplace ?? false,
@@ -1144,16 +1160,7 @@ public sealed class QueueDispatcher(
                     cancellationToken);
             }
 
-            var queueSettings = await GetQueueSettingsAsync(cancellationToken);
-            var policy = VerificationPolicyResolver.Resolve(
-                queueSettings.VerificationPolicy,
-                new VerificationPolicyOverrides(
-                    work.VmafQualityGateEnabled,
-                    work.MinVmafHarmonicMean,
-                    work.MinVmafMin,
-                    work.MinVmafCatastrophicMin,
-                    work.ClipVmafEnabled,
-                    work.VmafFrameSubsample));
+            var policy = work.VerificationPolicy;
             if (!policy.QualityGateEnabled)
             {
                 return await FinishAdaptiveSelectionAsync(
@@ -1821,15 +1828,7 @@ public sealed class QueueDispatcher(
         await NotifyAsync();
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
-        var policy = VerificationPolicyResolver.Resolve(
-            settings.VerificationPolicy,
-            new VerificationPolicyOverrides(
-                work.VmafQualityGateEnabled,
-                work.MinVmafHarmonicMean,
-                work.MinVmafMin,
-                work.MinVmafCatastrophicMin,
-                work.ClipVmafEnabled,
-                work.VmafFrameSubsample));
+        var policy = work.VerificationPolicy;
         if (work.IsCalibration)
         {
             policy = policy with

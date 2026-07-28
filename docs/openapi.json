@@ -412,6 +412,18 @@
               "string"
             ]
           },
+          "audioClippingGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "audioLoudnessGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioTargetCodec": {
             "type": [
               "null",
@@ -443,6 +455,15 @@
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
+          },
+          "durationTolerancePercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
           },
           "enabled": {
             "type": "boolean"
@@ -478,6 +499,12 @@
               "string"
             ]
           },
+          "imageMetadataGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "imageQuality": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -485,6 +512,12 @@
               "null",
               "integer",
               "string"
+            ]
+          },
+          "imageQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "keepAudioLanguages": {
@@ -505,6 +538,24 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "maxLoudnessDriftLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -539,6 +590,15 @@
             ]
           },
           "minVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumImageSsim": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -590,6 +650,24 @@
           "reencodeLossyImages": {
             "default": false,
             "type": "boolean"
+          },
+          "requireAudioRetained": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "requireSizeReduction": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "requireSubtitlesRetained": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           },
           "ruleProfile": {
             "type": "string"
@@ -944,6 +1022,18 @@
               "string"
             ]
           },
+          "audioClippingGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "audioLoudnessGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "audioTargetCodec": {
             "type": [
               "null",
@@ -986,6 +1076,15 @@
               "boolean"
             ]
           },
+          "durationTolerancePercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "enabled": {
             "type": [
               "null",
@@ -1025,6 +1124,12 @@
               "string"
             ]
           },
+          "imageMetadataGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "imageQuality": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1032,6 +1137,12 @@
               "null",
               "integer",
               "string"
+            ]
+          },
+          "imageQualityGateEnabled": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "keepAudioLanguages": {
@@ -1052,6 +1163,24 @@
             "type": [
               "null",
               "integer",
+              "string"
+            ]
+          },
+          "maxLoudnessDriftLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -1089,6 +1218,15 @@
             ]
           },
           "minVmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "minimumImageSsim": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -1164,6 +1302,24 @@
               "null",
               "integer",
               "string"
+            ]
+          },
+          "requireAudioRetained": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "requireSizeReduction": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "requireSubtitlesRetained": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "ruleProfile": {
@@ -1401,59 +1557,6 @@
               "integer",
               "string"
             ]
-          },
-          "verificationAudioClippingGateEnabled": {
-            "type": "boolean"
-          },
-          "verificationAudioLoudnessGateEnabled": {
-            "type": "boolean"
-          },
-          "verificationDurationTolerancePercent": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationImageMetadataGateEnabled": {
-            "type": "boolean"
-          },
-          "verificationImageQualityGateEnabled": {
-            "type": "boolean"
-          },
-          "verificationMaxLoudnessDriftLufs": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationMaxTruePeakDbtp": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationMinimumImageSsim": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "verificationRequireAudioRetained": {
-            "type": "boolean"
-          },
-          "verificationRequireSizeReduction": {
-            "type": "boolean"
-          },
-          "verificationRequireSubtitlesRetained": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -1464,17 +1567,6 @@
           "encoderMode",
           "hardwareDecode",
           "hdrToneMapMode",
-          "verificationDurationTolerancePercent",
-          "verificationRequireAudioRetained",
-          "verificationRequireSubtitlesRetained",
-          "verificationRequireSizeReduction",
-          "verificationAudioLoudnessGateEnabled",
-          "verificationMaxLoudnessDriftLufs",
-          "verificationAudioClippingGateEnabled",
-          "verificationMaxTruePeakDbtp",
-          "verificationImageQualityGateEnabled",
-          "verificationMinimumImageSsim",
-          "verificationImageMetadataGateEnabled",
           "replacementAllowCrossFilesystem",
           "dryRunMode",
           "replacementQuarantineRetentionDays"

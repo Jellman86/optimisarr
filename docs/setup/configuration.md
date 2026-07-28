@@ -109,14 +109,16 @@ The standard image already provides the normal FFmpeg, ffprobe, VMAF, and ExifTo
 VMAF override is optional; leave it unset unless supplying a compatible NVIDIA build. Do not
 override the standard values unless supplying a complete, tested replacement toolchain.
 
-## Verification gates
+## Per-library verification gates
 
 Every job must pass decode health, output readability, and the media-kind checks
 that apply to it. Video jobs also have an always-on structural comparison: the output codec must
 match the resolved target (or the source for a remux), resolution must not change without a resize
 policy, bit depth and chroma sampling may not be reduced, and ffprobe must report a coherent output
 profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
-requested codec or signal structure was retained. The configurable gates make replacement stricter:
+requested codec or signal structure was retained. Open **Libraries**, edit a library, and use
+**Verification gates** to tune its applicable checks. Optimisarr shows only controls that can affect
+the selected media type:
 
 | Gate | Applies to | Default |
 |---|---|---|
@@ -138,7 +140,9 @@ fully decodes both files and scores every frame, roughly doubling verification t
 run on modest hardware; each library configuration page can turn it on and prefill all three floors from
 named tiers (Space-saver through Archival). Existing installations retain their effective policy, and while the
 gate is off the structural, duration and size gates plus quarantine rollback still guard every
-replacement. When enabled, **Score three representative samples** measures deterministic 40-second
+replacement. Existing installations copy their former global verification values to every library
+during migration, so updating does not silently weaken or strengthen an existing policy. When
+enabled, **Score three representative samples** measures deterministic 40-second
 windows near the beginning, middle and end of long files. The weakest window controls the tail
 floors. **Frame sampling** can score every Nth frame from 1–10; 1 is the conservative default,
 because skipped frames cannot participate in the percentile or catastrophic floor. Image SSIM and EXIF/ICC

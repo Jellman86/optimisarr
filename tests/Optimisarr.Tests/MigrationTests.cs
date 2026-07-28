@@ -248,6 +248,102 @@ public sealed class MigrationTests : IDisposable
                     or "verification.vmafFrameSubsample");
     }
 
+    [Fact]
+    public async Task Legacy_global_verification_gates_are_materialised_per_library_and_removed()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath}")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260727065739_AddAdaptiveVideoQuality");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Films', '/data/films', 'Film', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+
+            INSERT INTO AppSettings ("Key", "Value", UpdatedAt) VALUES
+                ('verification.durationTolerancePercent', '2.5', '2026-01-01T00:00:00+00:00'),
+                ('verification.requireAudioRetained', 'False', '2026-01-01T00:00:00+00:00'),
+                ('verification.requireSubtitlesRetained', 'True', '2026-01-01T00:00:00+00:00'),
+                ('verification.requireSizeReduction', 'False', '2026-01-01T00:00:00+00:00'),
+                ('verification.audioLoudnessGateEnabled', 'True', '2026-01-01T00:00:00+00:00'),
+                ('verification.maxLoudnessDriftLufs', '1.5', '2026-01-01T00:00:00+00:00'),
+                ('verification.audioClippingGateEnabled', 'True', '2026-01-01T00:00:00+00:00'),
+                ('verification.maxTruePeakDbtp', '-1', '2026-01-01T00:00:00+00:00'),
+                ('verification.imageQualityGateEnabled', 'False', '2026-01-01T00:00:00+00:00'),
+                ('verification.minimumImageSsim', '0.98', '2026-01-01T00:00:00+00:00'),
+                ('verification.imageMetadataGateEnabled', 'False', '2026-01-01T00:00:00+00:00');
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var films = await db.Libraries.SingleAsync();
+        Assert.Equal(2.5, films.DurationTolerancePercent);
+        Assert.False(films.RequireAudioRetained);
+        Assert.True(films.RequireSubtitlesRetained);
+        Assert.False(films.RequireSizeReduction);
+        Assert.True(films.AudioLoudnessGateEnabled);
+        Assert.Equal(1.5, films.MaxLoudnessDriftLufs);
+        Assert.True(films.AudioClippingGateEnabled);
+        Assert.Equal(-1, films.MaxTruePeakDbtp);
+        Assert.False(films.ImageQualityGateEnabled);
+        Assert.Equal(0.98, films.MinimumImageSsim);
+        Assert.False(films.ImageMetadataGateEnabled);
+        Assert.DoesNotContain(
+            await db.AppSettings.Select(setting => setting.Key).ToListAsync(),
+            key => key.StartsWith("verification.", StringComparison.Ordinal)
+                && key is not "verification.qualityGateEnabled"
+                    and not "verification.minimumVmafHarmonicMean"
+                    and not "verification.minimumVmafMin"
+                    and not "verification.minimumVmafCatastrophicMin"
+                    and not "verification.clipVmafEnabled"
+                    and not "verification.vmafFrameSubsample");
+    }
+
+    [Fact]
+    public async Task Missing_legacy_verification_settings_materialise_conservative_defaults()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath}")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260727065739_AddAdaptiveVideoQuality");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Films', '/data/films', 'Film', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var films = await db.Libraries.SingleAsync();
+        Assert.Equal(1, films.DurationTolerancePercent);
+        Assert.True(films.RequireAudioRetained);
+        Assert.False(films.RequireSubtitlesRetained);
+        Assert.True(films.RequireSizeReduction);
+        Assert.False(films.AudioLoudnessGateEnabled);
+        Assert.Equal(1, films.MaxLoudnessDriftLufs);
+        Assert.False(films.AudioClippingGateEnabled);
+        Assert.Equal(0, films.MaxTruePeakDbtp);
+        Assert.True(films.ImageQualityGateEnabled);
+        Assert.Equal(0.95, films.MinimumImageSsim);
+        Assert.True(films.ImageMetadataGateEnabled);
+    }
+
     public void Dispose()
     {
         if (File.Exists(_dbPath))

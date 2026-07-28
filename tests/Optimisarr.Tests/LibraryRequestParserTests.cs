@@ -1,4 +1,5 @@
 using Optimisarr.Api.Library;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Tests;
 
@@ -120,6 +121,45 @@ public sealed class LibraryRequestParserTests
         Assert.Equal(45, parsed.MinVmafCatastrophicMin);
         Assert.True(parsed.ClipVmafEnabled);
         Assert.Equal(2, parsed.VmafFrameSubsample);
+    }
+
+    [Fact]
+    public void Omitted_library_verification_policy_uses_safe_defaults()
+    {
+        var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(VerificationPolicy.Default.DurationTolerancePercent, parsed.DurationTolerancePercent);
+        Assert.Equal(VerificationPolicy.Default.RequireAudioRetained, parsed.RequireAudioRetained);
+        Assert.Equal(VerificationPolicy.Default.RequireSubtitlesRetained, parsed.RequireSubtitlesRetained);
+        Assert.Equal(VerificationPolicy.Default.RequireSizeReduction, parsed.RequireSizeReduction);
+        Assert.Equal(VerificationPolicy.Default.ImageQualityGateEnabled, parsed.ImageQualityGateEnabled);
+        Assert.Equal(VerificationPolicy.Default.MinimumImageSsim, parsed.MinimumImageSsim);
+        Assert.Equal(VerificationPolicy.Default.ImageMetadataGateEnabled, parsed.ImageMetadataGateEnabled);
+    }
+
+    [Theory]
+    [InlineData(-0.1, 1, 0.95, "duration")]
+    [InlineData(1, -0.1, 0.95, "loudness")]
+    [InlineData(1, 1, -0.01, "SSIM")]
+    [InlineData(1, 1, 1.01, "SSIM")]
+    public void Invalid_library_verification_thresholds_are_rejected(
+        double durationTolerance,
+        double loudnessDrift,
+        double imageSsim,
+        string expected)
+    {
+        var request = Request() with
+        {
+            DurationTolerancePercent = durationTolerance,
+            MaxLoudnessDriftLufs = loudnessDrift,
+            MinimumImageSsim = imageSsim
+        };
+
+        var ok = LibraryRequestParser.TryParse(request, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains(expected, error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

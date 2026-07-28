@@ -12,7 +12,12 @@ const library = {
   imageDownscaleMode: 'None', imageDownscaleValue: 0, moveOnComplete: false,
   targetFolder: null, moveOverwrite: false, minVmafHarmonicMean: null, minVmafMin: null,
   vmafQualityGateEnabled: false, minVmafCatastrophicMin: null, clipVmafEnabled: null,
-  vmafFrameSubsample: null, autoEnqueueEnabled: false, autoEnqueueWindowStart: '00:00',
+  vmafFrameSubsample: null, durationTolerancePercent: 1, requireAudioRetained: true,
+  requireSubtitlesRetained: false, requireSizeReduction: true,
+  audioLoudnessGateEnabled: false, maxLoudnessDriftLufs: 1,
+  audioClippingGateEnabled: false, maxTruePeakDbtp: 0,
+  imageQualityGateEnabled: true, minimumImageSsim: 0.95, imageMetadataGateEnabled: true,
+  autoEnqueueEnabled: false, autoEnqueueWindowStart: '00:00',
   autoEnqueueWindowEnd: '00:00', autoReplace: false, videoQualityStrategy: 'Fixed',
   lastAutoEnqueueAt: null, fileCount: 1,
 }
@@ -24,7 +29,7 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/libraries') return json(route, [configuredLibrary])
     if (path === '/api/library-options') return json(route, {
-      mediaTypes: ['Film', 'Music'],
+      mediaTypes: ['Film', 'Music', 'Photo'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
       ruleProfileSpecs: [
         { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20 },
@@ -94,6 +99,52 @@ test('adaptive quality path enables a concrete VMAF target and remains exclusive
   await expect(vmafQuality).toHaveValue('lossless')
   await expect(vmafQuality.locator('option[value="off"]')).toBeDisabled()
   await expect(page.getByText(/Extra work before every full encode/)).toBeVisible()
+})
+
+test('verification policy follows the selected library media type', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  await expect(page.getByLabel('Duration tolerance')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Require all audio tracks to be retained' })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Require all subtitle tracks to be retained' })).toBeVisible()
+  await expect(page.getByLabel('Minimum SSIM')).toHaveCount(0)
+
+  await page.getByLabel('Media type').selectOption('Music')
+  await expect(page.getByLabel('Duration tolerance')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Require all subtitle tracks to be retained' })).toHaveCount(0)
+  await expect(page.locator('#lib-vmaf-policy')).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Audio loudness drift (EBU R128)' })).toBeVisible()
+
+  await page.getByLabel('Media type').selectOption('Photo')
+  await expect(page.getByLabel('Duration tolerance')).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Require all audio tracks to be retained' })).toHaveCount(0)
+  await expect(page.getByLabel('Minimum SSIM')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Preserve image EXIF/ICC metadata' })).toBeVisible()
+})
+
+test('optional verification thresholds use progressive disclosure', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const loudness = page.getByRole('checkbox', { name: 'Audio loudness drift (EBU R128)' })
+  await expect(page.getByLabel('Maximum loudness drift')).toHaveCount(0)
+  await loudness.check()
+  await expect(page.getByLabel('Maximum loudness drift')).toBeVisible()
+  await loudness.uncheck()
+  await expect(page.getByLabel('Maximum loudness drift')).toHaveCount(0)
+})
+
+test('library editor fits a narrow viewport without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const fit = await page.locator('main').evaluate((main) => ({
+    scrollWidth: main.scrollWidth,
+    clientWidth: main.clientWidth,
+  }))
+  expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
 })
 
 test('invalid subtitle language syntax cannot be saved', async ({ page }) => {

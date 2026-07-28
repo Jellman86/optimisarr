@@ -297,7 +297,7 @@ See the Phase 12 section for the remaining optional polish.
   whether new jobs may start. Hardware capability detection for FFmpeg
   accelerators and encoders is surfaced on Tools, and global encoder mode
   selection is wired into generated FFmpeg arguments. Verification policy is
-  configurable from Settings. Replacement/quarantine policy is now configurable —
+  configurable per library with media-aware controls. Replacement/quarantine policy is now configurable —
   cross-filesystem fallback is opt-in and a background worker enforces the
   quarantine retention window, purging originals (and dropping their rollback path)
   once it expires. Optional **service-activity pauses** are done too: configurable

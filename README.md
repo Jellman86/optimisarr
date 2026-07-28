@@ -104,8 +104,8 @@ no support SLA or promise of a release schedule.
 - Per-library **Encoder effort** choices that resolve after the actual encoder is selected, mapping
   one portable Fast/Balanced/Efficient intent onto valid x264/x265, SVT-AV1, NVENC, or QSV presets
   while VAAPI safely retains its driver default.
-- Configurable verification gates for duration tolerance, audio/subtitle
-  retention, and required size reduction.
+- Per-library, media-aware verification gates for duration tolerance, stream
+  retention, required size reduction, VMAF, audio fidelity, image SSIM, and metadata.
 
 - **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
   per-encoder availability **confirmed by a real test encode** (not just inferred), and the

@@ -4,6 +4,13 @@
 
 ### Added
 
+- **Verification policy now belongs to each library.** Duration, stream-retention, size, audio
+  fidelity, image-quality, metadata, and existing VMAF gates are grouped in the library editor and
+  shown only when they apply to that media type. General Settings is reduced to queue/hardware and
+  replacement/cleanup policy, dependent thresholds stay hidden until enabled, and narrow layouts no
+  longer gain horizontal overflow from help text. A backwards-safe migration copies every former
+  global value to every existing library, configuration backup/import preserves those values, and
+  dispatch resolves one immutable library policy for preparation and final verification.
 - **Video libraries can opt into adaptive per-title VMAF quality selection.** A clear pair of
   library-level radio paths keeps the existing fixed quality as the default or runs an experimental,
   bounded preparation search across deterministic early/middle/late scenes. Adaptive mode tests at

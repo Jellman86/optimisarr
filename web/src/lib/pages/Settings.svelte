@@ -387,17 +387,6 @@
     encoderMode: 'Auto',
     hardwareDecode: true,
     hdrToneMapMode: 'Software',
-    verificationDurationTolerancePercent: 1,
-    verificationRequireAudioRetained: true,
-    verificationRequireSubtitlesRetained: false,
-    verificationRequireSizeReduction: true,
-    verificationAudioLoudnessGateEnabled: false,
-    verificationMaxLoudnessDriftLufs: 1,
-    verificationAudioClippingGateEnabled: false,
-    verificationMaxTruePeakDbtp: 0,
-    verificationImageQualityGateEnabled: true,
-    verificationMinimumImageSsim: 0.95,
-    verificationImageMetadataGateEnabled: true,
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
@@ -445,10 +434,6 @@
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
-        verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
-        verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
-        verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
-        verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
         replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
@@ -683,82 +668,6 @@
       <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
         {i18n.m.settings.auto_run_before}<button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
-    </div>
-  </div>
-
-  <div class="card p-4 sm:p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.gates_title}</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      {i18n.m.settings.gates_desc}
-    </p>
-
-    <div class="grid gap-4 lg:grid-cols-2">
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">{i18n.m.settings.always_on}</h3>
-        <div class="max-w-[16rem]">
-          <label class="label" for="duration-tolerance">{i18n.m.settings.duration_tolerance} <InfoTip text={i18n.m.settings.duration_tolerance_tip} /></label>
-          <div class="flex min-w-0 items-center gap-2">
-            <input id="duration-tolerance" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
-            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
-          </div>
-        </div>
-        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-          <Toggle bind:checked={settings.verificationRequireAudioRetained} label={i18n.m.settings.require_audio} />
-          <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
-          <Toggle bind:checked={settings.verificationRequireSizeReduction} label={i18n.m.settings.require_smaller} />
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationAudioLoudnessGateEnabled}
-          label={i18n.m.settings.loudness_label}
-          hint={i18n.m.settings.loudness_hint}
-        />
-        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
-          <label class="label" for="loudness-drift">{i18n.m.settings.loudness_max}</label>
-          <div class="flex min-w-0 items-center gap-2">
-            <input id="loudness-drift" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
-            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationAudioClippingGateEnabled}
-          label={i18n.m.settings.clipping_label}
-          hint={i18n.m.settings.clipping_hint}
-        />
-        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
-          <label class="label" for="true-peak-ceiling">{i18n.m.settings.true_peak} <InfoTip text={i18n.m.settings.true_peak_tip} /></label>
-          <div class="flex min-w-0 items-center gap-2">
-            <input id="true-peak-ceiling" class="input min-w-0 flex-1" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
-            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationImageQualityGateEnabled}
-          label={i18n.m.settings.ssim_label}
-          hint={i18n.m.settings.ssim_hint}
-        />
-        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
-          <label class="label" for="image-ssim-floor">{i18n.m.settings.ssim_min} <InfoTip text={i18n.m.settings.ssim_min_tip} /></label>
-          <input id="image-ssim-floor" class="input" type="number" step="0.01" min="0" max="1" bind:value={settings.verificationMinimumImageSsim} disabled={!settings.verificationImageQualityGateEnabled} />
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationImageMetadataGateEnabled}
-          label={i18n.m.settings.exif_label}
-          hint={i18n.m.settings.exif_hint}
-        />
-        <p class="mt-3 text-xs text-slate-400">{i18n.m.settings.exif_note}</p>
-      </div>
     </div>
   </div>
 

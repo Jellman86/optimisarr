@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
+using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
 // This namespace's leaf segment shadows the Library entity type, so refer to it
@@ -41,6 +42,17 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
     private const string LegacyVmafCatastrophic = "verification.minimumVmafCatastrophicMin";
     private const string LegacyVmafClip = "verification.clipVmafEnabled";
     private const string LegacyVmafFrameSubsample = "verification.vmafFrameSubsample";
+    private const string LegacyDurationTolerance = "verification.durationTolerancePercent";
+    private const string LegacyRequireAudio = "verification.requireAudioRetained";
+    private const string LegacyRequireSubtitles = "verification.requireSubtitlesRetained";
+    private const string LegacyRequireSizeReduction = "verification.requireSizeReduction";
+    private const string LegacyLoudnessEnabled = "verification.audioLoudnessGateEnabled";
+    private const string LegacyLoudnessDrift = "verification.maxLoudnessDriftLufs";
+    private const string LegacyClippingEnabled = "verification.audioClippingGateEnabled";
+    private const string LegacyTruePeak = "verification.maxTruePeakDbtp";
+    private const string LegacyImageQualityEnabled = "verification.imageQualityGateEnabled";
+    private const string LegacyImageSsim = "verification.minimumImageSsim";
+    private const string LegacyImageMetadataEnabled = "verification.imageMetadataGateEnabled";
 
     public async Task<ConfigSnapshot> ExportAsync(CancellationToken cancellationToken)
     {
@@ -67,9 +79,9 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
     public async Task<ConfigImportResult> ImportAsync(ConfigSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var legacyVmafPolicy = ReadLegacyVmafPolicy(snapshot.Settings);
+        var legacyVerificationPolicy = ReadLegacyVerificationPolicy(snapshot.Settings);
         var materialisedLibraries = snapshot.Libraries
-            .Select(library => MaterialiseVmafPolicy(library, legacyVmafPolicy))
+            .Select(library => MaterialiseVerificationPolicy(library, legacyVerificationPolicy))
             .ToList();
         var validation = ConfigSnapshotValidator.Validate(
             snapshot with { Libraries = materialisedLibraries },
@@ -83,7 +95,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
         var (librariesCreated, librariesUpdated) = await ImportLibrariesAsync(
             materialisedLibraries,
-            legacyVmafPolicy,
+            legacyVerificationPolicy,
             cancellationToken);
         var (watchersCreated, watchersUpdated) = await ImportWatchersAsync(snapshot.ActivityWatchers, cancellationToken);
         var (targetsCreated, targetsUpdated) = await ImportTargetsAsync(snapshot.NotificationTargets, cancellationToken);
@@ -104,7 +116,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
 
     private async Task<(int Created, int Updated)> ImportLibrariesAsync(
         IReadOnlyList<LibrarySnapshot> snapshots,
-        LegacyVmafPolicy legacyVmafPolicy,
+        LegacyVerificationPolicy legacyVerificationPolicy,
         CancellationToken cancellationToken)
     {
         var created = 0;
@@ -166,15 +178,43 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MoveOnComplete = snapshot.MoveOnComplete;
             library.TargetFolder = snapshot.TargetFolder;
             library.MoveOverwrite = snapshot.MoveOverwrite;
-            // Version-one backups could express VMAF only through global settings. Materialise
-            // that effective policy for fields absent from the library snapshot, then discard the
-            // obsolete global keys when the remaining settings are imported.
-            library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean ?? legacyVmafPolicy.HarmonicMean;
-            library.MinVmafMin = snapshot.MinVmafMin ?? legacyVmafPolicy.FifthPercentile;
-            library.VmafQualityGateEnabled = snapshot.VmafQualityGateEnabled ?? legacyVmafPolicy.Enabled;
-            library.MinVmafCatastrophicMin = snapshot.MinVmafCatastrophicMin ?? legacyVmafPolicy.Catastrophic;
-            library.ClipVmafEnabled = snapshot.ClipVmafEnabled ?? legacyVmafPolicy.ClipEnabled;
-            library.VmafFrameSubsample = snapshot.VmafFrameSubsample ?? legacyVmafPolicy.FrameSubsample;
+            // Version-one backups could express verification policy through global settings.
+            // Materialise that effective policy for fields absent from the library snapshot, then
+            // discard the obsolete global keys when the remaining settings are imported.
+            library.MinVmafHarmonicMean = snapshot.MinVmafHarmonicMean
+                ?? legacyVerificationPolicy.HarmonicMean;
+            library.MinVmafMin = snapshot.MinVmafMin
+                ?? legacyVerificationPolicy.FifthPercentile;
+            library.VmafQualityGateEnabled = snapshot.VmafQualityGateEnabled
+                ?? legacyVerificationPolicy.Enabled;
+            library.MinVmafCatastrophicMin = snapshot.MinVmafCatastrophicMin
+                ?? legacyVerificationPolicy.Catastrophic;
+            library.ClipVmafEnabled = snapshot.ClipVmafEnabled
+                ?? legacyVerificationPolicy.ClipEnabled;
+            library.VmafFrameSubsample = snapshot.VmafFrameSubsample
+                ?? legacyVerificationPolicy.FrameSubsample;
+            library.DurationTolerancePercent = snapshot.DurationTolerancePercent
+                ?? legacyVerificationPolicy.DurationTolerancePercent;
+            library.RequireAudioRetained = snapshot.RequireAudioRetained
+                ?? legacyVerificationPolicy.RequireAudioRetained;
+            library.RequireSubtitlesRetained = snapshot.RequireSubtitlesRetained
+                ?? legacyVerificationPolicy.RequireSubtitlesRetained;
+            library.RequireSizeReduction = snapshot.RequireSizeReduction
+                ?? legacyVerificationPolicy.RequireSizeReduction;
+            library.AudioLoudnessGateEnabled = snapshot.AudioLoudnessGateEnabled
+                ?? legacyVerificationPolicy.AudioLoudnessGateEnabled;
+            library.MaxLoudnessDriftLufs = snapshot.MaxLoudnessDriftLufs
+                ?? legacyVerificationPolicy.MaxLoudnessDriftLufs;
+            library.AudioClippingGateEnabled = snapshot.AudioClippingGateEnabled
+                ?? legacyVerificationPolicy.AudioClippingGateEnabled;
+            library.MaxTruePeakDbtp = snapshot.MaxTruePeakDbtp
+                ?? legacyVerificationPolicy.MaxTruePeakDbtp;
+            library.ImageQualityGateEnabled = snapshot.ImageQualityGateEnabled
+                ?? legacyVerificationPolicy.ImageQualityGateEnabled;
+            library.MinimumImageSsim = snapshot.MinimumImageSsim
+                ?? legacyVerificationPolicy.MinimumImageSsim;
+            library.ImageMetadataGateEnabled = snapshot.ImageMetadataGateEnabled
+                ?? legacyVerificationPolicy.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = ParseEnum<VideoQualityStrategy>(snapshot.VideoQualityStrategy);
             library.AutoEnqueueEnabled = snapshot.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = ParseWindowTime(snapshot.AutoEnqueueWindowStart);
@@ -188,16 +228,52 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
     private static TimeOnly ParseWindowTime(string value) =>
         TimeOnly.ParseExact(value, "HH:mm", CultureInfo.InvariantCulture);
 
-    private static LegacyVmafPolicy ReadLegacyVmafPolicy(IReadOnlyDictionary<string, string> values)
+    private static LegacyVerificationPolicy ReadLegacyVerificationPolicy(
+        IReadOnlyDictionary<string, string> values)
     {
         var fifth = ParseDouble(values.GetValueOrDefault(LegacyVmafFifth), fallback: 80);
-        return new LegacyVmafPolicy(
+        return new LegacyVerificationPolicy(
             ParseBool(values.GetValueOrDefault(LegacyVmafEnabled), fallback: false),
             ParseDouble(values.GetValueOrDefault(LegacyVmafHarmonic), fallback: 93),
             fifth,
             ParseDouble(values.GetValueOrDefault(LegacyVmafCatastrophic), fallback: Math.Max(0, fifth - 30)),
             ParseBool(values.GetValueOrDefault(LegacyVmafClip), fallback: false),
-            ParseInt(values.GetValueOrDefault(LegacyVmafFrameSubsample), fallback: 1));
+            ParseInt(values.GetValueOrDefault(LegacyVmafFrameSubsample), fallback: 1),
+            ParseNonNegativeDouble(
+                values.GetValueOrDefault(LegacyDurationTolerance),
+                VerificationPolicy.Default.DurationTolerancePercent),
+            ParseBool(
+                values.GetValueOrDefault(LegacyRequireAudio),
+                VerificationPolicy.Default.RequireAudioRetained),
+            ParseBool(
+                values.GetValueOrDefault(LegacyRequireSubtitles),
+                VerificationPolicy.Default.RequireSubtitlesRetained),
+            ParseBool(
+                values.GetValueOrDefault(LegacyRequireSizeReduction),
+                VerificationPolicy.Default.RequireSizeReduction),
+            ParseBool(
+                values.GetValueOrDefault(LegacyLoudnessEnabled),
+                VerificationPolicy.Default.AudioLoudnessGateEnabled),
+            ParseNonNegativeDouble(
+                values.GetValueOrDefault(LegacyLoudnessDrift),
+                VerificationPolicy.Default.MaxLoudnessDriftLufs),
+            ParseBool(
+                values.GetValueOrDefault(LegacyClippingEnabled),
+                VerificationPolicy.Default.AudioClippingGateEnabled),
+            ParseFiniteDouble(
+                values.GetValueOrDefault(LegacyTruePeak),
+                VerificationPolicy.Default.MaxTruePeakDbtp),
+            ParseBool(
+                values.GetValueOrDefault(LegacyImageQualityEnabled),
+                VerificationPolicy.Default.ImageQualityGateEnabled),
+            ParseRangeDouble(
+                values.GetValueOrDefault(LegacyImageSsim),
+                VerificationPolicy.Default.MinimumImageSsim,
+                0,
+                1),
+            ParseBool(
+                values.GetValueOrDefault(LegacyImageMetadataEnabled),
+                VerificationPolicy.Default.ImageMetadataGateEnabled));
     }
 
     private static bool ParseBool(string? value, bool fallback) =>
@@ -210,9 +286,34 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 ? parsed
                 : fallback;
 
-    private static LibrarySnapshot MaterialiseVmafPolicy(
+    private static double ParseNonNegativeDouble(string? value, double fallback) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            && double.IsFinite(parsed)
+            && parsed >= 0
+                ? parsed
+                : fallback;
+
+    private static double ParseFiniteDouble(string? value, double fallback) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            && double.IsFinite(parsed)
+                ? parsed
+                : fallback;
+
+    private static double ParseRangeDouble(
+        string? value,
+        double fallback,
+        double minimum,
+        double maximum) =>
+        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            && double.IsFinite(parsed)
+            && parsed >= minimum
+            && parsed <= maximum
+                ? parsed
+                : fallback;
+
+    private static LibrarySnapshot MaterialiseVerificationPolicy(
         LibrarySnapshot library,
-        LegacyVmafPolicy policy) =>
+        LegacyVerificationPolicy policy) =>
         library with
         {
             VmafQualityGateEnabled = library.VmafQualityGateEnabled ?? policy.Enabled,
@@ -220,7 +321,18 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             MinVmafMin = library.MinVmafMin ?? policy.FifthPercentile,
             MinVmafCatastrophicMin = library.MinVmafCatastrophicMin ?? policy.Catastrophic,
             ClipVmafEnabled = library.ClipVmafEnabled ?? policy.ClipEnabled,
-            VmafFrameSubsample = library.VmafFrameSubsample ?? policy.FrameSubsample
+            VmafFrameSubsample = library.VmafFrameSubsample ?? policy.FrameSubsample,
+            DurationTolerancePercent = library.DurationTolerancePercent ?? policy.DurationTolerancePercent,
+            RequireAudioRetained = library.RequireAudioRetained ?? policy.RequireAudioRetained,
+            RequireSubtitlesRetained = library.RequireSubtitlesRetained ?? policy.RequireSubtitlesRetained,
+            RequireSizeReduction = library.RequireSizeReduction ?? policy.RequireSizeReduction,
+            AudioLoudnessGateEnabled = library.AudioLoudnessGateEnabled ?? policy.AudioLoudnessGateEnabled,
+            MaxLoudnessDriftLufs = library.MaxLoudnessDriftLufs ?? policy.MaxLoudnessDriftLufs,
+            AudioClippingGateEnabled = library.AudioClippingGateEnabled ?? policy.AudioClippingGateEnabled,
+            MaxTruePeakDbtp = library.MaxTruePeakDbtp ?? policy.MaxTruePeakDbtp,
+            ImageQualityGateEnabled = library.ImageQualityGateEnabled ?? policy.ImageQualityGateEnabled,
+            MinimumImageSsim = library.MinimumImageSsim ?? policy.MinimumImageSsim,
+            ImageMetadataGateEnabled = library.ImageMetadataGateEnabled ?? policy.ImageMetadataGateEnabled
         };
 
     private static int ParseInt(string? value, int fallback) =>
@@ -229,13 +341,24 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                 ? parsed
                 : fallback;
 
-    private sealed record LegacyVmafPolicy(
+    private sealed record LegacyVerificationPolicy(
         bool Enabled,
         double HarmonicMean,
         double FifthPercentile,
         double Catastrophic,
         bool ClipEnabled,
-        int FrameSubsample);
+        int FrameSubsample,
+        double DurationTolerancePercent,
+        bool RequireAudioRetained,
+        bool RequireSubtitlesRetained,
+        bool RequireSizeReduction,
+        bool AudioLoudnessGateEnabled,
+        double MaxLoudnessDriftLufs,
+        bool AudioClippingGateEnabled,
+        double MaxTruePeakDbtp,
+        bool ImageQualityGateEnabled,
+        double MinimumImageSsim,
+        bool ImageMetadataGateEnabled);
 
     private async Task<(int Created, int Updated)> ImportWatchersAsync(
         IReadOnlyList<ActivityWatcherSnapshot> snapshots, CancellationToken cancellationToken)
@@ -382,7 +505,18 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ClipVmafEnabled,
         library.VmafFrameSubsample,
         library.KeepSubtitleLanguages,
-        library.VideoQualityStrategy.ToString());
+        library.VideoQualityStrategy.ToString(),
+        library.DurationTolerancePercent,
+        library.RequireAudioRetained,
+        library.RequireSubtitlesRetained,
+        library.RequireSizeReduction,
+        library.AudioLoudnessGateEnabled,
+        library.MaxLoudnessDriftLufs,
+        library.AudioClippingGateEnabled,
+        library.MaxTruePeakDbtp,
+        library.ImageQualityGateEnabled,
+        library.MinimumImageSsim,
+        library.ImageMetadataGateEnabled);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)
