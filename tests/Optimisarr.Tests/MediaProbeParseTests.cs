@@ -127,9 +127,9 @@ public sealed class MediaProbeParseTests
 
         Assert.Equal(12.0, result.VideoDurationSeconds);
         Assert.Equal(12.0, VerificationService.OutputDurationForVerification(
-            result, MediaKind.Video, videoOnlyReference: true));
+            result, MediaKind.Video, clippedVideoReference: true));
         Assert.Equal(12.531, VerificationService.OutputDurationForVerification(
-            result, MediaKind.Video, videoOnlyReference: false));
+            result, MediaKind.Video, clippedVideoReference: false));
     }
 
     [Fact]
@@ -154,13 +154,52 @@ public sealed class MediaProbeParseTests
         Assert.Equal(11.928, VerificationService.OutputDurationForVerification(
             result,
             MediaKind.Video,
-            videoOnlyReference: true,
+            clippedVideoReference: true,
             timestamps)!.Value,
             precision: 3);
         Assert.Equal(22.929, VerificationService.OutputDurationForVerification(
             result,
             MediaKind.Video,
-            videoOnlyReference: false,
+            clippedVideoReference: false,
+            timestamps));
+    }
+
+    [Fact]
+    public void Clipped_video_duration_uses_the_picture_span_when_copied_streams_extend_the_container()
+    {
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "hevc", "start_time": "0.042000" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "60.018000" },
+            { "codec_type": "subtitle", "codec_name": "subrip", "duration": "62.193000" },
+            {
+              "codec_type": "video",
+              "codec_name": "mjpeg",
+              "duration": "62.193000",
+              "disposition": { "attached_pic": 1 }
+            }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "62.193000" }
+        }
+        """;
+        var result = MediaProbeService.Parse(json, ".mkv");
+        var timestamps = new TimestampCheckResult(
+            Measured: true,
+            NonMonotonicCount: 0,
+            FirstRegressionDetail: null,
+            LastPresentationSeconds: 59.977);
+
+        Assert.Equal(59.935, VerificationService.OutputDurationForVerification(
+            result,
+            MediaKind.Video,
+            clippedVideoReference: true,
+            timestamps)!.Value,
+            precision: 3);
+        Assert.Equal(62.193, VerificationService.OutputDurationForVerification(
+            result,
+            MediaKind.Video,
+            clippedVideoReference: false,
             timestamps));
     }
 

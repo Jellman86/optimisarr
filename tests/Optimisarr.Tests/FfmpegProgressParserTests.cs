@@ -17,6 +17,7 @@ public sealed class FfmpegProgressParserTests
 
         Assert.NotNull(sample);
         Assert.Equal((1 * 3600) + (2 * 60) + 3.5, sample.ElapsedSeconds);
+        Assert.Equal(120, sample.Frame);
         Assert.Equal(29.97, sample.Fps);
         Assert.Equal(1.5, sample.Speed);
     }
@@ -51,8 +52,50 @@ public sealed class FfmpegProgressParserTests
         Assert.Null(first.Speed);
         Assert.NotNull(second);
         Assert.Null(second.ElapsedSeconds);
+        Assert.Null(second.Frame);
         Assert.Null(second.Fps);
         Assert.Null(second.Speed);
+    }
+
+    [Fact]
+    public void Progress_uses_encoded_frames_when_copied_stream_timestamps_do_not_advance()
+    {
+        var sample = new FfmpegProgressSample(
+            ElapsedSeconds: 0,
+            Frame: 750,
+            Fps: 80,
+            Speed: null);
+
+        Assert.Equal(0.5, FfmpegProgressCalculator.Calculate(
+            durationSeconds: 60,
+            expectedFrameCount: 1_500,
+            sample));
+    }
+
+    [Fact]
+    public void Expected_frames_can_be_derived_from_the_source_rate_when_the_container_omits_a_count()
+    {
+        Assert.Equal(1_440, FfmpegProgressCalculator.ExpectedFramesForWindow(
+            sourceFrameCount: null,
+            sourceDurationSeconds: 7_200,
+            windowDurationSeconds: 60,
+            sourceFrameRate: 24));
+    }
+
+    [Fact]
+    public void Progress_uses_the_most_advanced_truthful_clock()
+    {
+        var sample = new FfmpegProgressSample(
+            ElapsedSeconds: 40,
+            Frame: 500,
+            Fps: 80,
+            Speed: null);
+
+        Assert.Equal(2.0 / 3.0, FfmpegProgressCalculator.Calculate(
+            durationSeconds: 60,
+            expectedFrameCount: 1_500,
+            sample)!.Value,
+            precision: 6);
     }
 
     [Fact]

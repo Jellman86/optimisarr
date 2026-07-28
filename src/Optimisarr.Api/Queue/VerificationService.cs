@@ -215,7 +215,7 @@ public sealed class VerificationService(
                 OutputDurationSeconds: OutputDurationForVerification(
                     outputProbe,
                     reference.Kind,
-                    clip?.VideoOnly == true,
+                    clippedVideoReference: clip is not null,
                     timestampResult),
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
@@ -364,19 +364,18 @@ public sealed class VerificationService(
     internal static double? OutputDurationForVerification(
         MediaProbeResult outputProbe,
         MediaKind kind,
-        bool videoOnlyReference,
+        bool clippedVideoReference,
         TimestampCheckResult? timestamps = null)
     {
-        if (kind != MediaKind.Video || !videoOnlyReference)
+        if (kind != MediaKind.Video || !clippedVideoReference)
         {
             return outputProbe.DurationSeconds;
         }
 
-        // A sampled encode may retain the source's non-zero stream epoch. In that case ffprobe's
-        // format duration is the absolute end timestamp (and copied subtitle/attachment streams can
-        // extend it further), not the amount of picture content encoded. The packet scan already
-        // provides the authoritative video endpoint used by Tail integrity, so compare its span
-        // against the exact calibration window too.
+        // A clipped encode may retain the source's non-zero stream epoch. In that case ffprobe's
+        // format duration is the absolute end timestamp, while copied subtitles or attachments can
+        // extend it further. The packet scan already provides the authoritative picture endpoint
+        // used by Tail integrity, so compare that span against the exact clip window.
         if (timestamps?.LastPresentationSeconds is { } last)
         {
             return Math.Max(0, last - (outputProbe.VideoStartSeconds ?? 0));

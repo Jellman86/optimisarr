@@ -327,7 +327,11 @@ Preview jobs reuse the same verification path but never enter replacement. For
 long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
-segment-only; full queue jobs always verify against the complete original.
+segment-only and maps both native players onto that exact source-relative window.
+Clipped-video duration uses the measured primary-picture span so a copied subtitle
+or attached picture cannot extend the container and create a false failure; full
+queue jobs always verify against the complete original and retain the strict
+container-duration check.
 Sampled VMAF places the independently encoded source and output on the source's measured frame
 cadence before trimming each window, preventing differing FFmpeg timebases from pairing adjacent
 frames at motion or scene changes.

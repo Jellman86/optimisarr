@@ -1042,6 +1042,7 @@ export const ru: Messages = {
     minimise: "Свернуть",
     queuing_preview: "Предварительный просмотр очереди…",
     encoding_progress: "Кодировка… {percent}%",
+    adaptive_quality_progress: "Выбор качества… {percent}%",
     verifying_sample: "Проверка образца…",
     preview_safety: "Это запускает настоящее перекодирование этого файла; он никогда не касается оригинала.",
     preview_failed: "Предварительный просмотр не завершен: {error}. Оригинал нетронут.",

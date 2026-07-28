@@ -4,7 +4,11 @@ using System.Text.RegularExpressions;
 namespace Optimisarr.Core.Queue;
 
 /// <summary>A normalised progress reading from FFmpeg's human or machine-readable output.</summary>
-public sealed record FfmpegProgressSample(double? ElapsedSeconds, double? Fps, double? Speed);
+public sealed record FfmpegProgressSample(
+    double? ElapsedSeconds,
+    double? Fps,
+    double? Speed,
+    long? Frame = null);
 
 /// <summary>
 /// Pure parser for FFmpeg's stderr progress lines (<c>time=…</c>, <c>fps=…</c>,
@@ -59,5 +63,62 @@ public static partial class FfmpegProgressParser
     {
         var match = pattern.Match(line);
         return match.Success ? double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : null;
+    }
+}
+
+/// <summary>
+/// Calculates media progress from both clocks FFmpeg exposes. Copied streams can pin
+/// <c>out_time</c> at zero while video frames continue to encode, so the furthest valid clock is
+/// authoritative. Values remain below one until the process itself reports completion.
+/// </summary>
+public static class FfmpegProgressCalculator
+{
+    public static double? Calculate(
+        double? durationSeconds,
+        int? expectedFrameCount,
+        FfmpegProgressSample sample)
+    {
+        var timestampProgress = durationSeconds is > 0 && sample.ElapsedSeconds is { } elapsed
+            ? elapsed / durationSeconds.Value
+            : (double?)null;
+        var frameProgress = expectedFrameCount is > 0 && sample.Frame is { } frame
+            ? (double)frame / expectedFrameCount.Value
+            : (double?)null;
+
+        if (timestampProgress is null && frameProgress is null)
+        {
+            return null;
+        }
+
+        return Math.Clamp(
+            Math.Max(timestampProgress ?? 0, frameProgress ?? 0),
+            0,
+            0.999);
+    }
+
+    public static int? ExpectedFramesForWindow(
+        int? sourceFrameCount,
+        double? sourceDurationSeconds,
+        double? windowDurationSeconds,
+        double? sourceFrameRate = null)
+    {
+        if (windowDurationSeconds is not > 0)
+        {
+            return null;
+        }
+
+        if (sourceFrameCount is > 0 && sourceDurationSeconds is > 0)
+        {
+            var boundedDuration = Math.Min(sourceDurationSeconds.Value, windowDurationSeconds.Value);
+            return Math.Max(1, (int)Math.Round(
+                sourceFrameCount.Value * boundedDuration / sourceDurationSeconds.Value,
+                MidpointRounding.AwayFromZero));
+        }
+
+        return sourceFrameRate is > 0 and < 1_000
+            ? Math.Max(1, (int)Math.Round(
+                sourceFrameRate.Value * windowDurationSeconds.Value,
+                MidpointRounding.AwayFromZero))
+            : null;
     }
 }

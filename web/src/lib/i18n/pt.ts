@@ -1042,6 +1042,7 @@ export const pt: Messages = {
     minimise: "Minimizar",
     queuing_preview: "Visualização da fila…",
     encoding_progress: "Codificação… {percent}%",
+    adaptive_quality_progress: "Selecionando qualidade… {percent}%",
     verifying_sample: "Verificando amostra…",
     preview_safety: "Isso executa uma transcodificação real deste arquivo; nunca toca no original.",
     preview_failed: "A visualização não foi concluída: {error}. O original está intacto.",

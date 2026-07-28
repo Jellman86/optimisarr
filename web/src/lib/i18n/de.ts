@@ -1096,6 +1096,7 @@ export const de: Messages = {
     minimise: 'Minimieren',
     queuing_preview: 'Vorschau wird eingereiht …',
     encoding_progress: 'Kodierung … {percent} %',
+    adaptive_quality_progress: 'Qualitätsstufe wird ausgewählt … {percent} %',
     verifying_sample: 'Beispiel wird geprüft …',
     preview_safety: 'Dies führt eine echte Transkodierung dieser einen Datei aus; das Original wird nie angetastet.',
     preview_failed: 'Die Vorschau wurde nicht abgeschlossen: {error}. Das Original bleibt unberührt.',

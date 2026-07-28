@@ -1042,6 +1042,7 @@ export const ja: Messages = {
     minimise: "最小化する",
     queuing_preview: "プレビューをキューに入れています...",
     encoding_progress: "エンコーディング… {percent}%",
+    adaptive_quality_progress: "品質を選択中… {percent}%",
     verifying_sample: "サンプルを検証中…",
     preview_safety: "これにより、この 1 つのファイルの実際のトランスコードが実行されます。オリジナルには決して触れません。",
     preview_failed: "プレビューが完了しませんでした: {error}。オリジナルは手付かずです。",

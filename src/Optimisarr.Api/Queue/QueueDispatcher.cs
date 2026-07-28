@@ -42,10 +42,6 @@ public sealed class QueueDispatcher(
     private static readonly TimeSpan OrphanWorkGracePeriod = TimeSpan.FromDays(7);
     private const int MaxAttempts = 3;
 
-    // A video preview encodes only this many seconds — enough to judge quality/size without
-    // paying for a full transcode of a long file.
-    private const int PreviewClipSeconds = 60;
-
     // Stamped into every output's container metadata so the file proves it was optimised
     // independently of the database; see OptimisationMarker.
     private static readonly string OptimisedMarkerValue =
@@ -561,7 +557,18 @@ public sealed class QueueDispatcher(
             var progressDuration = spec.ClipSeconds is { } clip && (work.Value.DurationSeconds is not { } d || clip < d)
                 ? clip
                 : work.Value.DurationSeconds;
-            var run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
+            var expectedFrameCount = FfmpegProgressCalculator.ExpectedFramesForWindow(
+                work.Value.FrameCount,
+                work.Value.DurationSeconds,
+                progressDuration,
+                work.Value.VideoFrameRate);
+            var run = await RunFfmpegAsync(
+                jobId,
+                arguments,
+                progressDuration,
+                expectedFrameCount,
+                hardwareEncoder,
+                cancellationToken);
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
@@ -584,7 +591,13 @@ public sealed class QueueDispatcher(
                     preparedWork.VideoEncoder,
                     preparedWork.VideoQuality,
                     cancellationToken);
-                run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
+                run = await RunFfmpegAsync(
+                    jobId,
+                    arguments,
+                    progressDuration,
+                    expectedFrameCount,
+                    hardwareEncoder,
+                    cancellationToken);
             }
 
             if (run.ExitCode == 0)
@@ -685,6 +698,8 @@ public sealed class QueueDispatcher(
         bool IsDisposable,
         bool IsCalibration,
         double? DurationSeconds,
+        int? FrameCount,
+        double? VideoFrameRate,
         bool MoveOnComplete,
         string? TargetFolder,
         bool MoveOverwrite,
@@ -855,12 +870,10 @@ public sealed class QueueDispatcher(
                     ?? (spec.Kind == MediaKind.Audio
                         ? Optimisarr.Core.Calibration.BlindCalibrationPolicy.AudioSampleSeconds
                         : Optimisarr.Core.Calibration.BlindCalibrationPolicy.SampleSeconds)
-                : PreviewClipSeconds;
+                : PreviewClipPolicy.DurationSeconds;
             var start = isCalibration
                 ? job.CalibrationClipStartSeconds ?? 0
-                : media.DurationSeconds is { } duration && duration > seconds
-                    ? (int)(duration / 2 - seconds / 2.0)
-                    : 0;
+                : PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds;
             spec = spec with
             {
                 ClipSeconds = seconds,
@@ -1023,6 +1036,19 @@ public sealed class QueueDispatcher(
             hardwareToneMapDolbyVision,
             hardwareToneMapTransfer,
             videoEncoderName);
+        if (isPreview && isVideoJob && freshSourceProbe is null)
+        {
+            freshSourceProbe = await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+            {
+                logger.LogDebug(
+                    "Job {JobId}: preview frame-rate probing was unavailable; timestamp progress remains active. {Error}",
+                    jobId,
+                    freshSourceProbe.Error);
+            }
+        }
         var primaryArguments = FfmpegCommandBuilder.Build(
             spec,
             queueSettings.CpuThreadLimit,
@@ -1047,6 +1073,8 @@ public sealed class QueueDispatcher(
             isDisposable,
             isCalibration,
             media.DurationSeconds,
+            media.FrameCount,
+            freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
             library?.MoveOverwrite ?? false,
@@ -1088,7 +1116,7 @@ public sealed class QueueDispatcher(
         await WithJobAsync(jobId, job =>
         {
             job.Status = JobStatus.Probing;
-            job.Progress = 0;
+            job.Progress = AdaptiveQualityProgress.Started;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
         await NotifyAsync();
@@ -1159,6 +1187,7 @@ public sealed class QueueDispatcher(
                     jobId,
                     work,
                     decision.NextQuality!.Value,
+                    measured.Count,
                     windows,
                     sourceProbe,
                     policy,
@@ -1209,6 +1238,7 @@ public sealed class QueueDispatcher(
         int jobId,
         JobWork work,
         int qualityValue,
+        int candidateIndex,
         IReadOnlyList<VmafWindow> windows,
         MediaProbeResult sourceProbe,
         VerificationPolicy policy,
@@ -1251,9 +1281,19 @@ public sealed class QueueDispatcher(
                 jobId,
                 primary,
                 window.DurationSeconds,
+                FfmpegProgressCalculator.ExpectedFramesForWindow(
+                    sourceProbe.FrameCount,
+                    sourceProbe.DurationSeconds,
+                    window.DurationSeconds,
+                    sourceProbe.VideoFrameRate),
                 IsHardwareEncoder(work.VideoEncoder),
                 cancellationToken,
-                reportProgress: false);
+                progressMap: progress => AdaptiveQualityProgress.Map(
+                    candidateIndex,
+                    index,
+                    windows.Count,
+                    AdaptiveQualityPhase.Encoding,
+                    progress));
             if (run.ExitCode != 0)
             {
                 logger.LogWarning(
@@ -1291,11 +1331,23 @@ public sealed class QueueDispatcher(
                 // Software decode gives repeatable frame ordering across CPU/QSV/NVENC/VA-API.
                 Acceleration: VmafAcceleration.None,
                 ReferenceFrameRate: sourceProbe.VideoFrameRate);
+            var measurementProgress = new Progress<double>(progress =>
+            {
+                var mapped = AdaptiveQualityProgress.Map(
+                    candidateIndex,
+                    index,
+                    windows.Count,
+                    AdaptiveQualityPhase.Measuring,
+                    progress);
+                _ = UpdateProgressAsync(jobId, mapped);
+                _ = BroadcastProgressAsync(jobId, mapped, null, null, null);
+            });
             var result = await qualityService.MeasureAsync(
                 work.Original.Path,
                 outputPath,
                 context,
-                cancellationToken);
+                cancellationToken,
+                measurementProgress);
             result = await VmafSoftwareConfirmation.ConfirmAsync(
                 result,
                 policy,
@@ -1412,9 +1464,11 @@ public sealed class QueueDispatcher(
         int jobId,
         IReadOnlyList<string> arguments,
         double? durationSeconds,
+        int? expectedFrameCount,
         bool hardwareEncoder,
         CancellationToken cancellationToken,
-        bool reportProgress = true)
+        bool reportProgress = true,
+        Func<double, double>? progressMap = null)
     {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -1441,7 +1495,13 @@ public sealed class QueueDispatcher(
         // FFmpeg's machine-readable progress protocol is isolated on stdout. Stderr remains a
         // diagnostic stream, and both pipes are consumed concurrently so neither can block FFmpeg.
         var progressTask = ReadProgressAsync(
-            process, jobId, durationSeconds, reportProgress, cancellationToken);
+            process,
+            jobId,
+            durationSeconds,
+            expectedFrameCount,
+            reportProgress,
+            progressMap,
+            cancellationToken);
         var stderrTask = ReadStderrAsync(process, cancellationToken);
 
         try
@@ -1481,7 +1541,9 @@ public sealed class QueueDispatcher(
         Process process,
         int jobId,
         double? durationSeconds,
+        int? expectedFrameCount,
         bool reportProgress,
+        Func<double, double>? progressMap,
         CancellationToken cancellationToken)
     {
         var parser = new FfmpegProgressProtocolParser();
@@ -1495,8 +1557,10 @@ public sealed class QueueDispatcher(
         while ((line = await process.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
         {
             if (parser.ParseLine(line) is not { } sample
-                || durationSeconds is not > 0
-                || sample.ElapsedSeconds is not { } elapsed)
+                || FfmpegProgressCalculator.Calculate(
+                    durationSeconds,
+                    expectedFrameCount,
+                    sample) is not { } measuredProgress)
             {
                 continue;
             }
@@ -1509,7 +1573,7 @@ public sealed class QueueDispatcher(
             // persisted bar move backwards.
             var progress = Math.Max(
                 lastObserved,
-                Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999));
+                progressMap?.Invoke(measuredProgress) ?? measuredProgress);
             lastObserved = progress;
 
             if (progress > lastPersisted && (!hasPersisted || progress - lastPersisted >= 0.01))
@@ -1533,10 +1597,10 @@ public sealed class QueueDispatcher(
                 }
             }
 
-            var eta = sample.Speed is { } speed
+            var eta = sample.Speed is { } speed && durationSeconds is > 0
                 ? FfmpegProgressParser.EstimateRemainingSeconds(
                     durationSeconds.Value,
-                    progress * durationSeconds.Value,
+                    measuredProgress * durationSeconds.Value,
                     speed)
                 : null;
             try

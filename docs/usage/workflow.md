@@ -150,9 +150,13 @@ Do this:
 4. Read the verification report.
 
 Long video previews encode a 60-second sample from the middle of the source and
-mark the report as segment-only. Audio and image previews run in full. A preview
-does not prove every file will pass, but it quickly catches bad presets, audio
-choices, HDR handling, or quality thresholds.
+mark the report as segment-only. The original player opens at that exact source
+window while the encoded player opens at zero; **Play both** and either player's
+native play, pause, seek, or playback-rate control keep the two source-relative
+positions synchronized. You can use each native fullscreen control or download
+either exact file for closer inspection. Audio and image previews run in full.
+A preview does not prove every file will pass, but it quickly catches bad
+presets, audio choices, HDR handling, or quality thresholds.
 
 ## 6. Queue a small batch
 

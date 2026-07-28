@@ -25,6 +25,17 @@
 
 ### Fixed
 
+- **Video previews now stay on the same source frame and report honest progress.** The preview API
+  exposes the exact middle-sample start and duration, and the two native browser players share one
+  source-relative clock for their initial position, play, pause, seek, playback rate, and drift
+  correction. The players still stream the two real files independently, so native controls,
+  fullscreen, and downloads remain available. FFmpeg frame counts now provide a progress fallback
+  when copied-stream timestamps remain at zero, while adaptive VMAF preparation reports its bounded
+  candidate, window, and measurement work instead of appearing stuck during a real encode or score.
+- **Copied subtitles and artwork no longer create a false Duration failure for clipped video.**
+  Preview and personal-quality verification compare the measured primary-picture span with the exact
+  requested window even when a retained subtitle or attached picture extends the output container.
+  Normal full-file verification remains strict and continues to use the complete container duration.
 - **Intel QSV previews now compare the same source frames.** Short disposable video previews and
   personal-quality clips keep hardware encoding but use software source decoding, avoiding the
   reordered frames QSV can expose before a long-GOP input seek. The main encode pipeline retains

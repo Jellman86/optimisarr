@@ -345,9 +345,13 @@ changing the requested policy.
 | `GET` | `/api/preview/{jobId}/content` | Stream preview output for comparison. |
 
 Long video previews may be segment-only. The response includes `clipped: true`
-when the verification report is for a sample rather than the whole file. A user-requested Preview
-bypasses its library's automatic optimise window, but still waits for queue capacity, minimum free
-space, a manual pause, or active-media protection.
+when the verification report is for a sample rather than the whole file.
+`clipStartSeconds` is the sample's position in the original and
+`clipDurationSeconds` is its requested comparison length; both are `null` for a
+full-file response. Clients can subtract each side's start to maintain one
+source-relative playback timeline. A user-requested Preview bypasses its
+library's automatic optimise window, but still waits for queue capacity, minimum
+free space, a manual pause, or active-media protection.
 
 ## Personal blind quality calibration
 

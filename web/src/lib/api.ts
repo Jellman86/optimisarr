@@ -425,6 +425,8 @@ export type PreviewComparison = {
   encoded: MediaSideStats | null
   savingPercent: number | null
   clipped: boolean
+  clipStartSeconds: number | null
+  clipDurationSeconds: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
 }

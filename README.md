@@ -83,7 +83,9 @@ no support SLA or promise of a release schedule.
 - **Preview** from Inventory or a library's Candidates tab to try the resolved settings on one
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
-  as segment-only; audio and image previews run in full.
+  as segment-only. The original and encoded video players share that source-relative timeline, so
+  play, pause, seek, rate changes, and drift correction remain frame-aligned while both real files
+  retain native controls, fullscreen, and download access. Audio and image previews run in full.
 - A per-library, full-page **Personal quality check** compares a marked original reference with the
   relevant anonymous candidates, then finds the most compressed setting the user
   classifies as indistinguishable or acceptable on their own equipment.

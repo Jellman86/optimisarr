@@ -1042,6 +1042,7 @@ export const zh: Messages = {
     minimise: "最小化",
     queuing_preview: "排队预览...",
     encoding_progress: "编码…{percent}%",
+    adaptive_quality_progress: "正在选择质量…{percent}%",
     verifying_sample: "验证样品...",
     preview_safety: "这会运行该文件的真实转码；它从未触及原作。",
     preview_failed: "预览未完成：{error}。原件未动过。",

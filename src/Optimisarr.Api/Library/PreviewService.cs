@@ -30,6 +30,8 @@ public sealed record PreviewComparison(
     MediaSideStats? Encoded,
     double? SavingPercent,
     bool Clipped,
+    int? ClipStartSeconds,
+    int? ClipDurationSeconds,
     bool? VerificationPassed,
     string? VerificationReportJson);
 
@@ -131,6 +133,8 @@ public sealed class PreviewService(
             encoded,
             saving,
             clipped,
+            clipped ? PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds : null,
+            clipped ? PreviewClipPolicy.DurationSeconds : null,
             job.VerificationPassed,
             job.VerificationReportJson);
     }

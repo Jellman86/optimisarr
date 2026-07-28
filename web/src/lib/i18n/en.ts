@@ -1235,6 +1235,7 @@ export const en = {
     minimise: 'Minimise',
     queuing_preview: 'Queuing preview…',
     encoding_progress: 'Encoding… {percent}%',
+    adaptive_quality_progress: 'Selecting quality… {percent}%',
     verifying_sample: 'Verifying sample…',
     preview_safety: 'This runs a real transcode of this one file; it never touches the original.',
     preview_failed: 'The preview did not complete: {error}. The original is untouched.',
