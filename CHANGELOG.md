@@ -54,6 +54,13 @@
 
 ### Changed
 
+- **Library configuration now follows one consistent four-stage flow.** Film/TV, Music, Photo, and
+  mixed libraries use the same numbered **Library → Optimisation → Verification gates → Automation
+  & completion** sections instead of one long card with unrelated dividers. Music exposes its
+  primary codec and bitrate without requiring Advanced options, completed-output routing now sits
+  beside the automation choices it affects, and Advanced is limited to technical encoding and
+  eligibility overrides. Save/Cancel pins only after a change and remains in the document flow on
+  short landscape screens, so it no longer obscures most of the editor.
 - **The roadmap now defines optional Windows and macOS compute sidecars.** The planned
   distributed-transcoding design keeps the main container in control of scheduling and all
   replacement actions, while registered workers may receive read-only media, encode and VMAF-score

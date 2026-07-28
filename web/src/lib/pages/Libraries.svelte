@@ -9,6 +9,7 @@
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import ConfigSection from '../components/ConfigSection.svelte'
 
   let {
     embeddedEditorId = null,
@@ -1102,41 +1103,50 @@
   {/snippet}
 
 {#snippet configForm()}
-  <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_library}</h3>
-  <div class="grid gap-4 sm:grid-cols-2">
-    <div>
-      <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
-      <input id="lib-name" class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
-    </div>
-    <div>
-      <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
-      <div class="flex gap-2">
-        <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
-        <button type="button" class="btn flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
+  <ConfigSection
+    id="library-details"
+    step={1}
+    title={i18n.m.libraries.section_library}
+    description={i18n.m.libraries.section_library_intro}
+  >
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
+        <input id="lib-name" class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
+      </div>
+      <div>
+        <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
+        <div class="flex gap-2">
+          <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
+          <button type="button" class="btn flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
+        </div>
+      </div>
+      <div>
+        <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
+        <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
+          {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
+        </select>
       </div>
     </div>
-    <div>
-      <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
-      <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
-        {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
-      </select>
-    </div>
-  </div>
+  </ConfigSection>
 
-  <!-- Optimisation preset: the simple primary choice, scoped to the library's media type.
-       The compatibility→efficiency axis is a *video* decision (it picks H.264/HEVC/AV1), so a
-       Music (audio-only) library shows its audio default instead. Exact codec/container/CRF/audio
-       knobs live under Advanced options. -->
-  <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
-    <div class="flex items-center gap-2">
-      <span class="label mb-0">{i18n.m.libraries.preset_label} <InfoTip text={i18n.m.libraries.preset_tip} /></span>
-    </div>
+  <!-- Optimisation is the primary media-specific choice. Video uses the
+       compatibility→efficiency axis; Photo uses a format axis; Music exposes its codec and bitrate
+       directly. Deeper video, mixed-media, and eligibility overrides remain under Advanced. -->
+  <ConfigSection
+    id="library-optimisation"
+    step={2}
+    title={i18n.m.libraries.preset_label}
+    description={i18n.m.libraries.optimisation_intro}
+  >
 
     {#if showVideoOptions}
       <!-- items-start: the three hints differ a lot in length, and a stretched grid left the two
            shorter cards with a block of dead space under their text. -->
       <fieldset class="grid items-start gap-2 sm:grid-cols-3">
-        <legend class="sr-only">{i18n.m.libraries.processing_mode}</legend>
+        <legend class="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {i18n.m.libraries.processing_mode} <InfoTip text={i18n.m.libraries.preset_tip} />
+        </legend>
         {#each [
           { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
           { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
@@ -1264,9 +1274,43 @@
         </div>
       </div>
     {:else}
-      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        {i18n.m.libraries.music_note}
-      </p>
+      <!-- For Music, audio is the primary optimisation choice rather than an expert override.
+           Keep the codec and bitrate in the normal flow so the section never becomes a dead-end
+           explanation that requires opening Advanced to do the actual work. -->
+      <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/25">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.audio}</h3>
+        <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.music_note}</p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
+            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
+              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
+              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-audio-bitrate">{i18n.m.libraries.bitrate} <InfoTip text={i18n.m.libraries.bitrate_tip} /></label>
+            <input
+              id="lib-audio-bitrate"
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder={i18n.m.libraries.bitrate_ph}
+              bind:value={form.audioBitrateKbps}
+            />
+          </div>
+        </div>
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
+          <span>
+            {i18n.m.libraries.reencode_lossy_audio}
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              {i18n.m.libraries.reencode_lossy_audio_hint}
+            </span>
+          </span>
+        </label>
+      </div>
     {/if}
 
     {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
@@ -1287,10 +1331,9 @@
         </div>
       </div>
     {/if}
-  </div>
 
   {#if showVideoOptions && !isNoEncodeProfile}
-    <section class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+    <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
       <fieldset>
         <legend class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {i18n.m.libraries.quality_strategy}
@@ -1444,18 +1487,17 @@
       {#if vmafError}
         <p id="lib-vmaf-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">{vmafError}</p>
       {/if}
-    </section>
+    </div>
   {/if}
+  </ConfigSection>
 
-  <section class="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-900/20 sm:p-5">
-    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-      {i18n.m.settings.gates_title}
-    </h3>
-    <p class="mt-1 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-      {i18n.m.libraries.verification_intro}
-    </p>
-
-    <div class="mt-4 grid gap-4 xl:grid-cols-2">
+  <ConfigSection
+    id="library-verification"
+    step={3}
+    title={i18n.m.settings.gates_title}
+    description={i18n.m.libraries.verification_intro}
+  >
+    <div class="grid gap-4 xl:grid-cols-2">
       <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
         <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
           {i18n.m.settings.always_on}
@@ -1602,13 +1644,17 @@
         {verificationError}
       </p>
     {/if}
-  </section>
+  </ConfigSection>
 
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
-  <div class="mt-6 space-y-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700 sm:p-5">
-    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_automation}</h3>
-
+  <ConfigSection
+    id="library-automation"
+    step={4}
+    title={i18n.m.libraries.section_automation}
+    description={i18n.m.libraries.automation_intro}
+  >
+    <div class="space-y-4">
     <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />
 
     <Toggle
@@ -1637,7 +1683,36 @@
       label={i18n.m.libraries.auto_replace_label}
       hint={i18n.m.libraries.auto_replace_hint}
     />
-  </div>
+
+      <section class="border-t border-slate-200 pt-5 dark:border-slate-700">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.completed_output}</h3>
+        <p class="mt-1 mb-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
+        <Toggle
+          bind:checked={form.moveOnComplete}
+          label={i18n.m.libraries.move_label}
+          hint={i18n.m.libraries.move_hint}
+        />
+        {#if form.moveOnComplete}
+          <div class="mt-3 max-w-xl">
+            <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
+            <div class="flex gap-2">
+              <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
+              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
+            </div>
+          </div>
+          <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
+            <span>
+              {i18n.m.libraries.overwrite_label}
+              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+                {i18n.m.libraries.overwrite_hint}
+              </span>
+            </span>
+          </label>
+        {/if}
+      </section>
+    </div>
+  </ConfigSection>
 
   <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. The header and
        body form one tinted, bordered "drawer" so the Advanced zone is clearly set apart from the
@@ -1820,8 +1895,9 @@
       </section>
       {/if}
 
-      {#if showAudioOptions && !isTrackCleanupProfile}
-      <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
+      {#if showAudioOptions && showVideoOptions && !isTrackCleanupProfile}
+      <!-- AUDIO — the mixed "Other" library keeps audio-only overrides here. Music exposes the
+           same primary choice in the normal Optimisation flow above. -->
       <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio}</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.audio_desc}</p>
@@ -1990,42 +2066,16 @@
         </div>
       </section>
 
-      <!-- COMPLETED OUTPUT -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output}</h3>
-        <p class="mt-0.5 mb-3 text-xs text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
-        <Toggle
-          bind:checked={form.moveOnComplete}
-          label={i18n.m.libraries.move_label}
-          hint={i18n.m.libraries.move_hint}
-        />
-        {#if form.moveOnComplete}
-          <div class="mt-3 max-w-xl">
-            <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
-            <div class="flex gap-2">
-              <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
-              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
-            </div>
-          </div>
-          <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
-            <span>
-              {i18n.m.libraries.overwrite_label}
-              <span class="mt-0.5 block text-xs font-normal text-slate-400">
-                {i18n.m.libraries.overwrite_hint}
-              </span>
-            </span>
-          </label>
-        {/if}
-      </section>
     </div>
   {/if}
   </div>
-  <!-- Sticky, because Advanced options make this form far taller than the viewport and Save must
-       stay reachable. The negative bottom offsets cancel the scroll container's own padding
-       (p-4/sm:p-6/lg:p-8) so the pinned bar meets the bottom of the viewport, rather than leaving a
-       strip of the form scrolling visibly beneath it. -->
-  <div class="sticky -bottom-4 -mx-5 mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:-bottom-6 sm:-mx-6 sm:px-6 lg:-bottom-8 dark:border-slate-700 dark:bg-slate-900">
+  <!-- Actions stay in the document flow until there is something to save. A dirty form pins them
+       on normal-height screens; short landscape viewports deliberately keep them static so the
+       action bar cannot consume most of the editor. -->
+  <div
+    data-library-actions
+    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} z-10 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-6"
+  >
     <button class="btn btn-primary" onclick={save} disabled={!canSave}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
@@ -2050,7 +2100,7 @@
   {/if}
 
   {#if activeTab === 'rules' || editingId === 0}
-    <div class="card p-5 sm:p-6">
+    <div class="space-y-4">
       {@render configForm()}
     </div>
   {:else if activeTab === 'candidates'}
@@ -2173,3 +2223,12 @@
     </button>
   </EmptyState>
 {/if}
+
+<style>
+  @media (min-height: 501px) {
+    .library-action-bar-dirty {
+      position: sticky;
+      bottom: 0;
+    }
+  }
+</style>

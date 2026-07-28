@@ -43,14 +43,20 @@ Do this:
 
 1. Go to **Libraries**.
 2. Add a library or click **Configure** on an existing one.
-3. Use a path as the container sees it, usually below `/data`.
-4. Pick the media type.
-5. Pick a preset.
-6. Choose a perceptual-quality (VMAF) policy for video libraries. Leave it **Off**, select a named
+3. In **Library**, use a path as the container sees it, usually below `/data`, and pick the media
+   type.
+4. In **Optimisation**, choose the processing mode and primary preset or format. A Music library
+   shows its codec and bitrate here instead.
+5. In **Verification gates**, review only the safety and quality checks that apply to this media
+   type.
+6. For video, choose a perceptual-quality (VMAF) policy. Leave it **Off**, select a named
    tier, or use **Custom** for all three quality floors, clip/full-file scoring, and frame sampling.
-7. Leave advanced options closed unless you already know what you need.
+7. In **Automation & completion**, choose whether the library runs automatically and what happens
+   after verification.
+8. Leave **Advanced options** closed unless you need technical codec, quality, or eligibility
+   overrides.
 
-![Library configuration panel showing path, media type, preset slider, automation window, auto-replace, and advanced options](../images/optimisarr-library-configure-dark.png)
+![Dark library configuration view showing the numbered Library and Optimisation sections, processing modes, and preset slider](../images/optimisarr-library-configure-dark.png)
 
 Preset guide:
 

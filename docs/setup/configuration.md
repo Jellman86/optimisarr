@@ -111,6 +111,12 @@ override the standard values unless supplying a complete, tested replacement too
 
 ## Per-library verification gates
 
+The configuration page uses the same four-stage flow for every media type:
+**Library → Optimisation → Verification gates → Automation & completion**. Music exposes its output
+codec and bitrate in **Optimisation** because those are its primary choices. **Advanced options**
+contains technical encoding and eligibility overrides; completed-output routing remains in the
+normal **Automation & completion** flow.
+
 Every job must pass decode health, output readability, and the media-kind checks
 that apply to it. Video jobs also have an always-on structural comparison: the output codec must
 match the resolved target (or the source for a remux), resolution must not change without a resize

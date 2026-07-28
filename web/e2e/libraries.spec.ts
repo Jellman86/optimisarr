@@ -29,7 +29,7 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/libraries') return json(route, [configuredLibrary])
     if (path === '/api/library-options') return json(route, {
-      mediaTypes: ['Film', 'Music', 'Photo'],
+      mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
       ruleProfileSpecs: [
         { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20 },
@@ -123,6 +123,37 @@ test('verification policy follows the selected library media type', async ({ pag
   await expect(page.getByRole('checkbox', { name: 'Preserve image EXIF/ICC metadata' })).toBeVisible()
 })
 
+test('library configuration follows one logical section flow for every media type', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const sections = page.locator('[data-config-section]')
+  await expect(sections).toHaveCount(4)
+  await expect(sections.getByRole('heading', { level: 2 })).toHaveText([
+    'Library',
+    'Optimisation',
+    'Verification gates',
+    'Automation & completion',
+  ])
+
+  // Completion behaviour is part of the normal workflow, not a codec override hidden in Advanced.
+  await expect(sections.nth(3).getByRole('checkbox', { name: /Move output to a target folder/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Advanced options/ })).toHaveAttribute('aria-expanded', 'false')
+
+  // Audio is the primary optimisation choice for Music and must not be buried in Advanced.
+  await page.getByLabel('Media type').selectOption('Music')
+  await expect(sections.nth(1).getByLabel('Target codec')).toBeVisible()
+  await expect(sections.nth(1).getByLabel('Bitrate (kbps)')).toBeVisible()
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+  await expect(page.getByLabel('Target codec')).toHaveCount(1)
+
+  await page.getByLabel('Media type').selectOption('Photo')
+  await expect(sections.nth(1).getByLabel('Image compatibility to efficiency')).toBeVisible()
+
+  await page.getByLabel('Media type').selectOption('Other')
+  await expect(sections.nth(1).getByRole('group', { name: 'Processing mode' })).toBeVisible()
+})
+
 test('optional verification thresholds use progressive disclosure', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')
@@ -145,6 +176,17 @@ test('library editor fits a narrow viewport without horizontal overflow', async 
     clientWidth: main.clientWidth,
   }))
   expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
+})
+
+test('library actions do not obscure the editor in a short landscape viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 375 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  await page.getByLabel('Name').fill('Films archive')
+
+  const actionBar = page.locator('[data-library-actions]')
+  await expect(actionBar).toHaveCSS('position', 'static')
+  await expect(page.getByLabel('Name')).toBeInViewport()
 })
 
 test('invalid subtitle language syntax cannot be saved', async ({ page }) => {
