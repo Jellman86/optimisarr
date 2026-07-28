@@ -24,6 +24,24 @@ Ground every claim in the current repository:
 Do not invent capabilities, settings, guarantees, support promises, or future
 dates. Mark unverified assumptions explicitly or remove them.
 
+## Roadmap, changelog, issue, and pull request boundaries
+
+Keep the project records distinct:
+
+- [`roadmap.md`](roadmap.md) contains prioritised future user/operator outcomes,
+  their dependencies, and the evidence needed to consider them complete. It
+  contains no promised dates and never describes planned work as available.
+- [`../CHANGELOG.md`](../CHANGELOG.md) records implemented user- or
+  operator-relevant changes under **Unreleased** until release.
+- GitHub issues hold actionable scope, acceptance criteria, reproduction
+  evidence, and current discussion. Link a roadmap outcome to an issue when it
+  becomes concrete enough to implement.
+- Pull requests deliver one reviewable behaviour change or tightly related
+  maintenance slice into `dev`, with actual verification and material risk
+  recorded. Release pull requests alone promote reviewed `dev` state to `main`.
+- Durable architecture or safety decisions belong in the relevant maintained
+  design documentation, not only in an issue or pull request conversation.
+
 ## Information architecture
 
 Use this structure:

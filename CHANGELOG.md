@@ -4,6 +4,14 @@
 
 ### Added
 
+- **Pull requests and roadmap work now have an explicit delivery contract.**
+  Everyday changes use short-lived branches and reviewed pull requests into
+  `dev`, while release pull requests alone target `main`. The roadmap records
+  prioritised outcomes and evidence gates; issues retain actionable discussion,
+  and pull requests retain the verified delivery slice.
+- **CI now scans the repository's full history for committed secrets.** Gitleaks
+  runs on pull requests, pushes to `dev` and `main`, a weekly schedule, and
+  manual dispatch with read-only repository permissions.
 - **Verification policy now belongs to each library.** Duration, stream-retention, size, audio
   fidelity, image-quality, metadata, and existing VMAF gates are grouped in the library editor and
   shown only when they apply to that media type. General Settings is reduced to queue/hardware and

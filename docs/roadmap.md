@@ -4,6 +4,19 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
+## How to use this roadmap
+
+- Entries are ordered by product and safety dependency, not by promised date.
+- Each entry describes an outcome and the evidence needed to call it complete;
+  a priority is not a release promise.
+- GitHub issues hold implementation-ready scope, acceptance criteria, and
+  discussion. Short-lived pull requests deliver reviewable slices into `dev`.
+- Implemented user/operator behaviour moves to `CHANGELOG.md`; detailed
+  engineering history belongs in
+  [`engineering/history.md`](engineering/history.md).
+- Code and tests remain the source of truth. Never present roadmap work as
+  shipped until the repository proves it.
+
 ## Up next (priority order, updated 2026-07-26)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
