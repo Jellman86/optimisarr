@@ -101,6 +101,20 @@ test('adaptive quality path enables a concrete VMAF target and remains exclusive
   await expect(page.getByText(/Extra work before every full encode/)).toBeVisible()
 })
 
+test("Scott's preset mirrors the current tone-map and AAC stereo bundle", async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  await page.getByRole('slider', { name: 'Compatibility to efficiency' }).fill('3')
+  await expect(page.getByText(/Scott's Settings — HEVC/)).toBeVisible()
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+
+  await expect(page.locator('#lib-hdr')).toHaveValue('TonemapToSdr')
+  await expect(page.locator('#lib-video-audio-codec')).toHaveValue('aac')
+  await expect(page.locator('#lib-video-audio-bitrate')).toHaveValue('96')
+  await expect(page.getByRole('checkbox', { name: /Downmix surround to stereo/ })).toBeChecked()
+})
+
 test('verification policy follows the selected library media type', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')

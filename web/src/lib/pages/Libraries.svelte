@@ -493,7 +493,7 @@
       form.videoAudioCodec = 'aac'
       form.videoAudioBitrateKbps = 96
       form.downmixToStereo = true
-      form.hdrHandling = 'Preserve'
+      form.hdrHandling = 'TonemapToSdr'
     }
   }
 

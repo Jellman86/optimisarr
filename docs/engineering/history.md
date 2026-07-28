@@ -194,8 +194,9 @@ the codec it resolves to, and the "Selects: …" detail (codec/container/CRF) pl
 codecs are driven by the backend's `RuleProfileDefaults` (served via `/api/library-options`) rather
 than a hard-coded UI map, so the slider can never drift from what the server actually does. A first
 extra preset position is shipped — **"Scott's Settings"** (`RuleProfile.ScottsSettings`): HEVC/MP4
-with HDR preserved and audio re-encoded to AAC 96 kbps stereo. Adding further positions remains
-optional future work.
+with HDR tone-mapped to SDR and audio re-encoded to AAC 96 kbps stereo. The global tone-map engine
+setting chooses compatible software or supported hardware. Adding further positions remains optional
+future work.
 
 **Re-encode oversized same-codec files: done.** A per-library option re-encodes files already in
 the target codec when they exceed a configurable size (default 20 GB), to shrink large same-codec

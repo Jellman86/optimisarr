@@ -41,7 +41,7 @@ internal static class LibraryRuleResolution
         {
             overrides = overrides with
             {
-                Hdr = HdrHandling.Preserve,
+                Hdr = HdrHandling.TonemapToSdr,
                 VideoAudioCodec = "aac",
                 VideoAudioBitrateKbps = 96,
                 DownmixToStereo = true

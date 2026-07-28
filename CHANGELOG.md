@@ -59,6 +59,11 @@
 
 ### Changed
 
+- **Scott's Settings now matches the current reference encoding bundle.** The preset still targets
+  HEVC/MP4 at CRF 24 with AAC 96 kbps stereo, but now tone-maps HDR to SDR instead of preserving it.
+  The global tone-map setting continues to choose compatible software or supported hardware.
+  Verification gates, automation, and per-library same-codec size thresholds remain independent
+  library policy and are not silently changed when the encoding preset is selected.
 - **Library configuration now follows one consistent four-stage flow.** Film/TV, Music, Photo, and
   mixed libraries use the same numbered **Library → Optimisation → Verification gates → Automation
   & completion** sections instead of one long card with unrelated dividers. Music exposes its
