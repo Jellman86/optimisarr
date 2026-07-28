@@ -20,6 +20,23 @@ Add focused tests for changed behaviour, add an EF migration for every schema
 change, update `CHANGELOG.md`, and update documentation where behaviour or
 configuration changes.
 
+## Branches and pull requests
+
+Start from current `dev` and create a short-lived branch for one reviewable
+behaviour change or tightly related maintenance slice. Open the pull request
+into `dev`; release pull requests alone target `main`.
+
+Use the repository pull request template to record:
+
+- the useful outcome and exact included/excluded scope;
+- focused and full verification commands with their real results;
+- original-file, replacement, migration, security, or operational risks;
+- recovery or deployment evidence when the change needs it.
+
+Keep required checks green and resolve blocking review conversations before
+merge. A pull request is delivery evidence, not a substitute for tests or a
+place to accumulate unrelated roadmap work.
+
 ## Documentation
 
 Follow the [documentation standard](docs/documentation-standard.md). In short,
