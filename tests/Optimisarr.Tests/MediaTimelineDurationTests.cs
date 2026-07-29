@@ -1,13 +1,15 @@
-using Optimisarr.Api.Queue;
+using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 
 namespace Optimisarr.Tests;
 
-public sealed class AdaptiveQualityDurationTests
+public sealed class MediaTimelineDurationTests
 {
     [Fact]
     public void Primary_picture_duration_wins_when_subtitles_extend_the_container()
     {
-        var duration = AdaptiveQualityDuration.Resolve(
+        var duration = MediaTimelineDuration.Resolve(
+            MediaKind.Video,
             videoDurationSeconds: 1_405.321,
             containerDurationSeconds: 3_896.275);
 
@@ -26,6 +28,20 @@ public sealed class AdaptiveQualityDurationTests
     {
         Assert.Equal(
             expected,
-            AdaptiveQualityDuration.Resolve(videoDurationSeconds, containerDurationSeconds));
+            MediaTimelineDuration.Resolve(
+                MediaKind.Video,
+                videoDurationSeconds,
+                containerDurationSeconds));
+    }
+
+    [Fact]
+    public void Audio_uses_its_container_timeline_even_if_a_picture_duration_is_supplied()
+    {
+        Assert.Equal(
+            180.5,
+            MediaTimelineDuration.Resolve(
+                MediaKind.Audio,
+                videoDurationSeconds: 120,
+                containerDurationSeconds: 180.5));
     }
 }

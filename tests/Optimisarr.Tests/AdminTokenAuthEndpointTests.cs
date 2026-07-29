@@ -13,6 +13,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Security;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
 using Optimisarr.Data;
 
@@ -381,6 +382,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
             var jobs = db.Jobs.Where(job => job.CalibrationSessionId == sessionId).ToList();
+            Assert.Equal(300, db.MediaFiles.Single(file => file.Id == mediaFileId).DurationSeconds);
             Assert.Equal(12, jobs.Count);
             Assert.Equal(
                 [20, 24, 30],
@@ -393,6 +395,9 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                     RuleProfile.ScottsSettings
                 ],
                 jobs.Select(job => job.RequestedRuleProfile!.Value).Distinct().Order().ToArray());
+            Assert.Equal(
+                [24, 144, 264],
+                jobs.Select(job => job.CalibrationClipStartSeconds!.Value).Distinct().Order().ToArray());
             Assert.All(jobs, job =>
             {
                 Assert.Equal(JobType.Calibration, job.Type);
@@ -862,13 +867,48 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 {
                     services.Remove(randomizer);
                 }
+                foreach (var probe in services
+                    .Where(service => service.ServiceType == typeof(IMediaProbeService))
+                    .ToList())
+                {
+                    services.Remove(probe);
+                }
                 services.AddSingleton<ICalibrationRandomizer, FixedCalibrationRandomizer>();
+                services.AddSingleton<IMediaProbeService, CalibrationMediaProbe>();
             });
         }
 
         private sealed class FixedCalibrationRandomizer : ICalibrationRandomizer
         {
             public int Next(int exclusiveMaximum) => 0;
+        }
+
+        private sealed class CalibrationMediaProbe : IMediaProbeService
+        {
+            public Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken)
+            {
+                var tenBit = Path.GetFileName(path).Contains("ten-bit", StringComparison.Ordinal);
+                return Task.FromResult(MediaProbeService.Parse($$"""
+                    {
+                      "streams": [
+                        {
+                          "codec_type": "video",
+                          "codec_name": "{{(tenBit ? "hevc" : "h264")}}",
+                          "width": 1920,
+                          "height": 1080,
+                          "pix_fmt": "{{(tenBit ? "yuv420p10le" : "yuv420p")}}",
+                          "bits_per_raw_sample": "{{(tenBit ? "10" : "8")}}",
+                          "tags": { "DURATION": "00:05:00.000000000" }
+                        },
+                        { "codec_type": "audio", "codec_name": "aac" }
+                      ],
+                      "format": {
+                        "format_name": "matroska,webm",
+                        "duration": "1200.000000"
+                      }
+                    }
+                    """, Path.GetExtension(path)));
+            }
         }
 
         protected override void Dispose(bool disposing)

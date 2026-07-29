@@ -56,7 +56,12 @@ public sealed record MediaProbeResult(
 /// Inspects media files with ffprobe using machine-readable JSON output.
 /// ffprobe is invoked through an explicit argument list, never a shell string.
 /// </summary>
-public sealed class MediaProbeService
+public interface IMediaProbeService
+{
+    Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken);
+}
+
+public sealed class MediaProbeService : IMediaProbeService
 {
     private readonly string _ffprobe;
 

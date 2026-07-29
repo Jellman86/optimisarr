@@ -160,7 +160,10 @@ mark the report as segment-only. The original player opens at that exact source
 window while the encoded player opens at zero; **Play both** and either player's
 native play, pause, seek, or playback-rate control keep the two source-relative
 positions synchronized. You can use each native fullscreen control or download
-either exact file for closer inspection. Audio and image previews run in full.
+either exact file for closer inspection. The midpoint follows the freshly measured
+primary-picture duration rather than subtitle or attachment timing. A bounded
+coarse seek plus exact trim keeps copied audio/subtitles on the same clock as the
+re-encoded picture. Audio and image previews run in full.
 A preview does not prove every file will pass, but it quickly catches bad
 presets, audio choices, HDR handling, or quality thresholds.
 

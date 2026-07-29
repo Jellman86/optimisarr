@@ -40,6 +40,13 @@
 
 ### Fixed
 
+- **Preview and Personal quality video clips now keep copied audio on the exact picture timeline.**
+  A bounded coarse seek still avoids decoding from the beginning of a long source, followed by an
+  exact output seek that trims re-encoded video and copied audio/subtitles to the same requested
+  instant. Long-GOP sources therefore no longer produce multi-second A/V offsets or inflated sample
+  durations. Preview and Personal quality sample placement now freshly prefers the primary video
+  duration, and newly probed inventory records use that same playable timeline, so subtitles or
+  ancillary streams cannot move a middle or late sample beyond picture EOF.
 - **Translated setup now stays accessible inside the complete library editor.** The active locale
   updates the document language for assistive technology, media-type names are translated without
   changing the stable API values saved for each library, and compact Browse, Save, Cancel, and
