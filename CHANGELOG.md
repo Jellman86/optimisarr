@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.10 — 2026-07-29
+
 ### Fixed
 
 - **Personal quality checks no longer run an adaptive VMAF search inside every
