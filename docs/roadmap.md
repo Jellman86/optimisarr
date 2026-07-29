@@ -174,7 +174,8 @@ the replacement workflow is trustworthy.
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
-     applied choices, and the Settings header offers **Run setup again** without deleting configuration.
+     applied choices, and **Settings → Backup → First-run setup** offers **Run setup again** without
+     deleting configuration.
      Connections remain explicitly skipped on the final review and can be added later, so an optional
      provider can never block first use.
    - **Five stable, task-oriented steps: done.** One heading and primary action drive:

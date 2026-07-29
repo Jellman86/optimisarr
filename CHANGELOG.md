@@ -89,6 +89,13 @@
 
 ### Changed
 
+- **Global Settings now follows the same guided structure as each library.**
+  Numbered, task-oriented sections give General, Connections, Notifications,
+  Tools, and Backup a consistent reading order, while the first-run setup
+  action now lives with backup and restore controls. Settings tabs expose
+  standard keyboard navigation, mobile actions meet touch-target guidance, and
+  long tool paths, statuses, and encoder names wrap inside the viewport instead
+  of overflowing narrow or landscape layouts.
 - **Scott's Settings now matches the current reference encoding bundle.** The preset still targets
   HEVC/MP4 at CRF 24 with AAC 96 kbps stereo, but now tone-maps HDR to SDR instead of preserving it.
   The global tone-map setting continues to choose compatible software or supported hardware.
