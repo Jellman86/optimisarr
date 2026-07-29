@@ -54,11 +54,19 @@ function looksLikeEnglishProse(value) {
 const english = flatten(readLocale('en'))
 const failures = []
 
+for (const [key, source] of Object.entries(english)) {
+  if (source.trim().length === 0) failures.push(`en.${key}: blank source string`)
+}
+
 for (const localeName of localeNames) {
   const locale = flatten(readLocale(localeName))
   for (const [key, source] of Object.entries(english)) {
+    if (typeof locale[key] !== 'string' || locale[key].trim().length === 0) {
+      failures.push(`${localeName}.${key}: missing or blank translation`)
+      continue
+    }
     const expected = placeholders(source)
-    const actual = placeholders(locale[key] ?? '')
+    const actual = placeholders(locale[key])
     if (expected.join('\0') !== actual.join('\0')) {
       failures.push(`${localeName}.${key}: expected [${expected}], found [${actual}]`)
     }
@@ -73,4 +81,4 @@ if (failures.length > 0) {
   process.exit(1)
 }
 
-console.log(`Locale placeholder and untranslated-prose audit passed for ${localeNames.length} translation(s).`)
+console.log(`Locale completeness, placeholder, blank-string, and untranslated-prose audit passed for ${localeNames.length} translation(s).`)

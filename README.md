@@ -70,9 +70,9 @@ no support SLA or promise of a release schedule.
   opt-in **auto-replace** promotes only fully verified jobs, still quarantining
   the original first so rollback remains available.
 - **Optimisation presets** per library (Compatibility H.264 / Balanced HEVC /
-  Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR preserved and
-  AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
-  target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
+  Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR tone-mapped
+  to SDR and AAC 96 kbps audio downmixed to stereo. Optionally **re-encode oversized files already
+  in the target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
   is limited to proven 8-bit sources; higher or unknown bit depths are left untouched with guidance
   to use HEVC or AV1 instead.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
@@ -196,9 +196,9 @@ but a reverse proxy remains the recommended public-access boundary.
 
 Transcoding runs through a bundled **jellyfin-ffmpeg**, which includes FFmpeg support for NVENC and
 VA-API plus the Intel iHD/oneVPL userspace stack. The host must still provide a compatible kernel
-driver, device mapping, permissions, and (for NVIDIA) container runtime. The encoder is picked by the
-global **encoder mode** (Settings → Auto by default); the **Tools** page shows what each GPU
-actually supports
+driver, device mapping, permissions, and (for NVIDIA) container runtime. The encoder is picked by
+**Settings → General → Queue → Encoder mode** (Auto by default); **Settings → Tools** shows what
+each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
 with `libvmaf`; the Tools page reports that optional capability independently. An optional
@@ -222,9 +222,9 @@ configured quality; combined size and VMAF failures do the same because the safe
 conflict. The report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
-(Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the
-encoder supports it. If the GPU can't decode a particular source, the job automatically retries with software
-decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
+(**Settings → General → Queue → Hardware decoding**, on by default), so transcode frames stay
+on-device where the encoder supports it. If the GPU can't decode a particular source, the job
+automatically retries with software decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
 runs — GPU stats are read **without any elevated privileges** (per-process DRM fdinfo for
 Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is
 needed**; hosts where no unprivileged source applies simply show "GPU stats unavailable".

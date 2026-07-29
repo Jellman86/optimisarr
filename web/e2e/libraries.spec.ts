@@ -192,6 +192,34 @@ test('library editor fits a narrow viewport without horizontal overflow', async 
   expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
 })
 
+test('long translated information tooltips stay readable in short landscape layouts', async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 375 })
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
+  await page.addInitScript(() => {
+    localStorage.setItem('optimisarr:locale', 'de')
+  })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  await page.locator('html').evaluate((element) => {
+    element.style.fontSize = '125%'
+  })
+  await page.locator('main button[aria-expanded]').click()
+
+  const tooltips = page.locator('main [role="tooltip"]')
+  expect(await tooltips.count()).toBeGreaterThan(10)
+  for (const tooltip of await tooltips.all()) {
+    const button = tooltip.locator('xpath=preceding-sibling::button[1]')
+    await button.focus()
+    await expect(tooltip).toBeVisible()
+    const bounds = await tooltip.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.y).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(812)
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(375)
+  }
+})
+
 test('library actions do not obscure the editor in a short landscape viewport', async ({ page }) => {
   await page.setViewportSize({ width: 812, height: 375 })
   await mockLibraries(page)

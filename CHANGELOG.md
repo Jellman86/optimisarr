@@ -40,6 +40,14 @@
 
 ### Fixed
 
+- **Information tooltips now stay translated and readable.** Switch help buttons
+  no longer announce a hard-coded English “About” label in other languages, and
+  every tooltip is programmatically associated with its button. Long translated
+  help remains inside short phone and landscape viewports with a scrollable
+  reading area, while the locale audit now rejects blank source or translated
+  strings. Reviewed help text also distinguishes full-file VMAF cost from its
+  cheaper sampling options and reflects the selectable software or supported
+  hardware HDR tone-map engine.
 - **VMAF now compares the same decoded picture across container timestamp origins.** Before
   cadence normalisation, each decoded input is rebased to zero; FFmpeg's `fps(start_time=0)` can no
   longer pad an MP4 candidate while leaving its Matroska reference untouched and accidentally score
