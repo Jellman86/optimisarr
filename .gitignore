@@ -3,6 +3,8 @@
 **/.vs/
 **/.vscode/
 **/TestResults/
+**/__pycache__/
+*.py[cod]
 web/node_modules/
 web/test-results/
 web/playwright-report/

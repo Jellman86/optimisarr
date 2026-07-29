@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Release metadata can no longer silently drift between `main` and `dev`.**
+  CI now keeps the application, generated OpenAPI contract, changelog state, and
+  newest release tag aligned. The release flow explicitly synchronises released
+  metadata back to `dev`, restores this `Unreleased` section, and verifies the
+  rebuilt `dev` image before a release is considered complete.
+
 ## 0.2.9 — 2026-07-29
 
 ### Added
