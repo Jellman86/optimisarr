@@ -59,7 +59,9 @@
   primary audio to materially outlast the picture before reporting an incomplete source video.
 - **Adaptive per-title quality now measures every planned VMAF window.** Removing one completed
   sample no longer prunes the shared scratch directory needed by the next early, middle, or late
-  sample, so adaptive mode selects a proved per-title encoder value instead of silently falling back
+  sample. Sample positions also follow the primary picture duration rather than a container timeline
+  that subtitles or ancillary tracks may extend, so a middle or late seek cannot land beyond video
+  EOF. Adaptive mode now selects a proved per-title encoder value instead of silently falling back
   to the library value after its first measurement.
 - **Intel QSV previews now compare the same source frames.** Short disposable video previews and
   personal-quality clips keep hardware encoding but use software source decoding, avoiding the
