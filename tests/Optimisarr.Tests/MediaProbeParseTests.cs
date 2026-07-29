@@ -224,6 +224,55 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_reads_real_world_matroska_episode_duration_tag()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "h264",
+              "time_base": "1/1000",
+              "tags": { "DURATION": "00:23:25.321000000" }
+            },
+            {
+              "codec_type": "subtitle",
+              "duration": "3819.431000",
+              "tags": { "DURATION": "01:03:37.263000000" }
+            }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "3819.431000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(1_405.321, result.VideoDurationSeconds);
+        Assert.Equal(3_819.431, result.DurationSeconds);
+    }
+
+    [Fact]
+    public void Parse_reads_matroska_stream_duration_beyond_one_day()
+    {
+        const string json = """
+        {
+          "streams": [
+            {
+              "codec_type": "video",
+              "codec_name": "h264",
+              "tags": { "DURATION": "27:01:02.123456789" }
+            }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "97262.5" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(97_262.123456789, result.VideoDurationSeconds);
+    }
+
+    [Fact]
     public void Parse_reads_the_audio_bitrate_from_the_stream()
     {
         const string json = """
