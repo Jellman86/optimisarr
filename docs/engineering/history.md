@@ -13,7 +13,10 @@ video, and the final choice is the smallest actually encoded passing sample rath
 CRF/CQ/ICQ/QP-to-size mapping. The chosen value is job-bound for safe crash and quality-retry
 recovery; it is never shared across titles. The complete output still runs every structural, decode,
 duration, tail, stream, size, and configured VMAF gate before replacement. Cross-family evidence
-remains required before the experimental label can be removed.
+remains required before the experimental label can be removed. Live QSV validation additionally
+proved that each sample must be deleted without pruning the shared candidate workspace: the search
+now retains that directory through every planned window and removes it as one unit when preparation
+ends.
 
 **Recently shipped (2026-07-25) — repeatable NVENC profile evidence.** The `dev` image includes a
 guided NVIDIA quality-comparison harness created for issue #37. It prepares a dedicated folder under

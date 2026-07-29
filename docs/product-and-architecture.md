@@ -313,9 +313,10 @@ Before replacement, all required checks must pass:
 - Output exists and is non-empty.
 - ffprobe can parse it.
 - FFmpeg full decode returns success.
-- Duration delta is within tolerance.
-- The source picture stream reaches its declared container timeline; source corruption is reported
-  separately from an output-tail failure.
+- The source and output primary-picture spans are within the configured duration tolerance.
+- The source picture reaches its primary-audio timeline; source corruption is reported separately
+  from an output-tail failure, while subtitles, chapters, and attachments are never treated as
+  programme duration.
 - The output picture stream reaches the source picture stream's actual endpoint.
 - Required video stream exists.
 - Required audio streams are present or intentionally converted.
@@ -328,10 +329,10 @@ long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
 segment-only and maps both native players onto that exact source-relative window.
-Clipped-video duration uses the measured primary-picture span so a copied subtitle
-or attached picture cannot extend the container and create a false failure; full
-queue jobs always verify against the complete original and retain the strict
-container-duration check.
+Every video path uses the measured primary-picture span, so a copied subtitle or attached picture
+cannot extend the container and create a false failure. Full queue jobs still scan the complete
+source and output picture timelines, and independently compare the source picture against primary
+audio to catch a genuinely incomplete source without trusting ancillary-track duration.
 Sampled VMAF places the independently encoded source and output on the source's measured frame
 cadence before trimming each window, preventing differing FFmpeg timebases from pairing adjacent
 frames at motion or scene changes.

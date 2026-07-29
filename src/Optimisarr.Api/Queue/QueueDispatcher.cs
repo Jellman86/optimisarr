@@ -1375,7 +1375,7 @@ public sealed class QueueDispatcher(
             }
 
             results.Add(result);
-            DeleteWorkOutput(outputPath);
+            AdaptiveQualityScratch.DeleteSample(outputPath);
         }
 
         var combined = QualityScoreAggregator.Combine(

@@ -58,6 +58,10 @@ public sealed record VerificationInput(
     double? OutputLastPresentationSeconds = null,
     bool OriginalTimestampsMeasured = false,
     double? OriginalLastPresentationSeconds = null,
+    // The primary audio endpoint provides the meaningful comparison for detecting a source whose
+    // picture genuinely ends early. Container duration is excluded because subtitles, chapters,
+    // and attachments may legitimately continue beyond the programme.
+    double? OriginalAudioLastPresentationSeconds = null,
     MediaKind Kind = MediaKind.Video,
     bool AudioReencoded = false,
     bool AudioDownmixed = false,
