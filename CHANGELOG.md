@@ -40,6 +40,12 @@
 
 ### Fixed
 
+- **VMAF now compares the same decoded picture across container timestamp origins.** Before
+  cadence normalisation, each decoded input is rebased to zero; FFmpeg's `fps(start_time=0)` can no
+  longer pad an MP4 candidate while leaving its Matroska reference untouched and accidentally score
+  adjacent frames. This corrects false low VMAF results seen with otherwise frame-aligned QSV
+  H.264/HEVC Personal quality samples and applies to Preview, adaptive sampling, and normal VMAF
+  verification through their shared scorer.
 - **Preview and Personal quality video clips now keep copied audio on the exact picture timeline.**
   A bounded coarse seek still avoids decoding from the beginning of a long source, followed by an
   exact output seek that trims re-encoded video and copied audio/subtitles to the same requested

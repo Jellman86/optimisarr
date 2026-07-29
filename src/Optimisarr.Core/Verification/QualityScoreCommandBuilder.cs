@@ -255,18 +255,21 @@ public static class QualityScoreCommandBuilder
         int? windowDurationSeconds,
         double? referenceFrameRate)
     {
-        // ffprobe frequently reports a millisecond source timebase while the encode uses an exact
-        // codec clock (for example 1/1000 versus 1/24000). Trimming those timelines directly can
-        // choose adjacent pictures and collapse VMAF at motion or scene changes. Resample both
-        // decoded inputs onto the source cadence first; start_time=0 gives each pre-rolled input
-        // the same frame grid without guessing or accepting the best of several quality scores.
+        // FFmpeg's fps(start_time=0) pads or trims from each input's existing first PTS. MP4 and
+        // Matroska can expose the same first picture at different non-zero PTS values, so applying
+        // fps before resetting the origins can manufacture a one-frame VMAF misalignment. Rebase
+        // each decoded input first, then resample both onto the source cadence and trim matching
+        // pre-roll. The final reset leaves libvmaf with two zero-based timelines.
+        const string origin = "settb=AVTB,setpts=PTS-STARTPTS";
         var cadence = referenceFrameRate is { } frameRate
             ? $"fps=fps={frameRate.ToString("G17", CultureInfo.InvariantCulture)}:start_time=0,"
             : string.Empty;
         var alignment = windowStartSeconds is { } start && windowDurationSeconds is > 0
             ? $"trim=start={start - (inputStartSeconds ?? 0)}:duration={windowDurationSeconds.Value},"
             : string.Empty;
-        return $"{cadence}{alignment}settb=AVTB,setpts=PTS-STARTPTS";
+        return cadence.Length == 0 && alignment.Length == 0
+            ? origin
+            : $"{origin},{cadence}{alignment}{origin}";
     }
 
     private static string DescribePreprocessing(
