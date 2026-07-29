@@ -336,9 +336,10 @@ Every video path uses the measured primary-picture span, so a copied subtitle or
 cannot extend the container and create a false failure. Full queue jobs still scan the complete
 source and output picture timelines, and independently compare the source picture against primary
 audio to catch a genuinely incomplete source without trusting ancillary-track duration.
-Sampled VMAF places the independently encoded source and output on the source's measured frame
-cadence before trimming each window, preventing differing FFmpeg timebases from pairing adjacent
-frames at motion or scene changes.
+VMAF first rebases each independently decoded source and output to its own first picture, then places
+both on the source's measured frame cadence before trimming each window. Resetting the origins before
+FFmpeg's cadence filter prevents differing MP4/Matroska start timestamps or timebases from padding
+only one input and pairing adjacent frames at motion or scene changes.
 
 Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
 complete output contract of each library-slider preset, including codec, container, and audio rules.

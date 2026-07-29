@@ -158,6 +158,25 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Equal("120", ValueAfter(args, "-t", occurrence: 1));
     }
 
+    [Fact]
+    public void Cadence_alignment_rebases_each_decoded_timeline_before_fps_rounding()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceStartSeconds: 39,
+                ReferenceFrameRate: 25),
+            threads: 4);
+
+        // MP4 and Matroska may expose the same first picture at different non-zero PTS values.
+        // fps(start_time=0) pads or trims from those PTS values, so rebase both decoded streams
+        // first or the scorer can compare adjacent frames even when the clips are correctly cut.
+        const string orderedTimeline =
+            "settb=AVTB,setpts=PTS-STARTPTS,fps=fps=25:start_time=0";
+        Assert.Equal(2, command.FilterGraph.Split(orderedTimeline).Length - 1);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-23.976)]
