@@ -220,6 +220,12 @@ the repo's package settings if anonymous `docker pull` is expected.
   branch to one reviewable behaviour change or tightly related maintenance slice.
 - Open a pull request into `dev`. Release pull requests alone target `main`;
   release tags are created from the reviewed release state.
+- **A release is not complete when the tag is published.** After the exact tag's
+  CI and image publication pass, synchronise its released version, changelog,
+  and generated OpenAPI metadata back to `dev` through a short-lived pull
+  request; restore a fresh `## Unreleased` changelog section; and verify the
+  rebuilt `:dev` image reports the released application version. Follow
+  [`docs/development/releasing.md`](docs/development/releasing.md).
 - Pull requests state the outcome, included and excluded scope, verification
   results, and material safety or migration risk. Do not merge while a required
   check is failing or a blocking review conversation is unresolved.

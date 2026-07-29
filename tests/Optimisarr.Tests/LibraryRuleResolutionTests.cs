@@ -111,4 +111,42 @@ public sealed class LibraryRuleResolutionTests
         Assert.True(rules.DownmixToStereo);
         Assert.Equal(HdrHandling.TonemapToSdr, rules.Hdr);
     }
+
+    [Theory]
+    [InlineData(RuleProfile.ConservativeHevc, "hevc", "mp4", 24, HdrHandling.Exclude, "aac", 160, false)]
+    [InlineData(RuleProfile.ExperimentalAv1, "av1", "mkv", 30, HdrHandling.Preserve, null, 160, false)]
+    [InlineData(RuleProfile.CompatibilityH264, "h264", "mp4", 20, HdrHandling.Exclude, "aac", 160, false)]
+    public void Calibration_preset_uses_its_complete_bundle_instead_of_stored_scotts_overrides(
+        RuleProfile profile,
+        string codec,
+        string container,
+        int quality,
+        HdrHandling hdr,
+        string? audioCodec,
+        int audioBitrateKbps,
+        bool downmixToStereo)
+    {
+        var library = new Library
+        {
+            Name = "Films",
+            Path = "/data/films",
+            RuleProfile = RuleProfile.ScottsSettings,
+            TargetVideoCodec = "hevc",
+            TargetContainer = "mp4",
+            HdrHandling = HdrHandling.TonemapToSdr,
+            VideoAudioCodec = "aac",
+            VideoAudioBitrateKbps = 96,
+            DownmixToStereo = true
+        };
+
+        var rules = LibraryRuleResolution.ResolveVideoPreset(library, profile);
+
+        Assert.Equal(codec, rules.TargetVideoCodec);
+        Assert.Equal(container, rules.TargetContainer);
+        Assert.Equal(quality, rules.DefaultCrf);
+        Assert.Equal(hdr, rules.Hdr);
+        Assert.Equal(audioCodec, rules.VideoAudioCodec);
+        Assert.Equal(audioBitrateKbps, rules.VideoAudioBitrateKbps);
+        Assert.Equal(downmixToStereo, rules.DownmixToStereo);
+    }
 }

@@ -24,6 +24,32 @@ Before writing, collect:
 - any migration, configuration, downtime, or compatibility action;
 - the most important safety boundary or opt-in default affected by the release.
 
+## Branch and image flow
+
+1. Start `release/vX.Y.Z` from the exact reviewed `dev` commit. Change
+   `Directory.Build.props` to `X.Y.Z`, rename the leading `## Unreleased`
+   changelog section to `## X.Y.Z — YYYY-MM-DD`, and regenerate
+   `docs/openapi.json`.
+2. Run the Definition of Done, then open the release pull request into `main`.
+   No everyday feature or fix pull request targets `main`.
+3. Merge only with every required check green. Tag the exact reviewed merge
+   commit as `vX.Y.Z`, then wait for the tag build, container smoke test, and
+   versioned image publication before publishing the GitHub Release.
+4. Immediately start a short-lived branch from current `dev` and synchronise
+   only the released version metadata from `main`: the application version, the
+   dated changelog heading, and the generated OpenAPI version. Add a fresh,
+   empty `## Unreleased` section above the released section and open a pull
+   request back into `dev`.
+5. Merge the synchronization pull request only when its checks pass. Wait for
+   the protected `dev` build to publish `ghcr.io/jellman86/optimisarr:dev`, then
+   verify that image reports `X.Y.Z`.
+
+This final synchronization is part of the release, not optional housekeeping.
+Without it, the moving `dev` image can contain new code while continuing to
+advertise the previous application version. CI checks the application, OpenAPI,
+changelog, and newest Git tag together so the drift cannot pass the next
+protected-branch build unnoticed.
+
 ## Write for the update decision
 
 Start from [the release-notes template](../../.github/RELEASE_NOTES_TEMPLATE.md).
@@ -69,4 +95,6 @@ when, and whether there is a tradeoff.
 - [ ] The full changelog link points at the released tag.
 - [ ] Empty template sections and all HTML comments are removed.
 - [ ] The rendered GitHub preview has been read from top to bottom.
-
+- [ ] Released metadata is synchronized back to `dev` through a green pull
+      request and a fresh `## Unreleased` section exists.
+- [ ] The rebuilt `:dev` image reports the released application version.

@@ -149,6 +149,29 @@ test('revealed video results show objective VMAF evidence for every anonymous pr
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
+test('video grading bay stays inside narrow portrait and landscape viewports', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openLab(page, 'Video')
+
+  const video = page.locator('video')
+  const stage = video.locator('..')
+  await expect(video).toBeVisible()
+  await expect.poll(async () => stage.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return bounds.left >= 0 && bounds.right <= window.innerWidth
+  })).toBe(true)
+  await expect.poll(async () => video.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return bounds.left >= 0 && bounds.right <= window.innerWidth
+  })).toBe(true)
+
+  await page.setViewportSize({ width: 812, height: 375 })
+  await expect.poll(async () => video.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return bounds.left >= 0 && bounds.right <= window.innerWidth
+  })).toBe(true)
+})
+
 test('sample preparation shows the same live CPU and GPU usage cards as active queue work', async ({ page }) => {
   await openLab(page, 'Video', false, true)
 

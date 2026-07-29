@@ -59,7 +59,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Release metadata validation compares development state with the
+          # newest version tag, so this job needs the complete tag set.
+          fetch-depth: 0
       - run: bash scripts/test_nvenc_benchmark.sh
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+      - run: python3 scripts/check_release_metadata.py
       - run: python3 scripts/check_docs.py
       - run: |
           for file in compose*.example.yml; do

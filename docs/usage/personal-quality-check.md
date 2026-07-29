@@ -33,6 +33,20 @@ ladders. It structurally verifies every candidate before the comparison becomes 
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
 
+Each video candidate starts from that named preset's complete server-owned bundle: video codec,
+container, HDR handling, video-audio codec and bitrate, and stereo downmix policy. Settings stored
+for the library's current preset do not carry into a different candidate. Optimisarr can still
+safely change the final container when retained streams require it—for example, an MP4 preset falls
+back to MKV rather than discarding Blu-ray/DVD image subtitles. The revealed diagnostics report the
+format that was actually produced.
+
+Each video preset uses its concrete configured quality for all three scenes. A library configured
+for **Adaptive per-title VMAF** still uses adaptive selection for normal optimisation jobs, but the
+personal check does not start another early/middle/late quality search inside every comparison
+scene. That would change the preset being judged and multiply a short check into dozens of unrelated
+sample encodes. Optimisarr instead measures VMAF on each completed 12-second scene and reveals that
+objective evidence only after you classify the anonymous candidates.
+
 Video scene positions come from a fresh probe of the primary picture stream, not the outer
 container. This matters for Matroska sources whose subtitles or attachments continue after the
 programme. Each candidate uses a bounded coarse seek followed by an exact trim, keeping copied audio
@@ -55,7 +69,8 @@ and opened the selected stream. This deliberately reveals the active preset and 
 - Switch between **Original** and the lettered candidates while examining the same moment. Video and audio keep one shared relative
   position, and a switch is not shown until the destination stream has sought to the matching frame.
 - Video provides three scene tabs, a shared 0–12-second timeline, native controls while verification
-  is enabled, and real browser fullscreen.
+  is enabled, and real browser fullscreen. The width-driven grading viewport remains contained on
+  phone and short-landscape layouts; fullscreen expands that same media stage.
 - Audio provides three 15-second excerpts. Optimisarr measures the reference and all five candidates using EBU R128
   integrated loudness and attenuates each to the quietest one so volume cannot reveal a version.
 - Still images use one viewport. Zoom or drag to inspect detail; zoom and pan remain unchanged while
@@ -72,9 +87,9 @@ the setting behind every candidate, your classifications, estimated
 savings, and the most compressed candidate you considered Indistinguishable or Acceptable. If every
 candidate was Visibly worse, it recommends keeping the current setting.
 
-**Use this quality for the library** selects the saved video preset (and clears stale video
-codec/container overrides), audio bitrate, or image quality. It does not scan, enqueue, replace,
-move, or delete media. Optimisarr refuses a stale result
+**Use this quality for the library** selects the saved video preset and its complete current
+codec/container/HDR/video-audio/downmix bundle, audio bitrate, or image quality. It does not scan,
+enqueue, replace, move, or delete media. Optimisarr refuses a stale result
 if the relevant library codec, preset, or quality changed during the session.
 
 ## What each media type tests

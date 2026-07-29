@@ -193,13 +193,13 @@ The Libraries workspace keeps its own per-library Candidates tab (that's the per
 is the fleet-wide list). `#/candidates` redirects to Inventory.
 
 **Explicit video preset sliders: done.** Every position on the per-library video slider now shows
-the codec it resolves to, and the "Selects: …" detail (codec/container/CRF) plus the per-position
-codecs are driven by the backend's `RuleProfileDefaults` (served via `/api/library-options`) rather
-than a hard-coded UI map, so the slider can never drift from what the server actually does. A first
-extra preset position is shipped — **"Scott's Settings"** (`RuleProfile.ScottsSettings`): HEVC/MP4
-with HDR tone-mapped to SDR and audio re-encoded to AAC 96 kbps stereo. The global tone-map engine
-setting chooses compatible software or supported hardware. Adding further positions remains optional
-future work.
+the codec it resolves to, and the complete codec/container/CRF/HDR/video-audio/downmix bundle is
+driven by the backend's `RuleProfileDefaults` (served via `/api/library-options`) rather than a
+hard-coded UI map. The editor, normal queue, anonymous quality candidates, and applied quality-check
+result therefore share one preset definition. A first extra preset position is shipped —
+**"Scott's Settings"** (`RuleProfile.ScottsSettings`): HEVC/MP4 with HDR tone-mapped to SDR and audio
+re-encoded to AAC 96 kbps stereo. The global tone-map engine setting chooses compatible software or
+supported hardware. Adding further positions remains optional future work.
 
 **Re-encode oversized same-codec files: done.** A per-library option re-encodes files already in
 the target codec when they exceed a configurable size (default 20 GB), to shrink large same-codec

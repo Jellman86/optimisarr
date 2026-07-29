@@ -285,6 +285,10 @@ export type RuleProfileSpec = {
   codec: string | null
   container: string | null
   crf: number | null
+  hdrHandling: string
+  videoAudioCodec: string | null
+  videoAudioBitrateKbps: number
+  downmixToStereo: boolean
 }
 
 export type LibraryOptions = {

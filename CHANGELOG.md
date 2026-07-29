@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.10 — 2026-07-29
+
+### Fixed
+
+- **Personal quality checks no longer run an adaptive VMAF search inside every
+  anonymous video clip.** Each preset now encodes its three planned 12-second
+  scenes at the concrete quality shown after reveal, even when the library uses
+  Adaptive per-title VMAF for normal jobs. The completed scenes still receive
+  structural verification and measure-only VMAF evidence, preserving the blind
+  comparison while avoiding up to 144 redundant 40-second encode-and-score
+  passes for one check.
+- **Anonymous video presets now remain genuinely distinct from the library's
+  current preset.** Calibration clears every preset-owned codec, container,
+  HDR, video-audio, bitrate, and downmix override before resolving each
+  candidate, so Scott's AAC stereo/tone-map bundle cannot leak into AV1,
+  Conservative HEVC, or Compatibility H.264. Applying a revealed result uses
+  that same server-owned complete bundle, including Scott's current HDR-to-SDR
+  behaviour.
+- **The Personal quality player now fits narrow screens without clipping.**
+  Video and image stages are sized from their available width instead of a
+  minimum height that could secretly make a 16:9 player wider than its card.
+  The grading-bay header now keeps its identity and fullscreen control legible
+  on phones, and fullscreen styling follows the named media stage rather than
+  a brittle child position.
+
+### Changed
+
+- **Release metadata can no longer silently drift between `main` and `dev`.**
+  CI now keeps the application, generated OpenAPI contract, changelog state, and
+  newest release tag aligned. The release flow explicitly synchronises released
+  metadata back to `dev`, restores this `Unreleased` section, and verifies the
+  rebuilt `dev` image before a release is considered complete.
+
 ## 0.2.9 — 2026-07-29
 
 ### Added

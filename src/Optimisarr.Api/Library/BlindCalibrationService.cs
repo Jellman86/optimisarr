@@ -566,15 +566,13 @@ internal sealed class BlindCalibrationService(
         else
         {
             library.RuleProfile = session.RecommendedSetting.VideoProfile!.Value;
+            var preset = RuleProfileDefaults.For(library.RuleProfile);
             library.TargetVideoCodec = null;
             library.TargetContainer = null;
-            if (library.RuleProfile == RuleProfile.ScottsSettings)
-            {
-                library.VideoAudioCodec = "aac";
-                library.VideoAudioBitrateKbps = 96;
-                library.DownmixToStereo = true;
-                library.HdrHandling = HdrHandling.Preserve;
-            }
+            library.HdrHandling = preset.Hdr;
+            library.VideoAudioCodec = preset.VideoAudioCodec ?? "copy";
+            library.VideoAudioBitrateKbps = preset.VideoAudioBitrateKbps;
+            library.DownmixToStereo = preset.DownmixToStereo;
         }
         await db.SaveChangesAsync(cancellationToken);
         lock (session.Gate)

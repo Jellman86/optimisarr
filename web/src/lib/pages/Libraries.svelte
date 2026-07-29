@@ -108,8 +108,24 @@
     if (!codec) return i18n.m.libraries.codec_none
     return codecLabels[codec.toLowerCase()] ?? codec.toUpperCase()
   }
-  type PresetSpec = { codec: string; container: string; crf: number | null }
-  const FALLBACK_SPEC: PresetSpec = { codec: 'HEVC (H.265)', container: 'MP4', crf: 24 }
+  type PresetSpec = {
+    codec: string
+    container: string
+    crf: number | null
+    hdrHandling: string
+    videoAudioCodec: string | null
+    videoAudioBitrateKbps: number
+    downmixToStereo: boolean
+  }
+  const FALLBACK_SPEC: PresetSpec = {
+    codec: 'HEVC (H.265)',
+    container: 'MP4',
+    crf: 24,
+    hdrHandling: 'Exclude',
+    videoAudioCodec: 'aac',
+    videoAudioBitrateKbps: 160,
+    downmixToStereo: false,
+  }
 
   // The concrete codec/container/CRF each preset selects, sourced from the backend's
   // RuleProfileDefaults via /api/library-options so the slider can never drift from what the
@@ -121,6 +137,10 @@
         codec: prettyCodec(spec.codec),
         container: (spec.container ?? '').toUpperCase(),
         crf: spec.crf,
+        hdrHandling: spec.hdrHandling,
+        videoAudioCodec: spec.videoAudioCodec,
+        videoAudioBitrateKbps: spec.videoAudioBitrateKbps,
+        downmixToStereo: spec.downmixToStereo,
       }
     }
     return map
@@ -482,19 +502,9 @@
     // Landing on a preset stop is a deliberate choice of that preset, so drop any override and leave
     // Custom mode rather than silently keeping a divergent config.
     customSelected = false
-    resetToPreset()
     const profile = encodeProfiles[index] ?? 'ConservativeHevc'
     form.ruleProfile = profile
-    // "Scott's Settings" bundles audio + HDR choices the slider can't show on its own. Fill the
-    // matching form fields so the Advanced panel honestly reflects what the preset does — the
-    // stereo downmix in particular is an explicit per-library switch, so it must be set here to
-    // actually take effect rather than only living in the profile's server-side default.
-    if (profile === 'ScottsSettings') {
-      form.videoAudioCodec = 'aac'
-      form.videoAudioBitrateKbps = 96
-      form.downmixToStereo = true
-      form.hdrHandling = 'TonemapToSdr'
-    }
+    resetToPreset()
   }
 
   type ProcessingMode = 'encode' | 'remux' | 'track-cleanup'
@@ -526,8 +536,13 @@
   }
 
   function resetToPreset() {
+    const preset = specFor(form.ruleProfile)
     form.targetVideoCodec = null
     form.targetContainer = null
+    form.hdrHandling = preset.hdrHandling
+    form.videoAudioCodec = preset.videoAudioCodec ?? 'copy'
+    form.videoAudioBitrateKbps = preset.videoAudioBitrateKbps
+    form.downmixToStereo = preset.downmixToStereo
   }
 
   // A photo library gets its own compatibility→efficiency slider — the image counterpart of the

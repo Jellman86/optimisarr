@@ -119,6 +119,26 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     }
 
     [Fact]
+    public async Task Library_options_expose_the_complete_server_owned_video_preset_bundles()
+    {
+        var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+
+        var options = JsonNode.Parse(await client.GetStringAsync("/api/library-options"))!.AsObject();
+        var specs = options["ruleProfileSpecs"]!.AsArray();
+        var av1 = specs.Single(value => value!["profile"]!.GetValue<string>() == "ExperimentalAv1")!.AsObject();
+        var scotts = specs.Single(value => value!["profile"]!.GetValue<string>() == "ScottsSettings")!.AsObject();
+
+        Assert.Equal("Preserve", av1["hdrHandling"]!.GetValue<string>());
+        Assert.Null(av1["videoAudioCodec"]);
+        Assert.False(av1["downmixToStereo"]!.GetValue<bool>());
+        Assert.Equal("TonemapToSdr", scotts["hdrHandling"]!.GetValue<string>());
+        Assert.Equal("aac", scotts["videoAudioCodec"]!.GetValue<string>());
+        Assert.Equal(96, scotts["videoAudioBitrateKbps"]!.GetValue<int>());
+        Assert.True(scotts["downmixToStereo"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task Cleanup_preview_can_be_confirmed_through_the_real_api_contract()
     {
         var client = _api.CreateClient();
@@ -356,6 +376,11 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
                 ProbedAt = DateTimeOffset.UtcNow
             };
             db.MediaFiles.Add(media);
+            var library = db.Libraries.Single(candidate => candidate.Id == libraryId);
+            library.HdrHandling = HdrHandling.TonemapToSdr;
+            library.VideoAudioCodec = "aac";
+            library.VideoAudioBitrateKbps = 96;
+            library.DownmixToStereo = true;
             await db.SaveChangesAsync();
             mediaFileId = media.Id;
         }
@@ -555,6 +580,10 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             Assert.Equal(RuleProfile.ExperimentalAv1, library.RuleProfile);
             Assert.Null(library.TargetVideoCodec);
             Assert.Null(library.TargetContainer);
+            Assert.Equal(HdrHandling.Preserve, library.HdrHandling);
+            Assert.Equal("copy", library.VideoAudioCodec);
+            Assert.Equal(160, library.VideoAudioBitrateKbps);
+            Assert.False(library.DownmixToStereo);
             Assert.False(db.Jobs.Any(job => job.Type == JobType.Normal && job.MediaFileId == mediaFileId));
         }
 
