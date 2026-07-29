@@ -142,14 +142,14 @@ the selected media type:
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
-the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because it
-fully decodes both files and scores every frame, roughly doubling verification time and dominating a
-run on modest hardware; each library configuration page can turn it on and prefill all three floors from
-named tiers (Space-saver through Archival). Existing installations retain their effective policy, and while the
-gate is off the structural, duration and size gates plus quarantine rollback still guard every
-replacement. Existing installations copy their former global verification values to every library
-during migration, so updating does not silently weaken or strengthen an existing policy. When
-enabled, **Score three representative samples** measures deterministic 40-second
+the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because
+full-file, every-frame scoring decodes both files, roughly doubles verification time, and can
+dominate a run on modest hardware. Each library configuration page can turn it on and prefill all
+three floors from named tiers (Space-saver through Archival); the sampling controls below reduce
+its cost. While the gate is off, the structural, duration, and size gates plus quarantine rollback
+still guard every replacement. Existing installations copy their former global verification values
+to every library during migration, so updating does not silently weaken or strengthen an existing
+policy. When enabled, **Score three representative samples** measures deterministic 40-second
 windows near the beginning, middle and end of long files. The weakest window controls the tail
 floors. **Frame sampling** can score every Nth frame from 1–10; 1 is the conservative default,
 because skipped frames cannot participate in the percentile or catastrophic floor. Image SSIM and EXIF/ICC

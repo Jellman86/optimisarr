@@ -52,6 +52,8 @@ const hardware = {
   error: null,
 }
 
+const locales = ['en', 'de', 'es', 'fr', 'it', 'ja', 'pt', 'ru', 'zh']
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 }
@@ -159,5 +161,48 @@ test('every settings tab reflows without horizontal page overflow', async ({ pag
       clientWidth: main.clientWidth,
     }))
     expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
+  }
+})
+
+test('information tooltips are translated, populated, and readable in every locale', async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 375 })
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
+  await mockSettings(page)
+  await page.goto('/#/settings')
+  await page.locator('html').evaluate((element) => {
+    element.style.fontSize = '125%'
+  })
+
+  for (const locale of locales) {
+    await page.evaluate((code) => localStorage.setItem('optimisarr:locale', code), locale)
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('lang', locale)
+
+    for (const tabIndex of [0, 1]) {
+      await page.getByRole('tab').nth(tabIndex).click()
+      const tooltips = page.locator('main [role="tooltip"]')
+      expect(await tooltips.count()).toBeGreaterThan(0)
+
+      for (const tooltip of await tooltips.all()) {
+        const id = await tooltip.getAttribute('id')
+        expect(id).toBeTruthy()
+        expect((await tooltip.textContent())?.trim().length).toBeGreaterThan(0)
+
+        const button = tooltip.locator('xpath=preceding-sibling::button[1]')
+        await expect(button).toHaveAttribute('aria-describedby', id!)
+        const accessibleLabel = await button.getAttribute('aria-label')
+        expect(accessibleLabel?.trim().length).toBeGreaterThan(0)
+        if (locale !== 'en') expect(accessibleLabel).not.toMatch(/^About:/)
+
+        await button.focus()
+        await expect(tooltip).toBeVisible()
+        const bounds = await tooltip.boundingBox()
+        expect(bounds).not.toBeNull()
+        expect(bounds!.x).toBeGreaterThanOrEqual(0)
+        expect(bounds!.y).toBeGreaterThanOrEqual(0)
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(812)
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(375)
+      }
+    }
   }
 })

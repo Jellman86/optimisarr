@@ -17,7 +17,7 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it.
 
-## Up next (priority order, updated 2026-07-26)
+## Up next (priority order, updated 2026-07-29)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -37,12 +37,13 @@ the replacement workflow is trustworthy.
    - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
      re-encodes at selectable floors — each library offers Off (the default), Space-saver
      (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
-     off by default because it fully decodes both files and scores every frame, roughly doubling
-     verification time; while off, the structural, duration and size gates plus quarantine rollback
-     still guard every replacement. Remux and non-video work skip the inapplicable extra decode, and
-     existing saved choices remain unchanged. The long VMAF pass now reports real 0–100% progress in
-     the queue (hero and rows), is named explicitly as the VMAF stage, and shows a live CPU-usage
-     graph so the load is visible. Measurement is self-configuring: deterministic
+     off by default because full-file, every-frame scoring decodes both files and roughly doubles
+     verification time; clip scoring and frame sampling can reduce that cost. While off, the
+     structural, duration, and size gates plus quarantine rollback still guard every replacement.
+     Remux and non-video work skip the inapplicable extra decode, and existing saved choices remain
+     unchanged. The long VMAF pass now reports real 0–100% progress in the queue (hero and rows), is
+     named explicitly as the VMAF stage, and shows a live CPU-usage graph so the load is visible.
+     Measurement is self-configuring: deterministic
      timebase/timestamp/range/pixel-format alignment, reference-size bicubic scaling, bounded
      threading, automatic HDTV/4K model selection, and like-for-like HDR→SDR reference tone-mapping.
      The report records the selected model and preparation. Unit tests own the exact production graph,
