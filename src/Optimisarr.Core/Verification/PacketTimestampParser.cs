@@ -3,12 +3,12 @@ using System.Globalization;
 namespace Optimisarr.Core.Verification;
 
 /// <summary>
-/// The result of scanning a video stream's packet timestamps.
+/// The result of scanning one selected media stream's packet timestamps.
 /// </summary>
-/// <param name="TimestampCount">How many packets carried a readable decode timestamp.</param>
+/// <param name="TimestampCount">How many packets carried a readable presentation or decode timestamp.</param>
 /// <param name="NonMonotonicCount">How many packets stepped backward in decode order.</param>
 /// <param name="FirstRegressionDetail">A human-readable description of the first backward step, or null.</param>
-/// <param name="LastPresentationSeconds">The latest presentation time seen, or null — i.e. where the video actually ends.</param>
+/// <param name="LastPresentationSeconds">The latest packet endpoint seen, or null — i.e. where the selected media timeline actually ends.</param>
 public sealed record TimestampIntegrity(
     int TimestampCount,
     int NonMonotonicCount,
@@ -16,8 +16,8 @@ public sealed record TimestampIntegrity(
     double? LastPresentationSeconds);
 
 /// <summary>
-/// Pure parser for one packet per line as <c>pts_time,dts_time</c>, as emitted by
-/// <c>ffprobe -select_streams v:0 -show_entries packet=pts_time,dts_time -of csv=p=0</c>.
+/// Pure parser for one packet per line as <c>pts_time,dts_time,duration_time</c>, as emitted by
+/// <c>ffprobe -select_streams v:0 -show_entries packet=pts_time,dts_time,duration_time -of csv=p=0</c>.
 /// Two faults are read from the same pass:
 /// <list type="bullet">
 /// <item>A well-formed stream's <b>decode</b> timestamps (DTS) never go backward; a
@@ -40,27 +40,40 @@ public static class PacketTimestampParser
             return new TimestampIntegrity(0, 0, null, null);
         }
 
-        var dtsCount = 0;
+        var timestampCount = 0;
         var regressions = 0;
         string? firstRegression = null;
         double? previousDts = null;
-        double? maxPts = null;
+        double? maxPresentation = null;
 
         foreach (var line in csv.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
             var fields = line.Split(',', StringSplitOptions.TrimEntries);
+            var pts = 0d;
+            var dts = 0d;
+            var hasPts = fields.Length > 0 && TryParseSeconds(fields[0], out pts);
+            var hasDts = fields.Length > 1 && TryParseSeconds(fields[1], out dts);
 
-            if (fields.Length > 0 && TryParseSeconds(fields[0], out var pts) && (maxPts is not { } max || pts > max))
+            if (hasPts || hasDts)
             {
-                maxPts = pts;
+                timestampCount++;
             }
 
-            if (fields.Length < 2 || !TryParseSeconds(fields[1], out var dts))
+            if (hasPts)
+            {
+                var endpoint = fields.Length > 2 && TryParseSeconds(fields[2], out var duration)
+                    ? pts + Math.Max(duration, 0)
+                    : pts;
+                if (maxPresentation is not { } max || endpoint > max)
+                {
+                    maxPresentation = endpoint;
+                }
+            }
+
+            if (!hasDts)
             {
                 continue; // No decode timestamp on this packet; it carries no decode order.
             }
-
-            dtsCount++;
 
             if (previousDts is { } prev && dts < prev)
             {
@@ -74,7 +87,7 @@ public static class PacketTimestampParser
             previousDts = dts;
         }
 
-        return new TimestampIntegrity(dtsCount, regressions, firstRegression, maxPts);
+        return new TimestampIntegrity(timestampCount, regressions, firstRegression, maxPresentation);
     }
 
     private static bool TryParseSeconds(string field, out double value) =>

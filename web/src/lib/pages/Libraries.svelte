@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
-  import { i18n, t } from '../i18n/i18n.svelte'
+  import { i18n, mediaTypeLabel, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -9,6 +9,7 @@
   import Banner from '../components/Banner.svelte'
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
+  import ConfigSection from '../components/ConfigSection.svelte'
 
   let {
     embeddedEditorId = null,
@@ -191,7 +192,28 @@
     return null
   })
 
+  const verificationError = $derived.by<string | null>(() => {
+    if (!Number.isFinite(Number(form.durationTolerancePercent))
+      || Number(form.durationTolerancePercent) < 0) {
+      return i18n.m.settings.validation_duration
+    }
+    if (!Number.isFinite(Number(form.maxLoudnessDriftLufs))
+      || Number(form.maxLoudnessDriftLufs) < 0) {
+      return i18n.m.settings.validation_loudness
+    }
+    if (!Number.isFinite(Number(form.maxTruePeakDbtp))) {
+      return i18n.m.settings.validation_true_peak
+    }
+    if (!Number.isFinite(Number(form.minimumImageSsim))
+      || Number(form.minimumImageSsim) < 0
+      || Number(form.minimumImageSsim) > 1) {
+      return i18n.m.settings.validation_ssim
+    }
+    return null
+  })
+
   function setVmafMode(mode: VmafMode) {
+    if (mode === 'off' && form.videoQualityStrategy === 'AdaptiveVmaf') return
     vmafCustomSelected = mode === 'custom'
     if (mode === 'off') {
       form.vmafQualityGateEnabled = false
@@ -212,6 +234,16 @@
       ?? DEFAULT_VMAF_CATASTROPHIC
     form.clipVmafEnabled ??= true
     form.vmafFrameSubsample ??= 1
+  }
+
+  function setVideoQualityStrategy(strategy: 'Fixed' | 'AdaptiveVmaf') {
+    form.videoQualityStrategy = strategy
+    // Adaptive selection needs a concrete target to make a decision. Choose the existing
+    // visually-lossless default when it was off, then leave the normal VMAF picker visible so the
+    // operator can deliberately change it before saving.
+    if (strategy === 'AdaptiveVmaf' && vmafMode === 'off') {
+      setVmafMode('lossless')
+    }
   }
 
   function priorityLabel(value: number): string {
@@ -411,7 +443,8 @@
       && !audioLanguageError
       && !subtitleLanguageError
       && !encoderEffortError
-      && !(!isNoEncodeProfile && vmafError),
+      && !(!isNoEncodeProfile && vmafError)
+      && !verificationError,
   )
 
   // Custom mode lets the operator fine-tune codec/container themselves instead of following a
@@ -460,7 +493,7 @@
       form.videoAudioCodec = 'aac'
       form.videoAudioBitrateKbps = 96
       form.downmixToStereo = true
-      form.hdrHandling = 'Preserve'
+      form.hdrHandling = 'TonemapToSdr'
     }
   }
 
@@ -686,6 +719,11 @@
   }
 
   function startEdit(library: Library) {
+    // A cached UI can briefly talk to an older API during a rolling container update, and
+    // version-one test/config clients may omit fields introduced with per-library policy.
+    // Normalise those omissions before binding controls so the editor remains usable and
+    // preserves the same conservative defaults as the API and database migration.
+    const defaults = newLibraryDefaults()
     form = {
       name: library.name,
       path: library.path,
@@ -726,6 +764,30 @@
       minVmafCatastrophicMin: library.minVmafCatastrophicMin,
       clipVmafEnabled: library.clipVmafEnabled,
       vmafFrameSubsample: library.vmafFrameSubsample,
+      durationTolerancePercent:
+        library.durationTolerancePercent ?? defaults.durationTolerancePercent,
+      requireAudioRetained:
+        library.requireAudioRetained ?? defaults.requireAudioRetained,
+      requireSubtitlesRetained:
+        library.requireSubtitlesRetained ?? defaults.requireSubtitlesRetained,
+      requireSizeReduction:
+        library.requireSizeReduction ?? defaults.requireSizeReduction,
+      audioLoudnessGateEnabled:
+        library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
+      maxLoudnessDriftLufs:
+        library.maxLoudnessDriftLufs ?? defaults.maxLoudnessDriftLufs,
+      audioClippingGateEnabled:
+        library.audioClippingGateEnabled ?? defaults.audioClippingGateEnabled,
+      maxTruePeakDbtp:
+        library.maxTruePeakDbtp ?? defaults.maxTruePeakDbtp,
+      imageQualityGateEnabled:
+        library.imageQualityGateEnabled ?? defaults.imageQualityGateEnabled,
+      minimumImageSsim:
+        library.minimumImageSsim ?? defaults.minimumImageSsim,
+      imageMetadataGateEnabled:
+        library.imageMetadataGateEnabled ?? defaults.imageMetadataGateEnabled,
+      videoQualityStrategy:
+        library.videoQualityStrategy ?? defaults.videoQualityStrategy,
       autoEnqueueEnabled: library.autoEnqueueEnabled,
       autoEnqueueWindowStart: library.autoEnqueueWindowStart,
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
@@ -788,6 +850,10 @@
       minVmafMin: toNullableNumber(form.minVmafMin),
       minVmafCatastrophicMin: toNullableNumber(form.minVmafCatastrophicMin),
       vmafFrameSubsample: toNullableNumber(form.vmafFrameSubsample),
+      durationTolerancePercent: Number(form.durationTolerancePercent),
+      maxLoudnessDriftLufs: Number(form.maxLoudnessDriftLufs),
+      maxTruePeakDbtp: Number(form.maxTruePeakDbtp),
+      minimumImageSsim: Number(form.minimumImageSsim),
     }
   }
 
@@ -800,7 +866,11 @@
   async function save() {
     error = null
     message = null
-    if (audioLanguageError || subtitleLanguageError || encoderEffortError || (!isNoEncodeProfile && vmafError)) return
+    if (audioLanguageError
+      || subtitleLanguageError
+      || encoderEffortError
+      || verificationError
+      || (!isNoEncodeProfile && vmafError)) return
     try {
       if (editingId === 0) {
         // Replace /new with the canonical editor URL so Back returns to the library list. The
@@ -924,7 +994,7 @@
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2">
         {#if editingId !== 0}
-          <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{form.mediaType}</span>
+          <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
           {#if showVideoOptions}<span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(form.ruleProfile)}</span>{/if}
         {/if}
         <!-- Save/Cancel live only in the sticky action bar at the foot of the form, so the page
@@ -1033,41 +1103,50 @@
   {/snippet}
 
 {#snippet configForm()}
-  <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_library}</h3>
-  <div class="grid gap-4 sm:grid-cols-2">
-    <div>
-      <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
-      <input id="lib-name" class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
-    </div>
-    <div>
-      <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
-      <div class="flex gap-2">
-        <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
-        <button type="button" class="btn flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
+  <ConfigSection
+    id="library-details"
+    step={1}
+    title={i18n.m.libraries.section_library}
+    description={i18n.m.libraries.section_library_intro}
+  >
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
+        <input id="lib-name" class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
+      </div>
+      <div>
+        <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
+        <div class="flex gap-2">
+          <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
+          <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
+        </div>
+      </div>
+      <div>
+        <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
+        <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
+          {#each options.mediaTypes as type}<option value={type}>{mediaTypeLabel(type, i18n.m)}</option>{/each}
+        </select>
       </div>
     </div>
-    <div>
-      <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
-      <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
-        {#each options.mediaTypes as type}<option value={type}>{type}</option>{/each}
-      </select>
-    </div>
-  </div>
+  </ConfigSection>
 
-  <!-- Optimisation preset: the simple primary choice, scoped to the library's media type.
-       The compatibility→efficiency axis is a *video* decision (it picks H.264/HEVC/AV1), so a
-       Music (audio-only) library shows its audio default instead. Exact codec/container/CRF/audio
-       knobs live under Advanced options. -->
-  <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
-    <div class="flex items-center gap-2">
-      <span class="label mb-0">{i18n.m.libraries.preset_label} <InfoTip text={i18n.m.libraries.preset_tip} /></span>
-    </div>
+  <!-- Optimisation is the primary media-specific choice. Video uses the
+       compatibility→efficiency axis; Photo uses a format axis; Music exposes its codec and bitrate
+       directly. Deeper video, mixed-media, and eligibility overrides remain under Advanced. -->
+  <ConfigSection
+    id="library-optimisation"
+    step={2}
+    title={i18n.m.libraries.preset_label}
+    description={i18n.m.libraries.optimisation_intro}
+  >
 
     {#if showVideoOptions}
       <!-- items-start: the three hints differ a lot in length, and a stretched grid left the two
            shorter cards with a block of dead space under their text. -->
       <fieldset class="grid items-start gap-2 sm:grid-cols-3">
-        <legend class="sr-only">{i18n.m.libraries.processing_mode}</legend>
+        <legend class="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {i18n.m.libraries.processing_mode} <InfoTip text={i18n.m.libraries.preset_tip} />
+        </legend>
         {#each [
           { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
           { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
@@ -1195,9 +1274,43 @@
         </div>
       </div>
     {:else}
-      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        {i18n.m.libraries.music_note}
-      </p>
+      <!-- For Music, audio is the primary optimisation choice rather than an expert override.
+           Keep the codec and bitrate in the normal flow so the section never becomes a dead-end
+           explanation that requires opening Advanced to do the actual work. -->
+      <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/25">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.audio}</h3>
+        <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.music_note}</p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
+            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
+              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
+              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-audio-bitrate">{i18n.m.libraries.bitrate} <InfoTip text={i18n.m.libraries.bitrate_tip} /></label>
+            <input
+              id="lib-audio-bitrate"
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder={i18n.m.libraries.bitrate_ph}
+              bind:value={form.audioBitrateKbps}
+            />
+          </div>
+        </div>
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
+          <span>
+            {i18n.m.libraries.reencode_lossy_audio}
+            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              {i18n.m.libraries.reencode_lossy_audio_hint}
+            </span>
+          </span>
+        </label>
+      </div>
     {/if}
 
     {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
@@ -1218,12 +1331,89 @@
         </div>
       </div>
     {/if}
-  </div>
 
   {#if showVideoOptions && !isNoEncodeProfile}
-    <section class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+    <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+      <fieldset>
+        <legend class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          {i18n.m.libraries.quality_strategy}
+        </legend>
+        <p class="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          {i18n.m.libraries.quality_strategy_intro}
+        </p>
+
+        <div class="mt-3 grid max-w-4xl gap-3 lg:grid-cols-2">
+          <label
+            class="relative min-h-44 cursor-pointer rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+          >
+            <div class="flex items-start gap-3">
+              <input
+                type="radio"
+                name="video-quality-strategy"
+                value="Fixed"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                checked={form.videoQualityStrategy === 'Fixed'}
+                onchange={() => setVideoQualityStrategy('Fixed')}
+              />
+              <div>
+                <span class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.libraries.quality_strategy_fixed}</span>
+                <p class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {i18n.m.libraries.quality_strategy_fixed_desc}
+                </p>
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-1.5 pl-8 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_selected_quality}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_full_encode}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
+            </div>
+          </label>
+
+          <label
+            class="relative min-h-44 cursor-pointer rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+          >
+            <div class="flex items-start gap-3">
+              <input
+                type="radio"
+                name="video-quality-strategy"
+                value="AdaptiveVmaf"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                checked={form.videoQualityStrategy === 'AdaptiveVmaf'}
+                onchange={() => setVideoQualityStrategy('AdaptiveVmaf')}
+              />
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.libraries.quality_strategy_adaptive}</span>
+                  <span class="badge bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">{i18n.m.libraries.experimental}</span>
+                </div>
+                <p class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {i18n.m.libraries.quality_strategy_adaptive_desc}
+                </p>
+              </div>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-1.5 pl-8 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_sample}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_choose_quality}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_full_encode}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
+            </div>
+          </label>
+        </div>
+
+        {#if form.videoQualityStrategy === 'AdaptiveVmaf'}
+          <p class="mt-3 max-w-4xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+            {i18n.m.libraries.quality_strategy_adaptive_cost}
+          </p>
+        {/if}
+      </fieldset>
+
       <div class="max-w-3xl">
-        <div>
+        <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
           <label class="label" for="lib-vmaf-policy">
             {i18n.m.settings.vmaf_label}
             <InfoTip text={i18n.m.settings.vmaf_hint} />
@@ -1234,7 +1424,7 @@
             value={vmafMode}
             onchange={(event) => setVmafMode(event.currentTarget.value as VmafMode)}
           >
-            <option value="off">{i18n.m.settings.vmaf_preset_off}</option>
+            <option value="off" disabled={form.videoQualityStrategy === 'AdaptiveVmaf'}>{i18n.m.settings.vmaf_preset_off}</option>
             <option value="space-saver">{i18n.m.settings.vmaf_preset_space_saver}</option>
             <option value="balanced">{i18n.m.settings.vmaf_preset_balanced}</option>
             <option value="high">{i18n.m.settings.vmaf_preset_high}</option>
@@ -1297,14 +1487,174 @@
       {#if vmafError}
         <p id="lib-vmaf-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">{vmafError}</p>
       {/if}
-    </section>
+    </div>
   {/if}
+  </ConfigSection>
+
+  <ConfigSection
+    id="library-verification"
+    step={3}
+    title={i18n.m.settings.gates_title}
+    description={i18n.m.libraries.verification_intro}
+  >
+    <div class="grid gap-4 xl:grid-cols-2">
+      <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+        <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {i18n.m.settings.always_on}
+        </legend>
+
+        {#if showVideoOptions || showAudioOptions}
+          <div class="mb-4 max-w-[16rem]">
+            <label class="label" for="lib-duration-tolerance">
+              {i18n.m.settings.duration_tolerance}
+              <InfoTip text={i18n.m.settings.duration_tolerance_tip} />
+            </label>
+            <div class="flex min-w-0 items-center gap-2">
+              <input
+                id="lib-duration-tolerance"
+                class="input min-w-0 flex-1"
+                type="number"
+                min="0"
+                step="0.1"
+                aria-invalid={verificationError === i18n.m.settings.validation_duration}
+                aria-describedby="lib-verification-error"
+                bind:value={form.durationTolerancePercent}
+              />
+              <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
+            </div>
+          </div>
+        {/if}
+
+        <div class="grid gap-3 {showVideoOptions || showAudioOptions ? 'border-t border-slate-200 pt-4 dark:border-slate-800' : ''}">
+          {#if showVideoOptions || showAudioOptions}
+            <Toggle bind:checked={form.requireAudioRetained} label={i18n.m.settings.require_audio} />
+          {/if}
+          {#if showVideoOptions}
+            <Toggle bind:checked={form.requireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
+          {/if}
+          <Toggle bind:checked={form.requireSizeReduction} label={i18n.m.settings.require_smaller} />
+        </div>
+      </fieldset>
+
+      {#if showVideoOptions || showAudioOptions}
+        <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {i18n.m.libraries.audio}
+          </legend>
+
+          <Toggle
+            bind:checked={form.audioLoudnessGateEnabled}
+            label={i18n.m.settings.loudness_label}
+            hint={i18n.m.settings.loudness_hint}
+          />
+          {#if form.audioLoudnessGateEnabled}
+            <div class="mt-4 max-w-[16rem]">
+              <label class="label" for="lib-loudness-drift">{i18n.m.settings.loudness_max}</label>
+              <div class="flex min-w-0 items-center gap-2">
+                <input
+                  id="lib-loudness-drift"
+                  class="input min-w-0 flex-1"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  aria-invalid={verificationError === i18n.m.settings.validation_loudness}
+                  aria-describedby="lib-verification-error"
+                  bind:value={form.maxLoudnessDriftLufs}
+                />
+                <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
+              </div>
+            </div>
+          {/if}
+
+          <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <Toggle
+              bind:checked={form.audioClippingGateEnabled}
+              label={i18n.m.settings.clipping_label}
+              hint={i18n.m.settings.clipping_hint}
+            />
+            {#if form.audioClippingGateEnabled}
+              <div class="mt-4 max-w-[16rem]">
+                <label class="label" for="lib-true-peak">
+                  {i18n.m.settings.true_peak}
+                  <InfoTip text={i18n.m.settings.true_peak_tip} />
+                </label>
+                <div class="flex min-w-0 items-center gap-2">
+                  <input
+                    id="lib-true-peak"
+                    class="input min-w-0 flex-1"
+                    type="number"
+                    step="0.1"
+                    aria-invalid={verificationError === i18n.m.settings.validation_true_peak}
+                    aria-describedby="lib-verification-error"
+                    bind:value={form.maxTruePeakDbtp}
+                  />
+                  <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
+                </div>
+              </div>
+            {/if}
+          </div>
+        </fieldset>
+      {/if}
+
+      {#if showImageOptions}
+        <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {i18n.m.libraries.images}
+          </legend>
+
+          <Toggle
+            bind:checked={form.imageQualityGateEnabled}
+            label={i18n.m.settings.ssim_label}
+            hint={i18n.m.settings.ssim_hint}
+          />
+          {#if form.imageQualityGateEnabled}
+            <div class="mt-4 max-w-[16rem]">
+              <label class="label" for="lib-image-ssim">
+                {i18n.m.settings.ssim_min}
+                <InfoTip text={i18n.m.settings.ssim_min_tip} />
+              </label>
+              <input
+                id="lib-image-ssim"
+                class="input"
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                aria-invalid={verificationError === i18n.m.settings.validation_ssim}
+                aria-describedby="lib-verification-error"
+                bind:value={form.minimumImageSsim}
+              />
+            </div>
+          {/if}
+
+          <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <Toggle
+              bind:checked={form.imageMetadataGateEnabled}
+              label={i18n.m.settings.exif_label}
+              hint={i18n.m.settings.exif_hint}
+            />
+            <p class="mt-3 text-xs text-slate-400">{i18n.m.settings.exif_note}</p>
+          </div>
+        </fieldset>
+      {/if}
+    </div>
+
+    {#if verificationError}
+      <p id="lib-verification-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">
+        {verificationError}
+      </p>
+    {/if}
+  </ConfigSection>
 
   <!-- Simple, always-visible switches. The technical encoding knobs live under
        "Advanced options" so the common case stays uncluttered. -->
-  <div class="mt-6 space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
-    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.section_automation}</h3>
-
+  <ConfigSection
+    id="library-automation"
+    step={4}
+    title={i18n.m.libraries.section_automation}
+    description={i18n.m.libraries.automation_intro}
+  >
+    <div class="space-y-4">
     <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />
 
     <Toggle
@@ -1333,7 +1683,36 @@
       label={i18n.m.libraries.auto_replace_label}
       hint={i18n.m.libraries.auto_replace_hint}
     />
-  </div>
+
+      <section class="border-t border-slate-200 pt-5 dark:border-slate-700">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.completed_output}</h3>
+        <p class="mt-1 mb-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
+        <Toggle
+          bind:checked={form.moveOnComplete}
+          label={i18n.m.libraries.move_label}
+          hint={i18n.m.libraries.move_hint}
+        />
+        {#if form.moveOnComplete}
+          <div class="mt-3 max-w-xl">
+            <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
+            <div class="flex gap-2">
+              <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
+              <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
+            </div>
+          </div>
+          <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
+            <span>
+              {i18n.m.libraries.overwrite_label}
+              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+                {i18n.m.libraries.overwrite_hint}
+              </span>
+            </span>
+          </label>
+        {/if}
+      </section>
+    </div>
+  </ConfigSection>
 
   <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. The header and
        body form one tinted, bordered "drawer" so the Advanced zone is clearly set apart from the
@@ -1516,8 +1895,9 @@
       </section>
       {/if}
 
-      {#if showAudioOptions && !isTrackCleanupProfile}
-      <!-- AUDIO — scoped to Music/Other libraries (audio-only files). -->
+      {#if showAudioOptions && showVideoOptions && !isTrackCleanupProfile}
+      <!-- AUDIO — the mixed "Other" library keeps audio-only overrides here. Music exposes the
+           same primary choice in the normal Optimisation flow above. -->
       <section class="py-6">
         <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio}</h3>
         <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.audio_desc}</p>
@@ -1686,47 +2066,21 @@
         </div>
       </section>
 
-      <!-- COMPLETED OUTPUT -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output}</h3>
-        <p class="mt-0.5 mb-3 text-xs text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
-        <Toggle
-          bind:checked={form.moveOnComplete}
-          label={i18n.m.libraries.move_label}
-          hint={i18n.m.libraries.move_hint}
-        />
-        {#if form.moveOnComplete}
-          <div class="mt-3 max-w-xl">
-            <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
-            <div class="flex gap-2">
-              <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
-              <button type="button" class="btn flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
-            </div>
-          </div>
-          <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
-            <span>
-              {i18n.m.libraries.overwrite_label}
-              <span class="mt-0.5 block text-xs font-normal text-slate-400">
-                {i18n.m.libraries.overwrite_hint}
-              </span>
-            </span>
-          </label>
-        {/if}
-      </section>
     </div>
   {/if}
   </div>
-  <!-- Sticky, because Advanced options make this form far taller than the viewport and Save must
-       stay reachable. The negative bottom offsets cancel the scroll container's own padding
-       (p-4/sm:p-6/lg:p-8) so the pinned bar meets the bottom of the viewport, rather than leaving a
-       strip of the form scrolling visibly beneath it. -->
-  <div class="sticky -bottom-4 -mx-5 mt-6 flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:-bottom-6 sm:-mx-6 sm:px-6 lg:-bottom-8 dark:border-slate-700 dark:bg-slate-900">
-    <button class="btn btn-primary" onclick={save} disabled={!canSave}>
+  <!-- Actions stay in the document flow until there is something to save. A dirty form pins them
+       on normal-height screens; short landscape viewports deliberately keep them static so the
+       action bar cannot consume most of the editor. -->
+  <div
+    data-library-actions
+    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} z-10 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-6"
+  >
+    <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave}>
       <Icon name="check" class="h-4 w-4" />
       {i18n.m.libraries.save}
     </button>
-    <button class="btn" onclick={cancelEdit}>
+    <button class="btn min-h-11" onclick={cancelEdit}>
       <Icon name="x" class="h-4 w-4" />
       {i18n.m.libraries.cancel}
     </button>
@@ -1746,7 +2100,7 @@
   {/if}
 
   {#if activeTab === 'rules' || editingId === 0}
-    <div class="card p-5 sm:p-6">
+    <div class="space-y-4">
       {@render configForm()}
     </div>
   {:else if activeTab === 'candidates'}
@@ -1787,7 +2141,7 @@
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
-              <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{library.mediaType}</span>
+              <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
               <!-- The rule profile is a video preset; only show it for video libraries (it is
                    meaningless for Music/Photo, which use their own audio/image rules). -->
               {#if isVideoType(library.mediaType)}
@@ -1869,3 +2223,12 @@
     </button>
   </EmptyState>
 {/if}
+
+<style>
+  @media (min-height: 501px) {
+    .library-action-bar-dirty {
+      position: sticky;
+      bottom: 0;
+    }
+  }
+</style>

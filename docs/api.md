@@ -227,7 +227,7 @@ Health response:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/settings` | Read global queue, verification, and replacement settings. |
+| `GET` | `/api/settings` | Read global queue, hardware, and replacement settings. |
 | `PUT` | `/api/settings` | Save global settings. Body is the full settings object. |
 | `GET` | `/api/settings/cleanup` | Preview files and bytes currently eligible under the saved cleanup policy without changing anything. |
 | `POST` | `/api/settings/cleanup` | Run the saved cleanup policy now. Body is the preview returned by `GET`; a changed preview returns `409`. Success returns the execution-time preview, processed count, and actual reclaimed bytes. |
@@ -244,23 +244,7 @@ Settings fields include:
   "libraryScanIntervalHours": 1,
   "encoderMode": "Auto",
   "hardwareDecode": true,
-  "verificationDurationTolerancePercent": 1,
-  "verificationRequireAudioRetained": true,
-  "verificationRequireSubtitlesRetained": false,
-  "verificationRequireSizeReduction": true,
-  "verificationQualityGateEnabled": false,
-  "verificationMinimumVmafHarmonicMean": 93,
-  "verificationMinimumVmafMin": 80,
-  "verificationMinimumVmafCatastrophicMin": 50,
-  "verificationAudioLoudnessGateEnabled": false,
-  "verificationMaxLoudnessDriftLufs": 1,
-  "verificationAudioClippingGateEnabled": false,
-  "verificationMaxTruePeakDbtp": 0,
-  "verificationImageQualityGateEnabled": true,
-  "verificationMinimumImageSsim": 0.95,
-  "verificationImageMetadataGateEnabled": true,
-  "verificationClipVmafEnabled": false,
-  "verificationVmafFrameSubsample": 1,
+  "hdrToneMapMode": "Software",
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -315,7 +299,25 @@ Create and update library bodies use the same shape. Common fields:
   "targetContainer": null,
   "hdrHandling": null,
   "qualityCrf": null,
+  "videoQualityStrategy": "Fixed",
   "encoderPreset": "balanced",
+  "vmafQualityGateEnabled": false,
+  "minVmafHarmonicMean": 93,
+  "minVmafMin": 80,
+  "minVmafCatastrophicMin": 50,
+  "clipVmafEnabled": false,
+  "vmafFrameSubsample": 1,
+  "durationTolerancePercent": 1,
+  "requireAudioRetained": true,
+  "requireSubtitlesRetained": false,
+  "requireSizeReduction": true,
+  "audioLoudnessGateEnabled": false,
+  "maxLoudnessDriftLufs": 1,
+  "audioClippingGateEnabled": false,
+  "maxTruePeakDbtp": 0,
+  "imageQualityGateEnabled": true,
+  "minimumImageSsim": 0.95,
+  "imageMetadataGateEnabled": true,
   "audioTargetCodec": null,
   "audioBitrateKbps": null,
   "downmixToStereo": false,
@@ -333,7 +335,16 @@ rejected. `encoderPreset` retains its historical API name but new clients should
 encoder effort: `quick`, `balanced`, `efficient`, or `null` for the encoder default. Former
 x264/x265 values, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain accepted and are preserved
 exactly for backwards compatibility; dispatch resolves a safe equivalent if another encoder family
-is selected.
+is selected. `videoQualityStrategy` accepts `Fixed` (the backwards-compatible default) or
+`AdaptiveVmaf`. `AdaptiveVmaf` is accepted only for a video re-encode library whose
+`vmafQualityGateEnabled` value is `true`; invalid combinations return `400` rather than silently
+changing the requested policy.
+
+Verification fields are owned by each library. The API accepts the complete shape for every media
+type, but the UI shows only applicable controls: video can configure subtitle retention and VMAF,
+video and audio can configure duration and audio-fidelity gates, and images can configure SSIM and
+EXIF/ICC retention. Omitted verification fields use conservative defaults. Existing databases and
+version-one configuration backups materialise their former global values into each library.
 
 ## Preview
 
@@ -347,6 +358,12 @@ is selected.
 
 Long video previews may be segment-only. The response includes `clipped: true`
 when the verification report is for a sample rather than the whole file.
+`clipStartSeconds` is the sample's position in the original and
+`clipDurationSeconds` is its requested comparison length; both are `null` for a
+full-file response. Clients can subtract each side's start to maintain one
+source-relative playback timeline. A user-requested Preview bypasses its
+library's automatic optimise window, but still waits for queue capacity, minimum
+free space, a manual pause, or active-media protection.
 
 ## Personal blind quality calibration
 
@@ -428,7 +445,9 @@ Failed preview and personal-quality jobs never appear in the normal queue feed. 
 is still deleted, but the small failed row remains available to `/api/jobs/failures`,
 `/api/jobs/{id}/log`, and the diagnostics bundle until `POST /api/jobs/clear?scope=errored` removes
 it. This makes an interactive failure diagnosable without retaining candidate media or reading the
-application database directly.
+application database directly. Start with `/api/jobs/failures`, find the sample whose `jobType` is
+`Preview`, then use its `jobId` with `/api/preview/{jobId}` for the complete verification report or
+`/api/jobs/{jobId}/log` for captured process output.
 
 Common job states include `Queued`, `Probing`, `Transcoding`, `Verifying`,
 `ReadyToReplace`, `Completed`, `Failed`, and `Cancelled`. A job is re-checked

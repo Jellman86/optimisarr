@@ -476,6 +476,7 @@ public sealed class VerificationEvaluatorTests
         OutputSizeBytes: 600_000_000,
         OriginalDurationSeconds: 3600,
         OutputDurationSeconds: 3600,
+        OriginalAudioLastPresentationSeconds: 3600,
         OriginalAudioTrackCount: 2,
         OutputAudioTrackCount: 2,
         OriginalSubtitleTrackCount: 1,
@@ -714,10 +715,11 @@ public sealed class VerificationEvaluatorTests
     {
         var input = Healthy() with
         {
-            OriginalDurationSeconds = 2881.366,
-            OutputDurationSeconds = 2881.365,
+            OriginalDurationSeconds = 2362.9,
+            OutputDurationSeconds = 2362.9,
             OriginalTimestampsMeasured = true,
             OriginalLastPresentationSeconds = 2362.9,
+            OriginalAudioLastPresentationSeconds = 2881.366,
             TimestampsMeasured = true,
             OutputLastPresentationSeconds = 2361.568
         };
@@ -727,9 +729,31 @@ public sealed class VerificationEvaluatorTests
         Assert.Equal(CheckOutcome.Failed, Outcome(report, "Source video timeline"));
         Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
         Assert.Contains(
-            "source video ends",
+            "primary audio",
             report.Checks.Single(check => check.Name == "Source video timeline").Detail,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_subtitle_longer_than_the_picture_does_not_make_a_complete_source_look_corrupt()
+    {
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 1405.112,
+            OutputDurationSeconds = 1405.088,
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 1405.112,
+            OriginalAudioLastPresentationSeconds = 1405.109,
+            TimestampsMeasured = true,
+            OutputLastPresentationSeconds = 1405.088
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed);
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Duration"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Source video timeline"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, "Tail integrity"));
     }
 
     [Fact]

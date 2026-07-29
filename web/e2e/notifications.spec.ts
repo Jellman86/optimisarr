@@ -7,17 +7,6 @@ const settings = {
   libraryScanIntervalHours: 1,
   encoderMode: 'Auto',
   hardwareDecode: true,
-  verificationDurationTolerancePercent: 1,
-  verificationRequireAudioRetained: true,
-  verificationRequireSubtitlesRetained: true,
-  verificationRequireSizeReduction: true,
-  verificationAudioLoudnessGateEnabled: false,
-  verificationMaxLoudnessDriftLufs: 1,
-  verificationAudioClippingGateEnabled: false,
-  verificationMaxTruePeakDbtp: -1,
-  verificationImageQualityGateEnabled: true,
-  verificationMinimumImageSsim: 0.95,
-  verificationImageMetadataGateEnabled: true,
   replacementAllowCrossFilesystem: false,
   dryRunMode: true,
   replacementQuarantineRetentionDays: 0,
@@ -62,7 +51,7 @@ async function mockSettings(page: Page, targets: unknown[]) {
 
 async function openNotifications(page: Page) {
   await page.goto('/#/settings')
-  await page.getByRole('button', { name: 'Notifications' }).click()
+  await page.getByRole('tab', { name: 'Notifications' }).click()
 }
 
 test('notification validation shows the provider-specific API reason', async ({ page }) => {

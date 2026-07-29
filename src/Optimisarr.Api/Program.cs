@@ -42,7 +42,9 @@ var ffprobe = MediaToolCommands.ResolveFfprobe(
 builder.Services.AddSingleton(new TranscodeOptions(transcodeFfmpeg));
 builder.Services.AddSingleton(new HardwareCapabilityService(transcodeFfmpeg));
 builder.Services.AddSingleton<LibraryScanner>();
-builder.Services.AddSingleton(new MediaProbeService(ffprobe));
+var mediaProbe = new MediaProbeService(ffprobe);
+builder.Services.AddSingleton(mediaProbe);
+builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
@@ -252,17 +254,7 @@ internal sealed record SettingsDto(
     int LibraryScanIntervalHours,
     string EncoderMode,
     bool HardwareDecode,
-    double VerificationDurationTolerancePercent,
-    bool VerificationRequireAudioRetained,
-    bool VerificationRequireSubtitlesRetained,
-    bool VerificationRequireSizeReduction,
-    bool VerificationAudioLoudnessGateEnabled,
-    double VerificationMaxLoudnessDriftLufs,
-    bool VerificationAudioClippingGateEnabled,
-    double VerificationMaxTruePeakDbtp,
-    bool VerificationImageQualityGateEnabled,
-    double VerificationMinimumImageSsim,
-    bool VerificationImageMetadataGateEnabled,
+    string? HdrToneMapMode,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays)
@@ -274,17 +266,7 @@ internal sealed record SettingsDto(
         settings.LibraryScanIntervalHours,
         settings.EncoderMode.ToString(),
         settings.HardwareDecode,
-        settings.VerificationPolicy.DurationTolerancePercent,
-        settings.VerificationPolicy.RequireAudioRetained,
-        settings.VerificationPolicy.RequireSubtitlesRetained,
-        settings.VerificationPolicy.RequireSizeReduction,
-        settings.VerificationPolicy.AudioLoudnessGateEnabled,
-        settings.VerificationPolicy.MaxLoudnessDriftLufs,
-        settings.VerificationPolicy.AudioClippingGateEnabled,
-        settings.VerificationPolicy.MaxTruePeakDbtp,
-        settings.VerificationPolicy.ImageQualityGateEnabled,
-        settings.VerificationPolicy.MinimumImageSsim,
-        settings.VerificationPolicy.ImageMetadataGateEnabled,
+        settings.HdrToneMapMode.ToString(),
         settings.ReplacementAllowCrossFilesystem,
         settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays);
@@ -382,7 +364,19 @@ internal sealed record SaveLibraryRequest(
     bool? AutoEnqueueEnabled,
     string? AutoEnqueueWindowStart,
     string? AutoEnqueueWindowEnd,
-    bool? AutoReplace);
+    bool? AutoReplace,
+    string? VideoQualityStrategy = null,
+    double? DurationTolerancePercent = null,
+    bool? RequireAudioRetained = null,
+    bool? RequireSubtitlesRetained = null,
+    bool? RequireSizeReduction = null,
+    bool? AudioLoudnessGateEnabled = null,
+    double? MaxLoudnessDriftLufs = null,
+    bool? AudioClippingGateEnabled = null,
+    double? MaxTruePeakDbtp = null,
+    bool? ImageQualityGateEnabled = null,
+    double? MinimumImageSsim = null,
+    bool? ImageMetadataGateEnabled = null);
 
 internal sealed record ExcludeRequest(int MediaFileId, string? Reason);
 
@@ -436,6 +430,18 @@ internal sealed record LibraryDto(
     double? MinVmafCatastrophicMin,
     bool? ClipVmafEnabled,
     int? VmafFrameSubsample,
+    double DurationTolerancePercent,
+    bool RequireAudioRetained,
+    bool RequireSubtitlesRetained,
+    bool RequireSizeReduction,
+    bool AudioLoudnessGateEnabled,
+    double MaxLoudnessDriftLufs,
+    bool AudioClippingGateEnabled,
+    double MaxTruePeakDbtp,
+    bool ImageQualityGateEnabled,
+    double MinimumImageSsim,
+    bool ImageMetadataGateEnabled,
+    string VideoQualityStrategy,
     bool AutoEnqueueEnabled,
     string AutoEnqueueWindowStart,
     string AutoEnqueueWindowEnd,
@@ -486,6 +492,18 @@ internal sealed record LibraryDto(
         library.MinVmafCatastrophicMin,
         library.ClipVmafEnabled,
         library.VmafFrameSubsample,
+        library.DurationTolerancePercent,
+        library.RequireAudioRetained,
+        library.RequireSubtitlesRetained,
+        library.RequireSizeReduction,
+        library.AudioLoudnessGateEnabled,
+        library.MaxLoudnessDriftLufs,
+        library.AudioClippingGateEnabled,
+        library.MaxTruePeakDbtp,
+        library.ImageQualityGateEnabled,
+        library.MinimumImageSsim,
+        library.ImageMetadataGateEnabled,
+        library.VideoQualityStrategy.ToString(),
         library.AutoEnqueueEnabled,
         library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
         library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture),

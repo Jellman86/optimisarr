@@ -3,6 +3,21 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Experimental on dev (2026-07-27) — per-library adaptive VMAF quality path.** Video re-encode
+libraries can keep the fixed preset/custom quality or explicitly opt into a bounded per-title search.
+The editor presents the alternatives as radio cards with their actual processing paths and cost.
+Adaptive preparation uses the production FFmpeg contract and canonical VMAF scorer over
+deterministic early/middle/late windows, brackets at most four encoder-specific values, and falls
+back to the fixed quality when evidence is missing or non-monotonic. Probes contain only the primary
+video, and the final choice is the smallest actually encoded passing sample rather than an assumed
+CRF/CQ/ICQ/QP-to-size mapping. The chosen value is job-bound for safe crash and quality-retry
+recovery; it is never shared across titles. The complete output still runs every structural, decode,
+duration, tail, stream, size, and configured VMAF gate before replacement. Cross-family evidence
+remains required before the experimental label can be removed. Live QSV validation additionally
+proved that each sample must be deleted without pruning the shared candidate workspace: the search
+now retains that directory through every planned window and removes it as one unit when preparation
+ends.
+
 **Recently shipped (2026-07-25) — repeatable NVENC profile evidence.** The `dev` image includes a
 guided NVIDIA quality-comparison harness created for issue #37. It prepares a dedicated folder under
 `/data`, accepts exactly three short 8-bit SDR samples, and compares the current P7/CQ baseline with
@@ -182,8 +197,9 @@ the codec it resolves to, and the "Selects: …" detail (codec/container/CRF) pl
 codecs are driven by the backend's `RuleProfileDefaults` (served via `/api/library-options`) rather
 than a hard-coded UI map, so the slider can never drift from what the server actually does. A first
 extra preset position is shipped — **"Scott's Settings"** (`RuleProfile.ScottsSettings`): HEVC/MP4
-with HDR preserved and audio re-encoded to AAC 96 kbps stereo. Adding further positions remains
-optional future work.
+with HDR tone-mapped to SDR and audio re-encoded to AAC 96 kbps stereo. The global tone-map engine
+setting chooses compatible software or supported hardware. Adding further positions remains optional
+future work.
 
 **Re-encode oversized same-codec files: done.** A per-library option re-encodes files already in
 the target codec when they exceed a configurable size (default 20 GB), to shrink large same-codec
@@ -285,7 +301,7 @@ See the Phase 12 section for the remaining optional polish.
   whether new jobs may start. Hardware capability detection for FFmpeg
   accelerators and encoders is surfaced on Tools, and global encoder mode
   selection is wired into generated FFmpeg arguments. Verification policy is
-  configurable from Settings. Replacement/quarantine policy is now configurable —
+  configurable per library with media-aware controls. Replacement/quarantine policy is now configurable —
   cross-filesystem fallback is opt-in and a background worker enforces the
   quarantine retention window, purging originals (and dropping their rollback path)
   once it expires. Optional **service-activity pauses** are done too: configurable
@@ -317,8 +333,11 @@ See the Phase 12 section for the remaining optional polish.
   *decode* both confirmed on an Intel iGPU host (CPU dropped from ~142% to ~22% on a 4K encode with
   the render/video engines busy). **GPU hardware decoding** is wired and on by default
   (`queue.hardwareDecode`): when a hardware encoder is in use the source is decoded on the GPU
-  (`-hwaccel` + `-hwaccel_output_format`, no `hwupload`), skipped for HDR→SDR tonemap jobs, with an
-  automatic software-decode retry for sources the GPU can't decode. **Live, unprivileged CPU/GPU
+  (`-hwaccel` + `-hwaccel_output_format`, no `hwupload`). HDR→SDR uses software by default; an
+  opt-in QSV/VA-API VPP path freshly confirms non-Dolby-Vision HDR10/PQ before keeping supported
+  work on GPU surfaces; HLG, Dolby Vision, unknown metadata, disposable comparisons, and VMAF-gated
+  jobs retain their like-for-like software path. Recognised hardware setup failures retry once with
+  software decode and tone mapping. **Live, unprivileged CPU/GPU
   metrics** stream to the Queue graph over SignalR — `/proc/stat` for CPU and per-process DRM fdinfo
   (Intel/AMD) → AMD sysfs → `nvidia-smi` for GPU, with no root/CAP_PERFMON or compose change required.
   Portable Fast/Balanced/Efficient encoder effort now resolves onto the selected x264/x265,

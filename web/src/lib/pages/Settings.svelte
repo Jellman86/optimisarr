@@ -25,6 +25,7 @@
   import InfoTip from '../components/InfoTip.svelte'
   import Icon from '../components/Icon.svelte'
   import Banner from '../components/Banner.svelte'
+  import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
 
   // Settings is split into tabs so each concern is found quickly and Tools lives here
@@ -40,6 +41,26 @@
   ])
   // A visit to the old /tools route lands on Settings with the Tools tab open.
   let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
+
+  function selectTab(key: TabKey) {
+    activeTab = key
+    requestAnimationFrame(() => {
+      const tab = document.getElementById(`settings-tab-${key}`)
+      tab?.focus()
+      tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    })
+  }
+
+  function handleTabKeydown(event: KeyboardEvent, index: number) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+    selectTab(tabs[nextIndex].key)
+  }
 
   const notificationTypes: NotificationType[] = ['Webhook', 'Discord', 'Telegram', 'Ntfy', 'Apprise']
   const emptyTarget = (): SaveNotificationTarget => ({
@@ -386,17 +407,7 @@
     libraryScanIntervalHours: 1,
     encoderMode: 'Auto',
     hardwareDecode: true,
-    verificationDurationTolerancePercent: 1,
-    verificationRequireAudioRetained: true,
-    verificationRequireSubtitlesRetained: false,
-    verificationRequireSizeReduction: true,
-    verificationAudioLoudnessGateEnabled: false,
-    verificationMaxLoudnessDriftLufs: 1,
-    verificationAudioClippingGateEnabled: false,
-    verificationMaxTruePeakDbtp: 0,
-    verificationImageQualityGateEnabled: true,
-    verificationMinimumImageSsim: 0.95,
-    verificationImageMetadataGateEnabled: true,
+    hdrToneMapMode: 'Software',
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     replacementQuarantineRetentionDays: 0,
@@ -444,10 +455,6 @@
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
-        verificationDurationTolerancePercent: Math.max(0, Number(settings.verificationDurationTolerancePercent) || 0),
-        verificationMaxLoudnessDriftLufs: Math.max(0, Number(settings.verificationMaxLoudnessDriftLufs) || 0),
-        verificationMaxTruePeakDbtp: Number(settings.verificationMaxTruePeakDbtp) || 0,
-        verificationMinimumImageSsim: Math.min(1, Math.max(0, Number(settings.verificationMinimumImageSsim) || 0)),
         replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
@@ -586,15 +593,11 @@
   }
 </script>
 
-<header class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+<header class="mb-6">
   <div class="min-w-0">
     <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
     <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
   </div>
-  <button class="btn min-h-11 w-full flex-none sm:w-auto" onclick={restartSetup} disabled={restartingSetup}>
-    <Icon name="retry" class="h-4 w-4 {restartingSetup ? 'animate-spin' : ''}" />
-    {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
-  </button>
 </header>
 
 {#if error}
@@ -604,13 +607,23 @@
 {#if loading}
   <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else}
-  <div class="no-scrollbar mb-5 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700">
-    {#each tabs as tab}
+  <div
+    class="no-scrollbar mb-5 flex max-w-full gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700"
+    role="tablist"
+    aria-label={i18n.m.nav.settings}
+  >
+    {#each tabs as tab, index}
       <button
-        class="-mb-px flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
+        id={`settings-tab-${tab.key}`}
+        role="tab"
+        aria-selected={activeTab === tab.key}
+        aria-controls={`settings-panel-${tab.key}`}
+        tabindex={activeTab === tab.key ? 0 : -1}
+        class="-mb-px min-h-11 flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
           ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
           : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-        onclick={() => (activeTab = tab.key)}
+        onclick={() => selectTab(tab.key)}
+        onkeydown={(event) => handleTabKeydown(event, index)}
       >
         {tab.label}
       </button>
@@ -618,12 +631,18 @@
   </div>
 
   {#if activeTab === 'general'}
-  <div class="min-w-0 space-y-5">
-  <div class="card p-4 sm:p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      {i18n.m.settings.queue_desc}
-    </p>
+  <div
+    id="settings-panel-general"
+    role="tabpanel"
+    aria-labelledby="settings-tab-general"
+    class="min-w-0 space-y-5"
+  >
+  <ConfigSection
+    step={1}
+    id="global-workload"
+    title={i18n.m.nav.queue}
+    description={i18n.m.settings.queue_desc}
+  >
     <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label>
@@ -663,99 +682,34 @@
       </div>
     </div>
 
-    <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-800 sm:grid-cols-2">
       <Toggle
         bind:checked={settings.hardwareDecode}
         label={i18n.m.settings.hardware_decode}
         hint={i18n.m.settings.hardware_decode_hint}
       />
-      <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+      <div>
+        <label class="label" for="hdr-tone-map-mode">
+          {i18n.m.settings.hdr_tone_map_mode}
+          <InfoTip text={i18n.m.settings.hdr_tone_map_mode_tip} />
+        </label>
+        <select id="hdr-tone-map-mode" class="input" bind:value={settings.hdrToneMapMode}>
+          <option value="Software">{i18n.m.settings.hdr_tone_map_software}</option>
+          <option value="Hardware">{i18n.m.settings.hdr_tone_map_hardware}</option>
+        </select>
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
         {i18n.m.settings.auto_run_before}<button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
     </div>
-  </div>
+  </ConfigSection>
 
-  <div class="card p-4 sm:p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.gates_title}</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      {i18n.m.settings.gates_desc}
-    </p>
-
-    <div class="grid gap-4 lg:grid-cols-2">
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">{i18n.m.settings.always_on}</h3>
-        <div class="max-w-[16rem]">
-          <label class="label" for="duration-tolerance">{i18n.m.settings.duration_tolerance} <InfoTip text={i18n.m.settings.duration_tolerance_tip} /></label>
-          <div class="flex min-w-0 items-center gap-2">
-            <input id="duration-tolerance" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationDurationTolerancePercent} />
-            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
-          </div>
-        </div>
-        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-          <Toggle bind:checked={settings.verificationRequireAudioRetained} label={i18n.m.settings.require_audio} />
-          <Toggle bind:checked={settings.verificationRequireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
-          <Toggle bind:checked={settings.verificationRequireSizeReduction} label={i18n.m.settings.require_smaller} />
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationAudioLoudnessGateEnabled}
-          label={i18n.m.settings.loudness_label}
-          hint={i18n.m.settings.loudness_hint}
-        />
-        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioLoudnessGateEnabled}>
-          <label class="label" for="loudness-drift">{i18n.m.settings.loudness_max}</label>
-          <div class="flex min-w-0 items-center gap-2">
-            <input id="loudness-drift" class="input min-w-0 flex-1" type="number" min="0" step="0.1" bind:value={settings.verificationMaxLoudnessDriftLufs} disabled={!settings.verificationAudioLoudnessGateEnabled} />
-            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationAudioClippingGateEnabled}
-          label={i18n.m.settings.clipping_label}
-          hint={i18n.m.settings.clipping_hint}
-        />
-        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationAudioClippingGateEnabled}>
-          <label class="label" for="true-peak-ceiling">{i18n.m.settings.true_peak} <InfoTip text={i18n.m.settings.true_peak_tip} /></label>
-          <div class="flex min-w-0 items-center gap-2">
-            <input id="true-peak-ceiling" class="input min-w-0 flex-1" type="number" step="0.1" bind:value={settings.verificationMaxTruePeakDbtp} disabled={!settings.verificationAudioClippingGateEnabled} />
-            <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationImageQualityGateEnabled}
-          label={i18n.m.settings.ssim_label}
-          hint={i18n.m.settings.ssim_hint}
-        />
-        <div class="mt-4 max-w-[16rem]" class:opacity-50={!settings.verificationImageQualityGateEnabled}>
-          <label class="label" for="image-ssim-floor">{i18n.m.settings.ssim_min} <InfoTip text={i18n.m.settings.ssim_min_tip} /></label>
-          <input id="image-ssim-floor" class="input" type="number" step="0.01" min="0" max="1" bind:value={settings.verificationMinimumImageSsim} disabled={!settings.verificationImageQualityGateEnabled} />
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <Toggle
-          bind:checked={settings.verificationImageMetadataGateEnabled}
-          label={i18n.m.settings.exif_label}
-          hint={i18n.m.settings.exif_hint}
-        />
-        <p class="mt-3 text-xs text-slate-400">{i18n.m.settings.exif_note}</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="card p-4 sm:p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.replacement_title}</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      {i18n.m.settings.replacement_desc}
-    </p>
+  <ConfigSection
+    step={2}
+    id="global-replacement"
+    title={i18n.m.settings.replacement_title}
+    description={i18n.m.settings.replacement_desc}
+  >
     <div class="max-w-2xl">
       <Toggle
         bind:checked={settings.dryRunMode}
@@ -796,7 +750,7 @@
             {/if}
           </div>
           <button
-            class="btn btn-danger min-h-10"
+            class="btn btn-danger min-h-11"
             onclick={cleanUpNow}
             disabled={cleanupLoading || cleaning || !cleanupPreview || cleanupPreview.totalCount === 0 || cleanupPolicyHasUnsavedChanges()}
           >
@@ -819,10 +773,10 @@
         {#if cleanupMessage}<p class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{cleanupMessage}</p>{/if}
       </div>
     </div>
-  </div>
+  </ConfigSection>
 
-  <div class="flex flex-wrap items-center gap-3">
-    <button class="btn btn-primary" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
+  <div class="card flex flex-wrap items-center gap-3 p-4 sm:p-5" data-settings-actions>
+    <button class="btn btn-primary min-h-11" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
     {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
     <span class="text-xs text-slate-400">{i18n.m.settings.save_note}</span>
   </div>
@@ -830,11 +784,20 @@
   {/if}
 
   {#if activeTab === 'connections'}
-  <div class="space-y-5">
+  <div
+    id="settings-panel-connections"
+    role="tabpanel"
+    aria-labelledby="settings-tab-connections"
+    class="min-w-0 space-y-5"
+  >
     <!-- Media servers (Plex/Jellyfin/Emby): playback-aware pause + post-replacement re-scan. -->
-    <div class="card p-5">
-      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.media_servers}</h2>
-      <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+    <ConfigSection
+      step={1}
+      id="global-media-servers"
+      title={i18n.m.settings.media_servers}
+      description={i18n.m.settings.media_servers_summary}
+    >
+      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
         {i18n.m.settings.media_servers_desc}
       </p>
 
@@ -855,8 +818,8 @@
                 {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
                 {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
                 {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
-                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
@@ -891,7 +854,7 @@
             <label class="label" for="watcher-token">
               {watcherDraft.type === 'Plex' ? i18n.m.settings.plex_token : i18n.m.settings.api_key}
             </label>
-            <div class="flex items-center gap-2">
+            <div class="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               <input
                 id="watcher-token"
                 class="input"
@@ -901,9 +864,9 @@
               />
               {#if watcherDraft.type !== 'Emby'}
                 {#if connecting}
-                  <button class="btn btn-ghost whitespace-nowrap px-3 py-1 text-xs" onclick={resetConnect}>{i18n.m.common.cancel}</button>
+                  <button class="btn btn-ghost min-h-11 whitespace-nowrap px-3 py-1 text-xs sm:min-h-0" onclick={resetConnect}>{i18n.m.common.cancel}</button>
                 {:else}
-                  <button class="btn whitespace-nowrap px-3 py-1 text-xs" onclick={connect}>
+                  <button class="btn min-h-11 whitespace-nowrap px-3 py-1 text-xs sm:min-h-0" onclick={connect}>
                     {watcherDraft.type === 'Plex' ? i18n.m.settings.sign_in_plex : i18n.m.settings.quick_connect}
                   </button>
                 {/if}
@@ -950,12 +913,12 @@
             {/if}
           </p>
         {/if}
-        <div class="mt-4 flex items-center gap-2">
-          <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveWatcher} disabled={savingWatcher}>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveWatcher} disabled={savingWatcher}>
             {savingWatcher ? i18n.m.settings.saving : editingId === null ? i18n.m.settings.add_media_server_btn : i18n.m.settings.save_changes}
           </button>
           <button
-            class="btn px-3 py-1 text-sm"
+            class="btn min-h-11 px-3 py-1 text-sm sm:min-h-0"
             onclick={testConnection}
             disabled={testing || (!watcherDraft.baseUrl.trim())}
             title={i18n.m.settings.test_connection_title}
@@ -963,16 +926,20 @@
             {testing ? i18n.m.settings.testing : i18n.m.settings.test_connection}
           </button>
           {#if editingId !== null}
-            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAdd} disabled={savingWatcher}>{i18n.m.common.cancel}</button>
+            <button class="btn btn-ghost min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={startAdd} disabled={savingWatcher}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
       </div>
-    </div>
+    </ConfigSection>
 
     <!-- Download managers (Sonarr/Radarr): hold files back while an import is in progress. -->
-    <div class="card p-5">
-      <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.download_managers}</h2>
-      <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
+    <ConfigSection
+      step={2}
+      id="global-download-managers"
+      title={i18n.m.settings.download_managers}
+      description={i18n.m.settings.download_managers_summary}
+    >
+      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
         {i18n.m.settings.download_managers_desc}
       </p>
 
@@ -992,8 +959,8 @@
               <div class="flex flex-wrap items-center gap-2">
                 {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
                 {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
-                <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
@@ -1035,25 +1002,32 @@
         <div class="mt-3">
           <Toggle bind:checked={arrDraft.enabled} label={i18n.m.settings.enabled} hint={i18n.m.settings.arr_enabled_hint} />
         </div>
-        <div class="mt-4 flex items-center gap-2">
-          <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveArr} disabled={savingArr}>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveArr} disabled={savingArr}>
             {savingArr ? i18n.m.settings.saving : editingArrId === null ? i18n.m.settings.add_download_manager_btn : i18n.m.settings.save_changes}
           </button>
           {#if editingArrId !== null}
-            <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddArr} disabled={savingArr}>{i18n.m.common.cancel}</button>
+            <button class="btn btn-ghost min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={startAddArr} disabled={savingArr}>{i18n.m.common.cancel}</button>
           {/if}
         </div>
       </div>
-    </div>
+    </ConfigSection>
   </div>
   {/if}
 
   {#if activeTab === 'notifications'}
-  <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.tab_notifications}</h2>
-    <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">
-      {i18n.m.settings.notifications_desc}
-    </p>
+  <div
+    id="settings-panel-notifications"
+    role="tabpanel"
+    aria-labelledby="settings-tab-notifications"
+    class="min-w-0"
+  >
+  <ConfigSection
+    step={1}
+    id="global-notifications"
+    title={i18n.m.settings.tab_notifications}
+    description={i18n.m.settings.notifications_desc}
+  >
 
     {#if targetError}
       <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{targetError}</div>
@@ -1076,11 +1050,11 @@
               {#if t.type === 'Telegram' && !t.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_no_token}</span>{/if}
               {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.settings.badge_replaced}</span>{/if}
               {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_failed}</span>{/if}
-              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
+              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
                 {testingTargetId === t.id ? i18n.m.settings.testing : i18n.m.settings.send_test}
               </button>
-              <button class="btn btn-ghost px-2 py-1 text-xs" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
-              <button class="btn btn-ghost px-2 py-1 text-xs text-red-600 dark:text-red-400" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
+              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
+              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
             </div>
           </li>
         {/each}
@@ -1142,26 +1116,44 @@
         <Toggle bind:checked={targetDraft.notifyOnReplacement} label={i18n.m.settings.notify_replaced} />
         <Toggle bind:checked={targetDraft.notifyOnFailure} label={i18n.m.settings.notify_failed} />
       </div>
-      <div class="mt-4 flex items-center gap-2">
-        <button class="btn btn-primary px-3 py-1 text-sm" onclick={saveTarget} disabled={savingTarget || (telegramTokenRequired && !targetDraft.token.trim())}>
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        <button class="btn btn-primary min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={saveTarget} disabled={savingTarget || (telegramTokenRequired && !targetDraft.token.trim())}>
           {savingTarget ? i18n.m.settings.saving : editingTargetId === null ? i18n.m.settings.add_target_btn : i18n.m.settings.save_changes}
         </button>
         {#if editingTargetId !== null}
-          <button class="btn btn-ghost px-3 py-1 text-sm" onclick={startAddTarget} disabled={savingTarget}>{i18n.m.common.cancel}</button>
+          <button class="btn btn-ghost min-h-11 px-3 py-1 text-sm sm:min-h-0" onclick={startAddTarget} disabled={savingTarget}>{i18n.m.common.cancel}</button>
         {/if}
       </div>
     </div>
+  </ConfigSection>
   </div>
   {/if}
 
   {#if activeTab === 'tools'}
-    <ToolsPanel />
+    <div
+      id="settings-panel-tools"
+      role="tabpanel"
+      aria-labelledby="settings-tab-tools"
+      class="min-w-0"
+    >
+      <ToolsPanel />
+    </div>
   {/if}
 
   {#if activeTab === 'backup'}
-  <div class="card p-5">
-    <h2 class="mb-1 font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.backup_title}</h2>
-    <p class="mb-4 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
+  <div
+    id="settings-panel-backup"
+    role="tabpanel"
+    aria-labelledby="settings-tab-backup"
+    class="min-w-0 space-y-5"
+  >
+  <ConfigSection
+    step={1}
+    id="global-backup"
+    title={i18n.m.settings.backup_title}
+    description={i18n.m.settings.backup_summary}
+  >
+    <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
       {i18n.m.settings.backup_desc}
     </p>
 
@@ -1180,6 +1172,19 @@
       <input bind:this={fileInput} type="file" accept="application/json,.json" class="hidden" onchange={importConfig} />
     </div>
 
+  </ConfigSection>
+
+  <ConfigSection
+    step={2}
+    id="global-first-run"
+    title={i18n.m.settings.restart_setup_title}
+    description={i18n.m.settings.restart_setup_desc}
+  >
+    <button class="btn min-h-11 w-full sm:w-auto" onclick={restartSetup} disabled={restartingSetup}>
+      <Icon name="retry" class="h-4 w-4 {restartingSetup ? 'animate-spin' : ''}" />
+      {restartingSetup ? i18n.m.settings.restarting_setup : i18n.m.settings.restart_setup}
+    </button>
+  </ConfigSection>
   </div>
   {/if}
 {/if}

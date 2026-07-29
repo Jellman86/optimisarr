@@ -15,7 +15,7 @@ namespace Optimisarr.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -162,6 +162,9 @@ namespace Optimisarr.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AdaptiveVideoQuality")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Attempt")
                         .HasColumnType("INTEGER");
 
@@ -296,6 +299,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("AudioBitrateKbps")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("AudioClippingGateEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AudioLoudnessGateEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("AudioTargetCodec")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -321,6 +330,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("DownmixToStereo")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("DurationTolerancePercent")
+                        .HasColumnType("REAL");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
 
@@ -344,7 +356,13 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int>("ImageDownscaleValue")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ImageMetadataGateEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("ImageQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ImageQualityGateEnabled")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("KeepAudioLanguages")
@@ -361,6 +379,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("MaxHeight")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("MaxLoudnessDriftLufs")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("MaxTruePeakDbtp")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("MediaType")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -376,6 +400,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<double?>("MinVmafMin")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("MinimumImageSsim")
                         .HasColumnType("REAL");
 
                     b.Property<bool>("MoveOnComplete")
@@ -412,6 +439,15 @@ namespace Optimisarr.Data.Migrations
                     b.Property<long?>("ReencodeSameCodecAboveBytes")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("RequireAudioRetained")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("RequireSizeReduction")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("RequireSubtitlesRetained")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("RuleProfile")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -444,6 +480,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("VideoAudioCodec")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("VideoQualityStrategy")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("VmafFrameSubsample")
                         .HasColumnType("INTEGER");

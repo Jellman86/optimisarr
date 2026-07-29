@@ -182,6 +182,11 @@ to `dev`/`main`, every tag `v*`, and every pull request targeting `dev`/`main`:
 - **frontend** — `npm ci` → `npm run check`. Must be clean.
 - **docker** — builds the image (after backend + frontend pass) and **publishes
   to GHCR** as `ghcr.io/jellman86/optimisarr`.
+- [`.github/workflows/security.yml`](.github/workflows/security.yml) checks the
+  complete Git history with Gitleaks on pull requests, protected-branch pushes,
+  a weekly schedule, and manual dispatch. It has read-only repository
+  permissions and may not expose repository or deployment secrets to
+  pull-request code.
 
 ### Image tags (publishing rules)
 
@@ -211,9 +216,13 @@ the repo's package settings if anonymous `docker pull` is expected.
 
 ## 10. Workflow
 
-- **Develop and commit directly on `dev`.** Do not create feature branches for this
-  repo — make changes, commit, and push on `dev`. (Release tags/`main` are handled
-  separately; everyday work lives on `dev`.)
+- **Start everyday work from current `dev` on a short-lived branch.** Keep each
+  branch to one reviewable behaviour change or tightly related maintenance slice.
+- Open a pull request into `dev`. Release pull requests alone target `main`;
+  release tags are created from the reviewed release state.
+- Pull requests state the outcome, included and excluded scope, verification
+  results, and material safety or migration risk. Do not merge while a required
+  check is failing or a blocking review conversation is unresolved.
 - **No sub-agents.** Do the work inline. Do not spawn sub-agents (e.g. the Agent/Task
   "Explore"/"Plan"/general-purpose agents) to carry out tasks in this repo.
 - **Write GitHub Releases for the person updating their server, not for the commit

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 
 namespace Optimisarr.Core.Settings;
 
@@ -49,8 +50,29 @@ public static class ConfigSnapshotValidator
             var where = $"Library #{i + 1}";
             RequireText(library.Name, $"{where} name", errors);
             RequireText(library.Path, $"{where} path", errors);
-            RequireEnum<MediaType>(library.MediaType, $"{where} media type", errors);
-            RequireEnum<RuleProfile>(library.RuleProfile, $"{where} rule profile", errors);
+            var validMediaType = RequireEnum<MediaType>(
+                library.MediaType, $"{where} media type", errors, out var mediaType);
+            var validRuleProfile = RequireEnum<RuleProfile>(
+                library.RuleProfile, $"{where} rule profile", errors, out var ruleProfile);
+            var validQualityStrategy = RequireEnum<VideoQualityStrategy>(
+                library.VideoQualityStrategy,
+                $"{where} video quality strategy",
+                errors,
+                out var videoQualityStrategy);
+            if (validQualityStrategy && videoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
+            {
+                if (library.VmafQualityGateEnabled != true)
+                {
+                    errors.Add($"{where} adaptive VMAF quality requires an enabled per-library VMAF target.");
+                }
+                if ((validMediaType && mediaType is MediaType.Music or MediaType.Photo)
+                    || (validRuleProfile
+                        && RuleProfileDefaults.For(ruleProfile).TargetVideoCodec is null
+                        && string.IsNullOrWhiteSpace(library.TargetVideoCodec)))
+                {
+                    errors.Add($"{where} adaptive VMAF quality applies only to video re-encode libraries.");
+                }
+            }
             if (library.HdrHandling is not null)
             {
                 RequireEnum<HdrHandling>(library.HdrHandling, $"{where} HDR handling", errors);
@@ -97,6 +119,10 @@ public static class ConfigSnapshotValidator
             RequireRange(library.MinVmafMin, 0, 100, $"{where} VMAF fifth-percentile floor", errors);
             RequireRange(library.MinVmafCatastrophicMin, 0, 100, $"{where} VMAF catastrophic floor", errors);
             RequireRange(library.VmafFrameSubsample, 1, 10, $"{where} VMAF frame sampling interval", errors);
+            RequireRange(library.DurationTolerancePercent, 0, double.MaxValue, $"{where} duration tolerance", errors);
+            RequireRange(library.MaxLoudnessDriftLufs, 0, double.MaxValue, $"{where} loudness drift tolerance", errors);
+            RequireFinite(library.MaxTruePeakDbtp, $"{where} true-peak ceiling", errors);
+            RequireRange(library.MinimumImageSsim, 0, 1, $"{where} image SSIM floor", errors);
             if (library.MinVmafCatastrophicMin is { } catastrophic
                 && library.MinVmafMin is { } fifth
                 && catastrophic > fifth)
@@ -156,6 +182,14 @@ public static class ConfigSnapshotValidator
         }
     }
 
+    private static void RequireFinite(double? value, string label, List<string> errors)
+    {
+        if (value is { } number && !double.IsFinite(number))
+        {
+            errors.Add($"{label} must be finite.");
+        }
+    }
+
     private static void RequireEnum<T>(string? value, string label, List<string> errors)
         where T : struct, Enum
     {
@@ -165,7 +199,8 @@ public static class ConfigSnapshotValidator
     private static bool RequireEnum<T>(string? value, string label, List<string> errors, out T parsed)
         where T : struct, Enum
     {
-        if (!Enum.TryParse<T>(value, ignoreCase: true, out parsed))
+        if (!Enum.TryParse<T>(value, ignoreCase: true, out parsed)
+            || !Enum.IsDefined(parsed))
         {
             errors.Add($"{label} is not valid: {value}.");
             return false;

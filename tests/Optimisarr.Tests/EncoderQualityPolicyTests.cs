@@ -25,4 +25,18 @@ public sealed class EncoderQualityPolicyTests
         Assert.Equal(17, EncoderQualityPolicy.Resolve("hevc_qsv", 24, retryCount: 1).Effective);
         Assert.Equal(0, EncoderQualityPolicy.Resolve("hevc_qsv", 2, retryCount: 4).Effective);
     }
+
+    [Fact]
+    public void Adaptive_retry_stays_anchored_to_the_selected_effective_value()
+    {
+        var quality = EncoderQualityPolicy.ResolveAdaptive(
+            "hevc_qsv",
+            requested: 24,
+            selectedEffective: 27,
+            retryCount: 1);
+
+        Assert.Equal(24, quality.Effective);
+        Assert.Equal("ICQ", quality.Mode);
+        Assert.Equal(1, quality.RetryCount);
+    }
 }

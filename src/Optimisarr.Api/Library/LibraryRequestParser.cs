@@ -1,5 +1,6 @@
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Rules;
 using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Api.Library;
@@ -44,6 +45,18 @@ internal readonly record struct ParsedLibrary(
     double? MinVmafCatastrophicMin,
     bool? ClipVmafEnabled,
     int? VmafFrameSubsample,
+    double DurationTolerancePercent,
+    bool RequireAudioRetained,
+    bool RequireSubtitlesRetained,
+    bool RequireSizeReduction,
+    bool AudioLoudnessGateEnabled,
+    double MaxLoudnessDriftLufs,
+    bool AudioClippingGateEnabled,
+    double MaxTruePeakDbtp,
+    bool ImageQualityGateEnabled,
+    double MinimumImageSsim,
+    bool ImageMetadataGateEnabled,
+    VideoQualityStrategy VideoQualityStrategy,
     bool AutoEnqueueEnabled,
     TimeOnly AutoEnqueueWindowStart,
     TimeOnly AutoEnqueueWindowEnd,
@@ -88,10 +101,37 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var videoQualityStrategy = VideoQualityStrategy.Fixed;
+        if (!string.IsNullOrWhiteSpace(request.VideoQualityStrategy)
+            && (!Enum.TryParse(request.VideoQualityStrategy, ignoreCase: true, out videoQualityStrategy)
+                || !Enum.IsDefined(videoQualityStrategy)))
+        {
+            error =
+                $"Unknown video quality strategy: {request.VideoQualityStrategy}. " +
+                $"Expected one of {string.Join(", ", Enum.GetNames<VideoQualityStrategy>())}.";
+            return false;
+        }
+
         if (ruleProfile == RuleProfile.TrackCleanup && mediaType is MediaType.Music or MediaType.Photo)
         {
             error = "Track cleanup applies only to Film, TV, or mixed libraries that can contain video files.";
             return false;
+        }
+
+        if (videoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
+        {
+            var profileReencodesVideo = RuleProfileDefaults.For(ruleProfile).TargetVideoCodec is not null;
+            var requestReencodesVideo = !string.IsNullOrWhiteSpace(request.TargetVideoCodec) || profileReencodesVideo;
+            if (mediaType is MediaType.Music or MediaType.Photo || !requestReencodesVideo)
+            {
+                error = "Adaptive VMAF quality applies only to libraries that re-encode video.";
+                return false;
+            }
+            if (request.VmafQualityGateEnabled != true)
+            {
+                error = "Adaptive VMAF quality requires a per-library VMAF target.";
+                return false;
+            }
         }
 
         HdrHandling? hdrHandling = null;
@@ -146,6 +186,30 @@ internal static class LibraryRequestParser
         if (request.VmafFrameSubsample is < 1 or > QualityScoreCommandBuilder.MaximumFrameSubsample)
         {
             error = $"VMAF frame sampling must be between 1 and {QualityScoreCommandBuilder.MaximumFrameSubsample}.";
+            return false;
+        }
+
+        if (request.DurationTolerancePercent is < 0)
+        {
+            error = "Verification duration tolerance cannot be negative.";
+            return false;
+        }
+
+        if (request.MaxLoudnessDriftLufs is < 0)
+        {
+            error = "Verification loudness drift tolerance cannot be negative.";
+            return false;
+        }
+
+        if (request.MaxTruePeakDbtp is { } truePeak && !double.IsFinite(truePeak))
+        {
+            error = "Verification true-peak ceiling must be a finite dBTP value.";
+            return false;
+        }
+
+        if (request.MinimumImageSsim is < 0 or > 1)
+        {
+            error = "Verification image SSIM threshold must be between 0 and 1.";
             return false;
         }
 
@@ -307,6 +371,18 @@ internal static class LibraryRequestParser
             request.MinVmafCatastrophicMin,
             request.ClipVmafEnabled,
             request.VmafFrameSubsample,
+            request.DurationTolerancePercent ?? VerificationPolicy.Default.DurationTolerancePercent,
+            request.RequireAudioRetained ?? VerificationPolicy.Default.RequireAudioRetained,
+            request.RequireSubtitlesRetained ?? VerificationPolicy.Default.RequireSubtitlesRetained,
+            request.RequireSizeReduction ?? VerificationPolicy.Default.RequireSizeReduction,
+            request.AudioLoudnessGateEnabled ?? VerificationPolicy.Default.AudioLoudnessGateEnabled,
+            request.MaxLoudnessDriftLufs ?? VerificationPolicy.Default.MaxLoudnessDriftLufs,
+            request.AudioClippingGateEnabled ?? VerificationPolicy.Default.AudioClippingGateEnabled,
+            request.MaxTruePeakDbtp ?? VerificationPolicy.Default.MaxTruePeakDbtp,
+            request.ImageQualityGateEnabled ?? VerificationPolicy.Default.ImageQualityGateEnabled,
+            request.MinimumImageSsim ?? VerificationPolicy.Default.MinimumImageSsim,
+            request.ImageMetadataGateEnabled ?? VerificationPolicy.Default.ImageMetadataGateEnabled,
+            videoQualityStrategy,
             request.AutoEnqueueEnabled ?? false,
             autoStart,
             autoEnd,

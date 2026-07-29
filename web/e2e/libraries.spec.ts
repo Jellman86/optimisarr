@@ -12,8 +12,14 @@ const library = {
   imageDownscaleMode: 'None', imageDownscaleValue: 0, moveOnComplete: false,
   targetFolder: null, moveOverwrite: false, minVmafHarmonicMean: null, minVmafMin: null,
   vmafQualityGateEnabled: false, minVmafCatastrophicMin: null, clipVmafEnabled: null,
-  vmafFrameSubsample: null, autoEnqueueEnabled: false, autoEnqueueWindowStart: '00:00',
-  autoEnqueueWindowEnd: '00:00', autoReplace: false, lastAutoEnqueueAt: null, fileCount: 1,
+  vmafFrameSubsample: null, durationTolerancePercent: 1, requireAudioRetained: true,
+  requireSubtitlesRetained: false, requireSizeReduction: true,
+  audioLoudnessGateEnabled: false, maxLoudnessDriftLufs: 1,
+  audioClippingGateEnabled: false, maxTruePeakDbtp: 0,
+  imageQualityGateEnabled: true, minimumImageSsim: 0.95, imageMetadataGateEnabled: true,
+  autoEnqueueEnabled: false, autoEnqueueWindowStart: '00:00',
+  autoEnqueueWindowEnd: '00:00', autoReplace: false, videoQualityStrategy: 'Fixed',
+  lastAutoEnqueueAt: null, fileCount: 1,
 }
 
 async function mockLibraries(page: Page, configuredLibrary = library) {
@@ -23,7 +29,7 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/libraries') return json(route, [configuredLibrary])
     if (path === '/api/library-options') return json(route, {
-      mediaTypes: ['Film', 'Music'],
+      mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
       ruleProfileSpecs: [
         { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20 },
@@ -60,7 +66,8 @@ test('track cleanup is an exclusive mode and exposes only its relevant video con
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')
 
-  await expect(page.getByRole('radio')).toHaveCount(3)
+  const processingModes = page.getByRole('group', { name: 'Processing mode' })
+  await expect(processingModes.getByRole('radio')).toHaveCount(3)
   await page.getByRole('radio', { name: /Only remove unwanted audio\/subtitle languages/ }).check()
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).not.toBeChecked()
   await expect(page.getByLabel('VMAF quality')).toHaveCount(0)
@@ -72,9 +79,156 @@ test('track cleanup is an exclusive mode and exposes only its relevant video con
   await expect(page.getByLabel('Minimum file size')).toHaveCount(0)
 
   await page.getByLabel('Media type').selectOption('Music')
-  await expect(page.getByRole('radio')).toHaveCount(0)
+  await expect(processingModes).toHaveCount(0)
   await page.getByLabel('Media type').selectOption('Film')
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).toBeChecked()
+})
+
+test('adaptive quality path enables a concrete VMAF target and remains exclusive', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const fixed = page.getByRole('radio', { name: /Fixed library quality/ })
+  const adaptive = page.getByRole('radio', { name: /Adaptive per-title VMAF/ })
+  await expect(fixed).toBeChecked()
+  await adaptive.check()
+
+  await expect(adaptive).toBeChecked()
+  await expect(fixed).not.toBeChecked()
+  const vmafQuality = page.locator('#lib-vmaf-policy')
+  await expect(vmafQuality).toHaveValue('lossless')
+  await expect(vmafQuality.locator('option[value="off"]')).toBeDisabled()
+  await expect(page.getByText(/Extra work before every full encode/)).toBeVisible()
+})
+
+test("Scott's preset mirrors the current tone-map and AAC stereo bundle", async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  await page.getByRole('slider', { name: 'Compatibility to efficiency' }).fill('3')
+  await expect(page.getByText(/Scott's Settings — HEVC/)).toBeVisible()
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+
+  await expect(page.locator('#lib-hdr')).toHaveValue('TonemapToSdr')
+  await expect(page.locator('#lib-video-audio-codec')).toHaveValue('aac')
+  await expect(page.locator('#lib-video-audio-bitrate')).toHaveValue('96')
+  await expect(page.getByRole('checkbox', { name: /Downmix surround to stereo/ })).toBeChecked()
+})
+
+test('verification policy follows the selected library media type', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  await expect(page.getByLabel('Duration tolerance')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Require all audio tracks to be retained' })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Require all subtitle tracks to be retained' })).toBeVisible()
+  await expect(page.getByLabel('Minimum SSIM')).toHaveCount(0)
+
+  await page.getByLabel('Media type').selectOption('Music')
+  await expect(page.getByLabel('Duration tolerance')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Require all subtitle tracks to be retained' })).toHaveCount(0)
+  await expect(page.locator('#lib-vmaf-policy')).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Audio loudness drift (EBU R128)' })).toBeVisible()
+
+  await page.getByLabel('Media type').selectOption('Photo')
+  await expect(page.getByLabel('Duration tolerance')).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'Require all audio tracks to be retained' })).toHaveCount(0)
+  await expect(page.getByLabel('Minimum SSIM')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Preserve image EXIF/ICC metadata' })).toBeVisible()
+})
+
+test('library configuration follows one logical section flow for every media type', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const sections = page.locator('[data-config-section]')
+  await expect(sections).toHaveCount(4)
+  await expect(sections.getByRole('heading', { level: 2 })).toHaveText([
+    'Library',
+    'Optimisation',
+    'Verification gates',
+    'Automation & completion',
+  ])
+
+  // Completion behaviour is part of the normal workflow, not a codec override hidden in Advanced.
+  await expect(sections.nth(3).getByRole('checkbox', { name: /Move output to a target folder/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Advanced options/ })).toHaveAttribute('aria-expanded', 'false')
+
+  // Audio is the primary optimisation choice for Music and must not be buried in Advanced.
+  await page.getByLabel('Media type').selectOption('Music')
+  await expect(sections.nth(1).getByLabel('Target codec')).toBeVisible()
+  await expect(sections.nth(1).getByLabel('Bitrate (kbps)')).toBeVisible()
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+  await expect(page.getByLabel('Target codec')).toHaveCount(1)
+
+  await page.getByLabel('Media type').selectOption('Photo')
+  await expect(sections.nth(1).getByLabel('Image compatibility to efficiency')).toBeVisible()
+
+  await page.getByLabel('Media type').selectOption('Other')
+  await expect(sections.nth(1).getByRole('group', { name: 'Processing mode' })).toBeVisible()
+})
+
+test('optional verification thresholds use progressive disclosure', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const loudness = page.getByRole('checkbox', { name: 'Audio loudness drift (EBU R128)' })
+  await expect(page.getByLabel('Maximum loudness drift')).toHaveCount(0)
+  await loudness.check()
+  await expect(page.getByLabel('Maximum loudness drift')).toBeVisible()
+  await loudness.uncheck()
+  await expect(page.getByLabel('Maximum loudness drift')).toHaveCount(0)
+})
+
+test('library editor fits a narrow viewport without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const fit = await page.locator('main').evaluate((main) => ({
+    scrollWidth: main.scrollWidth,
+    clientWidth: main.clientWidth,
+  }))
+  expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
+})
+
+test('long translated information tooltips stay readable in short landscape layouts', async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 375 })
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
+  await page.addInitScript(() => {
+    localStorage.setItem('optimisarr:locale', 'de')
+  })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  await page.locator('html').evaluate((element) => {
+    element.style.fontSize = '125%'
+  })
+  await page.locator('main button[aria-expanded]').click()
+
+  const tooltips = page.locator('main [role="tooltip"]')
+  expect(await tooltips.count()).toBeGreaterThan(10)
+  for (const tooltip of await tooltips.all()) {
+    const button = tooltip.locator('xpath=preceding-sibling::button[1]')
+    await button.focus()
+    await expect(tooltip).toBeVisible()
+    const bounds = await tooltip.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.y).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(812)
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(375)
+  }
+})
+
+test('library actions do not obscure the editor in a short landscape viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 812, height: 375 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+  await page.getByLabel('Name').fill('Films archive')
+
+  const actionBar = page.locator('[data-library-actions]')
+  await expect(actionBar).toHaveCSS('position', 'static')
+  await expect(page.getByLabel('Name')).toBeInViewport()
 })
 
 test('invalid subtitle language syntax cannot be saved', async ({ page }) => {

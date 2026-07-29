@@ -51,6 +51,26 @@ Use [Intel QSV](../../compose.intel-qsv.example.yml) or
 use `RENDER_GID` for render-node access; select **Intel QSV** or **VA-API** in
 Settings after Tools has validated the encoder.
 
+### HDR-to-SDR tone mapping
+
+The per-library **HDR handling** drop-down remains the output policy: only **Tone-map to SDR**
+requests a colour conversion. **Settings → General → Queue → HDR tone-map engine** chooses its
+machine-specific implementation:
+
+- **Software (compatible)** is the default and uses the established `zscale`/Hable Rec.709 path.
+- **Hardware when supported** freshly confirms HDR10/PQ input, then keeps decode, tone mapping,
+  and encode on Intel QSV or VA-API surfaces when Hardware decoding is also enabled.
+
+Preview and personal-quality clips retain software decoding to preserve exact frame identity.
+VMAF-gated HDR→SDR jobs also retain the software production transform so the reference can receive
+the identical colour conversion. HLG, Dolby Vision, and unknown transfer metadata also stay on the
+compatible software transform because FFmpeg documents `tonemap_vaapi` as HDR10-only. NVIDIA
+currently retains software tone mapping; NVENC may still encode the result. If a supported
+Intel/VA-API filter or its driver fails to initialise, Optimisarr deletes the partial work output
+and retries once with software decode and tone mapping. The normal decode, HDR-signal, Rec.709
+metadata, timing, stream, size, and optional VMAF verification gates still decide whether the
+completed output may replace its original.
+
 ## NVIDIA
 
 Install NVIDIA Container Toolkit and configure `NVIDIA_VISIBLE_DEVICES=all` and
@@ -63,8 +83,7 @@ With **Hardware decoding** enabled (the default), an NVENC transcode uses FFmpeg
 the source codec and keeps the decoded frames in CUDA memory for NVENC; Optimisarr does not force a
 codec-specific `*_cuvid` decoder. If the source codec or profile is unsupported, device setup fails,
 or the CUDA decode path cannot initialise, the job deletes the partial work output and retries once
-with software decoding. HDR-to-SDR work always uses software decoding because its tone-map filter
-needs frames in system memory.
+with software decoding. HDR-to-SDR work currently uses the software tone-map path with NVENC.
 
 For systems with no GPU, use the [CPU-only Compose example](../../compose.cpu.example.yml).
 

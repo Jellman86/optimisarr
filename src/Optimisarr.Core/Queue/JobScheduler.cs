@@ -6,7 +6,8 @@ public sealed record QueuedJob(
     int? LibraryId,
     int Priority,
     DateTimeOffset EnqueuedAt,
-    bool IgnoreMediaActivity = false);
+    bool IgnoreMediaActivity = false,
+    bool IgnoreLibraryWindow = false);
 
 /// <summary>
 /// Decides which queued jobs to start next, given how many are already running, the global
@@ -17,6 +18,21 @@ public sealed record QueuedJob(
 /// </summary>
 public static class JobScheduler
 {
+    /// <summary>
+    /// Whether a queued job may run under its library window. Interactive previews bypass the
+    /// automatic background-work window; they remain subject to concurrency, disk, manual pause,
+    /// and media-activity gates.
+    /// </summary>
+    public static bool CanRunInLibraryWindow(
+        QueuedJob job,
+        TimeOnly? windowStart,
+        TimeOnly? windowEnd,
+        TimeOnly now) =>
+        job.IgnoreLibraryWindow
+        || windowStart is null
+        || windowEnd is null
+        || Scheduling.DispatchPolicyEvaluator.WithinWindow(windowStart.Value, windowEnd.Value, now);
+
     public static IReadOnlyList<int> SelectJobsToStart(
         IReadOnlyList<QueuedJob> queued,
         int runningCount,

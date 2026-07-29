@@ -55,7 +55,9 @@ actually reclaimed.
 
 ### Out of scope for MVP
 
-- Distributed workers.
+- Distributed workers in the MVP. Optional registered Windows and macOS compute sidecars are
+  planned as a post-MVP extension; the main container remains the safety authority and the
+  complete single-host default (see the [roadmap](roadmap.md)).
 - Cloud storage.
 - Full plugin marketplace.
 - Automatic download client integration.
@@ -159,8 +161,10 @@ Verification should use:
 - Decode health check with FFmpeg using `-v error -f null -`.
 - Duration tolerance checks.
 - Video/audio/subtitle stream policy checks.
-- Opt-in VMAF for video re-encodes (off by default and configured per library), with default-on SSIM
-  for still-image re-encodes.
+- Opt-in VMAF for video re-encodes (off by default and configured per library). A library may use
+  its fixed quality directly or explicitly opt into a bounded per-title search across deterministic
+  early/middle/late samples; the search falls back on missing or non-monotonic evidence and never
+  bypasses final verification. Still-image re-encodes use default-on SSIM instead.
 
 ### Container shape
 
@@ -263,11 +267,14 @@ When a hardware encoder is selected, the source is also decoded on the GPU
 (`-hwaccel` + matching `-hwaccel_output_format`), keeping frames on the GPU end to
 end instead of decoding in software and uploading. NVIDIA uses FFmpeg's generic CUDA/NVDEC path;
 QSV and VA-API use their matching hardware surfaces. This is on by default
-(`queue.hardwareDecode`) and only applies to a hardware encoder. It is skipped for
-HDR→SDR tone-map jobs, whose tone-map filter runs in software and needs frames in
-system memory. Because not every source codec/profile can be hardware-decoded, a
-decode-setup failure is retried once with the software-decode command rather than
-failing the job.
+(`queue.hardwareDecode`) and only applies to a hardware encoder. HDR→SDR jobs use
+the established software colour transform by default. The opt-in
+`queue.hdrToneMapMode=Hardware` freshly confirms a non-Dolby-Vision HDR10/PQ source before it
+keeps supported QSV/VA-API decode, VPP tone mapping, and encode on GPU surfaces. HLG, Dolby Vision,
+unknown transfer metadata, disposable comparisons, and VMAF-gated jobs retain the software
+production transform. Because source codec/profile, filter, and driver support varies, a recognised
+hardware setup failure is retried once with software decode and tone mapping rather than failing
+the job.
 
 #### Live resource metrics
 
@@ -306,9 +313,10 @@ Before replacement, all required checks must pass:
 - Output exists and is non-empty.
 - ffprobe can parse it.
 - FFmpeg full decode returns success.
-- Duration delta is within tolerance.
-- The source picture stream reaches its declared container timeline; source corruption is reported
-  separately from an output-tail failure.
+- The source and output primary-picture spans are within the configured duration tolerance.
+- The source picture reaches its primary-audio timeline; source corruption is reported separately
+  from an output-tail failure, while subtitles, chapters, and attachments are never treated as
+  programme duration.
 - The output picture stream reaches the source picture stream's actual endpoint.
 - Required video stream exists.
 - Required audio streams are present or intentionally converted.
@@ -320,17 +328,29 @@ Preview jobs reuse the same verification path but never enter replacement. For
 long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
-segment-only; full queue jobs always verify against the complete original.
-Sampled VMAF places the independently encoded source and output on the source's measured frame
-cadence before trimming each window, preventing differing FFmpeg timebases from pairing adjacent
-frames at motion or scene changes.
+segment-only and maps both native players onto that exact source-relative window.
+The worker freshly resolves that midpoint from the primary video stream. It performs a bounded
+input seek followed by an exact output seek, so re-encoded picture frames and stream-copied
+audio/subtitles begin on the same requested clock without decoding the whole lead-in.
+Every video path uses the measured primary-picture span, so a copied subtitle or attached picture
+cannot extend the container and create a false failure. Full queue jobs still scan the complete
+source and output picture timelines, and independently compare the source picture against primary
+audio to catch a genuinely incomplete source without trusting ancillary-track duration.
+VMAF first rebases each independently decoded source and output to its own first picture, then places
+both on the source's measured frame cadence before trimming each window. Resetting the origins before
+FFmpeg's cadence filter prevents differing MP4/Matroska start timestamps or timebases from padding
+only one input and pairing adjacent frames at motion or scene changes.
 
 Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
 complete output contract of each library-slider preset, including codec, container, and audio rules.
+Session creation freshly probes the selected source and places all three scenes on its primary
+picture duration; the authoritative value also refreshes the inventory cache for that file.
 Its reference remains a stream copy of the original compressed frames;
 mid-file keyframe pre-roll is retained for correct decoding, excluded from the requested-duration
 verification baseline, and exposed only as an internal playback offset so the blinded slots begin on
-the same source frame. The reference is retained until session cleanup. Audio and image calibration
+the same source frame. Candidate clips use the same bounded-plus-exact seek as Preview, preventing
+copied streams from inheriting a different pre-roll timeline. The reference is retained until
+session cleanup. Audio and image calibration
 use their lossless FLAC and PNG reference paths respectively.
 
 ### Replacement

@@ -43,11 +43,11 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 | Screen | Use it for |
 |---|---|
 | Dashboard | Check service health, lifetime savings, queue counts, and live CPU/GPU usage while a job encodes. |
-| Libraries | Add paths, choose presets, run a personal quality check, scan, enqueue, configure automation, review candidates, and manage exclusions. |
+| Libraries | Add paths, choose presets, configure media-aware verification and automation, run a personal quality check, scan, enqueue, review candidates, and manage exclusions. |
 | Inventory | Inspect discovered files and understand why each one is eligible or skipped. |
 | Queue | Watch or manually pause jobs, read verification reports, retry or exclude failures, and replace verified outputs. |
 | Quarantine | Compare replacements with originals, roll back, approve, or clear finished history. |
-| Settings | Tune queue limits, verification gates, replacement policy, integrations, notifications, tools, and backup/import. |
+| Settings | Tune queue and hardware limits, replacement policy, integrations, notifications, tools, and backup/import. |
 
 ## A note on screenshots
 

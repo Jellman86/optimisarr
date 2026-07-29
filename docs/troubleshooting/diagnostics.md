@@ -54,16 +54,19 @@ sheet before retrying:
   failure details: the reference and candidate should describe the same requested sample window.
 - **Audio retained**, **subtitle retained**, **A/V sync**, **loudness**, and
   **true peak** failures indicate stream or audio changes outside the configured
-  policy.
+  policy. Preview and Personal quality video candidates are exactly trimmed after
+  their bounded seek, so a remaining A/V sync failure is not accepted as ordinary
+  long-GOP pre-roll.
 - **Size reduction** failure means the output was not smaller than the original.
   Either leave the file alone or change the library rules deliberately.
 - **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled
   on the library configuration page); image **SSIM/metadata** failures come from the default-on
   image gates. When a gate is enabled, a missing measurement fails closed, but an unmeasured VMAF
   result does not trigger a higher-quality re-encode or immediate automatic exclusion.
-- **Source video timeline** means the original's picture packets end materially before its declared
-  container duration. Optimisarr leaves that source untouched and does not misreport the inherited
-  gap as an output-tail truncation.
+- **Source video timeline** means the original's primary audio materially outlasts its picture
+  packets. Optimisarr leaves that source untouched and reports the inherited gap separately from an
+  output-tail truncation. Subtitle, chapter, data, and attachment timelines do not trigger this
+  failure because they may legitimately continue beyond the programme.
 
 Use **Retry** only after changing the underlying cause: preset, hardware mode,
 source file, mount access, or verification policy. Use **Exclude** for files you

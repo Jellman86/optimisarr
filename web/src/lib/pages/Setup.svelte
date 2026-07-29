@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { api, type HardwareCapability, type Library, type LibraryAccess, type MediaFile, type Settings, type SetupApplyReceipt, type SetupPath, type SetupReadiness, type SetupRecommendation, type SetupStorageRelationship, type ToolCheck } from '../api'
-  import { i18n, plural, t } from '../i18n/i18n.svelte'
+  import { i18n, mediaTypeLabel, plural, t } from '../i18n/i18n.svelte'
   import { firstUnavailableLibrary, libraryPathsReady as allLibraryPathsReady } from '../setup-library-readiness'
   import { formatSize } from '../format'
   import { setup } from '../stores/setup.svelte'
@@ -520,7 +520,7 @@
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="font-semibold text-slate-900 dark:text-slate-100">{library.name}</span>
-                      <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{library.mediaType}</span>
+                      <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
                     </div>
                     <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={library.path}>{library.path}</div>
                     <div class="mt-2 text-xs font-medium {access?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">

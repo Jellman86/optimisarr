@@ -42,10 +42,6 @@ public sealed class QueueDispatcher(
     private static readonly TimeSpan OrphanWorkGracePeriod = TimeSpan.FromDays(7);
     private const int MaxAttempts = 3;
 
-    // A video preview encodes only this many seconds — enough to judge quality/size without
-    // paying for a full transcode of a long file.
-    private const int PreviewClipSeconds = 60;
-
     // Stamped into every output's container metadata so the file proves it was optimised
     // independently of the database; see OptimisationMarker.
     private static readonly string OptimisedMarkerValue =
@@ -407,7 +403,8 @@ public sealed class QueueDispatcher(
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
-                    job.Type == JobType.Calibration && job.IgnoreMediaActivity))
+                    job.Type == JobType.Calibration && job.IgnoreMediaActivity,
+                    job.Type == JobType.Preview))
                 .ToListAsync(stoppingToken);
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -433,9 +430,18 @@ public sealed class QueueDispatcher(
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
         var runnable = queued
-            .Where(job => job.LibraryId is not { } libraryId
-                || !autoWindows.TryGetValue(libraryId, out var window)
-                || DispatchPolicyEvaluator.WithinWindow(window.Start, window.End, nowLocal))
+            .Where(job =>
+            {
+                var window = job.LibraryId is { } libraryId
+                    && autoWindows.TryGetValue(libraryId, out var configuredWindow)
+                        ? configuredWindow
+                        : ((TimeOnly Start, TimeOnly End)?)null;
+                return JobScheduler.CanRunInLibraryWindow(
+                    job,
+                    window?.Start,
+                    window?.End,
+                    nowLocal);
+            })
             .ToList();
 
         var toStart = JobScheduler.SelectJobsToStart(
@@ -525,15 +531,24 @@ public sealed class QueueDispatcher(
                 }
             }
 
-            var (spec, arguments) = work.Value;
+            var preparedWork = work.Value;
+            if (preparedWork.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf
+                && preparedWork.Spec.VideoCodec is not null
+                && preparedWork.VideoQuality is not null
+                && preparedWork.AdaptiveVideoQuality is null)
+            {
+                preparedWork = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+            }
+
+            var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
             Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
                 arguments,
-                work.Value.VideoEncoder,
-                work.Value.VideoQuality,
+                preparedWork.VideoEncoder,
+                preparedWork.VideoQuality,
                 cancellationToken);
             await NotifyAsync();
 
@@ -542,17 +557,30 @@ public sealed class QueueDispatcher(
             var progressDuration = spec.ClipSeconds is { } clip && (work.Value.DurationSeconds is not { } d || clip < d)
                 ? clip
                 : work.Value.DurationSeconds;
-            var run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
+            var expectedFrameCount = FfmpegProgressCalculator.ExpectedFramesForWindow(
+                work.Value.FrameCount,
+                work.Value.DurationSeconds,
+                progressDuration,
+                work.Value.VideoFrameRate);
+            var run = await RunFfmpegAsync(
+                jobId,
+                arguments,
+                progressDuration,
+                expectedFrameCount,
+                hardwareEncoder,
+                cancellationToken);
 
-            // A hardware-decode attempt can fail on a source the GPU cannot decode (an exotic
-            // codec or profile). Retry once with the software-decode command before giving up,
-            // so the job degrades to CPU decode instead of failing outright.
+            // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
+            // build. Retry a recognised setup failure once with the established software path.
             if (run.ExitCode != 0
-                && work.Value.SoftwareDecodeArguments is { } softwareArguments
-                && HardwareDecodeFallback.ShouldRetryInSoftware(run.Error))
+                && preparedWork.SoftwareFallbackArguments is { } softwareArguments
+                && (preparedWork.UsedHardwareDecode
+                        && HardwareDecodeFallback.ShouldRetryInSoftware(run.Log ?? run.Error)
+                    || preparedWork.UsedHardwareToneMap
+                        && HardwareToneMapFallback.ShouldRetryInSoftware(run.Log ?? run.Error)))
             {
                 logger.LogWarning(
-                    "Job {JobId}: hardware decode failed; retrying with software decode. ffmpeg: {Error}",
+                    "Job {JobId}: hardware decode or tone mapping failed; retrying with the software path. ffmpeg: {Error}",
                     jobId, run.Error);
                 DeleteWorkOutput(spec.OutputPath);
                 arguments = softwareArguments;
@@ -560,10 +588,16 @@ public sealed class QueueDispatcher(
                     jobId,
                     spec.OutputPath,
                     arguments,
-                    work.Value.VideoEncoder,
-                    work.Value.VideoQuality,
+                    preparedWork.VideoEncoder,
+                    preparedWork.VideoQuality,
                     cancellationToken);
-                run = await RunFfmpegAsync(jobId, arguments, progressDuration, hardwareEncoder, cancellationToken);
+                run = await RunFfmpegAsync(
+                    jobId,
+                    arguments,
+                    progressDuration,
+                    expectedFrameCount,
+                    hardwareEncoder,
+                    cancellationToken);
             }
 
             if (run.ExitCode == 0)
@@ -616,7 +650,7 @@ public sealed class QueueDispatcher(
                     }
                 }
 
-                await VerifyAndFinishAsync(jobId, spec.OutputPath, work.Value, cancellationToken);
+                await VerifyAndFinishAsync(jobId, spec.OutputPath, preparedWork, cancellationToken);
             }
             else
             {
@@ -664,22 +698,25 @@ public sealed class QueueDispatcher(
         bool IsDisposable,
         bool IsCalibration,
         double? DurationSeconds,
+        int? FrameCount,
+        double? VideoFrameRate,
         bool MoveOnComplete,
         string? TargetFolder,
         bool MoveOverwrite,
         int MediaFileId,
         OriginalSnapshot Original,
-        double? MinVmafHarmonicMean,
-        double? MinVmafMin,
-        bool? VmafQualityGateEnabled,
-        double? MinVmafCatastrophicMin,
-        bool? ClipVmafEnabled,
-        int? VmafFrameSubsample,
+        VerificationPolicy VerificationPolicy,
+        VideoQualityStrategy VideoQualityStrategy,
+        int? AdaptiveVideoQuality,
         bool AutoReplace,
-        // When the primary command hardware-decodes the source, this holds the equivalent
-        // software-decode command so the dispatcher can transparently retry a source the GPU
-        // cannot decode. Null when hardware decode was not used.
-        IReadOnlyList<string>? SoftwareDecodeArguments = null)
+        int CpuThreadLimit,
+        bool HardwareDecodeRequested,
+        bool HardwareToneMapRequested,
+        // Equivalent command using software decode and the established software tone-map. It is
+        // present only when the primary command used a hardware path that can safely fall back.
+        IReadOnlyList<string>? SoftwareFallbackArguments = null,
+        bool UsedHardwareDecode = false,
+        bool UsedHardwareToneMap = false)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -687,6 +724,30 @@ public sealed class QueueDispatcher(
             arguments = Arguments;
         }
     }
+
+    private static VerificationPolicy ResolveVerificationPolicy(
+        VerificationPolicy baseline,
+        Optimisarr.Data.Library? library) =>
+        VerificationPolicyResolver.Resolve(
+            baseline,
+            new VerificationPolicyOverrides(
+                library?.VmafQualityGateEnabled,
+                library?.MinVmafHarmonicMean,
+                library?.MinVmafMin,
+                library?.MinVmafCatastrophicMin,
+                library?.ClipVmafEnabled,
+                library?.VmafFrameSubsample,
+                library?.DurationTolerancePercent,
+                library?.RequireAudioRetained,
+                library?.RequireSubtitlesRetained,
+                library?.RequireSizeReduction,
+                library?.AudioLoudnessGateEnabled,
+                library?.MaxLoudnessDriftLufs,
+                library?.AudioClippingGateEnabled,
+                library?.MaxTruePeakDbtp,
+                library?.ImageQualityGateEnabled,
+                library?.MinimumImageSsim,
+                library?.ImageMetadataGateEnabled));
 
     private async Task<JobWork?> LoadWorkAsync(int jobId, CancellationToken cancellationToken)
     {
@@ -748,25 +809,50 @@ public sealed class QueueDispatcher(
         var sourceSubtitleLanguages = TrackLanguages.ParseTrackLanguages(media.SubtitleLanguages);
         var needsSubtitleLanguageProbe = isVideoJob && rules.KeepSubtitleLanguages.Count > 0;
         var sourceHasImageSubtitles = false;
+        MediaProbeResult? freshSourceProbe = null;
         if (needsSubtitleProbe || needsLanguageProbe || needsSubtitleLanguageProbe)
         {
             var probe = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
-            var probeResult = await probe.ProbeAsync(media.Path, cancellationToken);
-            if (!probeResult.Success)
+            freshSourceProbe = await probe.ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
             {
                 throw new InvalidOperationException(
-                    $"Fresh source probe required for safe track selection failed: {probeResult.Error ?? "no detail available"}");
+                    $"Fresh source probe required for safe track selection failed: {freshSourceProbe.Error ?? "no detail available"}");
             }
 
-            sourceHasImageSubtitles = probeResult.HasImageSubtitles;
+            sourceHasImageSubtitles = freshSourceProbe.HasImageSubtitles;
             if (needsLanguageProbe)
             {
-                sourceAudioLanguages = probeResult.AudioTracks.Select(track => track.Language).ToList();
+                sourceAudioLanguages = freshSourceProbe.AudioTracks.Select(track => track.Language).ToList();
             }
             if (needsSubtitleLanguageProbe)
             {
-                sourceSubtitleLanguages = probeResult.SubtitleLanguages;
+                sourceSubtitleLanguages = freshSourceProbe.SubtitleLanguages;
             }
+        }
+        if (isPreview && isVideoJob)
+        {
+            freshSourceProbe ??= await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Fresh source probe required for an exact preview timeline failed: {freshSourceProbe.Error ?? "no detail available"}");
+            }
+
+            sourceHasImageSubtitles = freshSourceProbe.HasImageSubtitles;
+        }
+        var mediaDurationSeconds = isPreview && isVideoJob
+            ? MediaTimelineDuration.Resolve(
+                MediaKind.Video,
+                freshSourceProbe!.VideoDurationSeconds,
+                freshSourceProbe.DurationSeconds ?? media.DurationSeconds)
+            : media.DurationSeconds;
+        if (isPreview && isVideoJob && mediaDurationSeconds is not > 0)
+        {
+            throw new InvalidOperationException(
+                "Could not determine the selected video's primary picture duration for Preview.");
         }
 
         // MP4/MOV has no tag for some Blu-ray audio (TrueHD, LPCM); copying one into an MP4 target
@@ -827,12 +913,10 @@ public sealed class QueueDispatcher(
                     ?? (spec.Kind == MediaKind.Audio
                         ? Optimisarr.Core.Calibration.BlindCalibrationPolicy.AudioSampleSeconds
                         : Optimisarr.Core.Calibration.BlindCalibrationPolicy.SampleSeconds)
-                : PreviewClipSeconds;
+                : PreviewClipPolicy.DurationSeconds;
             var start = isCalibration
                 ? job.CalibrationClipStartSeconds ?? 0
-                : media.DurationSeconds is { } duration && duration > seconds
-                    ? (int)(duration / 2 - seconds / 2.0)
-                    : 0;
+                : PreviewClipPolicy.Plan(mediaDurationSeconds).StartSeconds;
             spec = spec with
             {
                 ClipSeconds = seconds,
@@ -846,7 +930,7 @@ public sealed class QueueDispatcher(
         var original = new OriginalSnapshot(
             media.Path,
             media.SizeBytes,
-            media.DurationSeconds,
+            mediaDurationSeconds,
             media.AudioTrackCount ?? 0,
             media.SubtitleTrackCount ?? 0,
             media.IsHdr,
@@ -881,8 +965,8 @@ public sealed class QueueDispatcher(
         if (spec.VideoCodec is not null)
         {
             var sourceBitDepth = PixelFormatInfo.Parse(
-                media.PixelFormat,
-                media.BitsPerRawSample)?.BitDepth;
+                freshSourceProbe?.PixelFormat ?? media.PixelFormat,
+                freshSourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth;
             var videoEncoder = await ResolveVideoEncoderAsync(
                 spec.VideoCodec,
                 queueSettings.EncoderMode,
@@ -903,10 +987,17 @@ public sealed class QueueDispatcher(
 
             if (spec.Crf is { } requestedQuality)
             {
-                videoQuality = EncoderQualityPolicy.Resolve(
-                    videoEncoderName,
-                    requestedQuality,
-                    job.QualityRetryCount);
+                videoQuality = library?.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf
+                    && job.AdaptiveVideoQuality is { } adaptiveQuality
+                    ? EncoderQualityPolicy.ResolveAdaptive(
+                        videoEncoderName,
+                        requestedQuality,
+                        adaptiveQuality,
+                        job.QualityRetryCount)
+                    : EncoderQualityPolicy.Resolve(
+                        videoEncoderName,
+                        requestedQuality,
+                        job.QualityRetryCount);
                 spec = spec with { Crf = videoQuality.Effective };
             }
             logger.LogInformation(
@@ -940,14 +1031,70 @@ public sealed class QueueDispatcher(
             }
         }
 
-        // The primary command honours the hardware-decode setting; the builder only applies it
-        // when a hardware encoder is in use and no software tone-map is needed. When it does
-        // apply, also build the software-decode equivalent so a source the GPU cannot decode can
-        // be retried transparently rather than failing the job.
+        // The primary command honours the hardware-decode setting except for short disposable
+        // video comparisons: exact source-frame selection matters more there, and hardware decoder
+        // reordering around an input seek can move the clip several frames before its VMAF
+        // reference. Hardware encoding remains enabled. Normal jobs retain the existing
+        // hardware-decode path and transparent software fallback.
+        var hardwareDecode = HardwareDecodePolicy.ShouldUse(
+            queueSettings.HardwareDecode,
+            isDisposable,
+            spec.Kind,
+            spec.VideoCodec,
+            spec.ClipSeconds);
+        string? hardwareToneMapTransfer = null;
+        var hardwareToneMapDolbyVision = media.IsDolbyVision;
+        var verificationPolicy = ResolveVerificationPolicy(
+            queueSettings.VerificationPolicy,
+            library);
+        var vmafQualityGateEnabled = verificationPolicy.QualityGateEnabled;
+        var needsHardwareToneMapConfirmation = queueSettings.HdrToneMapMode == HdrToneMapMode.Hardware
+            && hardwareDecode
+            && spec.TonemapToSdr
+            && !vmafQualityGateEnabled
+            && !media.IsDolbyVision
+            && (videoEncoderName?.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase) == true
+                || videoEncoderName?.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase) == true);
+        if (needsHardwareToneMapConfirmation)
+        {
+            freshSourceProbe ??= await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (freshSourceProbe.Success)
+            {
+                hardwareToneMapTransfer = freshSourceProbe.ColorTransfer;
+                hardwareToneMapDolbyVision = freshSourceProbe.IsDolbyVision;
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Job {JobId}: source colour metadata could not be freshly confirmed for hardware tone mapping; using software. {Error}",
+                    jobId,
+                    freshSourceProbe.Error);
+            }
+        }
+        var hardwareToneMap = HardwareToneMapPolicy.ShouldUse(
+            queueSettings.HdrToneMapMode,
+            hardwareDecode,
+            spec.TonemapToSdr,
+            vmafQualityGateEnabled,
+            hardwareToneMapDolbyVision,
+            hardwareToneMapTransfer,
+            videoEncoderName);
         var primaryArguments = FfmpegCommandBuilder.Build(
-            spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, queueSettings.HardwareDecode);
+            spec,
+            queueSettings.CpuThreadLimit,
+            videoEncoderName,
+            OptimisedMarkerValue,
+            hardwareDecode,
+            hardwareToneMap);
         var softwareArguments = FfmpegCommandBuilder.Build(
-            spec, queueSettings.CpuThreadLimit, videoEncoderName, OptimisedMarkerValue, hardwareDecode: false);
+            spec,
+            queueSettings.CpuThreadLimit,
+            videoEncoderName,
+            OptimisedMarkerValue,
+            hardwareDecode: false,
+            hardwareToneMap: false);
         var usedHardwareDecode = !primaryArguments.SequenceEqual(softwareArguments);
 
         return new JobWork(
@@ -957,20 +1104,377 @@ public sealed class QueueDispatcher(
             videoQuality,
             isDisposable,
             isCalibration,
-            media.DurationSeconds,
+            mediaDurationSeconds,
+            freshSourceProbe?.Success == true ? freshSourceProbe.FrameCount : media.FrameCount,
+            freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
             library?.MoveOverwrite ?? false,
             media.Id,
             original,
-            library?.MinVmafHarmonicMean,
-            library?.MinVmafMin,
-            library?.VmafQualityGateEnabled,
-            library?.MinVmafCatastrophicMin,
-            library?.ClipVmafEnabled,
-            library?.VmafFrameSubsample,
+            verificationPolicy,
+            library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
+            job.AdaptiveVideoQuality,
             library?.AutoReplace ?? false,
-            usedHardwareDecode ? softwareArguments : null);
+            queueSettings.CpuThreadLimit,
+            hardwareDecode,
+            hardwareToneMap,
+            usedHardwareDecode ? softwareArguments : null,
+            usedHardwareDecode,
+            hardwareToneMap);
+    }
+
+    /// <summary>
+    /// Runs a bounded, fail-open preparation search for an adaptive library. Every candidate uses
+    /// the real picture contract and the canonical VMAF scorer over deterministic source windows.
+    /// Preparation may choose an encoder quality; it can never authorise replacement, and any
+    /// unavailable/noisy evidence falls back to the library's value before the normal full encode.
+    /// </summary>
+    private async Task<JobWork> SelectAdaptiveQualityAsync(
+        int jobId,
+        JobWork work,
+        CancellationToken cancellationToken)
+    {
+        var baseline = work.VideoQuality!.Effective;
+        var scratchRoot = Path.Combine(
+            Path.GetDirectoryName(work.Spec.OutputPath)!,
+            $".adaptive-quality-{jobId}-{Guid.NewGuid():N}");
+
+        await WithJobAsync(jobId, job =>
+        {
+            job.Status = JobStatus.Probing;
+            job.Progress = AdaptiveQualityProgress.Started;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, cancellationToken);
+        await NotifyAsync();
+
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var probeService = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
+            var qualityService = scope.ServiceProvider.GetRequiredService<QualityScoreService>();
+            var sourceProbe = await probeService.ProbeAsync(work.Original.Path, cancellationToken);
+            if (!sourceProbe.Success || sourceProbe.Width is not > 0 || sourceProbe.Height is not > 0)
+            {
+                return await FinishAdaptiveSelectionAsync(
+                    jobId,
+                    work,
+                    baseline,
+                    fellBack: true,
+                    sourceProbe.Error ?? "source dimensions are unavailable",
+                    cancellationToken);
+            }
+
+            // A subtitle, chapter, attachment, or data stream may extend the container far beyond
+            // the actual programme. Place every adaptive sample on the primary picture timeline so
+            // a middle/late seek cannot land after EOF and create an empty, unscorable candidate.
+            var samplingDuration = MediaTimelineDuration.Resolve(
+                MediaKind.Video,
+                sourceProbe.VideoDurationSeconds,
+                work.DurationSeconds);
+            if (samplingDuration is not > 0)
+            {
+                return await FinishAdaptiveSelectionAsync(
+                    jobId, work, baseline, fellBack: true, "source video duration is unavailable", cancellationToken);
+            }
+
+            var policy = work.VerificationPolicy;
+            if (!policy.QualityGateEnabled)
+            {
+                return await FinishAdaptiveSelectionAsync(
+                    jobId, work, baseline, fellBack: true, "the VMAF target is disabled", cancellationToken);
+            }
+
+            var windows = VmafWindowPlanner.PlanAdaptive(samplingDuration.Value);
+            if (windows.Count == 0)
+            {
+                return await FinishAdaptiveSelectionAsync(
+                    jobId, work, baseline, fellBack: true, "no representative windows could be planned", cancellationToken);
+            }
+
+            Directory.CreateDirectory(scratchRoot);
+            var measured = new List<AdaptiveQualityProbe>();
+            while (true)
+            {
+                var decision = AdaptiveQualitySearch.Decide(baseline, measured);
+                if (decision.Complete)
+                {
+                    return await FinishAdaptiveSelectionAsync(
+                        jobId,
+                        RebuildWorkAtQuality(work, decision.SelectedQuality),
+                        decision.SelectedQuality,
+                        decision.FellBack,
+                        decision.Reason,
+                        cancellationToken);
+                }
+
+                var candidate = await MeasureAdaptiveCandidateAsync(
+                    jobId,
+                    work,
+                    decision.NextQuality!.Value,
+                    measured.Count,
+                    windows,
+                    samplingDuration.Value,
+                    sourceProbe,
+                    policy,
+                    qualityService,
+                    scratchRoot,
+                    cancellationToken);
+                if (candidate is null)
+                {
+                    return await FinishAdaptiveSelectionAsync(
+                        jobId,
+                        work,
+                        baseline,
+                        fellBack: true,
+                        "a sample encode or VMAF measurement was unavailable",
+                        cancellationToken);
+                }
+
+                measured.Add(candidate);
+                logger.LogInformation(
+                    "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target with {EncodedBytes} encoded video bytes",
+                    jobId,
+                    candidate.Quality,
+                    candidate.MeetsTarget ? "met" : "missed",
+                    candidate.EncodedBytes);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Job {JobId}: adaptive quality preparation failed; using the library quality {Quality}",
+                jobId,
+                baseline);
+            return await FinishAdaptiveSelectionAsync(
+                jobId, work, baseline, fellBack: true, ex.Message, CancellationToken.None);
+        }
+        finally
+        {
+            DeleteDirectoryQuietly(scratchRoot);
+        }
+    }
+
+    private async Task<AdaptiveQualityProbe?> MeasureAdaptiveCandidateAsync(
+        int jobId,
+        JobWork work,
+        int qualityValue,
+        int candidateIndex,
+        IReadOnlyList<VmafWindow> windows,
+        double sourceVideoDurationSeconds,
+        MediaProbeResult sourceProbe,
+        VerificationPolicy policy,
+        QualityScoreService qualityService,
+        string scratchRoot,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<QualityResult>(windows.Count);
+        long encodedBytes = 0;
+        for (var index = 0; index < windows.Count; index++)
+        {
+            var window = windows[index];
+            var outputPath = Path.Combine(
+                scratchRoot,
+                $"q{qualityValue}-window{index}{Path.GetExtension(work.Spec.OutputPath)}");
+            var sampleSpec = work.Spec with
+            {
+                OutputPath = outputPath,
+                Crf = qualityValue,
+                ClipStartSeconds = window.StartSeconds,
+                ClipSeconds = window.DurationSeconds,
+                // VMAF judges the primary picture only. Excluding unrelated tracks makes the
+                // measured bytes a real video-size comparison and prevents copied audio or
+                // subtitles from dominating a bounded quality probe.
+                VideoOnly = true
+            };
+            var primary = FfmpegCommandBuilder.Build(
+                sampleSpec,
+                work.CpuThreadLimit,
+                work.VideoEncoder,
+                // Candidate windows seek into independently encoded long-GOP sources. Keep source
+                // decode in software so decoder reordering cannot select adjacent frames and make
+                // motion look like compression damage; the actual hardware encoder, video codec,
+                // container, and picture filters remain unchanged. VMAF-gated HDR tone mapping
+                // already uses the canonical software transform for the full job too.
+                hardwareDecode: false,
+                hardwareToneMap: false);
+
+            var run = await RunFfmpegAsync(
+                jobId,
+                primary,
+                window.DurationSeconds,
+                FfmpegProgressCalculator.ExpectedFramesForWindow(
+                    sourceProbe.FrameCount,
+                    sourceVideoDurationSeconds,
+                    window.DurationSeconds,
+                    sourceProbe.VideoFrameRate),
+                IsHardwareEncoder(work.VideoEncoder),
+                cancellationToken,
+                progressMap: progress => AdaptiveQualityProgress.Map(
+                    candidateIndex,
+                    index,
+                    windows.Count,
+                    AdaptiveQualityPhase.Encoding,
+                    progress));
+            if (run.ExitCode != 0)
+            {
+                logger.LogWarning(
+                    "Job {JobId}: adaptive sample {Sample} at quality {Quality} failed: {Error}",
+                    jobId,
+                    index + 1,
+                    qualityValue,
+                    run.Error);
+                return null;
+            }
+
+            var windowBytes = new FileInfo(outputPath).Length;
+            if (windowBytes <= 0)
+            {
+                logger.LogWarning(
+                    "Job {JobId}: adaptive sample {Sample} at quality {Quality} produced no measurable bytes",
+                    jobId,
+                    index + 1,
+                    qualityValue);
+                return null;
+            }
+            encodedBytes = checked(encodedBytes + windowBytes);
+
+            var context = new QualityMeasurementContext(
+                sourceProbe.Width!.Value,
+                sourceProbe.Height!.Value,
+                work.Original.IsHdr,
+                work.Original.HdrConvertedToSdr,
+                ReferenceStartSeconds: window.StartSeconds,
+                ReferenceDurationSeconds: sourceVideoDurationSeconds,
+                DistortedStartSeconds: null,
+                MeasureDurationSeconds: window.DurationSeconds,
+                FrameSubsample: policy.VmafFrameSubsample,
+                // Selection is a correctness decision rather than a throughput optimisation.
+                // Software decode gives repeatable frame ordering across CPU/QSV/NVENC/VA-API.
+                Acceleration: VmafAcceleration.None,
+                ReferenceFrameRate: sourceProbe.VideoFrameRate);
+            var measurementProgress = new Progress<double>(progress =>
+            {
+                var mapped = AdaptiveQualityProgress.Map(
+                    candidateIndex,
+                    index,
+                    windows.Count,
+                    AdaptiveQualityPhase.Measuring,
+                    progress);
+                _ = UpdateProgressAsync(jobId, mapped);
+                _ = BroadcastProgressAsync(jobId, mapped, null, null, null);
+            });
+            var result = await qualityService.MeasureAsync(
+                work.Original.Path,
+                outputPath,
+                context,
+                cancellationToken,
+                measurementProgress);
+            result = await VmafSoftwareConfirmation.ConfirmAsync(
+                result,
+                policy,
+                () => qualityService.MeasureAsync(
+                    work.Original.Path,
+                    outputPath,
+                    context with { Acceleration = VmafAcceleration.None },
+                    cancellationToken));
+            if (!result.Measured || result.Scores is null)
+            {
+                logger.LogWarning(
+                    "Job {JobId}: adaptive sample {Sample} at quality {Quality} could not be scored: {Error}",
+                    jobId,
+                    index + 1,
+                    qualityValue,
+                    result.Error);
+                return null;
+            }
+
+            results.Add(result);
+            AdaptiveQualityScratch.DeleteSample(outputPath);
+        }
+
+        var combined = QualityScoreAggregator.Combine(
+            results,
+            "Adaptive early, middle and late samples");
+        return combined.Scores is { } scores
+            ? new AdaptiveQualityProbe(
+                qualityValue,
+                VmafSoftwareConfirmation.MeetsGate(scores, policy),
+                encodedBytes)
+            : null;
+    }
+
+    private async Task<JobWork> FinishAdaptiveSelectionAsync(
+        int jobId,
+        JobWork work,
+        int selectedQuality,
+        bool fellBack,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        await WithJobAsync(jobId, job =>
+        {
+            job.Status = JobStatus.Transcoding;
+            job.Progress = 0;
+            job.AdaptiveVideoQuality = selectedQuality;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+        }, cancellationToken);
+        logger.LogInformation(
+            "Job {JobId}: adaptive quality {Outcome}; full encode will use {Mode} {Quality}. {Reason}",
+            jobId,
+            fellBack ? "fell back to the library setting" : "selected a per-title value",
+            work.VideoQuality?.Mode,
+            selectedQuality,
+            reason);
+        await NotifyAsync();
+        return work;
+    }
+
+    private static JobWork RebuildWorkAtQuality(JobWork work, int selectedQuality)
+    {
+        var spec = work.Spec with { Crf = selectedQuality };
+        var primary = FfmpegCommandBuilder.Build(
+            spec,
+            work.CpuThreadLimit,
+            work.VideoEncoder,
+            OptimisedMarkerValue,
+            work.HardwareDecodeRequested,
+            work.HardwareToneMapRequested);
+        var software = FfmpegCommandBuilder.Build(
+            spec,
+            work.CpuThreadLimit,
+            work.VideoEncoder,
+            OptimisedMarkerValue,
+            hardwareDecode: false,
+            hardwareToneMap: false);
+        return work with
+        {
+            Spec = spec,
+            Arguments = primary,
+            VideoQuality = work.VideoQuality! with { Effective = selectedQuality },
+            SoftwareFallbackArguments = primary.SequenceEqual(software) ? null : software,
+            UsedHardwareDecode = !primary.SequenceEqual(software)
+        };
+    }
+
+    private static void DeleteDirectoryQuietly(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch
+        {
+            // Scratch cleanup is also covered by the timed/orphan cleanup path.
+        }
     }
 
     internal static bool TrackCleanupHasNoRemovalWork(
@@ -987,8 +1491,11 @@ public sealed class QueueDispatcher(
         int jobId,
         IReadOnlyList<string> arguments,
         double? durationSeconds,
+        int? expectedFrameCount,
         bool hardwareEncoder,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool reportProgress = true,
+        Func<double, double>? progressMap = null)
     {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -1014,7 +1521,14 @@ public sealed class QueueDispatcher(
 
         // FFmpeg's machine-readable progress protocol is isolated on stdout. Stderr remains a
         // diagnostic stream, and both pipes are consumed concurrently so neither can block FFmpeg.
-        var progressTask = ReadProgressAsync(process, jobId, durationSeconds, cancellationToken);
+        var progressTask = ReadProgressAsync(
+            process,
+            jobId,
+            durationSeconds,
+            expectedFrameCount,
+            reportProgress,
+            progressMap,
+            cancellationToken);
         var stderrTask = ReadStderrAsync(process, cancellationToken);
 
         try
@@ -1054,6 +1568,9 @@ public sealed class QueueDispatcher(
         Process process,
         int jobId,
         double? durationSeconds,
+        int? expectedFrameCount,
+        bool reportProgress,
+        Func<double, double>? progressMap,
         CancellationToken cancellationToken)
     {
         var parser = new FfmpegProgressProtocolParser();
@@ -1067,8 +1584,14 @@ public sealed class QueueDispatcher(
         while ((line = await process.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
         {
             if (parser.ParseLine(line) is not { } sample
-                || durationSeconds is not > 0
-                || sample.ElapsedSeconds is not { } elapsed)
+                || FfmpegProgressCalculator.Calculate(
+                    durationSeconds,
+                    expectedFrameCount,
+                    sample) is not { } measuredProgress)
+            {
+                continue;
+            }
+            if (!reportProgress)
             {
                 continue;
             }
@@ -1077,7 +1600,7 @@ public sealed class QueueDispatcher(
             // persisted bar move backwards.
             var progress = Math.Max(
                 lastObserved,
-                Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999));
+                progressMap?.Invoke(measuredProgress) ?? measuredProgress);
             lastObserved = progress;
 
             if (progress > lastPersisted && (!hasPersisted || progress - lastPersisted >= 0.01))
@@ -1101,10 +1624,10 @@ public sealed class QueueDispatcher(
                 }
             }
 
-            var eta = sample.Speed is { } speed
+            var eta = sample.Speed is { } speed && durationSeconds is > 0
                 ? FfmpegProgressParser.EstimateRemainingSeconds(
                     durationSeconds.Value,
-                    progress * durationSeconds.Value,
+                    measuredProgress * durationSeconds.Value,
                     speed)
                 : null;
             try
@@ -1325,15 +1848,7 @@ public sealed class QueueDispatcher(
         await NotifyAsync();
 
         var settings = await GetQueueSettingsAsync(cancellationToken);
-        var policy = VerificationPolicyResolver.Resolve(
-            settings.VerificationPolicy,
-            new VerificationPolicyOverrides(
-                work.VmafQualityGateEnabled,
-                work.MinVmafHarmonicMean,
-                work.MinVmafMin,
-                work.MinVmafCatastrophicMin,
-                work.ClipVmafEnabled,
-                work.VmafFrameSubsample));
+        var policy = work.VerificationPolicy;
         if (work.IsCalibration)
         {
             policy = policy with
@@ -1371,7 +1886,7 @@ public sealed class QueueDispatcher(
         {
             var vmafAcceleration = VmafAccelerationSelector.Select(
                 work.VideoEncoder,
-                settings.HardwareDecode);
+                work.UsedHardwareDecode);
             outcome = await verification.VerifyAsync(
                 work.Original,
                 outputPath,

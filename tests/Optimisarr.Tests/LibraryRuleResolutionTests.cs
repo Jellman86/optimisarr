@@ -109,6 +109,6 @@ public sealed class LibraryRuleResolutionTests
         Assert.Equal("aac", rules.VideoAudioCodec);
         Assert.Equal(96, rules.VideoAudioBitrateKbps);
         Assert.True(rules.DownmixToStereo);
-        Assert.Equal(HdrHandling.Preserve, rules.Hdr);
+        Assert.Equal(HdrHandling.TonemapToSdr, rules.Hdr);
     }
 }

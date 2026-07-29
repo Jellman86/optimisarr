@@ -62,7 +62,19 @@ public sealed record LibrarySnapshot(
     double? MinVmafCatastrophicMin = null,
     bool? ClipVmafEnabled = null,
     int? VmafFrameSubsample = null,
-    string? KeepSubtitleLanguages = null);
+    string? KeepSubtitleLanguages = null,
+    string VideoQualityStrategy = "Fixed",
+    double? DurationTolerancePercent = null,
+    bool? RequireAudioRetained = null,
+    bool? RequireSubtitlesRetained = null,
+    bool? RequireSizeReduction = null,
+    bool? AudioLoudnessGateEnabled = null,
+    double? MaxLoudnessDriftLufs = null,
+    bool? AudioClippingGateEnabled = null,
+    double? MaxTruePeakDbtp = null,
+    bool? ImageQualityGateEnabled = null,
+    double? MinimumImageSsim = null,
+    bool? ImageMetadataGateEnabled = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

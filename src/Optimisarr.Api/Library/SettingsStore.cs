@@ -15,6 +15,7 @@ public sealed record QueueSettings(
     int LibraryScanIntervalHours,
     EncoderMode EncoderMode,
     bool HardwareDecode,
+    HdrToneMapMode HdrToneMapMode,
     VerificationPolicy VerificationPolicy,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
@@ -23,14 +24,25 @@ public sealed record QueueSettings(
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db)
 {
-    private static readonly string[] LegacyVmafSettingKeys =
+    private static readonly string[] LegacyVerificationSettingKeys =
     [
         "verification.qualityGateEnabled",
         "verification.minimumVmafHarmonicMean",
         "verification.minimumVmafMin",
         "verification.minimumVmafCatastrophicMin",
         "verification.clipVmafEnabled",
-        "verification.vmafFrameSubsample"
+        "verification.vmafFrameSubsample",
+        SettingKeys.VerificationDurationTolerancePercent,
+        SettingKeys.VerificationRequireAudioRetained,
+        SettingKeys.VerificationRequireSubtitlesRetained,
+        SettingKeys.VerificationRequireSizeReduction,
+        SettingKeys.VerificationAudioLoudnessGateEnabled,
+        SettingKeys.VerificationMaxLoudnessDriftLufs,
+        SettingKeys.VerificationAudioClippingGateEnabled,
+        SettingKeys.VerificationMaxTruePeakDbtp,
+        SettingKeys.VerificationImageQualityGateEnabled,
+        SettingKeys.VerificationMinimumImageSsim,
+        SettingKeys.VerificationImageMetadataGateEnabled
     ];
 
     /// <summary>Conservative default: process one job at a time until the user opts in to more.</summary>
@@ -52,29 +64,19 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.LibraryScanIntervalHours,
         SettingKeys.EncoderMode,
         SettingKeys.HardwareDecode,
-        SettingKeys.VerificationDurationTolerancePercent,
-        SettingKeys.VerificationRequireAudioRetained,
-        SettingKeys.VerificationRequireSubtitlesRetained,
-        SettingKeys.VerificationRequireSizeReduction,
-        SettingKeys.VerificationAudioLoudnessGateEnabled,
-        SettingKeys.VerificationMaxLoudnessDriftLufs,
-        SettingKeys.VerificationAudioClippingGateEnabled,
-        SettingKeys.VerificationMaxTruePeakDbtp,
-        SettingKeys.VerificationImageQualityGateEnabled,
-        SettingKeys.VerificationMinimumImageSsim,
-        SettingKeys.VerificationImageMetadataGateEnabled,
+        SettingKeys.HdrToneMapMode,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays
     };
 
     /// <summary>
-    /// Setting keys accepted while reading a backup. The legacy VMAF keys remain recognised so
-    /// backups made before VMAF became per-library can be upgraded during import, but they are
+    /// Setting keys accepted while reading a backup. Legacy verification keys remain recognised so
+    /// backups made before policy became per-library can be upgraded during import, but they are
     /// deliberately absent from <see cref="PortableSettingKeys"/> and are never persisted again.
     /// </summary>
     public static readonly IReadOnlySet<string> RecognizedImportSettingKeys = new HashSet<string>(
-        PortableSettingKeys.Concat(LegacyVmafSettingKeys));
+        PortableSettingKeys.Concat(LegacyVerificationSettingKeys));
 
     /// <summary>
     /// The legacy single library root, if one was configured before the
@@ -150,17 +152,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.LibraryScanIntervalHours
                 || setting.Key == SettingKeys.EncoderMode
                 || setting.Key == SettingKeys.HardwareDecode
-                || setting.Key == SettingKeys.VerificationDurationTolerancePercent
-                || setting.Key == SettingKeys.VerificationRequireAudioRetained
-                || setting.Key == SettingKeys.VerificationRequireSubtitlesRetained
-                || setting.Key == SettingKeys.VerificationRequireSizeReduction
-                || setting.Key == SettingKeys.VerificationAudioLoudnessGateEnabled
-                || setting.Key == SettingKeys.VerificationMaxLoudnessDriftLufs
-                || setting.Key == SettingKeys.VerificationAudioClippingGateEnabled
-                || setting.Key == SettingKeys.VerificationMaxTruePeakDbtp
-                || setting.Key == SettingKeys.VerificationImageQualityGateEnabled
-                || setting.Key == SettingKeys.VerificationMinimumImageSsim
-                || setting.Key == SettingKeys.VerificationImageMetadataGateEnabled
+                || setting.Key == SettingKeys.HdrToneMapMode
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
@@ -176,49 +168,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             // builder skips it where it cannot apply, and the dispatcher falls back to
             // software decode if a given source cannot be hardware-decoded.
             ParseBool(settings.GetValueOrDefault(SettingKeys.HardwareDecode), fallback: true),
-            new VerificationPolicy(
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationDurationTolerancePercent),
-                    VerificationPolicy.Default.DurationTolerancePercent,
-                    min: 0),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationRequireAudioRetained),
-                    VerificationPolicy.Default.RequireAudioRetained),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationRequireSubtitlesRetained),
-                    VerificationPolicy.Default.RequireSubtitlesRetained),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationRequireSizeReduction),
-                    VerificationPolicy.Default.RequireSizeReduction),
-                VerificationPolicy.Default.QualityGateEnabled,
-                VerificationPolicy.Default.MinimumVmafHarmonicMean,
-                VerificationPolicy.Default.MinimumVmafMin,
-                VerificationPolicy.Default.MinimumVmafCatastrophicMin,
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationAudioLoudnessGateEnabled),
-                    VerificationPolicy.Default.AudioLoudnessGateEnabled),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMaxLoudnessDriftLufs),
-                    VerificationPolicy.Default.MaxLoudnessDriftLufs,
-                    min: 0),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationAudioClippingGateEnabled),
-                    VerificationPolicy.Default.AudioClippingGateEnabled),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMaxTruePeakDbtp),
-                    VerificationPolicy.Default.MaxTruePeakDbtp),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationImageQualityGateEnabled),
-                    VerificationPolicy.Default.ImageQualityGateEnabled),
-                ParseDouble(
-                    settings.GetValueOrDefault(SettingKeys.VerificationMinimumImageSsim),
-                    VerificationPolicy.Default.MinimumImageSsim,
-                    min: 0),
-                ParseBool(
-                    settings.GetValueOrDefault(SettingKeys.VerificationImageMetadataGateEnabled),
-                    VerificationPolicy.Default.ImageMetadataGateEnabled),
-                VerificationPolicy.Default.ClipVmafEnabled,
-                VerificationPolicy.Default.VmafFrameSubsample),
+            // Opt-in because the established software path is the compatibility baseline.
+            ParseEnum(settings.GetValueOrDefault(SettingKeys.HdrToneMapMode), HdrToneMapMode.Software),
+            VerificationPolicy.Default,
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
@@ -273,28 +225,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.LibraryScanIntervalHours] = Math.Max(1, settings.LibraryScanIntervalHours).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.EncoderMode] = settings.EncoderMode.ToString(),
             [SettingKeys.HardwareDecode] = settings.HardwareDecode.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationDurationTolerancePercent] =
-                Math.Max(0, settings.VerificationPolicy.DurationTolerancePercent).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationRequireAudioRetained] =
-                settings.VerificationPolicy.RequireAudioRetained.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationRequireSubtitlesRetained] =
-                settings.VerificationPolicy.RequireSubtitlesRetained.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationRequireSizeReduction] =
-                settings.VerificationPolicy.RequireSizeReduction.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationAudioLoudnessGateEnabled] =
-                settings.VerificationPolicy.AudioLoudnessGateEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMaxLoudnessDriftLufs] =
-                Math.Max(0, settings.VerificationPolicy.MaxLoudnessDriftLufs).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationAudioClippingGateEnabled] =
-                settings.VerificationPolicy.AudioClippingGateEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMaxTruePeakDbtp] =
-                settings.VerificationPolicy.MaxTruePeakDbtp.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationImageQualityGateEnabled] =
-                settings.VerificationPolicy.ImageQualityGateEnabled.ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationMinimumImageSsim] =
-                Math.Max(0, settings.VerificationPolicy.MinimumImageSsim).ToString(CultureInfo.InvariantCulture),
-            [SettingKeys.VerificationImageMetadataGateEnabled] =
-                settings.VerificationPolicy.ImageMetadataGateEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.HdrToneMapMode] = settings.HdrToneMapMode.ToString(),
             [SettingKeys.ReplacementAllowCrossFilesystem] =
                 settings.ReplacementAllowCrossFilesystem.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.DryRunMode] =
@@ -430,5 +361,7 @@ public sealed class SettingsStore(OptimisarrDbContext db)
 
     private static T ParseEnum<T>(string? value, T fallback)
         where T : struct, Enum =>
-        Enum.TryParse<T>(value, ignoreCase: true, out var parsed) ? parsed : fallback;
+        Enum.TryParse<T>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : fallback;
 }

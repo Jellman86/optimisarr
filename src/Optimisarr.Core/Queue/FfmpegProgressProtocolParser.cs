@@ -12,6 +12,7 @@ public sealed class FfmpegProgressProtocolParser
 {
     private double? _elapsedTimestampSeconds;
     private double? _elapsedMicroseconds;
+    private long? _frame;
     private double? _fps;
     private double? _speed;
 
@@ -27,6 +28,12 @@ public sealed class FfmpegProgressProtocolParser
         var value = line[(separator + 1)..].Trim();
         switch (key)
         {
+            case "frame":
+                _frame = long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frame)
+                    && frame >= 0
+                        ? frame
+                        : null;
+                break;
             case "out_time":
                 _elapsedTimestampSeconds = TryParseTimestamp(value);
                 break;
@@ -48,7 +55,8 @@ public sealed class FfmpegProgressProtocolParser
                 var sample = new FfmpegProgressSample(
                     _elapsedTimestampSeconds ?? _elapsedMicroseconds,
                     _fps,
-                    _speed);
+                    _speed,
+                    _frame);
                 Reset();
                 return sample;
         }
@@ -60,6 +68,7 @@ public sealed class FfmpegProgressProtocolParser
     {
         _elapsedTimestampSeconds = null;
         _elapsedMicroseconds = null;
+        _frame = null;
         _fps = null;
         _speed = null;
     }

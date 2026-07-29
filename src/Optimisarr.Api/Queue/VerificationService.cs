@@ -101,10 +101,16 @@ public sealed class VerificationService(
             var originalTimestampResult = reference.Kind == MediaKind.Video && clip is null
                 ? await timestamps.CheckAsync(reference.Path, cancellationToken)
                 : TimestampCheckResult.NotMeasured;
+            var originalAudioTimestampResult = reference.Kind == MediaKind.Video
+                && originalProbe.AudioTrackCount > 0
+                && clip is null
+                    ? await timestamps.CheckPrimaryAudioAsync(reference.Path, cancellationToken)
+                    : TimestampCheckResult.NotMeasured;
             var referenceVideoDuration = ReferenceVideoDurationForVerification(
                 originalProbe,
                 originalTimestampResult,
-                reference.DurationSeconds);
+                reference.DurationSeconds,
+                clip is not null && reference.Kind == MediaKind.Video ? clip.Seconds : null);
 
             // When the job removed tracks by language, the audio the output promised to retain
             // is the kept tracks — so channel/sample-rate expectations come from those, not from
@@ -210,11 +216,10 @@ public sealed class VerificationService(
                 OutputVideoCodec: outputProbe.VideoCodec,
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
-                OriginalDurationSeconds: reference.DurationSeconds,
+                OriginalDurationSeconds: referenceVideoDuration,
                 OutputDurationSeconds: OutputDurationForVerification(
                     outputProbe,
                     reference.Kind,
-                    clip?.VideoOnly == true,
                     timestampResult),
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
@@ -258,6 +263,7 @@ public sealed class VerificationService(
                 OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
                 OriginalTimestampsMeasured: originalTimestampResult.Measured,
                 OriginalLastPresentationSeconds: originalTimestampResult.LastPresentationSeconds,
+                OriginalAudioLastPresentationSeconds: originalAudioTimestampResult.LastPresentationSeconds,
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,
@@ -363,19 +369,16 @@ public sealed class VerificationService(
     internal static double? OutputDurationForVerification(
         MediaProbeResult outputProbe,
         MediaKind kind,
-        bool videoOnlyReference,
         TimestampCheckResult? timestamps = null)
     {
-        if (kind != MediaKind.Video || !videoOnlyReference)
+        if (kind != MediaKind.Video)
         {
             return outputProbe.DurationSeconds;
         }
 
-        // A sampled encode may retain the source's non-zero stream epoch. In that case ffprobe's
-        // format duration is the absolute end timestamp (and copied subtitle/attachment streams can
-        // extend it further), not the amount of picture content encoded. The packet scan already
-        // provides the authoritative video endpoint used by Tail integrity, so compare its span
-        // against the exact calibration window too.
+        // A video container's duration may be extended by subtitles, attachments, or audio padding.
+        // The packet scan already provides the authoritative picture endpoint used by Tail
+        // integrity, so use the same track-aware span for both normal and clipped encodes.
         if (timestamps?.LastPresentationSeconds is { } last)
         {
             return Math.Max(0, last - (outputProbe.VideoStartSeconds ?? 0));
@@ -387,8 +390,11 @@ public sealed class VerificationService(
     internal static double? ReferenceVideoDurationForVerification(
         MediaProbeResult originalProbe,
         TimestampCheckResult originalTimestamps,
-        double? fallbackDurationSeconds) =>
-        originalTimestamps.LastPresentationSeconds is { } last and > 0
+        double? fallbackDurationSeconds,
+        double? exactClipDurationSeconds = null) =>
+        exactClipDurationSeconds is > 0
+            ? exactClipDurationSeconds
+            : originalTimestamps.LastPresentationSeconds is { } last and > 0
             ? Math.Max(0, last - (originalProbe.VideoStartSeconds ?? 0))
             : originalProbe.VideoDurationSeconds is > 0
                 ? originalProbe.VideoDurationSeconds
@@ -482,7 +488,7 @@ public sealed class VerificationService(
             // Stream copy necessarily retains packets from the preceding keyframe. The candidate
             // still represents the requested window, so verify against that window rather than
             // mistaking harmless decode pre-roll for a truncated encode.
-            DurationSeconds = clip.VideoOnly ? clip.Seconds : probedDuration,
+            DurationSeconds = original.Kind == MediaKind.Video ? clip.Seconds : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
             IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr

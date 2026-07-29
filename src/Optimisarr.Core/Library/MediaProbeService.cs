@@ -56,7 +56,12 @@ public sealed record MediaProbeResult(
 /// Inspects media files with ffprobe using machine-readable JSON output.
 /// ffprobe is invoked through an explicit argument list, never a shell string.
 /// </summary>
-public sealed class MediaProbeService
+public interface IMediaProbeService
+{
+    Task<MediaProbeResult> ProbeAsync(string path, CancellationToken cancellationToken);
+}
+
+public sealed class MediaProbeService : IMediaProbeService
 {
     private readonly string _ffprobe;
 
@@ -476,12 +481,39 @@ public sealed class MediaProbeService
             && tags.ValueKind == JsonValueKind.Object
             && tags.TryGetProperty("DURATION", out var taggedDuration)
             && taggedDuration.ValueKind == JsonValueKind.String
-            && TimeSpan.TryParse(taggedDuration.GetString(), CultureInfo.InvariantCulture, out var parsed))
+            && TryParseFfmpegDurationTag(taggedDuration.GetString(), out var parsed))
         {
-            return parsed.TotalSeconds;
+            return parsed;
         }
 
         return null;
+    }
+
+    // Matroska's demuxer emits stream duration tags as HH:MM:SS.nnnnnnnnn. TimeSpan.TryParse
+    // accepts some nine-digit values but rejects others once minutes are non-zero, so parse the
+    // documented clock fields directly and preserve their sub-second precision as a double.
+    private static bool TryParseFfmpegDurationTag(string? value, out double durationSeconds)
+    {
+        durationSeconds = 0;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var fields = value.Split(':');
+        if (fields.Length != 3
+            || !long.TryParse(fields[0], NumberStyles.None, CultureInfo.InvariantCulture, out var hours)
+            || !int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minutes)
+            || !double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+            || hours < 0
+            || minutes is < 0 or >= 60
+            || seconds is < 0 or >= 60)
+        {
+            return false;
+        }
+
+        durationSeconds = (hours * 3_600d) + (minutes * 60d) + seconds;
+        return double.IsFinite(durationSeconds);
     }
 
     private static bool? DetectVariableFrameRate(JsonElement stream)

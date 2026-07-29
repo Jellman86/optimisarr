@@ -77,6 +77,25 @@ public sealed class ConfigSnapshotValidatorTests
     }
 
     [Fact]
+    public void Undefined_numeric_enum_values_are_rejected()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "999", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null)
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("media type is not valid"));
+    }
+
+    [Fact]
     public void A_well_formed_library_watcher_and_target_are_valid()
     {
         var snapshot = Empty() with
@@ -145,6 +164,46 @@ public sealed class ConfigSnapshotValidatorTests
         var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors));
+    }
+
+    [Fact]
+    public void A_library_with_an_unknown_video_quality_strategy_is_rejected()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    VideoQualityStrategy: "Guess")
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("video quality strategy"));
+    }
+
+    [Fact]
+    public void Adaptive_video_quality_requires_a_vmaf_target_in_backups()
+    {
+        var snapshot = Empty() with
+        {
+            Libraries =
+            [
+                new LibrarySnapshot(
+                    "Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                    null, null, null, null, null, null, null, null, false, null,
+                    VideoQualityStrategy: "AdaptiveVmaf")
+            ]
+        };
+
+        var result = ConfigSnapshotValidator.Validate(snapshot, AllowedKeys);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("enabled per-library VMAF target"));
     }
 
     [Fact]

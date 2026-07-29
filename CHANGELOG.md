@@ -1,5 +1,131 @@
 # Changelog
 
+## 0.2.9 — 2026-07-29
+
+### Added
+
+- **Pull requests and roadmap work now have an explicit delivery contract.**
+  Everyday changes use short-lived branches and reviewed pull requests into
+  `dev`, while release pull requests alone target `main`. The roadmap records
+  prioritised outcomes and evidence gates; issues retain actionable discussion,
+  and pull requests retain the verified delivery slice.
+- **CI now scans the repository's full history for committed secrets.** Gitleaks
+  runs on pull requests, pushes to `dev` and `main`, a weekly schedule, and
+  manual dispatch with read-only repository permissions.
+- **Verification policy now belongs to each library.** Duration, stream-retention, size, audio
+  fidelity, image-quality, metadata, and existing VMAF gates are grouped in the library editor and
+  shown only when they apply to that media type. General Settings is reduced to queue/hardware and
+  replacement/cleanup policy, dependent thresholds stay hidden until enabled, and narrow layouts no
+  longer gain horizontal overflow from help text. A backwards-safe migration copies every former
+  global value to every existing library, configuration backup/import preserves those values, and
+  dispatch resolves one immutable library policy for preparation and final verification.
+- **Video libraries can opt into adaptive per-title VMAF quality selection.** A clear pair of
+  library-level radio paths keeps the existing fixed quality as the default or runs an experimental,
+  bounded preparation search across deterministic early/middle/late scenes. Adaptive mode tests at
+  most four encoder-specific values, compares the real encoded video bytes of every passing
+  candidate rather than assuming a quality number is smaller, rejects non-monotonic VMAF evidence,
+  and falls back to the library value when sampling is unavailable or ambiguous. It then performs
+  the normal full encode and every existing verification gate. Its selected value survives
+  automatic and operator retries so the one higher-quality recovery step cannot accidentally
+  discard or lower the proved choice.
+- **HDR-to-SDR jobs can now opt into Intel hardware tone mapping.** The existing per-library HDR
+  drop-down still decides whether media is tone-mapped; a separate Settings → General → Queue
+  control chooses the compatible software engine or supported QSV/VA-API VPP. Hardware mode first
+  freshly confirms a non-Dolby-Vision HDR10/PQ source, then keeps decode, colour conversion, and
+  encode on GPU surfaces. HLG, Dolby Vision, unknown colour metadata, preview/personal-quality
+  clips, and VMAF-gated work retain their compatible frame- and colour-matched software paths.
+  A recognised filter or driver failure deletes partial output and retries once through software.
+  Software remains the default, NVIDIA retains software tone mapping, and every normal verification
+  gate remains unchanged.
+
+### Fixed
+
+- **Information tooltips now stay translated and readable.** Switch help buttons
+  no longer announce a hard-coded English “About” label in other languages, and
+  every tooltip is programmatically associated with its button. Long translated
+  help remains inside short phone and landscape viewports with a scrollable
+  reading area, while the locale audit now rejects blank source or translated
+  strings. Reviewed help text also distinguishes full-file VMAF cost from its
+  cheaper sampling options and reflects the selectable software or supported
+  hardware HDR tone-map engine.
+- **VMAF now compares the same decoded picture across container timestamp origins.** Before
+  cadence normalisation, each decoded input is rebased to zero; FFmpeg's `fps(start_time=0)` can no
+  longer pad an MP4 candidate while leaving its Matroska reference untouched and accidentally score
+  adjacent frames. This corrects false low VMAF results seen with otherwise frame-aligned QSV
+  H.264/HEVC Personal quality samples and applies to Preview, adaptive sampling, and normal VMAF
+  verification through their shared scorer.
+- **Preview and Personal quality video clips now keep copied audio on the exact picture timeline.**
+  A bounded coarse seek still avoids decoding from the beginning of a long source, followed by an
+  exact output seek that trims re-encoded video and copied audio/subtitles to the same requested
+  instant. Long-GOP sources therefore no longer produce multi-second A/V offsets or inflated sample
+  durations. Preview and Personal quality sample placement now freshly prefers the primary video
+  duration, and newly probed inventory records use that same playable timeline, so subtitles or
+  ancillary streams cannot move a middle or late sample beyond picture EOF.
+- **Translated setup now stays accessible inside the complete library editor.** The active locale
+  updates the document language for assistive technology, media-type names are translated without
+  changing the stable API values saved for each library, and compact Browse, Save, Cancel, and
+  information controls expose 44 px touch targets. Browser coverage now opens the real embedded
+  editor from first-run setup and verifies its localisation, mobile reflow, and control geometry.
+- **Video previews now stay on the same source frame and report honest progress.** The preview API
+  exposes the exact middle-sample start and duration, and the two native browser players share one
+  source-relative clock for their initial position, play, pause, seek, playback rate, and drift
+  correction. The players still stream the two real files independently, so native controls,
+  fullscreen, and downloads remain available. FFmpeg frame counts now provide a progress fallback
+  when copied-stream timestamps remain at zero, while adaptive VMAF preparation reports its bounded
+  candidate, window, and measurement work instead of appearing stuck during a real encode or score.
+- **Subtitles and ancillary tracks no longer create false Duration or source-corruption failures.**
+  Normal, preview, and personal-quality video verification compare the measured primary-picture span
+  with the corresponding source window instead of a container duration that subtitles, chapters, or
+  attachments may extend. The separate source-timeline safety gate remains strict, but now requires
+  primary audio to materially outlast the picture before reporting an incomplete source video.
+- **Adaptive per-title quality now measures every planned VMAF window.** Removing one completed
+  sample no longer prunes the shared scratch directory needed by the next early, middle, or late
+  sample. Sample positions also follow the primary picture duration rather than a container timeline
+  that subtitles or ancillary tracks may extend, so a middle or late seek cannot land beyond video
+  EOF. Matroska's nanosecond-precision stream duration tags are parsed across multi-minute and
+  multi-hour values instead of intermittently falling back to format duration. Adaptive mode now
+  selects a proved per-title encoder value instead of silently falling back to the library value
+  after its first measurement.
+- **Intel QSV previews now compare the same source frames.** Short disposable video previews and
+  personal-quality clips keep hardware encoding but use software source decoding, avoiding the
+  reordered frames QSV can expose before a long-GOP input seek. The main encode pipeline retains
+  hardware decoding. Preview reference pre-roll is also excluded from duration and tail decisions,
+  so a copied preceding keyframe cannot make an exact 60-second candidate look truncated.
+- **An explicitly requested Preview no longer waits for the library's overnight optimise window.**
+  It still respects queue concurrency, free-space protection, manual pause, and active-media
+  blocking; only the background-work schedule is bypassed.
+
+### Changed
+
+- **Global Settings now follows the same guided structure as each library.**
+  Numbered, task-oriented sections give General, Connections, Notifications,
+  Tools, and Backup a consistent reading order, while the first-run setup
+  action now lives with backup and restore controls. Settings tabs expose
+  standard keyboard navigation, mobile actions meet touch-target guidance, and
+  long tool paths, statuses, and encoder names wrap inside the viewport instead
+  of overflowing narrow or landscape layouts.
+- **Scott's Settings now matches the current reference encoding bundle.** The preset still targets
+  HEVC/MP4 at CRF 24 with AAC 96 kbps stereo, but now tone-maps HDR to SDR instead of preserving it.
+  The global tone-map setting continues to choose compatible software or supported hardware.
+  Verification gates, automation, and per-library same-codec size thresholds remain independent
+  library policy and are not silently changed when the encoding preset is selected.
+- **Library configuration now follows one consistent four-stage flow.** Film/TV, Music, Photo, and
+  mixed libraries use the same numbered **Library → Optimisation → Verification gates → Automation
+  & completion** sections instead of one long card with unrelated dividers. Music exposes its
+  primary codec and bitrate without requiring Advanced options, completed-output routing now sits
+  beside the automation choices it affects, and Advanced is limited to technical encoding and
+  eligibility overrides. Save/Cancel pins only after a change and remains in the document flow on
+  short landscape screens, so it no longer obscures most of the editor.
+- **The roadmap now defines optional Windows and macOS compute sidecars.** The planned
+  distributed-transcoding design keeps the main container in control of scheduling and all
+  replacement actions, while registered workers may receive read-only media, encode and VMAF-score
+  candidates, and return hash-bound results. It also records secure pairing, resumable or
+  shared-storage delivery, capability-aware leases, fail-closed verification, native packaging,
+  and cross-platform acceptance requirements.
+- **Per-title VMAF-guided quality targeting remains an experimental validation item.** The initial
+  bounded implementation is available for opt-in testing; release support still requires evidence
+  across CPU, QSV, NVENC, and VA-API that its extra work produces stable, worthwhile choices.
+
 ## 0.2.8 — 2026-07-25
 
 ### Added

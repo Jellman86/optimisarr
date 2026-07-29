@@ -4,7 +4,7 @@ namespace Optimisarr.Tests;
 
 public sealed class PacketTimestampParserTests
 {
-    // ffprobe emits "pts_time,dts_time" per packet at -of csv=p=0.
+    // ffprobe emits "pts_time,dts_time,duration_time" per packet at -of csv=p=0.
     [Fact]
     public void A_strictly_increasing_stream_has_no_regressions()
     {
@@ -110,6 +110,21 @@ public sealed class PacketTimestampParserTests
     }
 
     [Fact]
+    public void Presentation_only_packets_still_provide_a_measured_timeline()
+    {
+        const string csv = """
+        12.000000,N/A,0.020000
+        12.020000,N/A,0.020000
+        """;
+
+        var integrity = PacketTimestampParser.Parse(csv);
+
+        Assert.Equal(2, integrity.TimestampCount);
+        Assert.Equal(0, integrity.NonMonotonicCount);
+        Assert.Equal(12.04, integrity.LastPresentationSeconds);
+    }
+
+    [Fact]
     public void Last_presentation_is_the_maximum_pts_not_the_final_line()
     {
         const string csv = """
@@ -121,6 +136,19 @@ public sealed class PacketTimestampParserTests
         var integrity = PacketTimestampParser.Parse(csv);
 
         Assert.Equal(0.200000, integrity.LastPresentationSeconds);
+    }
+
+    [Fact]
+    public void Last_presentation_includes_the_final_packets_duration()
+    {
+        const string csv = """
+        0.000000,0.000000,0.041708
+        0.041708,0.041708,0.041708
+        """;
+
+        var integrity = PacketTimestampParser.Parse(csv);
+
+        Assert.Equal(0.083416, integrity.LastPresentationSeconds);
     }
 
     [Theory]

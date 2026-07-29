@@ -35,6 +35,9 @@ public static class SettingKeys
     /// </summary>
     public const string HardwareDecode = "queue.hardwareDecode";
 
+    /// <summary>Whether HDR-to-SDR jobs prefer the software or supported hardware tone-map path.</summary>
+    public const string HdrToneMapMode = "queue.hdrToneMapMode";
+
     /// <summary>
     /// One-shot marker: the media-kind backfill has reset legacy Unknown-kind files for re-probe.
     /// Present (any value) means it has run, so it never runs again.

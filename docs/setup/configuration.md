@@ -24,9 +24,10 @@ replace, or delete a file.
 Fresh installations start in dry-run with one concurrent job. Every new library has automatic
 enqueue, automatic replacement, and VMAF disabled unless changed explicitly in its editor. Existing
 installations upgraded from an older release never see the wizard automatically. To revisit it
-without deleting or resetting any configuration, use **Run setup again** in the Settings header.
+without deleting or resetting any configuration, use **Settings → Backup → First-run setup → Run
+setup again**.
 
-![Settings General tab showing queue, encoder, scan interval, disk threshold, and hardware decode controls](../images/optimisarr-settings-general-dark.png)
+![Settings General tab grouping queue controls separately from replacement and cleanup policy](../images/optimisarr-settings-general-dark.png)
 
 ## Admin token
 
@@ -54,8 +55,19 @@ did before and logs a warning at startup.
 Each library has its own root, media type, rule profile, and processing policy.
 The Inventory explains why every file is eligible or skipped.
 
-**Configure** opens a dedicated page for that library. Video libraries can disable VMAF or select a
-named quality tier. **Custom** exposes the
+**Configure** opens a dedicated page for that library. A video re-encode library first chooses one
+of two mutually exclusive quality paths:
+
+- **Fixed library quality** (default) uses the preset/custom quality directly, then runs the normal
+  full-output verification and one bounded VMAF-only recovery retry.
+- **Adaptive per-title VMAF** (experimental) first encodes deterministic early, middle, and late
+  video-only samples at no more than four encoder-specific values and selects the smallest measured
+  candidate that clears the library target. Missing or contradictory evidence falls back to Fixed;
+  the final file still runs every normal verification gate.
+
+Adaptive mode adds up to twelve 40-second sample encodes before each full encode, so it is an
+explicit per-library opt-in and requires VMAF to be enabled. Video libraries can otherwise disable
+VMAF or select a named quality tier. **Custom** exposes the
 harmonic-mean, fifth-percentile, and catastrophic-frame floors plus full/clip scoring and the frame
 sampling interval. VMAF has no global setting: every video library owns its policy. Upgrades copy
 the former global policy into each existing library so behaviour does not change unexpectedly.
@@ -68,6 +80,7 @@ the former global policy into each existing library so behaviour does not change
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |
 | Hardware decoding | Uses GPU decode with hardware encoders when possible, including eligible SDR VMAF passes. Runtime failures fall back to CPU decode, and a below-floor accelerated VMAF result is confirmed in software before rejection. |
+| HDR tone-map engine | Software is the compatible default. Hardware uses Intel QSV or VA-API for a freshly confirmed non-Dolby-Vision HDR10/PQ source under an existing **Tone-map to SDR** library rule when hardware decoding is active, and retries once with software if that path fails. HLG, Dolby Vision, unknown transfer metadata, VMAF-gated work, and disposable comparisons retain the software transform. |
 
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
@@ -97,14 +110,22 @@ The standard image already provides the normal FFmpeg, ffprobe, VMAF, and ExifTo
 VMAF override is optional; leave it unset unless supplying a compatible NVIDIA build. Do not
 override the standard values unless supplying a complete, tested replacement toolchain.
 
-## Verification gates
+## Per-library verification gates
+
+The configuration page uses the same four-stage flow for every media type:
+**Library → Optimisation → Verification gates → Automation & completion**. Music exposes its output
+codec and bitrate in **Optimisation** because those are its primary choices. **Advanced options**
+contains technical encoding and eligibility overrides; completed-output routing remains in the
+normal **Automation & completion** flow.
 
 Every job must pass decode health, output readability, and the media-kind checks
 that apply to it. Video jobs also have an always-on structural comparison: the output codec must
 match the resolved target (or the source for a remux), resolution must not change without a resize
 policy, bit depth and chroma sampling may not be reduced, and ffprobe must report a coherent output
 profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
-requested codec or signal structure was retained. The configurable gates make replacement stricter:
+requested codec or signal structure was retained. Open **Libraries**, edit a library, and use
+**Verification gates** to tune its applicable checks. Optimisarr shows only controls that can affect
+the selected media type:
 
 | Gate | Applies to | Default |
 |---|---|---|
@@ -121,12 +142,14 @@ requested codec or signal structure was retained. The configurable gates make re
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
-the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because it
-fully decodes both files and scores every frame, roughly doubling verification time and dominating a
-run on modest hardware; each library configuration page can turn it on and prefill all three floors from
-named tiers (Space-saver through Archival). Existing installations retain their effective policy, and while the
-gate is off the structural, duration and size gates plus quarantine rollback still guard every
-replacement. When enabled, **Score three representative samples** measures deterministic 40-second
+the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because
+full-file, every-frame scoring decodes both files, roughly doubles verification time, and can
+dominate a run on modest hardware. Each library configuration page can turn it on and prefill all
+three floors from named tiers (Space-saver through Archival); the sampling controls below reduce
+its cost. While the gate is off, the structural, duration, and size gates plus quarantine rollback
+still guard every replacement. Existing installations copy their former global verification values
+to every library during migration, so updating does not silently weaken or strengthen an existing
+policy. When enabled, **Score three representative samples** measures deterministic 40-second
 windows near the beginning, middle and end of long files. The weakest window controls the tail
 floors. **Frame sampling** can score every Nth frame from 1–10; 1 is the conservative default,
 because skipped frames cannot participate in the percentile or catastrophic floor. Image SSIM and EXIF/ICC
@@ -147,7 +170,8 @@ tone-map before comparison; HDR-preserving jobs keep both streams in the matchin
 HDR transfer domain. SDR jobs follow the selected encoder's hardware decode path when Hardware
 decoding is enabled: QSV/VA-API download decoded frames for CPU VMAF, while a compatible NVIDIA
 build can use NVDEC, `scale_cuda`, and `libvmaf_cuda` end to end. Hardware attempts always retry in
-software on failure, and HDR always uses the established software colour pipeline. Only VMAF is
+software on failure. A VMAF-gated HDR→SDR job always uses the established software production
+tone-map so its reference receives the identical transform. Only VMAF is
 requested during this gate; the older incidental PSNR/SSIM report fields remain nullable. The model,
 sampling interval, and preparation used are recorded in the result.
 
@@ -163,7 +187,11 @@ HDR; preserving or tone-mapping it is an explicit library-profile choice.
 
 Encoder quality values are not assumed to be portable between implementations. Software uses the
 profile CRF directly; QSV ICQ, NVENC CQ and VA-API QP receive conservative family-specific headroom.
-The requested and effective values are stored with each job. When VMAF is the only failed gate,
+The requested and effective values are stored with each job. Adaptive mode persists its selected
+encoder-specific value on the job so a crash, ordinary retry, or higher-quality recovery cannot
+silently revert to the library baseline; the selection is not shared with another title. Candidate
+comparison uses actual encoded video bytes, not a cross-encoder assumption about quality-number
+size. When VMAF is the only failed gate,
 Optimisarr makes one automatic higher-quality retry only after a real score was measured. If that
 recovery still produces a measured score below the VMAF gate, the file is
 automatically excluded from future optimisation and remains reversible from the library's **Excluded**
@@ -183,7 +211,7 @@ researched quality target; anything can be fine-tuned under **Advanced options**
 | Compatibility (H.264) | H.264 / MP4 with channel-aware AAC — broad compatibility for proven 8-bit sources, larger files. Higher or unknown bit depths are skipped with guidance to use HEVC or AV1. |
 | Balanced (HEVC) | HEVC (H.265) / MP4 at CRF 24 with channel-aware AAC — a good default. |
 | Efficiency (AV1) | AV1 / MKV — smallest files, slower to encode. |
-| **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR preserved**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; the same AAC 96 kbps stereo target applies to a music library. |
+| **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR tone-mapped to SDR**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; Settings → General chooses compatible software or supported hardware tone mapping, and the same AAC 96 kbps stereo target applies to a music library. |
 | Remux / cleanup | No re-encode — repackage into a clean container only. |
 
 A file already in the target codec is normally skipped. Enable **"Re-encode large
@@ -297,7 +325,7 @@ includes libraries, activity watchers, notification targets, Arr connections,
 and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
 
-![Backup tab showing export and import controls plus the sensitive-data warning](../images/optimisarr-settings-backup-dark.png)
+![Backup tab separating configuration export and import from the first-run setup action](../images/optimisarr-settings-backup-dark.png)
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

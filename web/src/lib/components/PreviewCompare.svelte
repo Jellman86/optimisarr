@@ -106,8 +106,12 @@
       ? i18n.m.shared.status_error
       : !preview || preview.status === 'Queued'
         ? i18n.m.shared.status_queuing
+        : preview.status === 'Probing'
+          ? t(i18n.m.shared.adaptive_quality_progress, { percent: Math.max(1, Math.round(preview.progress * 100)) })
         : preview.status === 'Transcoding'
-          ? t(i18n.m.shared.status_encoding, { percent: Math.round(preview.progress * 100) })
+          ? preview.progress > 0
+            ? t(i18n.m.shared.status_encoding, { percent: Math.round(preview.progress * 100) })
+            : i18n.m.queue.status_transcoding
           : preview.status === 'Verifying'
             ? i18n.m.shared.status_verifying
             : preview.status === 'Failed'
@@ -177,7 +181,11 @@
         <div class="progress-track w-64"><div class="progress-indeterminate"></div></div>
         <p class="text-sm">
           {#if !preview || preview.status === 'Queued'}{i18n.m.shared.queuing_preview}
-          {:else if preview.status === 'Transcoding'}{t(i18n.m.shared.encoding_progress, { percent: Math.round(preview.progress * 100) })}
+          {:else if preview.status === 'Probing'}{t(i18n.m.shared.adaptive_quality_progress, { percent: Math.max(1, Math.round(preview.progress * 100)) })}
+          {:else if preview.status === 'Transcoding'}
+            {preview.progress > 0
+              ? t(i18n.m.shared.encoding_progress, { percent: Math.round(preview.progress * 100) })
+              : `${i18n.m.queue.status_transcoding}…`}
           {:else if preview.status === 'Verifying'}{i18n.m.shared.verifying_sample}
           {:else}{preview.status}…{/if}
         </p>
@@ -195,8 +203,19 @@
         <div class="mb-5">
           <MediaCompare
             {mediaKind}
-            left={{ label: i18n.m.shared.original, url: api.mediaContentUrl(mediaFileId), sizeBytes: preview.original?.sizeBytes }}
-            right={{ label: preview.clipped ? i18n.m.shared.encoded_sample : i18n.m.shared.encoded, url: api.previewContentUrl(preview.jobId), sizeBytes: preview.encoded?.sizeBytes }}
+            left={{
+              label: i18n.m.shared.original,
+              url: api.mediaContentUrl(mediaFileId),
+              sizeBytes: preview.original?.sizeBytes,
+              startSeconds: preview.clipStartSeconds,
+            }}
+            right={{
+              label: preview.clipped ? i18n.m.shared.encoded_sample : i18n.m.shared.encoded,
+              url: api.previewContentUrl(preview.jobId),
+              sizeBytes: preview.encoded?.sizeBytes,
+              startSeconds: 0,
+            }}
+            comparisonDurationSeconds={preview.clipDurationSeconds}
           />
           {#if preview.clipped}
             <p class="mt-2 text-xs text-slate-400">

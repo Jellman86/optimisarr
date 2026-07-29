@@ -7,17 +7,6 @@ const settings = {
   libraryScanIntervalHours: 1,
   encoderMode: 'Auto',
   hardwareDecode: true,
-  verificationDurationTolerancePercent: 1,
-  verificationRequireAudioRetained: true,
-  verificationRequireSubtitlesRetained: true,
-  verificationRequireSizeReduction: true,
-  verificationAudioLoudnessGateEnabled: false,
-  verificationMaxLoudnessDriftLufs: 1,
-  verificationAudioClippingGateEnabled: false,
-  verificationMaxTruePeakDbtp: -1,
-  verificationImageQualityGateEnabled: true,
-  verificationMinimumImageSsim: 0.95,
-  verificationImageMetadataGateEnabled: true,
   replacementAllowCrossFilesystem: false,
   dryRunMode: true,
   replacementQuarantineRetentionDays: 0,
@@ -39,6 +28,58 @@ const library = {
   path: '/media/films',
   mediaType: 'Film',
   ruleProfile: 'ConservativeHevc',
+  enabled: true,
+  priority: 0,
+  minFileSizeBytes: null,
+  maxHeight: null,
+  reencodeSameCodecAboveBytes: null,
+  skipEfficientSources: true,
+  targetVideoCodec: null,
+  targetContainer: null,
+  hdrHandling: null,
+  optimiseDolbyVision: false,
+  excludePaths: null,
+  qualityCrf: null,
+  encoderPreset: null,
+  audioTargetCodec: null,
+  audioBitrateKbps: null,
+  videoAudioCodec: null,
+  videoAudioBitrateKbps: null,
+  downmixToStereo: false,
+  keepAudioLanguages: null,
+  keepSubtitleLanguages: null,
+  reencodeLossyAudio: false,
+  targetImageFormat: null,
+  imageQuality: null,
+  reencodeLossyImages: false,
+  imageDownscaleMode: 'None',
+  imageDownscaleValue: 0,
+  moveOnComplete: false,
+  targetFolder: null,
+  moveOverwrite: false,
+  minVmafHarmonicMean: null,
+  minVmafMin: null,
+  vmafQualityGateEnabled: false,
+  minVmafCatastrophicMin: null,
+  clipVmafEnabled: null,
+  vmafFrameSubsample: null,
+  durationTolerancePercent: 1,
+  requireAudioRetained: true,
+  requireSubtitlesRetained: false,
+  requireSizeReduction: true,
+  audioLoudnessGateEnabled: false,
+  maxLoudnessDriftLufs: 1,
+  audioClippingGateEnabled: false,
+  maxTruePeakDbtp: 0,
+  imageQualityGateEnabled: true,
+  minimumImageSsim: 0.95,
+  imageMetadataGateEnabled: true,
+  autoEnqueueEnabled: false,
+  autoEnqueueWindowStart: '00:00',
+  autoEnqueueWindowEnd: '00:00',
+  autoReplace: false,
+  videoQualityStrategy: 'Fixed',
+  lastAutoEnqueueAt: null,
   fileCount: 0,
 }
 
@@ -90,6 +131,26 @@ async function mockSetup(page: Page, currentStep = 5) {
       },
     })
     if (path === '/api/libraries') return json(route, [library])
+    if (path === '/api/library-options') return json(route, {
+      mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
+      ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
+      ruleProfileSpecs: [
+        { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20 },
+        { profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24 },
+        { profile: 'ExperimentalAv1', codec: 'av1', container: 'mkv', crf: 30 },
+        { profile: 'RemuxCleanup', codec: null, container: 'mkv', crf: null },
+        { profile: 'TrackCleanup', codec: null, container: null, crf: null },
+      ],
+      hdrHandlings: ['Exclude', 'Preserve', 'TonemapToSdr'],
+      videoCodecs: ['h264', 'hevc', 'av1'],
+      containers: ['mp4', 'mkv'],
+      encoderPresets: ['quick', 'balanced', 'efficient'],
+      legacyEncoderPresets: ['veryslow'],
+      imageFormats: ['webp'],
+    })
+    if (path === '/api/candidates/summary' || path === '/api/candidates' || path === '/api/exclusions') {
+      return json(route, [])
+    }
     if (path === '/api/libraries/1/access') return json(route, {
       path: library.path, exists: true, readable: true, writable: true, ok: true,
       message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/',
@@ -149,6 +210,36 @@ test('review Change actions preserve the plan and keyboard focus order', async (
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: /Set up your libraries/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Back' })).toBeDisabled()
+})
+
+test('translated setup opens a localised, touch-friendly library editor without changing API values', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript(() => {
+    localStorage.setItem('optimisarr:locale', 'de')
+  })
+  await mockSetup(page, 3)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Konfigurieren' }).click()
+  await expect(page.locator('[data-config-section]')).toHaveCount(4)
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('de')
+
+  const mediaType = page.locator('#lib-type')
+  await expect(mediaType.locator('option')).toHaveText(['Film', 'Fernsehen', 'Musik', 'Fotos', 'Sonstige'])
+  expect(await mediaType.locator('option').evaluateAll((options) =>
+    options.map((option) => option.getAttribute('value'))),
+  ).toEqual(['Film', 'TV', 'Music', 'Photo', 'Other'])
+  await expect(mediaType).toHaveValue('Film')
+
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  const undersized = await page.locator('#setup-content button:visible').evaluateAll((buttons) =>
+    buttons
+      .map((button) => {
+        const { width, height } = button.getBoundingClientRect()
+        return { label: button.getAttribute('aria-label') ?? button.textContent?.trim(), width, height }
+      })
+      .filter(({ width, height }) => width < 44 || height < 44))
+  expect(undersized).toEqual([])
 })
 
 test('invalid safety input has an inline error and focuses the summary', async ({ page }) => {

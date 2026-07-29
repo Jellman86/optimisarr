@@ -4,7 +4,20 @@ This roadmap is intentionally implementation-focused. The goal is to build a
 small, reliable core first, then widen codec, GPU, and automation support once
 the replacement workflow is trustworthy.
 
-## Up next (priority order, updated 2026-07-19)
+## How to use this roadmap
+
+- Entries are ordered by product and safety dependency, not by promised date.
+- Each entry describes an outcome and the evidence needed to call it complete;
+  a priority is not a release promise.
+- GitHub issues hold implementation-ready scope, acceptance criteria, and
+  discussion. Short-lived pull requests deliver reviewable slices into `dev`.
+- Implemented user/operator behaviour moves to `CHANGELOG.md`; detailed
+  engineering history belongs in
+  [`engineering/history.md`](engineering/history.md).
+- Code and tests remain the source of truth. Never present roadmap work as
+  shipped until the repository proves it.
+
+## Up next (priority order, updated 2026-07-29)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -24,12 +37,13 @@ the replacement workflow is trustworthy.
    - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
      re-encodes at selectable floors — each library offers Off (the default), Space-saver
      (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
-     off by default because it fully decodes both files and scores every frame, roughly doubling
-     verification time; while off, the structural, duration and size gates plus quarantine rollback
-     still guard every replacement. Remux and non-video work skip the inapplicable extra decode, and
-     existing saved choices remain unchanged. The long VMAF pass now reports real 0–100% progress in
-     the queue (hero and rows), is named explicitly as the VMAF stage, and shows a live CPU-usage
-     graph so the load is visible. Measurement is self-configuring: deterministic
+     off by default because full-file, every-frame scoring decodes both files and roughly doubles
+     verification time; clip scoring and frame sampling can reduce that cost. While off, the
+     structural, duration, and size gates plus quarantine rollback still guard every replacement.
+     Remux and non-video work skip the inapplicable extra decode, and existing saved choices remain
+     unchanged. The long VMAF pass now reports real 0–100% progress in the queue (hero and rows), is
+     named explicitly as the VMAF stage, and shows a live CPU-usage graph so the load is visible.
+     Measurement is self-configuring: deterministic
      timebase/timestamp/range/pixel-format alignment, reference-size bicubic scaling, bounded
      threading, automatic HDTV/4K model selection, and like-for-like HDR→SDR reference tone-mapping.
      The report records the selected model and preparation. Unit tests own the exact production graph,
@@ -161,7 +175,8 @@ the replacement workflow is trustworthy.
      a genuinely new database from an upgrade, persists each completed step, resumes after refresh or
      restart, accepts duplicate progress writes idempotently, and permits completion only from final
      review. Upgraded installations are marked complete and never forced into onboarding. Back retains
-     applied choices, and the Settings header offers **Run setup again** without deleting configuration.
+     applied choices, and **Settings → Backup → First-run setup** offers **Run setup again** without
+     deleting configuration.
      Connections remain explicitly skipped on the final review and can be added later, so an optional
      provider can never block first use.
    - **Five stable, task-oriented steps: done.** One heading and primary action drive:
@@ -423,6 +438,95 @@ the replacement workflow is trustworthy.
      catch). The incidental PSNR/SSIM video measurements were dropped when only the VMAF gate decision
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
+
+9. **Optional Windows and macOS sidecars for distributed transcoding: planned.** Keep one
+   Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
+   contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
+   it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
+   quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
+   continue to be the complete, uncomplicated default.
+
+   - **Versioned worker protocol and explicit ownership.** Define a platform-neutral contract before
+     either app: registration, capability discovery, heartbeats, leases, progress, cancellation,
+     source/output hashes, the fully resolved encode and verification policy, structured FFmpeg
+     evidence, and result acknowledgement. The main app owns job state, scheduling, rules, and every
+     destructive transition. Protocol versions and worker capabilities must be negotiated so an
+     upgrade cannot silently schedule a job onto an incompatible sidecar.
+   - **Secure pairing and revocation.** Register a sidecar through a short-lived, single-use code
+     displayed by the main app, then issue it a unique revocable credential. Bind every assignment
+     and result to the registered worker and job lease; redact credentials from diagnostics and
+     logs. Document TLS expectations, certificate trust, credential rotation, and the difference
+     between a private LAN and an authenticated secure connection rather than treating LAN access
+     as authentication.
+   - **Efficient, integrity-checked media delivery.** Support resumable, bounded, checksummed
+     streaming when the sidecar cannot see the library. Also offer an explicit shared-storage path
+     mapping for SMB/NFS-mounted media so multi-gigabyte sources need not cross the network twice.
+     Shared sources remain read-only; sidecar scratch stays isolated. The main app verifies source
+     identity before dispatch and rejects an output, report, or resumed transfer whose hashes,
+     lease, size, or policy no longer match.
+   - **Capability-aware leases and recovery.** Schedule only when OS, architecture, FFmpeg build,
+     encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the job.
+     Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and make
+     retry after disconnect or restart safe. A lost, duplicated, late, cancelled, or partially
+     uploaded result must never become replaceable.
+   - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
+     tool/model versions, preparation details, hashes, and captured process evidence as one result
+     bound to the assignment. The main app independently re-probes the returned file and repeats the
+     structural, decode, duration, tail, stream-policy, and size gates before it may enter the
+     existing replacement workflow. A remote VMAF result is accepted only for the exact source and
+     candidate hashes and requested policy; missing or inconsistent evidence fails closed.
+   - **Windows sidecar application.** Ship a self-contained background service with a small tray UI
+     for pairing, availability, concurrency, current work, logs, updates, and removal. Package and
+     test unattended startup, clean upgrades, cancellation, sleep/resume, low-disk handling, CPU
+     encoding, and only the hardware encoders/decoders proved available on that machine. NVIDIA
+     CUDA VMAF may be advertised when the bundled tools prove it; CPU VMAF remains the portable
+     fallback.
+   - **macOS sidecar application.** Ship a signed and notarized service with a minimal menu-bar UI
+     and durable launch-at-login/background-service behaviour. Support Apple Silicon first, probe
+     rather than assume VideoToolbox capabilities, and use CPU VMAF because Apple GPUs have no VMAF
+     compute backend. Test sleep/wake, App Nap, low-disk handling, upgrades, cancellation, and
+     permission prompts without requiring broad access to the user's filesystem.
+   - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
+     platform, version, capabilities, health, load, active lease, transfer progress, and last error;
+     worker removal immediately prevents new assignments. Automated contract and end-to-end tests
+     cover tampered data, stale credentials, incompatible versions, duplicate delivery, network
+     interruption, main/worker restarts, cancellation, and a sentinel source remaining byte-for-byte
+     unchanged. Real Windows and macOS hardware evidence is required before either platform is
+     described as supported.
+
+10. **Adaptive per-title VMAF quality targeting: validate the experimental implementation.** The
+    initial opt-in implementation of Mike's issue #26 workflow now runs a bounded set of short
+    representative encodes at different encoder-specific quality values, measures them with the
+    library's VMAF policy, and selects the smallest actually encoded passing candidate. This
+    complements the personal blind-quality check: one calibrates the person's library-level
+    preference, while this feature adapts that chosen target to the complexity of an individual
+    title.
+
+    - **Explicit opt-in with an honest cost.** Fixed remains the default. The per-library radio path
+      states the upper bound of four qualities across three 40-second scenes and the Queue uses its
+      probing stage during preparation. Cancellation follows the normal active-job control.
+    - **Representative evidence, not a favourable frame search.** Reuse deterministic early, middle,
+      and late windows selected before any scores are known. Apply the complete picture contract
+      (codec, bit depth, resolution, HDR treatment, encoder effort, and relevant filters) to every
+      video-only probe so a cheap surrogate encode cannot select a value the real job does not
+      reproduce and unrelated copied tracks cannot distort the size comparison.
+    - **Bounded search that does not assume perfect monotonicity or output size.** Use
+      encoder-family-specific safe bounds and at most a small fixed number of probes. Bracket the
+      gate, retain every measured candidate's encoded video bytes and VMAF result, and fail back to
+      the library setting when noisy hardware scores, unsupported values, or a non-monotonic result
+      make the choice ambiguous. Never loop until a preferred answer appears.
+    - **Do not share a decision.** The prototype deliberately does not cache across work. Its
+      selected raw value is bound to the job only so recovery retries remain anchored to it; another
+      title always gathers its own evidence.
+    - **The final output still has to prove itself.** A sampled search chooses a candidate setting;
+      it never authorises replacement. The resulting full encode still runs the structural, decode,
+      duration, tail, stream, size, and configured final VMAF gates. The existing single
+      higher-quality retry and fail-closed exclusion remain the backstop if the prediction does not
+      hold for the complete title.
+    - **Prototype acceptance.** Compare total work, selected quality, size, VMAF, and repeatability
+      against the fixed-setting path across CPU, QSV, NVENC, and VA-API evidence where hardware is
+      available. Promote it from experimental only if the bounded search saves meaningful space or avoids failures without
+      creating surprising encode time, unstable choices, or weaker verification.
 
 
 ## Guiding principles

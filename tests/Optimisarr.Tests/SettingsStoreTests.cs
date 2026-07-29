@@ -33,6 +33,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(1, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
         Assert.True(settings.HardwareDecode);
+        Assert.Equal(HdrToneMapMode.Software, settings.HdrToneMapMode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
@@ -54,7 +55,7 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task Queue_settings_round_trip()
+    public async Task Queue_settings_round_trip_keeps_verification_policy_library_owned()
     {
         await using (var db = CreateDb())
         {
@@ -65,6 +66,7 @@ public sealed class SettingsStoreTests : IDisposable
                 LibraryScanIntervalHours: 6,
                 EncoderMode: EncoderMode.NvidiaNvenc,
                 HardwareDecode: false,
+                HdrToneMapMode: HdrToneMapMode.Hardware,
                 VerificationPolicy: new(
                     DurationTolerancePercent: 2.5,
                     RequireAudioRetained: false,
@@ -97,20 +99,21 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(6, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.NvidiaNvenc, settings.EncoderMode);
         Assert.False(settings.HardwareDecode);
-        Assert.Equal(2.5, settings.VerificationPolicy.DurationTolerancePercent);
-        Assert.False(settings.VerificationPolicy.RequireAudioRetained);
-        Assert.True(settings.VerificationPolicy.RequireSubtitlesRetained);
-        Assert.False(settings.VerificationPolicy.RequireSizeReduction);
+        Assert.Equal(HdrToneMapMode.Hardware, settings.HdrToneMapMode);
+        Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
+        Assert.True(settings.VerificationPolicy.RequireAudioRetained);
+        Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);
+        Assert.True(settings.VerificationPolicy.RequireSizeReduction);
         Assert.False(settings.VerificationPolicy.QualityGateEnabled);
         Assert.Equal(93.0, settings.VerificationPolicy.MinimumVmafHarmonicMean);
         Assert.Equal(80.0, settings.VerificationPolicy.MinimumVmafMin);
         Assert.Equal(50.0, settings.VerificationPolicy.MinimumVmafCatastrophicMin);
-        Assert.True(settings.VerificationPolicy.AudioLoudnessGateEnabled);
-        Assert.Equal(2.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
-        Assert.True(settings.VerificationPolicy.AudioClippingGateEnabled);
-        Assert.Equal(-1.0, settings.VerificationPolicy.MaxTruePeakDbtp);
+        Assert.False(settings.VerificationPolicy.AudioLoudnessGateEnabled);
+        Assert.Equal(1.0, settings.VerificationPolicy.MaxLoudnessDriftLufs);
+        Assert.False(settings.VerificationPolicy.AudioClippingGateEnabled);
+        Assert.Equal(0.0, settings.VerificationPolicy.MaxTruePeakDbtp);
         Assert.True(settings.VerificationPolicy.ImageQualityGateEnabled);
-        Assert.Equal(0.97, settings.VerificationPolicy.MinimumImageSsim);
+        Assert.Equal(0.95, settings.VerificationPolicy.MinimumImageSsim);
         Assert.True(settings.VerificationPolicy.ImageMetadataGateEnabled);
         Assert.False(settings.VerificationPolicy.ClipVmafEnabled);
         Assert.Equal(1, settings.VerificationPolicy.VmafFrameSubsample);
@@ -119,12 +122,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(30, settings.ReplacementQuarantineRetentionDays);
         Assert.DoesNotContain(
             await readDb.AppSettings.Select(setting => setting.Key).ToListAsync(),
-            key => key is "verification.qualityGateEnabled"
-                or "verification.minimumVmafHarmonicMean"
-                or "verification.minimumVmafMin"
-                or "verification.minimumVmafCatastrophicMin"
-                or "verification.clipVmafEnabled"
-                or "verification.vmafFrameSubsample");
+            key => key.StartsWith("verification.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -137,6 +135,7 @@ public sealed class SettingsStoreTests : IDisposable
                 new AppSetting { Key = SettingKeys.MinFreeDiskBytes, Value = "-1" },
                 new AppSetting { Key = SettingKeys.CpuThreadLimit, Value = "-2" },
                 new AppSetting { Key = SettingKeys.EncoderMode, Value = "gpu-but-not-real" },
+                new AppSetting { Key = SettingKeys.HdrToneMapMode, Value = "999" },
                 new AppSetting { Key = SettingKeys.VerificationDurationTolerancePercent, Value = "-0.1" },
                 new AppSetting { Key = SettingKeys.VerificationRequireAudioRetained, Value = "maybe" },
                 new AppSetting { Key = SettingKeys.VerificationRequireSubtitlesRetained, Value = "maybe" },
@@ -156,6 +155,7 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(1, settings.LibraryScanIntervalHours);
         Assert.Equal(EncoderMode.Auto, settings.EncoderMode);
         Assert.True(settings.HardwareDecode);
+        Assert.Equal(HdrToneMapMode.Software, settings.HdrToneMapMode);
         Assert.Equal(1.0, settings.VerificationPolicy.DurationTolerancePercent);
         Assert.True(settings.VerificationPolicy.RequireAudioRetained);
         Assert.False(settings.VerificationPolicy.RequireSubtitlesRetained);

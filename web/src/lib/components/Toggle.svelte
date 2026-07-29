@@ -2,8 +2,9 @@
   // A labelled on/off switch for boolean feature settings. Backed by a real
   // checkbox so the whole row is clickable, keyboard-operable, and announced
   // correctly; the visual switch is driven entirely by `peer` variants. Any
-  // `hint` is shown as a hover/focus tooltip on an info icon, keeping the row dense.
+  // `hint` is shown as a hover/focus/tap tooltip on an info icon, keeping the row dense.
   import InfoTip from './InfoTip.svelte'
+  import { i18n, t } from '../i18n/i18n.svelte'
 
   let {
     checked = $bindable(false),
@@ -25,7 +26,7 @@
 >
   <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
     <span class="min-w-0 break-words">{label}</span>
-    {#if hint}<InfoTip text={hint} label={`About: ${label}`} />{/if}
+    {#if hint}<InfoTip text={hint} label={t(i18n.m.common.about_information, { label })} />{/if}
   </span>
 
   <span class="relative inline-flex h-6 w-11 flex-shrink-0 items-center">

@@ -73,6 +73,12 @@ public sealed class Library
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }
 
+    /// <summary>
+    /// Whether video re-encodes use the resolved library quality directly or run a bounded
+    /// per-title VMAF search first. Fixed is the conservative, backwards-compatible default.
+    /// </summary>
+    public VideoQualityStrategy VideoQualityStrategy { get; set; } = VideoQualityStrategy.Fixed;
+
     /// <summary>Portable encoder effort; recognised legacy presets remain valid until changed. Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 
@@ -164,6 +170,43 @@ public sealed class Library
 
     /// <summary>Null scores every frame; otherwise scores every Nth frame.</summary>
     public int? VmafFrameSubsample { get; set; }
+
+    // --- Per-library verification policy. These defaults match VerificationPolicy.Default.
+    // The migration that introduced the columns materialises each installation's former global
+    // values first, so upgrades keep their exact safety behaviour. ---
+
+    /// <summary>Maximum allowed runtime drift between source and output, as a percentage.</summary>
+    public double DurationTolerancePercent { get; set; } = 1.0;
+
+    /// <summary>Whether every unfiltered source audio track must survive.</summary>
+    public bool RequireAudioRetained { get; set; } = true;
+
+    /// <summary>Whether every unfiltered source subtitle track must survive.</summary>
+    public bool RequireSubtitlesRetained { get; set; }
+
+    /// <summary>Whether the encoded output must be smaller than its source.</summary>
+    public bool RequireSizeReduction { get; set; } = true;
+
+    /// <summary>Whether EBU R128 integrated-loudness drift is measured and bounded.</summary>
+    public bool AudioLoudnessGateEnabled { get; set; }
+
+    /// <summary>Maximum allowed integrated-loudness drift in LU.</summary>
+    public double MaxLoudnessDriftLufs { get; set; } = 1.0;
+
+    /// <summary>Whether an encode that introduces true-peak clipping is rejected.</summary>
+    public bool AudioClippingGateEnabled { get; set; }
+
+    /// <summary>True-peak ceiling in dBTP used by the clipping gate.</summary>
+    public double MaxTruePeakDbtp { get; set; }
+
+    /// <summary>Whether still-image output must clear the structural-similarity floor.</summary>
+    public bool ImageQualityGateEnabled { get; set; } = true;
+
+    /// <summary>Minimum still-image SSIM score, from zero to one.</summary>
+    public double MinimumImageSsim { get; set; } = 0.95;
+
+    /// <summary>Whether source EXIF and ICC metadata must survive an image encode.</summary>
+    public bool ImageMetadataGateEnabled { get; set; } = true;
 
     /// <summary>
     /// When true, a completed output is moved into <see cref="TargetFolder"/> (mirroring

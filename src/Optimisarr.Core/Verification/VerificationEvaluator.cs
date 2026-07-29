@@ -126,13 +126,13 @@ public static class VerificationEvaluator
             checks.Add(MonotonicTimestamps(input));
         }
 
-        // Keep malformed source timelines distinct from output truncation. A file whose audio or
-        // container continues materially beyond its final video packet is unsafe to optimise, but
-        // blaming that inherited gap on the new encode sends the operator in the wrong direction.
+        // Keep malformed source timelines distinct from output truncation. Primary audio that
+        // materially outlasts the final video packet is meaningful evidence of a damaged picture
+        // stream; container duration is not, because subtitles and attachments may end much later.
         if (isVideo
             && input.OriginalTimestampsMeasured
             && input.OriginalLastPresentationSeconds is not null
-            && input.OriginalDurationSeconds is > 0)
+            && input.OriginalAudioLastPresentationSeconds is not null)
         {
             checks.Add(SourceVideoTimelineComplete(input));
         }
@@ -376,15 +376,17 @@ public static class VerificationEvaluator
         const double absoluteFloorSeconds = 1.0;
         const double tolerancePercent = 2.0;
 
-        var containerDuration = input.OriginalDurationSeconds!.Value;
         var videoDuration = OriginalVideoSpanSeconds(input)!.Value;
-        var shortfall = containerDuration - videoDuration;
-        var shortfallPercent = shortfall / containerDuration * 100.0;
+        var audioDuration = Math.Max(
+            0,
+            input.OriginalAudioLastPresentationSeconds!.Value - (input.OriginalAudioStartSeconds ?? 0));
+        var shortfall = audioDuration - videoDuration;
+        var shortfallPercent = audioDuration > 0 ? shortfall / audioDuration * 100.0 : 0;
         var detail = string.Format(
             CultureInfo.InvariantCulture,
-            "The source video ends at {0:0.###}s while its container lasts {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
+            "The source video spans {0:0.###}s while its primary audio spans {1:0.###}s ({2:0.##}% short, tolerance {3:0.##}%).",
             videoDuration,
-            containerDuration,
+            audioDuration,
             Math.Max(shortfallPercent, 0),
             tolerancePercent);
 

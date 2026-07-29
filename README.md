@@ -70,9 +70,9 @@ no support SLA or promise of a release schedule.
   opt-in **auto-replace** promotes only fully verified jobs, still quarantining
   the original first so rollback remains available.
 - **Optimisation presets** per library (Compatibility H.264 / Balanced HEVC /
-  Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR preserved and
-  AAC 96 kbps stereo audio. Optionally **re-encode oversized files already in the
-  target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
+  Efficiency AV1 / Remux), plus **Scott's Settings** — HEVC with HDR tone-mapped
+  to SDR and AAC 96 kbps audio downmixed to stereo. Optionally **re-encode oversized files already
+  in the target codec** (e.g. a huge HEVC remux) above a size you set. Compatibility H.264
   is limited to proven 8-bit sources; higher or unknown bit depths are left untouched with guidance
   to use HEVC or AV1 instead.
 - **Exclude files** so they are never optimised again — manually from a stuck Queue
@@ -83,7 +83,9 @@ no support SLA or promise of a release schedule.
 - **Preview** from Inventory or a library's Candidates tab to try the resolved settings on one
   file before queueing it. Long video previews encode a 60-second sample from the middle of the
   source, verify against a temporary clipped reference from that same window, and label the report
-  as segment-only; audio and image previews run in full.
+  as segment-only. The original and encoded video players share that source-relative timeline, so
+  play, pause, seek, rate changes, and drift correction remain frame-aligned while both real files
+  retain native controls, fullscreen, and download access. Audio and image previews run in full.
 - A per-library, full-page **Personal quality check** compares a marked original reference with the
   relevant anonymous candidates, then finds the most compressed setting the user
   classifies as indistinguishable or acceptable on their own equipment.
@@ -102,8 +104,8 @@ no support SLA or promise of a release schedule.
 - Per-library **Encoder effort** choices that resolve after the actual encoder is selected, mapping
   one portable Fast/Balanced/Efficient intent onto valid x264/x265, SVT-AV1, NVENC, or QSV presets
   while VAAPI safely retains its driver default.
-- Configurable verification gates for duration tolerance, audio/subtitle
-  retention, and required size reduction.
+- Per-library, media-aware verification gates for duration tolerance, stream
+  retention, required size reduction, VMAF, audio fidelity, image SSIM, and metadata.
 
 - **Hardware transcoding** through NVIDIA NVENC, Intel QSV, and Intel/AMD VA-API, with
   per-encoder availability **confirmed by a real test encode** (not just inferred), and the
@@ -111,8 +113,9 @@ no support SLA or promise of a release schedule.
 - **GPU hardware decoding** (NVIDIA NVDEC, QSV, and VA-API) of the source as well as the encode,
   on by default,
   with automatic CPU-decode fallback for sources the GPU can't decode — so a large 4K encode no
-  longer burns a CPU core just on software decode. Skipped for HDR→SDR tonemap jobs (the tonemap
-  runs in software).
+  longer burns a CPU core just on software decode. HDR→SDR jobs use the established software colour
+  pipeline by default; an opt-in can use Intel QSV or VA-API tone mapping end to end for a freshly
+  confirmed HDR10/PQ source, with one automatic software retry when the hardware filter cannot run.
 - A **"now encoding" hero panel** with a live progress bar, fps/speed/ETA, and a **live CPU/GPU
   usage graph** while a job encodes (sampled with **unprivileged** reads only; no root or extra
   container capabilities). Click any job for a **detail view** showing the resolved encoder, the
@@ -170,8 +173,8 @@ mounted paths, free space, filesystem/mount relationships, permissions, and medi
 or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
 a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
 **Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
-then scan and queue a small test set deliberately. Use **Run setup again** in the Settings header to
-revisit the guided checks without deleting existing configuration.
+then scan and queue a small test set deliberately. Use **Settings → Backup → First-run setup → Run
+setup again** to revisit the guided checks without deleting existing configuration.
 Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
 container mount boundary.
 Compose examples are available for every supported runtime:
@@ -193,9 +196,9 @@ but a reverse proxy remains the recommended public-access boundary.
 
 Transcoding runs through a bundled **jellyfin-ffmpeg**, which includes FFmpeg support for NVENC and
 VA-API plus the Intel iHD/oneVPL userspace stack. The host must still provide a compatible kernel
-driver, device mapping, permissions, and (for NVIDIA) container runtime. The encoder is picked by the
-global **encoder mode** (Settings → Auto by default); the **Tools** page shows what each GPU
-actually supports
+driver, device mapping, permissions, and (for NVIDIA) container runtime. The encoder is picked by
+**Settings → General → Queue → Encoder mode** (Auto by default); **Settings → Tools** shows what
+each GPU actually supports
 (availability is confirmed by a real test encode), and each Queue job shows whether it ran on
 the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned static FFmpeg
 with `libvmaf`; the Tools page reports that optional capability independently. An optional
@@ -203,6 +206,11 @@ with `libvmaf`; the Tools page reports that optional capability independently. A
 support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
 failure retries in software. VMAF verification is off by default for video re-encodes and skipped
 for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
+The same editor presents two mutually exclusive video-quality paths: the default **Fixed library
+quality**, or experimental **Adaptive per-title VMAF**, which tests up to four encoder values across
+bounded early/middle/late video-only samples before the full encode, then chooses the smallest
+measured passing candidate. Adaptive preparation falls back to Fixed when evidence is unavailable
+or contradictory and never replaces final verification.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame
@@ -214,9 +222,9 @@ configured quality; combined size and VMAF failures do the same because the safe
 conflict. The report records the effective quality and sampling context.
 
 When a hardware encoder is in use the source is **hardware-decoded** on the GPU too
-(Settings → *Hardware decoding*, on by default), so transcode frames stay on-device where the
-encoder supports it. If the GPU can't decode a particular source, the job automatically retries with software
-decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
+(**Settings → General → Queue → Hardware decoding**, on by default), so transcode frames stay
+on-device where the encoder supports it. If the GPU can't decode a particular source, the job
+automatically retries with software decode rather than failing. The Queue detail view shows a live CPU/GPU usage graph while a job
 runs — GPU stats are read **without any elevated privileges** (per-process DRM fdinfo for
 Intel/AMD, `nvidia-smi` for NVIDIA), so **no extra container capability or compose change is
 needed**; hosts where no unprivileged source applies simply show "GPU stats unavailable".

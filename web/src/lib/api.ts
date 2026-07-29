@@ -163,6 +163,18 @@ export type LibraryRules = {
   minVmafCatastrophicMin: number | null
   clipVmafEnabled: boolean | null
   vmafFrameSubsample: number | null
+  durationTolerancePercent: number
+  requireAudioRetained: boolean
+  requireSubtitlesRetained: boolean
+  requireSizeReduction: boolean
+  audioLoudnessGateEnabled: boolean
+  maxLoudnessDriftLufs: number
+  audioClippingGateEnabled: boolean
+  maxTruePeakDbtp: number
+  imageQualityGateEnabled: boolean
+  minimumImageSsim: number
+  imageMetadataGateEnabled: boolean
+  videoQualityStrategy: 'Fixed' | 'AdaptiveVmaf'
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
@@ -249,6 +261,18 @@ export function newLibraryDefaults(): SaveLibrary {
     minVmafCatastrophicMin: null,
     clipVmafEnabled: null,
     vmafFrameSubsample: null,
+    durationTolerancePercent: 1,
+    requireAudioRetained: true,
+    requireSubtitlesRetained: false,
+    requireSizeReduction: true,
+    audioLoudnessGateEnabled: false,
+    maxLoudnessDriftLufs: 1,
+    audioClippingGateEnabled: false,
+    maxTruePeakDbtp: 0,
+    imageQualityGateEnabled: true,
+    minimumImageSsim: 0.95,
+    imageMetadataGateEnabled: true,
+    videoQualityStrategy: 'Fixed',
     autoEnqueueEnabled: false,
     autoEnqueueWindowStart: '00:00',
     autoEnqueueWindowEnd: '00:00',
@@ -282,17 +306,7 @@ export type Settings = {
   libraryScanIntervalHours: number
   encoderMode: string
   hardwareDecode: boolean
-  verificationDurationTolerancePercent: number
-  verificationRequireAudioRetained: boolean
-  verificationRequireSubtitlesRetained: boolean
-  verificationRequireSizeReduction: boolean
-  verificationAudioLoudnessGateEnabled: boolean
-  verificationMaxLoudnessDriftLufs: number
-  verificationAudioClippingGateEnabled: boolean
-  verificationMaxTruePeakDbtp: number
-  verificationImageQualityGateEnabled: boolean
-  verificationMinimumImageSsim: number
-  verificationImageMetadataGateEnabled: boolean
+  hdrToneMapMode: 'Software' | 'Hardware'
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number
@@ -422,6 +436,8 @@ export type PreviewComparison = {
   encoded: MediaSideStats | null
   savingPercent: number | null
   clipped: boolean
+  clipStartSeconds: number | null
+  clipDurationSeconds: number | null
   verificationPassed: boolean | null
   verificationReportJson: string | null
 }
