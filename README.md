@@ -173,8 +173,8 @@ mounted paths, free space, filesystem/mount relationships, permissions, and medi
 or inaccessible storage gets concrete Docker Compose, Unraid, TrueNAS, or local recovery steps and
 a real Re-test action. Setup lets you fully configure as many libraries as needed and starts in
 **Dry-run mode**. Completing setup never starts a scan or job; review each library’s Candidates,
-then scan and queue a small test set deliberately. Use **Run setup again** in the Settings header to
-revisit the guided checks without deleting existing configuration.
+then scan and queue a small test set deliberately. Use **Settings → Backup → First-run setup → Run
+setup again** to revisit the guided checks without deleting existing configuration.
 Add libraries from `/data/media`; the hidden work and quarantine directories remain below the same
 container mount boundary.
 Compose examples are available for every supported runtime:

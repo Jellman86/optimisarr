@@ -24,9 +24,10 @@ replace, or delete a file.
 Fresh installations start in dry-run with one concurrent job. Every new library has automatic
 enqueue, automatic replacement, and VMAF disabled unless changed explicitly in its editor. Existing
 installations upgraded from an older release never see the wizard automatically. To revisit it
-without deleting or resetting any configuration, use **Run setup again** in the Settings header.
+without deleting or resetting any configuration, use **Settings → Backup → First-run setup → Run
+setup again**.
 
-![Settings General tab showing queue, encoder, scan interval, disk threshold, and hardware decode controls](../images/optimisarr-settings-general-dark.png)
+![Settings General tab grouping queue controls separately from replacement and cleanup policy](../images/optimisarr-settings-general-dark.png)
 
 ## Admin token
 
@@ -324,7 +325,7 @@ includes libraries, activity watchers, notification targets, Arr connections,
 and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
 
-![Backup tab showing export and import controls plus the sensitive-data warning](../images/optimisarr-settings-backup-dark.png)
+![Backup tab separating configuration export and import from the first-run setup action](../images/optimisarr-settings-backup-dark.png)
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

@@ -673,6 +673,7 @@ export const de: Messages = {
     save_settings: 'Einstellungen speichern',
     save_note: 'Speichert alle Optionen auf diesem Tab. Verbindungen und Benachrichtigungen werden separat gespeichert.',
     media_servers: 'Medienserver',
+    media_servers_summary: 'Neue Aufträge während der Wiedergabe pausieren und verbundene Bibliotheken nach einem geprüften Austausch aktualisieren.',
     media_servers_desc:
       'Verbinden Sie Plex, Jellyfin oder Emby. Während ein aktivierter Server streamt, pausieren neue Aufgaben, damit Transkodierungen nie mit der Wiedergabe konkurrieren (laufende Aufgaben werden nie unterbrochen, und ein nicht erreichbarer Server pausiert die Warteschlange nie). Verbundene Server werden außerdem gebeten, einen Titel nach einer geprüften Ersetzung erneut zu scannen.',
     badge_refresh: 'aktualisieren',
@@ -701,6 +702,7 @@ export const de: Messages = {
     test_connection: 'Verbindung testen',
     test_connection_title: 'Prüfen, ob URL und Token den Server erreichen',
     download_managers: 'Download-Manager',
+    download_managers_summary: 'Dateien aus der Warteschlange halten, während Sonarr oder Radarr sie importiert.',
     download_managers_desc:
       'Verbinden Sie Sonarr oder Radarr. Während einer in den Ordner eines Titels importiert, werden die dortigen Dateien vom Einreihen zurückgehalten, damit eine Transkodierung nie mit einem Import konkurriert; sie werden beim nächsten Einreihen wieder geeignet, sobald der Import abgeschlossen ist. Ein nicht erreichbarer Manager blockiert die Warteschlange nie.',
     badge_no_key: 'kein Schlüssel',
@@ -736,6 +738,7 @@ export const de: Messages = {
     notification_test_failed: 'Die Testbenachrichtigung konnte nicht gesendet werden.',
     add_target_btn: 'Ziel hinzufügen',
     backup_title: 'Sicherung & Wiederherstellung',
+    backup_summary: 'Optimisarr-Konfiguration exportieren oder zusammenführen, ohne Medien oder Auftragsverlauf zu ändern.',
     backup_desc:
       'Exportieren Sie Ihre Einstellungen, Bibliotheken, Medienserver- und Download-Manager-Verbindungen sowie Benachrichtigungsziele in eine JSON-Datei oder importieren Sie eine. Die Datei enthält Anbieter-Token und API-Schlüssel, bewahren Sie sie also sicher auf und committen oder teilen Sie sie niemals. Sie enthält keine Medien, Aufgaben, Ersetzungen, Quarantäne oder Rücknahme-Verlauf. Der Import wird in Ihre aktuelle Konfiguration eingefügt (Bibliotheken werden anhand des Pfads, Verbindungen/Ziele anhand des Namens zugeordnet) und löscht niemals etwas.',
     export_config: 'Konfiguration exportieren',
@@ -1064,11 +1067,13 @@ export const de: Messages = {
     tools_load_error: 'Werkzeuge konnten nicht geladen werden',
     tools_intro: 'FFmpeg und ffprobe müssen verfügbar sein, bevor Prüfung und Transkodierung ausgeführt werden können.',
     hardware_acceleration: 'Hardwarebeschleunigung',
+    hardware_acceleration_desc: 'Für FFmpeg auf diesem Host erkannte Beschleunigungs-APIs und Laufzeitgeräte.',
     ffmpeg_hwaccels: 'FFmpeg-Hardwarebeschleuniger',
     none_reported: 'Keine gemeldet',
     nvidia_runtime: 'NVIDIA-Laufzeit',
     dri_device: 'DRI-Gerät',
     encoders: 'Encoder',
+    encoders_desc: 'Prüfungen pro Codec zeigen, welche CPU- und GPU-Encoding-Pfade diese Installation verwenden kann.',
     all_count: 'Alle ({count})',
     eligible_count: 'Geeignet ({count})',
     skipped_count: 'Übersprungen ({count})',

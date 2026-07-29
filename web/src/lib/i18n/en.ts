@@ -810,6 +810,7 @@ export const en = {
     save_settings: 'Save settings',
     save_note: 'Saves every option on this tab. Connections and notifications save on their own.',
     media_servers: 'Media servers',
+    media_servers_summary: 'Pause new jobs during playback and refresh connected libraries after a verified replacement.',
     media_servers_desc:
       'Connect Plex, Jellyfin, or Emby. While an enabled server is streaming, new jobs pause so transcodes never compete with playback (running jobs are never interrupted, and an unreachable server never pauses the queue). Connected servers are also asked to re-scan a title after a verified replacement.',
     badge_refresh: 'refresh',
@@ -838,6 +839,7 @@ export const en = {
     test_connection: 'Test connection',
     test_connection_title: 'Check the URL and token reach the server',
     download_managers: 'Download managers',
+    download_managers_summary: 'Keep files out of the queue while Sonarr or Radarr is importing them.',
     download_managers_desc:
       "Connect Sonarr or Radarr. While one is importing into a title's folder, files there are held back from queueing so a transcode never fights an import; they become eligible again on the next enqueue once the import settles. An unreachable manager never blocks the queue.",
     badge_no_key: 'no key',
@@ -873,6 +875,7 @@ export const en = {
     notification_test_failed: 'The test notification could not be sent.',
     add_target_btn: 'Add target',
     backup_title: 'Backup & restore',
+    backup_summary: 'Export or merge Optimisarr configuration without changing media or job history.',
     backup_desc:
       'Export your settings, libraries, media-server and download-manager connections, and notification targets to a JSON file, or import one. The file includes provider tokens and API keys, so store it securely and never commit or share it. It does not include media, jobs, replacements, quarantine, or rollback history. Importing merges into your current config (matching libraries by path and connections/targets by name) and never deletes anything.',
     export_config: 'Export config',
@@ -1203,11 +1206,13 @@ export const en = {
     tools_load_error: 'Unable to load tools',
     tools_intro: 'FFmpeg and ffprobe must be available before probing and transcoding can run.',
     hardware_acceleration: 'Hardware acceleration',
+    hardware_acceleration_desc: 'Acceleration APIs and runtime devices detected for FFmpeg on this host.',
     ffmpeg_hwaccels: 'FFmpeg hwaccels',
     none_reported: 'None reported',
     nvidia_runtime: 'NVIDIA runtime',
     dri_device: 'DRI device',
     encoders: 'Encoders',
+    encoders_desc: 'Per-codec checks show which CPU and GPU encoding paths this installation can use.',
     all_count: 'All ({count})',
     eligible_count: 'Eligible ({count})',
     skipped_count: 'Skipped ({count})',

@@ -51,7 +51,7 @@ async function mockSettings(page: Page, targets: unknown[]) {
 
 async function openNotifications(page: Page) {
   await page.goto('/#/settings')
-  await page.getByRole('button', { name: 'Notifications' }).click()
+  await page.getByRole('tab', { name: 'Notifications' }).click()
 }
 
 test('notification validation shows the provider-specific API reason', async ({ page }) => {
