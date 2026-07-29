@@ -61,8 +61,10 @@
   sample no longer prunes the shared scratch directory needed by the next early, middle, or late
   sample. Sample positions also follow the primary picture duration rather than a container timeline
   that subtitles or ancillary tracks may extend, so a middle or late seek cannot land beyond video
-  EOF. Adaptive mode now selects a proved per-title encoder value instead of silently falling back
-  to the library value after its first measurement.
+  EOF. Matroska's nanosecond-precision stream duration tags are parsed across multi-minute and
+  multi-hour values instead of intermittently falling back to format duration. Adaptive mode now
+  selects a proved per-title encoder value instead of silently falling back to the library value
+  after its first measurement.
 - **Intel QSV previews now compare the same source frames.** Short disposable video previews and
   personal-quality clips keep hardware encoding but use software source decoding, avoiding the
   reordered frames QSV can expose before a long-GOP input seek. The main encode pipeline retains
