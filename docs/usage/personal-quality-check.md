@@ -33,6 +33,12 @@ ladders. It structurally verifies every candidate before the comparison becomes 
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
 
+Video scene positions come from a fresh probe of the primary picture stream, not the outer
+container. This matters for Matroska sources whose subtitles or attachments continue after the
+programme. Each candidate uses a bounded coarse seek followed by an exact trim, keeping copied audio
+and subtitles on the same requested clock as the re-encoded picture without decoding from the start
+of a long file.
+
 Preparation progress is session-wide and monotonic: FFmpeg may move between probe, encode, and
 verification stages, but the displayed percentage never moves backwards.
 
@@ -88,6 +94,7 @@ if the relevant library codec, preset, or quality changed during the session.
 | HDR viewing check blocks preparation | Use an HDR-capable browser/display and keep the library's HDR handling set to Preserve. |
 | Preparation fails | Check `/work` space and permissions, then **Settings → Tools** for encoder availability. |
 | A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
+| A/V sync fails | The prepared candidate exceeded the strict sync tolerance after exact clipping; inspect its structured failure rather than rating a desynchronised sample. |
 
 For video sources above 8-bit, the quality check omits Compatibility H.264 because H.264 High 10 is
 not the preset's broad 8-bit playback target. The HEVC, AV1, and Scott's Settings candidates remain

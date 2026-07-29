@@ -217,7 +217,10 @@ public sealed class LibraryInventoryService(
             file.Status = MediaFileStatus.Probed;
             file.MediaKind = result.MediaKind;
             file.Container = result.Container;
-            file.DurationSeconds = result.DurationSeconds;
+            file.DurationSeconds = MediaTimelineDuration.Resolve(
+                result.MediaKind,
+                result.VideoDurationSeconds,
+                result.DurationSeconds);
             file.VideoCodec = result.VideoCodec;
             file.VideoProfile = result.VideoProfile;
             file.Width = result.Width;

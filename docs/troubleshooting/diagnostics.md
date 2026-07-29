@@ -54,7 +54,9 @@ sheet before retrying:
   failure details: the reference and candidate should describe the same requested sample window.
 - **Audio retained**, **subtitle retained**, **A/V sync**, **loudness**, and
   **true peak** failures indicate stream or audio changes outside the configured
-  policy.
+  policy. Preview and Personal quality video candidates are exactly trimmed after
+  their bounded seek, so a remaining A/V sync failure is not accepted as ordinary
+  long-GOP pre-roll.
 - **Size reduction** failure means the output was not smaller than the original.
   Either leave the file alone or change the library rules deliberately.
 - **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled

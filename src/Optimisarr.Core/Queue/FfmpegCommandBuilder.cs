@@ -46,6 +46,8 @@ public sealed record TranscodeSpec(
 /// </summary>
 public static class FfmpegCommandBuilder
 {
+    private const int ExactClipSeekDecodeSeconds = 10;
+
     /// <param name="threads">
     /// CPU thread cap for encoding; <c>0</c> (or less) lets ffmpeg decide. Surfaced
     /// as a global option so it applies to a remux copy as well as a re-encode.
@@ -123,16 +125,21 @@ public static class FfmpegCommandBuilder
             args.Add("+genpts");
         }
 
-        // A preview clip seeks to its start before the input (fast keyframe seek) so the sample can
-        // be taken from the middle of the file, where content is representative, not the intro.
-        if (spec.ClipStartSeconds is { } start and > 0)
+        var clipSeek = ResolveClipSeek(spec);
+        if (clipSeek.InputStartSeconds is { } inputStart)
         {
             args.Add("-ss");
-            args.Add(start.ToString());
+            args.Add(inputStart.ToString());
         }
 
         args.Add("-i");
         args.Add(spec.InputPath);
+
+        if (clipSeek.OutputStartSeconds is { } outputStart)
+        {
+            args.Add("-ss");
+            args.Add(outputStart.ToString());
+        }
 
         switch (spec.Kind)
         {
@@ -172,6 +179,29 @@ public static class FfmpegCommandBuilder
         args.Add(spec.OutputPath);
         return args;
     }
+
+    private static ClipSeek ResolveClipSeek(TranscodeSpec spec)
+    {
+        if (spec.ClipStartSeconds is not { } start || start <= 0)
+        {
+            return new ClipSeek(null, null);
+        }
+
+        if (spec.Kind != MediaKind.Video)
+        {
+            return new ClipSeek(start, null);
+        }
+
+        // Input seeking alone is accurate for the re-encoded picture but preserves keyframe
+        // pre-roll for copied audio/subtitles. Decode at most a short lead-in, then apply an
+        // output-side exact seek so every mapped stream starts on the same requested timeline.
+        var inputStart = Math.Max(0, start - ExactClipSeekDecodeSeconds);
+        return new ClipSeek(
+            inputStart > 0 ? inputStart : null,
+            start - inputStart);
+    }
+
+    private sealed record ClipSeek(int? InputStartSeconds, int? OutputStartSeconds);
 
     private static void AppendVideoArguments(
         List<string> args,

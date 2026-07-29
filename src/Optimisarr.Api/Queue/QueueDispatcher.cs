@@ -830,6 +830,30 @@ public sealed class QueueDispatcher(
                 sourceSubtitleLanguages = freshSourceProbe.SubtitleLanguages;
             }
         }
+        if (isPreview && isVideoJob)
+        {
+            freshSourceProbe ??= await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Fresh source probe required for an exact preview timeline failed: {freshSourceProbe.Error ?? "no detail available"}");
+            }
+
+            sourceHasImageSubtitles = freshSourceProbe.HasImageSubtitles;
+        }
+        var mediaDurationSeconds = isPreview && isVideoJob
+            ? MediaTimelineDuration.Resolve(
+                MediaKind.Video,
+                freshSourceProbe!.VideoDurationSeconds,
+                freshSourceProbe.DurationSeconds ?? media.DurationSeconds)
+            : media.DurationSeconds;
+        if (isPreview && isVideoJob && mediaDurationSeconds is not > 0)
+        {
+            throw new InvalidOperationException(
+                "Could not determine the selected video's primary picture duration for Preview.");
+        }
 
         // MP4/MOV has no tag for some Blu-ray audio (TrueHD, LPCM); copying one into an MP4 target
         // aborts the encode. The inventory already recorded the source's audio codecs, so this needs
@@ -892,7 +916,7 @@ public sealed class QueueDispatcher(
                 : PreviewClipPolicy.DurationSeconds;
             var start = isCalibration
                 ? job.CalibrationClipStartSeconds ?? 0
-                : PreviewClipPolicy.Plan(media.DurationSeconds).StartSeconds;
+                : PreviewClipPolicy.Plan(mediaDurationSeconds).StartSeconds;
             spec = spec with
             {
                 ClipSeconds = seconds,
@@ -906,7 +930,7 @@ public sealed class QueueDispatcher(
         var original = new OriginalSnapshot(
             media.Path,
             media.SizeBytes,
-            media.DurationSeconds,
+            mediaDurationSeconds,
             media.AudioTrackCount ?? 0,
             media.SubtitleTrackCount ?? 0,
             media.IsHdr,
@@ -941,8 +965,8 @@ public sealed class QueueDispatcher(
         if (spec.VideoCodec is not null)
         {
             var sourceBitDepth = PixelFormatInfo.Parse(
-                media.PixelFormat,
-                media.BitsPerRawSample)?.BitDepth;
+                freshSourceProbe?.PixelFormat ?? media.PixelFormat,
+                freshSourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth;
             var videoEncoder = await ResolveVideoEncoderAsync(
                 spec.VideoCodec,
                 queueSettings.EncoderMode,
@@ -1057,19 +1081,6 @@ public sealed class QueueDispatcher(
             hardwareToneMapDolbyVision,
             hardwareToneMapTransfer,
             videoEncoderName);
-        if (isPreview && isVideoJob && freshSourceProbe is null)
-        {
-            freshSourceProbe = await scope.ServiceProvider
-                .GetRequiredService<MediaProbeService>()
-                .ProbeAsync(media.Path, cancellationToken);
-            if (!freshSourceProbe.Success)
-            {
-                logger.LogDebug(
-                    "Job {JobId}: preview frame-rate probing was unavailable; timestamp progress remains active. {Error}",
-                    jobId,
-                    freshSourceProbe.Error);
-            }
-        }
         var primaryArguments = FfmpegCommandBuilder.Build(
             spec,
             queueSettings.CpuThreadLimit,
@@ -1093,8 +1104,8 @@ public sealed class QueueDispatcher(
             videoQuality,
             isDisposable,
             isCalibration,
-            media.DurationSeconds,
-            media.FrameCount,
+            mediaDurationSeconds,
+            freshSourceProbe?.Success == true ? freshSourceProbe.FrameCount : media.FrameCount,
             freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null,
             library?.MoveOnComplete ?? false,
             library?.TargetFolder,
@@ -1157,7 +1168,8 @@ public sealed class QueueDispatcher(
             // A subtitle, chapter, attachment, or data stream may extend the container far beyond
             // the actual programme. Place every adaptive sample on the primary picture timeline so
             // a middle/late seek cannot land after EOF and create an empty, unscorable candidate.
-            var samplingDuration = AdaptiveQualityDuration.Resolve(
+            var samplingDuration = MediaTimelineDuration.Resolve(
+                MediaKind.Video,
                 sourceProbe.VideoDurationSeconds,
                 work.DurationSeconds);
             if (samplingDuration is not > 0)

@@ -505,14 +505,48 @@ public sealed class FfmpegCommandBuilderTests
     }
 
     [Fact]
-    public void Seeks_to_the_clip_start_before_the_input()
+    public void Video_clip_uses_a_bounded_input_seek_and_an_exact_output_seek()
     {
         var args = FfmpegCommandBuilder.Build(Reencode() with { ClipSeconds = 60, ClipStartSeconds = 1800 });
 
-        // -ss is an input option: it must precede -i so the seek applies to the source.
+        var inputIndex = IndexOf(args, "-i");
+        var seekIndexes = args
+            .Select((value, index) => (value, index))
+            .Where(item => item.value == "-ss")
+            .Select(item => item.index)
+            .ToList();
+
+        Assert.Equal(2, seekIndexes.Count);
+        Assert.Equal("1790", args[seekIndexes[0] + 1]);
+        Assert.True(seekIndexes[0] < inputIndex);
+        Assert.Equal("10", args[seekIndexes[1] + 1]);
+        Assert.True(seekIndexes[1] > inputIndex);
+    }
+
+    [Fact]
+    public void Video_clip_near_the_start_uses_only_an_exact_output_seek()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { ClipSeconds = 12, ClipStartSeconds = 5 });
+
         var seekIndex = IndexOf(args, "-ss");
-        Assert.Equal("1800", args[seekIndex + 1]);
+        Assert.Equal("5", args[seekIndex + 1]);
+        Assert.True(seekIndex > IndexOf(args, "-i"));
+        Assert.Equal(1, args.Count(value => value == "-ss"));
+    }
+
+    [Fact]
+    public void Audio_clip_keeps_accurate_input_seeking_for_its_re_encoded_stream()
+    {
+        var args = FfmpegCommandBuilder.Build(AudioReencode() with
+        {
+            ClipSeconds = 15,
+            ClipStartSeconds = 30
+        });
+
+        var seekIndex = IndexOf(args, "-ss");
+        Assert.Equal("30", args[seekIndex + 1]);
         Assert.True(seekIndex < IndexOf(args, "-i"));
+        Assert.Equal(1, args.Count(value => value == "-ss"));
     }
 
     [Fact]

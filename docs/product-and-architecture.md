@@ -329,6 +329,9 @@ long video previews, the worker encodes a 60-second segment from the middle of
 the source and the verifier creates a temporary clipped reference from that same
 window before running the usual checks. The UI labels those scores as
 segment-only and maps both native players onto that exact source-relative window.
+The worker freshly resolves that midpoint from the primary video stream. It performs a bounded
+input seek followed by an exact output seek, so re-encoded picture frames and stream-copied
+audio/subtitles begin on the same requested clock without decoding the whole lead-in.
 Every video path uses the measured primary-picture span, so a copied subtitle or attached picture
 cannot extend the container and create a false failure. Full queue jobs still scan the complete
 source and output picture timelines, and independently compare the source picture against primary
@@ -339,10 +342,14 @@ frames at motion or scene changes.
 
 Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
 complete output contract of each library-slider preset, including codec, container, and audio rules.
+Session creation freshly probes the selected source and places all three scenes on its primary
+picture duration; the authoritative value also refreshes the inventory cache for that file.
 Its reference remains a stream copy of the original compressed frames;
 mid-file keyframe pre-roll is retained for correct decoding, excluded from the requested-duration
 verification baseline, and exposed only as an internal playback offset so the blinded slots begin on
-the same source frame. The reference is retained until session cleanup. Audio and image calibration
+the same source frame. Candidate clips use the same bounded-plus-exact seek as Preview, preventing
+copied streams from inheriting a different pre-roll timeline. The reference is retained until
+session cleanup. Audio and image calibration
 use their lossless FLAC and PNG reference paths respectively.
 
 ### Replacement

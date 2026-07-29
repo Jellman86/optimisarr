@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Calibration;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Rules;
 using Optimisarr.Core.Verification;
@@ -130,6 +131,7 @@ internal sealed class BlindCalibrationService(
     IHostEnvironment environment,
     TimeProvider timeProvider,
     ICalibrationRandomizer randomizer,
+    IMediaProbeService mediaProbe,
     LoudnessService loudness) : BackgroundService
 {
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(2);
@@ -194,7 +196,6 @@ internal sealed class BlindCalibrationService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         var media = await db.MediaFiles
-            .AsNoTracking()
             .Include(file => file.Library)
             .FirstOrDefaultAsync(
                 file => file.Id == mediaFileId && file.LibraryId == libraryId,
@@ -212,7 +213,27 @@ internal sealed class BlindCalibrationService(
         {
             throw new InvalidOperationException("Probe the source before starting calibration.");
         }
+        MediaProbeResult? sourceProbe = null;
         var duration = media.DurationSeconds ?? 0;
+        if (media.MediaKind == MediaKind.Video)
+        {
+            sourceProbe = await mediaProbe.ProbeAsync(media.Path, cancellationToken);
+            if (!sourceProbe.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Could not freshly probe the selected video before calibration: {sourceProbe.Error ?? "no detail available"}");
+            }
+
+            duration = MediaTimelineDuration.Resolve(
+                    MediaKind.Video,
+                    sourceProbe.VideoDurationSeconds,
+                    sourceProbe.DurationSeconds ?? media.DurationSeconds)
+                ?? throw new InvalidOperationException(
+                    "Could not determine the selected video's primary picture duration.");
+            // DurationSeconds is an inventory cache, not user-authored state. Keep it on the
+            // playable picture timeline so later source listings and progress estimates agree.
+            media.DurationSeconds = duration;
+        }
 
         var rules = LibraryRuleResolution.Resolve(media.Library);
         if (media.MediaKind == MediaKind.Video
@@ -240,7 +261,9 @@ internal sealed class BlindCalibrationService(
             MediaKind.Image => BlindCalibrationPolicy.ImagePlan(),
             _ => BlindCalibrationPolicy.VideoPlan(
                 duration,
-                PixelFormatInfo.Parse(media.PixelFormat, media.BitsPerRawSample)?.BitDepth)
+                PixelFormatInfo.Parse(
+                    sourceProbe?.PixelFormat ?? media.PixelFormat,
+                    sourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth)
         };
         if (media.MediaKind == MediaKind.Video)
         {

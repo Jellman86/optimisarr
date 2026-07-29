@@ -42,7 +42,9 @@ var ffprobe = MediaToolCommands.ResolveFfprobe(
 builder.Services.AddSingleton(new TranscodeOptions(transcodeFfmpeg));
 builder.Services.AddSingleton(new HardwareCapabilityService(transcodeFfmpeg));
 builder.Services.AddSingleton<LibraryScanner>();
-builder.Services.AddSingleton(new MediaProbeService(ffprobe));
+var mediaProbe = new MediaProbeService(ffprobe);
+builder.Services.AddSingleton(mediaProbe);
+builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
