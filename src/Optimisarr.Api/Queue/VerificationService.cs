@@ -101,6 +101,11 @@ public sealed class VerificationService(
             var originalTimestampResult = reference.Kind == MediaKind.Video && clip is null
                 ? await timestamps.CheckAsync(reference.Path, cancellationToken)
                 : TimestampCheckResult.NotMeasured;
+            var originalAudioTimestampResult = reference.Kind == MediaKind.Video
+                && originalProbe.AudioTrackCount > 0
+                && clip is null
+                    ? await timestamps.CheckPrimaryAudioAsync(reference.Path, cancellationToken)
+                    : TimestampCheckResult.NotMeasured;
             var referenceVideoDuration = ReferenceVideoDurationForVerification(
                 originalProbe,
                 originalTimestampResult,
@@ -211,11 +216,10 @@ public sealed class VerificationService(
                 OutputVideoCodec: outputProbe.VideoCodec,
                 OriginalSizeBytes: reference.SizeBytes,
                 OutputSizeBytes: outputSize,
-                OriginalDurationSeconds: reference.DurationSeconds,
+                OriginalDurationSeconds: referenceVideoDuration,
                 OutputDurationSeconds: OutputDurationForVerification(
                     outputProbe,
                     reference.Kind,
-                    clippedVideoReference: clip is not null,
                     timestampResult),
                 OriginalAudioTrackCount: reference.AudioTrackCount,
                 OutputAudioTrackCount: outputProbe.AudioTrackCount,
@@ -259,6 +263,7 @@ public sealed class VerificationService(
                 OutputLastPresentationSeconds: timestampResult.LastPresentationSeconds,
                 OriginalTimestampsMeasured: originalTimestampResult.Measured,
                 OriginalLastPresentationSeconds: originalTimestampResult.LastPresentationSeconds,
+                OriginalAudioLastPresentationSeconds: originalAudioTimestampResult.LastPresentationSeconds,
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,
@@ -364,18 +369,16 @@ public sealed class VerificationService(
     internal static double? OutputDurationForVerification(
         MediaProbeResult outputProbe,
         MediaKind kind,
-        bool clippedVideoReference,
         TimestampCheckResult? timestamps = null)
     {
-        if (kind != MediaKind.Video || !clippedVideoReference)
+        if (kind != MediaKind.Video)
         {
             return outputProbe.DurationSeconds;
         }
 
-        // A clipped encode may retain the source's non-zero stream epoch. In that case ffprobe's
-        // format duration is the absolute end timestamp, while copied subtitles or attachments can
-        // extend it further. The packet scan already provides the authoritative picture endpoint
-        // used by Tail integrity, so compare that span against the exact clip window.
+        // A video container's duration may be extended by subtitles, attachments, or audio padding.
+        // The packet scan already provides the authoritative picture endpoint used by Tail
+        // integrity, so use the same track-aware span for both normal and clipped encodes.
         if (timestamps?.LastPresentationSeconds is { } last)
         {
             return Math.Max(0, last - (outputProbe.VideoStartSeconds ?? 0));

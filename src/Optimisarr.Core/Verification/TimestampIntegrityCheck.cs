@@ -6,7 +6,7 @@ namespace Optimisarr.Core.Verification;
 /// <param name="Measured">True when ffprobe returned a packet timestamp stream to judge.</param>
 /// <param name="NonMonotonicCount">How many packets stepped backward in decode order.</param>
 /// <param name="FirstRegressionDetail">A description of the first backward step, or null.</param>
-/// <param name="LastPresentationSeconds">The latest presentation time, i.e. where the video ends, or null.</param>
+/// <param name="LastPresentationSeconds">The latest packet endpoint, i.e. where the selected stream ends, or null.</param>
 public sealed record TimestampCheckResult(
     bool Measured,
     int NonMonotonicCount,
@@ -36,6 +36,22 @@ public sealed class TimestampIntegrityCheck
     }
 
     public async Task<TimestampCheckResult> CheckAsync(string path, CancellationToken cancellationToken)
+        => await CheckAsync(path, "v:0", cancellationToken);
+
+    /// <summary>
+    /// Reads the primary audio packet endpoint. This deliberately excludes subtitles and secondary
+    /// audio tracks so an unusually long ancillary stream cannot make a complete picture look
+    /// truncated.
+    /// </summary>
+    public async Task<TimestampCheckResult> CheckPrimaryAudioAsync(
+        string path,
+        CancellationToken cancellationToken)
+        => await CheckAsync(path, "a:0", cancellationToken);
+
+    private async Task<TimestampCheckResult> CheckAsync(
+        string path,
+        string streamSpecifier,
+        CancellationToken cancellationToken)
     {
         if (!File.Exists(path))
         {
@@ -54,8 +70,8 @@ public sealed class TimestampIntegrityCheck
                 ArgumentList =
                 {
                     "-v", "error",
-                    "-select_streams", "v:0",
-                    "-show_entries", "packet=pts_time,dts_time",
+                    "-select_streams", streamSpecifier,
+                    "-show_entries", "packet=pts_time,dts_time,duration_time",
                     "-of", "csv=p=0",
                     path
                 },

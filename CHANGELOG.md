@@ -52,10 +52,15 @@
   fullscreen, and downloads remain available. FFmpeg frame counts now provide a progress fallback
   when copied-stream timestamps remain at zero, while adaptive VMAF preparation reports its bounded
   candidate, window, and measurement work instead of appearing stuck during a real encode or score.
-- **Copied subtitles and artwork no longer create a false Duration failure for clipped video.**
-  Preview and personal-quality verification compare the measured primary-picture span with the exact
-  requested window even when a retained subtitle or attached picture extends the output container.
-  Normal full-file verification remains strict and continues to use the complete container duration.
+- **Subtitles and ancillary tracks no longer create false Duration or source-corruption failures.**
+  Normal, preview, and personal-quality video verification compare the measured primary-picture span
+  with the corresponding source window instead of a container duration that subtitles, chapters, or
+  attachments may extend. The separate source-timeline safety gate remains strict, but now requires
+  primary audio to materially outlast the picture before reporting an incomplete source video.
+- **Adaptive per-title quality now measures every planned VMAF window.** Removing one completed
+  sample no longer prunes the shared scratch directory needed by the next early, middle, or late
+  sample, so adaptive mode selects a proved per-title encoder value instead of silently falling back
+  to the library value after its first measurement.
 - **Intel QSV previews now compare the same source frames.** Short disposable video previews and
   personal-quality clips keep hardware encoding but use software source decoding, avoiding the
   reordered frames QSV can expose before a long-GOP input seek. The main encode pipeline retains

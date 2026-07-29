@@ -59,22 +59,23 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
-    public void Video_duration_for_sampling_prefers_the_picture_timeline_over_the_container()
+    public void Reference_video_duration_ignores_a_subtitle_inflated_container_timeline()
     {
         var probe = MediaProbeService.Parse("""
         {
           "streams": [
-            { "codec_type": "video", "codec_name": "h264", "duration": "2881.366000" },
-            { "codec_type": "audio", "codec_name": "aac", "duration": "2881.366000" }
+            { "codec_type": "video", "codec_name": "h264" },
+            { "codec_type": "audio", "codec_name": "aac" },
+            { "codec_type": "subtitle", "codec_name": "subrip", "duration": "3892.171000" }
           ],
-          "format": { "duration": "2881.366000" }
+          "format": { "duration": "3892.171000" }
         }
         """, ".mkv");
 
-        Assert.Equal(2362.85, VerificationService.ReferenceVideoDurationForVerification(
+        Assert.Equal(1405.112, VerificationService.ReferenceVideoDurationForVerification(
             probe,
-            new TimestampCheckResult(true, 0, null, 2362.85),
-            fallbackDurationSeconds: 2881.366));
+            new TimestampCheckResult(true, 0, null, 1405.112),
+            fallbackDurationSeconds: 3892.171));
     }
 
     [Fact]
@@ -111,7 +112,7 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
-    public void Calibration_video_duration_uses_the_picture_stream_instead_of_audio_padded_container()
+    public void Video_duration_uses_the_picture_stream_instead_of_audio_padded_container()
     {
         const string json = """
         {
@@ -127,9 +128,9 @@ public sealed class MediaProbeParseTests
 
         Assert.Equal(12.0, result.VideoDurationSeconds);
         Assert.Equal(12.0, VerificationService.OutputDurationForVerification(
-            result, MediaKind.Video, clippedVideoReference: true));
-        Assert.Equal(12.531, VerificationService.OutputDurationForVerification(
-            result, MediaKind.Video, clippedVideoReference: false));
+            result, MediaKind.Video));
+        Assert.Equal(12.0, VerificationService.OutputDurationForVerification(
+            result, MediaKind.Video));
     }
 
     [Fact]
@@ -154,14 +155,13 @@ public sealed class MediaProbeParseTests
         Assert.Equal(11.928, VerificationService.OutputDurationForVerification(
             result,
             MediaKind.Video,
-            clippedVideoReference: true,
             timestamps)!.Value,
             precision: 3);
-        Assert.Equal(22.929, VerificationService.OutputDurationForVerification(
+        Assert.Equal(11.928, VerificationService.OutputDurationForVerification(
             result,
             MediaKind.Video,
-            clippedVideoReference: false,
-            timestamps));
+            timestamps)!.Value,
+            precision: 3);
     }
 
     [Fact]
@@ -193,14 +193,13 @@ public sealed class MediaProbeParseTests
         Assert.Equal(59.935, VerificationService.OutputDurationForVerification(
             result,
             MediaKind.Video,
-            clippedVideoReference: true,
             timestamps)!.Value,
             precision: 3);
-        Assert.Equal(62.193, VerificationService.OutputDurationForVerification(
+        Assert.Equal(59.935, VerificationService.OutputDurationForVerification(
             result,
             MediaKind.Video,
-            clippedVideoReference: false,
-            timestamps));
+            timestamps)!.Value,
+            precision: 3);
     }
 
     [Fact]
