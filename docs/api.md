@@ -381,8 +381,11 @@ free space, a manual pause, or active-media protection.
 Video calibration creates three 12-second scenes for the four shuffled library-slider presets plus one marked original reference.
 Its reference is the unchanged video bitstream; when a mid-file stream copy needs packets from the
 preceding keyframe, its sample `startSeconds` identifies the matching presentation window. Video
-samples retain the complete preset output, including its container and audio contract. Each scene is
-also measured with VMAF. Scores remain absent from the API until classifications reveal the lineup;
+samples retain the complete preset output, including its container, audio contract, and concrete
+configured quality. Calibration deliberately bypasses the library's Adaptive per-title VMAF search:
+normal jobs retain that path, while a personal check measures VMAF once on each completed 12-second
+scene instead of recursively preparing three 40-second quality-search windows inside every scene.
+Scores remain absent from the API until classifications reveal the lineup;
 then every non-original `result.variants[]` entry includes a `vmaf` summary and its three underlying
 `samples`. `harmonicMean` is frame-weighted across measured scenes, `fifthPercentile` is the lowest
 scene fifth percentile, and `minimum` is the lowest individual-frame score. `measuredSamples` and

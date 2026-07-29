@@ -1,5 +1,6 @@
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Tests;
 
@@ -29,5 +30,27 @@ public sealed class QueueDispatcherSafetyTests
             RuleProfile.RemuxCleanup,
             audioRemovalCount: 0,
             subtitleRemovalCount: 0));
+    }
+
+    [Fact]
+    public void Calibration_uses_its_concrete_preset_quality_without_an_adaptive_search()
+    {
+        Assert.False(QueueDispatcher.ShouldSelectAdaptiveQuality(
+            VideoQualityStrategy.AdaptiveVmaf,
+            hasVideoCodec: true,
+            hasVideoQuality: true,
+            hasAdaptiveQuality: false,
+            isCalibration: true));
+    }
+
+    [Fact]
+    public void Normal_and_preview_jobs_keep_the_selected_adaptive_quality_path()
+    {
+        Assert.True(QueueDispatcher.ShouldSelectAdaptiveQuality(
+            VideoQualityStrategy.AdaptiveVmaf,
+            hasVideoCodec: true,
+            hasVideoQuality: true,
+            hasAdaptiveQuality: false,
+            isCalibration: false));
     }
 }

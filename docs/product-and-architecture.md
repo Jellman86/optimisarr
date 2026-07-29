@@ -342,7 +342,10 @@ FFmpeg's cadence filter prevents differing MP4/Matroska start timestamps or time
 only one input and pairing adjacent frames at motion or scene changes.
 
 Blind-calibration jobs are also disposable and replacement-ineligible. Video calibration encodes the
-complete output contract of each library-slider preset, including codec, container, and audio rules.
+complete output contract of each library-slider preset, including codec, container, audio rules, and
+its concrete configured quality. It never nests the normal Adaptive per-title VMAF search inside a
+calibration scene; the exact 12-second output receives one measure-only VMAF pass after structural
+verification instead.
 Session creation freshly probes the selected source and places all three scenes on its primary
 picture duration; the authoritative value also refreshes the inventory cache for that file.
 Its reference remains a stream copy of the original compressed frames;

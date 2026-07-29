@@ -532,10 +532,12 @@ public sealed class QueueDispatcher(
             }
 
             var preparedWork = work.Value;
-            if (preparedWork.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf
-                && preparedWork.Spec.VideoCodec is not null
-                && preparedWork.VideoQuality is not null
-                && preparedWork.AdaptiveVideoQuality is null)
+            if (ShouldSelectAdaptiveQuality(
+                preparedWork.VideoQualityStrategy,
+                preparedWork.Spec.VideoCodec is not null,
+                preparedWork.VideoQuality is not null,
+                preparedWork.AdaptiveVideoQuality is not null,
+                preparedWork.IsCalibration))
             {
                 preparedWork = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
             }
@@ -689,6 +691,21 @@ public sealed class QueueDispatcher(
             Wake(); // a slot just freed up
         }
     }
+
+    internal static bool ShouldSelectAdaptiveQuality(
+        VideoQualityStrategy strategy,
+        bool hasVideoCodec,
+        bool hasVideoQuality,
+        bool hasAdaptiveQuality,
+        bool isCalibration) =>
+        strategy == VideoQualityStrategy.AdaptiveVmaf
+        && hasVideoCodec
+        && hasVideoQuality
+        && !hasAdaptiveQuality
+        // Calibration already prepares three exact source scenes for each concrete preset. Running
+        // a second early/middle/late search inside every scene both multiplies the work and changes
+        // the quality being compared. Its normal clip verification still measures VMAF after encode.
+        && !isCalibration;
 
     private readonly record struct JobWork(
         TranscodeSpec Spec,
