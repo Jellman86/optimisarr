@@ -30,13 +30,14 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
     if (path === '/api/libraries') return json(route, [configuredLibrary])
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
-      ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
+      ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'ScottsSettings', 'RemuxCleanup', 'TrackCleanup'],
       ruleProfileSpecs: [
-        { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20 },
-        { profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24 },
-        { profile: 'ExperimentalAv1', codec: 'av1', container: 'mkv', crf: 30 },
-        { profile: 'RemuxCleanup', codec: null, container: 'mkv', crf: null },
-        { profile: 'TrackCleanup', codec: null, container: null, crf: null },
+        { profile: 'CompatibilityH264', codec: 'h264', container: 'mp4', crf: 20, hdrHandling: 'Exclude', videoAudioCodec: 'aac', videoAudioBitrateKbps: 160, downmixToStereo: false },
+        { profile: 'ConservativeHevc', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'Exclude', videoAudioCodec: 'aac', videoAudioBitrateKbps: 160, downmixToStereo: false },
+        { profile: 'ExperimentalAv1', codec: 'av1', container: 'mkv', crf: 30, hdrHandling: 'Preserve', videoAudioCodec: null, videoAudioBitrateKbps: 160, downmixToStereo: false },
+        { profile: 'ScottsSettings', codec: 'hevc', container: 'mp4', crf: 24, hdrHandling: 'TonemapToSdr', videoAudioCodec: 'aac', videoAudioBitrateKbps: 96, downmixToStereo: true },
+        { profile: 'RemuxCleanup', codec: null, container: 'mkv', crf: null, hdrHandling: 'Preserve', videoAudioCodec: null, videoAudioBitrateKbps: 160, downmixToStereo: false },
+        { profile: 'TrackCleanup', codec: null, container: null, crf: null, hdrHandling: 'Preserve', videoAudioCodec: null, videoAudioBitrateKbps: 160, downmixToStereo: false },
       ],
       hdrHandlings: ['Exclude', 'Preserve', 'TonemapToSdr'],
       videoCodecs: ['h264', 'hevc', 'av1'], containers: ['mp4', 'mkv'],
@@ -113,6 +114,25 @@ test("Scott's preset mirrors the current tone-map and AAC stereo bundle", async 
   await expect(page.locator('#lib-video-audio-codec')).toHaveValue('aac')
   await expect(page.locator('#lib-video-audio-bitrate')).toHaveValue('96')
   await expect(page.getByRole('checkbox', { name: /Downmix surround to stereo/ })).toBeChecked()
+})
+
+test("moving away from Scott's preset restores the complete selected preset bundle", async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const slider = page.getByRole('slider', { name: 'Compatibility to efficiency' })
+  await slider.fill('3')
+  await page.getByRole('button', { name: /Advanced options/ }).click()
+  await expect(page.locator('#lib-video-audio-bitrate')).toHaveValue('96')
+
+  await slider.fill('2')
+
+  await expect(slider).toHaveValue('2')
+  await expect(page.getByText(/Selects: AV1 MKV CRF 30/)).toBeVisible()
+  await expect(page.locator('#lib-hdr')).toHaveValue('Preserve')
+  await expect(page.locator('#lib-video-audio-codec')).toHaveValue('copy')
+  await expect(page.locator('#lib-video-audio-bitrate')).toHaveValue('160')
+  await expect(page.getByRole('checkbox', { name: /Downmix surround to stereo/ })).not.toBeChecked()
 })
 
 test('verification policy follows the selected library media type', async ({ page }) => {

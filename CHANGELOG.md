@@ -11,6 +11,19 @@
   structural verification and measure-only VMAF evidence, preserving the blind
   comparison while avoiding up to 144 redundant 40-second encode-and-score
   passes for one check.
+- **Anonymous video presets now remain genuinely distinct from the library's
+  current preset.** Calibration clears every preset-owned codec, container,
+  HDR, video-audio, bitrate, and downmix override before resolving each
+  candidate, so Scott's AAC stereo/tone-map bundle cannot leak into AV1,
+  Conservative HEVC, or Compatibility H.264. Applying a revealed result uses
+  that same server-owned complete bundle, including Scott's current HDR-to-SDR
+  behaviour.
+- **The Personal quality player now fits narrow screens without clipping.**
+  Video and image stages are sized from their available width instead of a
+  minimum height that could secretly make a 16:9 player wider than its card.
+  The grading-bay header now keeps its identity and fullscreen control legible
+  on phones, and fullscreen styling follows the named media stage rather than
+  a brittle child position.
 
 ### Changed
 

@@ -27,26 +27,20 @@ internal static class LibraryRuleResolution
 
     /// <summary>
     /// Resolves one of the four video preset-slider stops while retaining unrelated library
-    /// overrides. Codec/container overrides are deliberately cleared because selecting a named
-    /// slider stop does the same. Scott's stop also applies the bundle fields set by the UI.
+    /// overrides. Every field owned by the named video preset is deliberately cleared so a
+    /// persisted Scott's/custom bundle cannot leak into a different anonymous calibration encode.
     /// </summary>
     public static RuleSettings ResolveVideoPreset(Data.Library library, RuleProfile profile)
     {
         var overrides = ToOverrides(library) with
         {
             TargetVideoCodec = null,
-            TargetContainer = null
+            TargetContainer = null,
+            Hdr = null,
+            VideoAudioCodec = null,
+            VideoAudioBitrateKbps = null,
+            DownmixToStereo = null
         };
-        if (profile == RuleProfile.ScottsSettings)
-        {
-            overrides = overrides with
-            {
-                Hdr = HdrHandling.TonemapToSdr,
-                VideoAudioCodec = "aac",
-                VideoAudioBitrateKbps = 96,
-                DownmixToStereo = true
-            };
-        }
 
         var rules = RuleResolver.Resolve(profile, overrides);
         return library.SkipEfficientSources
