@@ -96,9 +96,9 @@ internal static class SystemEndpoints
         {
             mediaTypes = Enum.GetNames<MediaType>(),
             ruleProfiles = Enum.GetNames<RuleProfile>(),
-            // The concrete codec/container/CRF each profile resolves to, straight from RuleProfileDefaults,
-            // so the preset slider can show exactly what every position selects without the UI hard-coding
-            // (and drifting from) the backend's choices.
+            // The complete video bundle each profile resolves to, straight from RuleProfileDefaults,
+            // so the preset slider can apply and show exactly what every position selects without the UI
+            // hard-coding (and drifting from) the backend's choices.
             ruleProfileSpecs = Enum.GetValues<RuleProfile>().Select(profile =>
             {
                 var rules = RuleProfileDefaults.For(profile);
@@ -107,7 +107,11 @@ internal static class SystemEndpoints
                     profile = profile.ToString(),
                     codec = rules.TargetVideoCodec,
                     container = rules.TargetContainer,
-                    crf = rules.DefaultCrf
+                    crf = rules.DefaultCrf,
+                    hdrHandling = rules.Hdr.ToString(),
+                    videoAudioCodec = rules.VideoAudioCodec,
+                    videoAudioBitrateKbps = rules.VideoAudioBitrateKbps,
+                    downmixToStereo = rules.DownmixToStereo
                 };
             }),
             hdrHandlings = Enum.GetNames<HdrHandling>(),

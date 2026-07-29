@@ -616,11 +616,14 @@
     <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="min-w-0 space-y-5">
         <section class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl shadow-slate-950/10" bind:this={viewer} aria-busy={switching}>
-          <div class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 text-slate-200">
-            <div><span class="text-xs uppercase tracking-[0.18em] text-slate-500">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span><strong class="ml-2 text-lg">{variantLabel(activeName)}</strong></div>
-            <div class="flex items-center gap-2">
+          <div class="flex min-h-16 items-center justify-between gap-3 border-b border-slate-800 px-3 py-2.5 text-slate-200 sm:px-4 sm:py-3">
+            <div class="min-w-0 flex-1">
+              <span class="block text-[11px] uppercase tracking-[0.18em] text-slate-500">{activeVariant?.isOriginal ? i18n.m.calibration.reference_label : i18n.m.calibration.sample_label}</span>
+              <strong class="block truncate text-lg leading-tight">{variantLabel(activeName)}</strong>
+            </div>
+            <div class="flex shrink-0 items-center gap-1 sm:gap-2">
               {#if switching}<span class="text-xs font-medium text-cyan-300" aria-live="polite">{i18n.m.common.loading_short}</span>{/if}
-              {#if activeSample && activeSample.sampleCount > 1}<span class="text-xs text-slate-400">{t(i18n.m.calibration.scene_label, { current: activeScene + 1, total: activeSample.sampleCount })}</span>{/if}
+              {#if activeSample && activeSample.sampleCount > 1}<span class="hidden text-xs text-slate-400 min-[360px]:inline">{t(i18n.m.calibration.scene_label, { current: activeScene + 1, total: activeSample.sampleCount })}</span>{/if}
               {#if session.mediaKind === 'Video'}
                 <button class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} title={fullscreen ? i18n.m.calibration.exit_fullscreen : i18n.m.calibration.fullscreen} onclick={toggleFullscreen}>
                   <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d={fullscreen ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5'} /></svg>
@@ -628,7 +631,7 @@
               {/if}
             </div>
           </div>
-          <div class="relative flex aspect-video min-h-64 items-center justify-center overflow-hidden bg-black" class:cursor-grab={session.mediaKind === 'Image' && imageZoom > 1} class:cursor-grabbing={imageDrag !== null} role="group" aria-label={session.mediaKind === 'Image' ? i18n.m.calibration.image_viewport : i18n.m.calibration.switch_label} onpointerdown={startImageDrag} onpointermove={moveImage} onpointerup={() => (imageDrag = null)} onpointercancel={() => (imageDrag = null)}>
+          <div class="comparison-stage relative flex w-full items-center justify-center overflow-hidden bg-black" class:aspect-video={session.mediaKind !== 'Audio'} class:min-h-64={session.mediaKind === 'Audio'} class:cursor-grab={session.mediaKind === 'Image' && imageZoom > 1} class:cursor-grabbing={imageDrag !== null} role="group" aria-label={session.mediaKind === 'Image' ? i18n.m.calibration.image_viewport : i18n.m.calibration.switch_label} onpointerdown={startImageDrag} onpointermove={moveImage} onpointerup={() => (imageDrag = null)} onpointercancel={() => (imageDrag = null)}>
             {#key activeScene}
               {#if session.mediaKind === 'Image'}
                 {#each variants as variant}
@@ -765,6 +768,6 @@
 
 <style>
   .quality-lab :global(:fullscreen) { width: 100vw; height: 100vh; border-radius: 0; }
-  .quality-lab :global(:fullscreen > div:nth-child(2)) { height: calc(100vh - 7.5rem); min-height: 0; aspect-ratio: auto; }
+  .quality-lab :global(:fullscreen .comparison-stage) { height: calc(100vh - 7.5rem); min-height: 0; aspect-ratio: auto; }
   @media (prefers-reduced-motion: reduce) { .quality-lab * { scroll-behavior: auto !important; transition-duration: 0.01ms !important; } }
 </style>
