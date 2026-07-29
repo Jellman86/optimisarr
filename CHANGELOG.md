@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Personal quality checks no longer run an adaptive VMAF search inside every
+  anonymous video clip.** Each preset now encodes its three planned 12-second
+  scenes at the concrete quality shown after reveal, even when the library uses
+  Adaptive per-title VMAF for normal jobs. The completed scenes still receive
+  structural verification and measure-only VMAF evidence, preserving the blind
+  comparison while avoiding up to 144 redundant 40-second encode-and-score
+  passes for one check.
+
 ### Changed
 
 - **Release metadata can no longer silently drift between `main` and `dev`.**

@@ -33,6 +33,13 @@ ladders. It structurally verifies every candidate before the comparison becomes 
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
 
+Each video preset uses its concrete configured quality for all three scenes. A library configured
+for **Adaptive per-title VMAF** still uses adaptive selection for normal optimisation jobs, but the
+personal check does not start another early/middle/late quality search inside every comparison
+scene. That would change the preset being judged and multiply a short check into dozens of unrelated
+sample encodes. Optimisarr instead measures VMAF on each completed 12-second scene and reveals that
+objective evidence only after you classify the anonymous candidates.
+
 Video scene positions come from a fresh probe of the primary picture stream, not the outer
 container. This matters for Matroska sources whose subtitles or attachments continue after the
 programme. Each candidate uses a bounded coarse seek followed by an exact trim, keeping copied audio
