@@ -1139,12 +1139,6 @@ public sealed class QueueDispatcher(
 
         try
         {
-            if (work.DurationSeconds is not > 0)
-            {
-                return await FinishAdaptiveSelectionAsync(
-                    jobId, work, baseline, fellBack: true, "source duration is unavailable", cancellationToken);
-            }
-
             await using var scope = scopeFactory.CreateAsyncScope();
             var probeService = scope.ServiceProvider.GetRequiredService<MediaProbeService>();
             var qualityService = scope.ServiceProvider.GetRequiredService<QualityScoreService>();
@@ -1160,6 +1154,18 @@ public sealed class QueueDispatcher(
                     cancellationToken);
             }
 
+            // A subtitle, chapter, attachment, or data stream may extend the container far beyond
+            // the actual programme. Place every adaptive sample on the primary picture timeline so
+            // a middle/late seek cannot land after EOF and create an empty, unscorable candidate.
+            var samplingDuration = AdaptiveQualityDuration.Resolve(
+                sourceProbe.VideoDurationSeconds,
+                work.DurationSeconds);
+            if (samplingDuration is not > 0)
+            {
+                return await FinishAdaptiveSelectionAsync(
+                    jobId, work, baseline, fellBack: true, "source video duration is unavailable", cancellationToken);
+            }
+
             var policy = work.VerificationPolicy;
             if (!policy.QualityGateEnabled)
             {
@@ -1167,7 +1173,7 @@ public sealed class QueueDispatcher(
                     jobId, work, baseline, fellBack: true, "the VMAF target is disabled", cancellationToken);
             }
 
-            var windows = VmafWindowPlanner.PlanAdaptive(work.DurationSeconds.Value);
+            var windows = VmafWindowPlanner.PlanAdaptive(samplingDuration.Value);
             if (windows.Count == 0)
             {
                 return await FinishAdaptiveSelectionAsync(
@@ -1196,6 +1202,7 @@ public sealed class QueueDispatcher(
                     decision.NextQuality!.Value,
                     measured.Count,
                     windows,
+                    samplingDuration.Value,
                     sourceProbe,
                     policy,
                     qualityService,
@@ -1247,6 +1254,7 @@ public sealed class QueueDispatcher(
         int qualityValue,
         int candidateIndex,
         IReadOnlyList<VmafWindow> windows,
+        double sourceVideoDurationSeconds,
         MediaProbeResult sourceProbe,
         VerificationPolicy policy,
         QualityScoreService qualityService,
@@ -1290,7 +1298,7 @@ public sealed class QueueDispatcher(
                 window.DurationSeconds,
                 FfmpegProgressCalculator.ExpectedFramesForWindow(
                     sourceProbe.FrameCount,
-                    sourceProbe.DurationSeconds,
+                    sourceVideoDurationSeconds,
                     window.DurationSeconds,
                     sourceProbe.VideoFrameRate),
                 IsHardwareEncoder(work.VideoEncoder),
@@ -1330,7 +1338,7 @@ public sealed class QueueDispatcher(
                 work.Original.IsHdr,
                 work.Original.HdrConvertedToSdr,
                 ReferenceStartSeconds: window.StartSeconds,
-                ReferenceDurationSeconds: work.DurationSeconds,
+                ReferenceDurationSeconds: sourceVideoDurationSeconds,
                 DistortedStartSeconds: null,
                 MeasureDurationSeconds: window.DurationSeconds,
                 FrameSubsample: policy.VmafFrameSubsample,
