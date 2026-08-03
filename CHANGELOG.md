@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The weekly secret scan now acknowledges three reviewed historical documentation examples.**
+  Exact Gitleaks fingerprints suppress only the known placeholder authorization headers; new or
+  changed findings continue to fail the scan.
+
 ## 0.2.11 — 2026-08-13
 
 ### Fixed
