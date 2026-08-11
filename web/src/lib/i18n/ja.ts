@@ -850,7 +850,7 @@ export const ja: Messages = {
     quality_strategy: "動画品質の経路",
     quality_strategy_intro: "このライブラリの動画再エンコードに使用する経路を選びます。どちらも同じ完全な出力検証を行い、高品質での再試行を 1 回だけ保持します。",
     quality_strategy_fixed: "固定ライブラリ品質",
-    quality_strategy_fixed_desc: "このライブラリで選択したプリセットまたはカスタム品質を使用します。準備エンコードのない予測可能な既定値です。",
+    quality_strategy_fixed_desc: "このライブラリで選択したプリセットまたはカスタム品質を使用します。準備エンコードを行わない、直接的で予測しやすい方法です。",
     quality_strategy_adaptive: "タイトル別適応 VMAF",
     quality_strategy_adaptive_desc: "代表的なシーンを先に試し、ライブラリの VMAF 目標を満たす最も容量効率のよいエンコーダー値を選びます。",
     quality_strategy_adaptive_cost: "完全エンコード前に追加処理を行います。冒頭・中央・終盤の 40 秒サンプルで最大 4 つの品質候補を試します。結果が得られない、ノイズが多い、または矛盾する場合、Optimisarr は固定品質へ安全に戻ります。最終ファイルは引き続きすべての検証に合格する必要があります。",

@@ -23,7 +23,8 @@
   quality. Fixed library quality remains available, non-video and remux-only libraries stay on the
   fixed path, and existing persisted libraries and legacy configuration imports keep their saved
   strategy. The first-run review now reports the libraries' actual VMAF policy, and an explicitly
-  applied VMAF recommendation keeps the strategy and gate in a valid matching state.
+  applied VMAF recommendation keeps the strategy and gate in a valid matching state. The Fixed-path
+  description now presents it as the direct alternative instead of contradicting the new default.
 
 ## 0.2.10 — 2026-07-29
 
