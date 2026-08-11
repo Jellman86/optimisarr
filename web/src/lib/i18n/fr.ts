@@ -82,7 +82,7 @@ export const fr: Messages = {
     retest: 'Tester à nouveau', retesting: 'Nouveau test…', retest_complete: 'Les preuves système ont été actualisées.', required_tools_error: 'Corrigez les chemins, le stockage ou les outils requis, puis relancez le test.',
     library_heading: 'Ajoutez et configurez vos médiathèques', library_body: 'Ajoutez tous les dossiers multimédias à gérer. Chaque médiathèque ouvre l’éditeur complet de règles et la configuration vérifie tous les chemins sans scanner ni modifier les médias.',
     library_name: 'Nom de la médiathèque', library_path: 'Chemin dans le conteneur', browse: 'Parcourir', media_type: 'Type de média', rule_profile: 'Préréglage d’optimisation',
-    library_safe_defaults: 'Chaque nouvelle médiathèque démarre active, sans mise en file ni remplacement automatiques. VMAF reste désactivé jusqu’au choix de sa politique.',
+    library_safe_defaults: 'Chaque nouvelle médiathèque démarre active, sans mise en file ni remplacement automatiques. Les médiathèques qui réencodent la vidéo utilisent d’abord le VMAF adaptatif ; vous pouvez choisir la qualité fixe dans leur stratégie.',
     create_library: 'Créer la médiathèque', add_another_library: 'Ajouter une autre médiathèque', creating_library: 'Création…', library_create_error: 'Impossible de créer la médiathèque.', library_required_error: 'Ajoutez au moins une médiathèque avant de continuer.',
     access_ready: 'Accès en lecture et écriture confirmé', access_checking: 'Vérification de l’accès au dossier…',
     safety_heading: 'Choisissez le niveau de sécurité initial', safety_step_body: 'Ce sont des paramètres ordinaires, pas des modes cachés de l’assistant. Vous pourrez les modifier plus tard et aucun travail ne démarre pendant la configuration.',

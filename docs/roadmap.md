@@ -34,11 +34,12 @@ the replacement workflow is trustworthy.
      viewport space and opens upward or downward as appropriate, with keyboard navigation and
      accessible listbox semantics retained in either direction.
 
-   - **Opt-in perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
-     re-encodes at selectable floors — each library offers Off (the default), Space-saver
+   - **Per-library perceptual-quality (VMAF) gate with a quality slider: done.** VMAF can protect video
+     re-encodes at selectable floors — each library offers Off, Space-saver
      (80/60), Balanced (85/70), High (90/75), Visually lossless (93/80), and Archival (96/90). It is
-     off by default because full-file, every-frame scoring decodes both files and roughly doubles
-     verification time; clip scoring and frame sampling can reduce that cost. While off, the
+     enabled at Visually lossless for new video re-encode libraries, using representative clips to
+     bound the cost; existing libraries keep their saved choice. Full-file, every-frame scoring can
+     roughly double verification time. While off, the
      structural, duration, and size gates plus quarantine rollback still guard every replacement.
      Remux and non-video work skip the inapplicable extra decode, and existing saved choices remain
      unchanged. The long VMAF pass now reports real 0–100% progress in the queue (hero and rows), is
@@ -210,10 +211,12 @@ the replacement workflow is trustworthy.
      recommendation remains visible and reversible. It never scans, enqueues, transcodes, replaces,
      or deletes an original until the
      user confirms the review screen. The flow visibly applies dry-run/concurrency, creates
-     every new library with auto-enqueue, auto-replace, and VMAF off unless explicitly changed in the
-     full embedded rules editor, and starts no work. Proved HEVC hardware support now drives a visible,
-     reversible encoder/hardware-decode recommendation; CPU VMAF stays off by default, while a proved
-     NVIDIA CUDA-VMAF path may recommend Balanced. The overnight window remains opt-in and never turns
+     every new library with auto-enqueue and auto-replace off; video re-encode libraries use the
+     adaptive VMAF-first default selected in the full embedded rules editor. The wizard starts no work.
+     Proved HEVC hardware support now drives a visible,
+     reversible encoder/hardware-decode recommendation; the explicitly applied CPU recommendation
+     selects Fixed with VMAF off, while a proved NVIDIA CUDA-VMAF path may recommend Adaptive with
+     Balanced. The overnight window remains opt-in and never turns
      auto-enqueue on. A representative probed candidate can launch the established disposable preview;
      an honest empty state explains why a fresh, unscanned library has nothing to preview yet.
    - **Review before commitment: done.** The final form groups security, storage, library, encoder,
@@ -420,8 +423,8 @@ the replacement workflow is trustworthy.
      stretching one perception method across unlike tasks.
 
 8. **VMAF performance on modest hardware: done.** VMAF is the slow part of verification, and on a
-   low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable, which is why
-   the gate ships off by default. Make it fast enough to actually turn on.
+   low-power host (e.g. an Intel N100) a full-file measurement is effectively unusable. Representative
+   clip scoring made the adaptive VMAF-first path practical as the default for new video re-encode libraries.
 
    - **The honest hardware picture: done.** The only GPU acceleration for the VMAF computation itself is
      **VMAF-CUDA** (`libvmaf_cuda`, part of VMAF 3.0 / FFmpeg 6.1) — **NVIDIA only**. There is no
@@ -498,15 +501,16 @@ the replacement workflow is trustworthy.
      described as supported.
 
 10. **Adaptive per-title VMAF quality targeting: validate the experimental implementation.** The
-    initial opt-in implementation of Mike's issue #26 workflow now runs a bounded set of short
+    implementation of Mike's issue #26 workflow now runs a bounded set of short
     representative encodes at different encoder-specific quality values, measures them with the
     library's VMAF policy, and selects the smallest actually encoded passing candidate. This
     complements the personal blind-quality check: one calibrates the person's library-level
     preference, while this feature adapts that chosen target to the complexity of an individual
     title.
 
-    - **Explicit opt-in with an honest cost.** Fixed remains the default. The per-library radio path
-      states the upper bound of four qualities across three 40-second scenes and the Queue uses its
+    - **Default for new video re-encode libraries, with an honest cost.** Existing libraries retain
+      their saved path and Fixed remains available. The per-library radio path states the upper bound
+      of four qualities across three 40-second scenes and the Queue uses its
       probing stage during preparation. Cancellation follows the normal active-job control.
     - **Representative evidence, not a favourable frame search.** Reuse deterministic early, middle,
       and late windows selected before any scores are known. Apply the complete picture contract

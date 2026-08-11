@@ -89,7 +89,7 @@ export const de: Messages = {
     required_tools_error: 'Behebe nicht verfügbare Pfade, Speicherprobleme oder erforderliche Werkzeuge und prüfe das System erneut.',
     library_heading: 'Bibliotheken hinzufügen und konfigurieren', library_body: 'Füge alle Medienordner hinzu, die Optimisarr verwalten soll. Für jeden steht der vollständige Regeleditor zur Verfügung; die Einrichtung prüft jeden Pfad, ohne Medien zu scannen oder zu verändern.',
     library_name: 'Bibliotheksname', library_path: 'Container-Pfad', browse: 'Durchsuchen', media_type: 'Medientyp', rule_profile: 'Optimierungsvorgabe',
-    library_safe_defaults: 'Jede neue Bibliothek startet aktiviert; automatische Warteschlange und automatischer Austausch bleiben aus. VMAF bleibt aus, bis du ihre Richtlinie wählst.',
+    library_safe_defaults: 'Jede neue Bibliothek startet aktiviert; automatische Warteschlange und automatischer Austausch bleiben aus. Bibliotheken mit Video-Neukodierung starten mit adaptivem VMAF; in der Bibliotheksrichtlinie kannst du „Feste Qualität“ wählen.',
     create_library: 'Bibliothek erstellen', add_another_library: 'Weitere Bibliothek hinzufügen', creating_library: 'Wird erstellt…', library_create_error: 'Die Bibliothek konnte nicht erstellt werden.',
     library_required_error: 'Füge mindestens eine Bibliothek hinzu, bevor du fortfährst.', access_ready: 'Lese- und Schreibzugriff bestätigt', access_checking: 'Ordnerzugriff wird geprüft…',
     safety_heading: 'Start-Sicherheitsniveau wählen', safety_step_body: 'Dies sind normale Einstellungen, keine versteckten Assistentenmodi. Du kannst sie später ändern; während der Einrichtung starten keine Aufträge.',

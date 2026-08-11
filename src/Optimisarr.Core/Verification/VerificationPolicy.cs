@@ -9,11 +9,11 @@ namespace Optimisarr.Core.Verification;
 /// than the original. Subtitle retention is not required by default because some
 /// rule profiles intentionally drop image-based subtitles.
 ///
-/// The perceptual-quality (VMAF) gate is off by default: measuring it fully decodes
-/// both files and scores every frame, which roughly doubles verification time and can
-/// dominate a run on modest hardware. An operator opts in for an individual video
-/// library when the extra safeguard is worth the cost; the structural, duration and size
-/// gates plus quarantine rollback still protect every replacement while it is off.
+/// The base perceptual-quality (VMAF) policy is off so it remains inapplicable to media that
+/// cannot use it. New video re-encode libraries explicitly materialise an enabled, sampled policy;
+/// existing libraries retain their saved choice. Full-file, every-frame measurement roughly doubles
+/// verification time and can dominate a run on modest hardware. The structural, duration and size
+/// gates plus quarantine rollback still protect every replacement while VMAF is off.
 /// It is skipped for remuxes and non-video media, where VMAF has no useful work to do.
 /// When enabled, the output must clear a harmonic-mean VMAF floor, a fifth-percentile
 /// floor for sustained difficult content, and a lower single-frame catastrophic floor.

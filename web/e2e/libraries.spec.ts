@@ -85,6 +85,17 @@ test('track cleanup is an exclusive mode and exposes only its relevant video con
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).toBeChecked()
 })
 
+test('new video libraries start on the adaptive VMAF-first path', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/new')
+
+  const fixed = page.getByRole('radio', { name: /Fixed library quality/ })
+  const adaptive = page.getByRole('radio', { name: /Adaptive per-title VMAF/ })
+  await expect(adaptive).toBeChecked()
+  await expect(fixed).not.toBeChecked()
+  await expect(page.locator('#lib-vmaf-policy')).toHaveValue('lossless')
+})
+
 test('adaptive quality path enables a concrete VMAF target and remains exclusive', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')

@@ -425,6 +425,10 @@
     if (!isVideoType(type) && (form.ruleProfile === 'TrackCleanup' || form.ruleProfile === 'RemuxCleanup')) {
       form.ruleProfile = 'ConservativeHevc'
     }
+    if (!isVideoType(type)) {
+      setVideoQualityStrategy('Fixed')
+      setVmafMode('off')
+    }
   }
 
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
@@ -520,6 +524,10 @@
         : encodeProfiles.includes(form.ruleProfile)
           ? form.ruleProfile
           : 'ConservativeHevc'
+    if (mode !== 'encode') {
+      setVideoQualityStrategy('Fixed')
+      setVmafMode('off')
+    }
   }
 
   // The slider only picks a baseline profile; an explicit codec/container override in Advanced

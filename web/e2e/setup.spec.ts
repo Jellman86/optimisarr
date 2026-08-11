@@ -93,7 +93,7 @@ function setupState(currentStep = 5) {
   }
 }
 
-async function mockSetup(page: Page, currentStep = 5) {
+async function mockSetup(page: Page, currentStep = 5, configuredLibrary = library) {
   let readinessCalls = 0
   await page.route('**/api/**', async (route: Route) => {
     const url = new URL(route.request().url())
@@ -130,7 +130,7 @@ async function mockSetup(page: Page, currentStep = 5) {
         error: null,
       },
     })
-    if (path === '/api/libraries') return json(route, [library])
+    if (path === '/api/libraries') return json(route, [configuredLibrary])
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
@@ -152,7 +152,7 @@ async function mockSetup(page: Page, currentStep = 5) {
       return json(route, [])
     }
     if (path === '/api/libraries/1/access') return json(route, {
-      path: library.path, exists: true, readable: true, writable: true, ok: true,
+      path: configuredLibrary.path, exists: true, readable: true, writable: true, ok: true,
       message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/',
       fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000,
       atomicWithWork: true, atomicWithQuarantine: true,
@@ -210,6 +210,23 @@ test('review Change actions preserve the plan and keyboard focus order', async (
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: /Set up your libraries/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Back' })).toBeDisabled()
+})
+
+test('review reports the saved per-library VMAF policy when no recommendation override is selected', async ({ page }) => {
+  await mockSetup(page, 5, {
+    ...library,
+    videoQualityStrategy: 'AdaptiveVmaf',
+    vmafQualityGateEnabled: true,
+    minVmafHarmonicMean: 93,
+    minVmafMin: 80,
+    minVmafCatastrophicMin: 50,
+    clipVmafEnabled: true,
+    vmafFrameSubsample: 1,
+  })
+  await page.goto('/')
+
+  const vmafRow = page.getByText('Perceptual quality (VMAF)').locator('..')
+  await expect(vmafRow).toContainText('Enabled')
 })
 
 test('translated setup opens a localised, touch-friendly library editor without changing API values', async ({ page }) => {

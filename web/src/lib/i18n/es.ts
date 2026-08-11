@@ -85,7 +85,7 @@ export const es: Messages = {
     retest: 'Volver a comprobar', retesting: 'Comprobando de nuevo…', retest_complete: 'Se actualizaron las pruebas del sistema.', required_tools_error: 'Corrige las rutas, el almacenamiento o las herramientas obligatorias y vuelve a comprobar el sistema.',
     library_heading: 'Añade y configura tus bibliotecas', library_body: 'Añade todas las carpetas multimedia que quieras gestionar. Cada biblioteca abre el editor completo de reglas y la configuración comprueba todas las rutas sin analizar ni cambiar archivos.',
     library_name: 'Nombre de biblioteca', library_path: 'Ruta del contenedor', browse: 'Explorar', media_type: 'Tipo de medio', rule_profile: 'Preajuste de optimización',
-    library_safe_defaults: 'Cada biblioteca nueva comienza activa, sin encolado ni sustitución automáticos. VMAF queda desactivado hasta que elijas su política.',
+    library_safe_defaults: 'Cada biblioteca nueva comienza activa, sin encolado ni sustitución automáticos. Las bibliotecas que recodifican vídeo empiezan con VMAF adaptativo; puedes elegir calidad fija en la política de la biblioteca.',
     create_library: 'Crear biblioteca', add_another_library: 'Añadir otra biblioteca', creating_library: 'Creando…', library_create_error: 'No se pudo crear la biblioteca.', library_required_error: 'Añade al menos una biblioteca antes de continuar.',
     access_ready: 'Acceso de lectura y escritura confirmado', access_checking: 'Comprobando acceso a la carpeta…',
     safety_heading: 'Elige la postura de seguridad inicial', safety_step_body: 'Son valores normales de Ajustes, no modos ocultos del asistente. Podrás cambiarlos después y no se inicia ningún trabajo durante la configuración.',
