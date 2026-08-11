@@ -850,7 +850,7 @@ export const zh: Messages = {
     quality_strategy: "视频质量路径",
     quality_strategy_intro: "为此媒体库中的每次视频重新编码选择一条路径。两条路径都执行相同的完整输出验证，并保留一次更高质量的恢复重试。",
     quality_strategy_fixed: "固定媒体库质量",
-    quality_strategy_fixed_desc: "使用为此媒体库选择的预设或自定义质量。这是可预测的默认选项，不会进行准备编码。",
+    quality_strategy_fixed_desc: "使用为此媒体库选择的预设或自定义质量。这是直接且可预测的路径，不会进行准备编码。",
     quality_strategy_adaptive: "按标题自适应 VMAF",
     quality_strategy_adaptive_desc: "先测试代表性场景，再选择满足媒体库 VMAF 目标且最节省空间的编码器值。",
     quality_strategy_adaptive_cost: "每次完整编码前会增加额外工作：在开头、中间和结尾的 40 秒样本上测试最多四个候选质量。如果结果不可用、噪声过大或相互矛盾，Optimisarr 会安全地使用固定媒体库质量。最终文件仍必须通过全部验证。",

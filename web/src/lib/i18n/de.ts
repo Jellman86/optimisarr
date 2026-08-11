@@ -902,7 +902,7 @@ export const de: Messages = {
     quality_strategy: 'Videoqualitätspfad',
     quality_strategy_intro: 'Wählen Sie einen Pfad für alle Video-Neukodierungen dieser Bibliothek. Beide Pfade führen dieselbe vollständige Ausgabeprüfung und den einmaligen Wiederholungsversuch mit höherer Qualität aus.',
     quality_strategy_fixed: 'Feste Bibliotheksqualität',
-    quality_strategy_fixed_desc: 'Verwendet die für diese Bibliothek gewählte Preset- oder benutzerdefinierte Qualität. Der vorhersehbare Standard ohne vorbereitende Kodierungen.',
+    quality_strategy_fixed_desc: 'Verwendet die für diese Bibliothek gewählte Preset- oder benutzerdefinierte Qualität. Der direkte, vorhersehbare Weg ohne vorbereitende Kodierungen.',
     quality_strategy_adaptive: 'Adaptives VMAF pro Titel',
     quality_strategy_adaptive_desc: 'Testet zuerst repräsentative Szenen und wählt den platzsparendsten Encoderwert, der das VMAF-Ziel dieser Bibliothek erfüllt.',
     quality_strategy_adaptive_cost: 'Zusätzliche Arbeit vor jeder vollständigen Kodierung: bis zu vier Qualitätskandidaten in frühen, mittleren und späten 40-Sekunden-Samples. Bei fehlenden, verrauschten oder widersprüchlichen Ergebnissen verwendet Optimisarr sicher die feste Bibliotheksqualität. Die endgültige Datei muss weiterhin alle Prüfungen bestehen.',

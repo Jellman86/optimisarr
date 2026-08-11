@@ -94,6 +94,7 @@ test('new video libraries start on the adaptive VMAF-first path', async ({ page 
   await expect(adaptive).toBeChecked()
   await expect(fixed).not.toBeChecked()
   await expect(page.locator('#lib-vmaf-policy')).toHaveValue('lossless')
+  await expect(page.getByText('This is the direct, predictable path with no preparation encodes.')).toBeVisible()
 })
 
 test('adaptive quality path enables a concrete VMAF target and remains exclusive', async ({ page }) => {

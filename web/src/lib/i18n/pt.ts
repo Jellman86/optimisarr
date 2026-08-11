@@ -850,7 +850,7 @@ export const pt: Messages = {
     quality_strategy: "Caminho de qualidade de vídeo",
     quality_strategy_intro: "Escolha um caminho para cada recodificação de vídeo desta biblioteca. Ambos executam a mesma verificação completa e mantêm a única nova tentativa com qualidade superior.",
     quality_strategy_fixed: "Qualidade fixa da biblioteca",
-    quality_strategy_fixed_desc: "Usa a qualidade predefinida ou personalizada escolhida para esta biblioteca. É a opção previsível, sem codificações preparatórias.",
+    quality_strategy_fixed_desc: "Usa a qualidade predefinida ou personalizada escolhida para esta biblioteca. É o caminho direto e previsível, sem codificações preparatórias.",
     quality_strategy_adaptive: "VMAF adaptativo por título",
     quality_strategy_adaptive_desc: "Testa primeiro cenas representativas e escolhe o valor do codificador mais eficiente que cumpre o objetivo VMAF da biblioteca.",
     quality_strategy_adaptive_cost: "Trabalho extra antes de cada codificação completa: até quatro qualidades candidatas em amostras de 40 segundos no início, meio e fim. Se os resultados estiverem indisponíveis, ruidosos ou contraditórios, o Optimisarr usa com segurança a qualidade fixa. O ficheiro final ainda tem de passar em todas as verificações.",

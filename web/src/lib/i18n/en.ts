@@ -1041,7 +1041,7 @@ export const en = {
     quality_strategy: 'Video quality path',
     quality_strategy_intro: 'Choose one path for every video re-encode in this library. Both paths run the same complete output verification and retain the single higher-quality recovery retry.',
     quality_strategy_fixed: 'Fixed library quality',
-    quality_strategy_fixed_desc: 'Use the preset or custom quality selected for this library. This is the predictable default with no preparation encodes.',
+    quality_strategy_fixed_desc: 'Use the preset or custom quality selected for this library. This is the direct, predictable path with no preparation encodes.',
     quality_strategy_adaptive: 'Adaptive per-title VMAF',
     quality_strategy_adaptive_desc: 'Test representative scenes first and choose the smallest actually encoded candidate that clears this library’s VMAF target.',
     quality_strategy_adaptive_cost: 'Extra work before every full encode: up to four candidate qualities across early, middle, and late 40-second samples. If the evidence is unavailable, noisy, or contradictory, Optimisarr safely uses the fixed library quality instead. The final file must still pass every verification gate.',
