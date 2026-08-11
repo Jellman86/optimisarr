@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- **Frontend build dependencies no longer resolve known PostCSS and nanoid advisories.** The locked
+  Vite toolchain now uses PostCSS 8.5.26 and nanoid 3.3.18; neither package is included in the final
+  runtime layer, and both development and production dependency audits now report zero findings.
 - **Sampled VMAF now preserves the real presentation offset produced by accurate input seeks.**
   Source and output GOPs can retain their first decoded picture at different offsets from the same
   pre-roll target; Optimisarr now keeps those offsets through cadence alignment instead of
