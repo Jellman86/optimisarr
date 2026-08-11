@@ -80,7 +80,7 @@ export const it: Messages = {
     retest: 'Ripeti il test', retesting: 'Nuovo test…', retest_complete: 'Le prove del sistema sono state aggiornate.', required_tools_error: 'Risolvi percorsi, archiviazione o strumenti richiesti e ripeti il test.',
     library_heading: 'Aggiungi e configura le tue librerie', library_body: 'Aggiungi tutte le cartelle multimediali da gestire. Ogni libreria apre l’editor completo delle regole e la configurazione verifica tutti i percorsi senza analizzare o modificare i media.',
     library_name: 'Nome libreria', library_path: 'Percorso nel container', browse: 'Sfoglia', media_type: 'Tipo di media', rule_profile: 'Preimpostazione di ottimizzazione',
-    library_safe_defaults: 'Ogni nuova libreria parte attiva, senza accodamento o sostituzione automatici. VMAF resta disattivato finché non scegli la relativa politica.',
+    library_safe_defaults: 'Ogni nuova libreria parte attiva, senza accodamento o sostituzione automatici. Le librerie che ricodificano video iniziano con VMAF adattivo; puoi scegliere la qualità fissa nella politica della libreria.',
     create_library: 'Crea libreria', add_another_library: 'Aggiungi un’altra libreria', creating_library: 'Creazione…', library_create_error: 'Impossibile creare la libreria.', library_required_error: 'Aggiungi almeno una libreria prima di continuare.',
     access_ready: 'Accesso in lettura e scrittura confermato', access_checking: 'Controllo accesso alla cartella…',
     safety_heading: 'Scegli il livello di sicurezza iniziale', safety_step_body: 'Sono normali valori delle Impostazioni, non modalità nascoste. Potrai cambiarli in seguito e nessun lavoro parte durante la configurazione.',

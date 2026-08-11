@@ -75,7 +75,8 @@ public sealed class Library
 
     /// <summary>
     /// Whether video re-encodes use the resolved library quality directly or run a bounded
-    /// per-title VMAF search first. Fixed is the conservative, backwards-compatible default.
+    /// per-title VMAF search first. The entity baseline stays fixed because it has no media-type or
+    /// VMAF-policy context; the create request applies the adaptive default to eligible libraries.
     /// </summary>
     public VideoQualityStrategy VideoQualityStrategy { get; set; } = VideoQualityStrategy.Fixed;
 

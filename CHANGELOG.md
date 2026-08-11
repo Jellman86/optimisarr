@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Sampled VMAF now preserves the real presentation offset produced by accurate input seeks.**
+  Source and output GOPs can retain their first decoded picture at different offsets from the same
+  pre-roll target; Optimisarr now keeps those offsets through cadence alignment instead of
+  independently rebasing the streams and comparing unrelated frames. Full-file comparisons retain
+  their container-origin normalisation. This prevents false zero-score frames and unnecessary
+  quality retries while continuing to fail genuinely poor outputs closed.
+- **Replacement requests are now idempotent after a concurrent caller has already completed the
+  same verified job.** The API returns the existing rollback record without touching either file,
+  and automatic reconciliation treats that outcome as an expected no-op instead of incorrectly
+  warning that the completed job was left ready to replace.
+
+### Changed
+
+- **New video re-encode libraries now use Adaptive per-title VMAF by default.** They start with the
+  Visually lossless VMAF target, three representative scoring windows, and every-frame sampling;
+  Optimisarr measures bounded scenes before the full encode and selects the smallest proved passing
+  quality. Fixed library quality remains available, non-video and remux-only libraries stay on the
+  fixed path, and existing persisted libraries and legacy configuration imports keep their saved
+  strategy. The first-run review now reports the libraries' actual VMAF policy, and an explicitly
+  applied VMAF recommendation keeps the strategy and gate in a valid matching state.
+
 ## 0.2.10 — 2026-07-29
 
 ### Fixed

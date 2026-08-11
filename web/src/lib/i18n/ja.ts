@@ -80,7 +80,7 @@ export const ja: Messages = {
     retest: "システムを再確認", retesting: "再確認中…", retest_complete: "システム情報を更新しました。", required_tools_error: "利用できないパス、ストレージ、必須ツールを修復してから再確認してください。",
     library_heading: "ライブラリを追加して設定", library_body: "管理するメディアフォルダーをすべて追加できます。各ライブラリで完全なルール編集画面を開き、メディアをスキャンまたは変更せずにすべてのパスを確認します。",
     library_name: "ライブラリ名", library_path: "コンテナ内のパス", browse: "参照", media_type: "メディア種別", rule_profile: "最適化プリセット",
-    library_safe_defaults: "新しいライブラリは有効ですが、自動キューと自動置換は無効です。VMAF は各ライブラリのポリシーを選ぶまで無効です。",
+    library_safe_defaults: "新しいライブラリは有効ですが、自動キューと自動置換は無効です。動画を再エンコードするライブラリは適応型 VMAF で開始し、ライブラリポリシーで固定品質を選べます。",
     create_library: "ライブラリを作成", add_another_library: "別のライブラリを追加", creating_library: "作成中…", library_create_error: "ライブラリを作成できませんでした。", library_required_error: "続行する前に少なくとも1つのライブラリを追加してください。",
     access_ready: "読み書きアクセスを確認済み", access_checking: "フォルダーアクセスを確認中…",
     safety_heading: "初期の安全設定を選択", safety_step_body: "これは通常の設定値で、非表示のウィザードモードではありません。後で変更でき、セットアップ中にジョブは開始されません。",

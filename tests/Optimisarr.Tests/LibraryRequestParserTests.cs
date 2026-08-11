@@ -56,12 +56,46 @@ public sealed class LibraryRequestParserTests
         VideoQualityStrategy: null);
 
     [Fact]
-    public void Omitted_quality_strategy_defaults_to_fixed()
+    public void Omitted_quality_strategy_defaults_to_adaptive_vmaf_with_a_concrete_target()
     {
         var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
 
         Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.VideoQualityStrategy.AdaptiveVmaf, parsed.VideoQualityStrategy);
+        Assert.True(parsed.VmafQualityGateEnabled);
+        Assert.Equal(93, parsed.MinVmafHarmonicMean);
+        Assert.Equal(80, parsed.MinVmafMin);
+        Assert.Equal(50, parsed.MinVmafCatastrophicMin);
+        Assert.True(parsed.ClipVmafEnabled);
+        Assert.Equal(1, parsed.VmafFrameSubsample);
+    }
+
+    [Theory]
+    [InlineData("Music", "ConservativeHevc")]
+    [InlineData("Photo", "ConservativeHevc")]
+    [InlineData("Film", "RemuxCleanup")]
+    public void Omitted_quality_strategy_stays_fixed_when_the_library_does_not_reencode_video(
+        string mediaType,
+        string ruleProfile)
+    {
+        var request = Request() with { MediaType = mediaType, RuleProfile = ruleProfile };
+
+        var ok = LibraryRequestParser.TryParse(request, out var parsed, out var error);
+
+        Assert.True(ok, error);
         Assert.Equal(Optimisarr.Core.Queue.VideoQualityStrategy.Fixed, parsed.VideoQualityStrategy);
+    }
+
+    [Fact]
+    public void Explicitly_disabled_vmaf_keeps_the_fixed_path_when_the_strategy_is_omitted()
+    {
+        var request = Request() with { VmafQualityGateEnabled = false };
+
+        var ok = LibraryRequestParser.TryParse(request, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.VideoQualityStrategy.Fixed, parsed.VideoQualityStrategy);
+        Assert.False(parsed.VmafQualityGateEnabled);
     }
 
     [Fact]

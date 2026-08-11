@@ -51,6 +51,7 @@
   const requiredToolsReady = $derived(tools.length > 0 && tools.every((tool) => !tool.required || tool.available))
   const requiredPathsReady = $derived(paths.length > 0 && paths.every((path) => path.issue === 'none'))
   const libraryPathsReady = $derived(allLibraryPathsReady(libraries, libraryAccess))
+  const savedVmafEnabled = $derived(libraries.some((library) => library.vmafQualityGateEnabled === true))
   const concurrencyError = $derived(settings && (!Number.isFinite(settings.maxConcurrentJobs) || settings.maxConcurrentJobs < 1)
     ? i18n.m.settings.validation_max_jobs
     : null)
@@ -256,6 +257,13 @@
   function changeStep(step: number) {
     error = null
     viewStep = step
+  }
+
+  function vmafReviewLabel(): string {
+    if (applyRecommendedVmaf) {
+      return recommendation?.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off
+    }
+    return savedVmafEnabled ? i18n.m.settings.enabled : i18n.m.common.off
   }
 
   async function leaveReceipt(path: string) {
@@ -631,7 +639,7 @@
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.storage_heading}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.encoder_mode}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.encoderMode ?? '—'} · {plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{applyRecommendedVmaf && recommendation?.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{vmafReviewLabel()}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.nav.schedule}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{applyRecommendedSchedule && recommendation ? `${recommendation.scheduleStart}–${recommendation.scheduleEnd}` : i18n.m.setup.skipped}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.tab_connections}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>

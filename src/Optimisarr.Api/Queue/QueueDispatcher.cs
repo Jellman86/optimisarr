@@ -351,6 +351,12 @@ public sealed class QueueDispatcher(
                 replaced++;
                 logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace, reconciled).", jobId);
             }
+            else if (result.Kind == ReplacementResultKind.AlreadyCompleted)
+            {
+                logger.LogDebug(
+                    "Job {JobId}: auto-replace reconciliation observed a replacement already completed by another caller.",
+                    jobId);
+            }
             else if (result.Permanent)
             {
                 // A permanently blocked replacement (the verified output vanished, the original is
@@ -2093,6 +2099,12 @@ public sealed class QueueDispatcher(
             if (result.Kind == ReplacementResultKind.Success)
             {
                 logger.LogInformation("Job {JobId}: auto-replaced the original (library auto-replace).", jobId);
+            }
+            else if (result.Kind == ReplacementResultKind.AlreadyCompleted)
+            {
+                logger.LogDebug(
+                    "Job {JobId}: auto-replace observed a replacement already completed by another caller.",
+                    jobId);
             }
             else if (result.Permanent)
             {

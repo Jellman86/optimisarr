@@ -80,7 +80,7 @@ export const pt: Messages = {
     retest: "Testar novamente", retesting: "A testar novamente…", retest_complete: "As provas do sistema foram atualizadas.", required_tools_error: "Corrija caminhos, armazenamento ou ferramentas obrigatórias e teste novamente.",
     library_heading: "Adicione e configure as suas bibliotecas", library_body: "Adicione todas as pastas multimédia que pretende gerir. Cada biblioteca abre o editor completo de regras e a configuração verifica todos os caminhos sem analisar nem alterar os ficheiros.",
     library_name: "Nome da biblioteca", library_path: "Caminho no contentor", browse: "Procurar", media_type: "Tipo de multimédia", rule_profile: "Predefinição de otimização",
-    library_safe_defaults: "Cada nova biblioteca começa ativa, sem fila ou substituição automáticas. O VMAF fica desligado até escolher a respetiva política.",
+    library_safe_defaults: "Cada nova biblioteca começa ativa, sem fila ou substituição automáticas. As bibliotecas que recodificam vídeo começam com VMAF adaptativo; pode escolher qualidade fixa na política da biblioteca.",
     create_library: "Criar biblioteca", add_another_library: "Adicionar outra biblioteca", creating_library: "Criando…", library_create_error: "Não foi possível criar a biblioteca.", library_required_error: "Adicione pelo menos uma biblioteca antes de continuar.",
     access_ready: "Acesso de leitura e escrita confirmado", access_checking: "Verificando acesso à pasta…",
     safety_heading: "Escolha a postura de segurança inicial", safety_step_body: "São valores normais das Configurações, não modos ocultos do assistente. Pode alterá-los depois e nenhum trabalho começa durante a configuração.",

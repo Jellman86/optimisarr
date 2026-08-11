@@ -144,7 +144,7 @@ export const en = {
     browse: 'Browse',
     media_type: 'Media type',
     rule_profile: 'Optimisation preset',
-    library_safe_defaults: 'Every new library starts enabled with automatic queueing and replacement off. VMAF stays off until you choose that library’s policy.',
+    library_safe_defaults: 'Every new library starts enabled with automatic queueing and replacement off. Video re-encode libraries start with adaptive VMAF; you can choose Fixed in the library policy.',
     create_library: 'Create library',
     add_another_library: 'Add another library',
     creating_library: 'Creating…',

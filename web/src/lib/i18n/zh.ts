@@ -80,7 +80,7 @@ export const zh: Messages = {
     retest: "重新检查系统", retesting: "正在重新检查…", retest_complete: "系统证据已刷新。", required_tools_error: "请修复不可用的路径、存储或必需工具，然后重新检查。",
     library_heading: "添加并配置媒体库", library_body: "添加希望 Optimisarr 管理的所有媒体文件夹。每个媒体库都可打开完整规则编辑器；设置过程会检查所有路径，但不会扫描或更改媒体。",
     library_name: "媒体库名称", library_path: "容器内路径", browse: "浏览", media_type: "媒体类型", rule_profile: "优化预设",
-    library_safe_defaults: "每个新媒体库都会启用，但自动排队和自动替换保持关闭。选择该媒体库的策略前，VMAF 保持关闭。",
+    library_safe_defaults: "每个新媒体库都会启用，但自动排队和自动替换保持关闭。需要重新编码视频的媒体库默认使用自适应 VMAF；你可以在媒体库策略中改用固定质量。",
     create_library: "创建媒体库", add_another_library: "添加另一个媒体库", creating_library: "正在创建…", library_create_error: "无法创建媒体库。", library_required_error: "继续前请至少添加一个媒体库。",
     access_ready: "已确认读写权限", access_checking: "正在检查文件夹权限…",
     safety_heading: "选择初始安全状态", safety_step_body: "这些是普通设置值，不是隐藏的向导模式。之后可以更改，设置过程中不会启动任何任务。",
