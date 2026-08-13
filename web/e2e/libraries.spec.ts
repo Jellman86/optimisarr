@@ -97,6 +97,26 @@ test('new video libraries start on the adaptive VMAF-first path', async ({ page 
   await expect(page.getByText('This is the direct, predictable path with no preparation encodes.')).toBeVisible()
 })
 
+test('quality strategy choices lead with Adaptive VMAF and fill the editor width', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure')
+
+  const strategies = page.getByTestId('video-quality-strategies')
+  const radios = strategies.getByRole('radio')
+  await expect(radios.nth(0)).toHaveAttribute('value', 'AdaptiveVmaf')
+  await expect(radios.nth(1)).toHaveAttribute('value', 'Fixed')
+
+  const widths = await strategies.evaluate((element) => {
+    const fieldset = element.closest('fieldset')
+    return {
+      strategies: element.getBoundingClientRect().width,
+      fieldset: fieldset?.getBoundingClientRect().width ?? 0,
+    }
+  })
+  expect(widths.strategies).toBeGreaterThanOrEqual(widths.fieldset - 1)
+})
+
 test('adaptive quality path enables a concrete VMAF target and remains exclusive', async ({ page }) => {
   await mockLibraries(page)
   await page.goto('/#/libraries/1/configure')
