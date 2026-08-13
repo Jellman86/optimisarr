@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- **The video quality strategy now uses the full library editor width and leads with Adaptive
+  per-title VMAF.** Adaptive and Fixed choices share aligned card structure at desktop widths,
+  while retaining a clear stacked layout on smaller screens.
 - **Frontend build dependencies no longer resolve known PostCSS and nanoid advisories.** The locked
   Vite toolchain now uses PostCSS 8.5.26 and nanoid 3.3.18; neither package is included in the final
   runtime layer, and both development and production dependency audits now report zero findings.
