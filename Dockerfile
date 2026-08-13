@@ -30,7 +30,7 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 # Dedicated, dependency-free VMAF measurement binary. This image is multi-architecture
 # (linux/amd64 + linux/arm64), includes libvmaf, and is pinned by manifest digest so an upstream
 # tag change cannot silently alter Optimisarr's verification toolchain.
-FROM mwader/static-ffmpeg:8.1.2@sha256:33f770f812cbfc3de96c547157fc9faf8bd95a36481753439ffa761045167585 AS vmaf-ffmpeg
+FROM mwader/static-ffmpeg:9.0@sha256:b90574a4e2ae62b763c39c384526689e7eb435da6398f4fb3f6c3f1c6a14ce33 AS vmaf-ffmpeg
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
