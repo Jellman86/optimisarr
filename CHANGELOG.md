@@ -20,6 +20,10 @@
 
 ### Changed
 
+- **Frontend and CI dependencies now use current compatible maintenance releases.** The SignalR
+  client, Playwright, Svelte tooling, Vite, Node.js types, and hardened GitHub Actions runner have
+  been refreshed within their existing major versions. This requires no configuration or database
+  migration.
 - **New video re-encode libraries now use Adaptive per-title VMAF by default.** They start with the
   Visually lossless VMAF target, three representative scoring windows, and every-frame sampling;
   Optimisarr measures bounded scenes before the full encode and selects the smallest proved passing
