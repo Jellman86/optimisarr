@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.11 — 2026-08-13
+
 ### Fixed
 
 - **The video quality strategy now uses the full library editor width and leads with Adaptive
