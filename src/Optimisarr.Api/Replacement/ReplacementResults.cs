@@ -8,6 +8,7 @@ public static class ReplacementResults
     public static IResult ToHttp(ReplacementActionResult result) => result.Kind switch
     {
         ReplacementResultKind.Success => Results.Ok(ReplacementDto.From(result.Replacement!)),
+        ReplacementResultKind.AlreadyCompleted => Results.Ok(ReplacementDto.From(result.Replacement!)),
         ReplacementResultKind.NotFound =>
             ApiErrors.NotFound(ErrorCode(result.Kind), result.Message ?? "Replacement not found."),
         ReplacementResultKind.Invalid =>

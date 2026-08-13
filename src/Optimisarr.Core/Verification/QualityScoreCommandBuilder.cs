@@ -255,12 +255,13 @@ public static class QualityScoreCommandBuilder
         int? windowDurationSeconds,
         double? referenceFrameRate)
     {
-        // FFmpeg's fps(start_time=0) pads or trims from each input's existing first PTS. MP4 and
-        // Matroska can expose the same first picture at different non-zero PTS values, so applying
-        // fps before resetting the origins can manufacture a one-frame VMAF misalignment. Rebase
-        // each decoded input first, then resample both onto the source cadence and trim matching
-        // pre-roll. The final reset leaves libvmaf with two zero-based timelines.
+        // An input seek leaves each decoder's first retained PTS relative to the common
+        // pre-roll target. Different GOP layouts can therefore begin at different positive PTS
+        // values; those offsets identify the same presentation instant and must survive until fps
+        // puts both streams on one cadence. Full-file inputs have no shared seek target, so rebase
+        // their container origins first. The final reset leaves libvmaf with zero-based timelines.
         const string origin = "settb=AVTB,setpts=PTS-STARTPTS";
+        var inputTimeline = inputStartSeconds is > 0 ? "settb=AVTB" : origin;
         var cadence = referenceFrameRate is { } frameRate
             ? $"fps=fps={frameRate.ToString("G17", CultureInfo.InvariantCulture)}:start_time=0,"
             : string.Empty;
@@ -269,7 +270,7 @@ public static class QualityScoreCommandBuilder
             : string.Empty;
         return cadence.Length == 0 && alignment.Length == 0
             ? origin
-            : $"{origin},{cadence}{alignment}{origin}";
+            : $"{inputTimeline},{cadence}{alignment}{origin}";
     }
 
     private static string DescribePreprocessing(

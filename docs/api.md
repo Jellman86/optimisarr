@@ -335,10 +335,13 @@ rejected. `encoderPreset` retains its historical API name but new clients should
 encoder effort: `quick`, `balanced`, `efficient`, or `null` for the encoder default. Former
 x264/x265 values, NVENC `p1`–`p7`, and SVT-AV1 `0`–`13` values remain accepted and are preserved
 exactly for backwards compatibility; dispatch resolves a safe equivalent if another encoder family
-is selected. `videoQualityStrategy` accepts `Fixed` (the backwards-compatible default) or
-`AdaptiveVmaf`. `AdaptiveVmaf` is accepted only for a video re-encode library whose
-`vmafQualityGateEnabled` value is `true`; invalid combinations return `400` rather than silently
-changing the requested policy.
+is selected. `videoQualityStrategy` accepts `Fixed` or `AdaptiveVmaf`. When both the strategy and
+VMAF fields are omitted for a video re-encode library, the API creates an AdaptiveVmaf library with
+the Visually lossless 93/80/50 floors, representative-window scoring, and every-frame sampling.
+An explicitly disabled VMAF gate keeps the omitted strategy on Fixed, as do non-video and remux-only
+libraries. An explicitly supplied `AdaptiveVmaf` is accepted only when
+`vmafQualityGateEnabled` is `true`; invalid combinations return `400` rather than silently changing
+the requested policy.
 
 Verification fields are owned by each library. The API accepts the complete shape for every media
 type, but the UI shows only applicable controls: video can configure subtitle retention and VMAF,

@@ -22,7 +22,8 @@ restarting resumes at the first incomplete step. Finishing setup does not scan, 
 replace, or delete a file.
 
 Fresh installations start in dry-run with one concurrent job. Every new library has automatic
-enqueue, automatic replacement, and VMAF disabled unless changed explicitly in its editor. Existing
+enqueue and automatic replacement disabled. New video re-encode libraries start on Adaptive
+per-title VMAF with the Visually lossless target; non-video and remux-only libraries keep VMAF off. Existing
 installations upgraded from an older release never see the wizard automatically. To revisit it
 without deleting or resetting any configuration, use **Settings → Backup → First-run setup → Run
 setup again**.
@@ -58,16 +59,16 @@ The Inventory explains why every file is eligible or skipped.
 **Configure** opens a dedicated page for that library. A video re-encode library first chooses one
 of two mutually exclusive quality paths:
 
-- **Fixed library quality** (default) uses the preset/custom quality directly, then runs the normal
-  full-output verification and one bounded VMAF-only recovery retry.
-- **Adaptive per-title VMAF** (experimental) first encodes deterministic early, middle, and late
+- **Adaptive per-title VMAF** (the default for new video re-encode libraries) first encodes deterministic early, middle, and late
   video-only samples at no more than four encoder-specific values and selects the smallest measured
   candidate that clears the library target. Missing or contradictory evidence falls back to Fixed;
   the final file still runs every normal verification gate.
+- **Fixed library quality** uses the preset/custom quality directly, then runs the normal
+  full-output verification and one bounded VMAF-only recovery retry when its VMAF gate is enabled.
 
-Adaptive mode adds up to twelve 40-second sample encodes before each full encode, so it is an
-explicit per-library opt-in and requires VMAF to be enabled. Video libraries can otherwise disable
-VMAF or select a named quality tier. **Custom** exposes the
+Adaptive mode adds up to twelve 40-second sample encodes before each full encode and requires VMAF
+to be enabled. Choose Fixed to avoid that preparation cost; video libraries can then disable VMAF
+or select a named quality tier. **Custom** exposes the
 harmonic-mean, fifth-percentile, and catastrophic-frame floors plus full/clip scoring and the frame
 sampling interval. VMAF has no global setting: every video library owns its policy. Upgrades copy
 the former global policy into each existing library so behaviour does not change unexpectedly.
@@ -133,7 +134,7 @@ the selected media type:
 | Require audio tracks retained | Video and audio | On |
 | Require subtitle tracks retained | Video | Off |
 | Require output smaller than original | Video, audio, image | On |
-| Perceptual quality (VMAF) | Video re-encodes | Off per library by default; named or custom tiers pick harmonic / fifth-percentile / catastrophic-frame floors |
+| Perceptual quality (VMAF) | Video re-encodes | Visually lossless for new video re-encode libraries; existing saved policies are unchanged |
 | Audio loudness drift (EBU R128) | Video and audio | Off |
 | Audio clipping (true peak) | Video and audio | Off |
 | Image SSIM | Images | On, 0.95 |
@@ -142,11 +143,11 @@ the selected media type:
 Enabled measurement gates fail closed. If Optimisarr cannot measure an enabled
 VMAF, loudness, true-peak, SSIM, or metadata gate, the job fails instead of
 becoming replaceable. VMAF is skipped for remux-only work because those jobs copy
-the encoded video frames unchanged. The perceptual-quality (VMAF) gate is off by default because
-full-file, every-frame scoring decodes both files, roughly doubles verification time, and can
-dominate a run on modest hardware. Each library configuration page can turn it on and prefill all
-three floors from named tiers (Space-saver through Archival); the sampling controls below reduce
-its cost. While the gate is off, the structural, duration, and size gates plus quarantine rollback
+the encoded video frames unchanged. New video re-encode libraries enable the Visually lossless VMAF
+tier and score three representative windows by default. This still adds bounded encode-and-score
+work and can dominate a run on modest hardware; choose Fixed and turn the gate off when that cost is
+not appropriate. Each library configuration page offers named tiers (Space-saver through Archival)
+and custom floors. While the gate is off, the structural, duration, and size gates plus quarantine rollback
 still guard every replacement. Existing installations copy their former global verification values
 to every library during migration, so updating does not silently weaken or strengthen an existing
 policy. When enabled, **Score three representative samples** measures deterministic 40-second

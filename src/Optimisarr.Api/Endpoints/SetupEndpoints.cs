@@ -2,6 +2,7 @@ using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Replacement;
 using Optimisarr.Api.Setup;
+using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
 using Optimisarr.Data;
@@ -254,16 +255,21 @@ internal static class SetupEndpoints
         .WithName("RestartSetup");
     }
 
-    private static void ApplyVmafRecommendation(Optimisarr.Data.Library library, SetupVmafTier tier)
+    internal static void ApplyVmafRecommendation(Optimisarr.Data.Library library, SetupVmafTier tier)
     {
         library.VmafQualityGateEnabled = tier == SetupVmafTier.Balanced;
         if (tier == SetupVmafTier.Balanced)
         {
+            library.VideoQualityStrategy = VideoQualityStrategy.AdaptiveVmaf;
             library.MinVmafHarmonicMean = 85;
             library.MinVmafMin = 70;
             library.MinVmafCatastrophicMin = 40;
             library.ClipVmafEnabled = true;
             library.VmafFrameSubsample = 1;
+        }
+        else
+        {
+            library.VideoQualityStrategy = VideoQualityStrategy.Fixed;
         }
     }
 }

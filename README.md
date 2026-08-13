@@ -204,13 +204,14 @@ the **GPU** or **CPU**. Perceptual quality measurement uses a separate, pinned s
 with `libvmaf`; the Tools page reports that optional capability independently. An optional
 `OPTIMISARR_FFMPEG_VMAF_CUDA` binary enables NVIDIA `libvmaf_cuda` when the build and runtime GPU
 support it; QSV/VA-API can offload SDR decoding while scoring remains on the CPU, and every hardware
-failure retries in software. VMAF verification is off by default for video re-encodes and skipped
-for remuxes; enable it per library under **Libraries → Configure** when the safeguard is worth the cost.
-The same editor presents two mutually exclusive video-quality paths: the default **Fixed library
-quality**, or experimental **Adaptive per-title VMAF**, which tests up to four encoder values across
+failure retries in software. New video re-encode libraries enable VMAF with the Visually lossless
+target by default; remux and non-video libraries skip it, and existing libraries keep their saved policy.
+The same editor presents two mutually exclusive video-quality paths: the default **Adaptive per-title
+VMAF**, or **Fixed library quality**. Adaptive mode tests up to four encoder values across
 bounded early/middle/late video-only samples before the full encode, then chooses the smallest
 measured passing candidate. Adaptive preparation falls back to Fixed when evidence is unavailable
-or contradictory and never replaces final verification.
+or contradictory and never replaces final verification. Fixed remains a one-click opt-out when the
+extra measurement cost is not appropriate.
 Model choice and measurement preparation are automatic: HDTV/4K selection, reference-resolution
 bicubic scaling, source-cadence frame alignment, timestamp/timebase and colour-range alignment, and like-for-like HDR→SDR reference
 tone-mapping require no libvmaf expertise. Optional early/middle/late sample scoring and 1–10 frame

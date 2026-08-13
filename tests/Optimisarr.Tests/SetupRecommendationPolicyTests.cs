@@ -1,6 +1,8 @@
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
 using Optimisarr.Core.Tools;
+using Optimisarr.Api.Endpoints;
+using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
 
@@ -63,5 +65,37 @@ public sealed class SetupRecommendationPolicyTests
         Assert.Equal(EncoderMode.Cpu, result.EncoderMode);
         Assert.False(result.HardwareDecode);
         Assert.Equal(SetupVmafTier.Off, result.VmafTier);
+    }
+}
+
+public sealed class SetupVmafApplicationTests
+{
+    [Fact]
+    public void Balanced_recommendation_keeps_the_adaptive_path_with_a_concrete_target()
+    {
+        var library = new Library();
+
+        SetupEndpoints.ApplyVmafRecommendation(library, SetupVmafTier.Balanced);
+
+        Assert.Equal(VideoQualityStrategy.AdaptiveVmaf, library.VideoQualityStrategy);
+        Assert.True(library.VmafQualityGateEnabled);
+        Assert.Equal(85, library.MinVmafHarmonicMean);
+        Assert.Equal(70, library.MinVmafMin);
+        Assert.Equal(40, library.MinVmafCatastrophicMin);
+    }
+
+    [Fact]
+    public void Off_recommendation_moves_the_library_to_the_valid_fixed_path()
+    {
+        var library = new Library
+        {
+            VideoQualityStrategy = VideoQualityStrategy.AdaptiveVmaf,
+            VmafQualityGateEnabled = true
+        };
+
+        SetupEndpoints.ApplyVmafRecommendation(library, SetupVmafTier.Off);
+
+        Assert.Equal(VideoQualityStrategy.Fixed, library.VideoQualityStrategy);
+        Assert.False(library.VmafQualityGateEnabled);
     }
 }

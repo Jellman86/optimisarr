@@ -59,8 +59,8 @@ sheet before retrying:
   long-GOP pre-roll.
 - **Size reduction** failure means the output was not smaller than the original.
   Either leave the file alone or change the library rules deliberately.
-- **VMAF** failures come from the opt-in video re-encode quality gate (off by default; enabled
-  on the library configuration page); image **SSIM/metadata** failures come from the default-on
+- **VMAF** failures come from the video re-encode quality gate (enabled at the Visually lossless tier
+  for new video re-encode libraries and configurable on the library page); image **SSIM/metadata** failures come from the default-on
   image gates. When a gate is enabled, a missing measurement fails closed, but an unmeasured VMAF
   result does not trigger a higher-quality re-encode or immediate automatic exclusion.
 - **Source video timeline** means the original's primary audio materially outlasts its picture

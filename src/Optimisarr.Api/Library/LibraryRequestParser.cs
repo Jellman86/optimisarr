@@ -101,8 +101,16 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        var videoQualityStrategy = VideoQualityStrategy.Fixed;
-        if (!string.IsNullOrWhiteSpace(request.VideoQualityStrategy)
+        var profileReencodesVideo = RuleProfileDefaults.For(ruleProfile).TargetVideoCodec is not null;
+        var requestReencodesVideo = !string.IsNullOrWhiteSpace(request.TargetVideoCodec) || profileReencodesVideo;
+        var supportsAdaptiveVmaf = mediaType is not (MediaType.Music or MediaType.Photo) && requestReencodesVideo;
+        var qualityStrategyOmitted = string.IsNullOrWhiteSpace(request.VideoQualityStrategy);
+        var videoQualityStrategy = qualityStrategyOmitted
+            && supportsAdaptiveVmaf
+            && request.VmafQualityGateEnabled is not false
+            ? VideoQualityStrategy.AdaptiveVmaf
+            : VideoQualityStrategy.Fixed;
+        if (!qualityStrategyOmitted
             && (!Enum.TryParse(request.VideoQualityStrategy, ignoreCase: true, out videoQualityStrategy)
                 || !Enum.IsDefined(videoQualityStrategy)))
         {
@@ -118,16 +126,29 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        var minVmafHarmonicMean = request.MinVmafHarmonicMean;
+        var minVmafMin = request.MinVmafMin;
+        var vmafQualityGateEnabled = request.VmafQualityGateEnabled;
+        var minVmafCatastrophicMin = request.MinVmafCatastrophicMin;
+        var clipVmafEnabled = request.ClipVmafEnabled;
+        var vmafFrameSubsample = request.VmafFrameSubsample;
         if (videoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
         {
-            var profileReencodesVideo = RuleProfileDefaults.For(ruleProfile).TargetVideoCodec is not null;
-            var requestReencodesVideo = !string.IsNullOrWhiteSpace(request.TargetVideoCodec) || profileReencodesVideo;
-            if (mediaType is MediaType.Music or MediaType.Photo || !requestReencodesVideo)
+            if (!supportsAdaptiveVmaf)
             {
                 error = "Adaptive VMAF quality applies only to libraries that re-encode video.";
                 return false;
             }
-            if (request.VmafQualityGateEnabled != true)
+            if (qualityStrategyOmitted)
+            {
+                vmafQualityGateEnabled = true;
+                minVmafHarmonicMean ??= VerificationPolicy.Default.MinimumVmafHarmonicMean;
+                minVmafMin ??= VerificationPolicy.Default.MinimumVmafMin;
+                minVmafCatastrophicMin ??= VerificationPolicy.Default.MinimumVmafCatastrophicMin;
+                clipVmafEnabled ??= true;
+                vmafFrameSubsample ??= VerificationPolicy.Default.VmafFrameSubsample;
+            }
+            else if (vmafQualityGateEnabled != true)
             {
                 error = "Adaptive VMAF quality requires a per-library VMAF target.";
                 return false;
@@ -175,15 +196,15 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        if (request.MinVmafHarmonicMean is < 0 or > 100
-            || request.MinVmafMin is < 0 or > 100
-            || request.MinVmafCatastrophicMin is < 0 or > 100)
+        if (minVmafHarmonicMean is < 0 or > 100
+            || minVmafMin is < 0 or > 100
+            || minVmafCatastrophicMin is < 0 or > 100)
         {
             error = "VMAF overrides must be between 0 and 100.";
             return false;
         }
 
-        if (request.VmafFrameSubsample is < 1 or > QualityScoreCommandBuilder.MaximumFrameSubsample)
+        if (vmafFrameSubsample is < 1 or > QualityScoreCommandBuilder.MaximumFrameSubsample)
         {
             error = $"VMAF frame sampling must be between 1 and {QualityScoreCommandBuilder.MaximumFrameSubsample}.";
             return false;
@@ -213,12 +234,12 @@ internal static class LibraryRequestParser
             return false;
         }
 
-        if ((request.MinVmafMin is { } fifth && request.MinVmafHarmonicMean is { } harmonic && fifth > harmonic)
-            || (request.MinVmafCatastrophicMin is { } catastrophic
-                && request.MinVmafMin is { } fifthFloor
+        if ((minVmafMin is { } fifth && minVmafHarmonicMean is { } harmonic && fifth > harmonic)
+            || (minVmafCatastrophicMin is { } catastrophic
+                && minVmafMin is { } fifthFloor
                 && catastrophic > fifthFloor)
-            || (request.MinVmafCatastrophicMin is { } catastrophicFloor
-                && request.MinVmafHarmonicMean is { } harmonicFloor
+            || (minVmafCatastrophicMin is { } catastrophicFloor
+                && minVmafHarmonicMean is { } harmonicFloor
                 && catastrophicFloor > harmonicFloor))
         {
             error = "VMAF floors must be ordered: catastrophic frame ≤ fifth percentile ≤ harmonic mean.";
@@ -365,12 +386,12 @@ internal static class LibraryRequestParser
             moveOnComplete,
             targetFolder,
             request.MoveOverwrite ?? false,
-            request.MinVmafHarmonicMean,
-            request.MinVmafMin,
-            request.VmafQualityGateEnabled,
-            request.MinVmafCatastrophicMin,
-            request.ClipVmafEnabled,
-            request.VmafFrameSubsample,
+            minVmafHarmonicMean,
+            minVmafMin,
+            vmafQualityGateEnabled,
+            minVmafCatastrophicMin,
+            clipVmafEnabled,
+            vmafFrameSubsample,
             request.DurationTolerancePercent ?? VerificationPolicy.Default.DurationTolerancePercent,
             request.RequireAudioRetained ?? VerificationPolicy.Default.RequireAudioRetained,
             request.RequireSubtitlesRetained ?? VerificationPolicy.Default.RequireSubtitlesRetained,

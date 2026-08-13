@@ -184,6 +184,7 @@ public sealed class ReplacementServiceTests : IDisposable
         var result = await ReplaceAsync(jobId);
 
         Assert.Equal(ReplacementResultKind.Invalid, result.Kind);
+        Assert.Contains("has not passed verification", result.Message);
         Assert.True(File.Exists(originalPath));         // nothing touched
         Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
         Assert.Empty(new OptimisarrDbContext(_options).Replacements);
@@ -471,6 +472,41 @@ public sealed class ReplacementServiceTests : IDisposable
 
         Assert.Equal(ReplacementResultKind.Success, result.Kind);
         Assert.True(coordinator.TryBegin(jobId));   // the claim was freed for a later cycle
+    }
+
+    [Fact]
+    public async Task Replace_is_idempotent_after_another_caller_completed_the_same_job()
+    {
+        var (originalPath, outputPath) = WriteFiles(
+            "Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+
+        var first = await ReplaceAsync(jobId);
+        var repeated = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.AlreadyCompleted, repeated.Kind);
+        Assert.Equal(first.Replacement!.Id, repeated.Replacement!.Id);
+        Assert.Equal("NEW", File.ReadAllText(first.Replacement.FinalPath));
+        Assert.Equal("ORIGINAL", File.ReadAllText(first.Replacement.QuarantinePath));
+        Assert.Single(new OptimisarrDbContext(_options).Replacements);
+    }
+
+    [Fact]
+    public async Task Replace_does_not_treat_a_rolled_back_replacement_as_completed()
+    {
+        var (originalPath, outputPath) = WriteFiles(
+            "Movie.avi", "Movie.mkv", "ORIGINAL", "NEW");
+        var jobId = await SeedReadyJobAsync(originalPath, outputPath, verificationPassed: true);
+        var replaced = await ReplaceAsync(jobId);
+        await RollbackAsync(replaced.Replacement!.Id);
+
+        var repeated = await ReplaceAsync(jobId);
+
+        Assert.Equal(ReplacementResultKind.Invalid, repeated.Kind);
+        Assert.Contains("only a ReadyToReplace job", repeated.Message);
+        Assert.Equal("ORIGINAL", File.ReadAllText(originalPath));
+        Assert.Equal(ReplacementStatus.RolledBack,
+            (await new OptimisarrDbContext(_options).Replacements.SingleAsync()).Status);
     }
 
     [Fact]

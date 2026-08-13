@@ -425,6 +425,10 @@
     if (!isVideoType(type) && (form.ruleProfile === 'TrackCleanup' || form.ruleProfile === 'RemuxCleanup')) {
       form.ruleProfile = 'ConservativeHevc'
     }
+    if (!isVideoType(type)) {
+      setVideoQualityStrategy('Fixed')
+      setVmafMode('off')
+    }
   }
 
   // Advanced controls are scoped to the library's media type: video knobs for Film/TV, audio for
@@ -520,6 +524,10 @@
         : encodeProfiles.includes(form.ruleProfile)
           ? form.ruleProfile
           : 'ConservativeHevc'
+    if (mode !== 'encode') {
+      setVideoQualityStrategy('Fixed')
+      setVmafMode('off')
+    }
   }
 
   // The slider only picks a baseline profile; an explicit codec/container override in Advanced
@@ -1357,37 +1365,9 @@
           {i18n.m.libraries.quality_strategy_intro}
         </p>
 
-        <div class="mt-3 grid max-w-4xl gap-3 lg:grid-cols-2">
+        <div class="mt-3 grid w-full gap-3 md:grid-cols-2" data-testid="video-quality-strategies">
           <label
-            class="relative min-h-44 cursor-pointer rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
-          >
-            <div class="flex items-start gap-3">
-              <input
-                type="radio"
-                name="video-quality-strategy"
-                value="Fixed"
-                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
-                checked={form.videoQualityStrategy === 'Fixed'}
-                onchange={() => setVideoQualityStrategy('Fixed')}
-              />
-              <div>
-                <span class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.libraries.quality_strategy_fixed}</span>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                  {i18n.m.libraries.quality_strategy_fixed_desc}
-                </p>
-              </div>
-            </div>
-            <div class="mt-4 flex flex-wrap items-center gap-1.5 pl-8 text-xs font-medium text-slate-600 dark:text-slate-300">
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_selected_quality}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_full_encode}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
-            </div>
-          </label>
-
-          <label
-            class="relative min-h-44 cursor-pointer rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+            class="relative flex min-h-44 cursor-pointer flex-col rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
           >
             <div class="flex items-start gap-3">
               <input
@@ -1408,7 +1388,7 @@
                 </p>
               </div>
             </div>
-            <div class="mt-4 flex flex-wrap items-center gap-1.5 pl-8 text-xs font-medium text-slate-600 dark:text-slate-300">
+            <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
               <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_sample}</span>
               <span aria-hidden="true" class="text-slate-400">→</span>
               <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_choose_quality}</span>
@@ -1418,16 +1398,44 @@
               <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
             </div>
           </label>
+
+          <label
+            class="relative flex min-h-44 cursor-pointer flex-col rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+          >
+            <div class="flex items-start gap-3">
+              <input
+                type="radio"
+                name="video-quality-strategy"
+                value="Fixed"
+                class="mt-0.5 h-5 w-5 flex-shrink-0 accent-cyan-600"
+                checked={form.videoQualityStrategy === 'Fixed'}
+                onchange={() => setVideoQualityStrategy('Fixed')}
+              />
+              <div>
+                <span class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.libraries.quality_strategy_fixed}</span>
+                <p class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {i18n.m.libraries.quality_strategy_fixed_desc}
+                </p>
+              </div>
+            </div>
+            <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_selected_quality}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_full_encode}</span>
+              <span aria-hidden="true" class="text-slate-400">→</span>
+              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
+            </div>
+          </label>
         </div>
 
         {#if form.videoQualityStrategy === 'AdaptiveVmaf'}
-          <p class="mt-3 max-w-4xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+          <p class="mt-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
             {i18n.m.libraries.quality_strategy_adaptive_cost}
           </p>
         {/if}
       </fieldset>
 
-      <div class="max-w-3xl">
+      <div class="w-full">
         <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
           <label class="label" for="lib-vmaf-policy">
             {i18n.m.settings.vmaf_label}

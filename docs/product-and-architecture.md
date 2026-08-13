@@ -161,10 +161,11 @@ Verification should use:
 - Decode health check with FFmpeg using `-v error -f null -`.
 - Duration tolerance checks.
 - Video/audio/subtitle stream policy checks.
-- Opt-in VMAF for video re-encodes (off by default and configured per library). A library may use
-  its fixed quality directly or explicitly opt into a bounded per-title search across deterministic
+- Per-library VMAF for video re-encodes. New video re-encode libraries start with a Visually lossless
+  target and a bounded per-title search across deterministic
   early/middle/late samples; the search falls back on missing or non-monotonic evidence and never
-  bypasses final verification. Still-image re-encodes use default-on SSIM instead.
+  bypasses final verification. Fixed quality remains available, existing libraries retain their saved
+  policy, and remux/non-video paths skip VMAF. Still-image re-encodes use default-on SSIM instead.
 
 ### Container shape
 

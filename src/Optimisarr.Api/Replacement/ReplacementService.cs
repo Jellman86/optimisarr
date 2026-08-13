@@ -11,6 +11,7 @@ namespace Optimisarr.Api.Replacement;
 public enum ReplacementResultKind
 {
     Success,
+    AlreadyCompleted,
     NotFound,
     Invalid,
     Failed
@@ -27,6 +28,9 @@ public sealed record ReplacementActionResult(
 {
     public static ReplacementActionResult Ok(ReplacementEntity replacement) =>
         new(ReplacementResultKind.Success, null, replacement);
+
+    public static ReplacementActionResult AlreadyCompleted(ReplacementEntity replacement) =>
+        new(ReplacementResultKind.AlreadyCompleted, null, replacement);
 
     public static ReplacementActionResult NotFound(string message) =>
         new(ReplacementResultKind.NotFound, message, null);
@@ -148,7 +152,7 @@ public sealed class ReplacementService
                 continue;
             }
 
-            if (result.Kind == ReplacementResultKind.Success)
+            if (result.Kind is ReplacementResultKind.Success or ReplacementResultKind.AlreadyCompleted)
             {
                 replaced++;
             }
@@ -196,10 +200,33 @@ public sealed class ReplacementService
             return ReplacementActionResult.NotFound($"No job with id {jobId}.");
         }
 
-        if (job.Status != JobStatus.ReadyToReplace || job.VerificationPassed != true)
+        // A post-verify replacement, the reconciliation sweep, and a manual request can all select
+        // the same ready job before one of them acquires the per-job claim. If the winner has already
+        // committed the replacement, replaying the request is a successful no-op rather than an
+        // invalid operation. A rolled-back/pending record is not complete and remains invalid.
+        if (job.Status == JobStatus.Completed && job.VerificationPassed == true)
+        {
+            var existing = await _db.Replacements
+                .AsNoTracking()
+                .Where(replacement => replacement.JobId == jobId)
+                .OrderByDescending(replacement => replacement.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (existing?.Status is ReplacementStatus.Replaced or ReplacementStatus.Purged)
+            {
+                return ReplacementActionResult.AlreadyCompleted(existing);
+            }
+        }
+
+        if (job.Status != JobStatus.ReadyToReplace)
         {
             return ReplacementActionResult.Invalid(
-                $"Job {jobId} is {job.Status} and has not passed verification; it cannot replace the original.");
+                $"Job {jobId} is {job.Status}; only a ReadyToReplace job can replace the original.");
+        }
+
+        if (job.VerificationPassed != true)
+        {
+            return ReplacementActionResult.Invalid(
+                $"Job {jobId} has not passed verification; it cannot replace the original.");
         }
 
         if (job.MediaFile is not { } media)

@@ -159,19 +159,41 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
-    public void Cadence_alignment_rebases_each_decoded_timeline_before_fps_rounding()
+    public void Sampled_measurement_preserves_decoder_seek_offsets_until_after_cadence_alignment()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mp4", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 314, ReferenceStartSeconds: 314, MeasureDurationSeconds: 40,
+                ReferenceFrameRate: 480510000d / 20041271d),
+            threads: 4);
+
+        // Accurate input seeking can retain the first source/output pictures at different offsets
+        // from the common pre-roll target. Those offsets identify the same presentation instant and
+        // must survive until fps has put both streams on one cadence; independently rebasing first
+        // compares unrelated pictures when the two encodes have different keyframe layouts.
+        const string alignedTimeline =
+            "settb=AVTB,fps=fps=23.976024275107104:start_time=0,trim=start=5:duration=40," +
+            "settb=AVTB,setpts=PTS-STARTPTS";
+        Assert.Equal(2, command.FilterGraph.Split(alignedTimeline).Length - 1);
+        Assert.DoesNotContain(
+            "settb=AVTB,setpts=PTS-STARTPTS,fps=fps=23.976024275107104",
+            command.FilterGraph);
+    }
+
+    [Fact]
+    public void Full_file_cadence_alignment_rebases_each_container_origin_before_fps_rounding()
     {
         var command = QualityScoreCommandBuilder.Build(
             "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
             new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                ReferenceStartSeconds: 39,
                 ReferenceFrameRate: 25),
             threads: 4);
 
-        // MP4 and Matroska may expose the same first picture at different non-zero PTS values.
-        // fps(start_time=0) pads or trims from those PTS values, so rebase both decoded streams
-        // first or the scorer can compare adjacent frames even when the clips are correctly cut.
+        // Without a bounded seek, MP4 and Matroska may expose the same first picture at different
+        // non-zero PTS values. Rebase those unrelated container origins before cadence rounding.
         const string orderedTimeline =
             "settb=AVTB,setpts=PTS-STARTPTS,fps=fps=25:start_time=0";
         Assert.Equal(2, command.FilterGraph.Split(orderedTimeline).Length - 1);
@@ -204,6 +226,8 @@ public sealed class QualityScoreCommandBuilderTests
 
         Assert.DoesNotContain("-ss", command.Arguments);
         Assert.Equal(2, command.FilterGraph.Split("trim=start=3:duration=40").Length - 1);
+        Assert.Equal(2, command.FilterGraph.Split(
+            "settb=AVTB,setpts=PTS-STARTPTS,trim=start=3:duration=40").Length - 1);
     }
 
     [Fact]
@@ -237,7 +261,8 @@ public sealed class QualityScoreCommandBuilderTests
             "/work/preview.mkv", "/data/original.mkv", "/tmp/vmaf.json",
             new QualityMeasurementContext(
                 1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
-                ReferenceStartSeconds: 1770),
+                ReferenceStartSeconds: 1770,
+                ReferenceFrameRate: 24000d / 1001d),
             threads: 2);
 
         var firstInput = IndexOf(command.Arguments, "-i", occurrence: 1);
@@ -248,6 +273,12 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Equal("1770", command.Arguments[referenceSeek + 1]);
         Assert.True(referenceSeek < secondInput);
         Assert.Equal("/data/original.mkv", command.Arguments[secondInput + 1]);
+        Assert.Contains(
+            "[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=fps=23.976023976023978:start_time=0",
+            command.FilterGraph);
+        Assert.Contains(
+            "[1:v]settb=AVTB,fps=fps=23.976023976023978:start_time=0",
+            command.FilterGraph);
     }
 
     [Fact]

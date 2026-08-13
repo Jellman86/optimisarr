@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.2.11 — 2026-08-13
+
+### Fixed
+
+- **The video quality strategy now uses the full library editor width and leads with Adaptive
+  per-title VMAF.** Adaptive and Fixed choices share aligned card structure at desktop widths,
+  while retaining a clear stacked layout on smaller screens.
+- **Frontend build dependencies no longer resolve known PostCSS and nanoid advisories.** The locked
+  Vite toolchain now uses PostCSS 8.5.26 and nanoid 3.3.18; neither package is included in the final
+  runtime layer, and both development and production dependency audits now report zero findings.
+- **Sampled VMAF now preserves the real presentation offset produced by accurate input seeks.**
+  Source and output GOPs can retain their first decoded picture at different offsets from the same
+  pre-roll target; Optimisarr now keeps those offsets through cadence alignment instead of
+  independently rebasing the streams and comparing unrelated frames. Full-file comparisons retain
+  their container-origin normalisation. This prevents false zero-score frames and unnecessary
+  quality retries while continuing to fail genuinely poor outputs closed.
+- **Replacement requests are now idempotent after a concurrent caller has already completed the
+  same verified job.** The API returns the existing rollback record without touching either file,
+  and automatic reconciliation treats that outcome as an expected no-op instead of incorrectly
+  warning that the completed job was left ready to replace.
+
+### Changed
+
+- **Frontend and CI dependencies now use current compatible maintenance releases.** The SignalR
+  client, Playwright, Svelte tooling, Vite, Node.js types, and hardened GitHub Actions runner have
+  been refreshed within their existing major versions. This requires no configuration or database
+  migration.
+- **New video re-encode libraries now use Adaptive per-title VMAF by default.** They start with the
+  Visually lossless VMAF target, three representative scoring windows, and every-frame sampling;
+  Optimisarr measures bounded scenes before the full encode and selects the smallest proved passing
+  quality. Fixed library quality remains available, non-video and remux-only libraries stay on the
+  fixed path, and existing persisted libraries and legacy configuration imports keep their saved
+  strategy. The first-run review now reports the libraries' actual VMAF policy, and an explicitly
+  applied VMAF recommendation keeps the strategy and gate in a valid matching state. The Fixed-path
+  description now presents it as the direct alternative instead of contradicting the new default.
+
 ## 0.2.10 — 2026-07-29
 
 ### Fixed
