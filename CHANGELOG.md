@@ -4,13 +4,14 @@
 
 ### Added
 
-- **Remote transcoding sidecars can now be paired with a PIN.** Issue a code in Optimisarr, then
-  type it into a sidecar along with this server's URL. The code lasts five minutes, works once, and
-  is destroyed after five wrong entries, so a code short enough to retype stays safe. Paired workers
-  can be listed and revoked; revoking ends a worker's access immediately and keeps the record.
+- **Remote transcoding sidecars can now be paired with a PIN.** Settings gains a **Workers** tab.
+  Press Pair a sidecar, then type the code and the server address it shows into your sidecar app.
+  The code lasts five minutes, works once, and is destroyed after five wrong entries, so a code
+  short enough to retype stays safe. Paired workers are listed with their platform, encoders, and
+  status, and can be revoked; revoking ends a worker's access immediately and keeps the record.
   Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file — a worker
-  never can. **No work is sent to a sidecar yet**, so pairing has no effect on your library today.
-  There is no interface for this yet either; it is API-only while the feature is built.
+  never can. **No work is sent to a sidecar yet**, so pairing has no effect on your library today;
+  it is there so a connection can be set up and tested while the rest is built.
 
 ### Fixed
 

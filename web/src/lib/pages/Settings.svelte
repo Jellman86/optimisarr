@@ -27,16 +27,18 @@
   import Banner from '../components/Banner.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
+  import WorkersPanel from '../components/WorkersPanel.svelte'
 
   // Settings is split into tabs so each concern is found quickly and Tools lives here
   // rather than in its own sidebar entry. The General tab holds the core settings the
   // single "Save settings" button persists together; the rest manage their own records.
-  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'backup'
+  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'workers' | 'backup'
   let tabs: { key: TabKey; label: string }[] = $derived([
     { key: 'general', label: i18n.m.settings.tab_general },
     { key: 'connections', label: i18n.m.settings.tab_connections },
     { key: 'notifications', label: i18n.m.settings.tab_notifications },
     { key: 'tools', label: i18n.m.settings.tab_tools },
+    { key: 'workers', label: i18n.m.settings.tab_workers },
     { key: 'backup', label: i18n.m.settings.tab_backup },
   ])
   // A visit to the old /tools route lands on Settings with the Tools tab open.
@@ -1137,6 +1139,17 @@
       class="min-w-0"
     >
       <ToolsPanel />
+    </div>
+  {/if}
+
+  {#if activeTab === 'workers'}
+    <div
+      id="settings-panel-workers"
+      role="tabpanel"
+      aria-labelledby="settings-tab-workers"
+      class="min-w-0"
+    >
+      <WorkersPanel />
     </div>
   {/if}
 

@@ -55,13 +55,14 @@ internal static class WorkerEndpoints
         .WithName("IssueWorkerPairingCode")
         .Produces<PairingCodeDto>();
 
-        // The PIN currently on screen, so a reloaded UI can resume its countdown. 404 once the code
-        // is spent, burned, or expired — there is then nothing an operator could still type.
+        // The PIN currently on screen, so a reloaded UI can resume its countdown. Having no code
+        // live is the ordinary resting state rather than a failure, so it answers 204 rather than
+        // 404 — a caller should not have to treat "nothing to show" as an error.
         app.MapGet("/api/workers/pairing-code", (WorkerPairingService pairing) =>
         {
             var code = pairing.Active(DateTimeOffset.UtcNow);
             return code is null
-                ? ApiErrors.NotFound("worker.pairingCode.none", "No pairing code is currently active.")
+                ? Results.NoContent()
                 : Results.Ok(new PairingCodeDto(
                     code.Code, code.ExpiresUtc, PairingCode.MaxAttempts - code.FailedAttempts));
         })
