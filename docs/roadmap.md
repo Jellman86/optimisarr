@@ -467,12 +467,22 @@ the replacement workflow is trustworthy.
      evidence, and result acknowledgement. The main app owns job state, scheduling, rules, and every
      destructive transition. Protocol versions and worker capabilities must be negotiated so an
      upgrade cannot silently schedule a job onto an incompatible sidecar.
-   - **Secure pairing and revocation.** Register a sidecar through a short-lived, single-use code
-     displayed by the main app, then issue it a unique revocable credential. Bind every assignment
-     and result to the registered worker and job lease; redact credentials from diagnostics and
-     logs. Document TLS expectations, certificate trust, credential rotation, and the difference
-     between a private LAN and an authenticated secure connection rather than treating LAN access
-     as authentication.
+   - **Secure pairing and revocation: started.** Register a sidecar through a short-lived,
+     single-use code displayed by the main app, then issue it a unique revocable credential. Bind
+     every assignment and result to the registered worker and job lease; redact credentials from
+     diagnostics and logs. Document TLS expectations, certificate trust, credential rotation, and
+     the difference between a private LAN and an authenticated secure connection rather than
+     treating LAN access as authentication.
+     **Landed so far:** the pairing PIN and credential primitives as pure
+     `Optimisarr.Core.Workers` logic. The operator reads an eight-digit PIN from Optimisarr and
+     types it into the sidecar with this server's URL; the PIN lives five minutes, redeems once,
+     and is destroyed after five wrong guesses rather than throttled, so a typed-length code stays
+     safe on its attempt budget rather than its length. Credentials are stored only as SHA-256
+     fingerprints and compared in constant time, which makes revocation total — discarding the
+     fingerprint ends the worker's access. Nothing is wired to HTTP, persistence, or the UI yet, so
+     no machine can actually pair. **Still to build:** the pair/revoke endpoints and worker table,
+     the UI panel that displays a live PIN, binding assignments and results to the credential and
+     lease, credential rotation, and the TLS/LAN guidance.
    - **Efficient, integrity-checked media delivery.** Support resumable, bounded, checksummed
      streaming when the sidecar cannot see the library. Also offer an explicit shared-storage path
      mapping for SMB/NFS-mounted media so multi-gigabyte sources need not cross the network twice.

@@ -3,6 +3,29 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Started on dev (2026-08-24) — PIN pairing and worker credentials for remote transcoding.**
+The security primitives behind roadmap item 9's pairing bullet, as pure `Optimisarr.Core.Workers`
+logic with no HTTP, persistence, or UI wiring, so no machine can pair yet. The intended flow is the
+familiar one: Optimisarr displays a PIN, the operator types it into the sidecar along with this
+server's URL, and the sidecar exchanges it for a credential.
+
+The design problem is that a PIN short enough to retype by hand — eight digits — has too little
+entropy to survive sustained guessing on its own. Security therefore rests on three properties
+together rather than on length: the code lives five minutes, redeems exactly once, and is
+**destroyed** after five wrong guesses rather than rate-limited, so the attempt budget is a
+vanishing fraction of the code space and a burned code refuses even the genuine PIN. Malformed
+input spends an attempt too, otherwise probing the format would be cheaper than guessing digits;
+operator spacing is tolerated because people read grouped digits. A dead code (used, expired, or
+burned) reports that without comparing, so nothing can be learned by racing a spent code. A
+regression test asserts the attempt-budget-to-code-space ratio directly, so shortening the PIN or
+raising the cap fails the suite rather than quietly weakening the argument.
+
+Credentials are 32 random bytes, returned to the worker once and stored only as a SHA-256
+fingerprint compared in constant time, matching the existing admin-token approach. A leaked
+database therefore yields no usable credential, and revocation is total: an absent fingerprint
+matches nothing. Endpoints, the worker table, the PIN display, assignment/lease binding, rotation,
+and TLS guidance all remain to build.
+
 **Decision (2026-08-24) — Adaptive per-title VMAF stays the default for new libraries while
 Experimental.** Release 0.2.11 made the adaptive path the default for new video re-encode libraries.
 The prototype-acceptance comparison the roadmap asks for — total work, selected quality, size, VMAF,
