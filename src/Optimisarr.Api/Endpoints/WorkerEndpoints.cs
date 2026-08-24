@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Library;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
@@ -73,8 +74,16 @@ internal static class WorkerEndpoints
     {
         // Issue a PIN for the operator to read out. Replaces any previous one so only the code on
         // screen is live.
-        app.MapPost("/api/workers/pairing-code", (WorkerPairingService pairing) =>
+        app.MapPost("/api/workers/pairing-code", async (
+            WorkerPairingService pairing,
+            SettingsStore settings,
+            CancellationToken cancellationToken) =>
         {
+            if (await RefusedWhenDisabledAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
             var code = pairing.Issue(DateTimeOffset.UtcNow);
             return Results.Ok(new PairingCodeDto(code.Code, code.ExpiresUtc, PairingCode.MaxAttempts));
         })
@@ -106,9 +115,15 @@ internal static class WorkerEndpoints
         app.MapPost("/api/workers/pair", async (
             PairRequest request,
             WorkerPairingService pairing,
+            SettingsStore settings,
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
         {
+            if (await RefusedWhenDisabledAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
             // Authenticate before doing anything else. A wrong or dead code spends an attempt and
             // learns nothing about the server.
             var redemption = pairing.Redeem(request.Code ?? string.Empty, DateTimeOffset.UtcNow);
@@ -174,9 +189,17 @@ internal static class WorkerEndpoints
         app.MapPost("/api/workers/heartbeat", async (
             HeartbeatRequest request,
             HttpRequest http,
+            SettingsStore settings,
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
         {
+            // Refused before the credential is even looked at: turning the feature off must stop
+            // check-ins outright, not merely stop new pairings.
+            if (await RefusedWhenDisabledAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
             var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
             if (worker is null)
             {
@@ -240,6 +263,28 @@ internal static class WorkerEndpoints
             return Results.NoContent();
         })
         .WithName("RevokeWorker");
+    }
+
+    /// <summary>
+    /// Remote workers are opt-in. Everything that pairs a machine or accepts a check-in is refused
+    /// while the feature is off, so the switch is a real boundary rather than a UI preference. The
+    /// list and revoke routes stay open: after switching off, an operator must still be able to see
+    /// what is paired and remove it.
+    /// </summary>
+    private static async Task<IResult?> RefusedWhenDisabledAsync(
+        SettingsStore settings,
+        CancellationToken cancellationToken)
+    {
+        var queue = await settings.GetQueueSettingsAsync(cancellationToken);
+        if (queue.RemoteWorkersEnabled)
+        {
+            return null;
+        }
+
+        return Results.Json(
+            new ApiError("workers.disabled",
+                "Remote workers are turned off. Enable them in Settings to pair a sidecar."),
+            statusCode: StatusCodes.Status403Forbidden);
     }
 
     private static string RedemptionMessage(PairingRedemption redemption) => redemption switch

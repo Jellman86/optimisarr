@@ -84,6 +84,13 @@ public static class SettingKeys
     public const string DryRunMode = "replacement.dryRunMode";
 
     /// <summary>
+    /// Whether optional remote transcoding sidecars may be paired and given work. Off by default:
+    /// one container stays the complete, uncomplicated way to run Optimisarr, and distributed
+    /// transcoding is something an operator opts into deliberately.
+    /// </summary>
+    public const string RemoteWorkersEnabled = "workers.remoteEnabled";
+
+    /// <summary>
     /// How many days quarantined originals and failed work outputs should be retained; 0 means
     /// indefinitely. The persisted key keeps its original name for upgrade and backup compatibility.
     /// </summary>

@@ -12,6 +12,11 @@
   Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file — a worker
   never can. **No work is sent to a sidecar yet**, so pairing has no effect on your library today;
   it is there so a connection can be set up and tested while the rest is built.
+- **Remote workers are off unless you turn them on.** Settings → General has a Remote workers
+  switch, off by default and off on upgrade. While it is off there is no Workers tab and no sidecar
+  can pair or check in, so a normal single-container install is unchanged and never has to think
+  about it. Turning it back off stops check-ins immediately but keeps what is already paired, so
+  nothing is lost and turning it on again restores it.
 - **Paired sidecars now report in, and the Workers list shows whether each one is reachable.** A
   worker checks in every 30 seconds using the credential it was given at pairing, and is shown as
   offline after two minutes of silence rather than on a single missed check-in, so a brief network

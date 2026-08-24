@@ -475,6 +475,8 @@ export const zh: Messages = {
     tab_tools: "工具",
     tab_backup: "备份",
     tab_workers: "工作节点",
+    remote_workers: "远程工作节点",
+    remote_workers_hint: "允许其他机器上的边车应用贡献空闲的编码算力。默认关闭——日常使用一个容器就够了。替换操作仍全部由 Optimisarr 自己完成。",
     name: "姓名",
     type: "类型",
     base_url: "底座 URL",

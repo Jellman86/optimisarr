@@ -12,8 +12,8 @@ namespace Optimisarr.Tests;
 /// test — a unit test can only show that an absent fingerprint fails to match, not that the live
 /// route consults it.
 /// </summary>
+[Collection(TokenedApiCollection.Name)]
 public sealed class WorkerHeartbeatEndpointTests
-    : IClassFixture<AdminTokenAuthEndpointTests.TokenedApi>
 {
     private readonly AdminTokenAuthEndpointTests.TokenedApi _api;
 
@@ -42,6 +42,25 @@ public sealed class WorkerHeartbeatEndpointTests
         maxConcurrency = 2,
     };
 
+
+    /// <summary>
+    /// Sets the opt-in explicitly rather than relying on whatever a previous test left behind, so
+    /// these tests do not depend on execution order.
+    /// </summary>
+    private async Task EnableRemoteWorkers()
+    {
+        var admin = Admin();
+        var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
+        using var doc = JsonDocument.Parse(current.GetRawText());
+        var payload = new Dictionary<string, object?>();
+        foreach (var property in doc.RootElement.EnumerateObject())
+        {
+            payload[property.Name] = JsonSerializer.Deserialize<object?>(property.Value.GetRawText());
+        }
+        payload["remoteWorkersEnabled"] = true;
+        (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
+    }
+
     private static object Beat(long scratch = 1024, int concurrency = 2) => new
     {
         freeScratchBytes = scratch,
@@ -51,6 +70,7 @@ public sealed class WorkerHeartbeatEndpointTests
     [Fact]
     public async Task A_paired_worker_can_check_in_until_it_is_revoked()
     {
+        await EnableRemoteWorkers();
         var admin = Admin();
 
         using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -97,6 +117,7 @@ public sealed class WorkerHeartbeatEndpointTests
     [Fact]
     public async Task Capabilities_cross_the_wire_as_names_not_numbers()
     {
+        await EnableRemoteWorkers();
         // The worker contract is consumed by separately-versioned third-party sidecars, so an
         // enum's meaning must not depend on its ordinal. Renumbering VmafCapability would
         // otherwise silently change what a paired worker is believed to support, and that value
@@ -123,6 +144,7 @@ public sealed class WorkerHeartbeatEndpointTests
     [Fact]
     public async Task Pairing_rejects_an_unknown_capability_name_and_says_what_is_valid()
     {
+        await EnableRemoteWorkers();
         var admin = Admin();
         using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
         var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
@@ -149,6 +171,7 @@ public sealed class WorkerHeartbeatEndpointTests
     [Fact]
     public async Task Heartbeat_rejects_a_missing_or_unknown_credential()
     {
+        await EnableRemoteWorkers();
         using var none = await _api.CreateClient().PostAsJsonAsync("/api/workers/heartbeat", Beat());
         Assert.Equal(HttpStatusCode.Unauthorized, none.StatusCode);
 
@@ -162,6 +185,8 @@ public sealed class WorkerHeartbeatEndpointTests
     [Fact]
     public async Task The_admin_token_does_not_authenticate_a_worker()
     {
+        await EnableRemoteWorkers();
+
         // The two credentials authorise different things. An admin token is not a worker identity,
         // and accepting it here would let anything holding it impersonate a paired machine.
         using var response = await Admin().PostAsJsonAsync("/api/workers/heartbeat", Beat());

@@ -11,6 +11,7 @@ const settings = {
   replacementAllowCrossFilesystem: false,
   dryRunMode: true,
   replacementQuarantineRetentionDays: 14,
+  remoteWorkersEnabled: false,
 }
 
 const tools = [

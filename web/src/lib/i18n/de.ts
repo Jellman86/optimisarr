@@ -506,6 +506,8 @@ export const de: Messages = {
     tab_tools: 'Werkzeuge',
     tab_backup: 'Sicherung',
     tab_workers: 'Worker',
+    remote_workers: 'Remote-Worker',
+    remote_workers_hint: 'Sidecar-Apps auf anderen Rechnern freie Encoding-Kapazität beisteuern lassen. Standardmäßig aus – ein Container genügt für den normalen Betrieb. Optimisarr ersetzt weiterhin selbst.',
     name: 'Name',
     type: 'Typ',
     base_url: 'Basis-URL',

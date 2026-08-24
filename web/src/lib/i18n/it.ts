@@ -497,6 +497,8 @@ quarantine: {
     tab_tools: 'Strumenti',
     tab_backup: 'Backup',
     tab_workers: 'Worker',
+    remote_workers: 'Worker remoti',
+    remote_workers_hint: 'Consenti alle app sidecar su altre macchine di contribuire con capacità di codifica libera. Disattivato per impostazione predefinita: un contenitore basta per l’uso normale. Optimisarr continua a eseguire da sé tutte le sostituzioni.',
     name: 'Nome',
     type: 'Tipo',
     base_url: 'URL base',
