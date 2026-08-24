@@ -29,6 +29,30 @@ test asserts the field is a JSON string rather than a number, so the ordinal for
 unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
 testing; the cost of this change rises steeply once a tray app ships.
 
+**Started on dev (2026-08-24) — taking delivery of a candidate encoded elsewhere.** The tests were
+written before the endpoint and lead with the ways it goes wrong, because the happy path is not what
+loses media: a candidate encoded from a different source, a result arriving after the claim lapsed,
+a truncated upload, a second result for one lease, and a delivery attempted by a worker that never
+held the lease.
+
+The order of the checks is chosen for what each one protects rather than for convenience.
+Authenticate first, so nothing about a lease is revealed to a caller with no claim on it. Then prove
+the claim is still held — which covers the late result and the duplicate delivery in a single check,
+since a completed lease is no longer held. Then prove the candidate is about *this* source, using
+the hash recorded when the source was fetched: a file encoded from different bytes is not evidence
+about this job whatever its quality, and verifying one would mean judging a candidate against the
+wrong original. Only after all of that is anything written to disk.
+
+The upload is streamed and hashed in one pass under a `.partial` name, so a multi-gigabyte candidate
+never sits in memory and a transfer that dies leaves nothing that could be mistaken for a finished
+file. A hash mismatch deletes the staging file rather than keeping it.
+
+An accepted candidate sets `Verifying`, deliberately not `ReadyToReplace`. Nothing has judged it
+yet, and a candidate produced on another machine earns nothing until every local gate has been
+repeated against it. That does mean such a job currently sits in `Verifying` with nothing to advance
+it — a stalled job is the right failure while the verification slice is outstanding, where marking
+it replaceable would not be.
+
 **Started on dev (2026-08-24) — the sidecar can work out what it is actually capable of.** Probing
 mirrors the server's `HardwareCapabilityService` rather than inventing a second approach: parse
 `ffmpeg -encoders` for a cheap first pass, then confirm each hardware encoder with a real throwaway

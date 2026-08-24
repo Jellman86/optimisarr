@@ -1210,6 +1210,35 @@
         ],
         "type": "object"
       },
+      "ResultAcceptedDto": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "candidateSha256": {
+            "type": "string"
+          },
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "jobId",
+          "bytes",
+          "candidateSha256"
+        ],
+        "type": "object"
+      },
       "SaveActivityWatcherRequest": {
         "properties": {
           "apiToken": {
@@ -4731,6 +4760,47 @@
               }
             },
             "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/result": {
+      "post": {
+        "operationId": "DeliverResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultAcceptedDto"
+                }
+              }
+            },
+            "description": "Accepted"
           },
           "401": {
             "content": {

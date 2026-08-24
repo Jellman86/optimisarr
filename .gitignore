@@ -17,3 +17,11 @@ config/
 # Swift Package Manager build output, and the assembled .app bundle
 sidecars/macos/.build/
 sidecars/macos/build/
+
+# The sidecar's bundled ffmpeg and its build tree. Built from pinned source by
+# sidecars/macos/scripts/build-ffmpeg.sh; an 80MB binary does not belong in git.
+sidecars/macos/vendor/
+sidecars/macos/.build-ffmpeg/
+
+# Work output written when tests exercise the queue against a relative work root.
+src/Optimisarr.Api/work/

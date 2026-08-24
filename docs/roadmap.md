@@ -523,8 +523,16 @@ the replacement workflow is trustworthy.
      read anything other than the original already assigned to it. The source is opened shared and
      read-only, and access ends when the lease stops being held. The hash is computed once and kept
      on the job, which is what will later bind a returned candidate to the exact bytes encoded.
-     **Still to build:** the shared-storage path mapping for workers that can already see the
-     library, and returning the candidate.
+     `POST /api/workers/leases/{leaseId}/result` takes the candidate back, streamed and hashed as it
+     arrives under a temporary name so a dead transfer never leaves something resembling a finished
+     file. It is refused unless the worker still holds the lease, the declared source hash matches
+     the one recorded when the source was fetched, and the upload matches the hash the worker
+     declared — which together cover the late result, the duplicate delivery, the candidate encoded
+     from the wrong original, and the truncated upload. An accepted candidate lands in the work
+     directory a local transcode would have used and the job moves to `Verifying`, never to
+     `ReadyToReplace`. **Still to build:** the shared-storage path mapping for workers that can
+     already see the library, resumable upload, and the verification that actually judges a returned
+     candidate.
    - **Capability-aware leases and recovery: started.** Schedule only when OS, architecture, FFmpeg
      build, encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the
      job. Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and
