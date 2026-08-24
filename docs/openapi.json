@@ -794,6 +794,155 @@
         ],
         "type": "object"
       },
+      "PairRequest": {
+        "properties": {
+          "architecture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "freeScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "hardwareDecoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "maxConcurrency": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "operatingSystem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "protocolMaximum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "protocolMinimum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "videoEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "vmaf": {
+            "$ref": "#/components/schemas/VmafCapability"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "operatingSystem",
+          "architecture",
+          "protocolMinimum",
+          "protocolMaximum",
+          "videoEncoders",
+          "hardwareDecoders",
+          "vmaf",
+          "freeScratchBytes",
+          "maxConcurrency"
+        ],
+        "type": "object"
+      },
+      "PairResponse": {
+        "properties": {
+          "credential": {
+            "type": "string"
+          },
+          "protocolVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "workerId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "workerId",
+          "credential",
+          "protocolVersion"
+        ],
+        "type": "object"
+      },
+      "PairingCodeDto": {
+        "properties": {
+          "attemptsRemaining": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "expiresUtc": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expiresUtc",
+          "attemptsRemaining"
+        ],
+        "type": "object"
+      },
       "PlexServersRequest": {
         "properties": {
           "token": {
@@ -1742,6 +1891,103 @@
           "preview",
           "cleanedCount",
           "reclaimedBytes"
+        ],
+        "type": "object"
+      },
+      "VmafCapability": {
+        "type": "integer"
+      },
+      "WorkerDto": {
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "freeScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "hardwareDecoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxConcurrency": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "operatingSystem": {
+            "type": "string"
+          },
+          "pairedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "protocolVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "vmaf": {
+            "$ref": "#/components/schemas/VmafCapability"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "operatingSystem",
+          "architecture",
+          "protocolVersion",
+          "videoEncoders",
+          "hardwareDecoders",
+          "vmaf",
+          "freeScratchBytes",
+          "maxConcurrency",
+          "pairedAt",
+          "lastSeenAt",
+          "revokedAt"
         ],
         "type": "object"
       }
@@ -4188,6 +4434,148 @@
           "System"
         ]
       }
+    },
+    "/api/workers": {
+      "get": {
+        "operationId": "ListWorkers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkerDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/pair": {
+      "post": {
+        "operationId": "PairWorker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/pairing-code": {
+      "delete": {
+        "operationId": "CancelWorkerPairingCode",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
+      "get": {
+        "operationId": "ActiveWorkerPairingCode",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingCodeDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
+      "post": {
+        "operationId": "IssueWorkerPairingCode",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingCodeDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/{id}": {
+      "delete": {
+        "operationId": "RevokeWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
     }
   },
   "tags": [
@@ -4217,6 +4605,9 @@
     },
     {
       "name": "Realtime"
+    },
+    {
+      "name": "Workers"
     }
   ]
 }

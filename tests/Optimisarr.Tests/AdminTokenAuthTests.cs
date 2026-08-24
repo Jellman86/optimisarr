@@ -18,9 +18,23 @@ public sealed class AdminTokenAuthTests
     [InlineData("/api/health")]
     [InlineData("/api/ready")]
     [InlineData("/api/auth/status")]
-    public void Health_readiness_and_auth_status_are_open_paths(string path)
+    // A pairing sidecar has only the PIN, never an admin token, so this route authenticates itself.
+    [InlineData("/api/workers/pair")]
+    public void Health_readiness_auth_status_and_worker_pairing_are_open_paths(string path)
     {
         Assert.True(AdminTokenAuth.IsOpenPath(path));
+    }
+
+    [Theory]
+    // Only the pairing exchange is open. Everything else about workers — issuing a PIN, listing
+    // them, revoking one — stays behind the admin token.
+    [InlineData("/api/workers")]
+    [InlineData("/api/workers/1")]
+    [InlineData("/api/workers/pairing-code")]
+    public void Other_worker_routes_are_not_open(string path)
+    {
+        Assert.False(AdminTokenAuth.IsOpenPath(path));
+        Assert.True(AdminTokenAuth.IsProtectedPath(path));
     }
 
     [Theory]

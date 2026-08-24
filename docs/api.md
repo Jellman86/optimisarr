@@ -517,6 +517,35 @@ Replacement statuses:
 | `RolledBack` | The original was restored and the replacement removed. |
 | `Purged` | The quarantined original was deleted by approval or retention. Rollback is no longer available. |
 
+## Remote Workers
+
+Optional remote transcoding sidecars. Optimisarr stays the control plane and the sole authority over
+destructive transitions: a worker contributes spare capacity and can never replace, quarantine, move,
+or delete an original.
+
+Pairing is PIN-based. The operator issues a code in Optimisarr and types it into the sidecar along
+with this server's URL. The code lives five minutes, redeems once, and is destroyed after five wrong
+guesses rather than throttled, so a code short enough to retype is safe on its attempt budget rather
+than its length.
+
+`POST /api/workers/pair` is the **only** worker route reachable without the admin token — a pairing
+sidecar holds the PIN and nothing else, so that route authenticates itself. It is inert unless an
+operator has just issued a code, and returns nothing without the correct one. Every other worker
+route stays behind the admin token.
+
+The credential is returned exactly once, in the pairing response. Optimisarr stores only its SHA-256
+fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
+outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/workers/pairing-code` | Issue a pairing PIN, replacing any previous one. |
+| `GET` | `/api/workers/pairing-code` | Read the PIN currently on screen. `404` once it is spent, expired, or burned. |
+| `DELETE` | `/api/workers/pairing-code` | Withdraw the active PIN. |
+| `POST` | `/api/workers/pair` | Redeem a PIN and register a sidecar. Open route; the PIN is the credential. Returns the worker credential once. |
+| `GET` | `/api/workers` | List paired workers. Never returns credential fingerprints. |
+| `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
+
 ## Stats
 
 | Method | Endpoint | Purpose |

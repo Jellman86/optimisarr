@@ -42,6 +42,7 @@ var ffprobe = MediaToolCommands.ResolveFfprobe(
 builder.Services.AddSingleton(new TranscodeOptions(transcodeFfmpeg));
 builder.Services.AddSingleton(new HardwareCapabilityService(transcodeFfmpeg));
 builder.Services.AddSingleton<LibraryScanner>();
+builder.Services.AddSingleton<Optimisarr.Api.Workers.WorkerPairingService>();
 var mediaProbe = new MediaProbeService(ffprobe);
 builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
@@ -226,6 +227,8 @@ app.MapMediaAndQueueEndpoints();
 app.MapStatsEndpoints(configDirectory);
 
 app.MapReplacementEndpoints();
+
+app.MapWorkerEndpoints();
 
 app.MapHub<JobsHub>("/hubs/jobs");
 

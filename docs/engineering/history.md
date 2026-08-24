@@ -3,6 +3,31 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Started on dev (2026-08-24) — worker pairing reaches the API.** The PIN primitives below are now
+wired to endpoints and storage, so a sidecar can genuinely pair. `POST /api/workers/pair` redeems a
+code, negotiates the protocol, writes a `Workers` row (migration `AddWorkers`), and returns the
+credential once; issue/read/withdraw, list, and revoke routes sit alongside it.
+
+Two decisions carry the security weight. First, `/api/workers/pair` is the only worker route outside
+the admin token, because a pairing sidecar holds the PIN and nothing else and cannot obtain a token.
+That widening is bounded deliberately: the route is inert unless an operator has just issued a code,
+it authenticates before doing any other work, and it yields nothing without the correct PIN. The
+generated OpenAPI proves the boundary — every other worker operation documents a `401` and this one
+does not — and both the unit and the real-host end-to-end auth tests assert it in each direction.
+
+Second, the active PIN lives in memory and is never persisted. Writing a short-lived secret to the
+config database would give it a durability it should not have and would carry it into backups;
+losing it on restart is correct, because the operator simply asks for another. The service stores
+the code's post-attempt state, which is what makes the cap real — `PairingCode` is immutable, so
+without that every request would restart from zero failed attempts.
+
+Redemption happens before protocol negotiation, so an incompatible sidecar spends the code rather
+than probing versions repeatedly on one PIN. Enum payloads are integers, matching the rest of this
+API rather than introducing a second convention on one endpoint; whether a third-party sidecar
+contract would be better served by string enums is an open question, not an oversight. Credentials
+are returned exactly once and stored only as fingerprints, so revocation clears the fingerprint and
+keeps the row for the audit trail.
+
 **Started on dev (2026-08-24) — PIN pairing and worker credentials for remote transcoding.**
 The security primitives behind roadmap item 9's pairing bullet, as pure `Optimisarr.Core.Workers`
 logic with no HTTP, persistence, or UI wiring, so no machine can pair yet. The intended flow is the

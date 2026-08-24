@@ -13,7 +13,13 @@ public static class AdminTokenAuth
     public static bool IsOpenPath(PathString path) =>
         path.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
         || path.Equals("/api/ready", StringComparison.OrdinalIgnoreCase)
-        || path.Equals("/api/auth/status", StringComparison.OrdinalIgnoreCase);
+        || path.Equals("/api/auth/status", StringComparison.OrdinalIgnoreCase)
+        // A sidecar pairing for the first time holds only the PIN the operator read off this
+        // server — it has no admin token and cannot obtain one, so this route carries its own
+        // authentication instead. The PIN is the credential here: the route is inert unless an
+        // operator has just issued one, it dies after five wrong guesses, and it expires in
+        // minutes. It hands out nothing without the correct code.
+        || path.Equals("/api/workers/pair", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsProtectedPath(PathString path) =>
         path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)

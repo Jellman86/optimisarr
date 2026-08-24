@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- **Remote transcoding sidecars can now be paired with a PIN.** Issue a code in Optimisarr, then
+  type it into a sidecar along with this server's URL. The code lasts five minutes, works once, and
+  is destroyed after five wrong entries, so a code short enough to retype stays safe. Paired workers
+  can be listed and revoked; revoking ends a worker's access immediately and keeps the record.
+  Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file — a worker
+  never can. **No work is sent to a sidecar yet**, so pairing has no effect on your library today.
+  There is no interface for this yet either; it is API-only while the feature is built.
+
 ### Fixed
 
 - **The weekly secret scan now acknowledges three reviewed historical documentation examples.**
