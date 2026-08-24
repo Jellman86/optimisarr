@@ -12,3 +12,4 @@ src/Optimisarr.Api/wwwroot/
 config/
 .env
 *.user
+.DS_Store
