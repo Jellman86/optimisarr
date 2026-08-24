@@ -106,7 +106,7 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             architecture = "x64",
             protocolMinimum = 1,
             protocolMaximum = 1,
-            vmaf = 1, // VmafCapability.Cpu — this API serialises enums as integers
+            vmaf = "Cpu", // a name, not an ordinal — see WorkerEndpoints.PairRequest
             freeScratchBytes = 0L,
             maxConcurrency = 1
         });

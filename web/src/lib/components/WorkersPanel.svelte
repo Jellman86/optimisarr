@@ -95,8 +95,6 @@
     }
   }
 
-  const vmafLabels = ['None', 'CPU', 'CUDA']
-
   function status(worker: Worker): { label: string; classes: string } {
     if (worker.revokedAt) {
       return {
@@ -219,7 +217,7 @@
                   {worker.operatingSystem}
                   {worker.architecture}
                   <span class="block text-xs text-slate-500 dark:text-slate-400">
-                    {t(i18n.m.workers.vmaf, { mode: vmafLabels[worker.vmaf] ?? '—' })}
+                    {t(i18n.m.workers.vmaf, { mode: worker.vmaf })}
                   </span>
                 </td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-300">

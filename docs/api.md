@@ -537,6 +537,13 @@ The credential is returned exactly once, in the pairing response. Optimisarr sto
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
 
+Capabilities are named, not numbered. `vmaf` is `None`, `Cpu`, or `Cuda` (case-insensitive on the
+way in; omitting it means the worker claims no VMAF support). An unrecognised name is rejected with
+`worker.vmaf.invalid` rather than silently treated as `None`, so a typo cannot quietly downgrade a
+capable worker. Names are used because this contract is implemented by separately-versioned
+sidecars: an ordinal would change meaning if the set ever gained a member, and that value decides
+whether a job may be offered to a worker at all.
+
 A worker checks in every 30 seconds and is treated as offline after 2 minutes of silence. Those are
 different numbers on purpose: declaring a worker offline on one missed beat would make the status
 flap on a single dropped packet. The control plane stamps the last-seen time from its own clock, so

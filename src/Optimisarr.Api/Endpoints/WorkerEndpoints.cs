@@ -14,7 +14,7 @@ internal sealed record WorkerDto(
     int ProtocolVersion,
     IReadOnlyList<string> VideoEncoders,
     IReadOnlyList<string> HardwareDecoders,
-    VmafCapability Vmaf,
+    string Vmaf,
     long FreeScratchBytes,
     int MaxConcurrency,
     DateTimeOffset PairedAt,
@@ -25,7 +25,14 @@ internal sealed record WorkerDto(
 /// <summary>The PIN an operator reads off the screen and types into a sidecar.</summary>
 internal sealed record PairingCodeDto(string Code, DateTimeOffset ExpiresUtc, int AttemptsRemaining);
 
-/// <summary>What a sidecar sends to redeem a PIN. Everything except the code is self-reported.</summary>
+/// <summary>
+/// What a sidecar sends to redeem a PIN. Everything except the code is self-reported.
+///
+/// <paramref name="Vmaf"/> is a name rather than a number. This contract is implemented by
+/// separately-versioned third-party sidecars, so an enum's meaning must never depend on its
+/// ordinal: inserting a member would otherwise silently change what an existing worker is believed
+/// to support, and that value gates whether a job may be offered to it.
+/// </summary>
 internal sealed record PairRequest(
     string? Code,
     string? Name,
@@ -35,7 +42,7 @@ internal sealed record PairRequest(
     int ProtocolMaximum,
     IReadOnlyList<string>? VideoEncoders,
     IReadOnlyList<string>? HardwareDecoders,
-    VmafCapability Vmaf,
+    string? Vmaf,
     long FreeScratchBytes,
     int MaxConcurrency);
 
@@ -122,6 +129,14 @@ internal static class WorkerEndpoints
                 return ApiErrors.Conflict("worker.protocol.incompatible", negotiation.Reason!);
             }
 
+            if (!TryParseVmaf(request.Vmaf, out var vmaf))
+            {
+                return ApiErrors.BadRequest("worker.vmaf.invalid",
+                    $"Unknown VMAF capability '{request.Vmaf}'. Valid values: " +
+                    $"{string.Join(", ", Enum.GetNames<VmafCapability>())}.",
+                    new { value = request.Vmaf });
+            }
+
             var name = string.IsNullOrWhiteSpace(request.Name) ? "Unnamed worker" : request.Name.Trim();
             var credential = WorkerCredential.Issue();
 
@@ -133,7 +148,7 @@ internal static class WorkerEndpoints
                 ProtocolVersion = negotiation.AgreedVersion,
                 VideoEncoders = Join(request.VideoEncoders),
                 HardwareDecoders = Join(request.HardwareDecoders),
-                Vmaf = request.Vmaf,
+                Vmaf = vmaf,
                 FreeScratchBytes = Math.Max(0, request.FreeScratchBytes),
                 MaxConcurrency = Math.Max(0, request.MaxConcurrency),
                 CredentialFingerprint = WorkerCredential.Fingerprint(credential),
@@ -244,7 +259,7 @@ internal static class WorkerEndpoints
         worker.ProtocolVersion,
         Split(worker.VideoEncoders),
         Split(worker.HardwareDecoders),
-        worker.Vmaf,
+        worker.Vmaf.ToString(),
         worker.FreeScratchBytes,
         worker.MaxConcurrency,
         worker.PairedAt,
@@ -253,6 +268,23 @@ internal static class WorkerEndpoints
         // Revoked workers are never "online" whatever their last heartbeat said, so the UI cannot
         // show a green light next to a worker that can no longer authenticate.
         worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc));
+
+    /// <summary>
+    /// Accepts a capability name, case-insensitively. An absent value means the worker claims no
+    /// VMAF support, which is a real answer rather than a missing one; anything unrecognised is
+    /// refused so a typo cannot quietly downgrade to None.
+    /// </summary>
+    private static bool TryParseVmaf(string? value, out VmafCapability parsed)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            parsed = VmafCapability.None;
+            return true;
+        }
+
+        return Enum.TryParse(value.Trim(), ignoreCase: true, out parsed)
+            && Enum.IsDefined(parsed);
+    }
 
     private static string Trimmed(string? value, int max)
     {
