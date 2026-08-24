@@ -3,6 +3,32 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Corrected on dev (2026-08-24) — worker capabilities cross the wire as names, not ordinals.** The
+pairing slice exposed `VmafCapability` directly on its DTOs, making it the only enum in the whole
+generated OpenAPI document rendered as `{"type": "integer"}`. That was justified at the time as
+matching the API's convention. It did not: `SaveArrConnectionRequest.Type` and
+`SaveNotificationTargetRequest.Type` are `string?` on the wire and parsed into enums by a
+`Parsed*` record, `JobDto` carries `job.Status.ToString()`, and the calibration report serialises
+through `JsonStringEnumConverter`. Enums already reached the wire as strings everywhere; the worker
+DTOs were the exception, not the rule.
+
+The reason it matters more here than it would elsewhere is that this contract is implemented by
+separately-versioned third-party sidecars. Optimisarr's own web client ships from this repository at
+the same version as the server and cannot disagree about what `2` means; a native tray app can lag
+or lead by months. Inserting a member into `VmafCapability` would silently change what an existing
+paired worker is believed to support — and that value gates whether a job may be offered to it, so a
+quietly wrong capability would arrive through a side door the protocol negotiation was built to
+close.
+
+`PairRequest.Vmaf` is now `string?`, parsed at the boundary with an error naming the valid values,
+following the same shape as the jobs endpoint's `job.status.invalid`. A missing value means the
+worker claims no VMAF support — a real answer — while anything unrecognised is refused, so a typo
+cannot quietly downgrade a capable worker to `None`. `WorkerDto.Vmaf` is the name, which also let
+the web client drop an ordinal-indexed label lookup in favour of the value itself. An end-to-end
+test asserts the field is a JSON string rather than a number, so the ordinal form cannot return
+unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
+testing; the cost of this change rises steeply once a tray app ships.
+
 **Started on dev (2026-08-24) — the lease state machine.** A lease is one worker's exclusive claim
 on one job, and it exists to stop two machines encoding the same original. The instructive part is
 which failure it optimises against: losing a lease merely wastes work, whereas freeing one while its
@@ -70,9 +96,10 @@ the code's post-attempt state, which is what makes the cap real — `PairingCode
 without that every request would restart from zero failed attempts.
 
 Redemption happens before protocol negotiation, so an incompatible sidecar spends the code rather
-than probing versions repeatedly on one PIN. Enum payloads are integers, matching the rest of this
-API rather than introducing a second convention on one endpoint; whether a third-party sidecar
-contract would be better served by string enums is an open question, not an oversight. Credentials
+than probing versions repeatedly on one PIN. Enum payloads were initially integers on the claim that
+this matched the rest of the API — **that was wrong, and is corrected below in the 2026-08-24 entry
+on capability names**; the rest of the API converts enums to strings at the wire boundary and the
+worker DTOs were the only exception. Credentials
 are returned exactly once and stored only as fingerprints, so revocation clears the fingerprint and
 keeps the row for the audit trail.
 

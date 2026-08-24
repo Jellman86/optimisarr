@@ -37,7 +37,7 @@ public sealed class WorkerHeartbeatEndpointTests
         protocolMaximum = 1,
         videoEncoders = new[] { "libx265" },
         hardwareDecoders = Array.Empty<string>(),
-        vmaf = 1,
+        vmaf = "Cpu",
         freeScratchBytes = 50L * 1024 * 1024 * 1024,
         maxConcurrency = 2,
     };
@@ -92,6 +92,58 @@ public sealed class WorkerHeartbeatEndpointTests
         var rowsAgain = await listedAgain.Content.ReadFromJsonAsync<JsonElement>();
         var revokedRow = rowsAgain.EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == workerId);
         Assert.False(revokedRow.GetProperty("online").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Capabilities_cross_the_wire_as_names_not_numbers()
+    {
+        // The worker contract is consumed by separately-versioned third-party sidecars, so an
+        // enum's meaning must not depend on its ordinal. Renumbering VmafCapability would
+        // otherwise silently change what a paired worker is believed to support, and that value
+        // gates whether a job may be offered to it.
+        var admin = Admin();
+
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+
+        using var paired = await _api.CreateClient()
+            .PostAsJsonAsync("/api/workers/pair", PairBody(code, "Named capability worker"));
+        paired.EnsureSuccessStatusCode();
+        var workerId = (await paired.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("workerId").GetInt32();
+
+        using var listed = await admin.GetAsync("/api/workers");
+        var row = (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == workerId);
+
+        var vmaf = row.GetProperty("vmaf");
+        Assert.Equal(JsonValueKind.String, vmaf.ValueKind);
+        Assert.Equal("Cpu", vmaf.GetString());
+    }
+
+    [Fact]
+    public async Task Pairing_rejects_an_unknown_capability_name_and_says_what_is_valid()
+    {
+        var admin = Admin();
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+
+        using var response = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", new
+        {
+            code,
+            name = "Bad capability",
+            operatingSystem = "linux",
+            architecture = "x64",
+            protocolMinimum = 1,
+            protocolMaximum = 1,
+            vmaf = "gpu",
+            freeScratchBytes = 1L,
+            maxConcurrency = 1,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        // Naming the valid values matters: this contract is hand-implemented by sidecar authors.
+        Assert.Contains("Cuda", body, StringComparison.Ordinal);
     }
 
     [Fact]

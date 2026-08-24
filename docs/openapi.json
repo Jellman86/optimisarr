@@ -935,7 +935,10 @@
             ]
           },
           "vmaf": {
-            "$ref": "#/components/schemas/VmafCapability"
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "required": [
@@ -1958,9 +1961,6 @@
         ],
         "type": "object"
       },
-      "VmafCapability": {
-        "type": "integer"
-      },
       "WorkerDto": {
         "properties": {
           "architecture": {
@@ -2038,7 +2038,7 @@
             "type": "array"
           },
           "vmaf": {
-            "$ref": "#/components/schemas/VmafCapability"
+            "type": "string"
           }
         },
         "required": [

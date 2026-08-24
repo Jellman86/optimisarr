@@ -691,8 +691,11 @@ export type NotificationTestResult = {
 
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
 
-/** VMAF backends a sidecar can prove. Ordered: CUDA also implies CPU. */
-export type VmafCapability = 0 | 1 | 2
+/**
+ * VMAF backends a sidecar can prove. Ordered: CUDA also implies CPU. Sent and received as a name,
+ * never an ordinal, so the worker contract cannot shift meaning if the enum is ever renumbered.
+ */
+export type VmafCapability = 'None' | 'Cpu' | 'Cuda'
 
 export type Worker = {
   id: number
