@@ -475,6 +475,8 @@ export const ja: Messages = {
     tab_tools: "ツール",
     tab_backup: "バックアップ",
     tab_workers: "ワーカー",
+    remote_workers: "リモートワーカー",
+    remote_workers_hint: "他のマシンのサイドカーアプリが空いているエンコード能力を提供できるようにします。既定はオフで、通常の利用にはコンテナ1つで十分です。置換は引き続き Optimisarr 自身が行います。",
     name: "名前",
     type: "タイプ",
     base_url: "ベース URL",

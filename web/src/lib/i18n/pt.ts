@@ -475,6 +475,8 @@ export const pt: Messages = {
     tab_tools: "Ferramentas",
     tab_backup: "Backup",
     tab_workers: "Workers",
+    remote_workers: "Workers remotos",
+    remote_workers_hint: "Permite que aplicações sidecar noutras máquinas contribuam com capacidade de codificação livre. Desativado por predefinição: um contentor chega para uso normal. O Optimisarr continua a fazer todas as substituições.",
     name: "Nome",
     type: "Tipo",
     base_url: "Base URL",

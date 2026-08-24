@@ -314,6 +314,8 @@ export type Settings = {
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number
+  /** Opt-in. Off by default: one container stays the complete, uncomplicated way to run this. */
+  remoteWorkersEnabled: boolean
 }
 
 export type TimedCleanupPreview = {

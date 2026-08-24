@@ -26,7 +26,8 @@ namespace Optimisarr.Tests;
 /// no-token rejections never reach the endpoint (the middleware short-circuits), so they don't
 /// depend on database state.
 /// </summary>
-public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEndpointTests.TokenedApi>
+[Collection(TokenedApiCollection.Name)]
+public sealed class AdminTokenAuthEndpointTests
 {
     private readonly TokenedApi _api;
 
@@ -96,6 +97,22 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [Fact]
     public async Task Worker_pairing_is_reachable_without_the_token_but_refuses_a_wrong_pin()
     {
+        // Remote workers are opt-in, so turn them on: this test is about the admin-token boundary,
+        // and a 403 from the feature switch would prove nothing about it either way.
+        var admin = _api.CreateClient();
+        admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
+        using (var doc = JsonDocument.Parse(current.GetRawText()))
+        {
+            var payload = new Dictionary<string, object?>();
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                payload[property.Name] = JsonSerializer.Deserialize<object?>(property.Value.GetRawText());
+            }
+            payload["remoteWorkersEnabled"] = true;
+            (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
+        }
+
         // The route must be open — a pairing sidecar has no admin token and cannot get one — while
         // still handing out nothing without the correct PIN. With no code issued, every PIN is wrong.
         using var response = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", new

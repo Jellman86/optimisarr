@@ -33,14 +33,6 @@
   // rather than in its own sidebar entry. The General tab holds the core settings the
   // single "Save settings" button persists together; the rest manage their own records.
   type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'workers' | 'backup'
-  let tabs: { key: TabKey; label: string }[] = $derived([
-    { key: 'general', label: i18n.m.settings.tab_general },
-    { key: 'connections', label: i18n.m.settings.tab_connections },
-    { key: 'notifications', label: i18n.m.settings.tab_notifications },
-    { key: 'tools', label: i18n.m.settings.tab_tools },
-    { key: 'workers', label: i18n.m.settings.tab_workers },
-    { key: 'backup', label: i18n.m.settings.tab_backup },
-  ])
   // A visit to the old /tools route lands on Settings with the Tools tab open.
   let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
 
@@ -412,8 +404,20 @@
     hdrToneMapMode: 'Software',
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
+    remoteWorkersEnabled: false,
     replacementQuarantineRetentionDays: 0,
   })
+
+  let tabs: { key: TabKey; label: string }[] = $derived([
+    { key: 'general', label: i18n.m.settings.tab_general },
+    { key: 'connections', label: i18n.m.settings.tab_connections },
+    { key: 'notifications', label: i18n.m.settings.tab_notifications },
+    { key: 'tools', label: i18n.m.settings.tab_tools },
+    // Only once opted in: a default single-container install should not have to wonder what a
+    // remote worker is.
+    ...(settings.remoteWorkersEnabled ? [{ key: 'workers' as TabKey, label: i18n.m.settings.tab_workers }] : []),
+    { key: 'backup', label: i18n.m.settings.tab_backup },
+  ])
 
   let minFreeDiskGiB = $state('10')
   let loading = $state(true)
@@ -717,6 +721,13 @@
         bind:checked={settings.dryRunMode}
         label={i18n.m.settings.dry_run}
         hint={i18n.m.settings.dry_run_hint}
+      />
+    </div>
+    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+      <Toggle
+        bind:checked={settings.remoteWorkersEnabled}
+        label={i18n.m.settings.remote_workers}
+        hint={i18n.m.settings.remote_workers_hint}
       />
     </div>
     <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">

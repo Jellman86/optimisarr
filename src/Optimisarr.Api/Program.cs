@@ -260,7 +260,8 @@ internal sealed record SettingsDto(
     string? HdrToneMapMode,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
-    int ReplacementQuarantineRetentionDays)
+    int ReplacementQuarantineRetentionDays,
+    bool RemoteWorkersEnabled = false)
 {
     public static SettingsDto From(QueueSettings settings) => new(
         settings.MaxConcurrentJobs,
@@ -272,7 +273,8 @@ internal sealed record SettingsDto(
         settings.HdrToneMapMode.ToString(),
         settings.ReplacementAllowCrossFilesystem,
         settings.DryRunMode,
-        settings.ReplacementQuarantineRetentionDays);
+        settings.ReplacementQuarantineRetentionDays,
+        settings.RemoteWorkersEnabled);
 }
 
 internal sealed record QueueStatusDto(

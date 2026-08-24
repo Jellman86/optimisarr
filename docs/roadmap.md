@@ -454,12 +454,17 @@ the replacement workflow is trustworthy.
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
-9. **Optional Windows and macOS sidecars for distributed transcoding: planned.** Keep one
+9. **Optional Windows and macOS sidecars for distributed transcoding: started.** Keep one
    Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
    contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
    it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
    quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
-   continue to be the complete, uncomplicated default.
+   continue to be the complete, uncomplicated default. **That opt-in now exists:** the
+   `workers.remoteEnabled` setting is off by default and off on upgrade, no Workers tab is shown
+   while it is off, and every route that pairs a machine or accepts a check-in refuses with `403`
+   so the switch is a real boundary rather than a UI preference. Turning it off is non-destructive:
+   check-ins stop at once, but paired records survive so an operator can still see and revoke them,
+   and re-enabling restores them without a re-pair.
 
    - **Versioned worker protocol and explicit ownership: started.** Define a platform-neutral
      contract before either app: registration, capability discovery, heartbeats, leases, progress,

@@ -537,6 +537,12 @@ The credential is returned exactly once, in the pairing response. Optimisarr sto
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
 
+Remote workers are opt-in. While the `workers.remoteEnabled` setting is off — the default, and the
+value any upgrade inherits — `POST /api/workers/pairing-code`, `POST /api/workers/pair`, and
+`POST /api/workers/heartbeat` all answer `403 workers.disabled`. `GET /api/workers` and
+`DELETE /api/workers/{id}` stay available so an operator can still see and remove what is paired
+after switching the feature off.
+
 Capabilities are named, not numbered. `vmaf` is `None`, `Cpu`, or `Cuda` (case-insensitive on the
 way in; omitting it means the worker claims no VMAF support). An unrecognised name is rejected with
 `worker.vmaf.invalid` rather than silently treated as `None`, so a typo cannot quietly downgrade a

@@ -643,6 +643,8 @@ export const en = {
     tab_tools: 'Tools',
     tab_backup: 'Backup',
     tab_workers: 'Workers',
+    remote_workers: 'Remote workers',
+    remote_workers_hint: 'Let sidecar apps on other machines contribute spare encoding capacity. Off by default — one container is enough for normal use. Optimisarr still does all replacing itself.',
     name: 'Name',
     type: 'Type',
     base_url: 'Base URL',
