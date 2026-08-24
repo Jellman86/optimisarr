@@ -26,8 +26,10 @@ struct OptimisarrSidecarApp: App {
         MenuBarExtra {
             SidecarMenu(session: session)
         } label: {
-            // The icon carries the state, so a glance answers "is it working?" without clicking.
-            Image(systemName: session.status.symbolName)
+            // Optimisarr's own mark rather than a stock symbol, drawn as a template so macOS tints
+            // it for the menu bar's appearance. State rides along as a badge instead of swapping
+            // the icon wholesale, so the thing in the menu bar stays recognisably this app.
+            Image(nsImage: MenuBarIcon.image(for: session.status))
         }
         .menuBarExtraStyle(.window)
     }
@@ -61,9 +63,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// no reason to know it lives in the menu bar, and if the icon is hidden they would otherwise
     /// see nothing happen at all.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AppState.shared.session.restore()
-        if case .unpaired = AppState.shared.session.status {
-            showPairingWindow()
+        // Deferred rather than run inline. Restoring reads the Keychain, and anything that touches
+        // the Keychain can in principle block; doing it here on the launch path once left the app
+        // running with no menu bar icon and no window at all, because it was stuck behind a modal
+        // authorisation prompt. Letting launch finish first means the icon appears whatever the
+        // Keychain does.
+        Task { @MainActor in
+            AppState.shared.session.restore()
+            if case .unpaired = AppState.shared.session.status {
+                showPairingWindow()
+            }
         }
     }
 
@@ -90,16 +99,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-extension SidecarStatus {
-    var symbolName: String {
-        switch self {
-        case .connected: return "checkmark.circle.fill"
-        case .pairing: return "ellipsis.circle"
-        case .unpaired: return "link.badge.plus"
-        case .unreachable: return "exclamationmark.triangle"
-        case .revoked: return "xmark.circle.fill"
-        case .disabledOnServer: return "pause.circle"
-        case .pairingFailed: return "exclamationmark.triangle"
-        }
-    }
-}

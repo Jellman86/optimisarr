@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 /// Where a paired credential is kept between launches.
@@ -52,10 +53,31 @@ public struct KeychainCredentialStore: CredentialStore {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
+        // Never allow the Keychain to put a dialog on screen.
+        //
+        // An ad-hoc signature is not stable across builds, so a rebuilt app is a *different*
+        // application as far as the Keychain is concerned, and reading an item the previous build
+        // created raises an authorisation prompt. That prompt is modal, and this call sits on the
+        // launch path — so the app hangs behind it with no menu bar icon and no window, looking for
+        // all the world like it failed to start. Asking for the item without interaction turns that
+        // into an ordinary error we can handle instead.
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = context
+
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
 
         if status == errSecItemNotFound { return nil }
+
+        // Present but unreadable — typically an item written by a previous build of this app.
+        // Treated as "not paired" rather than as a failure: the credential is unrecoverable either
+        // way, and asking the operator to pair again is far better than blocking the app or
+        // nagging them for a password they should not be typing into an unsigned build.
+        if status == errSecInteractionNotAllowed || status == errSecAuthFailed {
+            return nil
+        }
+
         guard status == errSecSuccess, let data = item as? Data else {
             throw KeychainError.unexpectedStatus(status)
         }
