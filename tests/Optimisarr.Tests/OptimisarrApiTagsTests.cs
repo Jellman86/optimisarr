@@ -50,6 +50,10 @@ public class OptimisarrApiTagsTests
     [InlineData("/api/health")]
     [InlineData("/api/ready")]
     [InlineData("/api/auth/status")]
+    // Both worker routes carry their own authentication instead of the admin token: /pair is
+    // guarded by the operator's PIN, /heartbeat by the worker's issued credential.
+    [InlineData("/api/workers/pair")]
+    [InlineData("/api/workers/heartbeat")]
     public void RequiresAdminToken_is_false_for_open_endpoints(string path) =>
         Assert.False(OptimisarrApiTags.RequiresAdminToken(path));
 

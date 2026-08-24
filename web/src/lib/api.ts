@@ -708,6 +708,8 @@ export type Worker = {
   pairedAt: string
   lastSeenAt: string | null
   revokedAt: string | null
+  /** Computed by the server from its own liveness rule, so the UI never invents a second one. */
+  online: boolean
 }
 
 export type WorkerPairingCode = {

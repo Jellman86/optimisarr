@@ -104,6 +104,14 @@
         classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
       }
     }
+    // Reachability first: a worker that has stopped checking in cannot take work whatever its
+    // configured concurrency says, so showing "drained" there would be misleading.
+    if (!worker.online) {
+      return {
+        label: i18n.m.workers.status_offline,
+        classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+      }
+    }
     if (worker.maxConcurrency <= 0) {
       return {
         label: i18n.m.workers.status_drained,
@@ -111,7 +119,7 @@
       }
     }
     return {
-      label: i18n.m.workers.status_active,
+      label: i18n.m.workers.status_online,
       classes: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
     }
   }

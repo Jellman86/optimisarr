@@ -20,6 +20,8 @@ public sealed class AdminTokenAuthTests
     [InlineData("/api/auth/status")]
     // A pairing sidecar has only the PIN, never an admin token, so this route authenticates itself.
     [InlineData("/api/workers/pair")]
+    // A paired sidecar likewise checks in with its own credential, not the admin token.
+    [InlineData("/api/workers/heartbeat")]
     public void Health_readiness_auth_status_and_worker_pairing_are_open_paths(string path)
     {
         Assert.True(AdminTokenAuth.IsOpenPath(path));

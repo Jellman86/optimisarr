@@ -12,6 +12,10 @@
   Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file — a worker
   never can. **No work is sent to a sidecar yet**, so pairing has no effect on your library today;
   it is there so a connection can be set up and tested while the rest is built.
+- **Paired sidecars now report in, and the Workers list shows whether each one is reachable.** A
+  worker checks in every 30 seconds using the credential it was given at pairing, and is shown as
+  offline after two minutes of silence rather than on a single missed check-in, so a brief network
+  blip does not make the status flicker. Revoking a worker stops its check-ins immediately.
 
 ### Fixed
 
