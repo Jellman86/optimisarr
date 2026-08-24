@@ -512,6 +512,19 @@ the replacement workflow is trustworthy.
       their saved path and Fixed remains available. The per-library radio path states the upper bound
       of four qualities across three 40-second scenes and the Queue uses its
       probing stage during preparation. Cancellation follows the normal active-job control.
+    - **Defaulting an Experimental path on is a deliberate, recorded exception.** It is the one
+      accepted departure from "defaults should be conservative" below and from the same rule in
+      [`CLAUDE.md`](../CLAUDE.md) §1, taken with the prototype-acceptance evidence below still
+      outstanding on every encoder family. The reasoning: the safety model is unchanged, because the
+      search falls back to the fixed quality whenever evidence is missing or non-monotonic, and the
+      finished output still clears every structural, decode, duration, tail, stream, size, and
+      configured VMAF gate before any replacement. What is unproven is cost and predictability —
+      probing time and the stability of the selected quality — not whether an original can be lost.
+      The blast radius is bounded to newly created libraries, existing saved choices are untouched,
+      and Fixed stays one selection away. Defaulting it on is also what produces the real-world
+      evidence this entry needs; left opt-in, too few libraries would exercise it for the acceptance
+      comparison to ever arrive. The Experimental label stays until that evidence does, so the
+      default is an evidence-gathering decision rather than a claim the path is proved.
     - **Representative evidence, not a favourable frame search.** Reuse deterministic early, middle,
       and late windows selected before any scores are known. Apply the complete picture contract
       (codec, bit depth, resolution, HDR treatment, encoder effort, and relevant filters) to every
@@ -541,7 +554,9 @@ the replacement workflow is trustworthy.
 - Safety beats savings.
 - No original file is deleted until verification has passed.
 - Every destructive action must have a rollback path.
-- Defaults should be conservative and understandable.
+- Defaults should be conservative and understandable. One recorded exception stands: Adaptive
+  per-title VMAF defaults on for new video re-encode libraries while still labelled Experimental,
+  for the reasons given under adaptive per-title VMAF quality targeting above.
 - The app should feel familiar to Docker media-stack users.
 - One container should be enough for normal use.
 
