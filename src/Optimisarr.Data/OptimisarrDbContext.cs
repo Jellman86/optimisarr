@@ -22,6 +22,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<Exclusion> Exclusions => Set<Exclusion>();
 
+    public DbSet<Worker> Workers => Set<Worker>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -158,6 +160,22 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(exclusion => exclusion.Reason).HasMaxLength(512);
             entity.Property(exclusion => exclusion.Source).HasConversion<string>().HasMaxLength(32);
             entity.HasIndex(exclusion => exclusion.LibraryId);
+        });
+
+        modelBuilder.Entity<Worker>(entity =>
+        {
+            entity.HasKey(worker => worker.Id);
+            entity.Property(worker => worker.Name).IsRequired().HasMaxLength(160);
+            entity.Property(worker => worker.OperatingSystem).HasMaxLength(32);
+            entity.Property(worker => worker.Architecture).HasMaxLength(32);
+            entity.Property(worker => worker.VideoEncoders).HasMaxLength(1024);
+            entity.Property(worker => worker.HardwareDecoders).HasMaxLength(1024);
+            entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
+            // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
+            entity.Property(worker => worker.CredentialFingerprint).HasMaxLength(64);
+            // Every authenticated worker call arrives with a credential and no id, so the
+            // fingerprint is the lookup key. Unique because two workers must never share one.
+            entity.HasIndex(worker => worker.CredentialFingerprint).IsUnique();
         });
     }
 }

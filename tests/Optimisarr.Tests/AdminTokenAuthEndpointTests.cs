@@ -66,6 +66,13 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("POST", "/api/replacements/1/rollback")]
     [InlineData("POST", "/api/replacements/1/approve")]
     [InlineData("GET", "/api/diagnostics")]       // admin support snapshot
+    // Worker administration stays behind the token; only the pairing exchange itself is open,
+    // and that one carries the PIN as its own credential.
+    [InlineData("POST", "/api/workers/pairing-code")]
+    [InlineData("GET", "/api/workers/pairing-code")]
+    [InlineData("DELETE", "/api/workers/pairing-code")]
+    [InlineData("GET", "/api/workers")]
+    [InlineData("DELETE", "/api/workers/1")]
     public async Task A_protected_endpoint_is_401_without_the_token(string method, string path)
     {
         using var response = await _api.CreateClient()
@@ -84,6 +91,29 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         // /api/ready may be 503 in the test host (no /work, /trash), but it must never be 401.
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Worker_pairing_is_reachable_without_the_token_but_refuses_a_wrong_pin()
+    {
+        // The route must be open — a pairing sidecar has no admin token and cannot get one — while
+        // still handing out nothing without the correct PIN. With no code issued, every PIN is wrong.
+        using var response = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", new
+        {
+            code = "12345678",
+            name = "Attacker",
+            operatingSystem = "linux",
+            architecture = "x64",
+            protocolMinimum = 1,
+            protocolMaximum = 1,
+            vmaf = 1, // VmafCapability.Cpu — this API serialises enums as integers
+            freeScratchBytes = 0L,
+            maxConcurrency = 1
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.DoesNotContain("credential", await response.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
