@@ -26,6 +26,21 @@ database therefore yields no usable credential, and revocation is total: an abse
 matches nothing. Endpoints, the worker table, the PIN display, assignment/lease binding, rotation,
 and TLS guidance all remain to build.
 
+**Started on dev (2026-08-24) — versioned worker protocol groundwork for remote transcoding.**
+The first slice of the distributed-transcoding contract (roadmap item 9) lands as pure
+`Optimisarr.Core.Workers` logic with no HTTP, persistence, or queue wiring, so no job can reach a
+sidecar yet and no destructive path is touched. `WorkerProtocol.Negotiate` compares a worker's
+supported version range against this build's and picks the highest both speak; a worker that is
+entirely older or entirely newer, or that reports an inverted range, is refused with a reason
+rather than assumed compatible, because the control plane owns the contract and a silent
+assumption here is what would schedule a job onto an incompatible sidecar. `WorkerCapabilityMatcher`
+decides whether an assignment may be offered at all, failing closed on encoder, hardware decoder,
+VMAF mode, scratch space, and concurrency, and naming every unmet requirement rather than the first
+so an operator can see why a paired sidecar sits idle. VMAF capability is ordered so a proved CUDA
+backend satisfies a CPU requirement but never the reverse; a drained worker is expressed as zero
+concurrency. Registration, pairing, heartbeats, leases, progress, cancellation, hashes, the
+resolved-policy payload, evidence, and acknowledgement are all still to define.
+
 **Decision (2026-08-24) — Adaptive per-title VMAF stays the default for new libraries while
 Experimental.** Release 0.2.11 made the adaptive path the default for new video re-encode libraries.
 The prototype-acceptance comparison the roadmap asks for — total work, selected quality, size, VMAF,
