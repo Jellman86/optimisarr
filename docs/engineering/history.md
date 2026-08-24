@@ -3,6 +3,36 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Started on dev (2026-08-24) — worker credentials finally authenticate something.** Pairing issued
+a credential but nothing consumed it: `WorkerCredential.Matches` had no call site, so the secret
+handed to a sidecar was inert. `POST /api/workers/heartbeat` closes that. `WorkerAuth` resolves the
+worker from a bearer credential by looking it up on its stored fingerprint — the standard
+stored-hash token pattern, chosen over scanning and comparing every row because the secret is 256
+bits of randomness and an indexed lookup on its hash leaks nothing usable, while the alternative
+would table-scan on every beat. A revoked worker's fingerprint is null and therefore matches
+nothing, so revocation is enforced by the lookup itself and cannot be forgotten at a call site. An
+end-to-end test pairs, beats, revokes, and proves the credential is dead afterwards; another proves
+the admin token does not authenticate a worker, since the two credentials authorise different things
+and accepting one for the other would let anything holding it impersonate a paired machine.
+
+Liveness is one rule shared by the API and the UI. The 30-second interval and the 2-minute threshold
+are deliberately different numbers: were they equal, a single dropped packet would flap a healthy
+worker between online and offline. A test asserts the *relationship* (threshold at least three
+intervals) rather than the literals, so tuning either constant cannot quietly reintroduce the flap.
+Last-seen is stamped from the control plane's clock, never the request, so a sidecar with a wrong or
+dishonest clock cannot claim to be alive, and the heartbeat response returns the interval so a
+sidecar paces itself from the server instead of hard-coding a value that could drift out of step.
+
+Heartbeats carry only the volatile numbers — free scratch and current concurrency. Encoders and VMAF
+support stay as established at pairing, because a worker quietly changing what it claims to support
+between assignments is something the control plane should re-establish deliberately rather than
+absorb from a beat.
+
+Closing a gap this slice exposed: `/api/workers/pair` and `/heartbeat` both answer 401 on bad
+credentials, but the OpenAPI transformer only annotates admin-token protection, so neither
+documented it. A sidecar SDK generated from the spec — exactly the audience this contract serves —
+would not have known. Both routes now declare that response themselves.
+
 **Started on dev (2026-08-24) — worker pairing reaches the API.** The PIN primitives below are now
 wired to endpoints and storage, so a sidecar can genuinely pair. `POST /api/workers/pair` redeems a
 code, negotiates the protocol, writes a `Workers` row (migration `AddWorkers`), and returns the

@@ -19,7 +19,11 @@ public static class AdminTokenAuth
         // authentication instead. The PIN is the credential here: the route is inert unless an
         // operator has just issued one, it dies after five wrong guesses, and it expires in
         // minutes. It hands out nothing without the correct code.
-        || path.Equals("/api/workers/pair", StringComparison.OrdinalIgnoreCase);
+        || path.Equals("/api/workers/pair", StringComparison.OrdinalIgnoreCase)
+        // Likewise for a paired sidecar checking in. It authenticates with its own 32-byte
+        // credential, which is a stronger secret than the admin token and authorises only the
+        // worker routes; a revoked worker fails here because its stored fingerprint is gone.
+        || path.Equals("/api/workers/heartbeat", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsProtectedPath(PathString path) =>
         path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)

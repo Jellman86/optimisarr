@@ -366,6 +366,70 @@
         ],
         "type": "object"
       },
+      "HeartbeatRequest": {
+        "properties": {
+          "freeScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "maxConcurrency": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "freeScratchBytes",
+          "maxConcurrency"
+        ],
+        "type": "object"
+      },
+      "HeartbeatResponse": {
+        "properties": {
+          "heartbeatIntervalSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "protocolVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "serverTimeUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workerId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "workerId",
+          "protocolVersion",
+          "serverTimeUtc",
+          "heartbeatIntervalSeconds"
+        ],
+        "type": "object"
+      },
       "JellyfinConnectRequest": {
         "properties": {
           "baseUrl": {
@@ -1942,6 +2006,9 @@
           "name": {
             "type": "string"
           },
+          "online": {
+            "type": "boolean"
+          },
           "operatingSystem": {
             "type": "string"
           },
@@ -1987,7 +2054,8 @@
           "maxConcurrency",
           "pairedAt",
           "lastSeenAt",
-          "revokedAt"
+          "revokedAt",
+          "online"
         ],
         "type": "object"
       }
@@ -4461,6 +4529,46 @@
         ]
       }
     },
+    "/api/workers/heartbeat": {
+      "post": {
+        "operationId": "WorkerHeartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
     "/api/workers/pair": {
       "post": {
         "operationId": "PairWorker",
@@ -4484,6 +4592,16 @@
               }
             },
             "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
           }
         },
         "tags": [

@@ -496,6 +496,13 @@ the replacement workflow is trustworthy.
      Workers tab that issues a PIN, shows it grouped alongside the server address with a live
      countdown and remaining attempts, lists paired workers, and revokes them — a tab rather than a
      sidebar entry, following the same reasoning that kept Tools and Failures out of the sidebar.
+     A paired worker now authenticates: `POST /api/workers/heartbeat` resolves the sidecar from its
+     bearer credential, stamps the last-seen time from the control plane's own clock, and records
+     the volatile numbers it reports (free scratch, current concurrency). A revoked worker fails
+     there because its stored fingerprint is gone, so revocation needs no separate check and cannot
+     be forgotten at a call site. Reachability uses one rule shared by the API and UI — a 30-second
+     interval against a 2-minute threshold, deliberately different so one dropped beat cannot flap
+     the status — and the Workers tab shows Online, Offline, Drained, or Revoked.
      **Still to build:** binding assignments and results to the credential and lease, credential
      rotation, and the TLS/LAN guidance.
    - **Efficient, integrity-checked media delivery.** Support resumable, bounded, checksummed

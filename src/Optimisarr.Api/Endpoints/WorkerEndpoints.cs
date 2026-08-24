@@ -19,7 +19,8 @@ internal sealed record WorkerDto(
     int MaxConcurrency,
     DateTimeOffset PairedAt,
     DateTimeOffset? LastSeenAt,
-    DateTimeOffset? RevokedAt);
+    DateTimeOffset? RevokedAt,
+    bool Online);
 
 /// <summary>The PIN an operator reads off the screen and types into a sidecar.</summary>
 internal sealed record PairingCodeDto(string Code, DateTimeOffset ExpiresUtc, int AttemptsRemaining);
@@ -40,6 +41,24 @@ internal sealed record PairRequest(
 
 /// <summary>The credential, returned exactly once. Optimisarr keeps only its fingerprint.</summary>
 internal sealed record PairResponse(int WorkerId, string Credential, int ProtocolVersion);
+
+/// <summary>
+/// What a sidecar reports when it checks in. Only the volatile numbers: free scratch space and how
+/// much work it will currently accept. Encoders and VMAF support are settled at pairing, because a
+/// worker quietly changing what it claims to support between assignments is a capability the
+/// control plane should re-establish deliberately, not absorb from a heartbeat.
+/// </summary>
+internal sealed record HeartbeatRequest(long FreeScratchBytes, int MaxConcurrency);
+
+/// <summary>
+/// The acknowledgement. Carries the interval so a sidecar paces itself from the control plane
+/// rather than hard-coding a value that could drift out of step with the server's threshold.
+/// </summary>
+internal sealed record HeartbeatResponse(
+    int WorkerId,
+    int ProtocolVersion,
+    DateTimeOffset ServerTimeUtc,
+    int HeartbeatIntervalSeconds);
 
 internal static class WorkerEndpoints
 {
@@ -128,7 +147,49 @@ internal static class WorkerEndpoints
             return Results.Ok(new PairResponse(worker.Id, credential, negotiation.AgreedVersion));
         })
         .WithName("PairWorker")
-        .Produces<PairResponse>();
+        .Produces<PairResponse>()
+        // Declared here because the document transformer only annotates admin-token protection,
+        // and this route is outside it. A sidecar client generated from the spec still needs to
+        // know a wrong, spent, expired, or burned PIN answers 401.
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+
+        // A paired sidecar checking in. Authenticated by its own credential, not the admin token,
+        // so this route is open in the same way /pair is — but where /pair is guarded by a
+        // short-lived PIN, this one is guarded by 32 random bytes.
+        app.MapPost("/api/workers/heartbeat", async (
+            HeartbeatRequest request,
+            HttpRequest http,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+            if (worker is null)
+            {
+                // Covers absent, malformed, unknown, and revoked credentials alike. A revoked
+                // worker gets exactly this, which is what makes revocation bite.
+                return Results.Json(
+                    new ApiError("worker.credential.invalid", "Unknown or revoked worker credential."),
+                    statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            // Stamped from the server's clock, never from the request, so a sidecar with a wrong
+            // or dishonest clock cannot claim to have been alive.
+            worker.LastSeenAt = DateTimeOffset.UtcNow;
+            worker.FreeScratchBytes = Math.Max(0, request.FreeScratchBytes);
+            worker.MaxConcurrency = Math.Max(0, request.MaxConcurrency);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(new HeartbeatResponse(
+                worker.Id,
+                worker.ProtocolVersion,
+                worker.LastSeenAt.Value,
+                (int)WorkerLiveness.HeartbeatInterval.TotalSeconds));
+        })
+        .WithName("WorkerHeartbeat")
+        .Produces<HeartbeatResponse>()
+        // Likewise: an absent, unknown, or revoked worker credential answers 401 here, and that
+        // belongs in the contract a sidecar is built against.
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized);
 
         app.MapGet("/api/workers", async (OptimisarrDbContext db, CancellationToken cancellationToken) =>
         {
@@ -137,7 +198,8 @@ internal static class WorkerEndpoints
                 .OrderBy(worker => worker.Id)
                 .ToListAsync(cancellationToken);
 
-            return Results.Ok(workers.Select(ToDto).ToList());
+            var now = DateTimeOffset.UtcNow;
+            return Results.Ok(workers.Select(w => ToDto(w, now)).ToList());
         })
         .WithName("ListWorkers")
         .Produces<IReadOnlyList<WorkerDto>>();
@@ -174,7 +236,7 @@ internal static class WorkerEndpoints
         _ => "That pairing code is not correct."
     };
 
-    private static WorkerDto ToDto(Worker worker) => new(
+    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc) => new(
         worker.Id,
         worker.Name,
         worker.OperatingSystem,
@@ -187,7 +249,10 @@ internal static class WorkerEndpoints
         worker.MaxConcurrency,
         worker.PairedAt,
         worker.LastSeenAt,
-        worker.RevokedAt);
+        worker.RevokedAt,
+        // Revoked workers are never "online" whatever their last heartbeat said, so the UI cannot
+        // show a green light next to a worker that can no longer authenticate.
+        worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc));
 
     private static string Trimmed(string? value, int max)
     {

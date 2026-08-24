@@ -537,13 +537,21 @@ The credential is returned exactly once, in the pairing response. Optimisarr sto
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
 
+A worker checks in every 30 seconds and is treated as offline after 2 minutes of silence. Those are
+different numbers on purpose: declaring a worker offline on one missed beat would make the status
+flap on a single dropped packet. The control plane stamps the last-seen time from its own clock, so
+a sidecar with a wrong clock cannot claim to be alive, and the heartbeat response carries the
+interval so a sidecar paces itself from the server rather than hard-coding a value that could drift
+out of step with the threshold.
+
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/workers/pairing-code` | Issue a pairing PIN, replacing any previous one. |
 | `GET` | `/api/workers/pairing-code` | Read the PIN currently on screen. `204` when none is live — the resting state, not an error. |
 | `DELETE` | `/api/workers/pairing-code` | Withdraw the active PIN. |
 | `POST` | `/api/workers/pair` | Redeem a PIN and register a sidecar. Open route; the PIN is the credential. Returns the worker credential once. |
-| `GET` | `/api/workers` | List paired workers. Never returns credential fingerprints. |
+| `POST` | `/api/workers/heartbeat` | A paired sidecar checks in and reports free scratch space and current concurrency. Open route; authenticated by the worker credential as `Authorization: Bearer`, not the admin token. `401` when the credential is absent, unknown, or revoked. |
+| `GET` | `/api/workers` | List paired workers with an `online` flag the server computes from its own liveness rule. Never returns credential fingerprints. |
 | `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
 
 ## Stats
