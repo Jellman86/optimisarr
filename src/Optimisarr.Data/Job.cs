@@ -157,6 +157,16 @@ public sealed class Job
     /// </summary>
     public string? ProcessLog { get; set; }
 
+    /// <summary>
+    /// SHA-256 of the source as it was when a remote worker first fetched it.
+    ///
+    /// Computed once and kept, because hashing a multi-gigabyte file is not something to repeat per
+    /// request. It is what later binds a returned candidate and its quality evidence to the exact
+    /// bytes that were encoded: a result measured against a different source is not evidence about
+    /// this one.
+    /// </summary>
+    public string? SourceSha256 { get; set; }
+
     // --- Verification (Phase 4: populated once the output has been verified) ---
 
     /// <summary>Size of the produced output in bytes, recorded at verification time.</summary>

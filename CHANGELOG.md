@@ -17,6 +17,10 @@
   can pair or check in, so a normal single-container install is unchanged and never has to think
   about it. Turning it back off stops check-ins immediately but keeps what is already paired, so
   nothing is lost and turning it on again restores it.
+- **A remote worker can now download the file it has been given.** Transfers resume where they left
+  off if the connection drops, and come with a checksum so the worker can confirm it received the
+  file intact. A worker can only ever fetch the exact original it was assigned, and only while it
+  still holds the job.
 - **Remote workers can now claim jobs.** A paired sidecar asks for work, and Optimisarr hands it one
   job at a time, only where the worker has proved it has the encoder, VMAF support, scratch space
   and spare concurrency the job needs. A claimed job leaves the queue so this machine will not also

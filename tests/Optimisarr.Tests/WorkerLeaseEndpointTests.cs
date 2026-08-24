@@ -19,6 +19,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private readonly AdminTokenAuthEndpointTests.TokenedApi _api;
     private readonly List<int> _createdLibraries = [];
 
+    /// <summary>Small but non-trivial, so hashing and range requests have something to work on.</summary>
+    private static readonly byte[] SourceBytes =
+        Enumerable.Range(0, 4096).Select(i => (byte)(i % 251)).ToArray();
+
     public WorkerLeaseEndpointTests(AdminTokenAuthEndpointTests.TokenedApi api) => _api = api;
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -112,12 +116,18 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         await db.SaveChangesAsync();
         _createdLibraries.Add(library.Id);
 
+        Directory.CreateDirectory(library.Path);
+        var sourcePath = Path.Combine(library.Path, "film.mkv");
+        // Real bytes on disk: the source route streams and hashes the actual file, so a row
+        // pointing at nothing would only exercise the missing-file path.
+        await File.WriteAllBytesAsync(sourcePath, SourceBytes);
+
         var file = new MediaFile
         {
             LibraryId = library.Id,
-            Path = Path.Combine(library.Path, "film.mkv"),
+            Path = sourcePath,
             RelativePath = "film.mkv",
-            SizeBytes = 8L * 1024 * 1024 * 1024,
+            SizeBytes = SourceBytes.Length,
         };
         db.MediaFiles.Add(file);
         await db.SaveChangesAsync();
@@ -265,6 +275,93 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
 
         using var claim = await incapable.PostAsJsonAsync("/api/workers/claim", new { });
         Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+
+    [Fact]
+    public async Task The_lease_holder_can_fetch_its_source_with_a_hash_it_can_verify()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Fetcher");
+        await QueueAJob();
+
+        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+
+        using var source = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.OK, source.StatusCode);
+
+        var received = await source.Content.ReadAsByteArrayAsync();
+        Assert.Equal(SourceBytes, received);
+
+        // The worker must be able to confirm what it received without a second pass, and the value
+        // is what later binds a returned candidate to these exact bytes.
+        var advertised = source.Headers.GetValues("X-Optimisarr-Source-Sha256").Single();
+        var actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(received)).ToLowerInvariant();
+        Assert.Equal(actual, advertised);
+    }
+
+    [Fact]
+    public async Task A_worker_cannot_fetch_a_source_for_a_lease_it_does_not_hold()
+    {
+        await EnableRemoteWorkers();
+        var holder = await PairCapableWorker("Source holder");
+        var intruder = await PairCapableWorker("Source intruder");
+        await QueueAJob();
+
+        var assignment = await (await holder.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+
+        using var stolen = await intruder.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+
+        using var anonymous = await _api.CreateClient().GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_released_lease_stops_granting_access_to_the_media()
+    {
+        // The lease is what bounds a worker's reach into the library. Giving the job back must end
+        // that reach, or a worker could keep pulling media it no longer has any claim on.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Handback");
+        await QueueAJob();
+
+        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+
+        (await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { }))
+            .EnsureSuccessStatusCode();
+
+        using var afterRelease = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        Assert.Equal(HttpStatusCode.Conflict, afterRelease.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_dropped_transfer_can_resume_with_a_range_request()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Resumer");
+        await QueueAJob();
+
+        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/workers/leases/{leaseId}/source");
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(1000, null);
+
+        using var partial = await worker.SendAsync(request);
+
+        // Without this a worker whose connection drops part-way through a multi-gigabyte source has
+        // to start again from zero.
+        Assert.Equal(HttpStatusCode.PartialContent, partial.StatusCode);
+        var tail = await partial.Content.ReadAsByteArrayAsync();
+        Assert.Equal(SourceBytes.Skip(1000).ToArray(), tail);
     }
 
     [Fact]

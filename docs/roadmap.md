@@ -510,12 +510,21 @@ the replacement workflow is trustworthy.
      the status — and the Workers tab shows Online, Offline, Drained, or Revoked.
      **Still to build:** binding assignments and results to the credential and lease, credential
      rotation, and the TLS/LAN guidance.
-   - **Efficient, integrity-checked media delivery.** Support resumable, bounded, checksummed
+   - **Efficient, integrity-checked media delivery: started.** Support resumable, bounded, checksummed
      streaming when the sidecar cannot see the library. Also offer an explicit shared-storage path
      mapping for SMB/NFS-mounted media so multi-gigabyte sources need not cross the network twice.
      Shared sources remain read-only; sidecar scratch stays isolated. The main app verifies source
      identity before dispatch and rejects an output, report, or resumed transfer whose hashes,
      lease, size, or policy no longer match.
+     **Landed so far:** `GET /api/workers/leases/{leaseId}/source` streams an assigned original with
+     `Range` support so a dropped transfer resumes, and returns the source SHA-256 so the worker can
+     verify what it received. The route takes no path, filename, or library parameter — a worker
+     presents a lease and the server resolves the file — so a paired sidecar cannot be induced to
+     read anything other than the original already assigned to it. The source is opened shared and
+     read-only, and access ends when the lease stops being held. The hash is computed once and kept
+     on the job, which is what will later bind a returned candidate to the exact bytes encoded.
+     **Still to build:** the shared-storage path mapping for workers that can already see the
+     library, and returning the candidate.
    - **Capability-aware leases and recovery: started.** Schedule only when OS, architecture, FFmpeg
      build, encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the
      job. Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and

@@ -29,6 +29,52 @@ test asserts the field is a JSON string rather than a number, so the ordinal for
 unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
 testing; the cost of this change rises steeply once a tray app ships.
 
+**Started on dev (2026-08-24) — the sidecar can work out what it is actually capable of.** Probing
+mirrors the server's `HardwareCapabilityService` rather than inventing a second approach: parse
+`ffmpeg -encoders` for a cheap first pass, then confirm each hardware encoder with a real throwaway
+encode to the null muxer. The distinction matters more on Apple than elsewhere, because every macOS
+ffmpeg build lists VideoToolbox whether or not the machine in front of you can open it — listing
+alone would have the sidecar advertise encoders that fail on first use, and a job scheduled against
+a false capability can only fail. CPU encoders are trusted from the listing, as the server trusts
+them.
+
+VMAF can only ever be CPU here. Apple GPUs have no VMAF compute backend, so a test asserts the
+parser can never return `Cuda` — guarding the honesty of the capability rather than the parsing.
+
+A worker with no encoder reports zero concurrency too. Advertising capacity while advertising no
+encoder would show the server a live worker it can never actually use.
+
+ffmpeg will be bundled in the app rather than found on the system, so the worker's build matches the
+server's. The roadmap already treats FFmpeg build as a scheduling criterion, and the reason becomes
+concrete here: the server re-verifies a returned candidate, which only means something if the same
+encode settings produce comparable output at both ends. Nothing is bundled yet — the probing reports
+nothing without it, which is the correct behaviour rather than a gap to paper over.
+
+**Started on dev (2026-08-24) — a worker can fetch the file it was given.** The design constraint
+that shaped this route is that the worker names nothing. It presents a lease id and the server
+resolves lease → job → media file → path; there is deliberately no path, filename, or library
+parameter anywhere in the signature. Any of them would turn a paired sidecar into an arbitrary file
+reader on the host, and no amount of validation on such a parameter is as safe as not accepting one.
+Access is also bounded in time rather than only in scope: a lease that is no longer held serves
+nothing, so releasing a job ends the worker's reach into the library at the same moment it gives the
+work back.
+
+Delivery is over HTTP rather than a shared mount, chosen deliberately over the cheaper option. A
+shared SMB/NFS path mapping would avoid moving multi-gigabyte files across the network twice per
+job, but it would also mean a sidecar that pairs with a PIN in thirty seconds then requires mount
+configuration before it can do anything. Zero-config pairing that demands NFS is not zero-config.
+The shared-storage path remains worth adding as an optimisation for workers that can already see the
+library; it is not the thing to build first.
+
+The source hash is computed once and stored on the job rather than per request, because re-reading
+gigabytes on every resumed transfer would be its own performance bug. It exists for the slice after
+this one: a returned candidate and its quality evidence have to be bound to the exact bytes that
+were encoded, since a measurement taken against a different version of the file is not evidence
+about this one.
+
+Range support is not a nicety here. A worker on a home network pulling an 8 GB original will
+sometimes lose the connection, and without resumption every drop costs the whole transfer again.
+
 **Started on dev (2026-08-24) — leases become real, and a worker can claim a job.** The decision
 that carries the safety is representing a claim as a job *status* rather than a flag or a join. A
 claimed job moves from `Queued` to `Leased`, and the local dispatcher selects on `Queued`, so it
