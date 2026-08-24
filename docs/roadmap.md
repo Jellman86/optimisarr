@@ -17,7 +17,7 @@ the replacement workflow is trustworthy.
 - Code and tests remain the source of truth. Never present roadmap work as
   shipped until the repository proves it.
 
-## Up next (priority order, updated 2026-07-29)
+## Up next (priority order, updated 2026-08-24)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -250,15 +250,18 @@ the replacement workflow is trustworthy.
   coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
   notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
   and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
-  paid external services.
+  paid external services. **Status needs confirming:** this entry still reads "in progress", but
+  every control it names is recorded as shipped and no outstanding scope is written down. Either
+  name what remains or mark the entry done — an "in progress" label with nothing behind it sends
+  work at an entry that has none.
 
-4. **First-class diagnostics & observability API** — make "why did this fail?" answerable
-   from the API alone, without SSH-ing the host or reading container logs. Today failed-job
-   detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
-   verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
+4. **First-class diagnostics & observability API: done.** "Why did this fail?" is answerable
+   from the API alone, without SSH-ing the host or reading container logs. Failed-job detail was
+   already reachable when this entry opened (`GET /api/jobs` carries `ErrorMessage`,
+   `FfmpegArguments`, and the verification report per job), but it was unfiltered, unaggregated,
+   and lossy. Every bullet below has since shipped. Scope:
    - **Status-filtered job queries: done.** `GET /api/jobs?status=Failed` narrows server-side so
-     callers don't fetch every row and filter client-side. (Library/reason/date filters and
-     pagination remain to add.)
+     callers don't fetch every row and filter client-side.
    - **Failure aggregation endpoint: done.** `GET /api/jobs/failures` groups failures by classified
      reason (size-saving gate, container incompatibility, image-based subtitles, replacement
      collision, source/output missing, verification, other) with counts and recent sample jobs,
