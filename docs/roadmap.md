@@ -15,7 +15,9 @@ the replacement workflow is trustworthy.
   engineering history belongs in
   [`engineering/history.md`](engineering/history.md).
 - Code and tests remain the source of truth. Never present roadmap work as
-  shipped until the repository proves it.
+  shipped until the repository proves it. The converse matters too: an entry left
+  describing finished work as outstanding sends effort at an item that has none.
+- Status claims last verified against the repository: **2026-08-24**.
 
 ## Up next (priority order, updated 2026-08-24)
 
