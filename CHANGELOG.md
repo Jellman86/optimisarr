@@ -17,6 +17,10 @@
   can pair or check in, so a normal single-container install is unchanged and never has to think
   about it. Turning it back off stops check-ins immediately but keeps what is already paired, so
   nothing is lost and turning it on again restores it.
+- **A remote worker can now return the file it encoded.** The upload is checksummed on arrival and
+  refused if it does not match, if it was encoded from a different source, or if the worker no
+  longer holds the job. An accepted file waits for verification and cannot replace anything until
+  every check Optimisarr runs on its own transcodes has passed against it too.
 - **A remote worker can now download the file it has been given.** Transfers resume where they left
   off if the connection drops, and come with a checksum so the worker can confirm it received the
   file intact. A worker can only ever fetch the exact original it was assigned, and only while it
