@@ -530,9 +530,18 @@ the replacement workflow is trustworthy.
      declared — which together cover the late result, the duplicate delivery, the candidate encoded
      from the wrong original, and the truncated upload. An accepted candidate lands in the work
      directory a local transcode would have used and the job moves to `Verifying`, never to
-     `ReadyToReplace`. **Still to build:** the shared-storage path mapping for workers that can
-     already see the library, resumable upload, and the verification that actually judges a returned
-     candidate.
+     `ReadyToReplace`.
+     **Landed on the evidence side:** `RemoteQualityEvidenceValidator` defines what makes a remote
+     VMAF measurement admissible, failing closed on every path. Evidence is refused unless it names
+     the exact source and candidate hashes, names the VMAF model — an unlabelled score cannot be
+     compared to a threshold, since the same file scores differently under the HD and 4K models —
+     and was measured against thresholds at least as strict as the library requires. Stricter is
+     accepted: passing a harder test than the one set still passes the one set. Absent evidence is
+     refused rather than read as "nothing objected".
+     **Still to build:** the shared-storage path mapping for workers that can already see the
+     library, resumable upload, wiring the evidence contract into the result route, and running the
+     existing verification over a returned candidate so every structural, decode, duration, tail,
+     stream and size gate is repeated locally.
    - **Capability-aware leases and recovery: started.** Schedule only when OS, architecture, FFmpeg
      build, encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the
      job. Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and
