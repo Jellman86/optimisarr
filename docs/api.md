@@ -569,6 +569,13 @@ out of step with the threshold.
 | `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
 | `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. `403` if the lease belongs to another worker, `409` once it has lapsed. |
 | `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
+| `GET` | `/api/workers/leases/{leaseId}/source` | Stream the source for a held lease. Supports `Range` for resumable transfer, and returns `X-Optimisarr-Source-Sha256` so the worker can verify what it received. |
+
+The source route takes no path, filename, or library parameter, by design. A worker presents a lease
+id and the server resolves the file from it, so a paired sidecar can only ever read the exact
+original the control plane already assigned to it — there is no shape of request that reads anything
+else. The original is opened shared and read-only, and access ends the moment the lease stops being
+held, so releasing a job also ends the worker's reach into the library.
 
 A claimed job leaves the `Queued` status for `Leased`, which is how the local queue stops seeing it:
 the dispatcher selects on `Queued`, so the exclusion is structural rather than a check a future

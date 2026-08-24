@@ -4748,6 +4748,37 @@
         ]
       }
     },
+    "/api/workers/leases/{leaseId}/source": {
+      "get": {
+        "operationId": "FetchLeaseSource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
     "/api/workers/pair": {
       "post": {
         "operationId": "PairWorker",
