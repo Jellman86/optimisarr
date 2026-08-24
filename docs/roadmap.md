@@ -247,15 +247,19 @@ the replacement workflow is trustworthy.
      apply transaction explicitly rolls back on an exception, and applying setup leaves a sentinel
      source file byte-for-byte unchanged while preview work remains disposable under `/work`.
 
-3. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
-   config-and-secrets backups, migration smoke coverage, synthetic-media integration
-  coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
-  notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
-  and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
-  paid external services. **Status needs confirming:** this entry still reads "in progress", but
-  every control it names is recorded as shipped and no outstanding scope is written down. Either
-  name what remains or mark the entry done — an "in progress" label with nothing behind it sends
-  work at an entry that has none.
+3. **Phase 13 release hardening: done.** Dry-run mode, config-and-secrets backups, migration
+   smoke coverage, synthetic-media integration coverage, GHCR publishing, README quickstart
+  hardening, troubleshooting, and security notes are all shipped, and the exit criterion is met:
+  a careful user can run Optimisarr against a real library with dry-run, verification, quarantine,
+  and rollback available. Every deliverable in
+  [`engineering/history.md`](engineering/history.md#phase-13-release-hardening) is marked done.
+
+   Two deliverables are deliberately narrower than their one-line names suggest, and those bounds
+   are the intended scope rather than outstanding work: config backup covers portable
+   config-and-secrets snapshots, leaving raw SQLite state backup external and operator-owned; and
+   migration testing covers empty-database smoke. Backups intentionally omit media, jobs,
+   replacements, quarantine, and rollback history. CI stays on standard GitHub-hosted public-repo
+   runners and avoids paid external services.
 
 4. **First-class diagnostics & observability API: done.** "Why did this fail?" is answerable
    from the API alone, without SSH-ing the host or reading container logs. Failed-job detail was
