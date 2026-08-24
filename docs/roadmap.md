@@ -457,12 +457,19 @@ the replacement workflow is trustworthy.
    quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
    continue to be the complete, uncomplicated default.
 
-   - **Versioned worker protocol and explicit ownership.** Define a platform-neutral contract before
-     either app: registration, capability discovery, heartbeats, leases, progress, cancellation,
-     source/output hashes, the fully resolved encode and verification policy, structured FFmpeg
-     evidence, and result acknowledgement. The main app owns job state, scheduling, rules, and every
-     destructive transition. Protocol versions and worker capabilities must be negotiated so an
-     upgrade cannot silently schedule a job onto an incompatible sidecar.
+   - **Versioned worker protocol and explicit ownership: started.** Define a platform-neutral
+     contract before either app: registration, capability discovery, heartbeats, leases, progress,
+     cancellation, source/output hashes, the fully resolved encode and verification policy,
+     structured FFmpeg evidence, and result acknowledgement. The main app owns job state,
+     scheduling, rules, and every destructive transition. Protocol versions and worker capabilities
+     must be negotiated so an upgrade cannot silently schedule a job onto an incompatible sidecar.
+     **Landed so far:** version negotiation and capability matching as pure `Optimisarr.Core.Workers`
+     logic — the control plane owns the contract and a newer sidecar falls back to what this build
+     speaks, non-overlapping ranges are refused with a reason, and an assignment is offered only
+     when the encoder, hardware decoder, VMAF mode, scratch space, and concurrency all clear, with
+     every unmet requirement named. Nothing is wired to HTTP, persistence, or the queue yet, so no
+     work can currently reach a sidecar. **Still to define:** registration, heartbeats, leases,
+     progress and cancellation, hashes, the resolved-policy payload, evidence, and acknowledgement.
    - **Secure pairing and revocation.** Register a sidecar through a short-lived, single-use code
      displayed by the main app, then issue it a unique revocable credential. Bind every assignment
      and result to the registered worker and job lease; redact credentials from diagnostics and
