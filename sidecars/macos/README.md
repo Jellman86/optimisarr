@@ -14,8 +14,11 @@ transcode would be claiming something neither end can do. Pairing exists now so 
 be set up and tested while the rest is built, and so this contract has a second implementation
 holding it honest.
 
-The app reports **no encoders and no VMAF support**, because it has none to prove: nothing is
-bundled with it. Optimisarr's capability matcher fails closed, so a worker advertising nothing is
+The app reports **no encoders and no VMAF support**, because it has none to prove: no ffmpeg is
+bundled with it yet. The probing that will report them is written and tested — it parses
+`ffmpeg -encoders` and then confirms each VideoToolbox encoder with a real throwaway encode, because
+every Apple build lists VideoToolbox whether or not a given machine can actually open it. With no
+ffmpeg present it reports nothing, which is the honest answer. Optimisarr's capability matcher fails closed, so a worker advertising nothing is
 never offered work. Honesty here is the safety mechanism — a sidecar that overstated itself would
 have jobs scheduled onto it that could only fail.
 

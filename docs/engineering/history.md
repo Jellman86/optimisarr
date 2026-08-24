@@ -29,6 +29,27 @@ test asserts the field is a JSON string rather than a number, so the ordinal for
 unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
 testing; the cost of this change rises steeply once a tray app ships.
 
+**Started on dev (2026-08-24) — the sidecar can work out what it is actually capable of.** Probing
+mirrors the server's `HardwareCapabilityService` rather than inventing a second approach: parse
+`ffmpeg -encoders` for a cheap first pass, then confirm each hardware encoder with a real throwaway
+encode to the null muxer. The distinction matters more on Apple than elsewhere, because every macOS
+ffmpeg build lists VideoToolbox whether or not the machine in front of you can open it — listing
+alone would have the sidecar advertise encoders that fail on first use, and a job scheduled against
+a false capability can only fail. CPU encoders are trusted from the listing, as the server trusts
+them.
+
+VMAF can only ever be CPU here. Apple GPUs have no VMAF compute backend, so a test asserts the
+parser can never return `Cuda` — guarding the honesty of the capability rather than the parsing.
+
+A worker with no encoder reports zero concurrency too. Advertising capacity while advertising no
+encoder would show the server a live worker it can never actually use.
+
+ffmpeg will be bundled in the app rather than found on the system, so the worker's build matches the
+server's. The roadmap already treats FFmpeg build as a scheduling criterion, and the reason becomes
+concrete here: the server re-verifies a returned candidate, which only means something if the same
+encode settings produce comparable output at both ends. Nothing is bundled yet — the probing reports
+nothing without it, which is the correct behaviour rather than a gap to paper over.
+
 **Started on dev (2026-08-24) — a worker can fetch the file it was given.** The design constraint
 that shaped this route is that the worker names nothing. It presents a lease id and the server
 resolves lease → job → media file → path; there is deliberately no path, filename, or library
