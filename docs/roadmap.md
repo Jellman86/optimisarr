@@ -530,8 +530,15 @@ the replacement workflow is trustworthy.
      restarting after downtime cannot wake up believing a dead worker still holds a job. Renewing
      or completing a lapsed lease is refused, which is what makes a late result from a vanished
      worker unusable; release is idempotent so a worker retrying after a dropped response is not
-     punished; and no worker can touch a lease it does not hold. **Still to build:** persisting
-     leases, dispatching work against them, drain controls, and recovery after restart.
+     punished; and no worker can touch a lease it does not hold. Leases are now persisted and work is
+     dispatched against them: `POST /api/workers/claim` offers one job at a time, only where the
+     worker's proved capabilities satisfy it, and a claimed job moves from `Queued` to `Leased` so
+     the local dispatcher — which selects on `Queued` — stops seeing it. That exclusion is
+     structural rather than a check a future query could forget. A unique filtered index over held
+     leases means two holders is a database error rather than a possible outcome. Lapsed leases are
+     reclaimed whenever a worker asks for work, so recovery needs no background sweeper.
+     **Still to build:** drain controls, and returning a finished candidate — until that exists a
+     worker can take a job but not complete one.
    - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
      tool/model versions, preparation details, hashes, and captured process evidence as one result
      bound to the assignment. The main app independently re-probes the returned file and repeats the

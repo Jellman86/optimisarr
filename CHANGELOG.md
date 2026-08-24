@@ -17,6 +17,12 @@
   can pair or check in, so a normal single-container install is unchanged and never has to think
   about it. Turning it back off stops check-ins immediately but keeps what is already paired, so
   nothing is lost and turning it on again restores it.
+- **Remote workers can now claim jobs.** A paired sidecar asks for work, and Optimisarr hands it one
+  job at a time, only where the worker has proved it has the encoder, VMAF support, scratch space
+  and spare concurrency the job needs. A claimed job leaves the queue so this machine will not also
+  run it, and comes straight back if the worker gives it up or goes silent. Nothing is transcoded
+  remotely yet — a worker can take a job, but the path for returning a finished file does not exist,
+  so this only has an effect once that lands.
 - **Paired sidecars now report in, and the Workers list shows whether each one is reachable.** A
   worker checks in every 30 seconds using the credential it was given at pairing, and is shown as
   offline after two minutes of silence rather than on a single missed check-in, so a brief network

@@ -29,6 +29,33 @@ test asserts the field is a JSON string rather than a number, so the ordinal for
 unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
 testing; the cost of this change rises steeply once a tray app ships.
 
+**Started on dev (2026-08-24) — leases become real, and a worker can claim a job.** The decision
+that carries the safety is representing a claim as a job *status* rather than a flag or a join. A
+claimed job moves from `Queued` to `Leased`, and the local dispatcher selects on `Queued`, so it
+simply stops seeing the job — no query has to remember to check for a lease, and none can be added
+later that forgets. The same reasoning as revocation being enforced by the credential lookup: make
+the exclusion structural and it cannot be omitted at a call site.
+
+Two holders is a database error rather than a possible outcome. A unique index over `JobId` filtered
+to `State = 'Held'` means a race loses at the constraint; the claim path catches that and moves to
+the next candidate instead of treating it as a failure. Lapsed leases are reclaimed at the top of
+the claim path rather than by a background sweeper, so the queue heals on the next thing that would
+have used it — a control plane that was down for an hour recovers on the first claim rather than
+waiting for a timer.
+
+Two SQLite constraints shaped the implementation, both already known here: `DateTimeOffset` cannot
+be compared or ordered in SQL, so lease expiry filtering and the queue ordering both run in memory,
+the latter over a light projection so only the shortlisted jobs are loaded with their media file.
+
+Pairing now also stamps `LastSeenAt`. Without it a freshly paired worker read as offline until its
+first heartbeat and was refused work for that window, which is wrong: pairing is itself proof we
+just heard from the machine.
+
+Adding this test class broke two unrelated setup and calibration tests, because the tokened host
+fixture is shared across the collection and these tests create libraries and jobs the others count.
+They now clean up after themselves. Worth recording as the second time shared-fixture state has
+bitten: the first was the process-wide config directory race.
+
 **Started on dev (2026-08-24) — the macOS sidecar gets a second implementation of the protocol.**
 `sidecars/macos` is a Swift package rather than an `.xcodeproj`, so the build is reviewable in a
 diff instead of a few thousand lines of generated XML, and the protocol client sits in its own

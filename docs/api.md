@@ -566,6 +566,18 @@ out of step with the threshold.
 | `POST` | `/api/workers/heartbeat` | A paired sidecar checks in and reports free scratch space and current concurrency. Open route; authenticated by the worker credential as `Authorization: Bearer`, not the admin token. `401` when the credential is absent, unknown, or revoked. |
 | `GET` | `/api/workers` | List paired workers with an `online` flag the server computes from its own liveness rule. Never returns credential fingerprints. |
 | `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
+| `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
+| `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
+
+A claimed job leaves the `Queued` status for `Leased`, which is how the local queue stops seeing it:
+the dispatcher selects on `Queued`, so the exclusion is structural rather than a check a future
+query could forget. Releasing a claim, or a lease lapsing, returns the job to `Queued`.
+
+Lapsed leases are reclaimed whenever a worker asks for work, so a job whose holder went silent
+returns to the queue without a background sweeper needing to be running. A lease outlives the point
+at which its holder would be declared offline, so a job is never handed to a second worker while the
+first still counts as reachable.
 
 ## Stats
 

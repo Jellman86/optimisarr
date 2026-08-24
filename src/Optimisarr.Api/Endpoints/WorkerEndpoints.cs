@@ -79,7 +79,7 @@ internal static class WorkerEndpoints
             SettingsStore settings,
             CancellationToken cancellationToken) =>
         {
-            if (await RefusedWhenDisabledAsync(settings, cancellationToken) is { } refused)
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
             {
                 return refused;
             }
@@ -119,7 +119,7 @@ internal static class WorkerEndpoints
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
         {
-            if (await RefusedWhenDisabledAsync(settings, cancellationToken) is { } refused)
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
             {
                 return refused;
             }
@@ -167,7 +167,11 @@ internal static class WorkerEndpoints
                 FreeScratchBytes = Math.Max(0, request.FreeScratchBytes),
                 MaxConcurrency = Math.Max(0, request.MaxConcurrency),
                 CredentialFingerprint = WorkerCredential.Fingerprint(credential),
-                PairedAt = DateTimeOffset.UtcNow
+                PairedAt = DateTimeOffset.UtcNow,
+                // Pairing is itself a check-in — we just heard from the machine. Without this a
+                // freshly paired worker would read as offline until its first heartbeat, and be
+                // refused work for no reason during that window.
+                LastSeenAt = DateTimeOffset.UtcNow
             };
 
             db.Workers.Add(worker);
@@ -195,7 +199,7 @@ internal static class WorkerEndpoints
         {
             // Refused before the credential is even looked at: turning the feature off must stop
             // check-ins outright, not merely stop new pairings.
-            if (await RefusedWhenDisabledAsync(settings, cancellationToken) is { } refused)
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
             {
                 return refused;
             }
@@ -263,28 +267,6 @@ internal static class WorkerEndpoints
             return Results.NoContent();
         })
         .WithName("RevokeWorker");
-    }
-
-    /// <summary>
-    /// Remote workers are opt-in. Everything that pairs a machine or accepts a check-in is refused
-    /// while the feature is off, so the switch is a real boundary rather than a UI preference. The
-    /// list and revoke routes stay open: after switching off, an operator must still be able to see
-    /// what is paired and remove it.
-    /// </summary>
-    private static async Task<IResult?> RefusedWhenDisabledAsync(
-        SettingsStore settings,
-        CancellationToken cancellationToken)
-    {
-        var queue = await settings.GetQueueSettingsAsync(cancellationToken);
-        if (queue.RemoteWorkersEnabled)
-        {
-            return null;
-        }
-
-        return Results.Json(
-            new ApiError("workers.disabled",
-                "Remote workers are turned off. Enable them in Settings to pair a sidecar."),
-            statusCode: StatusCodes.Status403Forbidden);
     }
 
     private static string RedemptionMessage(PairingRedemption redemption) => redemption switch
