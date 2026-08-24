@@ -43,6 +43,27 @@ The server address is whatever you use to reach Optimisarr in a browser — `opt
 an IP and port, or a full `https://` URL behind a reverse proxy. A missing scheme is assumed to be
 `http://`, since this is usually a LAN tool.
 
+## If no icon appears
+
+The app has no window and no Dock icon, so a menu bar with no room left for it looks identical to
+an app that failed to launch.
+
+macOS fills the menu bar right-to-left, and on a Mac with a notch the items that run out of space
+end up behind it rather than being pushed off the edge. A newly launched app is last in the queue,
+so it is the first to disappear. This was hit on the first real launch: the status item existed at
+x=735 on a 1470-point menu bar — dead centre, behind the notch on a 13-inch Air — with nine other
+status items to its right.
+
+Check whether it is actually running before assuming it crashed:
+
+```bash
+pgrep -lf OptimisarrSidecar
+```
+
+If it is running but invisible, make room in the menu bar — quit a menu bar app, or hold ⌘ and drag
+icons to reorder them. Menu bar items can be repositioned by ⌘-dragging, so once it is visible it
+can be moved somewhere convenient.
+
 ## Tests
 
 ```bash
