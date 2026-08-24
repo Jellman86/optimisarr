@@ -65,6 +65,12 @@ Entirely inside the notch, with nine other status items to its right. Note that 
 the *left* of the notch is not available: macOS reserves it for the application menu and never
 places status items there, so a menu bar that looks half empty can still have no room.
 
+**Launch it again.** `open` on an already-running app raises it rather than starting a second copy,
+and this app responds by opening a normal window with the same pairing screen. That is the way back
+in when the icon cannot be seen — macOS has no overflow menu for status items the way Windows does
+for the system tray, so a hidden icon is otherwise unreachable. The window also opens by itself on
+first launch while nothing is paired.
+
 Check whether it is actually running before assuming it crashed:
 
 ```bash
