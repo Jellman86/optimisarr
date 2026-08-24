@@ -24,6 +24,8 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<Worker> Workers => Set<Worker>();
 
+    public DbSet<JobLease> JobLeases => Set<JobLease>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -176,6 +178,33 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             // Every authenticated worker call arrives with a credential and no id, so the
             // fingerprint is the lookup key. Unique because two workers must never share one.
             entity.HasIndex(worker => worker.CredentialFingerprint).IsUnique();
+        });
+
+        modelBuilder.Entity<JobLease>(entity =>
+        {
+            entity.HasKey(lease => lease.Id);
+            entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
+
+            // Removing a job removes its leases; a lease without a job claims nothing.
+            entity.HasOne(lease => lease.Job)
+                .WithMany()
+                .HasForeignKey(lease => lease.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A worker row is kept after revocation for the audit trail, so its leases are kept too
+            // rather than cascading away the record of what it once held.
+            entity.HasOne(lease => lease.Worker)
+                .WithMany()
+                .HasForeignKey(lease => lease.WorkerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Two workers must never hold the same job. Enforced in the schema rather than trusted
+            // to the claim path, so a race or a future call site cannot produce a second holder.
+            entity.HasIndex(lease => lease.JobId)
+                .IsUnique()
+                .HasFilter("\"State\" = 'Held'");
+
+            entity.HasIndex(lease => lease.WorkerId);
         });
     }
 }

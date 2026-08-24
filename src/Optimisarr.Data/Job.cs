@@ -17,7 +17,16 @@ public enum JobStatus
     ReadyToReplace = 4,
     Completed = 5,
     Failed = 6,
-    Cancelled = 7
+    Cancelled = 7,
+
+    /// <summary>
+    /// Claimed by a remote worker and being transcoded off this machine.
+    ///
+    /// A distinct status rather than a flag or a join, so the local dispatcher — which selects on
+    /// <see cref="Queued"/> — cannot pick the job up as well. The exclusion is then structural: a
+    /// future query cannot forget to check for a lease, because a leased job simply is not queued.
+    /// </summary>
+    Leased = 8
 }
 
 /// <summary>

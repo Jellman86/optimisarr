@@ -80,6 +80,62 @@
         ],
         "type": "object"
       },
+      "AssignmentDto": {
+        "properties": {
+          "expiresUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "renewWithinSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "sourceBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "sourcePath": {
+            "type": "string"
+          },
+          "videoEncoder": {
+            "type": "string"
+          },
+          "vmaf": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "leaseId",
+          "jobId",
+          "sourcePath",
+          "sourceBytes",
+          "videoEncoder",
+          "vmaf",
+          "expiresUtc",
+          "renewWithinSeconds"
+        ],
+        "type": "object"
+      },
       "BulkReplacementFailure": {
         "properties": {
           "jobId": {
@@ -462,6 +518,23 @@
         "required": [
           "baseUrl",
           "secret"
+        ],
+        "type": "object"
+      },
+      "LeaseRenewedDto": {
+        "properties": {
+          "expiresUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "leaseId",
+          "expiresUtc"
         ],
         "type": "object"
       },
@@ -4533,6 +4606,36 @@
         ]
       }
     },
+    "/api/workers/claim": {
+      "post": {
+        "operationId": "ClaimWork",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
     "/api/workers/heartbeat": {
       "post": {
         "operationId": "WorkerHeartbeat",
@@ -4552,6 +4655,78 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HeartbeatResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/release": {
+      "post": {
+        "operationId": "ReleaseLease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/renew": {
+      "post": {
+        "operationId": "RenewLease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseRenewedDto"
                 }
               }
             },

@@ -230,6 +230,8 @@ app.MapReplacementEndpoints();
 
 app.MapWorkerEndpoints();
 
+app.MapWorkerLeaseEndpoints();
+
 app.MapHub<JobsHub>("/hubs/jobs");
 
 app.MapFallbackToFile("index.html", staticFileOptions);

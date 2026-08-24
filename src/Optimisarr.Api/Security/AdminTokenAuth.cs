@@ -23,7 +23,12 @@ public static class AdminTokenAuth
         // Likewise for a paired sidecar checking in. It authenticates with its own 32-byte
         // credential, which is a stronger secret than the admin token and authorises only the
         // worker routes; a revoked worker fails here because its stored fingerprint is gone.
-        || path.Equals("/api/workers/heartbeat", StringComparison.OrdinalIgnoreCase);
+        || path.Equals("/api/workers/heartbeat", StringComparison.OrdinalIgnoreCase)
+        // Claiming work and managing a claim are likewise worker-credential routes. The lease ones
+        // carry an id, so they are matched by segment rather than exact equality — and deliberately
+        // scoped to /leases so this cannot widen to the whole /api/workers surface by accident.
+        || path.Equals("/api/workers/claim", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/workers/leases", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsProtectedPath(PathString path) =>
         path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
