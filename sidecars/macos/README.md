@@ -48,11 +48,22 @@ an IP and port, or a full `https://` URL behind a reverse proxy. A missing schem
 The app has no window and no Dock icon, so a menu bar with no room left for it looks identical to
 an app that failed to launch.
 
-macOS fills the menu bar right-to-left, and on a Mac with a notch the items that run out of space
-end up behind it rather than being pushed off the edge. A newly launched app is last in the queue,
-so it is the first to disappear. This was hit on the first real launch: the status item existed at
-x=735 on a 1470-point menu bar — dead centre, behind the notch on a 13-inch Air — with nine other
-status items to its right.
+macOS fills the menu bar right-to-left, and on a Mac with a notch the items that run out of room go
+behind it rather than being pushed off the edge. A newly launched app is last in the queue, so it is
+the first to disappear.
+
+This was hit on the first real launch. Measuring the screen with `NSScreen` rather than guessing:
+
+| Region | Range |
+| --- | --- |
+| Usable left of notch (`auxiliaryTopLeftArea`) | x 0 – 646 |
+| **Notch** | **x 646 – 825** |
+| Usable right of notch (`auxiliaryTopRightArea`) | x 825 – 1470 |
+| This app's status item | **x 735 – 769** |
+
+Entirely inside the notch, with nine other status items to its right. Note that the empty space to
+the *left* of the notch is not available: macOS reserves it for the application menu and never
+places status items there, so a menu bar that looks half empty can still have no room.
 
 Check whether it is actually running before assuming it crashed:
 
@@ -60,9 +71,9 @@ Check whether it is actually running before assuming it crashed:
 pgrep -lf OptimisarrSidecar
 ```
 
-If it is running but invisible, make room in the menu bar — quit a menu bar app, or hold ⌘ and drag
-icons to reorder them. Menu bar items can be repositioned by ⌘-dragging, so once it is visible it
-can be moved somewhere convenient.
+If it is running but invisible, make room: ⌘-drag any visible status icon leftward past the notch,
+which reorders the row and pushes this one out the far side, or quit a menu bar app to free the
+width. Once visible it can be ⌘-dragged wherever suits.
 
 ## Tests
 
