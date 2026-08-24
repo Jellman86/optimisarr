@@ -441,7 +441,15 @@
     loading = true
     error = null
     try {
-      settings = await api.settings()
+      // Merged over the current values rather than replacing them outright. A response that omits
+      // a field — an older server, a partial payload — would otherwise leave a boolean undefined,
+      // and `bind:checked={undefined}` throws hard enough to take the whole page down with it.
+      //
+      // The merge must happen *after* the await. Spreading `settings` inline in the same
+      // expression reads it synchronously, which makes the calling $effect depend on it, so
+      // assigning it here would retrigger the effect and loop forever on "Loading…".
+      const loaded = await api.settings()
+      settings = { ...settings, ...loaded }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
       await loadCleanupPreview()
     } catch (err) {
@@ -456,7 +464,7 @@
     error = null
     message = null
     try {
-      settings = await api.saveSettings({
+      const saved = await api.saveSettings({
         ...settings,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
@@ -464,6 +472,7 @@
         replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
+      settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
       message = i18n.m.settings.saved
       await loadCleanupPreview()
