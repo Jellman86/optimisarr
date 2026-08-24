@@ -3,6 +3,19 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Decision (2026-08-24) — Adaptive per-title VMAF stays the default for new libraries while
+Experimental.** Release 0.2.11 made the adaptive path the default for new video re-encode libraries.
+The prototype-acceptance comparison the roadmap asks for — total work, selected quality, size, VMAF,
+and repeatability against the fixed path — has not been recorded on any encoder family, and the
+2026-08-11 Intel QSV record validates the sampled-VMAF seek-alignment correction rather than quality
+targeting. The default was reviewed against that gap and deliberately kept, as a recorded exception
+to the conservative-default rule in [`../../CLAUDE.md`](../../CLAUDE.md) §1 and
+[`../roadmap.md`](../roadmap.md). The safety model is unchanged: the search falls back to the fixed
+quality when evidence is missing or non-monotonic, and every structural, decode, duration, tail,
+stream, size, and configured VMAF gate still runs before replacement. The exposure is probing time
+and choice stability on newly created libraries only. The Experimental label and the acceptance
+requirement both stand; removing either still needs the cross-family evidence described below.
+
 **Experimental on dev (2026-07-27) — per-library adaptive VMAF quality path.** Video re-encode
 libraries can keep the fixed preset/custom quality or explicitly opt into a bounded per-title search.
 The editor presents the alternatives as radio cards with their actual processing paths and cost.

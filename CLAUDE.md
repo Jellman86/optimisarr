@@ -21,7 +21,13 @@ Optimisarr's entire reason to exist is that it is safer than the alternatives.
   promise. Any change that could break it must be rejected.
 - Every destructive action (replace, delete, move-to-trash) must have a recorded
   rollback path before it runs, not after.
-- Defaults are conservative. When in doubt, do nothing and report why.
+- Defaults are conservative. When in doubt, do nothing and report why. There is
+  one recorded exception — Adaptive per-title VMAF is the default for new video
+  re-encode libraries while still labelled Experimental. It is deliberate and its
+  reasoning is documented in
+  [`docs/roadmap.md`](docs/roadmap.md) under adaptive per-title VMAF quality
+  targeting. Do not treat it as licence to default other unproven paths on;
+  a new exception needs the same explicit reasoning and a matching record.
 - FFmpeg/ffprobe are invoked through explicit argument arrays
   (`ProcessStartInfo.ArgumentList`), **never** a shell string and never string
   interpolation of a path. Treat every file path as untrusted input.
