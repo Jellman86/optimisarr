@@ -691,6 +691,31 @@ export type NotificationTestResult = {
 
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
 
+/** VMAF backends a sidecar can prove. Ordered: CUDA also implies CPU. */
+export type VmafCapability = 0 | 1 | 2
+
+export type Worker = {
+  id: number
+  name: string
+  operatingSystem: string
+  architecture: string
+  protocolVersion: number
+  videoEncoders: string[]
+  hardwareDecoders: string[]
+  vmaf: VmafCapability
+  freeScratchBytes: number
+  maxConcurrency: number
+  pairedAt: string
+  lastSeenAt: string | null
+  revokedAt: string | null
+}
+
+export type WorkerPairingCode = {
+  code: string
+  expiresUtc: string
+  attemptsRemaining: number
+}
+
 export type ArrConnection = {
   id: number
   name: string
@@ -1034,6 +1059,15 @@ export const api = {
     request<void>(`/api/notification-targets/${id}`, { method: 'DELETE' }),
   testNotificationTarget: (id: number) =>
     request<NotificationTestResult>(`/api/notification-targets/${id}/test`, { method: 'POST' }),
+
+  workers: () => request<Worker[]>('/api/workers'),
+  revokeWorker: (id: number) => request<void>(`/api/workers/${id}`, { method: 'DELETE' }),
+  issueWorkerPairingCode: () =>
+    request<WorkerPairingCode>('/api/workers/pairing-code', { method: 'POST' }),
+  /** Null when no code is currently on screen — the ordinary resting state, not an error. */
+  activeWorkerPairingCode: () => request<WorkerPairingCode | null>('/api/workers/pairing-code'),
+  cancelWorkerPairingCode: () =>
+    request<void>('/api/workers/pairing-code', { method: 'DELETE' }),
 
   arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
   createArrConnection: (body: SaveArrConnection) =>

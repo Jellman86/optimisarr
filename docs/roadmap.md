@@ -492,9 +492,12 @@ the replacement workflow is trustworthy.
      table behind migration `AddWorkers`. That pair route is the single worker endpoint outside the
      admin token, because a pairing sidecar holds only the PIN — it is inert unless an operator has
      just issued a code, and yields nothing without the correct one. The active PIN is held in
-     memory and never persisted, so it stays out of the database and its backups. **Still to
-     build:** the UI panel that displays a live PIN, binding assignments and results to the
-     credential and lease, credential rotation, and the TLS/LAN guidance.
+     memory and never persisted, so it stays out of the database and its backups. Settings has a
+     Workers tab that issues a PIN, shows it grouped alongside the server address with a live
+     countdown and remaining attempts, lists paired workers, and revokes them — a tab rather than a
+     sidebar entry, following the same reasoning that kept Tools and Failures out of the sidebar.
+     **Still to build:** binding assignments and results to the credential and lease, credential
+     rotation, and the TLS/LAN guidance.
    - **Efficient, integrity-checked media delivery.** Support resumable, bounded, checksummed
      streaming when the sidecar cannot see the library. Also offer an explicit shared-storage path
      mapping for SMB/NFS-mounted media so multi-gigabyte sources need not cross the network twice.

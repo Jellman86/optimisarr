@@ -540,7 +540,7 @@ outright because an absent fingerprint matches nothing; the row is kept for the 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/workers/pairing-code` | Issue a pairing PIN, replacing any previous one. |
-| `GET` | `/api/workers/pairing-code` | Read the PIN currently on screen. `404` once it is spent, expired, or burned. |
+| `GET` | `/api/workers/pairing-code` | Read the PIN currently on screen. `204` when none is live — the resting state, not an error. |
 | `DELETE` | `/api/workers/pairing-code` | Withdraw the active PIN. |
 | `POST` | `/api/workers/pair` | Redeem a PIN and register a sidecar. Open route; the PIN is the credential. Returns the worker credential once. |
 | `GET` | `/api/workers` | List paired workers. Never returns credential fingerprints. |
