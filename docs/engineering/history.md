@@ -3,6 +3,24 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Started on dev (2026-08-24) — the lease state machine.** A lease is one worker's exclusive claim
+on one job, and it exists to stop two machines encoding the same original. The instructive part is
+which failure it optimises against: losing a lease merely wastes work, whereas freeing one while its
+holder is still running produces two candidates racing for one source. `WorkerLease.Duration` is
+therefore *derived* from `WorkerLiveness.OfflineAfter` rather than chosen independently, so the
+invariant — a job can only be reclaimed after its holder was already declared unreachable — holds
+structurally and not merely by convention. A test asserts the relationship as well, so neither
+constant can be tuned into overlap.
+
+Expiry is computed at read time rather than stored. A sweeper may tidy rows, but correctness must
+not depend on one having run, or a control plane restarting after downtime would wake up still
+believing a long-dead worker holds a job. Renewing or completing a lapsed lease is refused, which is
+precisely what makes the late-result case safe: a worker that vanished, whose job moved on, cannot
+deliver a candidate through a claim it no longer holds. Release is idempotent so a worker retrying
+after a dropped response is not punished for being careful, and ownership is checked before state in
+every operation so a stranger learns nothing about a lease it does not hold. Nothing is persisted or
+dispatched yet, so no job can currently be leased.
+
 **Started on dev (2026-08-24) — worker credentials finally authenticate something.** Pairing issued
 a credential but nothing consumed it: `WorkerCredential.Matches` had no call site, so the secret
 handed to a sidecar was inert. `POST /api/workers/heartbeat` closes that. `WorkerAuth` resolves the
