@@ -13,3 +13,7 @@ config/
 .env
 *.user
 .DS_Store
+
+# Swift Package Manager build output, and the assembled .app bundle
+sidecars/macos/.build/
+sidecars/macos/build/

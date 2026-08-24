@@ -29,6 +29,30 @@ test asserts the field is a JSON string rather than a number, so the ordinal for
 unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
 testing; the cost of this change rises steeply once a tray app ships.
 
+**Started on dev (2026-08-24) — the macOS sidecar gets a second implementation of the protocol.**
+`sidecars/macos` is a Swift package rather than an `.xcodeproj`, so the build is reviewable in a
+diff instead of a few thousand lines of generated XML, and the protocol client sits in its own
+target with no SwiftUI or AppKit dependency — which is what lets the contract be tested without
+launching a menu bar. It lives in this repository rather than its own because the client and the
+contract have to change together; `web/` was already precedent for a separate toolchain here. The
+`.dockerignore` gained `sidecars`, because the Dockerfile ends with a broad `COPY . .` and native
+client source has no business in the Linux image.
+
+The point of building it now, before the server can dispatch anything, is that a client written
+against the published contract is the only real test of that contract. The `VmafCapability`
+ordinal mistake survived several slices of server work and was caught by a question, not by a test;
+a second implementation is what catches that class of error by construction. A live suite —
+skipped unless pointed at a running instance — pairs, checks in, and confirms the PIN is single-use
+against the real API rather than a stub.
+
+The app claims nothing it cannot prove. It bundles no encoding tools, so it reports no encoders, no
+VMAF backend, and zero concurrency, which the server reads as drained and never offers work to.
+That honesty is the safety mechanism rather than a placeholder: a sidecar overstating itself would
+have jobs scheduled onto it that could only fail. Revocation, protocol incompatibility, and the
+feature being switched off are kept as distinct states because they need different responses — a
+revoked credential is terminal and is discarded, while the feature being off is recoverable and the
+credential is kept, so switching it back on does not force a re-pair.
+
 **Started on dev (2026-08-24) — the lease state machine.** A lease is one worker's exclusive claim
 on one job, and it exists to stop two machines encoding the same original. The instructive part is
 which failure it optimises against: losing a lease merely wastes work, whereas freeing one while its

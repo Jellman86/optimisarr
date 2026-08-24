@@ -544,11 +544,21 @@ the replacement workflow is trustworthy.
      encoding, and only the hardware encoders/decoders proved available on that machine. NVIDIA
      CUDA VMAF may be advertised when the bundled tools prove it; CPU VMAF remains the portable
      fallback.
-   - **macOS sidecar application.** Ship a signed and notarized service with a minimal menu-bar UI
+   - **macOS sidecar application: started.** Ship a signed and notarized service with a minimal menu-bar UI
      and durable launch-at-login/background-service behaviour. Support Apple Silicon first, probe
      rather than assume VideoToolbox capabilities, and use CPU VMAF because Apple GPUs have no VMAF
      compute backend. Test sleep/wake, App Nap, low-disk handling, upgrades, cancellation, and
      permission prompts without requiring broad access to the user's filesystem.
+     **Landed so far:** `sidecars/macos`, a Swift package (not an `.xcodeproj`, so the build is
+     reviewable as text) building a `MenuBarExtra` app that pairs by URL and PIN, keeps its
+     credential in the Keychain, and checks in on the interval the server states. It reports no
+     encoders and no VMAF support because it can prove none, so the fail-closed matcher will never
+     offer it work — which is correct until it can do any. Revocation, an incompatible protocol,
+     and the feature being switched off server-side are each surfaced distinctly rather than as a
+     generic failure. A live test suite runs the real client against a running server, which is how
+     this contract gets a second implementation holding it honest. **Still to build:** claiming
+     work, media transfer, transcoding, VMAF, launch-at-login, sleep/wake and App Nap handling,
+     Developer ID signing and notarisation.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests
