@@ -14,6 +14,9 @@ final class ScriptedRunner: CommandRunner, @unchecked Sendable {
         lock.withLock {
             if arguments.contains("-encoders") { return replies["encoders"] ?? (1, "") }
             if arguments.contains("-filters") { return replies["filters"] ?? (1, "") }
+            if arguments.contains("-hwaccels") { return replies["hwaccels"] ?? (1, "") }
+            // The decode half of the hardware round trip.
+            if arguments.contains("-hwaccel") { return replies["decode"] ?? (1, "") }
             // A confirmation encode; remember which encoder was proved.
             if let index = arguments.firstIndex(of: "-c:v"), index + 1 < arguments.count {
                 let encoder = arguments[index + 1]
@@ -105,5 +108,46 @@ struct CapabilityProberTests {
         let runner = ScriptedRunner(["encoders": (1, "not found")])
 
         #expect(await prober(runner).probe(name: "Mac").videoEncoders.isEmpty)
+    }
+
+    @Test("hardware decode is proved by a real round trip, not by the accelerator listing")
+    func provesHardwareDecode() async {
+        let runner = ScriptedRunner([
+            "encoders": (0, listing), "filters": (0, "libvmaf"),
+            "hevc_videotoolbox": (0, ""),
+            "hwaccels": (0, "Hardware acceleration methods:\nvideotoolbox"),
+            "decode": (0, ""),
+        ])
+
+        let capabilities = await prober(runner).probe(name: "Mac")
+
+        #expect(capabilities.hardwareDecoders.contains("videotoolbox"))
+    }
+
+    @Test("an accelerator that lists but cannot decode is not advertised")
+    func rejectsBrokenDecode() async {
+        // Same reasoning as the encoder: listing says ffmpeg was compiled for it, not that this
+        // machine can open it.
+        let runner = ScriptedRunner([
+            "encoders": (0, listing), "filters": (0, "libvmaf"),
+            "hevc_videotoolbox": (0, ""),
+            "hwaccels": (0, "Hardware acceleration methods:\nvideotoolbox"),
+            "decode": (1, "Failed to open decoder"),
+        ])
+
+        #expect(await prober(runner).probe(name: "Mac").hardwareDecoders.isEmpty)
+    }
+
+    @Test("no hardware encoder means no hardware decode is claimed")
+    func conservativeWithoutHardwareEncoder() async {
+        // The round trip needs a hardware encoder to produce something to decode. Reporting decode
+        // without having proved it would be a guess, and the conservative answer is silence.
+        let runner = ScriptedRunner([
+            "encoders": (0, " V....D libx265  libx265 H.265 / HEVC"),
+            "filters": (0, "libvmaf"),
+            "hwaccels": (0, "Hardware acceleration methods:\nvideotoolbox"),
+        ])
+
+        #expect(await prober(runner).probe(name: "Mac").hardwareDecoders.isEmpty)
     }
 }

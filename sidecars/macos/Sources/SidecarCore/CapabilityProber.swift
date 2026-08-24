@@ -92,15 +92,46 @@ public struct CapabilityProber: Sendable {
         let filters = await runner.run(ffmpeg, ["-hide_banner", "-filters"])
         let vmaf = filters.exitCode == 0 ? VmafSupportParser.parse(filters.output) : VmafCapability.none
 
+        let decoders = await provedHardwareDecoders(ffmpeg: ffmpeg, provedEncoders: proved)
+
         return SidecarCapabilities(
             name: name,
             videoEncoders: proved,
-            hardwareDecoders: [],
+            hardwareDecoders: decoders,
             vmaf: vmaf,
             freeScratchBytes: freeScratchBytes(),
             // Nothing to offer means nothing to accept. Reporting concurrency while advertising no
             // encoder would have the server see a live worker it can never actually use.
             maxConcurrency: proved.isEmpty ? 0 : maxConcurrency)
+    }
+
+    /// Proves hardware decode rather than trusting the accelerator listing.
+    ///
+    /// Encodes a throwaway clip and decodes it back with VideoToolbox engaged. Both halves must
+    /// succeed: listing an accelerator only says ffmpeg was compiled for it, and a decoder that
+    /// cannot open is the same problem as an encoder that cannot — a job scheduled against it can
+    /// only fail. Needs a proved hardware encoder to make the clip, so a machine with no hardware
+    /// encode reports no hardware decode, which is conservative rather than exact.
+    private func provedHardwareDecoders(ffmpeg: URL, provedEncoders: [String]) async -> [String] {
+        let accelerators = await runner.run(ffmpeg, ["-hide_banner", "-hwaccels"])
+        guard accelerators.exitCode == 0,
+              !HardwareAcceleratorParser.parse(accelerators.output).isEmpty,
+              let encoder = provedEncoders.first(where: { $0.hasSuffix("_videotoolbox") })
+        else {
+            return []
+        }
+
+        let clip = scratchDirectory
+            .appendingPathComponent("optimisarr-hwprobe-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: clip) }
+
+        let encoded = await runner.run(
+            ffmpeg, HardwareDecodeProbeCommand.encodeArguments(to: clip.path, using: encoder))
+        guard encoded.exitCode == 0 else { return [] }
+
+        let decoded = await runner.run(
+            ffmpeg, HardwareDecodeProbeCommand.decodeArguments(from: clip.path))
+        return decoded.exitCode == 0 ? ["videotoolbox"] : []
     }
 
     /// Real free space where the candidate would be written, not a guess. A worker that cannot hold
