@@ -511,11 +511,22 @@ the replacement workflow is trustworthy.
      Shared sources remain read-only; sidecar scratch stays isolated. The main app verifies source
      identity before dispatch and rejects an output, report, or resumed transfer whose hashes,
      lease, size, or policy no longer match.
-   - **Capability-aware leases and recovery.** Schedule only when OS, architecture, FFmpeg build,
-     encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the job.
-     Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and make
-     retry after disconnect or restart safe. A lost, duplicated, late, cancelled, or partially
+   - **Capability-aware leases and recovery: started.** Schedule only when OS, architecture, FFmpeg
+     build, encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the
+     job. Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and
+     make retry after disconnect or restart safe. A lost, duplicated, late, cancelled, or partially
      uploaded result must never become replaceable.
+     **Landed so far:** the lease state machine as pure `Optimisarr.Core.Workers` logic. A lease is
+     one worker's exclusive claim on one job, and its duration is *derived* from the offline
+     threshold rather than set independently, so a job can only ever be reclaimed after its holder
+     has already been declared unreachable — never while it still counts as online, which is the
+     case that would put two encoders on one original. Expiry is computed when the lease is read
+     rather than stored, so correctness never depends on a sweeper having run and a control plane
+     restarting after downtime cannot wake up believing a dead worker still holds a job. Renewing
+     or completing a lapsed lease is refused, which is what makes a late result from a vanished
+     worker unusable; release is idempotent so a worker retrying after a dropped response is not
+     punished; and no worker can touch a lease it does not hold. **Still to build:** persisting
+     leases, dispatching work against them, drain controls, and recovery after restart.
    - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
      tool/model versions, preparation details, hashes, and captured process evidence as one result
      bound to the assignment. The main app independently re-probes the returned file and repeats the
