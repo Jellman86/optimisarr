@@ -145,6 +145,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.MinFileSizeBytes = snapshot.MinFileSizeBytes;
             library.MaxHeight = snapshot.MaxHeight;
             library.VideoDownscaleHeight = snapshot.VideoDownscaleHeight;
+            library.CropBlackBars = snapshot.CropBlackBars ?? false;
             library.SkipEfficientSources = snapshot.SkipEfficientSources ?? true;
             library.TargetVideoCodec = snapshot.TargetVideoCodec;
             library.TargetContainer = snapshot.TargetContainer;
@@ -539,7 +540,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MaxBitrateKbps,
         library.StrongerAdaptiveQuantisation,
         library.MinBitrateKbps,
-        library.VideoDownscaleHeight);
+        library.VideoDownscaleHeight,
+        library.CropBlackBars);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

@@ -44,6 +44,14 @@ public sealed class Library
     public int? VideoDownscaleHeight { get; set; }
 
     /// <summary>
+    /// When true, black bars are detected and cropped away on video re-encode. Off by default.
+    /// The crop is decided from several sampled scenes and keeps everything any of them showed;
+    /// implausibly small or large crops mean no crop. Material that changes aspect ratio partway
+    /// through can still lose picture if no sample lands on the wider scenes.
+    /// </summary>
+    public bool CropBlackBars { get; set; }
+
+    /// <summary>
     /// When set, a file already in the target video codec is re-encoded anyway if it is at least
     /// this many bytes — for shrinking oversized same-codec files (e.g. a huge HEVC remux when the
     /// target is HEVC). Null (the default) keeps the conservative behaviour of skipping a file that

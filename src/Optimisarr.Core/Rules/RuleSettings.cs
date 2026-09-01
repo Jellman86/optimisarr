@@ -44,6 +44,17 @@ public sealed record RuleSettings
     public int? VideoDownscaleHeight { get; init; }
 
     /// <summary>
+    /// When <c>true</c>, black bars are detected on a video re-encode and cropped away. Off by
+    /// default, and worth understanding before turning on: the verification gates cannot catch a
+    /// wrong crop, because the quality check compares against a reference cropped the same way.
+    /// Safety comes from the planner instead — the crop is the union of what several sampled
+    /// windows kept, never one scene's answer, and anything implausible yields no crop. Material
+    /// that changes aspect ratio partway through (IMAX sequences in a scope film) can still lose
+    /// picture if no sampled window lands on the wider scenes.
+    /// </summary>
+    public bool CropBlackBars { get; init; }
+
+    /// <summary>
     /// When set, a video source already encoded at or below this density — measured as bits per
     /// pixel-second, i.e. the file bitrate divided by (width × height), so it is resolution- and
     /// frame-rate-independent — is skipped before any transcode, because re-encoding it to the

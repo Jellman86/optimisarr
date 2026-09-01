@@ -898,6 +898,30 @@ public sealed class QueueDispatcher(
         // stem but differ by extension can never resolve to the same work path and clobber each
         // other's verified output before it is moved or replaced. A preview writes under its own
         // throwaway tree keyed by job id, kept apart from replace-bound output.
+        // Black-bar removal is decided once per title and remembered on the job, so a retry
+        // encodes the same picture the verified attempt did. Detection samples the same
+        // deterministic windows the adaptive VMAF search uses; every failure mode yields no crop,
+        // because encoding the full frame is the only answer that cannot lose picture.
+        CropRect? detectedCrop = null;
+        if (isVideoJob && rules.CropBlackBars && rules.TargetVideoCodec is not null)
+        {
+            if (job.DetectedCrop is not null)
+            {
+                detectedCrop = CropRect.TryParse(job.DetectedCrop);
+            }
+            else if (media.Width is > 0 && media.Height is > 0 && mediaDurationSeconds is > 0)
+            {
+                var detector = scope.ServiceProvider.GetRequiredService<CropDetectService>();
+                detectedCrop = await detector.DetectAsync(
+                    media.Path,
+                    new PictureSize(media.Width.Value, media.Height.Value),
+                    VmafWindowPlanner.PlanAdaptive(mediaDurationSeconds.Value),
+                    cancellationToken);
+                var decided = detectedCrop?.ToString() ?? "none";
+                await WithJobAsync(job.Id, tracked => tracked.DetectedCrop = decided, cancellationToken);
+            }
+        }
+
         var spec = TranscodeSpecResolver.Resolve(
             rules,
             media.Path,
@@ -921,7 +945,8 @@ public sealed class QueueDispatcher(
             sourceAudioLanguages,
             sourceSubtitleLanguages,
             sourceWidth: media.Width,
-            sourceHeight: media.Height);
+            sourceHeight: media.Height,
+            detectedCrop: detectedCrop);
 
         // The inventory made the job eligible, but the mandatory fresh probe is authoritative.
         // If its current track set has nothing to remove, cancel cleanly instead of producing a
@@ -983,8 +1008,9 @@ public sealed class QueueDispatcher(
             ExpectedVideoCodec: spec.VideoCodec,
             // The size a downscale was told to produce. The gate holds the output to this rather
             // than to the source, and it is the same PictureSize the scale filter was built from.
-            ExpectedWidth: spec.DownscaleTo?.Width,
-            ExpectedHeight: spec.DownscaleTo?.Height,
+            ExpectedWidth: spec.ExpectedSize?.Width,
+            ExpectedHeight: spec.ExpectedSize?.Height,
+            Crop: spec.CropTo,
             // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
             RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
@@ -1082,7 +1108,7 @@ public sealed class QueueDispatcher(
             spec.ClipSeconds,
             // The downscale is a software scale filter; it cannot read frames a hardware decoder
             // leaves on the GPU. Software decode keeps it working; the hardware encoder is unaffected.
-            requiresSoftwareFilter: spec.DownscaleTo is not null);
+            requiresSoftwareFilter: spec.DownscaleTo is not null || spec.CropTo is not null);
         string? hardwareToneMapTransfer = null;
         var hardwareToneMapDolbyVision = media.IsDolbyVision;
         var verificationPolicy = ResolveVerificationPolicy(
@@ -1398,7 +1424,8 @@ public sealed class QueueDispatcher(
                 // Selection is a correctness decision rather than a throughput optimisation.
                 // Software decode gives repeatable frame ordering across CPU/QSV/NVENC/VA-API.
                 Acceleration: VmafAcceleration.None,
-                ReferenceFrameRate: sourceProbe.VideoFrameRate);
+                ReferenceFrameRate: sourceProbe.VideoFrameRate,
+                ReferenceCrop: work.Spec.CropTo);
             var measurementProgress = new Progress<double>(progress =>
             {
                 var mapped = AdaptiveQualityProgress.Map(

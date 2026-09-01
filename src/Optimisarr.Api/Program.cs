@@ -47,6 +47,8 @@ var mediaProbe = new MediaProbeService(ffprobe);
 builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
+// Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
+builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
@@ -342,6 +344,7 @@ internal sealed record SaveLibraryRequest(
     long? MinFileSizeBytes,
     int? MaxHeight,
     int? VideoDownscaleHeight,
+    bool? CropBlackBars,
     long? ReencodeSameCodecAboveBytes,
     bool? SkipEfficientSources,
     string? TargetVideoCodec,
@@ -418,6 +421,7 @@ internal sealed record LibraryDto(
     long? MinFileSizeBytes,
     int? MaxHeight,
     int? VideoDownscaleHeight,
+    bool CropBlackBars,
     long? ReencodeSameCodecAboveBytes,
     bool SkipEfficientSources,
     string? TargetVideoCodec,
@@ -487,6 +491,7 @@ internal sealed record LibraryDto(
         library.MinFileSizeBytes,
         library.MaxHeight,
         library.VideoDownscaleHeight,
+        library.CropBlackBars,
         library.ReencodeSameCodecAboveBytes,
         library.SkipEfficientSources,
         library.TargetVideoCodec,

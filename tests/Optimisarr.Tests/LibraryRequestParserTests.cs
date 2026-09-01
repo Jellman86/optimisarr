@@ -19,6 +19,7 @@ public sealed class LibraryRequestParserTests
         MinFileSizeBytes: null,
         MaxHeight: null,
         VideoDownscaleHeight: null,
+        CropBlackBars: null,
         ReencodeSameCodecAboveBytes: null,
         SkipEfficientSources: null,
         TargetVideoCodec: null,

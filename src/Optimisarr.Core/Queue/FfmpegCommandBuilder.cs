@@ -44,7 +44,18 @@ public sealed record TranscodeSpec(
     // The exact size a video re-encode scales to, or null for none. Computed once by the resolver
     // from the probed source so the filter emitted here and the verification gate share one
     // number rather than each rounding for themselves. Meaningless for a copied stream.
-    PictureSize? DownscaleTo = null);
+    PictureSize? DownscaleTo = null,
+    // The picture to keep when black bars are removed, in source coordinates, or null for none.
+    // Applied before any downscale, so a downscale is computed from the cropped size.
+    CropRect? CropTo = null)
+{
+    /// <summary>
+    /// The size this encode intends to produce, or null when it intends the source size. The
+    /// verification gate holds the output to this. A downscale already accounts for any crop.
+    /// </summary>
+    public PictureSize? ExpectedSize =>
+        DownscaleTo ?? (CropTo is { } crop ? new PictureSize(crop.Width, crop.Height) : null);
+}
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -283,6 +294,12 @@ public static class FfmpegCommandBuilder
         // directly. The downscale goes first: it is a software filter so it must precede any
         // upload, and scaling before the tone-map does the expensive colour work on fewer pixels.
         var filters = new List<string>();
+        // Crop first, then scale: the downscale was computed from the cropped size, and scaling
+        // bars only to cut them away afterwards would waste the work and blur the edge.
+        if (spec.CropTo is { } crop)
+        {
+            filters.Add(CropPlanner.Filter(crop));
+        }
         if (spec.DownscaleTo is { } downscale)
         {
             filters.Add(PictureGeometry.ScaleFilter(downscale));
