@@ -576,6 +576,56 @@ the replacement workflow is trustworthy.
 
      **Still to build:** the resolved encode policy that makes an assignment executable (see below),
      the verification pass for a returned candidate, and drain controls.
+   - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
+     the first, and the first two are server work of similar size to a normal feature slice.
+
+     1. **A resolved encode policy in the assignment.** `AssignmentDto` currently carries
+        `LeaseId, JobId, SourcePath, SourceBytes, VideoEncoder, Vmaf, ExpiresUtc,
+        RenewWithinSeconds` — no quality, container, encoder effort, audio codec or bitrate, HDR
+        treatment, track removals, encoder tuning, or VMAF thresholds. A worker holding one cannot
+        know what to encode. This slice must also resolve the encoder *for the worker* from its
+        proved capabilities (which is what makes a claim possible at all — see the correction
+        above), and stop sending `job.MediaFile.Path`, since the source route deliberately takes no
+        path.
+
+        **Open design decision.** Either send a declarative policy and let the sidecar build its own
+        FFmpeg arguments — which duplicates `FfmpegCommandBuilder`'s ~589 lines of container,
+        subtitle, VFR and tone-map subtleties in Swift, and invites drift — or send the argument
+        array the server already builds for that encoder, with placeholders for input and output,
+        and have the worker validate it against an allowlist before substituting. The second keeps
+        one tested source of truth for the encode contract and suits a design where the *output* is
+        judged rather than the command; it needs care that a compromised or buggy server cannot
+        direct a worker's FFmpeg at anything but its own scratch paths. Not yet decided.
+
+     2. **A verification pass for a delivered candidate.** `POST /api/workers/leases/{id}/result`
+        accepts an upload, binds it to the lease and source hash, and sets the job to `Verifying`
+        — where nothing picks it up. `QueueDispatcher` only ever selects `Queued`. Worse, the
+        startup recovery sweep treats any `Verifying` job as interrupted, deletes its work output
+        and requeues it, so a returned candidate is silently discarded at the next restart. That is
+        an acceptable interim only because nothing can be delivered today; it becomes a race that
+        destroys a finished encode the moment a drainer exists, so both must land together.
+
+        `VerifyAndFinishAsync` reads only eight of `JobWork`'s twenty-four fields — `Spec`,
+        `Original`, `VerificationPolicy`, `VideoEncoder`, `VideoQuality`, `IsCalibration`,
+        `IsDisposable`, `UsedHardwareDecode` — and none is a local-transcode artefact, so extracting
+        a verification input that both paths build is tractable. `RemoteQualityEvidenceValidator`
+        (already merged, still unwired) judges the returned VMAF evidence.
+
+        **Open design decision.** A delivered-and-waiting job is currently indistinguishable from
+        one mid-verification locally. Either add a `JobStatus` such as `AwaitingVerification` —
+        honest, visible to operators, correct recovery semantics, but a migration, nine locales, UI
+        states, and a wider enum that sidecars observe — or a nullable marker on `Job`, which is one
+        column and no translation surface but hides the distinction. Not yet decided.
+
+     3. **The sidecar's work loop.** The client implements two of the ten worker routes. Claim,
+        renew, release, source download (Range plus hash check), transcode, VMAF measurement and
+        result upload are all unwritten, as are progress reporting and cancellation.
+
+     4. **Drain controls**, and then productionisation: launch-at-login, sleep/wake, App Nap,
+        low-disk handling, cancel-on-quit. Developer ID signing and notarisation are unblocked — a
+        paid Apple Developer membership is available — but remain the last step, and neither
+        platform is described as supported until there is real-hardware acceptance evidence.
+
    - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
      tool/model versions, preparation details, hashes, and captured process evidence as one result
      bound to the assignment. The main app independently re-probes the returned file and repeats the

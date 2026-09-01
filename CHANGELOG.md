@@ -50,8 +50,10 @@
   short enough to retype stays safe. Paired workers are listed with their platform, encoders, and
   status, and can be revoked; revoking ends a worker's access immediately and keeps the record.
   Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file — a worker
-  never can. **No work is sent to a sidecar yet**, so pairing has no effect on your library today;
-  it is there so a connection can be set up and tested while the rest is built.
+  never can. **No work reaches a sidecar yet**, so pairing has no effect on your library today; it
+  is there so a connection can be set up and tested while the rest is built. The entries below
+  describe the routes a worker will use once that is true — claiming, fetching a source, returning
+  a candidate — none of which can currently be exercised end to end.
 - **Remote workers are off unless you turn them on.** Settings → General has a Remote workers
   switch, off by default and off on upgrade. While it is off there is no Workers tab and no sidecar
   can pair or check in, so a normal single-container install is unchanged and never has to think

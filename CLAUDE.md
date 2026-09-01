@@ -123,7 +123,9 @@ A change is done when **all** of these hold:
 
 1. `dotnet build` succeeds with **zero warnings**.
 2. `dotnet test` is fully green, and new behaviour has new tests.
-3. `npm run check` is clean if the frontend changed.
+3. `npm run check` is clean if the frontend changed, and `npm run test:e2e` passes. The e2e
+   suite catches whole classes of breakage the type checker cannot — a two-way binding onto
+   an absent prop throws at runtime and blanks a page while `npm run check` stays clean.
 4. Schema changes have a migration and re-running them is a no-op.
 5. The safety model is intact (or strengthened) — never weakened.
 6. `CHANGELOG.md` (Unreleased section) records the change.
@@ -157,6 +159,7 @@ Then:
 dotnet build Optimisarr.slnx          # build everything
 dotnet test  Optimisarr.slnx          # run the suite
 cd web && npm run check               # frontend type/lint check
+cd web && npm run test:e2e            # Playwright end-to-end suite (CI gate — run it)
 cd web && npm run build               # emits static assets into Optimisarr.Api/wwwroot
 ```
 
@@ -185,7 +188,9 @@ to `dev`/`main`, every tag `v*`, and every pull request targeting `dev`/`main`:
 - **backend** — `dotnet restore` → `dotnet build … -warnaserror` → `dotnet test`.
   The `-warnaserror` flag makes the §6 zero-warnings rule a hard gate; a warning
   fails the build. Do not silence it.
-- **frontend** — `npm ci` → `npm run check`. Must be clean.
+- **frontend** — `npm ci` → `npm run check` → `npx playwright install chromium` →
+  `npm run test:e2e`. Both must be clean. The end-to-end suite is a gate, not an optional
+  extra, so run it locally before pushing rather than discovering it here.
 - **docker** — builds the image (after backend + frontend pass) and **publishes
   to GHCR** as `ghcr.io/jellman86/optimisarr`.
 - [`.github/workflows/security.yml`](.github/workflows/security.yml) checks the
