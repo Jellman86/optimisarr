@@ -26,6 +26,7 @@ public sealed class LibraryRequestParserTests
         OptimiseDolbyVision: null,
         ExcludePaths: null,
         ExcludeHardLinkedFiles: null,
+        SkipSourceCodecs: null,
         QualityCrf: null,
         EncoderPreset: encoderPreset,
         AudioTargetCodec: null,
@@ -55,6 +56,20 @@ public sealed class LibraryRequestParserTests
         AutoEnqueueWindowEnd: null,
         AutoReplace: null,
         VideoQualityStrategy: null);
+
+    [Fact]
+    public void An_absurdly_long_codec_exclusion_list_is_refused()
+    {
+        // The form offers a fixed set of chips, but the API takes free text and this is persisted.
+        // Bounding it keeps a malformed or hostile request from writing an unbounded column.
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { SkipSourceCodecs = string.Join(",", Enumerable.Repeat("av1", 500)) },
+            out _,
+            out var error);
+
+        Assert.False(ok);
+        Assert.Contains("codec", error, StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public void Omitted_quality_strategy_defaults_to_adaptive_vmaf_with_a_concrete_target()

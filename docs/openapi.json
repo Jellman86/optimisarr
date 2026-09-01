@@ -821,6 +821,12 @@
               "boolean"
             ]
           },
+          "skipSourceCodecs": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -1664,6 +1670,12 @@
               "boolean"
             ]
           },
+          "skipSourceCodecs": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -1742,6 +1754,7 @@
           "optimiseDolbyVision",
           "excludePaths",
           "excludeHardLinkedFiles",
+          "skipSourceCodecs",
           "qualityCrf",
           "encoderPreset",
           "audioTargetCodec",

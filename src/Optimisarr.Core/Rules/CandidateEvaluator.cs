@@ -41,6 +41,18 @@ public static class CandidateEvaluator
             }
         }
 
+        // A codec the operator has named is left alone whatever the profile would do to it. This
+        // is checked before the per-kind rules so it beats both the same-codec and the
+        // already-efficient skips: those infer that a re-encode would not pay, while this records
+        // that one is not wanted, and the operator's own reason is the more useful one to report.
+        if (rules.SkipSourceCodecs.Count > 0
+            && DefiningCodec(media) is { } sourceCodec
+            && rules.SkipSourceCodecs.Any(excluded =>
+                string.Equals(excluded.Trim(), sourceCodec, StringComparison.OrdinalIgnoreCase)))
+        {
+            return CandidateDecision.Skipped($"{sourceCodec} sources are excluded by this library's rules");
+        }
+
         // Track cleanup is defined only for video containers. An "Other" library can contain
         // audio and images too, but selecting this profile must never route those files through
         // their independent lossy encode pipelines.
@@ -56,6 +68,16 @@ public static class CandidateEvaluator
             MediaKind.Image => EvaluateImage(media, rules),
             _ => EvaluateVideo(media, rules)
         };
+    }
+
+    // The codec that drives a file's eligibility, and so the one a source-codec exclusion means:
+    // the audio codec for an audio file, and otherwise the video codec — which is where the probe
+    // records a still image's picture codec too. Null when the file has not been probed, leaving
+    // it to the per-kind rules to give their own clearer reason.
+    private static string? DefiningCodec(MediaProperties media)
+    {
+        var codec = media.Kind == MediaKind.Audio ? media.AudioCodec : media.VideoCodec;
+        return string.IsNullOrWhiteSpace(codec) ? null : codec;
     }
 
     private static CandidateDecision EvaluateImage(MediaProperties media, RuleSettings rules)

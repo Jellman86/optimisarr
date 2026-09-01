@@ -22,6 +22,7 @@ internal readonly record struct ParsedLibrary(
     bool OptimiseDolbyVision,
     string? ExcludePaths,
     bool ExcludeHardLinkedFiles,
+    string? SkipSourceCodecs,
     int? QualityCrf,
     string? EncoderPreset,
     string? AudioTargetCodec,
@@ -66,6 +67,9 @@ internal readonly record struct ParsedLibrary(
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
 {
+    // Generous next to the real list (eight-odd codec names) and small enough to stay sane.
+    private const int MaxCodecListLength = 256;
+
     public static bool TryParse(SaveLibraryRequest request, out ParsedLibrary parsed, out string? error)
     {
         parsed = default;
@@ -291,6 +295,17 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        // The form offers a fixed set of chips, but this endpoint takes free text and the value is
+        // persisted. Bounding the length keeps a malformed or hostile request from writing an
+        // unbounded column, the same reasoning as the kept-language lists.
+        var skipSourceCodecs = Trim(request.SkipSourceCodecs);
+        if (skipSourceCodecs is { Length: > MaxCodecListLength })
+        {
+            error = $"Excluded source codecs must be at most {MaxCodecListLength} characters "
+                + "(a comma-separated list such as \"av1, vp9\").";
+            return false;
+        }
+
         var targetImageFormat = Trim(request.TargetImageFormat);
         if (targetImageFormat is not null && !ImageTarget.IsEncodable(targetImageFormat))
         {
@@ -370,6 +385,7 @@ internal static class LibraryRequestParser
             request.OptimiseDolbyVision ?? false,
             Trim(request.ExcludePaths),
             request.ExcludeHardLinkedFiles ?? false,
+            skipSourceCodecs,
             request.QualityCrf,
             encoderPreset,
             audioTargetCodec is null ? null : audioTargetCodec.ToLowerInvariant(),
