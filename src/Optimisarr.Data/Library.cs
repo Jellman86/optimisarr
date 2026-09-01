@@ -88,6 +88,27 @@ public sealed class Library
     /// </summary>
     public string? SkipSourceCodecs { get; set; }
 
+    /// <summary>
+    /// Portable content tune for video re-encodes ("Animation" or "Grain"). Null (the default)
+    /// leaves every encoder on its own tuning. Only the software x264/x265 encoders understand
+    /// content tuning; other families receive nothing rather than an approximation.
+    /// </summary>
+    public ContentTune ContentTune { get; set; } = ContentTune.None;
+
+    /// <summary>
+    /// A ceiling on the output's video bitrate in kbps, applied alongside the quality target.
+    /// Null (the default) means no cap. A cap can only make an output smaller, so it cannot
+    /// weaken the size-saving verification gate.
+    /// </summary>
+    public int? MaxBitrateKbps { get; set; }
+
+    /// <summary>
+    /// When true, video re-encodes ask the encoder to spend more bits where the eye notices —
+    /// flat gradients and dark scenes. Expressed as aq-mode on x264/x265 and as spatial/temporal
+    /// AQ on NVENC; families with no equivalent keep their own defaults.
+    /// </summary>
+    public bool StrongerAdaptiveQuantisation { get; set; }
+
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }
 

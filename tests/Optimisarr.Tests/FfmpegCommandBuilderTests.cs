@@ -175,6 +175,33 @@ public sealed class FfmpegCommandBuilderTests
         Assert.True(vfIndex < IndexOf(args, "-c:v"));
     }
 
+    [Fact]
+    public void Advanced_encoder_options_reach_the_built_command()
+    {
+        // The policy decides what each family understands; this proves the resolved arguments
+        // actually land in the argument array a job runs, after the quality and effort they modify.
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            Tuning = new EncoderTuning(ContentTune.Animation, MaxBitrateKbps: 6000,
+                StrongerAdaptiveQuantisation: true)
+        });
+
+        Assert.Equal("animation", args[IndexOf(args, "-tune") + 1]);
+        Assert.Equal("6000k", args[IndexOf(args, "-maxrate") + 1]);
+        Assert.Equal("12000k", args[IndexOf(args, "-bufsize") + 1]);
+        Assert.Equal("aq-mode=3", args[IndexOf(args, "-x265-params") + 1]);
+        Assert.True(IndexOf(args, "-crf") < IndexOf(args, "-tune"));
+    }
+
+    [Fact]
+    public void A_job_with_no_advanced_options_builds_exactly_the_command_it_always_did()
+    {
+        // The guarantee that matters for everyone who never opens Advanced options.
+        Assert.Equal(
+            FfmpegCommandBuilder.Build(Reencode()),
+            FfmpegCommandBuilder.Build(Reencode() with { Tuning = EncoderTuning.None }));
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,

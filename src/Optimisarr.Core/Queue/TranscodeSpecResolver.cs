@@ -118,7 +118,9 @@ public static class TranscodeSpecResolver
             // A downmix needs an audio re-encode; a copied track keeps its layout.
             DownmixToStereo: audioEncoder is not null && rules.DownmixToStereo,
             RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null,
-            RemoveSubtitleStreamIndexes: removedSubtitles.Count > 0 ? removedSubtitles : null);
+            RemoveSubtitleStreamIndexes: removedSubtitles.Count > 0 ? removedSubtitles : null,
+            // Only a re-encode has an encoder to tune; a remux-only profile carries nothing.
+            Tuning: rules.TargetVideoCodec is null ? null : rules.EncoderTuning);
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

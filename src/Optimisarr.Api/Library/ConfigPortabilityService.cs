@@ -152,6 +152,18 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
             library.SkipSourceCodecs = snapshot.SkipSourceCodecs;
+            // Enum.Parse accepts a bare number for any enum and returns it whether or not it is a
+            // member, so a snapshot carrying "999" would restore a ContentTune that does not exist.
+            // An unreadable tune falls back to None — no tuning is the safe answer, and one
+            // cosmetic field should not fail an entire configuration restore.
+            library.ContentTune =
+                Enum.TryParse<Optimisarr.Core.Queue.ContentTune>(
+                    snapshot.ContentTune, ignoreCase: true, out var restoredTune)
+                && Enum.IsDefined(restoredTune)
+                    ? restoredTune
+                    : Optimisarr.Core.Queue.ContentTune.None;
+            library.MaxBitrateKbps = snapshot.MaxBitrateKbps;
+            library.StrongerAdaptiveQuantisation = snapshot.StrongerAdaptiveQuantisation ?? false;
             library.QualityCrf = snapshot.QualityCrf;
             _ = EncoderPresetPolicy.TryNormaliseSelection(snapshot.EncoderPreset, out var encoderPreset);
             library.EncoderPreset = encoderPreset;
@@ -520,7 +532,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
         library.ExcludeHardLinkedFiles,
-        library.SkipSourceCodecs);
+        library.SkipSourceCodecs,
+        library.ContentTune.ToString(),
+        library.MaxBitrateKbps,
+        library.StrongerAdaptiveQuantisation);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

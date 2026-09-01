@@ -53,6 +53,102 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_library_carries_its_exclusions_and_encoder_tuning_through_an_export_and_import()
+    {
+        // These are backup-bearing settings like any other. Exporting and re-importing has to
+        // return the same library, or an operator restoring a config quietly loses the rules that
+        // were protecting their seeded files.
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            db.Libraries.Add(new Library
+            {
+                Name = "Films",
+                Path = "/data/films",
+                MediaType = MediaType.Film,
+                ExcludeHardLinkedFiles = true,
+                SkipSourceCodecs = "av1, vp9",
+                ContentTune = Optimisarr.Core.Queue.ContentTune.Animation,
+                MaxBitrateKbps = 6000,
+                StrongerAdaptiveQuantisation = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var snapshot = await ExportAsync();
+
+        var exported = Assert.Single(snapshot.Libraries);
+        Assert.True(exported.ExcludeHardLinkedFiles);
+        Assert.Equal("av1, vp9", exported.SkipSourceCodecs);
+        Assert.Equal("Animation", exported.ContentTune);
+        Assert.Equal(6000, exported.MaxBitrateKbps);
+        Assert.True(exported.StrongerAdaptiveQuantisation);
+
+        // Import it back over a wiped database and the library must come out the same.
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            db.Libraries.RemoveRange(db.Libraries);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var restored = await db.Libraries.SingleAsync();
+            Assert.True(restored.ExcludeHardLinkedFiles);
+            Assert.Equal("av1, vp9", restored.SkipSourceCodecs);
+            Assert.Equal(Optimisarr.Core.Queue.ContentTune.Animation, restored.ContentTune);
+            Assert.Equal(6000, restored.MaxBitrateKbps);
+            Assert.True(restored.StrongerAdaptiveQuantisation);
+        }
+    }
+
+    [Fact]
+    public async Task A_snapshot_from_before_these_settings_existed_imports_with_them_off()
+    {
+        // Every one of them is appended and nullable precisely so an older backup still restores.
+        var snapshot = new ConfigSnapshot(
+            ConfigSnapshot.CurrentVersion,
+            _clock.GetUtcNow(),
+            new Dictionary<string, string>(),
+            [new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                null, null, null, null, null, null, null, null, false, null)],
+            [], [], []);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var restored = await db.Libraries.SingleAsync();
+        Assert.False(restored.ExcludeHardLinkedFiles);
+        Assert.Null(restored.SkipSourceCodecs);
+        Assert.Equal(Optimisarr.Core.Queue.ContentTune.None, restored.ContentTune);
+        Assert.Null(restored.MaxBitrateKbps);
+        Assert.False(restored.StrongerAdaptiveQuantisation);
+    }
+
+    [Fact]
+    public async Task A_content_tune_that_is_not_a_member_restores_as_no_tune()
+    {
+        // Enum.Parse would hand back 999 as a ContentTune, and the tuning policy would then encode
+        // it as grain. A hand-edited or corrupted backup must not be able to do that, and it must
+        // not fail the whole restore over one cosmetic field either.
+        var snapshot = new ConfigSnapshot(
+            ConfigSnapshot.CurrentVersion,
+            _clock.GetUtcNow(),
+            new Dictionary<string, string>(),
+            [new LibrarySnapshot("Films", "/data/films", "Film", "ConservativeHevc", true, 0,
+                null, null, null, null, null, null, null, null, false, null) with { ContentTune = "999" }],
+            [], [], []);
+
+        Assert.True((await ImportAsync(snapshot)).Applied);
+
+        await using var db = new OptimisarrDbContext(_options);
+        Assert.Equal(
+            Optimisarr.Core.Queue.ContentTune.None,
+            (await db.Libraries.SingleAsync()).ContentTune);
+    }
+
+    [Fact]
     public async Task Import_creates_new_definitions_and_applies_settings()
     {
         var snapshot = new ConfigSnapshot(

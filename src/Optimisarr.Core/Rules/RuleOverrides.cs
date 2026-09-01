@@ -19,6 +19,7 @@ public sealed record RuleOverrides
     public IReadOnlyList<string>? ExcludePathSegments { get; init; }
     public bool? ExcludeHardLinkedFiles { get; init; }
     public IReadOnlyList<string>? SkipSourceCodecs { get; init; }
+    public Queue.EncoderTuning? EncoderTuning { get; init; }
     public string? TargetAudioCodec { get; init; }
     public int? AudioBitrateKbps { get; init; }
     public string? VideoAudioCodec { get; init; }

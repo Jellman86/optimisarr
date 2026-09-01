@@ -118,6 +118,9 @@ internal static class LibraryEndpoints
                 ExcludePaths = parsed.ExcludePaths,
                 ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles,
                 SkipSourceCodecs = parsed.SkipSourceCodecs,
+                ContentTune = parsed.ContentTune,
+                MaxBitrateKbps = parsed.MaxBitrateKbps,
+                StrongerAdaptiveQuantisation = parsed.StrongerAdaptiveQuantisation,
                 QualityCrf = parsed.QualityCrf,
                 EncoderPreset = parsed.EncoderPreset,
                 AudioTargetCodec = parsed.AudioTargetCodec,
@@ -205,6 +208,9 @@ internal static class LibraryEndpoints
             library.ExcludePaths = parsed.ExcludePaths;
             library.ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles;
             library.SkipSourceCodecs = parsed.SkipSourceCodecs;
+            library.ContentTune = parsed.ContentTune;
+            library.MaxBitrateKbps = parsed.MaxBitrateKbps;
+            library.StrongerAdaptiveQuantisation = parsed.StrongerAdaptiveQuantisation;
             library.QualityCrf = parsed.QualityCrf;
             library.EncoderPreset = parsed.EncoderPreset;
             library.AudioTargetCodec = parsed.AudioTargetCodec;
