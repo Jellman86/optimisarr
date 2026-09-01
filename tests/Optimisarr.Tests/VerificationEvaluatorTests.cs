@@ -465,6 +465,102 @@ public sealed class VerificationEvaluatorTests
     }
     // A converted output that passes every default gate: decodes cleanly, probes,
     // keeps duration and audio, and is meaningfully smaller than the original.
+    // --- Intended resolution ------------------------------------------------------------------
+    //
+    // The stream-structure gate has always required output dimensions to equal the source's, and
+    // its own failure message named "a resize policy" that did not exist. These give it one: when
+    // an encode intended to produce a particular size, the gate checks the output against that
+    // intent rather than against the source.
+
+    [Fact]
+    public void An_output_at_the_intended_size_passes_the_structure_gate()
+    {
+        var input = Healthy() with
+        {
+            OriginalWidth = 1920, OriginalHeight = 1080,
+            OutputWidth = 1280, OutputHeight = 720,
+            ExpectedWidth = 1280, ExpectedHeight = 720
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join(" | ", report.Checks.Where(c => c.Outcome != CheckOutcome.Passed).Select(c => c.Detail)));
+    }
+
+    [Fact]
+    public void An_output_that_misses_the_intended_size_fails_and_names_what_was_intended()
+    {
+        // The encoder produced something other than what was asked for. Naming the intended size
+        // is what makes the failure actionable; "changed from the source" would be true but useless.
+        var input = Healthy() with
+        {
+            OriginalWidth = 1920, OriginalHeight = 1080,
+            OutputWidth = 1282, OutputHeight = 720,
+            ExpectedWidth = 1280, ExpectedHeight = 720
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        var failure = Assert.Single(report.Checks, c => c.Outcome == CheckOutcome.Failed);
+        Assert.Contains("1280x720", failure.Detail);
+        Assert.Contains("1282x720", failure.Detail);
+    }
+
+    [Fact]
+    public void An_output_at_the_source_size_fails_when_a_downscale_was_intended()
+    {
+        // The scale filter was dropped somewhere — a hardware path that ignored it, say. The file
+        // is fine as a file, but it is not the job that was asked for, and it must not be the one
+        // that replaces the original under the belief that it is smaller.
+        var input = Healthy() with
+        {
+            OriginalWidth = 1920, OriginalHeight = 1080,
+            OutputWidth = 1920, OutputHeight = 1080,
+            ExpectedWidth = 1280, ExpectedHeight = 720
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void Without_an_intended_size_the_gate_still_requires_the_source_size()
+    {
+        // No policy means no resize, exactly as before this existed. Every library that never sets
+        // a downscale keeps the behaviour it always had.
+        var input = Healthy() with
+        {
+            OriginalWidth = 1920, OriginalHeight = 1080,
+            OutputWidth = 1280, OutputHeight = 720,
+            ExpectedWidth = null, ExpectedHeight = null
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        Assert.Contains(report.Checks, c => c.Outcome == CheckOutcome.Failed && c.Detail.Contains("without a resize policy"));
+    }
+
+    [Fact]
+    public void An_intended_size_never_applies_to_a_copied_video_stream()
+    {
+        // A remux cannot resize. If an intended size somehow reaches a copy job, the safe reading
+        // is that the stream must be untouched — not that a size change is now acceptable.
+        var input = Healthy() with
+        {
+            VideoReencoded = false,
+            OriginalWidth = 1920, OriginalHeight = 1080,
+            OutputWidth = 1280, OutputHeight = 720,
+            ExpectedWidth = 1280, ExpectedHeight = 720
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+    }
+
     private static VerificationInput Healthy() => new(
         DecodeSucceeded: true,
         DecodeError: null,

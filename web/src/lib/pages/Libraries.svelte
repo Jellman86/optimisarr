@@ -799,6 +799,7 @@
       priority: library.priority,
       minFileSizeBytes: library.minFileSizeBytes,
       maxHeight: library.maxHeight,
+      videoDownscaleHeight: library.videoDownscaleHeight ?? null,
       reencodeSameCodecAboveBytes: library.reencodeSameCodecAboveBytes,
       skipEfficientSources: library.skipEfficientSources,
       targetVideoCodec: library.targetVideoCodec,
@@ -907,6 +908,7 @@
       minFileSizeBytes: minSizeMb === '' ? null : Math.round(Number(minSizeMb) * BYTES_PER_MB),
       reencodeSameCodecAboveBytes: sameCodecGb === '' ? null : Math.round(Number(sameCodecGb) * BYTES_PER_GB),
       maxHeight: form.maxHeight ? Number(form.maxHeight) : null,
+      videoDownscaleHeight: form.videoDownscaleHeight == null ? null : Number(form.videoDownscaleHeight),
       priority: Number(form.priority) || 0,
       targetVideoCodec: emptyToNull(form.targetVideoCodec),
       targetContainer: emptyToNull(form.targetContainer),
@@ -2210,6 +2212,16 @@
             <label class="label" for="lib-maxheight">{i18n.m.libraries.skip_above} <InfoTip text={i18n.m.libraries.skip_above_tip} /></label>
             <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
               {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
+            </select>
+          </div>
+          <!-- Two controls that both mention a height and mean opposite things: "skip above"
+               leaves a tall file alone, "downscale to" converts it. Side by side so the
+               difference is visible, with the tip stating which wins when both are set. -->
+          <div>
+            <label class="label" for="lib-downscale">{i18n.m.libraries.video_downscale_to} <InfoTip text={i18n.m.libraries.video_downscale_to_tip} /></label>
+            <select id="lib-downscale" class="input" bind:value={form.videoDownscaleHeight}>
+              <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
+              {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
             </select>
           </div>
           {/if}

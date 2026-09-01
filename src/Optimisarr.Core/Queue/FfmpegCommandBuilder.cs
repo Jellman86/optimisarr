@@ -40,7 +40,11 @@ public sealed record TranscodeSpec(
     // Portable advanced encoder intent (content tune, bitrate cap, adaptive quantisation).
     // Resolved onto this exact encoder's vocabulary by EncoderTuningPolicy, which drops anything
     // the chosen family cannot express rather than approximating it.
-    EncoderTuning? Tuning = null);
+    EncoderTuning? Tuning = null,
+    // The exact size a video re-encode scales to, or null for none. Computed once by the resolver
+    // from the probed source so the filter emitted here and the verification gate share one
+    // number rather than each rounding for themselves. Meaningless for a copied stream.
+    PictureSize? DownscaleTo = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -274,9 +278,15 @@ public static class FfmpegCommandBuilder
             return;
         }
 
-        // One filter chain: optional HDR->SDR tone-map, then any upload the hardware encoder
-        // needs. A supported hardware tone-map consumes the decoded GPU surfaces directly.
+        // One filter chain: optional downscale, optional HDR->SDR tone-map, then any upload the
+        // hardware encoder needs. A supported hardware tone-map consumes the decoded GPU surfaces
+        // directly. The downscale goes first: it is a software filter so it must precede any
+        // upload, and scaling before the tone-map does the expensive colour work on fewer pixels.
         var filters = new List<string>();
+        if (spec.DownscaleTo is { } downscale)
+        {
+            filters.Add(PictureGeometry.ScaleFilter(downscale));
+        }
         if (spec.TonemapToSdr)
         {
             filters.Add(hardwareToneMap

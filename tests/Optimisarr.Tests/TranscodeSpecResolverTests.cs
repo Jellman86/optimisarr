@@ -398,4 +398,63 @@ public sealed class TranscodeSpecResolverTests
 
         Assert.Null(spec.RemoveSubtitleStreamIndexes);
     }
+
+    // --- Video downscale ----------------------------------------------------------------------
+
+    [Fact]
+    public void A_downscale_height_produces_the_exact_size_the_gate_will_check()
+    {
+        var rules = Hevc with { VideoDownscaleHeight = 720 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceWidth: 1920, sourceHeight: 1080);
+
+        // 1920x1080 -> 720p is 1280 wide; the resolver hands the builder and the verifier the
+        // same number, so neither has to round for itself.
+        Assert.Equal(new PictureSize(1280, 720), spec.DownscaleTo);
+    }
+
+    [Fact]
+    public void A_source_already_at_or_below_the_target_is_not_scaled()
+    {
+        var rules = Hevc with { VideoDownscaleHeight = 1080 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceWidth: 1280, sourceHeight: 720);
+
+        Assert.Null(spec.DownscaleTo);
+    }
+
+    [Fact]
+    public void A_remux_never_carries_a_downscale()
+    {
+        // A copied stream cannot be scaled, so a remux-only profile must not be handed a size it
+        // would then fail verification against.
+        var rules = Hevc with { TargetVideoCodec = null, VideoDownscaleHeight = 720 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceWidth: 1920, sourceHeight: 1080);
+
+        Assert.Null(spec.DownscaleTo);
+    }
+
+    [Fact]
+    public void Unknown_source_dimensions_mean_no_downscale()
+    {
+        // An unprobed source has nothing to compute a width from. Encoding at source size is the
+        // honest fallback, and the gate then checks output against source as it always did.
+        var rules = Hevc with { VideoDownscaleHeight = 720 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+
+        Assert.Null(spec.DownscaleTo);
+    }
 }

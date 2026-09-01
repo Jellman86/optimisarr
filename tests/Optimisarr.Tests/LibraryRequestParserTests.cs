@@ -18,6 +18,7 @@ public sealed class LibraryRequestParserTests
         Priority: 0,
         MinFileSizeBytes: null,
         MaxHeight: null,
+        VideoDownscaleHeight: null,
         ReencodeSameCodecAboveBytes: null,
         SkipEfficientSources: null,
         TargetVideoCodec: null,
@@ -136,6 +137,35 @@ public sealed class LibraryRequestParserTests
             Request() with { MaxBitrateKbps = 5000, MinBitrateKbps = 5000 }, out _, out var error);
 
         Assert.True(ok, error);
+    }
+
+    [Theory]
+    [InlineData(719)]
+    [InlineData(100)]
+    [InlineData(5000)]
+    public void An_odd_or_out_of_range_downscale_height_is_refused(int height)
+    {
+        // Odd because 4:2:0 chroma needs even dimensions — an odd height is a scale filter that
+        // fails, not a picture that is slightly the wrong size. Bounded to real display heights.
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { VideoDownscaleHeight = height }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Downscale height", error);
+    }
+
+    [Theory]
+    [InlineData(2160)]
+    [InlineData(1080)]
+    [InlineData(720)]
+    [InlineData(480)]
+    public void A_standard_downscale_height_is_accepted(int height)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { VideoDownscaleHeight = height }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(height, parsed.VideoDownscaleHeight);
     }
 
     [Fact]

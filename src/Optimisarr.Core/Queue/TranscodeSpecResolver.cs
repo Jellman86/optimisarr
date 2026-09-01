@@ -30,7 +30,11 @@ public static class TranscodeSpecResolver
         int sourceMaxAudioChannels = 0,
         bool sourceIsVariableFrameRate = false,
         IReadOnlyList<string?>? sourceAudioLanguages = null,
-        IReadOnlyList<string?>? sourceSubtitleLanguages = null)
+        IReadOnlyList<string?>? sourceSubtitleLanguages = null,
+        // Probed picture dimensions, needed only to compute an exact downscale. Null when the
+        // source was never probed, in which case no downscale is attempted.
+        int? sourceWidth = null,
+        int? sourceHeight = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -120,7 +124,12 @@ public static class TranscodeSpecResolver
             RemoveAudioStreamIndexes: removedAudio.Count > 0 ? removedAudio : null,
             RemoveSubtitleStreamIndexes: removedSubtitles.Count > 0 ? removedSubtitles : null,
             // Only a re-encode has an encoder to tune; a remux-only profile carries nothing.
-            Tuning: rules.TargetVideoCodec is null ? null : rules.EncoderTuning);
+            Tuning: rules.TargetVideoCodec is null ? null : rules.EncoderTuning,
+            // Likewise only a re-encode can be scaled. A copied stream keeps its size, and handing
+            // a remux a target it cannot meet would only fail it at the gate.
+            DownscaleTo: rules.TargetVideoCodec is null
+                ? null
+                : PictureGeometry.Downscale(sourceWidth, sourceHeight, rules.VideoDownscaleHeight));
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

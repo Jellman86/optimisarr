@@ -896,6 +896,15 @@
               "string"
             ]
           },
+          "videoDownscaleHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "videoQualityStrategy": {
             "default": "Fixed",
             "type": "string"
@@ -1775,6 +1784,15 @@
               "string"
             ]
           },
+          "videoDownscaleHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "videoQualityStrategy": {
             "type": [
               "null",
@@ -1806,6 +1824,7 @@
           "priority",
           "minFileSizeBytes",
           "maxHeight",
+          "videoDownscaleHeight",
           "reencodeSameCodecAboveBytes",
           "skipEfficientSources",
           "targetVideoCodec",

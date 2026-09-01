@@ -72,6 +72,11 @@ public sealed record VerificationInput(
     int? OriginalHeight = null,
     int? OutputWidth = null,
     int? OutputHeight = null,
+    // The size the encode was told to produce, when it was told to produce one. With these set the
+    // structure gate checks the output against the intent rather than against the source; without
+    // them it requires the source size, as it always has. Only meaningful for a re-encoded stream.
+    int? ExpectedWidth = null,
+    int? ExpectedHeight = null,
     bool ImageQualityMeasured = false,
     string? ImageQualityError = null,
     double? ImageSsim = null,

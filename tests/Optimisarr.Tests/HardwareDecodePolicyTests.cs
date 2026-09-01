@@ -50,4 +50,22 @@ public sealed class HardwareDecodePolicyTests
             videoCodec: "hevc",
             clipSeconds: null));
     }
+
+    [Fact]
+    public void A_downscale_forces_software_decode_so_the_scale_filter_has_frames_it_can_read()
+    {
+        // A software scale filter fed GPU surfaces from a hardware decoder fails the whole graph.
+        // The encoder side is unaffected; only where the frames are decoded changes.
+        Assert.False(HardwareDecodePolicy.ShouldUse(
+            configured: true, isDisposable: false, MediaKind.Video, "hevc", clipSeconds: null,
+            requiresSoftwareFilter: true));
+    }
+
+    [Fact]
+    public void Without_a_software_filter_the_decode_choice_is_unchanged()
+    {
+        Assert.True(HardwareDecodePolicy.ShouldUse(
+            configured: true, isDisposable: false, MediaKind.Video, "hevc", clipSeconds: null,
+            requiresSoftwareFilter: false));
+    }
 }
