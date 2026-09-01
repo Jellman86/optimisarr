@@ -39,7 +39,8 @@ public final class SidecarSession: ObservableObject {
 
     private let client: SidecarClient
     private let store: CredentialStore
-    private let capabilities: SidecarCapabilities
+    private let prober: CapabilityProber?
+    private var capabilities: SidecarCapabilities
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
     private var pairing: StoredPairing?
@@ -49,6 +50,7 @@ public final class SidecarSession: ObservableObject {
         client: SidecarClient = SidecarClient(),
         store: CredentialStore = KeychainCredentialStore(),
         capabilities: SidecarCapabilities = .provenToday(name: Host.current().localizedName ?? "Mac"),
+        prober: CapabilityProber? = CapabilityProber(),
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
@@ -56,6 +58,7 @@ public final class SidecarSession: ObservableObject {
         self.client = client
         self.store = store
         self.capabilities = capabilities
+        self.prober = prober
         self.sleep = sleep
     }
 
@@ -75,6 +78,14 @@ public final class SidecarSession: ObservableObject {
     public func pair(serverAddress address: String, pin: String) async {
         status = .pairing
         serverAddress = address
+
+        // Probed at the moment of pairing rather than at launch, so what the server records is what
+        // this machine could do just now — a driver or an ffmpeg that changed since startup would
+        // otherwise be reported as it was, and a capability the server believes but the machine
+        // cannot honour is a job that can only fail.
+        if let prober {
+            capabilities = await prober.probe(name: capabilities.name, maxConcurrency: 1)
+        }
 
         do {
             let result = try await client.pair(

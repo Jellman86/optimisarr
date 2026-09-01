@@ -23,6 +23,17 @@ rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/Contents/MacOS" "${BUNDLE}/Contents/Resources"
 cp "${BINARY}" "${BUNDLE}/Contents/MacOS/${APP_NAME}"
 
+# The bundled ffmpeg, if it has been built. Without it the app still runs and pairs; it simply
+# proves no encoders and is never offered work, which is the honest state rather than a broken one.
+if [[ -x vendor/ffmpeg ]]; then
+  cp vendor/ffmpeg "${BUNDLE}/Contents/Resources/ffmpeg"
+  [[ -x vendor/ffprobe ]] && cp vendor/ffprobe "${BUNDLE}/Contents/Resources/ffprobe"
+  [[ -f vendor/BUILD-INFO.txt ]] && cp vendor/BUILD-INFO.txt "${BUNDLE}/Contents/Resources/"
+  echo "Bundled ffmpeg: $(vendor/ffmpeg -hide_banner -version | head -1)"
+else
+  echo "warning: no vendor/ffmpeg — run scripts/build-ffmpeg.sh; the app will prove no encoders" >&2
+fi
+
 # LSUIElement keeps it out of the Dock and the app switcher. The app also sets its activation
 # policy at startup, so it behaves correctly even when run straight from the build directory.
 cat > "${BUNDLE}/Contents/Info.plist" <<'PLIST'

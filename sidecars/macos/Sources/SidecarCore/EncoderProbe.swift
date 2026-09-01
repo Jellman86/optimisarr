@@ -76,3 +76,45 @@ public enum VmafSupportParser {
         filtersOutput.contains("libvmaf") ? .cpu : .none
     }
 }
+
+/// Parses `ffmpeg -hwaccels`.
+///
+/// On Apple the only entry that matters is `videotoolbox`, which covers hardware decode. Unlike an
+/// encoder there is no per-codec decoder name to advertise — decode is requested as
+/// `-hwaccel videotoolbox` — so that is the name reported, and it is reported only once a real
+/// decode has been shown to work.
+public enum HardwareAcceleratorParser {
+    public static func parse(_ output: String) -> [String] {
+        output
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0 == "videotoolbox" }
+    }
+}
+
+/// Builds the round trip that proves hardware decode actually works.
+///
+/// Listing `videotoolbox` under `-hwaccels` only says ffmpeg was compiled for it. Proving it needs
+/// something real to decode, so a short clip is encoded first and then decoded back with the
+/// accelerator engaged. Both halves have to succeed, which is stricter than either alone.
+public enum HardwareDecodeProbeCommand {
+    /// Encodes a throwaway clip to a file, using the hardware encoder already proved.
+    public static func encodeArguments(to path: String, using encoder: String) -> [String] {
+        [
+            "-hide_banner", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc=s=320x240:r=25:d=1",
+            "-c:v", encoder,
+            path,
+        ]
+    }
+
+    /// Decodes it back with the accelerator engaged, to the null muxer.
+    public static func decodeArguments(from path: String) -> [String] {
+        [
+            "-hide_banner", "-v", "error",
+            "-hwaccel", "videotoolbox",
+            "-i", path,
+            "-f", "null", "-",
+        ]
+    }
+}
