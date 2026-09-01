@@ -67,12 +67,14 @@
   off if the connection drops, and come with a checksum so the worker can confirm it received the
   file intact. A worker can only ever fetch the exact original it was assigned, and only while it
   still holds the job.
-- **Remote workers can now claim jobs.** A paired sidecar asks for work, and Optimisarr hands it one
-  job at a time, only where the worker has proved it has the encoder, VMAF support, scratch space
-  and spare concurrency the job needs. A claimed job leaves the queue so this machine will not also
-  run it, and comes straight back if the worker gives it up or goes silent. Nothing is transcoded
-  remotely yet — a worker can take a job, but the path for returning a finished file does not exist,
-  so this only has an effect once that lands.
+- **The route for a worker to claim a job now exists, but no job can be offered through it yet.**
+  A paired sidecar can ask for work, and Optimisarr will only ever hand out a job where the worker
+  has proved it has the encoder, VMAF support, scratch space and spare concurrency that job needs.
+  A claimed job leaves the queue so this machine will not also run it, and comes straight back if
+  the worker gives it up or goes silent. In practice nothing is handed out: the offer names the
+  encoder recorded on the job, and that is only written when *this* machine transcodes, so a queued
+  job has none and the request is correctly refused as incomplete. Remote transcoding therefore has
+  no effect on your library in this release.
 - **Paired sidecars now report in, and the Workers list shows whether each one is reachable.** A
   worker checks in every 30 seconds using the credential it was given at pairing, and is shown as
   offline after two minutes of silence rather than on a single missed check-in, so a brief network
