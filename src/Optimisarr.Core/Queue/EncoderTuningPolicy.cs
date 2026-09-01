@@ -95,10 +95,17 @@ public static class EncoderTuningPolicy
             args.Add(tuning.Tune == ContentTune.Animation ? "animation" : "grain");
         }
 
-        // The one genuinely portable knob: every encoder here accepts a rate cap alongside its
-        // constant-quality setting. The buffer size is not optional — x264/x265 ignore -maxrate
-        // without it, which would leave the setting looking applied while doing nothing.
-        if (tuning.MaxBitrateKbps is { } cap && cap > 0)
+        // Capped constant quality, and only where that is a real documented mode: x264/x265 pair
+        // -crf with -maxrate/-bufsize, and NVENC is already on VBR with no target bitrate, so a cap
+        // is exactly the ceiling it is missing.
+        //
+        // Not QSV or VAAPI. Those run constant-quantiser modes here (-global_quality and
+        // -rc_mode CQP), where a rate cap is at best ignored and at worst quietly moves the encoder
+        // onto a different rate-control mode than the one the quality setting chose. Nor SVT-AV1,
+        // whose capped-CRF control is its own parameter rather than -maxrate. An ignored argument
+        // is the failure this policy exists to prevent, so those families are left alone and the
+        // library form says so.
+        if ((isX26x || isNvenc) && tuning.MaxBitrateKbps is { } cap && cap > 0)
         {
             args.Add("-maxrate");
             args.Add($"{cap}k");

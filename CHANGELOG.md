@@ -10,7 +10,7 @@
   more bits where the eye notices. Each is stored as intent rather than as a raw FFmpeg flag, so
   the encoder actually chosen for a job receives only what it understands: content tune and
   adaptive quantisation reach the software x264/x265 encoders, NVENC honours adaptive quantisation
-  but has no content tune, and the bitrate cap applies everywhere. The library form says which
+  but has no content tune, and the bitrate cap reaches x264/x265 and NVENC. The library form says which
   encoders honour what as soon as you set one, because in Auto mode a library cannot know in
   advance which encoder it will land on. Anything a family cannot express is dropped rather than
   approximated, and a library that sets none of these builds exactly the command it always did.

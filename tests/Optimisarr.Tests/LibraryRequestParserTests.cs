@@ -60,6 +60,47 @@ public sealed class LibraryRequestParserTests
         AutoReplace: null,
         VideoQualityStrategy: null);
 
+    [Theory]
+    [InlineData("5")]
+    [InlineData("999")]
+    [InlineData("-1")]
+    public void A_numeric_content_tune_is_refused_rather_than_becoming_an_undefined_value(string tune)
+    {
+        // Enum.TryParse accepts a number for any enum and hands back whatever integer it was given,
+        // defined or not. Left unchecked, "999" would store a ContentTune that is not a member —
+        // and the tuning policy, asking only "is this Animation?", would silently encode it as
+        // grain. The contract is names, so only names are accepted.
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { ContentTune = tune }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("content tune", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("Animation", Optimisarr.Core.Queue.ContentTune.Animation)]
+    [InlineData("animation", Optimisarr.Core.Queue.ContentTune.Animation)]
+    [InlineData("Grain", Optimisarr.Core.Queue.ContentTune.Grain)]
+    [InlineData("None", Optimisarr.Core.Queue.ContentTune.None)]
+    public void A_named_content_tune_is_accepted_whatever_its_casing(
+        string tune, Optimisarr.Core.Queue.ContentTune expected)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { ContentTune = tune }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(expected, parsed.ContentTune);
+    }
+
+    [Fact]
+    public void An_omitted_content_tune_means_no_tune_rather_than_an_error()
+    {
+        var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.ContentTune.None, parsed.ContentTune);
+    }
+
     [Fact]
     public void An_absurdly_long_codec_exclusion_list_is_refused()
     {

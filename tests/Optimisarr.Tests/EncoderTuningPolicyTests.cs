@@ -68,17 +68,30 @@ public sealed class EncoderTuningPolicyTests
     // --- Maximum bitrate ----------------------------------------------------------------------
 
     [Fact]
-    public void A_bitrate_cap_reaches_every_family()
+    public void A_bitrate_cap_reaches_the_encoders_where_capped_quality_is_a_real_mode()
     {
-        // The one genuinely portable knob here: every encoder Optimisarr uses accepts a rate cap
-        // alongside its constant-quality setting, and capping can only ever make an output smaller.
-        foreach (var encoder in new[] { "libx265", "libsvtav1", "hevc_nvenc", "hevc_qsv", "hevc_vaapi" })
+        // x264/x265 pair -crf with -maxrate as documented "capped CRF"; NVENC is already on VBR
+        // with no target bitrate, so a cap is exactly the ceiling it is missing.
+        foreach (var encoder in new[] { "libx264", "libx265", "hevc_nvenc" })
         {
             var args = Resolve(encoder, maxBitrateKbps: 8000);
 
             Assert.Contains("-maxrate", args);
             Assert.Contains("8000k", args);
         }
+    }
+
+    [Fact]
+    public void A_bitrate_cap_is_dropped_where_it_would_be_ignored_or_change_the_rate_control_mode()
+    {
+        // QSV and VAAPI run constant-quantiser modes here (-global_quality and -rc_mode CQP), where
+        // a rate cap is at best ignored and at worst quietly moves the encoder onto a different
+        // rate-control mode than the quality setting chose. SVT-AV1's capped-CRF control is its own
+        // parameter, not -maxrate. Passing an argument that does nothing is the exact failure this
+        // policy exists to prevent, so these keep their own rate control.
+        Assert.Empty(Resolve("hevc_qsv", maxBitrateKbps: 8000));
+        Assert.Empty(Resolve("hevc_vaapi", maxBitrateKbps: 8000));
+        Assert.Empty(Resolve("libsvtav1", maxBitrateKbps: 8000));
     }
 
     [Fact]
