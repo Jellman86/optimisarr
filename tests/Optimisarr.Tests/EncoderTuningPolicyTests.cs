@@ -22,7 +22,10 @@ public sealed class EncoderTuningPolicyTests
         bool strongerAdaptiveQuantisation = false) =>
         EncoderTuningPolicy.Resolve(
             encoder,
-            new EncoderTuning(tune, maxBitrateKbps, strongerAdaptiveQuantisation));
+            new EncoderTuning(
+                Tune: tune,
+                MaxBitrateKbps: maxBitrateKbps,
+                StrongerAdaptiveQuantisation: strongerAdaptiveQuantisation));
 
     [Fact]
     public void Nothing_is_added_when_no_knob_is_set()

@@ -4,6 +4,14 @@
 
 ### Added
 
+- **A minimum bitrate can now sit under the maximum.** The **Fine-tune the encoder** group offers a
+  floor once a cap is set, completing the bitrate pair asked for in #95. It is deliberately the
+  less useful half: a floor forces bits into scenes that need none, so it costs space rather than
+  saving any, and exists for streaming setups that stall at very low bitrates. It is refused
+  without a cap or above one, because a floor is a window constraint and an inverted or open
+  window cannot be honoured. It reaches x264/x265 only — NVENC reads a cap but never a floor, and
+  passing it one would look applied while doing nothing. Nothing is set by default.
+
 - **The macOS sidecar now knows what its Mac can actually do.** It bundles its own ffmpeg, built
   from pinned source rather than downloaded — no prebuilt Apple Silicon build met the requirement,
   and a worker that cannot measure quality cannot do the job at all. It then proves its hardware

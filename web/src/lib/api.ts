@@ -143,6 +143,7 @@ export type LibraryRules = {
   skipSourceCodecs: string | null
   contentTune: string | null
   maxBitrateKbps: number | null
+  minBitrateKbps: number | null
   strongerAdaptiveQuantisation: boolean
   qualityCrf: number | null
   encoderPreset: string | null
@@ -246,6 +247,7 @@ export function newLibraryDefaults(): SaveLibrary {
     skipSourceCodecs: null,
     contentTune: 'None',
     maxBitrateKbps: null,
+    minBitrateKbps: null,
     strongerAdaptiveQuantisation: false,
     qualityCrf: null,
     encoderPreset: null,

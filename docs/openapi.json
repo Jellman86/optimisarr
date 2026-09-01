@@ -720,6 +720,15 @@
           "mediaType": {
             "type": "string"
           },
+          "minBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "minFileSizeBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1562,6 +1571,15 @@
               "string"
             ]
           },
+          "minBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "minFileSizeBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1799,6 +1817,7 @@
           "skipSourceCodecs",
           "contentTune",
           "maxBitrateKbps",
+          "minBitrateKbps",
           "strongerAdaptiveQuantisation",
           "qualityCrf",
           "encoderPreset",

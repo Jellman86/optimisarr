@@ -120,6 +120,7 @@ internal static class LibraryEndpoints
                 SkipSourceCodecs = parsed.SkipSourceCodecs,
                 ContentTune = parsed.ContentTune,
                 MaxBitrateKbps = parsed.MaxBitrateKbps,
+                MinBitrateKbps = parsed.MinBitrateKbps,
                 StrongerAdaptiveQuantisation = parsed.StrongerAdaptiveQuantisation,
                 QualityCrf = parsed.QualityCrf,
                 EncoderPreset = parsed.EncoderPreset,
@@ -210,6 +211,7 @@ internal static class LibraryEndpoints
             library.SkipSourceCodecs = parsed.SkipSourceCodecs;
             library.ContentTune = parsed.ContentTune;
             library.MaxBitrateKbps = parsed.MaxBitrateKbps;
+            library.MinBitrateKbps = parsed.MinBitrateKbps;
             library.StrongerAdaptiveQuantisation = parsed.StrongerAdaptiveQuantisation;
             library.QualityCrf = parsed.QualityCrf;
             library.EncoderPreset = parsed.EncoderPreset;

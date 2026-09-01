@@ -459,6 +459,7 @@
   const hasEncoderTuning = $derived(
     (form.contentTune != null && form.contentTune !== 'None')
       || form.maxBitrateKbps != null
+      || form.minBitrateKbps != null
       || form.strongerAdaptiveQuantisation === true,
   )
 
@@ -818,6 +819,7 @@
       // whole editor down. The tune drives a select, so it needs a real member to select.
       contentTune: library.contentTune ?? 'None',
       maxBitrateKbps: library.maxBitrateKbps ?? null,
+      minBitrateKbps: library.minBitrateKbps ?? null,
       strongerAdaptiveQuantisation: library.strongerAdaptiveQuantisation ?? false,
       audioTargetCodec: library.audioTargetCodec,
       audioBitrateKbps: library.audioBitrateKbps,
@@ -917,6 +919,7 @@
       encoderPreset: emptyToNull(form.encoderPreset),
       contentTune: form.contentTune,
       maxBitrateKbps: form.maxBitrateKbps == null ? null : Number(form.maxBitrateKbps),
+      minBitrateKbps: form.minBitrateKbps == null ? null : Number(form.minBitrateKbps),
       strongerAdaptiveQuantisation: form.strongerAdaptiveQuantisation,
       audioTargetCodec: emptyToNull(form.audioTargetCodec),
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
@@ -1929,6 +1932,25 @@
                 />
               </div>
             </div>
+
+            <!-- A floor only means something inside the window a cap defines, so it is offered
+                 only once a cap exists. Shown then rather than always, because for most people the
+                 honest answer to "minimum bitrate?" is "why would I" — it spends bits on scenes
+                 that need none. -->
+            {#if form.maxBitrateKbps != null}
+              <div class="mt-4 max-w-[16rem]">
+                <label class="label" for="lib-minbitrate">{i18n.m.libraries.min_bitrate} <InfoTip text={i18n.m.libraries.min_bitrate_tip} /></label>
+                <input
+                  id="lib-minbitrate"
+                  class="input"
+                  type="number"
+                  min="100"
+                  max={form.maxBitrateKbps}
+                  placeholder={i18n.m.libraries.min_bitrate_none}
+                  bind:value={form.minBitrateKbps}
+                />
+              </div>
+            {/if}
 
             <div class="mt-4">
               <Toggle

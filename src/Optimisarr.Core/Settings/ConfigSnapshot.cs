@@ -81,7 +81,8 @@ public sealed record LibrarySnapshot(
     string? SkipSourceCodecs = null,
     string? ContentTune = null,
     int? MaxBitrateKbps = null,
-    bool? StrongerAdaptiveQuantisation = null);
+    bool? StrongerAdaptiveQuantisation = null,
+    int? MinBitrateKbps = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

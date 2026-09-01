@@ -25,6 +25,7 @@ internal readonly record struct ParsedLibrary(
     string? SkipSourceCodecs,
     ContentTune ContentTune,
     int? MaxBitrateKbps,
+    int? MinBitrateKbps,
     bool StrongerAdaptiveQuantisation,
     int? QualityCrf,
     string? EncoderPreset,
@@ -332,6 +333,30 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        if (request.MinBitrateKbps is { } floor)
+        {
+            if (floor < 100 || floor > 200_000)
+            {
+                error = "Minimum bitrate must be between 100 and 200000 kbps, or blank for no floor.";
+                return false;
+            }
+
+            // A floor is a VBV constraint and has no meaning without the ceiling that defines the
+            // window; an inverted pair is an impossible window. Refuse both here rather than
+            // storing a setting that looks applied and is then silently dropped at encode time.
+            if (request.MaxBitrateKbps is not { } ceiling)
+            {
+                error = "Minimum bitrate needs a maximum bitrate as well; a floor has no meaning without a cap.";
+                return false;
+            }
+
+            if (floor > ceiling)
+            {
+                error = $"Minimum bitrate ({floor} kbps) cannot be above the maximum ({ceiling} kbps).";
+                return false;
+            }
+        }
+
         var targetImageFormat = Trim(request.TargetImageFormat);
         if (targetImageFormat is not null && !ImageTarget.IsEncodable(targetImageFormat))
         {
@@ -414,6 +439,7 @@ internal static class LibraryRequestParser
             skipSourceCodecs,
             contentTune,
             request.MaxBitrateKbps,
+            request.MinBitrateKbps,
             request.StrongerAdaptiveQuantisation ?? false,
             request.QualityCrf,
             encoderPreset,
