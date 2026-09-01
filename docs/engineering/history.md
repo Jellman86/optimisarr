@@ -29,6 +29,29 @@ test asserts the field is a JSON string rather than a number, so the ordinal for
 unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
 testing; the cost of this change rises steeply once a tray app ships.
 
+**Started on dev (2026-08-24) — what makes a remote quality measurement admissible.** VMAF is the
+one thing Optimisarr will accept from a sidecar without deriving it again, so the rule for believing
+it is worth stating precisely. Everything else about a returned candidate is re-checked locally
+because those checks are cheap relative to the encode; VMAF is not, at roughly half the cost of
+verification, so re-measuring it would give back most of the benefit of distributing the work.
+
+The failure this guards against is not a worker that lies loudly. It is one that answers a slightly
+different question — measuring a different encode, or grading itself against an easier policy — and
+returns a number that looks like an answer. So evidence is refused unless it names the exact source
+and candidate hashes, names the VMAF model, and was measured against thresholds at least as strict
+as the library requires. Stricter is accepted: passing a harder test than the one set still passes
+the one set.
+
+The model requirement is not bookkeeping. The same file scores differently under the HD and 4K
+models, so an unlabelled score cannot meaningfully be compared to a threshold at all.
+
+Absent evidence is refused rather than read as "nothing objected", which is the difference between
+failing closed and having a worker skip measuring entirely and sail through. Every objection is
+reported rather than the first, for the same reason the capability matcher names them all.
+
+Twelve tests, written before the validator and each describing a way this goes wrong rather than a
+way it goes right.
+
 **Started on dev (2026-08-24) — taking delivery of a candidate encoded elsewhere.** The tests were
 written before the endpoint and lead with the ways it goes wrong, because the happy path is not what
 loses media: a candidate encoded from a different source, a result arriving after the claim lapsed,
