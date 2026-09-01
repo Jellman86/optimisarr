@@ -4,6 +4,16 @@
 
 ### Added
 
+- **The macOS sidecar now knows what its Mac can actually do.** It bundles its own ffmpeg, built
+  from pinned source rather than downloaded — no prebuilt Apple Silicon build met the requirement,
+  and a worker that cannot measure quality cannot do the job at all. It then proves its hardware
+  instead of assuming it: each VideoToolbox encoder is confirmed with a real throwaway encode, and
+  hardware decode by encoding a clip and decoding it back, because every Apple build lists
+  VideoToolbox whether or not a given machine can open it. Capabilities are probed at pairing, so
+  what the server records is what the machine could do just then. A Mac that proves nothing reports
+  nothing and is never offered work. **It still transcodes nothing** — no work is requested, because
+  the server cannot yet finish a job returned by a worker.
+
 - **Video re-encodes can now be fine-tuned per library.** Advanced options gain a **Fine-tune the
   encoder** group with three settings: a **content tune** for animation or film grain, a **maximum
   bitrate** ceiling on top of the quality target, and **stronger adaptive quantisation** to spend

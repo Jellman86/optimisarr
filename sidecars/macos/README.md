@@ -5,22 +5,24 @@ capacity.
 
 ## What this version does, and does not
 
-**It does not transcode anything yet.** It pairs, stores its credential, and checks in. That is the
-whole of version 0.1.0.
+**It does not transcode anything yet.** It pairs, stores its credential, reports what this Mac can
+actually do, and checks in. That is the whole of it.
 
-That is deliberate rather than unfinished. The server cannot dispatch work to a sidecar yet — job
-leasing, media delivery, and the result path are all still to build — so an app that claimed to
-transcode would be claiming something neither end can do. Pairing exists now so the connection can
-be set up and tested while the rest is built, and so this contract has a second implementation
-holding it honest.
+That is deliberate rather than unfinished. Nothing here asks the server for work, because the server
+cannot yet finish a job that came back from a worker: it accepts a returned candidate and leaves it
+waiting for a verification pass that does not exist. An app that claimed to transcode would be
+claiming something neither end can complete.
 
-The app reports **no encoders and no VMAF support**, because it has none to prove: no ffmpeg is
-bundled with it yet. The probing that will report them is written and tested — it parses
-`ffmpeg -encoders` and then confirms each VideoToolbox encoder with a real throwaway encode, because
-every Apple build lists VideoToolbox whether or not a given machine can actually open it. With no
-ffmpeg present it reports nothing, which is the honest answer. Optimisarr's capability matcher fails closed, so a worker advertising nothing is
-never offered work. Honesty here is the safety mechanism — a sidecar that overstated itself would
-have jobs scheduled onto it that could only fail.
+What it *does* now report is real. It bundles its own ffmpeg, built from pinned source by
+[`scripts/build-ffmpeg.sh`](scripts/build-ffmpeg.sh), and probes this machine in two stages: parse
+`ffmpeg -encoders`, then confirm each VideoToolbox encoder with a real throwaway encode. Every Apple
+build lists VideoToolbox whether or not a given machine can open it, so listing alone would have the
+sidecar advertise encoders that fail on first use. Hardware *decode* is proved the same way — encode
+a clip, decode it back with VideoToolbox engaged, and both halves must succeed.
+
+A machine that proves nothing reports nothing, and Optimisarr's capability matcher fails closed, so
+such a worker is never offered work. Honesty here is the safety mechanism: a sidecar that overstated
+itself would have jobs scheduled onto it that could only fail.
 
 Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file. A sidecar
 never can, by design, and nothing in this app is capable of touching media.
@@ -90,7 +92,8 @@ width. Once visible it can be ⌘-dragged wherever suits.
 swift test
 ```
 
-21 tests covering the protocol client, the pairing and check-in lifecycle, and address handling.
+43 tests covering the protocol client, the pairing and check-in lifecycle, address handling,
+and capability probing — including live probes against the bundled ffmpeg.
 
 There is also a live suite that runs against a real server, skipped unless you point it at one:
 
