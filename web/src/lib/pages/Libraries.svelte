@@ -813,9 +813,12 @@
       skipSourceCodecs: library.skipSourceCodecs ?? null,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
-      contentTune: library.contentTune,
-      maxBitrateKbps: library.maxBitrateKbps,
-      strongerAdaptiveQuantisation: library.strongerAdaptiveQuantisation,
+      // Same coercion as the hardlink switch above, and for the same reason: the adaptive
+      // quantisation toggle binds two-way onto a boolean, which throws on undefined and takes the
+      // whole editor down. The tune drives a select, so it needs a real member to select.
+      contentTune: library.contentTune ?? 'None',
+      maxBitrateKbps: library.maxBitrateKbps ?? null,
+      strongerAdaptiveQuantisation: library.strongerAdaptiveQuantisation ?? false,
       audioTargetCodec: library.audioTargetCodec,
       audioBitrateKbps: library.audioBitrateKbps,
       videoAudioCodec: library.videoAudioCodec,
