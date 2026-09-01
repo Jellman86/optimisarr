@@ -611,6 +611,12 @@
               "string"
             ]
           },
+          "excludeHardLinkedFiles": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "excludePaths": {
             "type": [
               "null",
@@ -1415,6 +1421,12 @@
               "string"
             ]
           },
+          "excludeHardLinkedFiles": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "excludePaths": {
             "type": [
               "null",
@@ -1729,6 +1741,7 @@
           "hdrHandling",
           "optimiseDolbyVision",
           "excludePaths",
+          "excludeHardLinkedFiles",
           "qualityCrf",
           "encoderPreset",
           "audioTargetCodec",

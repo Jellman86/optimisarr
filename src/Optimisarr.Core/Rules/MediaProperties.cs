@@ -32,4 +32,8 @@ public sealed record MediaProperties(
     IReadOnlyList<string?>? AudioLanguages = null,
     // Per-track subtitle language tags in stream order; null when the probe predates
     // subtitle-language capture, so the kept-subtitles rule stays conservative.
-    IReadOnlyList<string?>? SubtitleLanguages = null);
+    IReadOnlyList<string?>? SubtitleLanguages = null,
+    // How many names point at this file's inode. One means only the library's own entry; more
+    // means another location shares the exact bytes and would see any replacement. Null when it
+    // could not be read, including every file probed before the count was captured.
+    int? HardLinkCount = null);

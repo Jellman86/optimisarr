@@ -139,6 +139,7 @@ export type LibraryRules = {
   hdrHandling: string | null
   optimiseDolbyVision: boolean
   excludePaths: string | null
+  excludeHardLinkedFiles: boolean
   qualityCrf: number | null
   encoderPreset: string | null
   audioTargetCodec: string | null
@@ -237,6 +238,7 @@ export function newLibraryDefaults(): SaveLibrary {
     hdrHandling: null,
     optimiseDolbyVision: false,
     excludePaths: null,
+    excludeHardLinkedFiles: false,
     qualityCrf: null,
     encoderPreset: null,
     audioTargetCodec: null,

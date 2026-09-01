@@ -13,13 +13,15 @@ public static class RuleResolver
 
         // Track cleanup is a deliberately narrow, lossless contract. Do not let overrides left
         // behind by a previous encoding profile silently turn it into a transcode, remux, resize,
-        // HDR exclusion, or media-type conversion. Only path exclusions and the two language
-        // policies are relevant to this mode.
+        // HDR exclusion, or media-type conversion. Only path exclusions, the hardlink exclusion,
+        // and the two language policies are relevant to this mode — stripping streams is still a
+        // replacement, so a shared inode is at stake exactly as it is for a re-encode.
         if (profile == Domain.RuleProfile.TrackCleanup)
         {
             return settings with
             {
                 ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+                ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
                 KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
                 KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages
             };
@@ -35,6 +37,7 @@ public static class RuleResolver
             Hdr = overrides.Hdr ?? settings.Hdr,
             OptimiseDolbyVision = overrides.OptimiseDolbyVision ?? settings.OptimiseDolbyVision,
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+            ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
             TargetAudioCodec = Normalise(overrides.TargetAudioCodec) ?? settings.TargetAudioCodec,
             AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps,
             VideoAudioCodec = ResolveVideoAudioCodec(overrides.VideoAudioCodec, settings.VideoAudioCodec),

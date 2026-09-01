@@ -200,4 +200,32 @@ public sealed class RuleResolverTests
         Assert.Equal(HdrHandling.Preserve, resolved.Hdr);
         Assert.False(resolved.OptimiseDolbyVision);
     }
+
+    [Fact]
+    public void The_hardlink_exclusion_is_off_unless_a_library_asks_for_it()
+    {
+        var resolved = RuleResolver.Resolve(RuleProfile.ConservativeHevc, RuleOverrides.None);
+
+        Assert.False(resolved.ExcludeHardLinkedFiles);
+    }
+
+    [Fact]
+    public void A_library_can_turn_the_hardlink_exclusion_on()
+    {
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.ConservativeHevc, new RuleOverrides { ExcludeHardLinkedFiles = true });
+
+        Assert.True(resolved.ExcludeHardLinkedFiles);
+    }
+
+    [Fact]
+    public void Track_cleanup_keeps_the_hardlink_exclusion_it_was_given()
+    {
+        // Track cleanup drops most overrides so a previous profile cannot turn it into a
+        // transcode. This one has to survive: stripping streams still replaces the file.
+        var resolved = RuleResolver.Resolve(
+            RuleProfile.TrackCleanup, new RuleOverrides { ExcludeHardLinkedFiles = true });
+
+        Assert.True(resolved.ExcludeHardLinkedFiles);
+    }
 }

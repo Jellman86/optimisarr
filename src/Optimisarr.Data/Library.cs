@@ -70,6 +70,15 @@ public sealed class Library
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
 
+    /// <summary>
+    /// When true, files whose inode carries more than one name are left untouched — typically a
+    /// download still being seeded that a *arr hardlinked into the library, where replacing the
+    /// file would change what the other name resolves to. Off by default, and off on upgrade, so
+    /// an existing installation's candidates are unchanged. While on, a file whose link count
+    /// cannot be read is excluded too.
+    /// </summary>
+    public bool ExcludeHardLinkedFiles { get; set; }
+
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }
 

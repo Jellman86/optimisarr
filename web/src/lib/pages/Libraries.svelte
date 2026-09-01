@@ -763,6 +763,7 @@
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
       excludePaths: library.excludePaths,
+      excludeHardLinkedFiles: library.excludeHardLinkedFiles,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
       audioTargetCodec: library.audioTargetCodec,
@@ -857,6 +858,7 @@
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
       excludePaths: emptyToNull(form.excludePaths),
+      excludeHardLinkedFiles: form.excludeHardLinkedFiles,
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
       audioTargetCodec: emptyToNull(form.audioTargetCodec),
@@ -2086,6 +2088,24 @@
         <div class="mt-4">
           <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip text={i18n.m.libraries.exclude_paths_tip} /></label>
           <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
+        </div>
+
+        <!-- Hardlinks belong with the path exclusions rather than the video section: every profile
+             and every media kind ends in a replacement, so a shared inode is at stake for all of
+             them. The row stays a bare switch until it is switched on, because the fail-closed
+             behaviour below is only worth a reader's attention once it can affect them. -->
+        <div class="mt-4">
+          <Toggle
+            bind:checked={form.excludeHardLinkedFiles}
+            label={i18n.m.libraries.hardlinks_label}
+            hint={i18n.m.libraries.hardlinks_tip}
+          />
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.hardlinks_hint}</p>
+          {#if form.excludeHardLinkedFiles}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              {i18n.m.libraries.hardlinks_on_detail}
+            </div>
+          {/if}
         </div>
       </section>
 

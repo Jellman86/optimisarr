@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Stats;
+using Optimisarr.Core.IO;
 using Optimisarr.Core.Replacement;
 using Optimisarr.Data;
 using ReplacementEntity = Optimisarr.Data.Replacement;
@@ -193,6 +194,7 @@ public sealed class ReplacementService
     {
         var job = await _db.Jobs
             .Include(j => j.MediaFile)
+            .ThenInclude(f => f!.Library)
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
 
         if (job is null)
@@ -251,6 +253,31 @@ public sealed class ReplacementService
         {
             return ReplacementActionResult.Failed(
                 $"The original file no longer exists: {media.Path}", permanent: true);
+        }
+
+        // The link count recorded at scan time decided whether to *encode* this file. Whether to
+        // *replace* it is a different question asked at a different moment, and a download client
+        // can hardlink a file at any point in between. Re-read it live, against the file that is
+        // about to be moved into quarantine, rather than trusting a number that may be hours old.
+        if (media.Library is { ExcludeHardLinkedFiles: true })
+        {
+            var links = HardLinkProbe.CountLinks(media.Path);
+            if (links is null)
+            {
+                return ReplacementActionResult.Invalid(
+                    $"This library excludes hardlinked files, and the link count for {media.Path} could not be "
+                    + "read, so the original was left untouched.");
+            }
+
+            if (links > 1)
+            {
+                // Deliberately not permanent. The encoded output stays verified and ready, and the
+                // job can replace normally once the other link is gone — a file that stops being
+                // seeded should not need re-encoding from scratch.
+                return ReplacementActionResult.Invalid(
+                    $"{media.Path} now has {links} names pointing at it, and this library excludes hardlinked "
+                    + "files. Replacing it would change the other copies, so the original was left untouched.");
+            }
         }
 
         var plan = ReplacementPlanner.Plan(
