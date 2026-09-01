@@ -763,7 +763,11 @@
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
       excludePaths: library.excludePaths,
-      excludeHardLinkedFiles: library.excludeHardLinkedFiles,
+      // Coerced rather than passed through: a two-way binding onto a boolean prop throws
+      // props_invalid_value on undefined, which takes the whole editor down rather than
+      // degrading. A response that predates this field — an older server, a trimmed payload —
+      // must leave the switch off, not blank the page.
+      excludeHardLinkedFiles: library.excludeHardLinkedFiles ?? false,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
       audioTargetCodec: library.audioTargetCodec,
