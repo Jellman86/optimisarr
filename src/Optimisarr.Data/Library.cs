@@ -79,6 +79,15 @@ public sealed class Library
     /// </summary>
     public bool ExcludeHardLinkedFiles { get; set; }
 
+    /// <summary>
+    /// Comma-separated ffprobe codec names (e.g. "av1, vp9") this library never optimises,
+    /// whatever else its profile would do. Matched against the codec that drives a file's
+    /// eligibility — the audio codec for an audio file, the video or still-picture codec
+    /// otherwise. Null or empty (the default) excludes nothing. A name that matches no codec
+    /// simply never fires, so an unrecognised entry cannot exclude something unexpected.
+    /// </summary>
+    public string? SkipSourceCodecs { get; set; }
+
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }
 

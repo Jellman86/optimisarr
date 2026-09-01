@@ -4,6 +4,15 @@
 
 ### Added
 
+- **A library can now leave chosen source codecs alone.** Each library's Advanced options list the
+  codecs its media type can actually contain; pick any and files already in them are never made
+  candidates, so they are never encoded and never replaced. This is for the case where a codec
+  plays fine on your devices but your hardware cannot encode it — an AV1 file under an HEVC target
+  would otherwise be converted, costing hours of CPU to gain little. It is separate from the
+  existing automatic skips, which leave a file alone when it is already the target codec or is
+  encoded efficiently enough that shrinking it is improbable; this one records that you do not want
+  the work done at all, and says so as the reason. Nothing is excluded by default.
+
 - **A library can now skip hardlinked files.** Settings for each library gain a **Skip hardlinked
   files** switch under Advanced options. A hardlink means one file on disk is reachable by more
   than one name — usually a download client still seeding the exact file Sonarr or Radarr imported.

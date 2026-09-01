@@ -26,6 +26,7 @@ public sealed class LibraryRequestParserTests
         OptimiseDolbyVision: null,
         ExcludePaths: null,
         ExcludeHardLinkedFiles: null,
+        SkipSourceCodecs: null,
         QualityCrf: null,
         EncoderPreset: encoderPreset,
         AudioTargetCodec: null,

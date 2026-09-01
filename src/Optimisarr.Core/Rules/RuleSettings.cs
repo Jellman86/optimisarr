@@ -86,6 +86,18 @@ public sealed record RuleSettings
     /// </summary>
     public bool ExcludeHardLinkedFiles { get; init; }
 
+    /// <summary>
+    /// Source codecs (ffprobe names, e.g. "av1") this library leaves untouched, whatever else the
+    /// profile would do to them. Compared against the codec that drives a file's eligibility: the
+    /// audio codec for an audio file, the video or still-picture codec otherwise.
+    ///
+    /// This is not the same as the existing same-codec and already-efficient skips. Those infer
+    /// that a re-encode would not pay; this records that the operator does not want one — the
+    /// usual case being a codec their devices play happily but their hardware cannot encode, where
+    /// converting costs hours of CPU to gain nothing. Empty (the default) excludes nothing.
+    /// </summary>
+    public IReadOnlyList<string> SkipSourceCodecs { get; init; } = Array.Empty<string>();
+
     /// <summary>The codec a lossless audio file is re-encoded to (ffprobe name, e.g. "opus").</summary>
     public string TargetAudioCodec { get; init; } = AudioTarget.DefaultCodec;
 

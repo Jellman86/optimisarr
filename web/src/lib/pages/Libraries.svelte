@@ -437,6 +437,37 @@
   const showAudioOptions = $derived(isAudioType(form.mediaType))
   const showImageOptions = $derived(isImageType(form.mediaType))
 
+  // The codecs worth offering as a source exclusion, by what the library actually holds. Named
+  // with ffprobe's own spelling, because that is what the rule compares against. Offering a fixed
+  // set rather than a text box means an operator cannot silently mistype a codec into a rule that
+  // then never fires.
+  const videoSourceCodecs = ['h264', 'hevc', 'av1', 'vp9', 'vp8', 'mpeg2video', 'mpeg4', 'vc1']
+  const audioSourceCodecs = ['flac', 'alac', 'opus', 'aac', 'mp3', 'vorbis', 'ac3', 'dts']
+  const imageSourceCodecs = ['mjpeg', 'png', 'webp', 'tiff', 'bmp', 'gif']
+
+  const offeredSourceCodecs = $derived([
+    ...(showVideoOptions ? videoSourceCodecs : []),
+    ...(showAudioOptions ? audioSourceCodecs : []),
+    ...(showImageOptions ? imageSourceCodecs : []),
+  ])
+
+  const skippedCodecs = $derived(
+    (form.skipSourceCodecs ?? '')
+      .split(',')
+      .map((codec) => codec.trim().toLowerCase())
+      .filter(Boolean),
+  )
+
+  function toggleSkippedCodec(codec: string) {
+    const next = skippedCodecs.includes(codec)
+      ? skippedCodecs.filter((c) => c !== codec)
+      : [...skippedCodecs, codec]
+    // Stored in the offered order rather than click order, so the saved value is stable and two
+    // libraries configured the same way compare equal.
+    form.skipSourceCodecs =
+      offeredSourceCodecs.filter((c) => next.includes(c)).join(', ') || null
+  }
+
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
   const isTrackCleanupProfile = $derived(form.ruleProfile === 'TrackCleanup')
   // Both no-encode profiles take the compatibility→efficiency slider out of play.
@@ -768,6 +799,7 @@
       // degrading. A response that predates this field — an older server, a trimmed payload —
       // must leave the switch off, not blank the page.
       excludeHardLinkedFiles: library.excludeHardLinkedFiles ?? false,
+      skipSourceCodecs: library.skipSourceCodecs ?? null,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
       audioTargetCodec: library.audioTargetCodec,
@@ -863,6 +895,7 @@
       optimiseDolbyVision: form.optimiseDolbyVision,
       excludePaths: emptyToNull(form.excludePaths),
       excludeHardLinkedFiles: form.excludeHardLinkedFiles,
+      skipSourceCodecs: emptyToNull(form.skipSourceCodecs),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
       audioTargetCodec: emptyToNull(form.audioTargetCodec),
@@ -2111,6 +2144,34 @@
             </div>
           {/if}
         </div>
+
+        <!-- Source-codec exclusions. A fixed set of chips rather than free text: the rule matches
+             ffprobe's spelling exactly, so a typed name that is subtly wrong would look configured
+             and quietly do nothing. Only the codecs this library's media type can actually contain
+             are offered. -->
+        {#if offeredSourceCodecs.length > 0}
+        <div class="mt-4">
+          <span class="label">{i18n.m.libraries.skip_codecs} <InfoTip text={i18n.m.libraries.skip_codecs_tip} /></span>
+          <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.skip_codecs_hint}</p>
+          <div class="flex flex-wrap gap-2">
+            {#each offeredSourceCodecs as codec (codec)}
+              <button
+                type="button"
+                aria-pressed={skippedCodecs.includes(codec)}
+                onclick={() => toggleSkippedCodec(codec)}
+                class="rounded-full border px-3 py-1 font-mono text-xs transition-colors {skippedCodecs.includes(codec)
+                  ? 'border-cyan-500 bg-cyan-600/15 text-cyan-700 dark:text-cyan-300'
+                  : 'border-slate-300 text-slate-600 hover:border-slate-400 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500'}"
+              >{codec}</button>
+            {/each}
+          </div>
+          {#if skippedCodecs.length > 0}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              {i18n.m.libraries.skip_codecs_on_detail}
+            </div>
+          {/if}
+        </div>
+        {/if}
       </section>
 
     </div>

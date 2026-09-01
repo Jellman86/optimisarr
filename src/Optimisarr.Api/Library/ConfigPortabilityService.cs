@@ -151,6 +151,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.OptimiseDolbyVision = snapshot.OptimiseDolbyVision ?? false;
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
+            library.SkipSourceCodecs = snapshot.SkipSourceCodecs;
             library.QualityCrf = snapshot.QualityCrf;
             _ = EncoderPresetPolicy.TryNormaliseSelection(snapshot.EncoderPreset, out var encoderPreset);
             library.EncoderPreset = encoderPreset;
@@ -518,7 +519,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.ImageQualityGateEnabled,
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
-        library.ExcludeHardLinkedFiles);
+        library.ExcludeHardLinkedFiles,
+        library.SkipSourceCodecs);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

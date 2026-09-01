@@ -66,6 +66,7 @@ internal static class LibraryRuleResolution
             OptimiseDolbyVision = library.OptimiseDolbyVision,
             ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
             ExcludeHardLinkedFiles = library.ExcludeHardLinkedFiles,
+            SkipSourceCodecs = ParseCodecList(library.SkipSourceCodecs),
             TargetAudioCodec = library.AudioTargetCodec,
             AudioBitrateKbps = library.AudioBitrateKbps,
             VideoAudioCodec = library.VideoAudioCodec,
@@ -84,6 +85,23 @@ internal static class LibraryRuleResolution
             ImageDownscaleMode = library.ImageDownscaleMode,
             ImageDownscaleValue = library.ImageDownscaleValue
         };
+    }
+
+    // Codec names are stored comma-separated, the same shape as the kept-language lists. No
+    // validation against a known-codec set: an unrecognised name matches nothing, so the failure
+    // mode of a typo is that the exclusion does not fire, never that the wrong file is excluded.
+    private static IReadOnlyList<string>? ParseCodecList(string? codecs)
+    {
+        if (string.IsNullOrWhiteSpace(codecs))
+        {
+            return null;
+        }
+
+        var names = codecs
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+
+        return names.Length > 0 ? names : null;
     }
 
     // Operators enter one path substring per line; blank lines are ignored.
