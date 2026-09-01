@@ -60,11 +60,18 @@ public static class HardLinkProbe
 
         // statx fills only what it was asked for and reports back what it actually supplied. A
         // filesystem that does not report link counts sets no bit here, and that is not an error.
-        return (stat.Mask & StatxNlink) == 0 ? null : (int)stat.NLink;
+        return (stat.Mask & StatxNlink) == 0 ? null : AtLeastOne((int)stat.NLink);
     }
 
     private static int? DarwinLinkCount(string path) =>
-        Stat(path, out var stat) == 0 ? stat.NLink : null;
+        Stat(path, out var stat) == 0 ? AtLeastOne(stat.NLink) : null;
+
+    /// <summary>
+    /// A file that exists has at least one name, so a reported zero is a filesystem that does not
+    /// really track this rather than a fact about the file. Unknown is the honest answer, and the
+    /// only one callers treat as a reason to leave a file alone.
+    /// </summary>
+    private static int? AtLeastOne(int links) => links < 1 ? null : links;
 
     private const int AtFdCwd = -100;
     private const uint StatxNlink = 0x0000_0004;

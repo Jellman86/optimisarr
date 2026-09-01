@@ -368,6 +368,15 @@ public sealed class QueueDispatcher(
                     "Job {JobId}: auto-replace cannot complete ({Kind}): {Message}. Marked Failed (will not retry).",
                     jobId, result.Kind, result.Message);
             }
+            else if (!AutoReplacePolicy.IsFault(result.Kind))
+            {
+                // A library rule declined this one on purpose — the file is still hardlinked. It
+                // stays ReadyToReplace and will go through once that is no longer true, so this is
+                // a state to be able to look up, not a fault to be told about every three seconds.
+                logger.LogDebug(
+                    "Job {JobId}: auto-replace deferred by a library rule: {Message}. Left ReadyToReplace.",
+                    jobId, result.Message);
+            }
             else
             {
                 logger.LogWarning(

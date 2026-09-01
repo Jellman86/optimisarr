@@ -11,7 +11,7 @@ public static class ReplacementResults
         ReplacementResultKind.AlreadyCompleted => Results.Ok(ReplacementDto.From(result.Replacement!)),
         ReplacementResultKind.NotFound =>
             ApiErrors.NotFound(ErrorCode(result.Kind), result.Message ?? "Replacement not found."),
-        ReplacementResultKind.Invalid =>
+        ReplacementResultKind.Invalid or ReplacementResultKind.Deferred =>
             ApiErrors.BadRequest(ErrorCode(result.Kind), result.Message ?? "Replacement action is not valid."),
         // A failed operation that left the original safe — surface it as a server-side
         // problem so the UI shows it clearly rather than as a client mistake.
@@ -23,7 +23,7 @@ public static class ReplacementResults
     internal static string ErrorCode(ReplacementResultKind kind) => kind switch
     {
         ReplacementResultKind.NotFound => "replacement.action.notFound",
-        ReplacementResultKind.Invalid => "replacement.action.invalid",
+        ReplacementResultKind.Invalid or ReplacementResultKind.Deferred => "replacement.action.invalid",
         _ => "replacement.action.failed"
     };
 }

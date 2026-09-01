@@ -15,6 +15,14 @@ public enum ReplacementResultKind
     AlreadyCompleted,
     NotFound,
     Invalid,
+
+    /// <summary>
+    /// A library rule correctly declined this replacement for now, and the same job may succeed
+    /// later — the file is hardlinked today but need not be tomorrow. Distinct from Invalid so
+    /// automatic reconciliation, which retries every few seconds, can stay quiet about an expected
+    /// decline instead of logging a warning forever.
+    /// </summary>
+    Deferred,
     Failed
 }
 
@@ -38,6 +46,9 @@ public sealed record ReplacementActionResult(
 
     public static ReplacementActionResult Invalid(string message) =>
         new(ReplacementResultKind.Invalid, message, null);
+
+    public static ReplacementActionResult Deferred(string message) =>
+        new(ReplacementResultKind.Deferred, message, null);
 
     public static ReplacementActionResult Failed(string message, bool permanent = false) =>
         new(ReplacementResultKind.Failed, message, null, permanent);
@@ -264,7 +275,7 @@ public sealed class ReplacementService
             var links = HardLinkProbe.CountLinks(media.Path);
             if (links is null)
             {
-                return ReplacementActionResult.Invalid(
+                return ReplacementActionResult.Deferred(
                     $"This library excludes hardlinked files, and the link count for {media.Path} could not be "
                     + "read, so the original was left untouched.");
             }
@@ -274,7 +285,7 @@ public sealed class ReplacementService
                 // Deliberately not permanent. The encoded output stays verified and ready, and the
                 // job can replace normally once the other link is gone — a file that stops being
                 // seeded should not need re-encoding from scratch.
-                return ReplacementActionResult.Invalid(
+                return ReplacementActionResult.Deferred(
                     $"{media.Path} now has {links} names pointing at it, and this library excludes hardlinked "
                     + "files. Replacing it would change the other copies, so the original was left untouched.");
             }
