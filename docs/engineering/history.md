@@ -3,6 +3,34 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Corrected on dev (2026-09-01) — no job could ever be offered to a remote worker.** The claim
+route builds its `JobRequirements` with `VideoEncoder: job.VideoEncoder ?? string.Empty`, and
+`Job.VideoEncoder` is assigned in exactly one place: `QueueDispatcher`, when a *local* transcode
+resolves an encoder. Its own doc comment says as much — "so the UI can show whether it ran on the
+GPU or CPU". A queued job has never dispatched, so the value is null, and
+`WorkerCapabilityMatcher` refuses an unnamed encoder because "an unnamed encoder is a malformed
+assignment, not a wildcard". Every claim fell through to `204`.
+
+That refusal is right; the requirement was wrong. Two endpoint test suites missed it because both
+construct a queued job with `VideoEncoder = "libx265"` set by hand — a row the application never
+writes. Tests that build state the production code cannot produce will agree with themselves
+forever. A test now queues a job the way the app does and pins the `204`, so the gap is visible
+rather than inferred, and it will fail the moment an assignment can name an encoder properly.
+
+The fix is not to populate the column earlier. The encoder recorded on a job is the one *this
+machine* resolved, which for a Mac worker would usually be the wrong answer anyway — a job marked
+`libx265` would never match a machine advertising `hevc_videotoolbox`. The encoder has to be
+resolved *for the worker* from its proved capabilities at claim time, which is part of the resolved
+encode policy the assignment does not yet carry: `AssignmentDto` names an encoder and a VMAF
+capability and nothing else — no quality, container, effort, audio, HDR treatment, track removals,
+or thresholds. A worker holding one cannot know what to encode. That payload is the keystone the
+rest of the distributed path waits on.
+
+Noted alongside it: the assignment hands the worker `job.MediaFile.Path`, the server's absolute
+library path. The source route was deliberately built to take no path — "a worker presents a lease
+and the server resolves the file" — so leaking the layout through the assignment works against that
+design and should go when the payload is rebuilt.
+
 **Corrected on dev (2026-08-24) — worker capabilities cross the wire as names, not ordinals.** The
 pairing slice exposed `VmafCapability` directly on its DTOs, making it the only enum in the whole
 generated OpenAPI document rendered as `{"type": "integer"}`. That was justified at the time as

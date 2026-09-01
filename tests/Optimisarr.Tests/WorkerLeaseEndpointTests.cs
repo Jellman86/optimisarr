@@ -106,7 +106,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     /// <summary>Puts one queued job in front of the workers and returns its id.</summary>
-    private async Task<int> QueueAJob()
+    private async Task<int> QueueAJob(string? videoEncoder = "libx265")
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -138,7 +138,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             LibraryId = library.Id,
             Status = JobStatus.Queued,
             Type = JobType.Normal,
-            VideoEncoder = "libx265",
+            VideoEncoder = videoEncoder,
         };
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
@@ -150,6 +150,22 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
         return (await db.Jobs.FindAsync(jobId))!.Status;
+    }
+
+    [Fact]
+    public async Task A_job_enqueued_the_way_the_application_enqueues_one_is_never_offered()
+    {
+        // Every other test here hand-sets VideoEncoder on a Queued job. The application never
+        // does: that column is written once, during local dispatch, to record what actually ran.
+        // A job sitting in the queue — the only state this endpoint selects — has it null, so the
+        // matcher correctly refuses the assignment as unnamed and no work is ever handed out.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob(videoEncoder: null);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
     }
 
     [Fact]
