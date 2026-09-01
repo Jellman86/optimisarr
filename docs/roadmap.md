@@ -563,8 +563,19 @@ the replacement workflow is trustworthy.
      structural rather than a check a future query could forget. A unique filtered index over held
      leases means two holders is a database error rather than a possible outcome. Lapsed leases are
      reclaimed whenever a worker asks for work, so recovery needs no background sweeper.
-     **Still to build:** drain controls, and returning a finished candidate — until that exists a
-     worker can take a job but not complete one.
+
+     **Corrected 2026-09-01: no job can currently be offered to a worker, so nothing is dispatched
+     in practice.** The claim route names the required encoder from `Job.VideoEncoder`, which is
+     written once during *local* dispatch to record what actually ran. A job sitting in the queue —
+     the only state this route selects — has none, and the matcher correctly refuses an unnamed
+     encoder as a malformed assignment rather than treating it as a wildcard. Every claim therefore
+     falls through to `204`. The endpoint tests did not catch this because each hand-sets
+     `VideoEncoder` on a queued job, a state the application never produces; a test now pins the
+     real shape. The deeper reason is the same one the next bullet describes: the assignment carries
+     no resolved encode policy, so there is nothing to name an encoder *for this worker* from.
+
+     **Still to build:** the resolved encode policy that makes an assignment executable (see below),
+     the verification pass for a returned candidate, and drain controls.
    - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
      tool/model versions, preparation details, hashes, and captured process evidence as one result
      bound to the assignment. The main app independently re-probes the returned file and repeats the
@@ -584,14 +595,18 @@ the replacement workflow is trustworthy.
      permission prompts without requiring broad access to the user's filesystem.
      **Landed so far:** `sidecars/macos`, a Swift package (not an `.xcodeproj`, so the build is
      reviewable as text) building a `MenuBarExtra` app that pairs by URL and PIN, keeps its
-     credential in the Keychain, and checks in on the interval the server states. It reports no
-     encoders and no VMAF support because it can prove none, so the fail-closed matcher will never
-     offer it work — which is correct until it can do any. Revocation, an incompatible protocol,
+     credential in the Keychain, and checks in on the interval the server states. It now bundles an
+     ffmpeg built from pinned source and reports what this Mac proves it can do — each VideoToolbox
+     encoder confirmed by a real throwaway encode, hardware decode by an encode-then-decode round
+     trip — because every Apple build lists VideoToolbox whether or not a machine can open it. A Mac
+     that proves nothing still reports nothing, and the fail-closed matcher never offers it work. Revocation, an incompatible protocol,
      and the feature being switched off server-side are each surfaced distinctly rather than as a
      generic failure. A live test suite runs the real client against a running server, which is how
      this contract gets a second implementation holding it honest. **Still to build:** claiming
      work, media transfer, transcoding, VMAF, launch-at-login, sleep/wake and App Nap handling,
-     Developer ID signing and notarisation.
+     Developer ID signing and notarisation. The client implements two of the ten worker routes
+     (`pair` and `heartbeat`); claim, renew, release, source and result are all unwritten, and
+     `SidecarSession` has no work loop.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests
