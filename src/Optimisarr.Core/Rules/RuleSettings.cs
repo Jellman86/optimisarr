@@ -98,6 +98,14 @@ public sealed record RuleSettings
     /// </summary>
     public IReadOnlyList<string> SkipSourceCodecs { get; init; } = Array.Empty<string>();
 
+    /// <summary>
+    /// Advanced encoder intent — content tune, bitrate cap, adaptive quantisation — stored
+    /// portably and mapped onto the vocabulary of whichever encoder is chosen at dispatch. The
+    /// default asks for nothing, so a library that never opens Advanced options builds exactly
+    /// the command it always did.
+    /// </summary>
+    public Queue.EncoderTuning EncoderTuning { get; init; } = Queue.EncoderTuning.None;
+
     /// <summary>The codec a lossless audio file is re-encoded to (ffprobe name, e.g. "opus").</summary>
     public string TargetAudioCodec { get; init; } = AudioTarget.DefaultCodec;
 

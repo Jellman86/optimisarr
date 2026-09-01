@@ -152,6 +152,11 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
             library.ExcludePaths = snapshot.ExcludePaths;
             library.ExcludeHardLinkedFiles = snapshot.ExcludeHardLinkedFiles ?? false;
             library.SkipSourceCodecs = snapshot.SkipSourceCodecs;
+            library.ContentTune = snapshot.ContentTune is null
+                ? Optimisarr.Core.Queue.ContentTune.None
+                : ParseEnum<Optimisarr.Core.Queue.ContentTune>(snapshot.ContentTune);
+            library.MaxBitrateKbps = snapshot.MaxBitrateKbps;
+            library.StrongerAdaptiveQuantisation = snapshot.StrongerAdaptiveQuantisation ?? false;
             library.QualityCrf = snapshot.QualityCrf;
             _ = EncoderPresetPolicy.TryNormaliseSelection(snapshot.EncoderPreset, out var encoderPreset);
             library.EncoderPreset = encoderPreset;
@@ -520,7 +525,10 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
         library.ExcludeHardLinkedFiles,
-        library.SkipSourceCodecs);
+        library.SkipSourceCodecs,
+        library.ContentTune.ToString(),
+        library.MaxBitrateKbps,
+        library.StrongerAdaptiveQuantisation);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

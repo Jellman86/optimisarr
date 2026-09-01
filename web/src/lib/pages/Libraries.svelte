@@ -451,6 +451,17 @@
     ...(showImageOptions ? imageSourceCodecs : []),
   ])
 
+  // Advanced encoder options are rare enough that three permanently visible controls would be
+  // noise for almost everyone. One line opens them, and it starts open for a library that already
+  // has one set so a saved choice is never hidden from the person who made it.
+  let showEncoderTuning = $state(false)
+
+  const hasEncoderTuning = $derived(
+    (form.contentTune != null && form.contentTune !== 'None')
+      || form.maxBitrateKbps != null
+      || form.strongerAdaptiveQuantisation === true,
+  )
+
   const skippedCodecs = $derived(
     (form.skipSourceCodecs ?? '')
       .split(',')
@@ -802,6 +813,9 @@
       skipSourceCodecs: library.skipSourceCodecs ?? null,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
+      contentTune: library.contentTune,
+      maxBitrateKbps: library.maxBitrateKbps,
+      strongerAdaptiveQuantisation: library.strongerAdaptiveQuantisation,
       audioTargetCodec: library.audioTargetCodec,
       audioBitrateKbps: library.audioBitrateKbps,
       videoAudioCodec: library.videoAudioCodec,
@@ -898,6 +912,9 @@
       skipSourceCodecs: emptyToNull(form.skipSourceCodecs),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
+      contentTune: form.contentTune,
+      maxBitrateKbps: form.maxBitrateKbps == null ? null : Number(form.maxBitrateKbps),
+      strongerAdaptiveQuantisation: form.strongerAdaptiveQuantisation,
       audioTargetCodec: emptyToNull(form.audioTargetCodec),
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
@@ -1867,6 +1884,62 @@
             </div>
           {:else}
             <p class="text-xs text-slate-400">{i18n.m.libraries.using_preset_quality}</p>
+          {/if}
+        </div>
+
+        <!-- Advanced encoder options. Hidden behind one line because almost nobody needs them, and
+             three always-visible controls here would bury the quality slider that most people do.
+             Each knob is portable intent: the encoder chosen at dispatch receives only what it
+             understands, which is why the note below names who honours what rather than implying
+             every setting reaches every GPU. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+            <input
+              type="checkbox"
+              class="checkbox"
+              checked={showEncoderTuning || hasEncoderTuning}
+              onchange={(e) => (showEncoderTuning = e.currentTarget.checked)}
+            />
+            {i18n.m.libraries.encoder_tuning}
+          </label>
+
+          {#if showEncoderTuning || hasEncoderTuning}
+            <div class="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="label" for="lib-tune">{i18n.m.libraries.content_tune} <InfoTip text={i18n.m.libraries.content_tune_tip} /></label>
+                <select id="lib-tune" class="input" bind:value={form.contentTune}>
+                  <option value="None">{i18n.m.libraries.encoder_default}</option>
+                  <option value="Animation">{i18n.m.libraries.content_tune_animation}</option>
+                  <option value="Grain">{i18n.m.libraries.content_tune_grain}</option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="lib-maxbitrate">{i18n.m.libraries.max_bitrate} <InfoTip text={i18n.m.libraries.max_bitrate_tip} /></label>
+                <input
+                  id="lib-maxbitrate"
+                  class="input"
+                  type="number"
+                  min="100"
+                  max="200000"
+                  placeholder={i18n.m.libraries.max_bitrate_none}
+                  bind:value={form.maxBitrateKbps}
+                />
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <Toggle
+                bind:checked={form.strongerAdaptiveQuantisation}
+                label={i18n.m.libraries.adaptive_quantisation}
+                hint={i18n.m.libraries.adaptive_quantisation_tip}
+              />
+            </div>
+
+            {#if hasEncoderTuning}
+              <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                {i18n.m.libraries.encoder_tuning_support}
+              </div>
+            {/if}
           {/if}
         </div>
 

@@ -40,6 +40,7 @@ public static class RuleResolver
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
             ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
             SkipSourceCodecs = overrides.SkipSourceCodecs ?? settings.SkipSourceCodecs,
+            EncoderTuning = overrides.EncoderTuning ?? settings.EncoderTuning,
             TargetAudioCodec = Normalise(overrides.TargetAudioCodec) ?? settings.TargetAudioCodec,
             AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps,
             VideoAudioCodec = ResolveVideoAudioCodec(overrides.VideoAudioCodec, settings.VideoAudioCodec),

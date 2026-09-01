@@ -589,6 +589,12 @@
               "boolean"
             ]
           },
+          "contentTune": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
@@ -672,6 +678,15 @@
           "keepSubtitleLanguages": {
             "type": [
               "null",
+              "string"
+            ]
+          },
+          "maxBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
               "string"
             ]
           },
@@ -825,6 +840,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "strongerAdaptiveQuantisation": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "targetContainer": {
@@ -1400,6 +1421,12 @@
               "boolean"
             ]
           },
+          "contentTune": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "downmixToStereo": {
             "type": [
               "null",
@@ -1490,6 +1517,15 @@
           "keepSubtitleLanguages": {
             "type": [
               "null",
+              "string"
+            ]
+          },
+          "maxBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
               "string"
             ]
           },
@@ -1676,6 +1712,12 @@
               "string"
             ]
           },
+          "strongerAdaptiveQuantisation": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -1755,6 +1797,9 @@
           "excludePaths",
           "excludeHardLinkedFiles",
           "skipSourceCodecs",
+          "contentTune",
+          "maxBitrateKbps",
+          "strongerAdaptiveQuantisation",
           "qualityCrf",
           "encoderPreset",
           "audioTargetCodec",

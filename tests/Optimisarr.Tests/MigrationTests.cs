@@ -344,6 +344,41 @@ public sealed class MigrationTests : IDisposable
         Assert.True(films.ImageMetadataGateEnabled);
     }
 
+    [Fact]
+    public async Task An_upgraded_library_materialises_a_readable_content_tune()
+    {
+        // The generated migration defaulted the new enum column to "", which is not a member and
+        // throws on materialisation — every existing library would fail to load. This proves the
+        // corrected "None" default actually reads back through the string converter.
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
+        var options = new DbContextOptionsBuilder<OptimisarrDbContext>()
+            .UseSqlite($"Data Source={_dbPath}")
+            .Options;
+
+        await using var db = new OptimisarrDbContext(options);
+        var migrator = db.Database.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>();
+        await migrator.MigrateAsync("20260824191153_AddJobSourceHash");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO Libraries
+                (Name, Path, MediaType, RuleProfile, Enabled, CreatedAt, UpdatedAt)
+            VALUES
+                ('Films', '/data/films', 'Film', 'ConservativeHevc', 1,
+                 '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00');
+            """);
+
+        await migrator.MigrateAsync();
+        db.ChangeTracker.Clear();
+
+        var films = await db.Libraries.SingleAsync();
+        Assert.Equal(Optimisarr.Core.Queue.ContentTune.None, films.ContentTune);
+        Assert.Null(films.MaxBitrateKbps);
+        Assert.False(films.StrongerAdaptiveQuantisation);
+        // And the exclusions from the same release upgrade to their off state.
+        Assert.False(films.ExcludeHardLinkedFiles);
+        Assert.Null(films.SkipSourceCodecs);
+    }
+
     public void Dispose()
     {
         if (File.Exists(_dbPath))

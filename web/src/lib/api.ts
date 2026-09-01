@@ -141,6 +141,9 @@ export type LibraryRules = {
   excludePaths: string | null
   excludeHardLinkedFiles: boolean
   skipSourceCodecs: string | null
+  contentTune: string | null
+  maxBitrateKbps: number | null
+  strongerAdaptiveQuantisation: boolean
   qualityCrf: number | null
   encoderPreset: string | null
   audioTargetCodec: string | null
@@ -241,6 +244,9 @@ export function newLibraryDefaults(): SaveLibrary {
     excludePaths: null,
     excludeHardLinkedFiles: false,
     skipSourceCodecs: null,
+    contentTune: 'None',
+    maxBitrateKbps: null,
+    strongerAdaptiveQuantisation: false,
     qualityCrf: null,
     encoderPreset: null,
     audioTargetCodec: null,

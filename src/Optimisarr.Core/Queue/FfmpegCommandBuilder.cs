@@ -36,7 +36,11 @@ public sealed record TranscodeSpec(
     IReadOnlyList<int>? RemoveSubtitleStreamIndexes = null,
     // Disposable video calibration candidates compare picture quality only. Excluding audio,
     // subtitles, attachments, and data keeps their timing and size out of that judgement.
-    bool VideoOnly = false);
+    bool VideoOnly = false,
+    // Portable advanced encoder intent (content tune, bitrate cap, adaptive quantisation).
+    // Resolved onto this exact encoder's vocabulary by EncoderTuningPolicy, which drops anything
+    // the chosen family cannot express rather than approximating it.
+    EncoderTuning? Tuning = null);
 
 /// <summary>
 /// Builds the ffmpeg argument list for a transcode. Returns a flat argument array
@@ -323,6 +327,14 @@ public static class FfmpegCommandBuilder
         {
             args.Add("-preset");
             args.Add(spec.Preset);
+        }
+
+        // Advanced encoder options, resolved for this exact encoder. A family with no equivalent
+        // contributes nothing here, so an Auto-mode library that lands on QSV simply encodes as it
+        // always did rather than receiving arguments it would reject.
+        if (spec.Tuning is { IsEmpty: false } tuning && encoder is not null)
+        {
+            args.AddRange(EncoderTuningPolicy.Resolve(encoder, tuning));
         }
 
         // Preserve a source that ffprobe positively identified as VFR. MP4 supports variable frame

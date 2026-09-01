@@ -23,6 +23,9 @@ internal readonly record struct ParsedLibrary(
     string? ExcludePaths,
     bool ExcludeHardLinkedFiles,
     string? SkipSourceCodecs,
+    ContentTune ContentTune,
+    int? MaxBitrateKbps,
+    bool StrongerAdaptiveQuantisation,
     int? QualityCrf,
     string? EncoderPreset,
     string? AudioTargetCodec,
@@ -306,6 +309,29 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        // Named rather than ordinal on the wire, so inserting a tune later cannot silently change
+        // what an existing stored value means. An unrecognised name is refused rather than
+        // defaulting to None, which would look accepted and quietly do nothing.
+        //
+        // Enum.TryParse also accepts a *number* for any enum and returns whatever integer it was
+        // handed, member or not — "999" would parse happily into a ContentTune that does not exist,
+        // and the tuning policy, which only asks "is this Animation?", would then encode it as
+        // grain. Requiring a defined member closes that.
+        var contentTune = ContentTune.None;
+        if (Trim(request.ContentTune) is { } requestedTune
+            && (!Enum.TryParse(requestedTune, ignoreCase: true, out contentTune)
+                || !Enum.IsDefined(contentTune)))
+        {
+            error = $"Unknown content tune '{requestedTune}'. Expected None, Animation, or Grain.";
+            return false;
+        }
+
+        if (request.MaxBitrateKbps is { } cap && (cap < 100 || cap > 200_000))
+        {
+            error = "Maximum bitrate must be between 100 and 200000 kbps, or blank for no cap.";
+            return false;
+        }
+
         var targetImageFormat = Trim(request.TargetImageFormat);
         if (targetImageFormat is not null && !ImageTarget.IsEncodable(targetImageFormat))
         {
@@ -386,6 +412,9 @@ internal static class LibraryRequestParser
             Trim(request.ExcludePaths),
             request.ExcludeHardLinkedFiles ?? false,
             skipSourceCodecs,
+            contentTune,
+            request.MaxBitrateKbps,
+            request.StrongerAdaptiveQuantisation ?? false,
             request.QualityCrf,
             encoderPreset,
             audioTargetCodec is null ? null : audioTargetCodec.ToLowerInvariant(),

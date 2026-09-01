@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Video re-encodes can now be fine-tuned per library.** Advanced options gain a **Fine-tune the
+  encoder** group with three settings: a **content tune** for animation or film grain, a **maximum
+  bitrate** ceiling on top of the quality target, and **stronger adaptive quantisation** to spend
+  more bits where the eye notices. Each is stored as intent rather than as a raw FFmpeg flag, so
+  the encoder actually chosen for a job receives only what it understands: content tune and
+  adaptive quantisation reach the software x264/x265 encoders, NVENC honours adaptive quantisation
+  but has no content tune, and the bitrate cap applies everywhere. The library form says which
+  encoders honour what as soon as you set one, because in Auto mode a library cannot know in
+  advance which encoder it will land on. Anything a family cannot express is dropped rather than
+  approximated, and a library that sets none of these builds exactly the command it always did.
+
 - **A library can now leave chosen source codecs alone.** Each library's Advanced options list the
   codecs its media type can actually contain; pick any and files already in them are never made
   candidates, so they are never encoded and never replaced. This is for the case where a codec
