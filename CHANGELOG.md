@@ -4,6 +4,16 @@
 
 ### Added
 
+- **A library can now skip hardlinked files.** Settings for each library gain a **Skip hardlinked
+  files** switch under Advanced options. A hardlink means one file on disk is reachable by more
+  than one name — usually a download client still seeding the exact file Sonarr or Radarr imported.
+  Both names are the same bytes, so replacing the file changes what the other one points at and can
+  break a seed. While the switch is on, any file with more than one name is left out of the
+  library's candidates, and so is a file whose link count cannot be read, rather than guessing. The
+  count is captured by every scan and read again immediately before any replacement, so a file
+  linked after it was queued is still caught. Off by default and off on upgrade, so an existing
+  installation's candidates are unchanged.
+
 - **Remote transcoding sidecars can now be paired with a PIN.** Settings gains a **Workers** tab.
   Press Pair a sidecar, then type the code and the server address it shows into your sidecar app.
   The code lasts five minutes, works once, and is destroyed after five wrong entries, so a code

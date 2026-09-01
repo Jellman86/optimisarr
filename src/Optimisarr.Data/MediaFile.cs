@@ -118,6 +118,16 @@ public sealed class MediaFile
     /// </summary>
     public string? OptimisedMarker { get; set; }
 
+    /// <summary>
+    /// How many names point at this file's inode, captured by the scan that discovered it. One
+    /// means only this entry; more means another location shares the exact bytes. Null when it
+    /// could not be read, including for every file discovered before the count was captured.
+    ///
+    /// Volatile by nature — a download client can link a file after the scan — so this drives
+    /// eligibility only, and a replacement re-reads the live count before it touches anything.
+    /// </summary>
+    public int? HardLinkCount { get; set; }
+
     public DateTimeOffset? ProbedAt { get; set; }
 
     public string? ProbeError { get; set; }

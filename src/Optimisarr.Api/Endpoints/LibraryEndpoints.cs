@@ -116,6 +116,7 @@ internal static class LibraryEndpoints
                 HdrHandling = parsed.HdrHandling,
                 OptimiseDolbyVision = parsed.OptimiseDolbyVision,
                 ExcludePaths = parsed.ExcludePaths,
+                ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles,
                 QualityCrf = parsed.QualityCrf,
                 EncoderPreset = parsed.EncoderPreset,
                 AudioTargetCodec = parsed.AudioTargetCodec,
@@ -201,6 +202,7 @@ internal static class LibraryEndpoints
             library.HdrHandling = parsed.HdrHandling;
             library.OptimiseDolbyVision = parsed.OptimiseDolbyVision;
             library.ExcludePaths = parsed.ExcludePaths;
+            library.ExcludeHardLinkedFiles = parsed.ExcludeHardLinkedFiles;
             library.QualityCrf = parsed.QualityCrf;
             library.EncoderPreset = parsed.EncoderPreset;
             library.AudioTargetCodec = parsed.AudioTargetCodec;

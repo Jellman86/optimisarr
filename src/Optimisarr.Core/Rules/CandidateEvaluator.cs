@@ -23,6 +23,24 @@ public static class CandidateEvaluator
             return CandidateDecision.Skipped("Already optimised by Optimisarr (file is tagged)");
         }
 
+        // A shared inode is a reason to leave a file alone whatever kind it is and whatever the
+        // profile would do to it, because every path ends in a replacement. Checked after the
+        // optimised marker because that answer is terminal, while a link count can change tomorrow.
+        if (rules.ExcludeHardLinkedFiles)
+        {
+            if (media.HardLinkCount is not { } links)
+            {
+                return CandidateDecision.Skipped(
+                    "Hardlink count could not be determined — excluded because this library excludes hardlinked files");
+            }
+
+            if (links > 1)
+            {
+                return CandidateDecision.Skipped(
+                    $"Hardlinked ({links} names share this file) — replacing it would change the other copies");
+            }
+        }
+
         // Track cleanup is defined only for video containers. An "Other" library can contain
         // audio and images too, but selecting this profile must never route those files through
         // their independent lossy encode pipelines.

@@ -22,4 +22,18 @@ public static class AutoReplacePolicy
         && libraryAutoReplace
         && !dryRunMode
         && !manuallyPaused;
+
+    /// <summary>
+    /// Whether a reconciled replacement outcome is a problem worth a warning, or an expected
+    /// decline to leave quietly alone.
+    ///
+    /// Reconciliation runs every few seconds, so anything it logs, it logs constantly. A job the
+    /// library's own rules declined — a file that is still hardlinked — is working as configured
+    /// and may replace cleanly tomorrow; warning about it on every pass would bury the failures
+    /// that do need attention.
+    /// </summary>
+    public static bool IsFault(Api.Replacement.ReplacementResultKind kind) => kind
+        is not Api.Replacement.ReplacementResultKind.Success
+        and not Api.Replacement.ReplacementResultKind.AlreadyCompleted
+        and not Api.Replacement.ReplacementResultKind.Deferred;
 }

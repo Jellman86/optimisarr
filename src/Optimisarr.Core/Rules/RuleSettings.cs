@@ -74,6 +74,18 @@ public sealed record RuleSettings
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
 
+    /// <summary>
+    /// When <c>true</c>, a file whose inode carries more than one name is left untouched. The usual
+    /// case is a download still being seeded that a *arr hardlinked into the library: the bytes are
+    /// shared, so replacing the file changes what the other name resolves to.
+    ///
+    /// Defaults to <c>false</c> — a link count above one is not by itself evidence of a problem, and
+    /// enabling this for everyone would quietly stop optimising whole libraries on upgrade. Once on,
+    /// a count that cannot be read excludes the file too: the operator has said this matters, so an
+    /// unreadable answer is not a licence to proceed.
+    /// </summary>
+    public bool ExcludeHardLinkedFiles { get; init; }
+
     /// <summary>The codec a lossless audio file is re-encoded to (ffprobe name, e.g. "opus").</summary>
     public string TargetAudioCodec { get; init; } = AudioTarget.DefaultCodec;
 
