@@ -440,6 +440,8 @@ export const de: Messages = {
     status_transcoding: 'Kodierung',
     status_verifying: 'Prüfung',
     status_readytoreplace: 'Bereit zum Ersetzen',
+    status_leased: 'Wird extern kodiert',
+    status_awaitingverification: 'Geliefert, wartet auf Prüfung',
     status_completed: 'Abgeschlossen',
     status_failed: 'Fehlgeschlagen',
     status_cancelled: 'Abgebrochen',

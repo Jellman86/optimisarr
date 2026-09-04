@@ -409,6 +409,8 @@ export const zh: Messages = {
     status_transcoding: "转码",
     status_verifying: "正在验证",
     status_readytoreplace: "准备更换",
+    status_leased: "远程编码中",
+    status_awaitingverification: "已交付，等待验证",
     status_completed: "已完成",
     status_failed: "失败",
     status_cancelled: "已取消",

@@ -409,6 +409,8 @@ export const ru: Messages = {
     status_transcoding: "Транскодирование",
     status_verifying: "Проверка",
     status_readytoreplace: "Готов заменить",
+    status_leased: "Кодируется удалённо",
+    status_awaitingverification: "Доставлено, ожидает проверки",
     status_completed: "Завершено",
     status_failed: "Сбой",
     status_cancelled: "Отменено",

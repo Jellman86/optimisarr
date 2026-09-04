@@ -91,7 +91,7 @@ internal static class WorkerLeaseEndpoints
                 return Results.NoContent();
             }
 
-            var capabilities = ToCapabilities(worker);
+            var capabilities = worker.ToCapabilities();
 
             // Ordered the same way the local dispatcher orders its own work, so a remote worker
             // takes the job that would have run next rather than cherry-picking the easy ones.
@@ -401,17 +401,4 @@ internal static class WorkerLeaseEndpoints
                 WorkerEncoderCatalogue.Describe(capabilities.VideoEncoders)).Succeeded;
     }
 
-    private static WorkerCapabilities ToCapabilities(Worker worker) => new(
-        worker.OperatingSystem,
-        worker.Architecture,
-        Split(worker.VideoEncoders),
-        Split(worker.HardwareDecoders),
-        worker.Vmaf,
-        worker.FreeScratchBytes,
-        worker.MaxConcurrency);
-
-    private static IReadOnlyList<string> Split(string value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? []
-            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

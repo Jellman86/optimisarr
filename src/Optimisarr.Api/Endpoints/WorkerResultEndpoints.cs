@@ -79,6 +79,15 @@ internal static class WorkerResultEndpoints
                 return ApiErrors.NotFound("worker.source.missing", "That lease has no source.");
             }
 
+            // The lease being live is not enough: an operator may have cancelled the job while the
+            // worker was still encoding. A candidate for a job that is no longer leased has nowhere
+            // to go, and accepting it would quietly revive work someone chose to stop.
+            if (job.Status != JobStatus.Leased)
+            {
+                return ApiErrors.Conflict("worker.result.jobNotLeased",
+                    $"That job is {job.Status}, not leased, so a result cannot be delivered for it.");
+            }
+
             var claimedSource = http.Headers[SourceHashHeader].ToString();
             var claimedCandidate = http.Headers[CandidateHashHeader].ToString();
 
@@ -104,7 +113,7 @@ internal static class WorkerResultEndpoints
 
             // Written under a temporary name and hashed on the way in, so a transfer that dies
             // part-way never leaves something that looks like a finished candidate.
-            var finalPath = Path.Combine(outputRoot, $"remote-{job.Id}{Path.GetExtension(job.MediaFile.Path)}");
+            var finalPath = RemoteCandidate.PathFor(outputRoot, job.Id, Path.GetExtension(job.MediaFile.Path));
             var stagingPath = finalPath + ".partial";
 
             long written;
@@ -134,8 +143,10 @@ internal static class WorkerResultEndpoints
             job.WorkOutputPath = finalPath;
 
             // Deliberately not ReadyToReplace. Verification has not run, and a candidate produced
-            // elsewhere earns nothing until every local gate has been repeated against it.
-            job.Status = JobStatus.Verifying;
+            // elsewhere earns nothing until every local gate has been repeated against it. Nor
+            // Verifying: that means verification is running here now, and restart recovery would
+            // rightly discard it as interrupted. The dispatcher picks this status up in its turn.
+            job.Status = JobStatus.AwaitingVerification;
 
             lease.Apply(lease.ToDomain().Complete(worker.Id, DateTimeOffset.UtcNow).Lease);
             await db.SaveChangesAsync(cancellationToken);

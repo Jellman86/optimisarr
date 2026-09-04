@@ -146,7 +146,7 @@
     }
   }
 
-  const ACTIVE = ['Queued', 'Probing', 'Transcoding', 'Verifying', 'ReadyToReplace']
+  const ACTIVE = ['Queued', 'Probing', 'Transcoding', 'Verifying', 'Leased', 'AwaitingVerification', 'ReadyToReplace']
   function isActive(status: string) {
     return ACTIVE.includes(status)
   }
@@ -340,6 +340,7 @@
       case 'Transcoding':
       case 'Probing':
       case 'Verifying':
+      case 'Leased':
         return 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
       case 'ReadyToReplace':
       case 'Completed':
@@ -360,6 +361,8 @@
     Probing: i18n.m.queue.status_probing,
     Transcoding: i18n.m.queue.status_transcoding,
     Verifying: i18n.m.queue.status_verifying,
+    Leased: i18n.m.queue.status_leased,
+    AwaitingVerification: i18n.m.queue.status_awaitingverification,
     ReadyToReplace: i18n.m.queue.status_readytoreplace,
     Completed: i18n.m.queue.status_completed,
     Failed: i18n.m.queue.status_failed,

@@ -409,6 +409,8 @@ export const pt: Messages = {
     status_transcoding: "Transcodificação",
     status_verifying: "Verificando",
     status_readytoreplace: "Pronto para substituir",
+    status_leased: "A codificar remotamente",
+    status_awaitingverification: "Entregue, a aguardar verificação",
     status_completed: "Concluído",
     status_failed: "Com falha",
     status_cancelled: "Cancelado",

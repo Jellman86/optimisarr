@@ -219,26 +219,53 @@ public sealed class QueueDispatcher(
 
         foreach (var job in interrupted)
         {
-            DeleteWorkOutput(job.WorkOutputPath);
             job.Progress = 0;
-            job.WorkOutputPath = null;
             job.UpdatedAt = DateTimeOffset.UtcNow;
 
-            if (job.Attempt >= MaxAttempts)
+            switch (RecoveryActionFor(job.Status, job.WorkOutputPath, job.Attempt))
             {
-                job.Status = JobStatus.Failed;
-                job.ErrorMessage = "Interrupted too many times (worker restarted while running).";
-                job.FinishedAt = DateTimeOffset.UtcNow;
-            }
-            else
-            {
-                job.Status = JobStatus.Queued;
+                case RecoveryAction.KeepDelivered:
+                    // The interrupted work was this machine's verification of a candidate a remote
+                    // worker delivered. The candidate is finished work, not a half-written encode;
+                    // it goes back to waiting and verification simply runs again.
+                    job.Status = JobStatus.AwaitingVerification;
+                    break;
+                case RecoveryAction.Fail:
+                    DeleteWorkOutput(job.WorkOutputPath);
+                    job.WorkOutputPath = null;
+                    job.Status = JobStatus.Failed;
+                    job.ErrorMessage = "Interrupted too many times (worker restarted while running).";
+                    job.FinishedAt = DateTimeOffset.UtcNow;
+                    break;
+                default:
+                    DeleteWorkOutput(job.WorkOutputPath);
+                    job.WorkOutputPath = null;
+                    job.Status = JobStatus.Queued;
+                    break;
             }
         }
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Recovered {Count} interrupted job(s) after restart", interrupted.Count);
         await NotifyAsync();
+    }
+
+    internal enum RecoveryAction { Requeue, Fail, KeepDelivered }
+
+    /// <summary>
+    /// What restart recovery does with a job found mid-flight. A local encode or verification that
+    /// was interrupted has nothing worth keeping and is requeued (or failed once it has been
+    /// interrupted too often); a delivered remote candidate whose verification was interrupted is
+    /// kept, because the expensive part is done and only this machine's verdict is missing.
+    /// </summary>
+    internal static RecoveryAction RecoveryActionFor(JobStatus status, string? workOutputPath, int attempt)
+    {
+        if (status == JobStatus.Verifying && RemoteCandidate.IsDelivered(workOutputPath))
+        {
+            return RecoveryAction.KeepDelivered;
+        }
+
+        return attempt >= MaxAttempts ? RecoveryAction.Fail : RecoveryAction.Requeue;
     }
 
     // Scratch output is deliberately retained while a failed job exists so the operator can inspect
@@ -408,10 +435,17 @@ public sealed class QueueDispatcher(
         }
 
         List<QueuedJob> queued;
+        List<int> delivered;
         Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            delivered = await db.Jobs
+                .AsNoTracking()
+                .Where(job => job.Status == JobStatus.AwaitingVerification)
+                .OrderBy(job => job.Id)
+                .Select(job => job.Id)
+                .ToListAsync(stoppingToken);
             queued = await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
@@ -443,6 +477,26 @@ public sealed class QueueDispatcher(
         {
             logger.LogDebug("Queue dispatch paused: {Reason}", policy.BlockedReason);
             return;
+        }
+
+        // Candidates delivered by remote workers are finished work waiting only for this machine's
+        // verdict. They take slots under the same cap and the same activity policy, ahead of
+        // starting new encodes: a verdict on work already done is worth more than a new start,
+        // and holding a delivered candidate longer than necessary only invites a lease to lapse
+        // or a source to change under it.
+        foreach (var jobId in delivered)
+        {
+            if (Volatile.Read(ref _draining) != 0
+                || _running.Count >= maxConcurrent
+                || _running.ContainsKey(jobId)
+                || !await TryClaimDeliveredAsync(jobId, stoppingToken))
+            {
+                continue;
+            }
+
+            var cts = new CancellationTokenSource();
+            _running[jobId] = cts;
+            _ = Task.Run(() => VerifyDeliveredAsync(jobId, cts.Token), CancellationToken.None);
         }
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
@@ -502,6 +556,124 @@ public sealed class QueueDispatcher(
         finally
         {
             _dbLock.Release();
+        }
+    }
+
+    // Single-writer claim for a delivered candidate: only transition if still waiting, so two
+    // dispatch cycles can never verify the same candidate at once.
+    private async Task<bool> TryClaimDeliveredAsync(int jobId, CancellationToken cancellationToken)
+    {
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+            if (job is null || job.Status != JobStatus.AwaitingVerification)
+            {
+                return false;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            job.Status = JobStatus.Verifying;
+            job.Progress = 0;
+            job.StartedAt ??= now;
+            job.UpdatedAt = now;
+            job.ErrorMessage = null;
+            job.FailureCategory = null;
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Verifies a candidate a remote worker delivered, exactly as a local encode is verified. The
+    /// encode contract is rebuilt for the worker that produced it, so the gates hold the candidate
+    /// to the picture, tracks and quality it was told to make; the candidate then earns
+    /// replacement, or does not, through the same path as everything else.
+    /// </summary>
+    private async Task VerifyDeliveredAsync(int jobId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            string? candidatePath;
+            Worker? deliveredBy;
+            await using (var scope = scopeFactory.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+                candidatePath = await db.Jobs
+                    .AsNoTracking()
+                    .Where(job => job.Id == jobId)
+                    .Select(job => job.WorkOutputPath)
+                    .FirstOrDefaultAsync(cancellationToken);
+                deliveredBy = await db.JobLeases
+                    .AsNoTracking()
+                    .Where(lease => lease.JobId == jobId && lease.State == LeaseState.Completed)
+                    .OrderByDescending(lease => lease.AcquiredAt)
+                    .Select(lease => lease.Worker)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
+            if (candidatePath is null || !File.Exists(candidatePath))
+            {
+                await CompleteAsync(jobId, JobStatus.Failed,
+                    error: "The delivered candidate is missing from the work directory, so it cannot be verified.");
+                return;
+            }
+
+            if (deliveredBy is null)
+            {
+                await CompleteAsync(jobId, JobStatus.Failed,
+                    error: "No completed lease records which worker delivered this candidate, so its encode contract cannot be rebuilt.");
+                return;
+            }
+
+            var work = await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
+            if (work is null)
+            {
+                await CompleteAsync(jobId, JobStatus.Failed, error: "Job or media file no longer exists.");
+                return;
+            }
+
+            if (!File.Exists(work.Value.Original.Path))
+            {
+                await CompleteAsync(jobId, JobStatus.Failed, error:
+                    $"Source file no longer exists: {work.Value.Original.Path}. It was most likely moved or "
+                    + "upgraded by your media manager (Radarr/Sonarr). Re-scan the library and the stale entry "
+                    + "will be removed.");
+                return;
+            }
+
+            await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
+            await VerifyAndFinishAsync(jobId, candidatePath, work.Value, cancellationToken);
+        }
+        catch (JobNoLongerEligibleException ex)
+        {
+            await CompleteAsync(jobId, JobStatus.Cancelled, error: $"Skipped before verifying: {ex.Message}");
+            logger.LogInformation("Job {JobId}: skipped before verifying — {Reason}", jobId, ex.Message);
+        }
+        catch (OperationCanceledException)
+        {
+            await HandleCancelledAsync(jobId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Job {JobId} failed while verifying a delivered candidate", jobId);
+            await CompleteAsync(jobId, JobStatus.Failed, error: ex.Message);
+            await NotifyJobFailedAsync(jobId, ex.Message);
+        }
+        finally
+        {
+            if (_running.TryRemove(jobId, out var cts))
+            {
+                cts.Dispose();
+            }
+            await NotifyAsync();
+            Wake();
         }
     }
 
@@ -2460,9 +2632,13 @@ public sealed class QueueDispatcher(
             RequestCancel(jobId);
         }
 
+        // A delivered candidate that has not been verified is pending work too: clearing the queue
+        // discards it along with the rest, since nothing has been earned by it yet.
         var pending = await db.Jobs
             .Where(job => job.Type == JobType.Normal
-                && (job.Status == JobStatus.Queued || job.Status == JobStatus.ReadyToReplace))
+                && (job.Status == JobStatus.Queued
+                    || job.Status == JobStatus.AwaitingVerification
+                    || job.Status == JobStatus.ReadyToReplace))
             .ToListAsync(cancellationToken);
         if (pending.Count == 0)
         {

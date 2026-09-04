@@ -4,6 +4,21 @@
 
 ### Added
 
+- **A candidate delivered by a remote worker is now verified and can earn replacement.** Before
+  this, a delivered candidate was set to Verifying, where nothing picked it up, and the next
+  restart's recovery sweep deleted it as an interrupted encode. Delivery now lands the job in a new
+  **Delivered, awaiting verification** status. The dispatcher picks such jobs up ahead of starting
+  new encodes, under the same concurrency cap and activity policy, rebuilds the encode contract for
+  the worker that produced the candidate, and runs every local gate against it — decode, duration,
+  tail, streams, size, resolution, frame rate, and the VMAF comparison — through exactly the path a
+  local encode takes. A candidate that passes becomes ready to replace or is auto-replaced as the
+  library asks; one that fails is retried at higher quality or failed, as before. Restart recovery
+  now tells a delivered candidate mid-verification from an interrupted local encode and keeps it.
+  The queue shows **Encoding remotely** and the new status by name, both count as active, and
+  clearing or cancelling treats a delivered candidate as pending work. A result arriving for a job
+  the operator has cancelled is refused rather than quietly reviving it. VMAF is re-measured here
+  for now; accepting a worker's own measurement is wired in with the sidecar's work loop.
+
 - **A remote worker can now be handed an executable assignment.** Until now every claim returned
   nothing: the assignment named no encoder and carried no encode policy, so no sidecar could be
   offered work (the characterisation test that pinned this now asserts the opposite). A claim now

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Api.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -253,8 +254,42 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         Assert.True(File.Exists(job.WorkOutputPath));
         Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(job.WorkOutputPath!));
 
+        // Waiting, not Verifying: the dispatcher picks it up in its turn, and restart recovery
+        // leaves it alone rather than treating it as an interrupted local encode.
+        Assert.Equal(JobStatus.AwaitingVerification, job.Status);
+        Assert.True(RemoteCandidate.IsDelivered(job.WorkOutputPath));
+
         // The original must be exactly as it was. A returned candidate is a proposal, not a
         // replacement, and nothing about delivering one may touch the source.
         Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile!.Path));
+    }
+
+    [Fact]
+    public async Task A_candidate_for_a_job_the_operator_cancelled_is_refused()
+    {
+        // The lease is still live, but the job is not: someone chose to stop it while the worker
+        // was encoding. Accepting the candidate would quietly revive that work.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Late");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+
+        int jobId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.FirstAsync(j => j.LibraryId != null && _createdLibraries.Contains(j.LibraryId.Value));
+            job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        using var response = await worker.SendAsync(Upload(leaseId, CandidateBytes, sourceHash));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var check = _api.Services.CreateScope();
+        var after = await check.ServiceProvider.GetRequiredService<OptimisarrDbContext>().Jobs.FindAsync(jobId);
+        Assert.Equal(JobStatus.Cancelled, after!.Status);
+        Assert.Null(after.WorkOutputPath);
     }
 }
