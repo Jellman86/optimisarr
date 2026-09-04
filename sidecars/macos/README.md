@@ -5,15 +5,31 @@ capacity.
 
 ## What this version does, and does not
 
-**It does not transcode anything yet.** It pairs, stores its credential, reports what this Mac can
-actually do, and checks in. That is the whole of it.
+It pairs, stores its credential, reports what this Mac can actually do, checks in, and — once the
+server has verified it can finish a job that came back — asks for work. A job runs like this:
 
-That is deliberate rather than unfinished. Nothing here asks the server for work, because the server
-cannot yet finish a job that came back from a worker: it accepts a returned candidate and leaves it
-waiting for a verification pass that does not exist. An app that claimed to transcode would be
-claiming something neither end can complete.
+1. **Claim.** On each healthy check-in while idle, the app asks for one job. The server answers
+   with the exact FFmpeg command it would have run itself, resolved for an encoder this Mac
+   proved, with two tokens standing in for paths.
+2. **Validate.** The command is checked before a byte is fetched: every option is one the server's
+   builder is known to emit, the only input is the `{{input}}` token, the only output is the
+   `{{output}}` token in last position carrying the promised extension, and no other value looks
+   like a path. Anything else is refused whole and the job handed back with the offending token
+   named. The server decides *what* to encode; it never names files on this machine.
+3. **Fetch and prove.** The source is downloaded by lease into the app's own scratch and hashed;
+   a transfer that does not match the server's hash is never encoded.
+4. **Encode, renewing.** The bundled ffmpeg runs the command against this Mac's paths. The lease
+   is renewed throughout; losing it stops the encode rather than finishing work the server has
+   already given to someone else.
+5. **Deliver.** The candidate is hashed and uploaded with both hashes, so the server can bind it to
+   this exact source. The server then verifies it against the original exactly as it would a local
+   encode. Nothing is replaced from here, ever.
 
-What it *does* now report is real. It bundles its own ffmpeg, built from pinned source by
+Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every
+exit path. One job at a time. Quality evidence (VMAF) is not yet measured here; the server measures
+it itself for now.
+
+What it reports is real. It bundles its own ffmpeg, built from pinned source by
 [`scripts/build-ffmpeg.sh`](scripts/build-ffmpeg.sh), and probes this machine in two stages: parse
 `ffmpeg -encoders`, then confirm each VideoToolbox encoder with a real throwaway encode. Every Apple
 build lists VideoToolbox whether or not a given machine can open it, so listing alone would have the

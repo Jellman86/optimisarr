@@ -99,9 +99,21 @@ struct SidecarMenu: View {
                     .font(.caption)
             }
 
-            // Said plainly rather than buried. Someone who pairs a machine reasonably expects it to
-            // start doing something, and it will not yet.
-            Text("This sidecar does not transcode yet. It pairs and reports in so the connection can be set up and tested while the rest is built.")
+            if case let .working(jobId, progress) = session.status {
+                LabeledContent("Job", value: "#\(jobId)").font(.caption)
+                LabeledContent("Stage", value: progress.label).font(.caption)
+            }
+
+            if let outcome = session.lastOutcome {
+                Text(outcome.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Said plainly: a delivered candidate is a proposal. Optimisarr verifies it against the
+            // original before anything is replaced, and this machine never sees that decision.
+            Text("Encodes are delivered to Optimisarr for verification; nothing is replaced from here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -114,10 +126,38 @@ struct SidecarMenu: View {
     }
 }
 
+private extension JobProgress {
+    var label: String {
+        switch self {
+        case .fetchingSource: return "Fetching the source"
+        case let .encoding(seconds):
+            let whole = Int(seconds)
+            return String(format: "Encoding · %d:%02d:%02d of output", whole / 3600, whole % 3600 / 60, whole % 60)
+        case .delivering: return "Delivering the candidate"
+        }
+    }
+}
+
+private extension JobOutcome {
+    var label: String {
+        switch self {
+        case let .delivered(jobId, bytes):
+            let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+            return "Last job #\(jobId): delivered \(size) for verification."
+        case let .released(jobId, reason):
+            return "Last job #\(jobId): handed back — \(reason)"
+        case let .leaseLost(jobId, reason):
+            return "Last job #\(jobId): lease lost — \(reason)"
+        }
+    }
+}
+
 private extension SidecarStatus {
     var isHealthy: Bool {
-        if case .connected = self { return true }
-        return false
+        switch self {
+        case .connected, .working: return true
+        default: return false
+        }
     }
 
     /// The explanation behind the state, where there is one worth reading.

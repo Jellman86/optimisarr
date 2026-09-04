@@ -11,6 +11,9 @@ public enum SidecarStatus: Equatable, Sendable {
     /// Paired and checking in successfully.
     case connected(workerId: Int, lastCheckIn: Date)
 
+    /// Paired and running a job the server handed over.
+    case working(jobId: Int, progress: JobProgress)
+
     /// Paired, but the last check-in did not get through. The credential is still believed good,
     /// so this recovers on its own — distinct from `revoked`, which never will.
     case unreachable(reason: String)
@@ -37,20 +40,26 @@ public final class SidecarSession: ObservableObject {
     @Published public private(set) var status: SidecarStatus = .unpaired
     @Published public private(set) var serverAddress: String = ""
 
+    /// How the last job ended, kept so the menu can say what this machine last did for the server.
+    @Published public private(set) var lastOutcome: JobOutcome?
+
     private let client: SidecarClient
     private let store: CredentialStore
     private let prober: CapabilityProber?
+    private let executor: WorkExecutor?
     private var capabilities: SidecarCapabilities
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
     private var pairing: StoredPairing?
     private var heartbeatTask: Task<Void, Never>?
+    private var jobTask: Task<Void, Never>?
 
     public init(
         client: SidecarClient = SidecarClient(),
         store: CredentialStore = KeychainCredentialStore(),
         capabilities: SidecarCapabilities = .provenToday(name: Host.current().localizedName ?? "Mac"),
         prober: CapabilityProber? = CapabilityProber(),
+        executor: WorkExecutor? = JobRunner(),
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
@@ -59,6 +68,7 @@ public final class SidecarSession: ObservableObject {
         self.store = store
         self.capabilities = capabilities
         self.prober = prober
+        self.executor = executor
         self.sleep = sleep
     }
 
@@ -109,6 +119,10 @@ public final class SidecarSession: ObservableObject {
     public func unpair() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        // A job in flight is stopped too: cancelling the task terminates ffmpeg and the runner
+        // hands the lease back, so the server can reassign rather than wait for it to lapse.
+        jobTask?.cancel()
+        jobTask = nil
         try? store.clear()
         pairing = nil
         status = .unpaired
@@ -137,7 +151,10 @@ public final class SidecarSession: ObservableObject {
                     maxConcurrency: capabilities.maxConcurrency)
 
                 interval = beat.heartbeatInterval
-                status = .connected(workerId: beat.workerId, lastCheckIn: Date())
+                if jobTask == nil {
+                    status = .connected(workerId: beat.workerId, lastCheckIn: Date())
+                    await claimIfIdle(pairing: pairing, workerId: beat.workerId)
+                }
             } catch SidecarError.credentialRejected {
                 // Terminal. Retrying cannot help, and holding a dead secret on disk serves no
                 // purpose, so drop it and tell the operator plainly.
@@ -159,6 +176,48 @@ public final class SidecarSession: ObservableObject {
         }
     }
 
+    /// Asks for work once per healthy check-in while idle. One job at a time: the capabilities
+    /// advertised one slot, and the server's matcher holds it to that.
+    private func claimIfIdle(pairing: StoredPairing, workerId: Int) async {
+        guard let executor, capabilities.maxConcurrency > 0 else { return }
+
+        let assignment: Assignment?
+        do {
+            assignment = try await client.claim(
+                serverAddress: pairing.serverAddress, credential: pairing.credential)
+        } catch {
+            // A failed claim is not a failed check-in. The next beat asks again; a credential
+            // problem surfaces through the heartbeat, which is the path that handles it.
+            return
+        }
+        guard let assignment else { return }
+
+        status = .working(jobId: assignment.jobId, progress: .fetchingSource)
+        let jobId = assignment.jobId
+        // The task holds the session for the job's duration, which is intended: a job is stopped
+        // by cancelling this task (see unpair), never by the session quietly going away under it.
+        jobTask = Task { [weak self] in
+            guard let self else { return }
+            let outcome = await executor.execute(assignment, pairing: pairing) { progress in
+                Task { @MainActor in self.report(jobId: jobId, progress: progress) }
+            }
+            self.finish(outcome, workerId: workerId)
+        }
+    }
+
+    private func report(jobId: Int, progress: JobProgress) {
+        guard jobTask != nil else { return }
+        status = .working(jobId: jobId, progress: progress)
+    }
+
+    private func finish(_ outcome: JobOutcome, workerId: Int) {
+        lastOutcome = outcome
+        jobTask = nil
+        if pairing != nil {
+            status = .connected(workerId: workerId, lastCheckIn: Date())
+        }
+    }
+
     static func describe(_ error: SidecarError) -> SidecarStatus {
         switch error {
         case .invalidServerAddress:
@@ -175,6 +234,10 @@ public final class SidecarSession: ObservableObject {
             return .pairingFailed(reason: "The server replied unexpectedly (HTTP \(status)).")
         case let .unreachable(description):
             return .pairingFailed(reason: description)
+        case let .leaseLost(reason), let .transferFailed(reason), let .deliveryRefused(reason):
+            // Job-time errors never reach pairing or check-in, but the mapping stays total so a
+            // new case cannot be forgotten silently.
+            return .unreachable(reason: reason)
         }
     }
 }
@@ -196,6 +259,7 @@ extension SidecarStatus {
         case .unpaired: return "Not paired"
         case .pairing: return "Pairing…"
         case .connected: return "Connected"
+        case let .working(jobId, _): return "Encoding job #\(jobId)"
         case .unreachable: return "Server unreachable"
         case .revoked: return "Access revoked"
         case .disabledOnServer: return "Turned off on the server"

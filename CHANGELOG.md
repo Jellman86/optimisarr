@@ -4,6 +4,18 @@
 
 ### Added
 
+- **The macOS sidecar now does work.** On each healthy check-in while idle it claims a job, and
+  runs it end to end: the server's command is validated against an explicit contract before a byte
+  is fetched (known options only, the only input and output are the two placeholder tokens, no value
+  that looks like a path — anything else is refused whole and the job handed back with the token
+  named); the source is fetched by lease into the app's own scratch and hashed, and a transfer that
+  does not match the server's hash is never encoded; the bundled ffmpeg runs while the lease is
+  renewed, and losing the lease stops the encode; the candidate is hashed and delivered with both
+  hashes for the server to verify exactly as it would a local encode. The menu shows the job and
+  stage, and how the last job ended. Scratch is removed on every exit path; forgetting the pairing
+  cancels a running job. One job at a time. VMAF is not yet measured on the Mac; the server measures
+  it itself for now.
+
 - **A candidate delivered by a remote worker is now verified and can earn replacement.** Before
   this, a delivered candidate was set to Verifying, where nothing picked it up, and the next
   restart's recovery sweep deleted it as an interrupted encode. Delivery now lands the job in a new

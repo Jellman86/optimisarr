@@ -22,6 +22,16 @@ final class StubTransport: HTTPTransport, @unchecked Sendable {
         return (body, response)
     }
 
+    func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse {
+        lastRequest = request
+        try body.write(to: destination)
+        return HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+    }
+
+    func upload(_ request: URLRequest, fromFile file: URL) async throws -> (Data, HTTPURLResponse) {
+        try await send(request)
+    }
+
     var sentJSON: [String: Any] {
         guard
             let body = lastRequest?.httpBody,

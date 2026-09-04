@@ -651,10 +651,17 @@ the replacement workflow is trustworthy.
         `RemoteQualityEvidenceValidator` is wired in with piece 3, when a worker can produce
         evidence to validate.
 
-     3. **The sidecar's work loop.** Now the next server-independent piece; a claim returns an
-        executable command. The client implements two of the ten worker routes. Claim,
-        renew, release, source download (Range plus hash check), transcode, VMAF measurement and
-        result upload are all unwritten, as are progress reporting and cancellation.
+     3. **The sidecar's work loop: landed 2026-09-04.** Claim, renew, release, source download
+        with a hash check, transcode with progress, and result upload are implemented
+        (`SidecarClient`, `JobRunner`, `AssignmentCommand`), and `SidecarSession` claims one job
+        per healthy check-in while idle. The command contract on the worker side is an explicit
+        allowlist of the options the server's builder emits, the two placeholder tokens as the only
+        input and output, and no path-like value; a refused command hands the job back naming the
+        token. Losing the lease cancels the encode; forgetting the pairing cancels the job; scratch
+        is removed on every exit path. **Left for later:** Range-resumed downloads (a dropped
+        transfer restarts today), VMAF measurement on the worker and the evidence upload that
+        `RemoteQualityEvidenceValidator` will judge (the server re-measures until then), and
+        real-hardware acceptance evidence for the whole loop.
 
      4. **Drain controls**, and then productionisation: launch-at-login, sleep/wake, App Nap,
         low-disk handling, cancel-on-quit. Developer ID signing and notarisation are unblocked — a
@@ -687,11 +694,11 @@ the replacement workflow is trustworthy.
      that proves nothing still reports nothing, and the fail-closed matcher never offers it work. Revocation, an incompatible protocol,
      and the feature being switched off server-side are each surfaced distinctly rather than as a
      generic failure. A live test suite runs the real client against a running server, which is how
-     this contract gets a second implementation holding it honest. **Still to build:** claiming
-     work, media transfer, transcoding, VMAF, launch-at-login, sleep/wake and App Nap handling,
-     Developer ID signing and notarisation. The client implements two of the ten worker routes
-     (`pair` and `heartbeat`); claim, renew, release, source and result are all unwritten, and
-     `SidecarSession` has no work loop.
+     this contract gets a second implementation holding it honest. It now claims work, fetches the
+     source by lease, validates and runs the server's command with the bundled ffmpeg, renews the
+     lease throughout, and delivers the candidate with both hashes (see piece 3 above). **Still to
+     build:** VMAF on the worker, Range-resumed transfers, launch-at-login, sleep/wake and App Nap
+     handling, Developer ID signing and notarisation, and real-hardware acceptance evidence.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests
