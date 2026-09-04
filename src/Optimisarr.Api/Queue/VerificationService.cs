@@ -27,6 +27,9 @@ public sealed record OriginalSnapshot(
     // The crop the encode applied, so the quality reference is cropped identically. Null means
     // the full frame was encoded.
     Optimisarr.Core.Queue.CropRect? Crop = null,
+    // The rate the encode decimated to under a frame-rate cap, so the quality reference is
+    // decimated identically and the judged frames are the kept frames. Null keeps the source rate.
+    double? TargetFrameRate = null,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
@@ -281,6 +284,8 @@ public sealed class VerificationService(
                 OutputHeight: outputProbe.Height,
                 ExpectedWidth: reference.ExpectedWidth,
                 ExpectedHeight: reference.ExpectedHeight,
+                ExpectedFrameRate: reference.TargetFrameRate,
+                OutputFrameRate: outputProbe.VideoFrameRate,
                 ImageQualityMeasured: imageQualityResult?.Measured ?? false,
                 ImageQualityError: imageQualityResult?.Error,
                 ImageSsim: imageQualityResult?.Ssim,
@@ -444,7 +449,7 @@ public sealed class VerificationService(
             MeasureDurationSeconds: clipDurationSeconds,
             FrameSubsample: frameSubsample,
             Acceleration: acceleration,
-            ReferenceFrameRate: originalProbe.VideoFrameRate,
+            ReferenceFrameRate: reference.TargetFrameRate ?? originalProbe.VideoFrameRate,
             ReferenceCrop: reference.Crop);
         var result = await quality.MeasureAsync(
             qualityReferencePath,

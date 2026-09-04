@@ -60,6 +60,7 @@ internal static class LibraryRuleResolution
             MinFileSizeBytes = library.MinFileSizeBytes,
             MaxHeight = library.MaxHeight,
             VideoDownscaleHeight = library.VideoDownscaleHeight,
+            MaxFrameRate = library.MaxFrameRate,
             CropBlackBars = library.CropBlackBars,
             ReencodeSameCodecAboveBytes = library.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = library.TargetVideoCodec,

@@ -505,4 +505,58 @@ public sealed class TranscodeSpecResolverTests
         Assert.Null(spec.CropTo);
         Assert.Null(spec.ExpectedSize);
     }
+
+    // --- Frame-rate cap -----------------------------------------------------------------------
+
+    [Fact]
+    public void A_frame_rate_cap_halves_a_faster_source_to_an_exact_target()
+    {
+        var rules = Hevc with { MaxFrameRate = 30 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Clip.mkv", relativePath: "Clip.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceFrameRate: 59.94);
+
+        Assert.NotNull(spec.TargetFrameRate);
+        Assert.Equal(29.97, spec.TargetFrameRate.Value, precision: 6);
+    }
+
+    [Fact]
+    public void A_source_under_the_cap_gets_no_target()
+    {
+        var rules = Hevc with { MaxFrameRate = 30 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Film.mkv", relativePath: "Film.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceFrameRate: 23.976);
+
+        Assert.Null(spec.TargetFrameRate);
+    }
+
+    [Fact]
+    public void A_remux_never_carries_a_frame_rate_target()
+    {
+        var rules = Hevc with { TargetVideoCodec = null, MaxFrameRate = 30 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Clip.mkv", relativePath: "Clip.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceFrameRate: 60);
+
+        Assert.Null(spec.TargetFrameRate);
+    }
+
+    [Fact]
+    public void An_unknown_source_rate_gets_no_target()
+    {
+        var rules = Hevc with { MaxFrameRate = 30 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Clip.mkv", relativePath: "Clip.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium");
+
+        Assert.Null(spec.TargetFrameRate);
+    }
 }

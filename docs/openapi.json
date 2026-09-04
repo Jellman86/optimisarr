@@ -696,6 +696,15 @@
               "string"
             ]
           },
+          "maxFrameRate": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1559,6 +1568,15 @@
               "string"
             ]
           },
+          "maxFrameRate": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1837,6 +1855,7 @@
           "minFileSizeBytes",
           "maxHeight",
           "videoDownscaleHeight",
+          "maxFrameRate",
           "cropBlackBars",
           "reencodeSameCodecAboveBytes",
           "skipEfficientSources",

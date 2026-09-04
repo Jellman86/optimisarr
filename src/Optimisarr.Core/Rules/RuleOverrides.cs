@@ -12,6 +12,7 @@ public sealed record RuleOverrides
     public long? MinFileSizeBytes { get; init; }
     public int? MaxHeight { get; init; }
     public int? VideoDownscaleHeight { get; init; }
+    public int? MaxFrameRate { get; init; }
     public bool? CropBlackBars { get; init; }
     public long? ReencodeSameCodecAboveBytes { get; init; }
     public string? TargetVideoCodec { get; init; }

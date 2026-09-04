@@ -283,6 +283,57 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Null(Reencode().ExpectedSize);
     }
 
+    [Fact]
+    public void A_frame_rate_target_emits_an_fps_filter_after_the_geometry_and_before_the_tone_map()
+    {
+        // Geometry first so the fps filter sees the final frame size; before the tone-map so the
+        // expensive colour work runs on the frames that survive rather than the ones dropped.
+        var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true) with
+        {
+            DownscaleTo = new PictureSize(1280, 720),
+            TargetFrameRate = 30
+        });
+
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
+        Assert.Contains("fps=fps=30", chain);
+        Assert.True(chain.IndexOf("scale=", StringComparison.Ordinal) < chain.IndexOf("fps=fps=", StringComparison.Ordinal));
+        Assert.True(chain.IndexOf("fps=fps=", StringComparison.Ordinal) < chain.IndexOf("tonemap", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_frame_rate_target_takes_over_cadence_from_the_vfr_handling()
+    {
+        // -fps_mode vfr preserves a source's irregular timing. An fps filter defines a regular
+        // cadence instead; keeping both would ask the encoder to preserve timing the filter has
+        // already replaced. The filter owns cadence, so the VFR flags are not emitted.
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            SourceIsVariableFrameRate = true,
+            TargetFrameRate = 30
+        });
+
+        Assert.DoesNotContain("-fps_mode", args);
+        Assert.DoesNotContain("-enc_time_base:v:0", args);
+        Assert.Contains("fps=fps=30", args[IndexOf(args, "-filter:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Without_a_frame_rate_target_the_vfr_handling_is_unchanged()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode() with { SourceIsVariableFrameRate = true });
+
+        Assert.Equal("vfr", args[IndexOf(args, "-fps_mode") + 1]);
+        Assert.DoesNotContain("-filter:v:0", args);
+    }
+
+    [Fact]
+    public void A_frame_rate_target_on_a_remux_is_ignored()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { TargetFrameRate = 30 });
+
+        Assert.DoesNotContain("-filter:v:0", args);
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,

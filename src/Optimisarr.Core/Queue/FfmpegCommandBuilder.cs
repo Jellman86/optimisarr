@@ -47,7 +47,11 @@ public sealed record TranscodeSpec(
     PictureSize? DownscaleTo = null,
     // The picture to keep when black bars are removed, in source coordinates, or null for none.
     // Applied before any downscale, so a downscale is computed from the cropped size.
-    CropRect? CropTo = null)
+    CropRect? CropTo = null,
+    // The exact rate a video re-encode is decimated to under a library's frame-rate cap, or null
+    // to keep the source cadence. Always a clean halving of the source (see FrameRatePlanner), and
+    // the same value the VMAF reference is decimated to so the judged frames are the kept frames.
+    double? TargetFrameRate = null)
 {
     /// <summary>
     /// The size this encode intends to produce, or null when it intends the source size. The
@@ -304,6 +308,12 @@ public static class FfmpegCommandBuilder
         {
             filters.Add(PictureGeometry.ScaleFilter(downscale));
         }
+        // Decimate after the geometry and before the tone-map, so the expensive colour work runs
+        // only on the frames that survive.
+        if (spec.TargetFrameRate is { } targetFrameRate)
+        {
+            filters.Add(FrameRatePlanner.Filter(targetFrameRate));
+        }
         if (spec.TonemapToSdr)
         {
             filters.Add(hardwareToneMap
@@ -367,7 +377,9 @@ public static class FfmpegCommandBuilder
         // Preserve a source that ffprobe positively identified as VFR. MP4 supports variable frame
         // durations; forcing CFR duplicates/drops frames and changes motion cadence. Demux timebase
         // keeps encoder timestamps anchored to the source. CFR and unknown sources need no override.
-        if (spec.SourceIsVariableFrameRate)
+        // A frame-rate target replaces the source cadence with a regular one through the fps
+        // filter; asking the encoder to also preserve the original timing would contradict it.
+        if (spec.SourceIsVariableFrameRate && spec.TargetFrameRate is null)
         {
             args.Add("-fps_mode");
             args.Add("vfr");

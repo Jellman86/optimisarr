@@ -37,7 +37,10 @@ public static class TranscodeSpecResolver
         int? sourceHeight = null,
         // The black-bar crop already decided for this title, if the library asked for one and
         // detection found bars. Null means encode the full frame.
-        CropRect? detectedCrop = null)
+        CropRect? detectedCrop = null,
+        // The probed average frame rate, needed only to plan a frame-rate cap. Null when unknown,
+        // in which case the cap is not applied: guessing a rate would decimate the wrong frames.
+        double? sourceFrameRate = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -137,7 +140,11 @@ public static class TranscodeSpecResolver
                     detectedCrop?.Width ?? sourceWidth,
                     detectedCrop?.Height ?? sourceHeight,
                     rules.VideoDownscaleHeight),
-            CropTo: rules.TargetVideoCodec is null ? null : detectedCrop);
+            CropTo: rules.TargetVideoCodec is null ? null : detectedCrop,
+            // A copied stream keeps its cadence too; only a re-encode can drop frames.
+            TargetFrameRate: rules.TargetVideoCodec is null
+                ? null
+                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate));
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

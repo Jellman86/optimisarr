@@ -574,11 +574,16 @@ public sealed class QueueDispatcher(
             var progressDuration = spec.ClipSeconds is { } clip && (work.Value.DurationSeconds is not { } d || clip < d)
                 ? clip
                 : work.Value.DurationSeconds;
-            var expectedFrameCount = FfmpegProgressCalculator.ExpectedFramesForWindow(
-                work.Value.FrameCount,
-                work.Value.DurationSeconds,
-                progressDuration,
-                work.Value.VideoFrameRate);
+            // A frame-rate cap emits fewer frames than the source holds; progress is counted in
+            // frames emitted, so the estimate is scaled to what survives the decimation.
+            var expectedFrameCount = FrameRatePlanner.ScaleFrameCount(
+                FfmpegProgressCalculator.ExpectedFramesForWindow(
+                    work.Value.FrameCount,
+                    work.Value.DurationSeconds,
+                    progressDuration,
+                    work.Value.VideoFrameRate),
+                work.Value.VideoFrameRate,
+                spec.TargetFrameRate);
             var run = await RunFfmpegAsync(
                 jobId,
                 arguments,
@@ -875,6 +880,20 @@ public sealed class QueueDispatcher(
 
             sourceHasImageSubtitles = freshSourceProbe.HasImageSubtitles;
         }
+        // A frame-rate cap is planned from the source's average rate, which the inventory does not
+        // keep. The fresh probe is authoritative; without one the cap would have to be guessed,
+        // and a guessed rate decimates the wrong frames, so the job stops here instead.
+        if (isVideoJob && rules.MaxFrameRate is not null && rules.TargetVideoCodec is not null)
+        {
+            freshSourceProbe ??= await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(media.Path, cancellationToken);
+            if (!freshSourceProbe.Success)
+            {
+                throw new InvalidOperationException(
+                    $"Fresh source probe required to apply the frame-rate cap failed: {freshSourceProbe.Error ?? "no detail available"}");
+            }
+        }
         var mediaDurationSeconds = isPreview && isVideoJob
             ? MediaTimelineDuration.Resolve(
                 MediaKind.Video,
@@ -946,7 +965,8 @@ public sealed class QueueDispatcher(
             sourceSubtitleLanguages,
             sourceWidth: media.Width,
             sourceHeight: media.Height,
-            detectedCrop: detectedCrop);
+            detectedCrop: detectedCrop,
+            sourceFrameRate: freshSourceProbe?.Success == true ? freshSourceProbe.VideoFrameRate : null);
 
         // The inventory made the job eligible, but the mandatory fresh probe is authoritative.
         // If its current track set has nothing to remove, cancel cleanly instead of producing a
@@ -1011,6 +1031,7 @@ public sealed class QueueDispatcher(
             ExpectedWidth: spec.ExpectedSize?.Width,
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
+            TargetFrameRate: spec.TargetFrameRate,
             // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
             RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
@@ -1106,9 +1127,13 @@ public sealed class QueueDispatcher(
             spec.Kind,
             spec.VideoCodec,
             spec.ClipSeconds,
-            // The downscale is a software scale filter; it cannot read frames a hardware decoder
-            // leaves on the GPU. Software decode keeps it working; the hardware encoder is unaffected.
-            requiresSoftwareFilter: spec.DownscaleTo is not null || spec.CropTo is not null);
+            // The downscale and crop are software filters; they cannot read frames a hardware
+            // decoder leaves on the GPU. Software decode keeps them working; the hardware encoder is
+            // unaffected. The fps filter only re-times frames and may well pass GPU surfaces through,
+            // but that path is unproven here, and software decode is the one every filter is proven on.
+            requiresSoftwareFilter: spec.DownscaleTo is not null
+                || spec.CropTo is not null
+                || spec.TargetFrameRate is not null);
         string? hardwareToneMapTransfer = null;
         var hardwareToneMapDolbyVision = media.IsDolbyVision;
         var verificationPolicy = ResolveVerificationPolicy(
@@ -1375,11 +1400,14 @@ public sealed class QueueDispatcher(
                 jobId,
                 primary,
                 window.DurationSeconds,
-                FfmpegProgressCalculator.ExpectedFramesForWindow(
-                    sourceProbe.FrameCount,
-                    sourceVideoDurationSeconds,
-                    window.DurationSeconds,
-                    sourceProbe.VideoFrameRate),
+                FrameRatePlanner.ScaleFrameCount(
+                    FfmpegProgressCalculator.ExpectedFramesForWindow(
+                        sourceProbe.FrameCount,
+                        sourceVideoDurationSeconds,
+                        window.DurationSeconds,
+                        sourceProbe.VideoFrameRate),
+                    sourceProbe.VideoFrameRate,
+                    work.Spec.TargetFrameRate),
                 IsHardwareEncoder(work.VideoEncoder),
                 cancellationToken,
                 progressMap: progress => AdaptiveQualityProgress.Map(
@@ -1424,7 +1452,9 @@ public sealed class QueueDispatcher(
                 // Selection is a correctness decision rather than a throughput optimisation.
                 // Software decode gives repeatable frame ordering across CPU/QSV/NVENC/VA-API.
                 Acceleration: VmafAcceleration.None,
-                ReferenceFrameRate: sourceProbe.VideoFrameRate,
+                // A capped encode kept every other frame; decimating the reference the same way
+                // lines the judged frames up with the kept ones.
+                ReferenceFrameRate: work.Spec.TargetFrameRate ?? sourceProbe.VideoFrameRate,
                 ReferenceCrop: work.Spec.CropTo);
             var measurementProgress = new Progress<double>(progress =>
             {

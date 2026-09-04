@@ -4,6 +4,19 @@
 
 ### Added
 
+- **A library can now cap frame rate on re-encode.** Advanced options gain **Cap frame rate at**,
+  with 60 and 30 fps stops, beside the resolution controls; this completes the framerate ask in
+  #95. It is a cap, not a target: a faster source is halved until it sits under the cap (60 → 30,
+  59.94 → 29.97, 120 → 30), and only clean halvings happen, because any other ratio repeats or
+  skips a frame every few and judders. A source already at or under the cap keeps its rate, and so
+  does one that no halving brings cleanly under it — a 45 fps source under a 30 cap is left alone
+  rather than made worse. The VMAF check decimates the original identically, so it judges the frames
+  that were kept against their own source frames rather than against neighbours, and the structure
+  gate holds the output to the intended rate, so an encode whose fps filter was dropped somewhere
+  cannot replace the original as if it had been capped. A capped encode takes over cadence from the
+  variable-frame-rate handling, forces software decoding for that job (as a downscale does), and
+  scales its progress estimate to the frames that survive. Nothing is set by default.
+
 - **A library can now remove black bars on re-encode.** A **Remove black bars** switch, off by
   default, detects letterbox and pillarbox bars and crops them away, so players show the right
   shape and nothing is spent encoding black. The quality check compares against the original

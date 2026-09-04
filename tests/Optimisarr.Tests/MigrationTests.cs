@@ -382,6 +382,7 @@ public sealed class MigrationTests : IDisposable
         Assert.Null(films.MinBitrateKbps);
         Assert.Null(films.VideoDownscaleHeight);
         Assert.False(films.CropBlackBars);
+        Assert.Null(films.MaxFrameRate);
     }
 
     public void Dispose()

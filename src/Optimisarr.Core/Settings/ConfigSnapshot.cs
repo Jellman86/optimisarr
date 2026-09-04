@@ -84,7 +84,8 @@ public sealed record LibrarySnapshot(
     bool? StrongerAdaptiveQuantisation = null,
     int? MinBitrateKbps = null,
     int? VideoDownscaleHeight = null,
-    bool? CropBlackBars = null);
+    bool? CropBlackBars = null,
+    int? MaxFrameRate = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(
