@@ -39,7 +39,9 @@ public static class EncoderSelector
         string[] preferredModes = mode switch
         {
             EncoderMode.Auto when requiresHighBitDepthCpuH264 => ["CPU"],
-            EncoderMode.Auto => ["NVIDIA NVENC", "Intel QSV", "VAAPI", "CPU"],
+            // VideoToolbox is only ever advertised by a macOS sidecar; the local probe never lists
+            // it, so its place in the order matters only when choosing for a worker.
+            EncoderMode.Auto => ["NVIDIA NVENC", "Intel QSV", "VAAPI", "VideoToolbox", "CPU"],
             EncoderMode.Cpu => ["CPU"],
             EncoderMode.NvidiaNvenc => ["NVIDIA NVENC"],
             EncoderMode.IntelQsv => ["Intel QSV"],

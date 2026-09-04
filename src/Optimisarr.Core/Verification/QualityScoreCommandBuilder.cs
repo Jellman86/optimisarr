@@ -68,6 +68,14 @@ public static class QualityScoreCommandBuilder
     public const string HdModelVersion = "vmaf_v0.6.1";
     public const string UhdModelVersion = "vmaf_4k_v0.6.1";
     public const int MaximumFrameSubsample = 10;
+
+    /// <summary>
+    /// The viewing model for a picture of this size. Cropped cinema masters are commonly
+    /// 3840x1600-ish while still intended for a 4K display, so either UHD axis selects the 4K
+    /// model. Public so an assignment can tell a remote worker which model its evidence must name.
+    /// </summary>
+    public static string ModelVersionFor(int referenceWidth, int referenceHeight) =>
+        referenceWidth >= 3840 || referenceHeight >= 2160 ? UhdModelVersion : HdModelVersion;
     private const int SampleSeekPrerollSeconds = 5;
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
@@ -112,11 +120,7 @@ public static class QualityScoreCommandBuilder
         var referenceWidth = context.ReferenceCrop?.Width ?? context.ReferenceWidth;
         var referenceHeight = context.ReferenceCrop?.Height ?? context.ReferenceHeight;
 
-        // Cropped cinema masters are commonly 3840x1600-ish while still intended
-        // for a 4K display, so either UHD axis selects the 4K viewing model.
-        var model = referenceWidth >= 3840 || referenceHeight >= 2160
-            ? UhdModelVersion
-            : HdModelVersion;
+        var model = ModelVersionFor(referenceWidth, referenceHeight);
         var colourPreprocessing = context.ReferenceIsHdr
             ? context.HdrConvertedToSdr
                 ? "HDR reference tone-mapped to SDR"

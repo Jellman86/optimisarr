@@ -574,12 +574,13 @@ the replacement workflow is trustworthy.
      real shape. The deeper reason is the same one the next bullet describes: the assignment carries
      no resolved encode policy, so there is nothing to name an encoder *for this worker* from.
 
-     **Still to build:** the resolved encode policy that makes an assignment executable (see below),
-     the verification pass for a returned candidate, and drain controls.
+     **Corrected 2026-09-04:** the assignment now carries a resolved encode contract and a claim
+     can succeed; the same test asserts an executable command is returned. **Still to build:** the
+     verification pass for a returned candidate, and drain controls.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 
-     1. **A resolved encode policy in the assignment.** `AssignmentDto` currently carries
+     1. **A resolved encode policy in the assignment: landed 2026-09-04.** Before it, `AssignmentDto` carried
         `LeaseId, JobId, SourcePath, SourceBytes, VideoEncoder, Vmaf, ExpiresUtc,
         RenewWithinSeconds` — no quality, container, encoder effort, audio codec or bitrate, HDR
         treatment, track removals, encoder tuning, or VMAF thresholds. A worker holding one cannot
@@ -595,7 +596,24 @@ the replacement workflow is trustworthy.
         and have the worker validate it against an allowlist before substituting. The second keeps
         one tested source of truth for the encode contract and suits a design where the *output* is
         judged rather than the command; it needs care that a compromised or buggy server cannot
-        direct a worker's FFmpeg at anything but its own scratch paths. Not yet decided.
+        direct a worker's FFmpeg at anything but its own scratch paths. **Decided 2026-09-04: the
+        argument array.** The worker validates it against an allowlist and substitutes only its
+        own scratch paths.
+
+        **Landed:** `QueueDispatcher.PrepareRemoteWorkAsync` runs the dispatcher's own preparation
+        with the encoder chosen from the worker's proved list (`WorkerEncoderCatalogue` feeding
+        `EncoderSelector` in Auto order), software decode, no thread limit, and `{{input}}` /
+        `{{output}}.<ext>` placeholders (`WorkerProtocol`). The assignment carries the argument
+        array, the output extension, and the VMAF requirement (measure, model, subsample, clip,
+        thresholds); it no longer carries a server path. Refused with a logged reason: remux, audio
+        and image jobs, and adaptive-VMAF libraries whose per-title quality has not been chosen,
+        since selection runs on this machine's encoder and does not transfer. The VideoToolbox
+        family is now known to the selector, the quality, preset and tuning policies, and the
+        command builder (`-q:v` on a linear map from the CRF scale; **real-hardware calibration of
+        that line is still owed**). Left for later pieces: adaptive selection on the worker,
+        hardware decode for a worker that proves a decoder, the VMAF command itself (piece 3 will
+        ship it as a second server-built array so crop, frame-rate and HDR preparation stay in one
+        place), and the worker-side allowlist validation.
 
      2. **A verification pass for a delivered candidate.** `POST /api/workers/leases/{id}/result`
         accepts an upload, binds it to the lease and source hash, and sets the job to `Verifying`
@@ -615,9 +633,12 @@ the replacement workflow is trustworthy.
         one mid-verification locally. Either add a `JobStatus` such as `AwaitingVerification` —
         honest, visible to operators, correct recovery semantics, but a migration, nine locales, UI
         states, and a wider enum that sidecars observe — or a nullable marker on `Job`, which is one
-        column and no translation surface but hides the distinction. Not yet decided.
+        column and no translation surface but hides the distinction. **Decided 2026-09-04: the
+        status.** The recovery sweep's mistake is a state-semantics one, and a hidden marker would
+        paper over exactly the distinction it gets wrong.
 
-     3. **The sidecar's work loop.** The client implements two of the ten worker routes. Claim,
+     3. **The sidecar's work loop.** Now the next server-independent piece; a claim returns an
+        executable command. The client implements two of the ten worker routes. Claim,
         renew, release, source download (Range plus hash check), transcode, VMAF measurement and
         result upload are all unwritten, as are progress reporting and cancellation.
 

@@ -9,6 +9,9 @@ public sealed class EncoderQualityPolicyTests
     [InlineData("hevc_qsv", 24, 20, "ICQ")]
     [InlineData("hevc_nvenc", 24, 20, "CQ")]
     [InlineData("hevc_vaapi", 24, 20, "QP")]
+    // VideoToolbox stays on the CRF scale here; the command builder owns the translation to the
+    // encoder's own 1–100 control, the same division of labour as -cq and -global_quality.
+    [InlineData("hevc_videotoolbox", 24, 20, "VT-Q")]
     public void Hardware_encoders_receive_conservative_quality_headroom(
         string encoder, int requested, int expected, string mode)
     {

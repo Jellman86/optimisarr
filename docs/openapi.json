@@ -82,6 +82,12 @@
       },
       "AssignmentDto": {
         "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "expiresUtc": {
             "format": "date-time",
             "type": "string"
@@ -97,6 +103,12 @@
           "leaseId": {
             "format": "uuid",
             "type": "string"
+          },
+          "outputExtension": {
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/QualityRequirementDto"
           },
           "renewWithinSeconds": {
             "format": "int32",
@@ -114,9 +126,6 @@
               "string"
             ]
           },
-          "sourcePath": {
-            "type": "string"
-          },
           "videoEncoder": {
             "type": "string"
           },
@@ -127,12 +136,14 @@
         "required": [
           "leaseId",
           "jobId",
-          "sourcePath",
           "sourceBytes",
           "videoEncoder",
           "vmaf",
           "expiresUtc",
-          "renewWithinSeconds"
+          "renewWithinSeconds",
+          "arguments",
+          "outputExtension",
+          "quality"
         ],
         "type": "object"
       },
@@ -1160,6 +1171,52 @@
         },
         "required": [
           "token"
+        ],
+        "type": "object"
+      },
+      "QualityRequirementDto": {
+        "properties": {
+          "clipVmaf": {
+            "type": "boolean"
+          },
+          "frameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "measure": {
+            "type": "boolean"
+          },
+          "minimumHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumMinimum": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "measure",
+          "model",
+          "frameSubsample",
+          "clipVmaf",
+          "minimumHarmonicMean",
+          "minimumMinimum"
         ],
         "type": "object"
       },

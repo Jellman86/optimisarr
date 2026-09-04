@@ -359,8 +359,9 @@ public static class FfmpegCommandBuilder
         AppendQualityArguments(args, family, spec.Crf);
 
         // The dispatcher has already resolved the portable effort onto this exact encoder's
-        // vocabulary. VAAPI has no cross-codec equivalent and therefore receives no preset.
-        if (family != EncoderFamily.Vaapi && !string.IsNullOrWhiteSpace(spec.Preset))
+        // vocabulary. VAAPI and VideoToolbox have no cross-codec equivalent and receive no preset.
+        if (family is not (EncoderFamily.Vaapi or EncoderFamily.VideoToolbox)
+            && !string.IsNullOrWhiteSpace(spec.Preset))
         {
             args.Add("-preset");
             args.Add(spec.Preset);
@@ -546,13 +547,20 @@ public static class FfmpegCommandBuilder
 
     // The hardware family is inferred from the resolved encoder name, so quality and device
     // arguments stay correct whatever codec was selected (e.g. h264_vaapi vs hevc_vaapi).
-    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi }
+    private enum EncoderFamily { Cpu, Nvenc, Qsv, Vaapi, VideoToolbox }
 
     private static EncoderFamily FamilyOf(string encoder) =>
         encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Nvenc
         : encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Qsv
         : encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.Vaapi
+        : encoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase) ? EncoderFamily.VideoToolbox
         : EncoderFamily.Cpu;
+
+    // Apple's encoders take constant quality as -q:v on a 1–100 scale where higher is better, the
+    // inverse of CRF. A straight line through the two ranges keeps the operator's number meaning
+    // "lower is better" everywhere else; the VMAF gate, not this mapping, is what guarantees the
+    // result, and real-hardware calibration of the line is still owed (see the roadmap).
+    private static int VideoToolboxQuality(int crf) => Math.Clamp(100 - 2 * crf, 1, 100);
 
     // VAAPI/QSV need a hardware device declared before the input. The render node is the
     // conventional default; CUDA uses the first GPU exposed to the container.
@@ -622,6 +630,9 @@ public static class FfmpegCommandBuilder
                 break;
             case EncoderFamily.Vaapi:
                 args.AddRange(["-rc_mode", "CQP", "-qp", q]);
+                break;
+            case EncoderFamily.VideoToolbox:
+                args.AddRange(["-q:v", VideoToolboxQuality(quality).ToString()]);
                 break;
             default:
                 args.AddRange(["-crf", q]);
