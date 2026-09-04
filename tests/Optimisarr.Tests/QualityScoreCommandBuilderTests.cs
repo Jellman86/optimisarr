@@ -358,4 +358,51 @@ public sealed class QualityScoreCommandBuilderTests
 
         throw new InvalidOperationException($"Missing occurrence {occurrence} of {option}.");
     }
+
+    [Fact]
+    public void A_cropped_encode_is_judged_against_an_identically_cropped_reference()
+    {
+        // The output already has its bars removed. The reference must lose the same bars, or the
+        // comparison is between different pictures; and both are brought to the cropped size.
+        var command = QualityScoreCommandBuilder.Build(
+            distortedPath: "/work/output.mkv",
+            referencePath: "/data/original.mkv",
+            logPath: "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(1920, 800, 0, 140)),
+            threads: 4);
+
+        Assert.Contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,crop=1920:800:0:140,scale=1920:800:", command.FilterGraph);
+        Assert.Contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:800:", command.FilterGraph);
+        Assert.DoesNotContain("[0:v]settb=AVTB,setpts=PTS-STARTPTS,crop", command.FilterGraph);
+    }
+
+    [Fact]
+    public void A_cropped_uhd_source_still_selects_the_4k_model_from_its_cropped_size()
+    {
+        // 3840x1600 is the common cropped cinema master; it is still a 4K viewing picture.
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(3840, 2160, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(3840, 1600, 0, 280)),
+            threads: 4);
+
+        Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
+    }
+
+    [Fact]
+    public void A_crop_keeps_the_comparison_on_the_cpu_path_even_when_cuda_was_requested()
+    {
+        // The accelerated graph has no crop stage; the CPU graph is the one that can reproduce
+        // the preparation exactly. Same trade HDR already makes.
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mkv", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda,
+                ReferenceCrop: new Optimisarr.Core.Queue.CropRect(1920, 800, 0, 140)),
+            threads: 4);
+
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        Assert.Contains("crop=1920:800:0:140", command.FilterGraph);
+    }
 }

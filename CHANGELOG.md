@@ -4,6 +4,18 @@
 
 ### Added
 
+- **A library can now remove black bars on re-encode.** A **Remove black bars** switch, off by
+  default, detects letterbox and pillarbox bars and crops them away, so players show the right
+  shape and nothing is spent encoding black. The quality check compares against the original
+  cropped the same way, so it measures the picture that is kept — which also means it cannot catch
+  a wrong crop. The safety is in how the crop is chosen: several scenes are sampled and the crop
+  keeps everything any of them kept, so a dark scene cannot narrow it; bars a few pixels wide are
+  ignored, and a crop that would remove most of the frame is treated as a detection failure and
+  skipped. The decided crop is recorded on the job so a retry reuses it rather than detecting
+  again. One limitation is stated plainly in the form: a film that switches aspect ratio partway
+  through can lose picture in those scenes if no sample lands on them, and the quality check will
+  not warn. Leave it off for such material.
+
 - **A library can now downscale video on re-encode.** Advanced options gain a **Downscale to**
   choice beside **Skip files above**; the two mention a height and mean opposite things, so they sit
   together. Sources already at or below the chosen height keep their own size — this only ever

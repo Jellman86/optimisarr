@@ -34,7 +34,10 @@ public static class TranscodeSpecResolver
         // Probed picture dimensions, needed only to compute an exact downscale. Null when the
         // source was never probed, in which case no downscale is attempted.
         int? sourceWidth = null,
-        int? sourceHeight = null)
+        int? sourceHeight = null,
+        // The black-bar crop already decided for this title, if the library asked for one and
+        // detection found bars. Null means encode the full frame.
+        CropRect? detectedCrop = null)
     {
         if (kind == MediaKind.Image)
         {
@@ -125,11 +128,16 @@ public static class TranscodeSpecResolver
             RemoveSubtitleStreamIndexes: removedSubtitles.Count > 0 ? removedSubtitles : null,
             // Only a re-encode has an encoder to tune; a remux-only profile carries nothing.
             Tuning: rules.TargetVideoCodec is null ? null : rules.EncoderTuning,
-            // Likewise only a re-encode can be scaled. A copied stream keeps its size, and handing
-            // a remux a target it cannot meet would only fail it at the gate.
+            // Likewise only a re-encode can be cropped or scaled. A copied stream keeps its frame,
+            // and handing a remux a size it cannot meet would only fail it at the gate. The
+            // downscale is computed from the cropped size, because that is the picture being scaled.
             DownscaleTo: rules.TargetVideoCodec is null
                 ? null
-                : PictureGeometry.Downscale(sourceWidth, sourceHeight, rules.VideoDownscaleHeight));
+                : PictureGeometry.Downscale(
+                    detectedCrop?.Width ?? sourceWidth,
+                    detectedCrop?.Height ?? sourceHeight,
+                    rules.VideoDownscaleHeight),
+            CropTo: rules.TargetVideoCodec is null ? null : detectedCrop);
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

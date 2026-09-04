@@ -110,6 +110,14 @@ public sealed class Job
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
 
+    /// <summary>
+    /// The black-bar crop decided for this title as <c>width:height:x:y</c>, or <c>none</c> when
+    /// detection ran and found no bars worth removing. Null means detection has not run. Persisted
+    /// for the same reason as <see cref="AdaptiveVideoQuality"/>: a crash, automatic, or operator
+    /// retry must encode the same picture the verified attempt did, not re-detect and drift.
+    /// </summary>
+    public string? DetectedCrop { get; set; }
+
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 

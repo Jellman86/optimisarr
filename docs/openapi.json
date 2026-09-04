@@ -595,6 +595,12 @@
               "string"
             ]
           },
+          "cropBlackBars": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
@@ -1445,6 +1451,12 @@
               "string"
             ]
           },
+          "cropBlackBars": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "type": [
               "null",
@@ -1825,6 +1837,7 @@
           "minFileSizeBytes",
           "maxHeight",
           "videoDownscaleHeight",
+          "cropBlackBars",
           "reencodeSameCodecAboveBytes",
           "skipEfficientSources",
           "targetVideoCodec",

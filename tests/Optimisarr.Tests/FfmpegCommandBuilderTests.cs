@@ -244,6 +244,45 @@ public sealed class FfmpegCommandBuilderTests
         Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
     }
 
+    [Fact]
+    public void A_crop_is_emitted_before_the_downscale()
+    {
+        // The downscale was computed from the cropped size, and scaling bars only to cut them
+        // away afterwards would waste the work and blur the edge.
+        var args = FfmpegCommandBuilder.Build(Reencode() with
+        {
+            CropTo = new CropRect(1920, 800, 0, 140),
+            DownscaleTo = new PictureSize(1280, 534)
+        });
+
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
+        Assert.StartsWith("crop=1920:800:0:140,scale=1280:534", chain);
+    }
+
+    [Fact]
+    public void A_crop_on_a_remux_is_ignored_because_nothing_is_re_encoded()
+    {
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with
+        {
+            CropTo = new CropRect(1920, 800, 0, 140)
+        });
+
+        Assert.DoesNotContain("-filter:v:0", args);
+    }
+
+    [Fact]
+    public void The_expected_size_is_the_crop_unless_a_downscale_follows_it()
+    {
+        // What the verification gate will hold the output to.
+        var crop = new CropRect(1920, 800, 0, 140);
+
+        Assert.Equal(new PictureSize(1920, 800), (Reencode() with { CropTo = crop }).ExpectedSize);
+        Assert.Equal(
+            new PictureSize(1280, 534),
+            (Reencode() with { CropTo = crop, DownscaleTo = new PictureSize(1280, 534) }).ExpectedSize);
+        Assert.Null(Reencode().ExpectedSize);
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,

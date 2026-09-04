@@ -24,6 +24,9 @@ public sealed record OriginalSnapshot(
     // size", which is what the structure gate has always required.
     int? ExpectedWidth = null,
     int? ExpectedHeight = null,
+    // The crop the encode applied, so the quality reference is cropped identically. Null means
+    // the full frame was encoded.
+    Optimisarr.Core.Queue.CropRect? Crop = null,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
@@ -441,7 +444,8 @@ public sealed class VerificationService(
             MeasureDurationSeconds: clipDurationSeconds,
             FrameSubsample: frameSubsample,
             Acceleration: acceleration,
-            ReferenceFrameRate: originalProbe.VideoFrameRate);
+            ReferenceFrameRate: originalProbe.VideoFrameRate,
+            ReferenceCrop: reference.Crop);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

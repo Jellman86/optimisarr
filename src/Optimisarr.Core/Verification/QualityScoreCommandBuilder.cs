@@ -44,7 +44,11 @@ public sealed record QualityMeasurementContext(
     int? MeasureDurationSeconds = null,
     int FrameSubsample = 1,
     VmafAcceleration Acceleration = VmafAcceleration.None,
-    double? ReferenceFrameRate = null);
+    double? ReferenceFrameRate = null,
+    // The crop the encode applied, so the reference is cropped identically before comparison. A
+    // cropped output measured against an uncropped reference is comparing different pictures.
+    // The comparison then happens at the cropped size.
+    Queue.CropRect? ReferenceCrop = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -96,11 +100,21 @@ public static class QualityScoreCommandBuilder
         // The established HDR path uses software zscale/tonemap and preserves 10-bit frames.
         // None of the accelerated graphs can reproduce that preparation exactly, so correctness
         // takes priority over speed for HDR material.
-        var acceleration = context.ReferenceIsHdr ? VmafAcceleration.None : context.Acceleration;
+        // A crop is a software filter with no CUDA counterpart in the accelerated graph, so a
+        // cropped comparison stays on the CPU path — the same choice HDR makes, for the same
+        // reason: correctness over speed.
+        var acceleration = context.ReferenceIsHdr || context.ReferenceCrop is not null
+            ? VmafAcceleration.None
+            : context.Acceleration;
+
+        // With a crop, the picture being judged is the cropped one: both streams are brought to
+        // its size, and the viewing model is chosen from it.
+        var referenceWidth = context.ReferenceCrop?.Width ?? context.ReferenceWidth;
+        var referenceHeight = context.ReferenceCrop?.Height ?? context.ReferenceHeight;
 
         // Cropped cinema masters are commonly 3840x1600-ish while still intended
         // for a 4K display, so either UHD axis selects the 4K viewing model.
-        var model = context.ReferenceWidth >= 3840 || context.ReferenceHeight >= 2160
+        var model = referenceWidth >= 3840 || referenceHeight >= 2160
             ? UhdModelVersion
             : HdModelVersion;
         var colourPreprocessing = context.ReferenceIsHdr
@@ -114,7 +128,7 @@ public static class QualityScoreCommandBuilder
             context.FrameSubsample,
             context.ReferenceFrameRate);
         var scale =
-            $"scale={context.ReferenceWidth}:{context.ReferenceHeight}:" +
+            $"scale={referenceWidth}:{referenceHeight}:" +
             "flags=bicubic:in_range=auto:out_range=tv";
         var pixelFormat = context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
@@ -135,6 +149,11 @@ public static class QualityScoreCommandBuilder
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
             : normalise;
+        if (context.ReferenceCrop is { } referenceCrop)
+        {
+            // The output is already cropped; only the reference needs it, and before anything else.
+            referencePreparation = $"{Queue.CropPlanner.Filter(referenceCrop)},{referencePreparation}";
+        }
         var boundedThreads = Math.Max(1, threads);
         var filter = acceleration == VmafAcceleration.Cuda
             ? BuildCudaFilter(

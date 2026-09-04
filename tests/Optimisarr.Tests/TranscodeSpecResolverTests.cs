@@ -457,4 +457,52 @@ public sealed class TranscodeSpecResolverTests
 
         Assert.Null(spec.DownscaleTo);
     }
+
+    // --- Black-bar crop -----------------------------------------------------------------------
+
+    [Fact]
+    public void A_decided_crop_is_carried_and_the_downscale_is_computed_from_the_cropped_picture()
+    {
+        // 1920x1080 letterboxed to 1920x800, then downscaled to 720p: the width follows the
+        // cropped picture's aspect, 1920 * 720 / 800 = 1728, not the frame's.
+        var rules = Hevc with { VideoDownscaleHeight = 720 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceWidth: 1920, sourceHeight: 1080,
+            detectedCrop: new CropRect(1920, 800, 0, 140));
+
+        Assert.Equal(new CropRect(1920, 800, 0, 140), spec.CropTo);
+        Assert.Equal(new PictureSize(1728, 720), spec.DownscaleTo);
+        Assert.Equal(new PictureSize(1728, 720), spec.ExpectedSize);
+    }
+
+    [Fact]
+    public void A_crop_without_a_downscale_sets_the_expected_size_to_the_crop()
+    {
+        var spec = TranscodeSpecResolver.Resolve(
+            Hevc, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceWidth: 1920, sourceHeight: 1080,
+            detectedCrop: new CropRect(1920, 800, 0, 140));
+
+        Assert.Null(spec.DownscaleTo);
+        Assert.Equal(new PictureSize(1920, 800), spec.ExpectedSize);
+    }
+
+    [Fact]
+    public void A_remux_never_carries_a_crop()
+    {
+        var rules = Hevc with { TargetVideoCodec = null };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Movie.mkv", relativePath: "Movie.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceWidth: 1920, sourceHeight: 1080,
+            detectedCrop: new CropRect(1920, 800, 0, 140));
+
+        Assert.Null(spec.CropTo);
+        Assert.Null(spec.ExpectedSize);
+    }
 }

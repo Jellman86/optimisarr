@@ -800,6 +800,7 @@
       minFileSizeBytes: library.minFileSizeBytes,
       maxHeight: library.maxHeight,
       videoDownscaleHeight: library.videoDownscaleHeight ?? null,
+      cropBlackBars: library.cropBlackBars ?? false,
       reencodeSameCodecAboveBytes: library.reencodeSameCodecAboveBytes,
       skipEfficientSources: library.skipEfficientSources,
       targetVideoCodec: library.targetVideoCodec,
@@ -909,6 +910,7 @@
       reencodeSameCodecAboveBytes: sameCodecGb === '' ? null : Math.round(Number(sameCodecGb) * BYTES_PER_GB),
       maxHeight: form.maxHeight ? Number(form.maxHeight) : null,
       videoDownscaleHeight: form.videoDownscaleHeight == null ? null : Number(form.videoDownscaleHeight),
+      cropBlackBars: form.cropBlackBars,
       priority: Number(form.priority) || 0,
       targetVideoCodec: emptyToNull(form.targetVideoCodec),
       targetContainer: emptyToNull(form.targetContainer),
@@ -1892,6 +1894,23 @@
             </div>
           {:else}
             <p class="text-xs text-slate-400">{i18n.m.libraries.using_preset_quality}</p>
+          {/if}
+        </div>
+
+        <!-- Black-bar removal. A bare switch until it is on: the panel below explains why the
+             quality check cannot catch a wrong crop and where the safety actually comes from,
+             which is only worth a reader's attention once it can affect them. -->
+        <div class="mt-4">
+          <Toggle
+            bind:checked={form.cropBlackBars}
+            label={i18n.m.libraries.crop_bars_label}
+            hint={i18n.m.libraries.crop_bars_tip}
+          />
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.crop_bars_hint}</p>
+          {#if form.cropBlackBars}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              {i18n.m.libraries.crop_bars_on_detail}
+            </div>
           {/if}
         </div>
 

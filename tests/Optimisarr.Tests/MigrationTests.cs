@@ -377,6 +377,11 @@ public sealed class MigrationTests : IDisposable
         // And the exclusions from the same release upgrade to their off state.
         Assert.False(films.ExcludeHardLinkedFiles);
         Assert.Null(films.SkipSourceCodecs);
+        // The later slices — bitrate floor, downscale, black-bar crop — likewise arrive off. A
+        // library that never asked for any of this must encode exactly as it did before upgrading.
+        Assert.Null(films.MinBitrateKbps);
+        Assert.Null(films.VideoDownscaleHeight);
+        Assert.False(films.CropBlackBars);
     }
 
     public void Dispose()

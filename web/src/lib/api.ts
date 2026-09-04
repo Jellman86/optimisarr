@@ -133,6 +133,7 @@ export type LibraryRules = {
   minFileSizeBytes: number | null
   maxHeight: number | null
   videoDownscaleHeight: number | null
+  cropBlackBars: boolean
   reencodeSameCodecAboveBytes: number | null
   skipEfficientSources: boolean
   targetVideoCodec: string | null
@@ -238,6 +239,7 @@ export function newLibraryDefaults(): SaveLibrary {
     minFileSizeBytes: null,
     maxHeight: null,
     videoDownscaleHeight: null,
+    cropBlackBars: false,
     reencodeSameCodecAboveBytes: null,
     skipEfficientSources: true,
     targetVideoCodec: null,
