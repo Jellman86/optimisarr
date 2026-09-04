@@ -10,8 +10,9 @@ internal static class RemoteCandidate
 {
     private const string Prefix = "remote-";
 
-    public static string PathFor(string outputRoot, int jobId, string sourceExtension) =>
-        Path.Combine(outputRoot, $"{Prefix}{jobId}{sourceExtension}");
+    /// <param name="extension">The contract's container extension, with its leading dot.</param>
+    public static string PathFor(string outputRoot, int jobId, string extension) =>
+        Path.Combine(outputRoot, $"{Prefix}{jobId}{extension}");
 
     public static bool IsDelivered(string? workOutputPath) =>
         workOutputPath is not null

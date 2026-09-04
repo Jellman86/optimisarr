@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
@@ -107,13 +108,23 @@ internal static class WorkerResultEndpoints
                     "That candidate was encoded from a different source than this job's.");
             }
 
+            // The candidate takes the container extension the assignment promised, recorded on the
+            // lease when it was granted. The replacement names the final file from the candidate,
+            // so naming it after the source would place an MP4 under ".mkv". A lease with no
+            // recorded contract cannot be delivered against.
+            if (string.IsNullOrWhiteSpace(lease.OutputExtension))
+            {
+                return ApiErrors.Conflict("worker.result.contractMissing",
+                    "That lease records no output container, so its candidate cannot be named safely.");
+            }
+
             var workRoot = WorkPaths.Resolve(environment);
             var outputRoot = WorkOutputRoot.ForMediaFile(workRoot, job.MediaFileId);
             Directory.CreateDirectory(outputRoot);
 
             // Written under a temporary name and hashed on the way in, so a transfer that dies
             // part-way never leaves something that looks like a finished candidate.
-            var finalPath = RemoteCandidate.PathFor(outputRoot, job.Id, Path.GetExtension(job.MediaFile.Path));
+            var finalPath = RemoteCandidate.PathFor(outputRoot, job.Id, "." + lease.OutputExtension.TrimStart('.'));
             var stagingPath = finalPath + ".partial";
 
             long written;
@@ -155,6 +166,10 @@ internal static class WorkerResultEndpoints
             return Results.Accepted(value: new ResultAcceptedDto(job.Id, written, actualHash));
         })
         .WithName("DeliverResult")
+        // A candidate is a whole film. Kestrel's default 30 MB body cap exists for form posts, and
+        // the first real delivery from a Mac hit it; the body streams to disk in bounded chunks
+        // above, so lifting the cap here costs no memory. Found by the live work-loop test.
+        .WithMetadata(new DisableRequestSizeLimitAttribute())
         .Produces<ResultAcceptedDto>(StatusCodes.Status202Accepted)
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
     }

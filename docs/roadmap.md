@@ -659,9 +659,24 @@ the replacement workflow is trustworthy.
         input and output, and no path-like value; a refused command hands the job back naming the
         token. Losing the lease cancels the encode; forgetting the pairing cancels the job; scratch
         is removed on every exit path. **Left for later:** Range-resumed downloads (a dropped
-        transfer restarts today), VMAF measurement on the worker and the evidence upload that
-        `RemoteQualityEvidenceValidator` will judge (the server re-measures until then), and
-        real-hardware acceptance evidence for the whole loop.
+        transfer restarts today), and VMAF measurement on the worker with the evidence upload that
+        `RemoteQualityEvidenceValidator` will judge (the server re-measures until then).
+
+        **Real-hardware evidence (2026-09-04, Apple Silicon Mac, local server built from dev):**
+        `LiveWorkLoopTests` paired with proved capabilities, claimed a queued 1080p60 H.264 job,
+        received `hevc_videotoolbox` with the 30 fps cap applied, encoded with the bundled ffmpeg,
+        and delivered; the server verified the candidate through every gate including VMAF
+        (harmonic mean 97.74 against a floor of 93) and marked it ready to replace. The VMAF
+        retry also crossed the boundary: a first candidate failed the gate, was requeued at
+        higher quality, claimed again and delivered again. The run found four defects, all fixed
+        in the same change: Kestrel's 30 MB body cap refused the candidate; the delivering worker
+        was looked up by ordering a `DateTimeOffset` in SQLite; the candidate was named after the
+        source's extension rather than the contract's container (the replacement takes the final
+        extension from that name); and the frame-rate cap's `fps` filter and the verification's
+        reference preparation kept different frames on an exact 2:1, scoring 48 for a 97 encode —
+        both sides now thin by frame index. The worker-side allowlist also refused the new filter
+        for its escaped comma until taught to tell an escape from a Windows path, which is the
+        fail-closed behaviour it exists for.
 
      4. **Drain controls**, and then productionisation: launch-at-login, sleep/wake, App Nap,
         low-disk handling, cancel-on-quit. Developer ID signing and notarisation are unblocked — a
@@ -696,9 +711,12 @@ the replacement workflow is trustworthy.
      generic failure. A live test suite runs the real client against a running server, which is how
      this contract gets a second implementation holding it honest. It now claims work, fetches the
      source by lease, validates and runs the server's command with the bundled ffmpeg, renews the
-     lease throughout, and delivers the candidate with both hashes (see piece 3 above). **Still to
-     build:** VMAF on the worker, Range-resumed transfers, launch-at-login, sleep/wake and App Nap
-     handling, Developer ID signing and notarisation, and real-hardware acceptance evidence.
+     lease throughout, and delivers the candidate with both hashes (see piece 3 above), and has
+     done so end to end on real Apple Silicon hardware against a server built from `dev`, with the
+     candidate passing every server gate including VMAF. **Still to build:** VMAF on the worker,
+     Range-resumed transfers, launch-at-login, sleep/wake and App Nap handling, drain controls,
+     and Developer ID signing and notarisation. Neither platform is described as supported until
+     that list is done and the evidence is repeated on a release build.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests

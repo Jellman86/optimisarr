@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Fixed
+
+- **A delivered candidate larger than 30 MB was refused.** The result route inherited Kestrel's
+  default request body cap, meant for form posts, so the first real delivery from a Mac sidecar
+  failed with "request body too large" and the worker handed the job back. The route now lifts the
+  cap; it already streams the body to disk in bounded chunks, so no memory is at stake. Found by
+  the live work-loop test on real hardware.
+
+- **A delivered candidate was named after the source rather than its own container.** A worker
+  told to produce MP4 from an MKV source had its candidate stored as `.mkv`, and the replacement
+  takes the final extension from that name. The container the assignment promised is now recorded
+  on the lease when it is granted (migration `AddLeaseOutputExtension`) and the candidate is named
+  from it; a lease with no recorded container cannot be delivered against. The same live run also
+  found that looking up the delivering worker ordered leases by a date in SQLite, which SQLite
+  cannot do; the ordering now happens in memory and a test asks the real database. Both found on
+  the first real delivery.
+
+- **A frame-rate-capped encode could fail its own quality check.** The cap thinned frames with
+  FFmpeg's `fps` filter, which picks each output slot by nearest timestamp. On an exact 2:1 every
+  odd source frame sits precisely on the rounding boundary, so which neighbour is kept depends on
+  the stream's timebase and on whether timestamps were reset first — and the verification's
+  reference preparation resets them before thinning while the encode does not. The two kept
+  different frames for half the picture, and a 60 → 30 encode that scores VMAF 97 against the
+  right frames scored 48 against the wrong ones and was failed. Both sides now keep frames by
+  index, recovered from each frame's own time and the probed source rate, which has no boundary to
+  fall on; verified at 97 on the same encode. A variable-frame-rate source is no longer capped,
+  since it has no "every second frame" that means the same thing to both sides. Found on the first
+  real hardware run of the cap; no released build carried it.
+
 ### Added
 
 - **The macOS sidecar now does work.** On each healthy check-in while idle it claims a job, and

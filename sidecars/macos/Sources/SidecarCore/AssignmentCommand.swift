@@ -109,9 +109,28 @@ public struct AssignmentCommand: Sendable, Equatable {
         }
         // A filter chain, a metadata marker or a rate control value never needs a path
         // separator or a home shorthand; an argument that has one is trying to name a file.
-        if value.contains("/") || value.contains("\\") || value.hasPrefix("~") {
+        if value.contains("/") || value.hasPrefix("~") || Self.hasPathLikeBackslash(value) {
             throw AssignmentCommandError.pathLikeValue(value)
         }
+    }
+
+    /// A backslash is how a filtergraph escapes a comma, colon or quote inside one filter's
+    /// arguments — `select=not(mod(round(t*60)\,2))` — and how Windows separates path segments.
+    /// The first real capped encode was refused wholesale for the former, so the two are told
+    /// apart by what follows: an escape precedes one of the few characters filtergraphs escape,
+    /// a path segment precedes anything else.
+    static func hasPathLikeBackslash(_ value: String) -> Bool {
+        let escapable: Set<Character> = [",", ":", "'", "\\", "[", "]", ";"]
+        var previousWasBackslash = false
+        for character in value {
+            if previousWasBackslash {
+                if !escapable.contains(character) { return true }
+                previousWasBackslash = false
+                continue
+            }
+            previousWasBackslash = character == "\\"
+        }
+        return previousWasBackslash
     }
 
     private static func isPlainExtension(_ extension: String) -> Bool {

@@ -291,13 +291,13 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true) with
         {
             DownscaleTo = new PictureSize(1280, 720),
-            TargetFrameRate = 30
+            FrameRate = new FrameRateDecimation(60, 30, 2)
         });
 
         var chain = args[IndexOf(args, "-filter:v:0") + 1];
-        Assert.Contains("fps=fps=30", chain);
-        Assert.True(chain.IndexOf("scale=", StringComparison.Ordinal) < chain.IndexOf("fps=fps=", StringComparison.Ordinal));
-        Assert.True(chain.IndexOf("fps=fps=", StringComparison.Ordinal) < chain.IndexOf("tonemap", StringComparison.Ordinal));
+        Assert.Contains(@"select=not(mod(round(t*60)\,2))", chain);
+        Assert.True(chain.IndexOf("scale=", StringComparison.Ordinal) < chain.IndexOf("select=", StringComparison.Ordinal));
+        Assert.True(chain.IndexOf("select=", StringComparison.Ordinal) < chain.IndexOf("tonemap", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -309,12 +309,12 @@ public sealed class FfmpegCommandBuilderTests
         var args = FfmpegCommandBuilder.Build(Reencode() with
         {
             SourceIsVariableFrameRate = true,
-            TargetFrameRate = 30
+            FrameRate = new FrameRateDecimation(60, 30, 2)
         });
 
         Assert.DoesNotContain("-fps_mode", args);
         Assert.DoesNotContain("-enc_time_base:v:0", args);
-        Assert.Contains("fps=fps=30", args[IndexOf(args, "-filter:v:0") + 1]);
+        Assert.Contains("select=", args[IndexOf(args, "-filter:v:0") + 1]);
     }
 
     [Fact]
@@ -329,7 +329,8 @@ public sealed class FfmpegCommandBuilderTests
     [Fact]
     public void A_frame_rate_target_on_a_remux_is_ignored()
     {
-        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with { TargetFrameRate = 30 });
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(videoCodec: null) with { FrameRate = new FrameRateDecimation(60, 30, 2) });
 
         Assert.DoesNotContain("-filter:v:0", args);
     }

@@ -559,6 +559,29 @@ public sealed class QueueDispatcher(
         }
     }
 
+    /// <summary>
+    /// The worker whose completed lease delivered this job's candidate — the latest one, should a
+    /// job ever have been delivered more than once. Ordered in memory: SQLite cannot ORDER BY a
+    /// DateTimeOffset, which the first live delivery proved by failing here. A job holds at most a
+    /// handful of leases, so loading them is cheap.
+    /// </summary>
+    internal static async Task<Worker?> DeliveringWorkerAsync(
+        OptimisarrDbContext db,
+        int jobId,
+        CancellationToken cancellationToken)
+    {
+        var completed = await db.JobLeases
+            .AsNoTracking()
+            .Include(lease => lease.Worker)
+            .Where(lease => lease.JobId == jobId && lease.State == LeaseState.Completed)
+            .ToListAsync(cancellationToken);
+
+        return completed
+            .OrderByDescending(lease => lease.AcquiredAt)
+            .Select(lease => lease.Worker)
+            .FirstOrDefault();
+    }
+
     // Single-writer claim for a delivered candidate: only transition if still waiting, so two
     // dispatch cycles can never verify the same candidate at once.
     private async Task<bool> TryClaimDeliveredAsync(int jobId, CancellationToken cancellationToken)
@@ -610,12 +633,7 @@ public sealed class QueueDispatcher(
                     .Where(job => job.Id == jobId)
                     .Select(job => job.WorkOutputPath)
                     .FirstOrDefaultAsync(cancellationToken);
-                deliveredBy = await db.JobLeases
-                    .AsNoTracking()
-                    .Where(lease => lease.JobId == jobId && lease.State == LeaseState.Completed)
-                    .OrderByDescending(lease => lease.AcquiredAt)
-                    .Select(lease => lease.Worker)
-                    .FirstOrDefaultAsync(cancellationToken);
+                deliveredBy = await DeliveringWorkerAsync(db, jobId, cancellationToken);
             }
 
             if (candidatePath is null || !File.Exists(candidatePath))
@@ -1280,7 +1298,7 @@ public sealed class QueueDispatcher(
             ExpectedWidth: spec.ExpectedSize?.Width,
             ExpectedHeight: spec.ExpectedSize?.Height,
             Crop: spec.CropTo,
-            TargetFrameRate: spec.TargetFrameRate,
+            FrameRate: spec.FrameRate,
             // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
             RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
@@ -1730,7 +1748,8 @@ public sealed class QueueDispatcher(
                 // A capped encode kept every other frame; decimating the reference the same way
                 // lines the judged frames up with the kept ones.
                 ReferenceFrameRate: work.Spec.TargetFrameRate ?? sourceProbe.VideoFrameRate,
-                ReferenceCrop: work.Spec.CropTo);
+                ReferenceCrop: work.Spec.CropTo,
+                ReferenceDecimation: work.Spec.FrameRate);
             var measurementProgress = new Progress<double>(progress =>
             {
                 var mapped = AdaptiveQualityProgress.Map(

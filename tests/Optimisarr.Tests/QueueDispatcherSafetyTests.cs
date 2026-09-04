@@ -32,7 +32,7 @@ public sealed class QueueDispatcherSafetyTests
     {
         // The expensive part — the encode — happened on another machine and is finished. Only this
         // machine's verdict was interrupted, so the candidate waits for verification to run again.
-        var delivered = RemoteCandidate.PathFor("/work/42", jobId: 7, sourceExtension: ".mkv");
+        var delivered = RemoteCandidate.PathFor("/work/42", jobId: 7, extension: ".mkv");
 
         Assert.Equal(
             QueueDispatcher.RecoveryAction.KeepDelivered,

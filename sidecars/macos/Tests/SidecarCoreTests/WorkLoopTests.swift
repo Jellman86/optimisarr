@@ -81,6 +81,21 @@ struct AssignmentCommandTests {
         }
     }
 
+    @Test("a filtergraph's escaped comma is not mistaken for a Windows path")
+    func acceptsFiltergraphEscapes() throws {
+        // The frame-rate cap's select filter escapes its comma with a backslash. The first real
+        // capped encode was refused for it; a backslash before a path segment is still refused.
+        var capped = serverCommand
+        capped[capped.firstIndex(of: "-filter:v:0")! + 1] = #"crop=1920:800:0:140,select=not(mod(round(t*60)\,2))"#
+        _ = try AssignmentCommand.validate(capped, outputExtension: "mp4")
+
+        var windows = serverCommand
+        windows[windows.firstIndex(of: "-progress")! + 1] = #"C:\Users\someone\progress.txt"#
+        #expect(throws: AssignmentCommandError.pathLikeValue(#"C:\Users\someone\progress.txt"#)) {
+            try AssignmentCommand.validate(windows, outputExtension: "mp4")
+        }
+    }
+
     @Test("a second input is refused however it is spelt")
     func refusesSecondInput() {
         var tampered = serverCommand

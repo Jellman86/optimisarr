@@ -48,7 +48,11 @@ public sealed record QualityMeasurementContext(
     // The crop the encode applied, so the reference is cropped identically before comparison. A
     // cropped output measured against an uncropped reference is comparing different pictures.
     // The comparison then happens at the cropped size.
-    Queue.CropRect? ReferenceCrop = null);
+    Queue.CropRect? ReferenceCrop = null,
+    // How a capped encode thinned its frames, so the reference is thinned by the same index rule
+    // before any timestamp handling. Decimating by nearest timestamp instead can keep different
+    // frames than the encode kept, and then the comparison is of neighbours, not of the same frame.
+    Queue.FrameRateDecimation? ReferenceDecimation = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -111,9 +115,19 @@ public static class QualityScoreCommandBuilder
         // A crop is a software filter with no CUDA counterpart in the accelerated graph, so a
         // cropped comparison stays on the CPU path — the same choice HDR makes, for the same
         // reason: correctness over speed.
-        var acceleration = context.ReferenceIsHdr || context.ReferenceCrop is not null
+        // A decimated reference likewise: the frame selection must be reproduced exactly, and
+        // only the CPU graph carries it.
+        var acceleration = context.ReferenceIsHdr
+            || context.ReferenceCrop is not null
+            || context.ReferenceDecimation is not null
             ? VmafAcceleration.None
             : context.Acceleration;
+
+        // Thinning by frame index happens before anything touches timestamps, so the index each
+        // frame is judged by is the one the encode judged it by.
+        var referenceDecimation = context.ReferenceDecimation is { } decimation
+            ? $"{Queue.FrameRatePlanner.Filter(decimation)},"
+            : string.Empty;
 
         // With a crop, the picture being judged is the cropped one: both streams are brought to
         // its size, and the viewing model is chosen from it.
@@ -168,6 +182,7 @@ public static class QualityScoreCommandBuilder
                 distortedTimeline,
                 referenceTimeline)
             : BuildCpuFilter(
+                referenceDecimation,
                 normalise,
                 referencePreparation,
                 logPath,
@@ -223,6 +238,7 @@ public static class QualityScoreCommandBuilder
     }
 
     private static string BuildCpuFilter(
+        string referenceDecimation,
         string normalise,
         string referencePreparation,
         string logPath,
@@ -238,7 +254,7 @@ public static class QualityScoreCommandBuilder
             : string.Empty;
         return
             $"[0:v]{download}{distortedTimeline},{normalise}[dist];" +
-            $"[1:v]{download}{referenceTimeline},{referencePreparation}[ref];" +
+            $"[1:v]{download}{referenceDecimation}{referenceTimeline},{referencePreparation}[ref];" +
             "[dist][ref]libvmaf=" +
             $"model=version={model}:" +
             $"n_threads={threads}:n_subsample={frameSubsample}:" +

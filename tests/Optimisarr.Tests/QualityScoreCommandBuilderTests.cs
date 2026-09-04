@@ -378,6 +378,43 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void A_capped_encode_has_its_reference_thinned_by_the_same_index_rule_before_anything_else()
+    {
+        // The reference must lose exactly the frames the encode lost. Thinning by frame index,
+        // ahead of any timestamp reset or cadence filter, is what makes the two choices identical;
+        // the first real capped encode scored VMAF 48 for a 97 picture when the reference was
+        // decimated by nearest timestamp after a reset instead. The candidate is already at the
+        // target rate and is not thinned.
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceFrameRate: 30,
+                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(60, 30, 2)),
+            threads: 4);
+
+        Assert.Contains(@"[1:v]select=not(mod(round(t*60)\,2)),settb=AVTB,setpts=PTS-STARTPTS,fps=fps=30", command.FilterGraph);
+        Assert.Contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps=fps=30", command.FilterGraph);
+        Assert.DoesNotContain("[0:v]select", command.FilterGraph);
+    }
+
+    [Fact]
+    public void A_decimated_reference_keeps_the_comparison_on_the_cpu_path()
+    {
+        // Same trade the crop and HDR make: the CPU graph is the one that reproduces the
+        // preparation exactly, and a wrong frame pairing is worse than a slower measurement.
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                Acceleration: VmafAcceleration.Cuda,
+                ReferenceFrameRate: 30,
+                ReferenceDecimation: new Optimisarr.Core.Queue.FrameRateDecimation(60, 30, 2)),
+            threads: 4);
+
+        Assert.DoesNotContain("libvmaf_cuda", command.FilterGraph);
+        Assert.Contains("select=not(mod(round(t*60)", command.FilterGraph);
+    }
+
+    [Fact]
     public void A_cropped_uhd_source_still_selects_the_4k_model_from_its_cropped_size()
     {
         // 3840x1600 is the common cropped cinema master; it is still a 4K viewing picture.

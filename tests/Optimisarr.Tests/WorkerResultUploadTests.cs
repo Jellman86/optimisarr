@@ -4,8 +4,11 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Api.Queue;
 using Optimisarr.Api.Workers;
 using Optimisarr.Data;
 
@@ -235,6 +238,21 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_delivery_route_lifts_kestrels_default_body_cap()
+    {
+        // A candidate is a whole film. The in-process test host does not enforce Kestrel's 30 MB
+        // default, so the first real delivery from a Mac was the first to hit it; this pins the
+        // route metadata Kestrel reads, so the cap cannot quietly return.
+        var deliver = Assert.Single(
+            _api.Services.GetRequiredService<EndpointDataSource>().Endpoints,
+            endpoint => endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == "DeliverResult");
+
+        var limit = deliver.Metadata.GetMetadata<IRequestSizeLimitMetadata>();
+        Assert.NotNull(limit);
+        Assert.Null(limit.MaxRequestBodySize);
+    }
+
+    [Fact]
     public async Task An_accepted_candidate_lands_in_the_work_directory_and_never_over_the_original()
     {
         await EnableRemoteWorkers();
@@ -258,6 +276,16 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         // leaves it alone rather than treating it as an interrupted local encode.
         Assert.Equal(JobStatus.AwaitingVerification, job.Status);
         Assert.True(RemoteCandidate.IsDelivered(job.WorkOutputPath));
+        // Named by the contract's container, not the source's: this library targets MP4 while the
+        // source is an MKV, and the replacement takes the final extension from this name. The
+        // first live delivery landed as remote-1.mkv holding an MP4, which is how this was found.
+        Assert.Equal(".mp4", Path.GetExtension(job.WorkOutputPath));
+
+        // Verification rebuilds the contract for the worker that delivered, found through its
+        // completed lease. Asked here, against SQLite, because the first live delivery failed on
+        // exactly this lookup: the database cannot order a DateTimeOffset.
+        var deliveredBy = await QueueDispatcher.DeliveringWorkerAsync(db, job.Id, CancellationToken.None);
+        Assert.Equal("Accepted", deliveredBy?.Name);
 
         // The original must be exactly as it was. A returned candidate is a proposal, not a
         // replacement, and nothing about delivering one may touch the source.
