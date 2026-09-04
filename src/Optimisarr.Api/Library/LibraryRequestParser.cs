@@ -15,6 +15,7 @@ internal readonly record struct ParsedLibrary(
     long? MinFileSizeBytes,
     int? MaxHeight,
     int? VideoDownscaleHeight,
+    int? MaxFrameRate,
     bool CropBlackBars,
     long? ReencodeSameCodecAboveBytes,
     bool SkipEfficientSources,
@@ -196,6 +197,14 @@ internal static class LibraryRequestParser
             && (downscale < 240 || downscale > 4320 || downscale % 2 != 0))
         {
             error = "Downscale height must be an even number between 240 and 4320 pixels, or blank for none.";
+            return false;
+        }
+
+        // Bounded to rates a display actually shows. Below cinema rate the cap could only ever
+        // refuse; above 120 no consumer source exists to cap.
+        if (request.MaxFrameRate is { } frameRateCap && (frameRateCap < 24 || frameRateCap > 120))
+        {
+            error = "Frame-rate cap must be between 24 and 120 fps, or blank for none.";
             return false;
         }
 
@@ -441,6 +450,7 @@ internal static class LibraryRequestParser
             request.MinFileSizeBytes,
             request.MaxHeight,
             request.VideoDownscaleHeight,
+            request.MaxFrameRate,
             request.CropBlackBars ?? false,
             request.ReencodeSameCodecAboveBytes,
             request.SkipEfficientSources ?? true,

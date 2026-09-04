@@ -110,6 +110,7 @@ internal static class LibraryEndpoints
                 MinFileSizeBytes = parsed.MinFileSizeBytes,
                 MaxHeight = parsed.MaxHeight,
                 VideoDownscaleHeight = parsed.VideoDownscaleHeight,
+                MaxFrameRate = parsed.MaxFrameRate,
                 CropBlackBars = parsed.CropBlackBars,
                 ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes,
                 SkipEfficientSources = parsed.SkipEfficientSources,
@@ -203,6 +204,7 @@ internal static class LibraryEndpoints
             library.MinFileSizeBytes = parsed.MinFileSizeBytes;
             library.MaxHeight = parsed.MaxHeight;
             library.VideoDownscaleHeight = parsed.VideoDownscaleHeight;
+            library.MaxFrameRate = parsed.MaxFrameRate;
             library.CropBlackBars = parsed.CropBlackBars;
             library.ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes;
             library.SkipEfficientSources = parsed.SkipEfficientSources;

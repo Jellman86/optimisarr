@@ -33,6 +33,7 @@ public static class RuleResolver
             MinFileSizeBytes = overrides.MinFileSizeBytes ?? settings.MinFileSizeBytes,
             MaxHeight = overrides.MaxHeight ?? settings.MaxHeight,
             VideoDownscaleHeight = overrides.VideoDownscaleHeight ?? settings.VideoDownscaleHeight,
+            MaxFrameRate = overrides.MaxFrameRate ?? settings.MaxFrameRate,
             CropBlackBars = overrides.CropBlackBars ?? settings.CropBlackBars,
             ReencodeSameCodecAboveBytes = overrides.ReencodeSameCodecAboveBytes ?? settings.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = Normalise(overrides.TargetVideoCodec) ?? settings.TargetVideoCodec,

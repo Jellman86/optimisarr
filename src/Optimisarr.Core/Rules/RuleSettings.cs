@@ -44,6 +44,15 @@ public sealed record RuleSettings
     public int? VideoDownscaleHeight { get; init; }
 
     /// <summary>
+    /// When set, a video re-encode faster than this many frames per second is decimated to a clean
+    /// halving of its source rate that sits under the cap (60 → 30, 59.94 → 29.97, 120 → 30).
+    /// Sources at or under the cap, and sources no halving can bring cleanly under it, are left at
+    /// their own rate — see <see cref="Queue.FrameRatePlanner"/>. The quality check compares
+    /// against the original decimated identically, so it judges the frames that were kept.
+    /// </summary>
+    public int? MaxFrameRate { get; init; }
+
+    /// <summary>
     /// When <c>true</c>, black bars are detected on a video re-encode and cropped away. Off by
     /// default, and worth understanding before turning on: the verification gates cannot catch a
     /// wrong crop, because the quality check compares against a reference cropped the same way.

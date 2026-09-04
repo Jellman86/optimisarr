@@ -77,6 +77,11 @@ public sealed record VerificationInput(
     // them it requires the source size, as it always has. Only meaningful for a re-encoded stream.
     int? ExpectedWidth = null,
     int? ExpectedHeight = null,
+    // The rate a frame-rate cap told the encode to produce, and the rate the output actually has.
+    // With an expectation set the structure gate holds the output to it; without one the frame
+    // rate is not judged, as it never was. Only meaningful for a re-encoded stream.
+    double? ExpectedFrameRate = null,
+    double? OutputFrameRate = null,
     bool ImageQualityMeasured = false,
     string? ImageQualityError = null,
     double? ImageSsim = null,

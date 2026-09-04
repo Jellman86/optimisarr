@@ -19,6 +19,7 @@ public sealed class LibraryRequestParserTests
         MinFileSizeBytes: null,
         MaxHeight: null,
         VideoDownscaleHeight: null,
+        MaxFrameRate: null,
         CropBlackBars: null,
         ReencodeSameCodecAboveBytes: null,
         SkipEfficientSources: null,
@@ -167,6 +168,40 @@ public sealed class LibraryRequestParserTests
 
         Assert.True(ok, error);
         Assert.Equal(height, parsed.VideoDownscaleHeight);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(15)]
+    [InlineData(240)]
+    public void A_frame_rate_cap_outside_display_rates_is_refused(int cap)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MaxFrameRate = cap }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("Frame-rate cap", error);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void An_offered_frame_rate_cap_is_accepted(int cap)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MaxFrameRate = cap }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(cap, parsed.MaxFrameRate);
+    }
+
+    [Fact]
+    public void An_omitted_frame_rate_cap_means_no_cap()
+    {
+        var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Null(parsed.MaxFrameRate);
     }
 
     [Fact]

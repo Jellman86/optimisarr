@@ -54,6 +54,14 @@
     { value: 480, label: '480p' },
   ])
 
+  // Only two stops: 60 catches high-frame-rate captures, 30 catches broadcast 50/60. Anything
+  // finer invites a cap the planner would mostly have to refuse.
+  const frameRateCaps = $derived([
+    { value: null, label: i18n.m.libraries.video_fps_cap_none },
+    { value: 60, label: '60 fps' },
+    { value: 30, label: '30 fps' },
+  ])
+
   const DEFAULT_CRF = 23
   const DEFAULT_VMAF_HARMONIC = 93
   const DEFAULT_VMAF_MIN = 80
@@ -800,6 +808,7 @@
       minFileSizeBytes: library.minFileSizeBytes,
       maxHeight: library.maxHeight,
       videoDownscaleHeight: library.videoDownscaleHeight ?? null,
+      maxFrameRate: library.maxFrameRate ?? null,
       cropBlackBars: library.cropBlackBars ?? false,
       reencodeSameCodecAboveBytes: library.reencodeSameCodecAboveBytes,
       skipEfficientSources: library.skipEfficientSources,
@@ -910,6 +919,7 @@
       reencodeSameCodecAboveBytes: sameCodecGb === '' ? null : Math.round(Number(sameCodecGb) * BYTES_PER_GB),
       maxHeight: form.maxHeight ? Number(form.maxHeight) : null,
       videoDownscaleHeight: form.videoDownscaleHeight == null ? null : Number(form.videoDownscaleHeight),
+      maxFrameRate: form.maxFrameRate == null ? null : Number(form.maxFrameRate),
       cropBlackBars: form.cropBlackBars,
       priority: Number(form.priority) || 0,
       targetVideoCodec: emptyToNull(form.targetVideoCodec),
@@ -2241,6 +2251,15 @@
             <select id="lib-downscale" class="input" bind:value={form.videoDownscaleHeight}>
               <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
               {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
+            </select>
+          </div>
+          <!-- The temporal twin of "downscale to": the tip carries the one rule worth knowing,
+               that only clean halvings happen, so a reader is not surprised when a 50 fps source
+               under a 60 cap is left alone. -->
+          <div>
+            <label class="label" for="lib-fps-cap">{i18n.m.libraries.video_fps_cap} <InfoTip text={i18n.m.libraries.video_fps_cap_tip} /></label>
+            <select id="lib-fps-cap" class="input" bind:value={form.maxFrameRate}>
+              {#each frameRateCaps as cap}<option value={cap.value}>{cap.label}</option>{/each}
             </select>
           </div>
           {/if}

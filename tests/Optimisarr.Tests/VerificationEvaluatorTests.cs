@@ -526,6 +526,75 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void An_output_at_the_intended_frame_rate_passes_within_probe_rounding()
+    {
+        // ffprobe reports 29.97 as 30000/1001; the planner computed 59.94/2. Neither is wrong, and
+        // the gate must not fail an encode over the fourth decimal place.
+        var input = Healthy() with { ExpectedFrameRate = 29.97, OutputFrameRate = 30000.0 / 1001 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join(" | ", report.Checks.Where(c => c.Outcome != CheckOutcome.Passed).Select(c => c.Detail)));
+    }
+
+    [Fact]
+    public void An_output_at_the_source_rate_fails_when_a_decimation_was_intended()
+    {
+        // The fps filter was dropped somewhere. The file is fine as a file, but it is not the job
+        // that was asked for, and the failure names what was intended so it is actionable.
+        var input = Healthy() with { ExpectedFrameRate = 30, OutputFrameRate = 60 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        var failure = Assert.Single(report.Checks, c => c.Outcome == CheckOutcome.Failed);
+        Assert.Contains("60 fps", failure.Detail);
+        Assert.Contains("intended 30 fps", failure.Detail);
+    }
+
+    [Fact]
+    public void An_unreadable_output_frame_rate_fails_when_a_decimation_was_intended()
+    {
+        // Not knowing is not passing: the gate exists to prove the decimation happened.
+        var input = Healthy() with { ExpectedFrameRate = 30, OutputFrameRate = null };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+    }
+
+    [Fact]
+    public void Without_an_intended_frame_rate_the_rate_is_not_judged()
+    {
+        // Exactly as before this existed: a library with no cap never had its frame rate checked,
+        // and a VFR source whose average rate drifts must keep passing.
+        var input = Healthy() with { ExpectedFrameRate = null, OutputFrameRate = 24.5 };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.True(report.Passed, string.Join(" | ", report.Checks.Where(c => c.Outcome != CheckOutcome.Passed).Select(c => c.Detail)));
+    }
+
+    [Fact]
+    public void An_intended_frame_rate_never_applies_to_a_copied_video_stream()
+    {
+        // A remux cannot drop frames, so a stray expectation must not fail a copied stream over
+        // its rate. The codec fields match because a copy keeps the source codec.
+        var input = Healthy() with
+        {
+            VideoReencoded = false,
+            ExpectedVideoCodec = null,
+            OutputVideoCodec = "h264",
+            ExpectedFrameRate = 30,
+            OutputFrameRate = 60
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.DoesNotContain(report.Checks, c => c.Outcome == CheckOutcome.Failed && c.Detail.Contains("frame rate"));
+    }
+
+    [Fact]
     public void Without_an_intended_size_the_gate_still_requires_the_source_size()
     {
         // No policy means no resize, exactly as before this existed. Every library that never sets

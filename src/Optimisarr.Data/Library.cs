@@ -44,6 +44,14 @@ public sealed class Library
     public int? VideoDownscaleHeight { get; set; }
 
     /// <summary>
+    /// When set, a video re-encode faster than this many frames per second is decimated to a clean
+    /// halving of its source rate under the cap (60 → 30, 59.94 → 29.97). Sources at or under the
+    /// cap, and sources no halving brings cleanly under it, keep their own rate. Null (the default)
+    /// means no cap.
+    /// </summary>
+    public int? MaxFrameRate { get; set; }
+
+    /// <summary>
     /// When true, black bars are detected and cropped away on video re-encode. Off by default.
     /// The crop is decided from several sampled scenes and keeps everything any of them showed;
     /// implausibly small or large crops mean no crop. Material that changes aspect ratio partway
