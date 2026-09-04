@@ -29,6 +29,7 @@ public sealed class LibraryRequestParserTests
         SkipSourceCodecs: null,
         ContentTune: null,
         MaxBitrateKbps: null,
+        MinBitrateKbps: null,
         StrongerAdaptiveQuantisation: null,
         QualityCrf: null,
         EncoderPreset: encoderPreset,
@@ -90,6 +91,51 @@ public sealed class LibraryRequestParserTests
 
         Assert.True(ok, error);
         Assert.Equal(expected, parsed.ContentTune);
+    }
+
+    [Fact]
+    public void A_bitrate_floor_above_the_cap_is_refused()
+    {
+        // An inverted window is impossible to honour. Refused at the boundary so an operator sees
+        // the mistake, rather than stored and then silently dropped at encode time.
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MaxBitrateKbps = 4000, MinBitrateKbps = 6000 }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("cannot be above", error);
+    }
+
+    [Fact]
+    public void A_bitrate_floor_without_a_cap_is_refused()
+    {
+        // A floor is a VBV constraint. Without the ceiling that defines the window there is nothing
+        // for it to mean, and x264/x265 would ignore it — a setting that looks applied and is not.
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MinBitrateKbps = 2000 }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("needs a maximum", error);
+    }
+
+    [Fact]
+    public void A_bitrate_floor_inside_the_window_is_accepted()
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MaxBitrateKbps = 8000, MinBitrateKbps = 2000 }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(2000, parsed.MinBitrateKbps);
+        Assert.Equal(8000, parsed.MaxBitrateKbps);
+    }
+
+    [Fact]
+    public void A_bitrate_floor_equal_to_the_cap_is_accepted_as_a_fixed_rate()
+    {
+        // min == max is the conventional way to ask for constant bitrate; it is a valid window.
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { MaxBitrateKbps = 5000, MinBitrateKbps = 5000 }, out _, out var error);
+
+        Assert.True(ok, error);
     }
 
     [Fact]

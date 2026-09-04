@@ -68,7 +68,10 @@ internal static class LibraryRuleResolution
             ExcludeHardLinkedFiles = library.ExcludeHardLinkedFiles,
             SkipSourceCodecs = ParseCodecList(library.SkipSourceCodecs),
             EncoderTuning = new EncoderTuning(
-                library.ContentTune, library.MaxBitrateKbps, library.StrongerAdaptiveQuantisation),
+                Tune: library.ContentTune,
+                MaxBitrateKbps: library.MaxBitrateKbps,
+                MinBitrateKbps: library.MinBitrateKbps,
+                StrongerAdaptiveQuantisation: library.StrongerAdaptiveQuantisation),
             TargetAudioCodec = library.AudioTargetCodec,
             AudioBitrateKbps = library.AudioBitrateKbps,
             VideoAudioCodec = library.VideoAudioCodec,

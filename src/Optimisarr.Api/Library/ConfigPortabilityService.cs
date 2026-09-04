@@ -163,6 +163,7 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
                     ? restoredTune
                     : Optimisarr.Core.Queue.ContentTune.None;
             library.MaxBitrateKbps = snapshot.MaxBitrateKbps;
+            library.MinBitrateKbps = snapshot.MinBitrateKbps;
             library.StrongerAdaptiveQuantisation = snapshot.StrongerAdaptiveQuantisation ?? false;
             library.QualityCrf = snapshot.QualityCrf;
             _ = EncoderPresetPolicy.TryNormaliseSelection(snapshot.EncoderPreset, out var encoderPreset);
@@ -535,7 +536,8 @@ public sealed class ConfigPortabilityService(OptimisarrDbContext db, SettingsSto
         library.SkipSourceCodecs,
         library.ContentTune.ToString(),
         library.MaxBitrateKbps,
-        library.StrongerAdaptiveQuantisation);
+        library.StrongerAdaptiveQuantisation,
+        library.MinBitrateKbps);
 
     private static string? NormaliseEncoderPreset(string? value) =>
         EncoderPresetPolicy.TryNormaliseSelection(value, out var normalised)

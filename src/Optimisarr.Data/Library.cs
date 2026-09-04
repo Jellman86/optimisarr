@@ -103,6 +103,15 @@ public sealed class Library
     public int? MaxBitrateKbps { get; set; }
 
     /// <summary>
+    /// A floor under the output's video bitrate in kbps. Honoured only alongside
+    /// <see cref="MaxBitrateKbps"/>, and only by x264/x265, because a floor is a VBV constraint:
+    /// without a cap there is no window to hold it in, and NVENC never reads one. A floor spends
+    /// bits on scenes that need none, so it exists for streaming stability, not for saving space.
+    /// Null (the default) means no floor.
+    /// </summary>
+    public int? MinBitrateKbps { get; set; }
+
+    /// <summary>
     /// When true, video re-encodes ask the encoder to spend more bits where the eye notices —
     /// flat gradients and dark scenes. Expressed as aq-mode on x264/x265 and as spatial/temporal
     /// AQ on NVENC; families with no equivalent keep their own defaults.

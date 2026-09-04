@@ -29,6 +29,14 @@ public sealed record EncoderTuning(
     int? MaxBitrateKbps = null,
 
     /// <summary>
+    /// A floor under the output's video bitrate in kbps. Only meaningful inside a VBV window, so
+    /// it is honoured only when <see cref="MaxBitrateKbps"/> is also set and is not above it.
+    /// A floor forces bits into scenes that do not need them, which works against constant
+    /// quality — it exists for the operator who needs a minimum for streaming stability.
+    /// </summary>
+    int? MinBitrateKbps = null,
+
+    /// <summary>
     /// Spend more bits on the areas an eye notices — flat gradients, dark scenes — at the cost of
     /// detail elsewhere. Each family spells this differently; some cannot express it at all.
     /// </summary>
@@ -38,7 +46,10 @@ public sealed record EncoderTuning(
 
     /// <summary>Whether anything at all was asked for, so callers can skip the resolve entirely.</summary>
     public bool IsEmpty =>
-        Tune == ContentTune.None && MaxBitrateKbps is null or <= 0 && !StrongerAdaptiveQuantisation;
+        Tune == ContentTune.None
+        && MaxBitrateKbps is null or <= 0
+        && MinBitrateKbps is null or <= 0
+        && !StrongerAdaptiveQuantisation;
 }
 
 /// <summary>
@@ -107,6 +118,17 @@ public static class EncoderTuningPolicy
         // library form says so.
         if ((isX26x || isNvenc) && tuning.MaxBitrateKbps is { } cap && cap > 0)
         {
+            // A floor is a VBV constraint too, so it rides inside the same window and only where
+            // the cap does. Not NVENC: nvenc.c never reads rc_min_rate, so -minrate there would be
+            // the silent no-op this policy exists to refuse. Never above the cap — the parser
+            // rejects that pair, and this refuses it again so a stored inversion cannot hand the
+            // encoder an impossible window.
+            if (isX26x && tuning.MinBitrateKbps is { } floor && floor > 0 && floor <= cap)
+            {
+                args.Add("-minrate");
+                args.Add($"{floor}k");
+            }
+
             args.Add("-maxrate");
             args.Add($"{cap}k");
             args.Add("-bufsize");
