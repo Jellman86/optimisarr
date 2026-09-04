@@ -334,6 +334,54 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-filter:v:0", args);
     }
 
+    // --- VideoToolbox (a macOS sidecar's hardware encoder) ----------------------------------
+
+    [Fact]
+    public void Videotoolbox_receives_its_own_quality_control_on_its_own_scale()
+    {
+        // Apple's encoders take -q:v on a 1–100 scale where higher is better, the inverse of CRF.
+        // The policy keeps the operator-facing number on the CRF scale (with hardware headroom);
+        // this is where it becomes the encoder's vocabulary. 20 on the CRF scale lands at 60.
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 20, preset: null), videoEncoder: "hevc_videotoolbox");
+
+        Assert.Equal("hevc_videotoolbox", args[IndexOf(args, "-c:v:0") + 1]);
+        Assert.Equal("60", args[IndexOf(args, "-q:v") + 1]);
+        Assert.DoesNotContain("-crf", args);
+        Assert.DoesNotContain("-cq", args);
+        Assert.DoesNotContain("-global_quality", args);
+    }
+
+    [Fact]
+    public void Videotoolbox_quality_stays_inside_the_encoder_range_at_the_extremes()
+    {
+        var best = FfmpegCommandBuilder.Build(Reencode(crf: 0, preset: null), videoEncoder: "hevc_videotoolbox");
+        var worst = FfmpegCommandBuilder.Build(Reencode(crf: 51, preset: null), videoEncoder: "hevc_videotoolbox");
+
+        Assert.Equal("100", best[IndexOf(best, "-q:v") + 1]);
+        Assert.Equal("1", worst[IndexOf(worst, "-q:v") + 1]);
+    }
+
+    [Fact]
+    public void Videotoolbox_never_receives_a_preset_a_device_or_tuning_it_cannot_read()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(preset: "medium") with
+            {
+                Tuning = new EncoderTuning(ContentTune.Animation, MaxBitrateKbps: 8000, MinBitrateKbps: null, StrongerAdaptiveQuantisation: true)
+            },
+            videoEncoder: "hevc_videotoolbox",
+            hardwareDecode: true);
+
+        Assert.DoesNotContain("-preset", args);
+        Assert.DoesNotContain("-tune", args);
+        Assert.DoesNotContain("-maxrate", args);
+        Assert.DoesNotContain("-init_hw_device", args);
+        Assert.DoesNotContain("-vaapi_device", args);
+        Assert.DoesNotContain("-hwaccel", args);
+        Assert.DoesNotContain("hwupload", string.Join(" ", args));
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,

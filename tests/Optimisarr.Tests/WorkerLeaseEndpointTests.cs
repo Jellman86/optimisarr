@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Optimisarr.Core.Domain;
+using Optimisarr.Core.Queue;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -75,7 +77,13 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     /// <summary>Pairs a worker that can actually satisfy a job, and returns its credential.</summary>
-    private async Task<HttpClient> PairCapableWorker(string name, int concurrency = 1)
+    private Task<HttpClient> PairCapableWorker(string name, int concurrency = 1) =>
+        PairWorkerWithEncoders(name, concurrency, "libx265");
+
+    private Task<HttpClient> PairWorkerWithEncoders(string name, params string[] encoders) =>
+        PairWorkerWithEncoders(name, 1, encoders);
+
+    private async Task<HttpClient> PairWorkerWithEncoders(string name, int concurrency, params string[] encoders)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -90,7 +98,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             architecture = "x64",
             protocolMinimum = 1,
             protocolMaximum = 1,
-            videoEncoders = new[] { "libx265" },
+            videoEncoders = encoders,
             hardwareDecoders = Array.Empty<string>(),
             vmaf = "Cpu",
             freeScratchBytes = 500L * 1024 * 1024 * 1024,
@@ -106,12 +114,21 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     /// <summary>Puts one queued job in front of the workers and returns its id.</summary>
-    private async Task<int> QueueAJob(string? videoEncoder = "libx265")
+    private async Task<int> QueueAJob(
+        string? videoEncoder = "libx265",
+        VideoQualityStrategy strategy = VideoQualityStrategy.Fixed,
+        RuleProfile profile = RuleProfile.ConservativeHevc)
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
 
-        var library = new Library { Name = "Leases", Path = Path.Combine(_api.LibraryDirectory, Guid.NewGuid().ToString("N")) };
+        var library = new Library
+        {
+            Name = "Leases",
+            Path = Path.Combine(_api.LibraryDirectory, Guid.NewGuid().ToString("N")),
+            VideoQualityStrategy = strategy,
+            RuleProfile = profile,
+        };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
         _createdLibraries.Add(library.Id);
@@ -128,6 +145,12 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             Path = sourcePath,
             RelativePath = "film.mkv",
             SizeBytes = SourceBytes.Length,
+            // The inventory's picture facts, as a scan would have recorded them: the assignment
+            // names its VMAF model from the size, and a re-encode needs a video to re-encode.
+            MediaKind = MediaKind.Video,
+            VideoCodec = "h264",
+            Width = 1920,
+            Height = 1080,
         };
         db.MediaFiles.Add(file);
         await db.SaveChangesAsync();
@@ -153,19 +176,86 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_job_enqueued_the_way_the_application_enqueues_one_is_never_offered()
+    public async Task A_job_enqueued_the_way_the_application_enqueues_one_is_offered_with_an_executable_command()
     {
-        // Every other test here hand-sets VideoEncoder on a Queued job. The application never
-        // does: that column is written once, during local dispatch, to record what actually ran.
-        // A job sitting in the queue — the only state this endpoint selects — has it null, so the
-        // matcher correctly refuses the assignment as unnamed and no work is ever handed out.
+        // The application never sets VideoEncoder on a queued job; that column records what ran.
+        // The encoder is resolved here, for this worker, from what it proved — and the assignment
+        // carries the exact command this machine would have run, with the worker's paths as tokens.
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker("Claimer");
-        await QueueAJob(videoEncoder: null);
+        var jobId = await QueueAJob(videoEncoder: null);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(jobId, assignment.GetProperty("jobId").GetInt32());
+        Assert.Equal("libx265", assignment.GetProperty("videoEncoder").GetString());
+
+        var arguments = assignment.GetProperty("arguments").EnumerateArray()
+            .Select(element => element.GetString()!).ToList();
+        Assert.Equal("{{input}}", arguments[arguments.IndexOf("-i") + 1]);
+        // ConservativeHevc targets MP4, and the extension is part of the contract: it decides the
+        // muxer and the subtitle codec, so it travels with the placeholder rather than being guessed.
+        Assert.Equal("{{output}}.mp4", arguments[^1]);
+        Assert.Equal("mp4", assignment.GetProperty("outputExtension").GetString());
+        Assert.Equal("libx265", arguments[arguments.IndexOf("-c:v:0") + 1]);
+        Assert.Contains("-crf", arguments);
+        // No path on this machine reaches a worker, and no thread limit either — that is ours.
+        Assert.DoesNotContain(arguments, argument => argument.StartsWith('/'));
+        Assert.DoesNotContain("-threads", arguments);
+        Assert.False(assignment.TryGetProperty("sourcePath", out _));
+
+        var quality = assignment.GetProperty("quality");
+        Assert.Equal("vmaf_v0.6.1", quality.GetProperty("model").GetString());
+        Assert.True(quality.GetProperty("minimumHarmonicMean").GetDouble() > 0);
+    }
+
+    [Fact]
+    public async Task A_job_from_an_adaptive_library_stays_local_until_its_quality_has_been_chosen()
+    {
+        // Adaptive selection runs sample encodes on this machine's encoder; a quality chosen for
+        // one encoder means nothing on another. Offering the job at the fixed quality instead
+        // would silently change what the library asked for, so it is not offered at all.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob(videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf);
 
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_remux_only_job_is_not_offered_to_a_remote_worker()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob(videoEncoder: null, profile: RuleProfile.RemuxCleanup);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_worker_that_proves_a_hardware_encoder_is_handed_a_command_for_it()
+    {
+        // A Mac proving VideoToolbox gets VideoToolbox's own quality control, not a CRF it would
+        // reject — the same builder that serves local hardware encoders resolved it for the worker.
+        await EnableRemoteWorkers();
+        var worker = await PairWorkerWithEncoders("MacMini", "libx265", "hevc_videotoolbox");
+        await QueueAJob(videoEncoder: null);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("hevc_videotoolbox", assignment.GetProperty("videoEncoder").GetString());
+        var arguments = assignment.GetProperty("arguments").EnumerateArray()
+            .Select(element => element.GetString()!).ToList();
+        Assert.Contains("-q:v", arguments);
+        Assert.DoesNotContain("-crf", arguments);
     }
 
     [Fact]

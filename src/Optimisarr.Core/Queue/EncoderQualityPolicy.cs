@@ -23,6 +23,8 @@ public static class EncoderQualityPolicy
             "qsv" => ("ICQ", HardwareHeadroom),
             "nvenc" => ("CQ", HardwareHeadroom),
             "vaapi" => ("QP", HardwareHeadroom),
+            // Kept on the CRF scale; FfmpegCommandBuilder translates it onto Apple's 1–100 control.
+            "videotoolbox" => ("VT-Q", HardwareHeadroom),
             _ => ("CRF", 0)
         };
         var effective = Math.Max(0, boundedRequested - headroom - (boundedRetry * RetryStep));
@@ -59,6 +61,7 @@ public static class EncoderQualityPolicy
         return encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase) ? "qsv"
             : encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase) ? "nvenc"
             : encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase) ? "vaapi"
+            : encoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase) ? "videotoolbox"
             : "cpu";
     }
 }

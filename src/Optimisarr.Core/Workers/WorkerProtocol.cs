@@ -26,6 +26,20 @@ public static class WorkerProtocol
     public const int MinimumSupported = 1;
 
     /// <summary>
+    /// Stands in for the worker's local copy of the source inside an assignment's argument array.
+    /// The server never sends a path: the source route takes only a lease, and the worker decides
+    /// where its scratch lives. A worker substitutes its own paths and nothing else.
+    /// </summary>
+    public const string InputPlaceholder = "{{input}}";
+
+    /// <summary>
+    /// Stands in for the worker's candidate output. It appears as a prefix carrying the container
+    /// extension the server chose (<c>{{output}}.mkv</c>), because the extension is part of the
+    /// encode contract — it decides subtitle codecs and muxer — and must not be the worker's guess.
+    /// </summary>
+    public const string OutputPlaceholder = "{{output}}";
+
+    /// <summary>
     /// Picks the highest version both sides support, or refuses with a reason. Refusal is the
     /// safe outcome: assuming an unknown sidecar is compatible is exactly the silent-upgrade
     /// failure this negotiation exists to prevent.

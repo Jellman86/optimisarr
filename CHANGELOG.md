@@ -4,6 +4,25 @@
 
 ### Added
 
+- **A remote worker can now be handed an executable assignment.** Until now every claim returned
+  nothing: the assignment named no encoder and carried no encode policy, so no sidecar could be
+  offered work (the characterisation test that pinned this now asserts the opposite). A claim now
+  runs the same preparation as local dispatch — fresh probes, crop detection, the picture, audio
+  and track contract, verification policy — with the encoder chosen from what the worker proved,
+  in the same preference order this machine uses for its own hardware, and hands over the exact
+  FFmpeg argument array this machine would have run. Two tokens stand in for paths, `{{input}}`
+  and `{{output}}` with the container extension attached, so no path on the server is ever sent
+  and a worker substitutes only its own scratch. The assignment also states the VMAF requirement
+  (whether to measure, which model, frame subsample, clip mode, thresholds) so evidence can be bound
+  to the policy this machine will judge by. Not offered, each with a reason in the debug log:
+  remux, audio and image jobs, and jobs from adaptive-VMAF libraries whose per-title quality has
+  not yet been chosen, because that selection runs on this machine's encoder and a quality chosen
+  for one encoder means nothing on another. The VideoToolbox encoder family is now understood
+  end to end — selection, quality, preset, tuning and the command builder — so a Mac that proves
+  `hevc_videotoolbox` receives `-q:v` on Apple's scale rather than a CRF it would reject. That
+  quality line is a straight mapping and still owes calibration on real hardware; the VMAF gate,
+  not the mapping, is what guarantees a result.
+
 - **A library can now cap frame rate on re-encode.** Advanced options gain **Cap frame rate at**,
   with 60 and 30 fps stops, beside the resolution controls; this completes the framerate ask in
   #95. It is a cap, not a target: a faster source is halved until it sits under the cap (60 → 30,

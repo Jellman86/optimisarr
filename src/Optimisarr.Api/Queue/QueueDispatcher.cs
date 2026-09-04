@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Workers;
 using Optimisarr.Core.Activity;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Domain;
@@ -14,6 +15,7 @@ using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Tools;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -753,7 +755,10 @@ public sealed class QueueDispatcher(
         // present only when the primary command used a hardware path that can safely fall back.
         IReadOnlyList<string>? SoftwareFallbackArguments = null,
         bool UsedHardwareDecode = false,
-        bool UsedHardwareToneMap = false)
+        bool UsedHardwareToneMap = false,
+        // The inventory's picture size, when it has one. A remote assignment names the VMAF
+        // model from it so the worker's evidence can be held to the model this machine would use.
+        PictureSize? SourcePicture = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -786,7 +791,79 @@ public sealed class QueueDispatcher(
                 library?.MinimumImageSsim,
                 library?.ImageMetadataGateEnabled));
 
-    private async Task<JobWork?> LoadWorkAsync(int jobId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
+    /// cannot. Runs the same preparation as local dispatch — fresh probes, crop detection, the
+    /// picture and audio contract, verification policy — with the encoder chosen from the worker's
+    /// proved capabilities and the command made portable. A refusal is ordinary and never throws.
+    /// </summary>
+    public async Task<RemoteWorkPlan> PrepareRemoteWorkAsync(
+        int jobId,
+        WorkerCapabilities worker,
+        CancellationToken cancellationToken)
+    {
+        JobWork? prepared;
+        try
+        {
+            prepared = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JobNoLongerEligibleException)
+        {
+            return RemoteWorkPlan.Refused(ex.Message);
+        }
+
+        if (prepared is not { } work)
+        {
+            return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
+        }
+
+        // Only a video re-encode has an encoder to match and arguments worth shipping; a remux,
+        // audio or image job is cheap enough that distributing it buys nothing yet.
+        if (work.Spec.VideoCodec is null || work.VideoEncoder is null)
+        {
+            return RemoteWorkPlan.Refused("Only video re-encodes are offered to remote workers.");
+        }
+
+        // Adaptive selection runs sample encodes on this machine's encoder, and a quality chosen
+        // for one encoder means nothing on another. Until selection can run on the worker, an
+        // adaptive library's jobs stay local rather than silently encoding at the fixed quality.
+        if (work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
+        {
+            return RemoteWorkPlan.Refused(
+                "Adaptive quality selection has not run for this job and cannot run on a remote worker.");
+        }
+
+        var (width, height) = work.SourcePicture is { } picture
+            ? (work.Spec.CropTo?.Width ?? picture.Width, work.Spec.CropTo?.Height ?? picture.Height)
+            : (0, 0);
+
+        return RemoteWorkPlan.For(new RemoteAssignment(
+            work.VideoEncoder,
+            work.Arguments,
+            Path.GetExtension(work.Spec.OutputPath).TrimStart('.'),
+            work.VerificationPolicy,
+            QualityScoreCommandBuilder.ModelVersionFor(width, height)));
+    }
+
+    /// <summary>
+    /// Where an encode will run. Local work resolves its encoder from this machine's probe and may
+    /// use its hardware decoder; remote work resolves it from the worker's proved capabilities and
+    /// receives a portable command with placeholder paths.
+    /// </summary>
+    private readonly record struct EncodePlacement(WorkerCapabilities? RemoteWorker)
+    {
+        public static EncodePlacement Local => default;
+
+        public bool IsRemote => RemoteWorker is not null;
+    }
+
+    private Task<JobWork?> LoadWorkAsync(int jobId, CancellationToken cancellationToken) =>
+        LoadWorkAsync(jobId, EncodePlacement.Local, cancellationToken);
+
+    private async Task<JobWork?> LoadWorkAsync(
+        int jobId,
+        EncodePlacement placement,
+        CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -1052,11 +1129,20 @@ public sealed class QueueDispatcher(
             var sourceBitDepth = PixelFormatInfo.Parse(
                 freshSourceProbe?.PixelFormat ?? media.PixelFormat,
                 freshSourceProbe?.BitsPerRawSample ?? media.BitsPerRawSample)?.BitDepth;
-            var videoEncoder = await ResolveVideoEncoderAsync(
-                spec.VideoCodec,
-                queueSettings.EncoderMode,
-                sourceBitDepth,
-                cancellationToken);
+            // A worker's encoder is chosen from what it proved, in the same preference order this
+            // machine uses for its own hardware. The queue's encoder mode describes this machine's
+            // GPU and says nothing about the worker's, so Auto is the only honest mode there.
+            var videoEncoder = placement.RemoteWorker is { } remoteWorker
+                ? EncoderSelector.Select(
+                    spec.VideoCodec,
+                    EncoderMode.Auto,
+                    WorkerEncoderCatalogue.Describe(remoteWorker.VideoEncoders),
+                    sourceBitDepth)
+                : await ResolveVideoEncoderAsync(
+                    spec.VideoCodec,
+                    queueSettings.EncoderMode,
+                    sourceBitDepth,
+                    cancellationToken);
             if (videoEncoder is { Succeeded: false })
             {
                 throw new InvalidOperationException(videoEncoder.Error);
@@ -1121,7 +1207,9 @@ public sealed class QueueDispatcher(
         // reordering around an input seek can move the clip several frames before its VMAF
         // reference. Hardware encoding remains enabled. Normal jobs retain the existing
         // hardware-decode path and transparent software fallback.
-        var hardwareDecode = HardwareDecodePolicy.ShouldUse(
+        // A remote worker's decoders are not yet part of the contract, so its command decodes in
+        // software: the path every filter here is proven on, and the one that needs no device.
+        var hardwareDecode = !placement.IsRemote && HardwareDecodePolicy.ShouldUse(
             queueSettings.HardwareDecode,
             isDisposable,
             spec.Kind,
@@ -1173,16 +1261,28 @@ public sealed class QueueDispatcher(
             hardwareToneMapDolbyVision,
             hardwareToneMapTransfer,
             videoEncoderName);
+        // A remote command names no path on this machine: the worker substitutes its own copy of
+        // the source and its own scratch output, and the output keeps the container extension the
+        // contract chose. The thread limit is this machine's, so a worker receives none.
+        if (placement.IsRemote)
+        {
+            spec = spec with
+            {
+                InputPath = WorkerProtocol.InputPlaceholder,
+                OutputPath = WorkerProtocol.OutputPlaceholder + Path.GetExtension(spec.OutputPath)
+            };
+        }
+        var threads = placement.IsRemote ? 0 : queueSettings.CpuThreadLimit;
         var primaryArguments = FfmpegCommandBuilder.Build(
             spec,
-            queueSettings.CpuThreadLimit,
+            threads,
             videoEncoderName,
             OptimisedMarkerValue,
             hardwareDecode,
             hardwareToneMap);
         var softwareArguments = FfmpegCommandBuilder.Build(
             spec,
-            queueSettings.CpuThreadLimit,
+            threads,
             videoEncoderName,
             OptimisedMarkerValue,
             hardwareDecode: false,
@@ -1213,7 +1313,10 @@ public sealed class QueueDispatcher(
             hardwareToneMap,
             usedHardwareDecode ? softwareArguments : null,
             usedHardwareDecode,
-            hardwareToneMap);
+            hardwareToneMap,
+            media.Width is > 0 && media.Height is > 0
+                ? new PictureSize(media.Width.Value, media.Height.Value)
+                : null);
     }
 
     /// <summary>
@@ -2437,13 +2540,15 @@ public sealed class QueueDispatcher(
         return EncoderSelector.Select(targetCodec, encoderMode, detected.Encoders, sourceBitDepth);
     }
 
-    // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc); the
-    // software libraries (libx265, libx264, libsvtav1) are not. Used to flag GPU-backed work.
+    // A hardware encoder is named after its API (e.g. hevc_qsv, h264_vaapi, hevc_nvenc,
+    // hevc_videotoolbox); the software libraries (libx265, libx264, libsvtav1) are not. Used to
+    // flag GPU-backed work.
     private static bool IsHardwareEncoder(string? encoder) =>
         encoder is not null
         && (encoder.EndsWith("_qsv", StringComparison.OrdinalIgnoreCase)
             || encoder.EndsWith("_vaapi", StringComparison.OrdinalIgnoreCase)
-            || encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase));
+            || encoder.EndsWith("_nvenc", StringComparison.OrdinalIgnoreCase)
+            || encoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase));
 
     private Task NotifyAsync() => hub.Clients.All.SendAsync("jobsChanged");
 
