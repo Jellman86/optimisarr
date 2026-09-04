@@ -576,6 +576,8 @@ export const en = {
     status_transcoding: 'Transcoding',
     status_verifying: 'Verifying',
     status_readytoreplace: 'Ready to replace',
+    status_leased: 'Encoding remotely',
+    status_awaitingverification: 'Delivered, awaiting verification',
     status_completed: 'Completed',
     status_failed: 'Failed',
     status_cancelled: 'Cancelled',

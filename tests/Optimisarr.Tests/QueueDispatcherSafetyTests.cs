@@ -1,6 +1,8 @@
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
 
@@ -21,6 +23,46 @@ public sealed class QueueDispatcherSafetyTests
                 RuleProfile.TrackCleanup,
                 audioRemovals,
                 subtitleRemovals));
+    }
+
+    // --- Restart recovery of a delivered remote candidate --------------------------------------
+
+    [Fact]
+    public void A_delivered_candidate_interrupted_mid_verification_is_kept_rather_than_discarded()
+    {
+        // The expensive part — the encode — happened on another machine and is finished. Only this
+        // machine's verdict was interrupted, so the candidate waits for verification to run again.
+        var delivered = RemoteCandidate.PathFor("/work/42", jobId: 7, sourceExtension: ".mkv");
+
+        Assert.Equal(
+            QueueDispatcher.RecoveryAction.KeepDelivered,
+            QueueDispatcher.RecoveryActionFor(JobStatus.Verifying, delivered, attempt: 1));
+    }
+
+    [Fact]
+    public void An_interrupted_local_verification_is_requeued_as_before()
+    {
+        // A local encode that was being verified has a half-trusted output and a source still
+        // here; re-encoding is the honest recovery, exactly as it always was.
+        Assert.Equal(
+            QueueDispatcher.RecoveryAction.Requeue,
+            QueueDispatcher.RecoveryActionFor(JobStatus.Verifying, "/work/42/Film.opt.mkv", attempt: 1));
+    }
+
+    [Fact]
+    public void An_interrupted_local_job_out_of_attempts_is_failed()
+    {
+        Assert.Equal(
+            QueueDispatcher.RecoveryAction.Fail,
+            QueueDispatcher.RecoveryActionFor(JobStatus.Transcoding, "/work/42/Film.opt.mkv", attempt: 1_000));
+    }
+
+    [Fact]
+    public void A_delivered_candidate_is_recognised_by_its_name_and_a_local_output_is_not()
+    {
+        Assert.True(RemoteCandidate.IsDelivered(RemoteCandidate.PathFor("/work/1", 3, ".mp4")));
+        Assert.False(RemoteCandidate.IsDelivered("/work/1/Film.opt.mp4"));
+        Assert.False(RemoteCandidate.IsDelivered(null));
     }
 
     [Fact]

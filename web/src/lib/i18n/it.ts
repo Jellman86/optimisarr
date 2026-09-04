@@ -431,6 +431,8 @@ quarantine: {
     status_transcoding: 'Transcodifica',
     status_verifying: 'Verifica',
     status_readytoreplace: 'Pronto per la sostituzione',
+    status_leased: 'Codifica remota',
+    status_awaitingverification: 'Consegnato, in attesa di verifica',
     status_completed: 'Completato',
     status_failed: 'Fallito',
     status_cancelled: 'Annullato',

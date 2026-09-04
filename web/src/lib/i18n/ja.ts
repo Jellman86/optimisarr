@@ -409,6 +409,8 @@ export const ja: Messages = {
     status_transcoding: "トランスコーディング",
     status_verifying: "検証中",
     status_readytoreplace: "交換準備完了",
+    status_leased: "リモートでエンコード中",
+    status_awaitingverification: "受領済み、検証待ち",
     status_completed: "完了",
     status_failed: "失敗",
     status_cancelled: "キャンセル済み",

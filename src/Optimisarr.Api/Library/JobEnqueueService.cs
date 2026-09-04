@@ -22,6 +22,8 @@ public sealed class JobEnqueueService(OptimisarrDbContext db, CandidateService c
         JobStatus.Probing,
         JobStatus.Transcoding,
         JobStatus.Verifying,
+        JobStatus.Leased,
+        JobStatus.AwaitingVerification,
         JobStatus.ReadyToReplace
     ];
 

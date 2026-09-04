@@ -26,7 +26,18 @@ public enum JobStatus
     /// <see cref="Queued"/> — cannot pick the job up as well. The exclusion is then structural: a
     /// future query cannot forget to check for a lease, because a leased job simply is not queued.
     /// </summary>
-    Leased = 8
+    Leased = 8,
+
+    /// <summary>
+    /// A remote worker has delivered its candidate and this machine has not yet verified it.
+    ///
+    /// Distinct from <see cref="Verifying"/> on purpose. That status means verification is
+    /// running here right now, and restart recovery rightly treats it as interrupted work whose
+    /// output is discarded; a delivered candidate is finished work that must survive a restart
+    /// and wait for the dispatcher to pick it up. Nothing about a candidate in this state is
+    /// trusted yet: every local gate is still to run before it can become a replacement.
+    /// </summary>
+    AwaitingVerification = 9
 }
 
 /// <summary>

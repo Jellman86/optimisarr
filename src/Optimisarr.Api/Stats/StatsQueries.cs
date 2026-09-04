@@ -36,7 +36,8 @@ public static class StatsQueries
         var normalJobs = db.Jobs.Where(job => job.Type == JobType.Normal);
         var queued = await normalJobs.CountAsync(j => j.Status == JobStatus.Queued, cancellationToken);
         var running = await normalJobs.CountAsync(
-            j => j.Status == JobStatus.Probing || j.Status == JobStatus.Transcoding || j.Status == JobStatus.Verifying,
+            j => j.Status == JobStatus.Probing || j.Status == JobStatus.Transcoding || j.Status == JobStatus.Verifying
+                || j.Status == JobStatus.Leased || j.Status == JobStatus.AwaitingVerification,
             cancellationToken);
         var readyToReplace = await normalJobs.CountAsync(j => j.Status == JobStatus.ReadyToReplace, cancellationToken);
         var failed = await normalJobs.CountAsync(j => j.Status == JobStatus.Failed, cancellationToken);

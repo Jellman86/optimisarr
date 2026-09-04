@@ -575,8 +575,8 @@ the replacement workflow is trustworthy.
      no resolved encode policy, so there is nothing to name an encoder *for this worker* from.
 
      **Corrected 2026-09-04:** the assignment now carries a resolved encode contract and a claim
-     can succeed; the same test asserts an executable command is returned. **Still to build:** the
-     verification pass for a returned candidate, and drain controls.
+     can succeed; the same test asserts an executable command is returned. The verification pass
+     for a returned candidate landed the same day. **Still to build:** drain controls.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 
@@ -615,8 +615,9 @@ the replacement workflow is trustworthy.
         ship it as a second server-built array so crop, frame-rate and HDR preparation stay in one
         place), and the worker-side allowlist validation.
 
-     2. **A verification pass for a delivered candidate.** `POST /api/workers/leases/{id}/result`
-        accepts an upload, binds it to the lease and source hash, and sets the job to `Verifying`
+     2. **A verification pass for a delivered candidate: landed 2026-09-04.** Before it,
+        `POST /api/workers/leases/{id}/result`
+        accepted an upload, bound it to the lease and source hash, and set the job to `Verifying`
         — where nothing picks it up. `QueueDispatcher` only ever selects `Queued`. Worse, the
         startup recovery sweep treats any `Verifying` job as interrupted, deletes its work output
         and requeues it, so a returned candidate is silently discarded at the next restart. That is
@@ -636,6 +637,19 @@ the replacement workflow is trustworthy.
         column and no translation surface but hides the distinction. **Decided 2026-09-04: the
         status.** The recovery sweep's mistake is a state-semantics one, and a hidden marker would
         paper over exactly the distinction it gets wrong.
+
+        **Landed:** `JobStatus.AwaitingVerification` (string-converted column, so no migration).
+        Delivery sets it; `DispatchAsync` drains it ahead of new encodes under the same cap and
+        activity policy; `VerifyDeliveredAsync` rebuilds the contract for the delivering worker
+        (`LoadWorkAsync` with the remote placement) and hands the candidate to the same
+        `VerifyAndFinishAsync` a local encode uses, so replacement, auto-replace, VMAF retry and
+        failure handling are shared. Restart recovery (`RecoveryActionFor`) keeps a delivered
+        candidate found mid-verification, recognised by its `remote-<job>` name (`RemoteCandidate`),
+        and requeues local work as before. Enqueue de-duplication, timed cleanup, stats, queue
+        clearing, cancel and the queue page all know the two remote statuses. A result for a job
+        that is no longer `Leased` (cancelled, say) is refused. VMAF is re-measured locally for now;
+        `RemoteQualityEvidenceValidator` is wired in with piece 3, when a worker can produce
+        evidence to validate.
 
      3. **The sidecar's work loop.** Now the next server-independent piece; a claim returns an
         executable command. The client implements two of the ten worker routes. Claim,
