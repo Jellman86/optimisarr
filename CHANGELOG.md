@@ -4,6 +4,18 @@
 
 ### Added
 
+- **A library can now downscale video on re-encode.** Advanced options gain a **Downscale to**
+  choice beside **Skip files above**; the two mention a height and mean opposite things, so they sit
+  together. Sources already at or below the chosen height keep their own size — this only ever
+  shrinks. Under the hood the exact output size is computed once from the probed source and handed
+  to both the encode filter and the verification gate, so the two cannot disagree about rounding.
+  That gate previously rejected any change of resolution with a message naming a "resize policy"
+  that did not exist; it now has one, and holds an output to the size the encode intended rather
+  than to the source. The VMAF check still compares against the original at full size, so a heavy
+  downscale can honestly fail a strict quality floor. A downscale forces software decoding for that
+  job, because the scale filter cannot read frames a hardware decoder leaves on the GPU; the hardware
+  encoder is unaffected. Nothing is set by default.
+
 - **A minimum bitrate can now sit under the maximum.** The **Fine-tune the encoder** group offers a
   floor once a cap is set, completing the bitrate pair asked for in #95. It is deliberately the
   less useful half: a floor forces bits into scenes that need none, so it costs space rather than

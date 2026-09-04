@@ -202,6 +202,48 @@ public sealed class FfmpegCommandBuilderTests
             FfmpegCommandBuilder.Build(Reencode() with { Tuning = EncoderTuning.None }));
     }
 
+    [Fact]
+    public void A_downscale_emits_an_exact_scale_filter_first_in_the_video_chain()
+    {
+        // Explicit width and height, never -2: the same PictureSize feeds the verification gate,
+        // so the filter and the gate cannot disagree about rounding. First in the chain because a
+        // hardware upload has to come after any software filter, and scaling before a tone-map
+        // does the expensive colour work on fewer pixels.
+        var args = FfmpegCommandBuilder.Build(Reencode(tonemap: true) with
+        {
+            DownscaleTo = new PictureSize(1280, 720)
+        });
+
+        var chain = args[IndexOf(args, "-filter:v:0") + 1];
+        Assert.StartsWith("scale=1280:720", chain);
+        Assert.Contains("tonemap", chain);
+        Assert.True(chain.IndexOf("scale=1280:720", StringComparison.Ordinal)
+            < chain.IndexOf("tonemap", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void No_downscale_leaves_the_command_exactly_as_it_was()
+    {
+        Assert.Equal(
+            FfmpegCommandBuilder.Build(Reencode()),
+            FfmpegCommandBuilder.Build(Reencode() with { DownscaleTo = null }));
+        Assert.DoesNotContain("-filter:v:0", FfmpegCommandBuilder.Build(Reencode()));
+    }
+
+    [Fact]
+    public void A_downscale_on_a_remux_is_ignored_because_nothing_is_re_encoded()
+    {
+        // A copied stream cannot be scaled. The resolver never produces this pair, but the builder
+        // refusing it too means a remux can never silently become a re-encode.
+        var args = FfmpegCommandBuilder.Build(Reencode(videoCodec: null) with
+        {
+            DownscaleTo = new PictureSize(1280, 720)
+        });
+
+        Assert.DoesNotContain("-filter:v:0", args);
+        Assert.Equal("copy", args[IndexOf(args, "-c") + 1]);
+    }
+
     private static TranscodeSpec Reencode(
         string? videoCodec = "hevc",
         int? crf = 23,

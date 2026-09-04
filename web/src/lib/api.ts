@@ -132,6 +132,7 @@ export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
   maxHeight: number | null
+  videoDownscaleHeight: number | null
   reencodeSameCodecAboveBytes: number | null
   skipEfficientSources: boolean
   targetVideoCodec: string | null
@@ -236,6 +237,7 @@ export function newLibraryDefaults(): SaveLibrary {
     priority: 0,
     minFileSizeBytes: null,
     maxHeight: null,
+    videoDownscaleHeight: null,
     reencodeSameCodecAboveBytes: null,
     skipEfficientSources: true,
     targetVideoCodec: null,

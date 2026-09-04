@@ -681,7 +681,22 @@ public static class VerificationEvaluator
             return Fail(name, "Source/output video dimensions could not be compared.");
         }
 
-        if (originalWidth != outputWidth || originalHeight != outputHeight)
+        // A re-encode that was told to scale is judged against what it was told, not against the
+        // source. An output at the source size when a downscale was intended is the interesting
+        // failure: the file is sound, but it is not the job that was asked for, and it must not
+        // replace the original under the belief that it is smaller. A copied stream never has an
+        // intent to honour — it cannot be scaled — so it falls through to the source-size rule.
+        if (input.VideoReencoded
+            && input.ExpectedWidth is { } expectedWidth
+            && input.ExpectedHeight is { } expectedHeight)
+        {
+            if (outputWidth != expectedWidth || outputHeight != expectedHeight)
+            {
+                return Fail(name,
+                    $"Video resolution is {outputWidth}x{outputHeight}; the encode intended {expectedWidth}x{expectedHeight} (source {originalWidth}x{originalHeight}).");
+            }
+        }
+        else if (originalWidth != outputWidth || originalHeight != outputHeight)
         {
             return Fail(name,
                 $"Video resolution changed from {originalWidth}x{originalHeight} to {outputWidth}x{outputHeight} without a resize policy.");

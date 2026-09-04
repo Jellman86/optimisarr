@@ -33,6 +33,17 @@ public sealed record RuleSettings
     public int? MaxHeight { get; init; }
 
     /// <summary>
+    /// When set, a video re-encode taller than this is scaled down to it, keeping aspect. Sources
+    /// at or below it are untouched — a downscale exists to save space, and upscaling spends bits
+    /// to invent nothing. Distinct from <see cref="MaxHeight"/>, which excludes taller files
+    /// entirely; when both are set the exclusion wins, since it is checked first. The exact output
+    /// size is computed once from the probed source so the encode filter and the verification gate
+    /// agree by construction. The VMAF gate still compares at the source's display size, so a heavy
+    /// downscale can legitimately fail a high quality floor — which is the honest result.
+    /// </summary>
+    public int? VideoDownscaleHeight { get; init; }
+
+    /// <summary>
     /// When set, a video source already encoded at or below this density — measured as bits per
     /// pixel-second, i.e. the file bitrate divided by (width × height), so it is resolution- and
     /// frame-rate-independent — is skipped before any transcode, because re-encoding it to the

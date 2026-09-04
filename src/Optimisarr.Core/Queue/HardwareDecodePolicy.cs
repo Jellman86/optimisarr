@@ -17,8 +17,13 @@ public static class HardwareDecodePolicy
         bool isDisposable,
         MediaKind kind,
         string? videoCodec,
-        int? clipSeconds) =>
+        int? clipSeconds,
+        // A software picture filter — the downscale — cannot consume frames that a hardware
+        // decoder left on the GPU; ffmpeg fails the graph outright. Decoding in software keeps the
+        // filter working while the selected hardware encoder stays in use.
+        bool requiresSoftwareFilter = false) =>
         configured
+        && !requiresSoftwareFilter
         && !(isDisposable
             && kind is not (MediaKind.Audio or MediaKind.Image)
             && videoCodec is not null

@@ -109,6 +109,7 @@ internal static class LibraryEndpoints
                 Priority = parsed.Priority,
                 MinFileSizeBytes = parsed.MinFileSizeBytes,
                 MaxHeight = parsed.MaxHeight,
+                VideoDownscaleHeight = parsed.VideoDownscaleHeight,
                 ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes,
                 SkipEfficientSources = parsed.SkipEfficientSources,
                 TargetVideoCodec = parsed.TargetVideoCodec,
@@ -200,6 +201,7 @@ internal static class LibraryEndpoints
             library.Priority = parsed.Priority;
             library.MinFileSizeBytes = parsed.MinFileSizeBytes;
             library.MaxHeight = parsed.MaxHeight;
+            library.VideoDownscaleHeight = parsed.VideoDownscaleHeight;
             library.ReencodeSameCodecAboveBytes = parsed.ReencodeSameCodecAboveBytes;
             library.SkipEfficientSources = parsed.SkipEfficientSources;
             library.TargetVideoCodec = parsed.TargetVideoCodec;

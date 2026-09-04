@@ -14,6 +14,7 @@ internal readonly record struct ParsedLibrary(
     int Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    int? VideoDownscaleHeight,
     long? ReencodeSameCodecAboveBytes,
     bool SkipEfficientSources,
     string? TargetVideoCodec,
@@ -184,6 +185,16 @@ internal static class LibraryRequestParser
         if (request.MaxHeight is <= 0)
         {
             error = "Maximum resolution must be greater than zero.";
+            return false;
+        }
+
+        // Bounded to real display heights, and even because 4:2:0 chroma needs even dimensions
+        // on both axes — an odd height is a filter that fails rather than a picture that is
+        // slightly the wrong size.
+        if (request.VideoDownscaleHeight is { } downscale
+            && (downscale < 240 || downscale > 4320 || downscale % 2 != 0))
+        {
+            error = "Downscale height must be an even number between 240 and 4320 pixels, or blank for none.";
             return false;
         }
 
@@ -428,6 +439,7 @@ internal static class LibraryRequestParser
             request.Priority ?? 0,
             request.MinFileSizeBytes,
             request.MaxHeight,
+            request.VideoDownscaleHeight,
             request.ReencodeSameCodecAboveBytes,
             request.SkipEfficientSources ?? true,
             Trim(request.TargetVideoCodec),

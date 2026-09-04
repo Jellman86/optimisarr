@@ -20,6 +20,10 @@ public sealed record OriginalSnapshot(
     bool ImageDownscaleRequested = false,
     bool VideoReencoded = true,
     string? ExpectedVideoCodec = null,
+    // The size the encode intended to produce, when a downscale applied. Null means "the source
+    // size", which is what the structure gate has always required.
+    int? ExpectedWidth = null,
+    int? ExpectedHeight = null,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
@@ -272,6 +276,8 @@ public sealed class VerificationService(
                 OriginalHeight: originalProbe.Height,
                 OutputWidth: outputProbe.Width,
                 OutputHeight: outputProbe.Height,
+                ExpectedWidth: reference.ExpectedWidth,
+                ExpectedHeight: reference.ExpectedHeight,
                 ImageQualityMeasured: imageQualityResult?.Measured ?? false,
                 ImageQualityError: imageQualityResult?.Error,
                 ImageSsim: imageQualityResult?.Ssim,

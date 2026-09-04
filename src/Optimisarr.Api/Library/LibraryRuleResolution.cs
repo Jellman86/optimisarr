@@ -59,6 +59,7 @@ internal static class LibraryRuleResolution
         {
             MinFileSizeBytes = library.MinFileSizeBytes,
             MaxHeight = library.MaxHeight,
+            VideoDownscaleHeight = library.VideoDownscaleHeight,
             ReencodeSameCodecAboveBytes = library.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = library.TargetVideoCodec,
             TargetContainer = library.TargetContainer,

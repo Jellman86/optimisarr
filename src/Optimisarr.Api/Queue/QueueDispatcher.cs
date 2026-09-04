@@ -919,7 +919,9 @@ public sealed class QueueDispatcher(
             media.MaxAudioChannels,
             media.IsVariableFrameRate == true,
             sourceAudioLanguages,
-            sourceSubtitleLanguages);
+            sourceSubtitleLanguages,
+            sourceWidth: media.Width,
+            sourceHeight: media.Height);
 
         // The inventory made the job eligible, but the mandatory fresh probe is authoritative.
         // If its current track set has nothing to remove, cancel cleanly instead of producing a
@@ -979,6 +981,10 @@ public sealed class QueueDispatcher(
             // would add a full decode pass without providing another safety signal.
             VideoReencoded: spec.VideoCodec is not null,
             ExpectedVideoCodec: spec.VideoCodec,
+            // The size a downscale was told to produce. The gate holds the output to this rather
+            // than to the source, and it is the same PictureSize the scale filter was built from.
+            ExpectedWidth: spec.DownscaleTo?.Width,
+            ExpectedHeight: spec.DownscaleTo?.Height,
             // The tracks the kept-languages rules remove on purpose; verification holds
             // the output to exactly this plan and judges fidelity against the kept tracks.
             RemovedAudioStreamIndexes: spec.RemoveAudioStreamIndexes,
@@ -1073,7 +1079,10 @@ public sealed class QueueDispatcher(
             isDisposable,
             spec.Kind,
             spec.VideoCodec,
-            spec.ClipSeconds);
+            spec.ClipSeconds,
+            // The downscale is a software scale filter; it cannot read frames a hardware decoder
+            // leaves on the GPU. Software decode keeps it working; the hardware encoder is unaffected.
+            requiresSoftwareFilter: spec.DownscaleTo is not null);
         string? hardwareToneMapTransfer = null;
         var hardwareToneMapDolbyVision = media.IsDolbyVision;
         var verificationPolicy = ResolveVerificationPolicy(
