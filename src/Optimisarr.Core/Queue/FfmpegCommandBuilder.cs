@@ -48,11 +48,14 @@ public sealed record TranscodeSpec(
     // The picture to keep when black bars are removed, in source coordinates, or null for none.
     // Applied before any downscale, so a downscale is computed from the cropped size.
     CropRect? CropTo = null,
-    // The exact rate a video re-encode is decimated to under a library's frame-rate cap, or null
-    // to keep the source cadence. Always a clean halving of the source (see FrameRatePlanner), and
-    // the same value the VMAF reference is decimated to so the judged frames are the kept frames.
-    double? TargetFrameRate = null)
+    // How a video re-encode thins its frames under a library's frame-rate cap, or null to keep
+    // the source cadence. Always a clean halving of the source (see FrameRatePlanner), and the
+    // same decimation the VMAF reference receives so the judged frames are the kept frames.
+    FrameRateDecimation? FrameRate = null)
 {
+    /// <summary>The rate a capped encode produces, or null when the source cadence is kept.</summary>
+    public double? TargetFrameRate => FrameRate?.TargetFps;
+
     /// <summary>
     /// The size this encode intends to produce, or null when it intends the source size. The
     /// verification gate holds the output to this. A downscale already accounts for any crop.
@@ -310,9 +313,9 @@ public static class FfmpegCommandBuilder
         }
         // Decimate after the geometry and before the tone-map, so the expensive colour work runs
         // only on the frames that survive.
-        if (spec.TargetFrameRate is { } targetFrameRate)
+        if (spec.FrameRate is { } decimation)
         {
-            filters.Add(FrameRatePlanner.Filter(targetFrameRate));
+            filters.Add(FrameRatePlanner.Filter(decimation));
         }
         if (spec.TonemapToSdr)
         {

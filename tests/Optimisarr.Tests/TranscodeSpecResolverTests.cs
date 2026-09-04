@@ -549,6 +549,22 @@ public sealed class TranscodeSpecResolverTests
     }
 
     [Fact]
+    public void A_variable_frame_rate_source_is_not_capped()
+    {
+        // The cap is a clean halving, and an irregular stream has no clean half. Its own
+        // cadence is kept, and the VFR handling stays in force.
+        var rules = Hevc with { MaxFrameRate = 30 };
+
+        var spec = TranscodeSpecResolver.Resolve(
+            rules, inputPath: "/data/films/Clip.mkv", relativePath: "Clip.mkv",
+            workRoot: "/work", sourceIsHdr: false, crf: 23, preset: "medium",
+            sourceIsVariableFrameRate: true, sourceFrameRate: 59.94);
+
+        Assert.Null(spec.FrameRate);
+        Assert.Null(spec.TargetFrameRate);
+    }
+
+    [Fact]
     public void An_unknown_source_rate_gets_no_target()
     {
         var rules = Hevc with { MaxFrameRate = 30 };

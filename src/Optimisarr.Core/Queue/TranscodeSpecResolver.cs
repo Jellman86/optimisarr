@@ -142,9 +142,9 @@ public static class TranscodeSpecResolver
                     rules.VideoDownscaleHeight),
             CropTo: rules.TargetVideoCodec is null ? null : detectedCrop,
             // A copied stream keeps its cadence too; only a re-encode can drop frames.
-            TargetFrameRate: rules.TargetVideoCodec is null
+            FrameRate: rules.TargetVideoCodec is null
                 ? null
-                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate));
+                : FrameRatePlanner.Plan(sourceFrameRate, rules.MaxFrameRate, sourceIsVariableFrameRate));
     }
 
     /// <summary>True for MP4-family containers, which cannot store image-based subtitles.</summary>

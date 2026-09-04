@@ -29,6 +29,16 @@ Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and i
 exit path. One job at a time. Quality evidence (VMAF) is not yet measured here; the server measures
 it itself for now.
 
+This loop has run end to end on real hardware: `LiveWorkLoopTests` pairs with a running server,
+claims a queued job, encodes it with the bundled ffmpeg and delivers it, and the server's own
+verification — every gate, VMAF included — then judges the candidate. Run it against a server that
+has a job queued this Mac can take:
+
+```bash
+OPTIMISARR_LIVE_URL=localhost:8787 OPTIMISARR_LIVE_PIN="1234 5678" \
+OPTIMISARR_FFMPEG=$(pwd)/vendor/ffmpeg swift test --filter LiveWorkLoop
+```
+
 What it reports is real. It bundles its own ffmpeg, built from pinned source by
 [`scripts/build-ffmpeg.sh`](scripts/build-ffmpeg.sh), and probes this machine in two stages: parse
 `ffmpeg -encoders`, then confirm each VideoToolbox encoder with a real throwaway encode. Every Apple

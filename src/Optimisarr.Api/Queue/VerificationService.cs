@@ -27,9 +27,9 @@ public sealed record OriginalSnapshot(
     // The crop the encode applied, so the quality reference is cropped identically. Null means
     // the full frame was encoded.
     Optimisarr.Core.Queue.CropRect? Crop = null,
-    // The rate the encode decimated to under a frame-rate cap, so the quality reference is
+    // How the encode thinned its frames under a frame-rate cap, so the quality reference is
     // decimated identically and the judged frames are the kept frames. Null keeps the source rate.
-    double? TargetFrameRate = null,
+    Optimisarr.Core.Queue.FrameRateDecimation? FrameRate = null,
     // Audio-relative indexes the kept-languages rule removed on purpose; verification expects
     // exactly those tracks gone and judges channel/sample-rate fidelity against the kept ones.
     IReadOnlyList<int>? RemovedAudioStreamIndexes = null,
@@ -284,7 +284,7 @@ public sealed class VerificationService(
                 OutputHeight: outputProbe.Height,
                 ExpectedWidth: reference.ExpectedWidth,
                 ExpectedHeight: reference.ExpectedHeight,
-                ExpectedFrameRate: reference.TargetFrameRate,
+                ExpectedFrameRate: reference.FrameRate?.TargetFps,
                 OutputFrameRate: outputProbe.VideoFrameRate,
                 ImageQualityMeasured: imageQualityResult?.Measured ?? false,
                 ImageQualityError: imageQualityResult?.Error,
@@ -449,8 +449,9 @@ public sealed class VerificationService(
             MeasureDurationSeconds: clipDurationSeconds,
             FrameSubsample: frameSubsample,
             Acceleration: acceleration,
-            ReferenceFrameRate: reference.TargetFrameRate ?? originalProbe.VideoFrameRate,
-            ReferenceCrop: reference.Crop);
+            ReferenceFrameRate: reference.FrameRate?.TargetFps ?? originalProbe.VideoFrameRate,
+            ReferenceCrop: reference.Crop,
+            ReferenceDecimation: reference.FrameRate);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

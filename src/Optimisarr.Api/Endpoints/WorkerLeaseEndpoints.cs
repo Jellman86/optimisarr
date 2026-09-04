@@ -187,6 +187,9 @@ internal static class WorkerLeaseEndpoints
                     AcquiredAt = lease.AcquiredUtc,
                     ExpiresAt = lease.ExpiresUtc,
                     State = lease.State,
+                    // Bound to the lease so delivery names the candidate by the contract, not by
+                    // the source; the replacement's final extension comes from that name.
+                    OutputExtension = assignment.OutputExtension,
                 });
 
                 // The exclusion that matters: off the queue, so this machine will not also run it.

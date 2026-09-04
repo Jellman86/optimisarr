@@ -31,6 +31,15 @@ public sealed class JobLease
 
     public LeaseState State { get; set; } = LeaseState.Held;
 
+    /// <summary>
+    /// The container extension the assignment told the worker to produce, recorded when the
+    /// lease is granted. The delivered candidate is named with it, because the replacement takes
+    /// its final extension from the candidate's name: a file named after the source but holding
+    /// the contract's container would be placed under the wrong extension. Null only for a lease
+    /// granted before this existed, and such a lease can no longer deliver.
+    /// </summary>
+    public string? OutputExtension { get; set; }
+
     /// <summary>Rebuilds the domain lease so every decision runs through one state machine.</summary>
     public WorkerLease ToDomain() =>
         new(Id, JobId, WorkerId, AcquiredAt, ExpiresAt, State);
