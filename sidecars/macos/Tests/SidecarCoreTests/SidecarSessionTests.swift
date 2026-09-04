@@ -28,6 +28,16 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
             url: request.url!, statusCode: reply.status, httpVersion: nil, headerFields: nil)!
         return (data, response)
     }
+
+    func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse {
+        let (data, response) = try await send(request)
+        try data.write(to: destination)
+        return response
+    }
+
+    func upload(_ request: URLRequest, fromFile file: URL) async throws -> (Data, HTTPURLResponse) {
+        try await send(request)
+    }
 }
 
 @MainActor

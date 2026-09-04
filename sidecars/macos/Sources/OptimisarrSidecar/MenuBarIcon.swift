@@ -88,7 +88,8 @@ enum MenuBarIcon {
     /// glance at a menu bar icon is to find out whether something needs attention.
     private static func badge(for status: SidecarStatus) -> Badge? {
         switch status {
-        case .connected: return nil
+        // Working is as ordinary as connected: a job running is the machine doing its job.
+        case .connected, .working: return nil
         case .pairing: return .hollow
         case .unpaired: return .hollow
         case .unreachable, .disabledOnServer: return .solid
