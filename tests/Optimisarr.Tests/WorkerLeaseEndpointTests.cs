@@ -207,7 +207,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.False(assignment.TryGetProperty("sourcePath", out _));
 
         var quality = assignment.GetProperty("quality");
-        Assert.Equal("vmaf_v0.6.1", quality.GetProperty("model").GetString());
+        Assert.Equal("vmaf_v1.0.16_3d0h", quality.GetProperty("model").GetString());
         Assert.True(quality.GetProperty("minimumHarmonicMean").GetDouble() > 0);
     }
 

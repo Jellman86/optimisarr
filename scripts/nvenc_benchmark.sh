@@ -334,7 +334,7 @@ for sample_index in "${!input_files[@]}"; do
       set +e
       "$vmaf_ffmpeg" -nostdin -hide_banner -v error \
         -i "$output" -i "$source_file" -t "$measured_duration" \
-        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[dist];[1:v]trim=duration=$measured_duration,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:n_subsample=5:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[dist];[1:v]trim=duration=$measured_duration,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v1.0.16_3d0h:n_threads=1:n_subsample=5:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
         -f null - >/dev/null 2>&1
       vmaf_status=$?
       set -e

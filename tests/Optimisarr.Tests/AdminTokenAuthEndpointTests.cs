@@ -528,7 +528,7 @@ public sealed class AdminTokenAuthEndpointTests
                             72,
                             null,
                             null,
-                            ModelVersion: "vmaf_v0.6.1",
+                            ModelVersion: "vmaf_v1.0.16_3d0h",
                             VmafFifthPercentile: 88,
                             FrameCount: 288))));
             }

@@ -26,7 +26,7 @@ for _ in {1..30}; do
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=48x48:rate=2:duration=1" \
         -f lavfi -i "testsrc2=size=64x64:rate=2:duration=1" \
-        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:feature=name=psnr\|name=float_ssim:n_threads=1:n_subsample=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v1.0.16_3d0h:feature=name=psnr\|name=float_ssim:n_threads=1:n_subsample=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
         -f null -
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
 
@@ -37,7 +37,7 @@ for _ in {1..30}; do
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" \
         -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" \
-        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS[ref];[dist][ref]libvmaf=model=version=vmaf_4k_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS[ref];[dist][ref]libvmaf=model=version=vmaf_v1.0.16_1d5h_2160:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
         -f null -
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
 
@@ -48,7 +48,7 @@ for _ in {1..30}; do
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1" \
         -f lavfi -i "testsrc2=size=64x64:rate=1:duration=1,setparams=range=limited:color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc" \
-        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v1.0.16_3d0h:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
         -f null -
       grep -Eq "\"vmaf\"[[:space:]]*:" "$vmaf_log"
       rm -f "$vmaf_log"
@@ -64,7 +64,7 @@ for _ in {1..30}; do
         -t 2 -c:v libx265 -crf 24 -preset ultrafast /tmp/optimisarr-vmaf-preview.mkv
       "$OPTIMISARR_FFMPEG_VMAF" -nostdin -v error \
         -i /tmp/optimisarr-vmaf-preview.mkv -ss 1 -i /tmp/optimisarr-vmaf-source.mkv \
-        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
+        -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=64:64:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v1.0.16_3d0h:n_threads=1:log_fmt=json:log_path=$vmaf_log:shortest=1:repeatlast=0" \
         -f null -
       vmaf_mean="$(awk -F: "/\"pooled_metrics\"[[:space:]]*:/ { pooled=1; next } pooled && /\"vmaf\"[[:space:]]*:/ { in_vmaf=1; next } in_vmaf && /\"mean\"[[:space:]]*:/ { gsub(/[,[:space:]]/, \"\", \$2); print \$2; exit }" "$vmaf_log")"
       test -n "$vmaf_mean"

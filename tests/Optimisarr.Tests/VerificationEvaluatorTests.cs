@@ -682,7 +682,7 @@ public sealed class VerificationEvaluatorTests
         {
             QualityScores = new QualityScores(
                 82.5, 80.5, 42, null, null,
-                ModelVersion: "vmaf_v0.6.1",
+                ModelVersion: "vmaf_v1.0.16_3d0h",
                 VmafFifthPercentile: 65,
                 FrameCount: 288)
         };
@@ -1465,7 +1465,7 @@ public sealed class VerificationEvaluatorTests
             QualityMeasured = true,
             QualityScores = new QualityScores(
                 95.0, 94.5, 55.0, 45.0, 0.99,
-                ModelVersion: "vmaf_v0.6.1",
+                ModelVersion: "vmaf_v1.0.16_3d0h",
                 Preprocessing: "SDR",
                 VmafFifthPercentile: 88.0,
                 FrameCount: 2400)
@@ -1476,7 +1476,7 @@ public sealed class VerificationEvaluatorTests
         Assert.True(report.Passed);
         Assert.Equal(CheckOutcome.Passed, Outcome(report, QualityCheck));
         var detail = Assert.Single(report.Checks, check => check.Name == QualityCheck).Detail;
-        Assert.Contains("model vmaf_v0.6.1", detail);
+        Assert.Contains("model vmaf_v1.0.16_3d0h", detail);
         Assert.Contains("SDR", detail);
     }
 

@@ -15,13 +15,13 @@ public sealed class QualityScoreCommandBuilderTests
             new QualityMeasurementContext(1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false),
             threads: 4);
 
-        Assert.Equal("vmaf_v0.6.1", command.ModelVersion);
+        Assert.Equal("vmaf_v1.0.16_3d0h", command.ModelVersion);
         Assert.Equal("SDR", command.Preprocessing);
         Assert.Equal("/work/output.mkv", ValueAfter(command.Arguments, "-i", occurrence: 1));
         Assert.Equal("/data/original.mkv", ValueAfter(command.Arguments, "-i", occurrence: 2));
         Assert.Contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist]", command.FilterGraph);
         Assert.Contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref]", command.FilterGraph);
-        Assert.Contains("model=version=vmaf_v0.6.1", command.FilterGraph);
+        Assert.Contains("model=version=vmaf_v1.0.16_3d0h", command.FilterGraph);
         Assert.Contains("n_threads=4", command.FilterGraph);
         Assert.Contains("n_subsample=1", command.FilterGraph);
         Assert.DoesNotContain("feature=", command.FilterGraph);
@@ -250,8 +250,8 @@ public sealed class QualityScoreCommandBuilderTests
             new QualityMeasurementContext(3840, 2160, ReferenceIsHdr: false, HdrConvertedToSdr: false),
             threads: 2);
 
-        Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
-        Assert.Contains("model=version=vmaf_4k_v0.6.1", command.FilterGraph);
+        Assert.Equal("vmaf_v1.0.16_1d5h_2160", command.ModelVersion);
+        Assert.Contains("model=version=vmaf_v1.0.16_1d5h_2160", command.FilterGraph);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public sealed class QualityScoreCommandBuilderTests
             new QualityMeasurementContext(3840, 1608, ReferenceIsHdr: false, HdrConvertedToSdr: false),
             threads: 2);
 
-        Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
+        Assert.Equal("vmaf_v1.0.16_1d5h_2160", command.ModelVersion);
     }
 
     [Fact]
@@ -424,7 +424,7 @@ public sealed class QualityScoreCommandBuilderTests
                 ReferenceCrop: new Optimisarr.Core.Queue.CropRect(3840, 1600, 0, 280)),
             threads: 4);
 
-        Assert.Equal("vmaf_4k_v0.6.1", command.ModelVersion);
+        Assert.Equal("vmaf_v1.0.16_1d5h_2160", command.ModelVersion);
     }
 
     [Fact]

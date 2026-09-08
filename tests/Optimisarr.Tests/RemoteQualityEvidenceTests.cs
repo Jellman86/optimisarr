@@ -21,7 +21,7 @@ public class RemoteQualityEvidenceTests
         CandidateSha256: CandidateHash,
         HarmonicMean: 96.2,
         Minimum: 88.0,
-        Model: "vmaf_v0.6.1",
+        Model: "vmaf_v1.0.16_3d0h",
         MeasuredAgainstHarmonicMean: 93.0,
         MeasuredAgainstMinimum: 80.0);
 
