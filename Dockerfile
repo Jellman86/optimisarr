@@ -64,7 +64,7 @@ COPY --from=vmaf-ffmpeg /ffmpeg /usr/local/lib/optimisarr/ffmpeg-vmaf
 RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
     | grep -Eq '^[[:space:]].*[[:space:]]libvmaf[[:space:]]'
 
-COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
+COPY --chmod=0755 docker/entrypoint.sh /usr/bin/entrypoint.sh
 COPY --chmod=0755 scripts/nvenc_benchmark.sh /app/scripts/nvenc-benchmark
 COPY --from=api-build /app/publish/ /app/
 
@@ -81,4 +81,4 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl --fail --silent http://127.0.0.1:8787/api/ready || exit 1
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["entrypoint.sh"]
