@@ -3,12 +3,17 @@ using System.Text.RegularExpressions;
 
 namespace Optimisarr.Core.Queue;
 
-/// <summary>A normalised progress reading from FFmpeg's human or machine-readable output.</summary>
+/// <summary>
+/// A normalised progress reading from FFmpeg's human or machine-readable output.
+/// <see cref="IsFinal"/> is true only for the <c>progress=end</c> block of the machine-readable
+/// protocol: FFmpeg has written its trailer and has nothing left to do but exit.
+/// </summary>
 public sealed record FfmpegProgressSample(
     double? ElapsedSeconds,
     double? Fps,
     double? Speed,
-    long? Frame = null);
+    long? Frame = null,
+    bool IsFinal = false);
 
 /// <summary>
 /// Pure parser for FFmpeg's stderr progress lines (<c>time=…</c>, <c>fps=…</c>,
