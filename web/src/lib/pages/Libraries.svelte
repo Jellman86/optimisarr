@@ -10,6 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
+  import ActionMenu from '../components/ActionMenu.svelte'
 
   let {
     embeddedEditorId = null,
@@ -708,6 +709,18 @@
 
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
   let access = $state<Record<number, LibraryAccess>>({})
+
+  // One line for how a library gets its work: the auto-optimise window (or that it is off), and
+  // whether verified outputs replace originals on their own.
+  function scheduleLabel(library: Library): string {
+    const window = library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd
+      ? i18n.m.libraries.any_time
+      : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`
+    const schedule = library.autoEnqueueEnabled
+      ? t(i18n.m.libraries.auto_optimise_window, { window })
+      : i18n.m.libraries.auto_optimise_off
+    return library.autoReplace ? `${schedule} · ${i18n.m.libraries.badge_auto_replace}` : schedule
+  }
 
   function accessMessage(value: LibraryAccess): string {
     if (!value.exists) return i18n.m.libraries.access_missing_detail
@@ -2390,84 +2403,92 @@
     {/if}
   {/if}
 {:else if libraries.length > 0}
-  <div class="grid gap-4">
+  <!-- One card per library, two to a row. Each leads with the number that matters (how many
+       files) and a plain-words status; preset, schedule and path follow as a short list. Scan is
+       the only button — enqueue, configure and delete sit in the menu so the destructive action
+       never competes with the primary one. -->
+  <div class="grid gap-4 md:grid-cols-2">
     {#each libraries as library (library.id)}
-      <div class="card p-4">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
-              <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
-              <!-- The rule profile is a video preset; only show it for video libraries (it is
-                   meaningless for Music/Photo, which use their own audio/image rules). -->
-              {#if isVideoType(library.mediaType)}
-                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(library.ruleProfile)}</span>
+      {@const summary = summaries[library.id]}
+      {@const a = access[library.id]}
+      {@const busy = busyId === library.id}
+      <div class="card flex flex-col gap-3.5 p-5 {library.enabled ? '' : 'opacity-60'}" data-library-card={library.id}>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <span class="truncate text-base font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
+            <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
+            {#if library.priority !== 0}
+              <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
+            {/if}
+            {#if !library.enabled}
+              <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.libraries.badge_disabled}</span>
+            {/if}
+            <!-- Access is only worth a badge when it is a problem; a healthy path says nothing. -->
+            {#if a && !a.ok}
+              {#if !a.exists}
+                <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
+              {:else if !a.readable}
+                <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
+              {:else}
+                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
               {/if}
-              {#if library.priority !== 0}
-                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
-              {/if}
-              {#if !library.enabled}
-                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.libraries.badge_disabled}</span>
-              {/if}
-              {#if library.autoEnqueueEnabled}
-                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title={i18n.m.libraries.auto_optimise_title}>
-                  {t(i18n.m.libraries.badge_auto_optimise, { window: library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? i18n.m.libraries.any_time : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}` })}
-                </span>
-              {/if}
-              {#if library.autoReplace}
-                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" title={i18n.m.libraries.auto_replace_title}>{i18n.m.libraries.badge_auto_replace}</span>
-              {/if}
-              {#if access[library.id]}
-                {@const a = access[library.id]}
-                {#if a.ok}
-                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={accessMessage(a)}>{i18n.m.libraries.access_ok}</span>
-                {:else if !a.exists}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
-                {:else if !a.readable}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
-                {:else}
-                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
-                {/if}
-              {/if}
-            </div>
-            <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{library.path}</div>
-            <div class="mt-1 text-xs text-slate-400">
-              {t(i18n.m.libraries.files_discovered, { count: library.fileCount.toLocaleString() })}
-              {#if summaries[library.id]}
-                · <span class="text-emerald-600 dark:text-emerald-400">{t(i18n.m.libraries.eligible_count, { count: summaries[library.id].eligible.toLocaleString() })}</span>
-                · {t(i18n.m.libraries.skipped_count, { count: summaries[library.id].skipped.toLocaleString() })}
-              {/if}
-              {#if library.autoEnqueueEnabled && library.lastAutoEnqueueAt}
-                · {t(i18n.m.libraries.last_auto_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}
-              {/if}
-            </div>
-            {#if access[library.id] && !access[library.id].ok}
-              <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <span>{accessMessage(access[library.id])}</span>
-              </div>
             {/if}
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
-              <Icon name={busyId === library.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === library.id ? 'animate-spin' : ''}" />
-              {busyId === library.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
-            </button>
-            <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title={i18n.m.libraries.enqueue_title}>
-              <Icon name="plus" class="h-4 w-4" />
-              {i18n.m.libraries.enqueue}
-            </button>
-            <button class="btn" onclick={() => router.go(`/libraries/${library.id}/configure`)} disabled={busyId === library.id}>
-              <Icon name="sliders" class="h-4 w-4" />
-              {i18n.m.libraries.configure}
-            </button>
-            <button class="btn btn-danger" onclick={() => remove(library)} disabled={busyId === library.id}>
-              <Icon name="trash" class="h-4 w-4" />
-              {i18n.m.libraries.delete}
-            </button>
-          </div>
+          <ActionMenu
+            label={t(i18n.m.libraries.more_actions, { name: library.name })}
+            disabled={busy}
+            items={[
+              { label: i18n.m.libraries.enqueue, icon: 'plus', title: i18n.m.libraries.enqueue_title, disabled: !library.enabled, onSelect: () => enqueue(library) },
+              { label: i18n.m.libraries.configure, icon: 'sliders', onSelect: () => router.go(`/libraries/${library.id}/configure`) },
+              { label: i18n.m.libraries.delete, icon: 'trash', danger: true, onSelect: () => remove(library) },
+            ]}
+          />
         </div>
 
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-slate-800 dark:text-slate-100">{library.fileCount.toLocaleString()}</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.libraries.files_label}</span>
+          {#if summary}
+            <!-- The one place the summary lights up: only when something is actually waiting. -->
+            {#if summary.eligible > 0}
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-cyan-600 dark:text-cyan-400" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+                <Icon name="plus" class="h-3.5 w-3.5" />
+                {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
+              </span>
+            {:else}
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+                <Icon name="check" class="h-3.5 w-3.5" />
+                {i18n.m.libraries.all_optimal}
+              </span>
+            {/if}
+          {/if}
+        </div>
+
+        <div class="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <div class="flex items-center gap-2"><Icon name="folder" class="h-3.5 w-3.5 flex-shrink-0" /><span class="truncate font-mono">{library.path}</span></div>
+          <!-- The rule profile is a video preset; it is meaningless for Music/Photo libraries. -->
+          {#if isVideoType(library.mediaType)}
+            <div class="flex items-center gap-2"><Icon name="sliders" class="h-3.5 w-3.5 flex-shrink-0" /><span>{profileLabel(library.ruleProfile)}</span></div>
+          {/if}
+          <div class="flex items-center gap-2"><Icon name="clock" class="h-3.5 w-3.5 flex-shrink-0" /><span>{scheduleLabel(library)}</span></div>
+        </div>
+
+        {#if a && !a.ok}
+          <div class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+            <span>{accessMessage(a)}</span>
+          </div>
+        {/if}
+
+        <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
+            <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
+            {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
+          </button>
+          {#if library.lastAutoEnqueueAt}
+            <span class="text-xs tabular-nums text-slate-400 dark:text-slate-500">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+          {/if}
+        </div>
       </div>
     {/each}
   </div>

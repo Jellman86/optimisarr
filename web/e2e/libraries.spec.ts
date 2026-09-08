@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 const library = {
-  id: 1, name: 'Films', path: '/media/films', mediaType: 'Film', ruleProfile: 'ConservativeHevc',
+  id: 1, name: 'Films', path: '/media/films', mediaType: 'Tv', ruleProfile: 'ConservativeHevc',
   enabled: true, priority: 0, minFileSizeBytes: null, maxHeight: null,
   reencodeSameCodecAboveBytes: null, skipEfficientSources: true, targetVideoCodec: null,
   targetContainer: null, hdrHandling: null, optimiseDolbyVision: false, excludePaths: null,
@@ -62,6 +62,54 @@ async function mockLibraries(page: Page, configuredLibrary = library) {
 function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
+
+test('the library list leads with the count, one Scan button, and the rest in a menu', async ({ page }) => {
+  await mockLibraries(page, { ...library, autoEnqueueEnabled: true, autoEnqueueWindowStart: '00:00', autoEnqueueWindowEnd: '09:00', autoReplace: true })
+  await page.goto('/#/libraries')
+
+  const card = page.locator('[data-library-card="1"]')
+  await expect(card).toBeVisible()
+  // The API serialises the media type as "Tv"; the badge must still read the translated label.
+  await expect(card.getByText('TV', { exact: true })).toBeVisible()
+  await expect(card.getByText('1', { exact: true })).toBeVisible()
+  await expect(card.getByText('All already optimal')).toBeVisible()
+  await expect(card.getByText('Auto-optimise 00:00–09:00 · auto-replace')).toBeVisible()
+  await expect(card.getByText('access ok')).toHaveCount(0)
+
+  // One primary action on the card; the secondary and destructive ones are one click away.
+  await expect(card.getByRole('button')).toHaveCount(2)
+  await expect(card.getByRole('button', { name: 'Scan' })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Delete' })).toHaveCount(0)
+
+  await card.getByRole('button', { name: 'More actions for Films' }).click()
+  const menu = page.getByRole('menu', { name: 'More actions for Films' })
+  await expect(menu.getByRole('menuitem')).toHaveText(['Enqueue', 'Configure', 'Delete'])
+  await menu.getByRole('menuitem', { name: 'Configure' }).click()
+  await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
+})
+
+test('the library list says how many files are ready when some are', async ({ page }) => {
+  await mockLibraries(page)
+  await page.route('**/api/candidates/summary', (route) => json(route, [{ libraryId: 1, eligible: 12, skipped: 3 }]))
+  await page.goto('/#/libraries')
+
+  const card = page.locator('[data-library-card="1"]')
+  await expect(card.getByText('12 ready to optimise')).toBeVisible()
+  await expect(card.getByText('All already optimal')).toHaveCount(0)
+})
+
+test('the library list stacks on a phone without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockLibraries(page)
+  await page.goto('/#/libraries')
+  await page.locator('[data-library-card="1"]').waitFor()
+
+  const fit = await page.locator('main').evaluate((main) => ({
+    scrollWidth: main.scrollWidth,
+    clientWidth: main.clientWidth,
+  }))
+  expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
+})
 
 test('track cleanup is an exclusive mode and exposes only its relevant video controls', async ({ page }) => {
   await mockLibraries(page)
