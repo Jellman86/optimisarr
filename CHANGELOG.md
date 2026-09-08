@@ -16,26 +16,11 @@
   also now reads the exact frame count mkvmerge writes into Matroska files (`NUMBER_OF_FRAMES`),
   which the rate-derived estimate was standing in for.
 
-### Changed
-
-- **The Libraries page is calmer, and every control lives in one place.** Each library is now a
-  card that leads with the number that matters (how many files) and a plain-words status: "All
-  already optimal" in muted text, or "12 ready to optimise" in cyan when something is actually
-  waiting — the only time the summary lights up. The four badges that were identical on every
-  library (preset, schedule, auto-replace, "access ok") are gone; preset and schedule read as a
-  short icon list under the path, and access is only mentioned when it is a problem. Scan is the
-  one button on the card; Enqueue, Configure and Delete sit in a keyboard-operable "more actions"
-  menu, so the destructive action no longer sits at equal weight to the primary one. Cards go two
-  to a row and stack on a phone. "Skipped" now explains itself on hover and points at Configure ›
-  Candidates for the per-file reason.
-
-### Fixed
 
 - **A TV library's type badge read "Tv".** The API serialises the media type as `Tv` while the
   label lookup only knew `TV`, so the raw enum name leaked into the badge (and the end-to-end mock
   sent `TV`, which hid it). The lookup now accepts both and the mock sends what the API sends.
 
-### Fixed
 
 - **A transcode could sit at "100% · ~2s left" until the container was restarted
   ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The status was still Transcoding,
@@ -76,6 +61,24 @@
   fall on; verified at 97 on the same encode. A variable-frame-rate source is no longer capped,
   since it has no "every second frame" that means the same thing to both sides. Found on the first
   real hardware run of the cap; no released build carried it.
+
+
+- **The weekly secret scan now acknowledges three reviewed historical documentation examples.**
+  Exact Gitleaks fingerprints suppress only the known placeholder authorization headers; new or
+  changed findings continue to fail the scan.
+
+### Changed
+
+- **The Libraries page is calmer, and every control lives in one place.** Each library is now a
+  card that leads with the number that matters (how many files) and a plain-words status: "All
+  already optimal" in muted text, or "12 ready to optimise" in cyan when something is actually
+  waiting — the only time the summary lights up. The four badges that were identical on every
+  library (preset, schedule, auto-replace, "access ok") are gone; preset and schedule read as a
+  short icon list under the path, and access is only mentioned when it is a problem. Scan is the
+  one button on the card; Enqueue, Configure and Delete sit in a keyboard-operable "more actions"
+  menu, so the destructive action no longer sits at equal weight to the primary one. Cards go two
+  to a row and stack on a phone. "Skipped" now explains itself on hover and points at Configure ›
+  Candidates for the per-file reason.
 
 ### Added
 
@@ -257,12 +260,6 @@
   worker checks in every 30 seconds using the credential it was given at pairing, and is shown as
   offline after two minutes of silence rather than on a single missed check-in, so a brief network
   blip does not make the status flicker. Revoking a worker stops its check-ins immediately.
-
-### Fixed
-
-- **The weekly secret scan now acknowledges three reviewed historical documentation examples.**
-  Exact Gitleaks fingerprints suppress only the known placeholder authorization headers; new or
-  changed findings continue to fail the scan.
 
 ## 0.2.11 — 2026-08-13
 
