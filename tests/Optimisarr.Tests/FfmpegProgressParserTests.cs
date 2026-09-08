@@ -115,6 +115,20 @@ public sealed class FfmpegProgressParserTests
     }
 
     [Fact]
+    public void Protocol_parser_marks_only_the_end_block_as_final()
+    {
+        var parser = new FfmpegProgressProtocolParser();
+        parser.ParseLine("frame=100");
+        var running = parser.ParseLine("progress=continue");
+        parser.ParseLine("frame=480");
+        var final = parser.ParseLine("progress=end");
+
+        Assert.False(running!.IsFinal);
+        Assert.True(final!.IsFinal);
+        Assert.Equal(480, final.Frame);
+    }
+
+    [Fact]
     public void Parses_time_fps_and_speed_from_a_progress_line()
     {
         const string line = "frame=  120 fps= 30 q=28.0 size=    1024kB time=00:01:04.00 bitrate= 131.1kbits/s speed=1.5x";

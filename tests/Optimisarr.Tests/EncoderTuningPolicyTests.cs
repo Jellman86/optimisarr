@@ -137,11 +137,25 @@ public sealed class EncoderTuningPolicyTests
     }
 
     [Fact]
+    public void Stronger_adaptive_quantisation_on_svt_av1_is_its_variance_boost()
+    {
+        // The reporter's actual AV1 case (#95): CPU libsvtav1, where the toggle used to do nothing.
+        // SVT-AV1 already runs delta-QP adaptive quantisation under CRF, so "stronger" is the
+        // variance boost it layers on top, at its own gentle default strength. Sent through the
+        // wrapper's params dictionary, the only door SVT-AV1 options have in FFmpeg.
+        Assert.Equal(
+            ["-svtav1-params", "enable-variance-boost=1:variance-boost-strength=2"],
+            Resolve("libsvtav1", strongerAdaptiveQuantisation: true));
+    }
+
+    [Fact]
     public void Adaptive_quantisation_is_dropped_where_it_cannot_be_expressed()
     {
+        // FFmpeg's shared VAAPI encoder exposes no per-block quantiser control at all, and the only
+        // QSV knob in the area (mbbrc) is documented for bitrate-driven modes, not the constant
+        // quality mode used here, so neither receives an argument that might be ignored.
         Assert.Empty(Resolve("hevc_qsv", strongerAdaptiveQuantisation: true));
         Assert.Empty(Resolve("hevc_vaapi", strongerAdaptiveQuantisation: true));
-        Assert.Empty(Resolve("libsvtav1", strongerAdaptiveQuantisation: true));
     }
 
     // --- Combinations -------------------------------------------------------------------------

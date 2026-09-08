@@ -135,9 +135,12 @@ public static class EncoderTuningPolicy
             args.Add($"{cap * 2}k");
         }
 
-        // The same intent in two vocabularies. x264/x265 take an aq-mode through their params
-        // string; NVENC has two independent switches. QSV, VAAPI and SVT-AV1 expose no equivalent
-        // Optimisarr can set safely, so they are left on their own defaults.
+        // The same intent in three vocabularies. x264/x265 take an aq-mode through their params
+        // string; NVENC has two independent switches; SVT-AV1 already runs delta-QP adaptive
+        // quantisation under CRF, so "stronger" there is its variance boost, which raises quality
+        // in flat and dark blocks on top of that default (SVT-AV1 2.1 or newer; the bundled
+        // jellyfin-ffmpeg carries 3.x). QSV and VAAPI expose no equivalent Optimisarr can set
+        // safely, so they are left on their own defaults.
         if (tuning.StrongerAdaptiveQuantisation)
         {
             if (isX26x)
@@ -148,6 +151,10 @@ public static class EncoderTuningPolicy
             else if (isNvenc)
             {
                 args.AddRange(["-spatial-aq", "1", "-temporal-aq", "1"]);
+            }
+            else if (isSvtAv1)
+            {
+                args.AddRange(["-svtav1-params", "enable-variance-boost=1:variance-boost-strength=2"]);
             }
         }
 

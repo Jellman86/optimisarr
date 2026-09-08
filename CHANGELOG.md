@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- **A transcode could sit at "100% · ~2s left" until the container was restarted
+  ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The status was still Transcoding,
+  which means ffmpeg had not exited; on a healthy encode the final progress block and the exit are
+  the same instant (measured 0.00 s apart with the bundled build). Two things were wrong. The bar
+  was rounding a value the backend deliberately keeps below one, so it claimed a finish that had
+  not happened and then computed a seconds-left figure from the sliver that remained. And nothing
+  watched the process: an ffmpeg that stopped exiting, or stopped reporting, held its queue slot
+  forever. The bar now floors to 99% until ffmpeg actually exits, the final block is shown as
+  "Finishing…" with no estimate, and a stall monitor fails the job with a reason — two minutes
+  without an exit after the final block, or thirty minutes without any progress while the queue is
+  not paused — and discards the output, so the retry and exclusion policies see it like any other
+  failure. A paused encode is never counted; SIGSTOP silences it on purpose.
+
 - **A delivered candidate larger than 30 MB was refused.** The result route inherited Kestrel's
   default request body cap, meant for form posts, so the first real delivery from a Mac sidecar
   failed with "request body too large" and the worker handed the job back. The route now lifts the
@@ -32,6 +45,18 @@
   real hardware run of the cap; no released build carried it.
 
 ### Added
+
+- **Stronger adaptive quantisation now reaches SVT-AV1
+  ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The toggle used to do nothing on a
+  CPU AV1 encode, which is exactly where the reporter tried it. SVT-AV1 already runs delta-QP
+  adaptive quantisation under CRF, so "stronger" is its variance boost, which raises quality in
+  flat and dark blocks on top of that default; it is sent as
+  `enable-variance-boost=1:variance-boost-strength=2` through `-svtav1-params`, the only door
+  SVT-AV1 options have in FFmpeg. Needs SVT-AV1 2.1 or newer; the bundled jellyfin-ffmpeg carries
+  3.1.2 and accepted it on a real host. Intel QSV and VA-API still receive nothing: FFmpeg's shared
+  VAAPI encoder has no per-block quantiser control at all, and QSV's only nearby knob is documented
+  for bitrate-driven modes rather than the constant-quality mode used here. The library form's
+  support note now says so.
 
 - **The macOS sidecar now does work.** On each healthy check-in while idle it claims a job, and
   runs it end to end: the server's command is validated against an explicit contract before a byte

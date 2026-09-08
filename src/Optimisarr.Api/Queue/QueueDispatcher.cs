@@ -1913,6 +1913,7 @@ public sealed class QueueDispatcher(
 
         // FFmpeg's machine-readable progress protocol is isolated on stdout. Stderr remains a
         // diagnostic stream, and both pipes are consumed concurrently so neither can block FFmpeg.
+        var stallMonitor = new EncodeStallMonitor(DateTimeOffset.UtcNow);
         var progressTask = ReadProgressAsync(
             process,
             jobId,
@@ -1920,12 +1921,14 @@ public sealed class QueueDispatcher(
             expectedFrameCount,
             reportProgress,
             progressMap,
+            stallMonitor,
             cancellationToken);
         var stderrTask = ReadStderrAsync(process, cancellationToken);
 
+        EncodeStallKind? stall = null;
         try
         {
-            await process.WaitForExitAsync(cancellationToken);
+            stall = await WaitForExitOrStallAsync(process, jobId, stallMonitor, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -1945,9 +1948,47 @@ public sealed class QueueDispatcher(
 
         await progressTask;
         var stderr = await stderrTask;
+        if (stall is { } stalledAs)
+        {
+            // A killed process reports a signal exit, never zero; the guard keeps a stall from ever
+            // being read as success should a platform report otherwise.
+            var exitCode = process.ExitCode == 0 ? -1 : process.ExitCode;
+            return new FfmpegRun(exitCode, stallMonitor.Describe(stalledAs), stderr.Log);
+        }
+
         return process.ExitCode == 0
             ? new FfmpegRun(process.ExitCode, null, null)
             : new FfmpegRun(process.ExitCode, stderr.Tail, stderr.Log);
+    }
+
+    private static readonly TimeSpan StallCheckInterval = TimeSpan.FromSeconds(15);
+
+    // Waits for ffmpeg to exit, asking the stall monitor on a timer whether it still deserves the
+    // wait. A stalled process is killed and the kind of stall returned so the caller can fail the
+    // job with a reason instead of holding a queue slot until someone restarts the container.
+    private async Task<EncodeStallKind?> WaitForExitOrStallAsync(
+        Process process,
+        int jobId,
+        EncodeStallMonitor stallMonitor,
+        CancellationToken cancellationToken)
+    {
+        var exited = process.WaitForExitAsync(cancellationToken);
+        while (await Task.WhenAny(exited, Task.Delay(StallCheckInterval, cancellationToken)) != exited)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (stallMonitor.Check(DateTimeOffset.UtcNow, pauseManager.IsPaused) is not { } stall)
+            {
+                continue;
+            }
+
+            logger.LogWarning("Job {JobId}: {Reason}", jobId, stallMonitor.Describe(stall));
+            KillQuietly(process);
+            await exited;
+            return stall;
+        }
+
+        await exited;
+        return null;
     }
 
     private sealed record FfmpegStderr(string? Tail, string? Log);
@@ -1963,6 +2004,7 @@ public sealed class QueueDispatcher(
         int? expectedFrameCount,
         bool reportProgress,
         Func<double, double>? progressMap,
+        EncodeStallMonitor stallMonitor,
         CancellationToken cancellationToken)
     {
         var parser = new FfmpegProgressProtocolParser();
@@ -1975,17 +2017,34 @@ public sealed class QueueDispatcher(
         string? line;
         while ((line = await process.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
         {
-            if (parser.ParseLine(line) is not { } sample
-                || FfmpegProgressCalculator.Calculate(
-                    durationSeconds,
-                    expectedFrameCount,
-                    sample) is not { } measuredProgress)
+            // Every line is proof of life, parsed or not; the final block starts the exit clock.
+            var parsed = parser.ParseLine(line);
+            if (parsed is { IsFinal: true })
+            {
+                stallMonitor.FinalReported(DateTimeOffset.UtcNow);
+            }
+            else
+            {
+                stallMonitor.Touch(DateTimeOffset.UtcNow);
+            }
+
+            if (parsed is not { } sample || !reportProgress)
             {
                 continue;
             }
-            if (!reportProgress)
+
+            // The final block is worth reporting even when it carries nothing measurable (a source
+            // with neither a duration nor a frame count): "finishing" is a fact about the process,
+            // not a reading of the bar.
+            var measured = FfmpegProgressCalculator.Calculate(durationSeconds, expectedFrameCount, sample);
+            if (measured is not { } measuredProgress)
             {
-                continue;
+                if (!sample.IsFinal)
+                {
+                    continue;
+                }
+
+                measuredProgress = lastObserved;
             }
 
             // Some inputs contain discontinuous timestamps. Never let one make the visible or
@@ -2016,7 +2075,10 @@ public sealed class QueueDispatcher(
                 }
             }
 
-            var eta = sample.Speed is { } speed && durationSeconds is > 0
+            // Once FFmpeg has written its final block there is nothing left to estimate: the
+            // output is complete and only the exit remains, so the UI is told "finishing" rather
+            // than shown a seconds-left figure computed from a bar that can no longer move.
+            var eta = !sample.IsFinal && sample.Speed is { } speed && durationSeconds is > 0
                 ? FfmpegProgressParser.EstimateRemainingSeconds(
                     durationSeconds.Value,
                     measuredProgress * durationSeconds.Value,
@@ -2024,7 +2086,7 @@ public sealed class QueueDispatcher(
                 : null;
             try
             {
-                await BroadcastProgressAsync(jobId, progress, sample.Fps, sample.Speed, eta);
+                await BroadcastProgressAsync(jobId, progress, sample.Fps, sample.Speed, eta, sample.IsFinal);
             }
             catch (Exception ex)
             {
@@ -2777,8 +2839,14 @@ public sealed class QueueDispatcher(
 
     // Live transcode telemetry. Sent as a lightweight payload (not persisted beyond
     // job.Progress) so the UI can move the bar and show speed/ETA without re-fetching.
-    private Task BroadcastProgressAsync(int jobId, double progress, double? fps, double? speed, double? etaSeconds) =>
-        hub.Clients.All.SendAsync("jobProgress", new { jobId, progress, fps, speed, etaSeconds });
+    private Task BroadcastProgressAsync(
+        int jobId,
+        double progress,
+        double? fps,
+        double? speed,
+        double? etaSeconds,
+        bool finishing = false) =>
+        hub.Clients.All.SendAsync("jobProgress", new { jobId, progress, fps, speed, etaSeconds, finishing });
 
     /// <summary>
     /// Deletes a persisted scratch output before its job row is retried or removed. Paths outside
