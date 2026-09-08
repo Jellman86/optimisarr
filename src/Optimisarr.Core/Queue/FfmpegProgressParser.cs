@@ -72,13 +72,32 @@ public static partial class FfmpegProgressParser
 }
 
 /// <summary>
+/// A progress reading and whether the estimate behind it can still be trusted. The estimate is
+/// exhausted once every informative clock has run past its expected end: the encode is plainly
+/// still going, but nothing left can say how far.
+/// </summary>
+public sealed record FfmpegProgressReading(double Progress, bool EstimateExhausted);
+
+/// <summary>
 /// Calculates media progress from both clocks FFmpeg exposes. Copied streams can pin
-/// <c>out_time</c> at zero while video frames continue to encode, so the furthest valid clock is
-/// authoritative. Values remain below one until the process itself reports completion.
+/// <c>out_time</c> at zero while video frames continue to encode, so a clock at zero says
+/// nothing. A clock that has run past its expected end has proven its expectation wrong (a short
+/// container duration, a frame count derived from a nominal rate), so it says nothing either; the
+/// other clock, still inside its range, is the truthful one. A real encode was seen sitting at
+/// "100% · ~2s left" for the last six percent of an episode because the wrong clock was believed.
+/// Values remain below one until the process itself reports completion.
 /// </summary>
 public static class FfmpegProgressCalculator
 {
+    private const double Ceiling = 0.999;
+
     public static double? Calculate(
+        double? durationSeconds,
+        int? expectedFrameCount,
+        FfmpegProgressSample sample) =>
+        Measure(durationSeconds, expectedFrameCount, sample)?.Progress;
+
+    public static FfmpegProgressReading? Measure(
         double? durationSeconds,
         int? expectedFrameCount,
         FfmpegProgressSample sample)
@@ -95,10 +114,19 @@ public static class FfmpegProgressCalculator
             return null;
         }
 
-        return Math.Clamp(
-            Math.Max(timestampProgress ?? 0, frameProgress ?? 0),
-            0,
-            0.999);
+        var informative = new[] { timestampProgress, frameProgress }
+            .Where(clock => clock is > 0)
+            .Select(clock => clock!.Value)
+            .ToArray();
+        if (informative.Length == 0)
+        {
+            return new FfmpegProgressReading(0, EstimateExhausted: false);
+        }
+
+        var inRange = informative.Where(clock => clock <= 1).ToArray();
+        return inRange.Length > 0
+            ? new FfmpegProgressReading(Math.Min(inRange.Max(), Ceiling), EstimateExhausted: false)
+            : new FfmpegProgressReading(Ceiling, EstimateExhausted: true);
     }
 
     public static int? ExpectedFramesForWindow(

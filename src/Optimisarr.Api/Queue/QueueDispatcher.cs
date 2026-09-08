@@ -2036,16 +2036,18 @@ public sealed class QueueDispatcher(
             // The final block is worth reporting even when it carries nothing measurable (a source
             // with neither a duration nor a frame count): "finishing" is a fact about the process,
             // not a reading of the bar.
-            var measured = FfmpegProgressCalculator.Calculate(durationSeconds, expectedFrameCount, sample);
-            if (measured is not { } measuredProgress)
+            var reading = FfmpegProgressCalculator.Measure(durationSeconds, expectedFrameCount, sample);
+            var estimateExhausted = reading?.EstimateExhausted ?? false;
+            if (reading is not { } measuredReading)
             {
                 if (!sample.IsFinal)
                 {
                     continue;
                 }
 
-                measuredProgress = lastObserved;
+                measuredReading = new FfmpegProgressReading(lastObserved, EstimateExhausted: false);
             }
+            var measuredProgress = measuredReading.Progress;
 
             // Some inputs contain discontinuous timestamps. Never let one make the visible or
             // persisted bar move backwards.
@@ -2075,10 +2077,12 @@ public sealed class QueueDispatcher(
                 }
             }
 
-            // Once FFmpeg has written its final block there is nothing left to estimate: the
-            // output is complete and only the exit remains, so the UI is told "finishing" rather
-            // than shown a seconds-left figure computed from a bar that can no longer move.
-            var eta = !sample.IsFinal && sample.Speed is { } speed && durationSeconds is > 0
+            // Two cases have nothing left to estimate. After FFmpeg's final block the output is
+            // complete and only the exit remains, so the UI is told "finishing". When every clock
+            // has run past its expected end the encode is still going but the expectation was
+            // wrong, so a seconds-left figure would be computed from a bar that can no longer
+            // move; speed and fps stay, the estimate goes.
+            var eta = !sample.IsFinal && !estimateExhausted && sample.Speed is { } speed && durationSeconds is > 0
                 ? FfmpegProgressParser.EstimateRemainingSeconds(
                     durationSeconds.Value,
                     measuredProgress * durationSeconds.Value,

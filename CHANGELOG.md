@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The progress bar could reach 100% with minutes still to run
+  ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The reporter's diagnostics showed
+  the encode alive and busy the whole time: ffmpeg at 280% CPU, and the job finishing on its own.
+  The bar had believed the wrong clock. Progress is read from two clocks, encoded time and encoded
+  frames, and took the more advanced one; a frame count derived from a nominal rate came up short,
+  so the frame clock passed 100% while the time clock, still inside its range, said 94%. A clock
+  that has run past its own end has proven its expectation wrong, so it is now disbelieved in
+  favour of the other; only when both have overrun does the bar stop at 99% and drop the
+  seconds-left estimate rather than print "~2s" from a figure it can no longer trust. The probe
+  also now reads the exact frame count mkvmerge writes into Matroska files (`NUMBER_OF_FRAMES`),
+  which the rate-derived estimate was standing in for.
+
 ### Changed
 
 - **The Libraries page is calmer, and every control lives in one place.** Each library is now a
