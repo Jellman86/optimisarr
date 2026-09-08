@@ -468,6 +468,43 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_takes_the_frame_count_from_the_matroska_statistics_tag_when_nb_frames_is_absent()
+    {
+        // mkvmerge writes the muxer's exact count as a language-suffixed tag; Matroska never fills
+        // nb_frames. A count derived from the nominal rate instead can overrun the progress bar.
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+            "r_frame_rate": "24000/1001", "avg_frame_rate": "24000/1001",
+            "tags": { "NUMBER_OF_FRAMES-eng": "61873", "language": "eng" }
+          }],
+          "format": { "format_name": "matroska,webm", "duration": "2580.5" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json, ".mkv");
+
+        Assert.Equal(61_873, result.FrameCount);
+    }
+
+    [Fact]
+    public void Parse_prefers_nb_frames_over_the_matroska_tag_when_both_are_present()
+    {
+        const string json = """
+        {
+          "streams": [{
+            "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080,
+            "nb_frames": "100", "tags": { "NUMBER_OF_FRAMES": "200" }
+          }],
+          "format": { "format_name": "matroska,webm" }
+        }
+        """;
+
+        Assert.Equal(100, MediaProbeService.Parse(json, ".mkv").FrameCount);
+    }
+
+    [Fact]
     public void Parse_classifies_a_still_image_as_image()
     {
         const string json = """
