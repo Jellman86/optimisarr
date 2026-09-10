@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api;
 using Optimisarr.Api.Diagnostics;
+using Optimisarr.Api.Workers;
 using Optimisarr.Api.Endpoints;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Metrics;
@@ -67,6 +68,7 @@ builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpe
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton<VerificationService>();
+builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
@@ -269,9 +271,10 @@ internal sealed record SettingsDto(
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
-    bool RemoteWorkersEnabled = false)
+    bool RemoteWorkersEnabled = false,
+    bool RemoteWorkersAvailable = false)
 {
-    public static SettingsDto From(QueueSettings settings) => new(
+    public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
@@ -282,7 +285,8 @@ internal sealed record SettingsDto(
         settings.ReplacementAllowCrossFilesystem,
         settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays,
-        settings.RemoteWorkersEnabled);
+        settings.RemoteWorkersEnabled,
+        remoteWorkersAvailable);
 }
 
 internal sealed record QueueStatusDto(

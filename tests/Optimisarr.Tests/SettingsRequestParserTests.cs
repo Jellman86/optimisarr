@@ -12,7 +12,7 @@ public sealed class SettingsRequestParserTests
     {
         var request = ValidRequest() with { HdrToneMapMode = null };
 
-        var parsed = SettingsRequestParser.TryParse(request, out var settings, out var error);
+        var parsed = SettingsRequestParser.TryParse(request, remoteWorkersAvailable: true, out var settings, out var error);
 
         Assert.True(parsed);
         Assert.Null(error);
@@ -26,7 +26,7 @@ public sealed class SettingsRequestParserTests
     {
         var request = ValidRequest() with { HdrToneMapMode = value };
 
-        var parsed = SettingsRequestParser.TryParse(request, out _, out var error);
+        var parsed = SettingsRequestParser.TryParse(request, remoteWorkersAvailable: true, out _, out var error);
 
         Assert.False(parsed);
         Assert.Equal("settings.hdrToneMapMode.invalid", error?.Code);

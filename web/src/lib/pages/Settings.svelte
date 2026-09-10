@@ -405,6 +405,7 @@
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     remoteWorkersEnabled: false,
+    remoteWorkersAvailable: false,
     replacementQuarantineRetentionDays: 0,
   })
 
@@ -413,9 +414,11 @@
     { key: 'connections', label: i18n.m.settings.tab_connections },
     { key: 'notifications', label: i18n.m.settings.tab_notifications },
     { key: 'tools', label: i18n.m.settings.tab_tools },
-    // Only once opted in: a default single-container install should not have to wonder what a
-    // remote worker is.
-    ...(settings.remoteWorkersEnabled ? [{ key: 'workers' as TabKey, label: i18n.m.settings.tab_workers }] : []),
+    // Only once opted in, and only where the server offers the preview at all: a default
+    // single-container install should not have to wonder what a remote worker is.
+    ...(settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+      ? [{ key: 'workers' as TabKey, label: i18n.m.settings.tab_workers }]
+      : []),
     { key: 'backup', label: i18n.m.settings.tab_backup },
   ])
 
@@ -732,13 +735,16 @@
         hint={i18n.m.settings.dry_run_hint}
       />
     </div>
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
-      <Toggle
-        bind:checked={settings.remoteWorkersEnabled}
-        label={i18n.m.settings.remote_workers}
-        hint={i18n.m.settings.remote_workers_hint}
-      />
-    </div>
+    {#if settings.remoteWorkersAvailable}
+      <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
+      <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.remoteWorkersEnabled}
+          label={i18n.m.settings.remote_workers}
+          hint={i18n.m.settings.remote_workers_hint}
+        />
+      </div>
+    {/if}
     <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}

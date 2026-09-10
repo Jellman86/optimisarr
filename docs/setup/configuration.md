@@ -41,6 +41,20 @@ environment:
   OPTIMISARR_ADMIN_TOKEN: "change-this-long-random-token"
 ```
 
+## Remote workers are a preview, off and hidden
+
+Distributed transcoding through paired sidecars is groundwork in this release, not a feature you
+can rely on: worker-side quality measurement, drain controls, signing, and the Windows sidecar are
+still to build. The **Remote workers** switch and the **Workers** tab therefore exist only when the
+container starts with the preview flag, and every worker route answers 403 without it:
+
+```yaml
+environment:
+  OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS: "true"
+```
+
+Leave it unset unless you are following the sidecar work on `dev`.
+
 When the token is set, the web UI asks for it before loading operational data.
 API clients must send it as a bearer token:
 

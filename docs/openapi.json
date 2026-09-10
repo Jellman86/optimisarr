@@ -2063,6 +2063,10 @@
               "string"
             ]
           },
+          "remoteWorkersAvailable": {
+            "default": false,
+            "type": "boolean"
+          },
           "remoteWorkersEnabled": {
             "default": false,
             "type": "boolean"

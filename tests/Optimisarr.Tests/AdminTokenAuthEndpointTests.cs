@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -926,6 +927,8 @@ public sealed class AdminTokenAuthEndpointTests
             Directory.CreateDirectory(LibraryDirectory);
             Environment.SetEnvironmentVariable(AdminTokenAuth.EnvironmentVariable, Token);
             Environment.SetEnvironmentVariable("OPTIMISARR_CONFIG_DIR", _configDir);
+            // The worker tests exercise the preview; the availability tests turn it off per host.
+            Environment.SetEnvironmentVariable(RemoteWorkersFeature.EnvironmentVariable, "true");
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

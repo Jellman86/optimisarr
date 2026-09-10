@@ -334,6 +334,9 @@ export type Settings = {
   replacementQuarantineRetentionDays: number
   /** Opt-in. Off by default: one container stays the complete, uncomplicated way to run this. */
   remoteWorkersEnabled: boolean
+  /** Groundwork only in this release: the switch and the Workers tab exist only when the server
+   * was started with OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true. */
+  remoteWorkersAvailable: boolean
 }
 
 export type TimedCleanupPreview = {

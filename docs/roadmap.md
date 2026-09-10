@@ -454,7 +454,8 @@ the replacement workflow is trustworthy.
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
-9. **Optional Windows and macOS sidecars for distributed transcoding: started.** Keep one
+9. **Optional Windows and macOS sidecars for distributed transcoding: started; hidden behind
+   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS` since 2026-09-10 until the list below is done.** Keep one
    Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
    contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
    it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
