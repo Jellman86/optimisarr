@@ -73,6 +73,12 @@
   the assembled file is hashed and judged exactly as a whole upload, and the staging file is
   named by lease so a resumed upload can only continue its own transfer. The macOS sidecar
   delivers this way when the server offers it and in one piece otherwise.
+- **The macOS sidecar runs more than one job at once, and works again after a relaunch.**
+  **Jobs at once** in the menu chooses one to four parallel jobs; the choice is persisted,
+  reported on every check-in, and filled from each check-in while slots are free, with every job
+  listed in the menu. Relaunching the app used to leave it reporting no encoders and zero
+  concurrency — "Drained" on the Workers tab — until it was paired again, because capabilities
+  were only probed at pairing; the machine is now probed on every launch.
 
 ## 0.2.12 — 2026-09-10
 

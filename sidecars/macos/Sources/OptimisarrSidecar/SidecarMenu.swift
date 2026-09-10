@@ -101,10 +101,22 @@ struct SidecarMenu: View {
                     .font(.caption)
             }
 
-            if case let .working(jobId, progress) = session.status {
-                LabeledContent("Job", value: "#\(jobId)").font(.caption)
-                LabeledContent("Stage", value: progress.label).font(.caption)
+            ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
+                if let progress = session.activeJobs[jobId] {
+                    LabeledContent("Job #\(jobId)", value: progress.label).font(.caption)
+                }
             }
+
+            // Takes effect on the next check-in; a running job is never stopped to fit.
+            Picker("Jobs at once", selection: Binding(
+                get: { session.jobConcurrency },
+                set: { session.setJobConcurrency($0) })) {
+                ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { count in
+                    Text("\(count)").tag(count)
+                }
+            }
+            .pickerStyle(.segmented)
+            .font(.caption)
 
             if let outcome = session.lastOutcome {
                 Text(outcome.label)
