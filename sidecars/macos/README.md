@@ -33,7 +33,9 @@ server has verified it can finish a job that came back — asks for work. A job 
    encode. Nothing is replaced from here, ever.
 
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every
-exit path. One job at a time.
+exit path. **Jobs at once** in the menu chooses how many jobs run in parallel (one to four); the
+number is reported on every check-in and the server holds the worker to it. The machine is probed
+again on every launch, not only at pairing, so a relaunched app reports what it can do today.
 
 While a job runs the app holds a system activity assertion, so macOS neither naps it nor idles the
 machine to sleep under an encode. When the Mac does sleep — a closed lid, a chosen sleep — the job

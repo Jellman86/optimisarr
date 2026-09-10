@@ -43,6 +43,15 @@ public final class SidecarSession: ObservableObject {
     /// How the last job ended, kept so the menu can say what this machine last did for the server.
     @Published public private(set) var lastOutcome: JobOutcome?
 
+    /// Every job in flight and where it has got to, keyed by job id.
+    @Published public private(set) var activeJobs: [Int: JobProgress] = [:]
+
+    /// How many jobs this Mac takes at once. Chosen by the operator, reported to the server on
+    /// every check-in, and the ceiling the claim loop fills up to.
+    @Published public private(set) var jobConcurrency: Int
+
+    public static let concurrencyRange = 1...4
+
     private let client: SidecarClient
     private let store: CredentialStore
     private let prober: CapabilityProber?
@@ -50,9 +59,10 @@ public final class SidecarSession: ObservableObject {
     private var capabilities: SidecarCapabilities
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
+    private let persistConcurrency: @Sendable (Int) -> Void
     private var pairing: StoredPairing?
     private var heartbeatTask: Task<Void, Never>?
-    private var jobTask: Task<Void, Never>?
+    private var jobTasks: [Int: Task<Void, Never>] = [:]
     /// Held while a job runs so macOS neither naps the app nor idles the machine to sleep under
     /// an encode. A lid close still sleeps the Mac; that path hands the job back first.
     private var activity: NSObjectProtocol?
@@ -63,6 +73,8 @@ public final class SidecarSession: ObservableObject {
         capabilities: SidecarCapabilities = .provenToday(name: Host.current().localizedName ?? "Mac"),
         prober: CapabilityProber? = CapabilityProber(),
         executor: WorkExecutor? = JobRunner(),
+        jobConcurrency: Int = UserDefaults.standard.object(forKey: "jobConcurrency") as? Int ?? 1,
+        persistConcurrency: @escaping @Sendable (Int) -> Void = { UserDefaults.standard.set($0, forKey: "jobConcurrency") },
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
@@ -72,18 +84,46 @@ public final class SidecarSession: ObservableObject {
         self.capabilities = capabilities
         self.prober = prober
         self.executor = executor
+        self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
+        self.persistConcurrency = persistConcurrency
         self.sleep = sleep
     }
 
-    /// Restores a previous pairing, if there is one, and starts checking in.
+    /// Changes how many jobs run at once. Takes effect on the next check-in; jobs already in
+    /// flight are never stopped to fit a smaller number.
+    public func setJobConcurrency(_ count: Int) {
+        let clamped = min(max(count, Self.concurrencyRange.lowerBound), Self.concurrencyRange.upperBound)
+        jobConcurrency = clamped
+        persistConcurrency(clamped)
+        if capabilities.maxConcurrency > 0 {
+            capabilities.maxConcurrency = clamped
+        }
+    }
+
+    /// Restores a previous pairing, if there is one, and starts checking in. Idempotent: the menu
+    /// calls it every time it opens, and that must not restart a running check-in loop.
+    ///
+    /// The machine is probed again here, not only at pairing. Capabilities live in memory, so
+    /// without this a relaunched app reported no encoders and zero concurrency — "drained" to the
+    /// server — and never took work again until it was paired afresh.
     public func restore() {
+        guard pairing == nil else { return }
         guard let stored = try? store.load() else {
             status = .unpaired
             return
         }
         pairing = stored
         serverAddress = stored.serverAddress
-        startHeartbeat()
+        if let prober {
+            Task { [weak self] in
+                guard let self else { return }
+                let proved = await prober.probe(name: self.capabilities.name, maxConcurrency: self.jobConcurrency)
+                self.capabilities = proved
+                self.startHeartbeat()
+            }
+        } else {
+            startHeartbeat()
+        }
     }
 
     /// Redeems a PIN. On success the credential is persisted immediately — the server returns it
@@ -97,7 +137,7 @@ public final class SidecarSession: ObservableObject {
         // otherwise be reported as it was, and a capability the server believes but the machine
         // cannot honour is a job that can only fail.
         if let prober {
-            capabilities = await prober.probe(name: capabilities.name, maxConcurrency: 1)
+            capabilities = await prober.probe(name: capabilities.name, maxConcurrency: jobConcurrency)
         }
 
         do {
@@ -122,10 +162,11 @@ public final class SidecarSession: ObservableObject {
     public func unpair() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
-        // A job in flight is stopped too: cancelling the task terminates ffmpeg and the runner
-        // hands the lease back, so the server can reassign rather than wait for it to lapse.
-        jobTask?.cancel()
-        jobTask = nil
+        // Jobs in flight are stopped too: cancelling the tasks terminates ffmpeg and the runner
+        // hands each lease back, so the server can reassign rather than wait for it to lapse.
+        for task in jobTasks.values { task.cancel() }
+        jobTasks = [:]
+        activeJobs = [:]
         endActivity()
         try? store.clear()
         pairing = nil
@@ -136,9 +177,10 @@ public final class SidecarSession: ObservableObject {
     /// server can reassign at once rather than after the lease lapses. The reason is what the
     /// menu shows afterwards, in place of the runner's generic cancellation wording.
     public func stopWork(because reason: String) async {
-        guard let task = jobTask else { return }
-        task.cancel()
-        await task.value
+        let tasks = Array(jobTasks.values)
+        guard !tasks.isEmpty else { return }
+        for task in tasks { task.cancel() }
+        for task in tasks { await task.value }
         if case let .released(jobId, _) = lastOutcome {
             lastOutcome = .released(jobId: jobId, reason: reason)
         }
@@ -208,9 +250,11 @@ public final class SidecarSession: ObservableObject {
                     maxConcurrency: capabilities.maxConcurrency)
 
                 interval = beat.heartbeatInterval
-                if jobTask == nil {
+                if jobTasks.isEmpty {
                     status = .connected(workerId: beat.workerId, lastCheckIn: Date())
-                    await claimIfIdle(pairing: pairing, workerId: beat.workerId)
+                }
+                if !beat.draining {
+                    await claimUpToCapacity(pairing: pairing, workerId: beat.workerId)
                 }
             } catch SidecarError.credentialRejected {
                 // Terminal. Retrying cannot help, and holding a dead secret on disk serves no
@@ -233,45 +277,64 @@ public final class SidecarSession: ObservableObject {
         }
     }
 
-    /// Asks for work once per healthy check-in while idle. One job at a time: the capabilities
-    /// advertised one slot, and the server's matcher holds it to that.
-    private func claimIfIdle(pairing: StoredPairing, workerId: Int) async {
+    /// Asks for work on each healthy check-in until every slot the operator allowed is filled.
+    /// The server hands out one job per claim and holds the worker to the concurrency it
+    /// reported, so this can never run more than the server believes it can.
+    private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
         guard let executor, capabilities.maxConcurrency > 0 else { return }
 
-        let assignment: Assignment?
-        do {
-            assignment = try await client.claim(
-                serverAddress: pairing.serverAddress, credential: pairing.credential)
-        } catch {
-            // A failed claim is not a failed check-in. The next beat asks again; a credential
-            // problem surfaces through the heartbeat, which is the path that handles it.
-            return
-        }
-        guard let assignment else { return }
-
-        status = .working(jobId: assignment.jobId, progress: .fetchingSource)
-        let jobId = assignment.jobId
-        beginActivity()
-        // The task holds the session for the job's duration, which is intended: a job is stopped
-        // by cancelling this task (see unpair), never by the session quietly going away under it.
-        jobTask = Task { [weak self] in
-            guard let self else { return }
-            let outcome = await executor.execute(assignment, pairing: pairing) { progress in
-                Task { @MainActor in self.report(jobId: jobId, progress: progress) }
+        while jobTasks.count < capabilities.maxConcurrency {
+            let assignment: Assignment?
+            do {
+                assignment = try await client.claim(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential)
+            } catch {
+                // A failed claim is not a failed check-in. The next beat asks again; a credential
+                // problem surfaces through the heartbeat, which is the path that handles it.
+                return
             }
-            self.finish(outcome, workerId: workerId)
+            guard let assignment, jobTasks[assignment.jobId] == nil else { return }
+
+            let jobId = assignment.jobId
+            activeJobs[jobId] = .fetchingSource
+            refreshWorkingStatus()
+            beginActivity()
+            // The task holds the session for the job's duration, which is intended: a job is
+            // stopped by cancelling this task (see unpair), never by the session quietly going
+            // away under it.
+            jobTasks[jobId] = Task { [weak self] in
+                guard let self else { return }
+                let outcome = await executor.execute(assignment, pairing: pairing) { progress in
+                    Task { @MainActor in self.report(jobId: jobId, progress: progress) }
+                }
+                self.finish(outcome, jobId: jobId, workerId: workerId)
+            }
         }
     }
 
     private func report(jobId: Int, progress: JobProgress) {
-        guard jobTask != nil else { return }
-        status = .working(jobId: jobId, progress: progress)
+        guard jobTasks[jobId] != nil else { return }
+        activeJobs[jobId] = progress
+        refreshWorkingStatus()
     }
 
-    private func finish(_ outcome: JobOutcome, workerId: Int) {
+    /// The menu bar shows one job; the earliest still running stands for the rest, and the menu
+    /// itself lists them all.
+    private func refreshWorkingStatus() {
+        guard let first = activeJobs.keys.min(), let progress = activeJobs[first] else { return }
+        status = .working(jobId: first, progress: progress)
+    }
+
+    private func finish(_ outcome: JobOutcome, jobId: Int, workerId: Int) {
         lastOutcome = outcome
-        jobTask = nil
-        endActivity()
+        jobTasks[jobId] = nil
+        activeJobs[jobId] = nil
+        if jobTasks.isEmpty {
+            endActivity()
+        } else {
+            refreshWorkingStatus()
+            return
+        }
         if pairing != nil {
             status = .connected(workerId: workerId, lastCheckIn: Date())
         }

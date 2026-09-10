@@ -607,7 +607,9 @@ the replacement workflow is trustworthy.
      memory, recorded on the lease, and a corrupt result requeues the job for software decode
      (`Job.PreferSoftwareDecode`). **Resumable upload:** chunked delivery at server-confirmed
      offsets with a completion carrying both hashes; the sidecar resumes from the server's offset
-     after a dropped chunk. **Still to build:** an "on a worker"
+     after a dropped chunk. **Several jobs at once** on the sidecar (operator-chosen, one to four),
+     and a probe on every launch, which fixed a relaunched sidecar reporting itself drained.
+     **Still to build:** an "on a worker"
      placement for adaptive libraries once selection can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
