@@ -479,6 +479,12 @@ Verification reports are stored as JSON in `verificationReportJson`:
 }
 ```
 
+Each job row carries three remote-work fields: `workerName` (the sidecar holding, or having
+delivered, the job; null for local work), `remoteStage` (`Claimed`, `FetchingSource`, `Encoding`
+or `Delivering` while leased, otherwise null), and `waitingForWorker` (a queued job its library's
+placement keeps off this server until a worker takes it, judged by the same rule the dispatcher
+applies).
+
 ## Exclusions
 
 | Method | Endpoint | Purpose |

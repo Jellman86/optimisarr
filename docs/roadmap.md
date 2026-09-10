@@ -592,9 +592,11 @@ the replacement workflow is trustworthy.
      bar, load and scratch, last seen, last problem, and the Drain / Resume / Revoke controls.
      Progress reaches the server through lease renewals, which carry the stage and ffmpeg's
      encoded seconds at least every fifteen seconds; "last problem" is written by the server where
-     it refuses or discards something the worker did. **Still to build:** the queue rows saying
-     where a remote job is, and an "on a worker" placement for adaptive libraries once selection
-     can hand the final encode over.
+     it refuses or discards something the worker did. **And the queue says where a remote job is:**
+     "encoding on Mac Studio…" with the worker's progress, "returned from … · waiting to be
+     verified", and "waiting for a worker…" for a queued job its library keeps off this server.
+     **Still to build:** an "on a worker" placement for adaptive libraries once selection can
+     hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 

@@ -26,6 +26,9 @@ function job(id: number, status: string, verificationPassed: boolean | null) {
     startedAt: null,
     finishedAt: null,
     clearable: false,
+    workerName: null,
+    remoteStage: null,
+    waitingForWorker: false,
   }
 }
 
@@ -94,4 +97,39 @@ test('replace all confirms once, replaces every ready job in one request, and op
   await expect(page).toHaveURL(/#\/quarantine$/)
   expect(confirmationCount).toBe(1)
   expect(bulkRequests()).toBe(1)
+})
+
+test('a remote job says where it is, and a job kept for a worker says it is waiting', async ({ page }) => {
+  const remote = {
+    ...job(7, 'Leased', null),
+    relativePath: 'Chicago Fire S14E12.mkv',
+    progress: 0.62,
+    workerName: 'Mac Studio',
+    remoteStage: 'Encoding',
+  }
+  const returned = { ...job(8, 'AwaitingVerification', null), relativePath: 'Slow Horses S05E01.mkv', workerName: 'MacBook Air' }
+  const held = { ...job(9, 'Queued', null), relativePath: 'Severance S03E04.mkv', waitingForWorker: true }
+  await page.route('**/api/**', async (route: Route) => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/auth/status') return json(route, { required: false })
+    if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
+    if (path === '/api/jobs') return json(route, [remote, returned, held])
+    if (path === '/api/queue/status') return json(route, {
+      canStart: true, blockedReason: null, manuallyPaused: false, manualPauseMode: 'inactive',
+      runningEncodesSuspended: false, suspendedEncodeCount: 0, pauseFailedEncodeCount: 0, runningJobs: 1,
+      hardwareAccelerated: false, freeDiskBytes: 100_000_000_000, workRoot: '/work', waitingReason: null,
+    })
+    return json(route, {})
+  })
+  await page.goto('/#/queue')
+
+  // The hero leads with the remote encode and names the machine.
+  await expect(page.getByText('Now encoding on Mac Studio', { exact: true })).toBeVisible()
+  await expect(page.getByText('Returned from MacBook Air', { exact: true })).toBeVisible()
+
+  const rows = page.locator('tbody tr')
+  await expect(rows.filter({ hasText: 'Chicago Fire' })).toContainText('encoding on Mac Studio')
+  await expect(rows.filter({ hasText: 'Chicago Fire' })).toContainText('62%')
+  await expect(rows.filter({ hasText: 'Slow Horses' })).toContainText('returned from MacBook Air')
+  await expect(rows.filter({ hasText: 'Severance' })).toContainText('waiting for a worker')
 })
