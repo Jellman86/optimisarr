@@ -54,6 +54,12 @@
   Otherwise the server measures VMAF itself and writes why on the worker's card. Every other gate
   is still repeated here, and a low score fails the candidate the ordinary way. New stage
   `Measuring`; migration `AddLeaseQualityEvidence`.
+- **The macOS sidecar survives a lid and a quit.** While a job runs it holds a system activity
+  assertion, so macOS neither naps the app nor idles the machine to sleep under an encode. When
+  the Mac sleeps anyway the job is handed back first and the server reassigns it at once, rather
+  than two minutes later when the lease lapses; check-ins resume on wake. Quitting the app
+  mid-job hands the job back before exiting. The menu gains **Start at login**, registered
+  through the system's login-item service.
 
 ## 0.2.12 — 2026-09-10
 

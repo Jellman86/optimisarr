@@ -34,6 +34,14 @@ server has verified it can finish a job that came back — asks for work. A job 
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every
 exit path. One job at a time.
 
+While a job runs the app holds a system activity assertion, so macOS neither naps it nor idles the
+machine to sleep under an encode. When the Mac does sleep — a closed lid, a chosen sleep — the job
+is handed back to the server first, so it is reassigned at once rather than after the lease lapses,
+and check-ins resume the moment the Mac wakes. Quitting the app mid-job hands the job back the same
+way before the app exits. **Start at login** in the menu registers the app as a login item through
+the system's own service, so it also appears under System Settings › General › Login Items; it needs
+the app to run from the built bundle rather than a bare build directory.
+
 This loop has run end to end on real hardware: `LiveWorkLoopTests` pairs with a running server,
 claims a queued job, encodes it with the bundled ffmpeg and delivers it, and the server's own
 verification — every gate, VMAF included — then judges the candidate. Run it against a server that

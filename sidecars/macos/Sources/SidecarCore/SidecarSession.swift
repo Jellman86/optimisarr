@@ -53,6 +53,9 @@ public final class SidecarSession: ObservableObject {
     private var pairing: StoredPairing?
     private var heartbeatTask: Task<Void, Never>?
     private var jobTask: Task<Void, Never>?
+    /// Held while a job runs so macOS neither naps the app nor idles the machine to sleep under
+    /// an encode. A lid close still sleeps the Mac; that path hands the job back first.
+    private var activity: NSObjectProtocol?
 
     public init(
         client: SidecarClient = SidecarClient(),
@@ -123,9 +126,63 @@ public final class SidecarSession: ObservableObject {
         // hands the lease back, so the server can reassign rather than wait for it to lapse.
         jobTask?.cancel()
         jobTask = nil
+        endActivity()
         try? store.clear()
         pairing = nil
         status = .unpaired
+    }
+
+    /// Stops the job in flight, if any, and waits until the lease has been handed back, so the
+    /// server can reassign at once rather than after the lease lapses. The reason is what the
+    /// menu shows afterwards, in place of the runner's generic cancellation wording.
+    public func stopWork(because reason: String) async {
+        guard let task = jobTask else { return }
+        task.cancel()
+        await task.value
+        if case let .released(jobId, _) = lastOutcome {
+            lastOutcome = .released(jobId: jobId, reason: reason)
+        }
+    }
+
+    /// The Mac is about to sleep. A sleeping worker cannot renew, so the lease would lapse and
+    /// the job go back to the queue anyway, two minutes later and with the server unsure why.
+    /// Handing it back now is the same outcome, sooner and explained. Check-ins stop until wake.
+    public func systemWillSleep() async {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        await stopWork(because: "This Mac went to sleep, so the job was handed back for another machine to take.")
+        if pairing != nil, case .working = status {
+            status = .unreachable(reason: "Asleep")
+        }
+    }
+
+    /// Awake again: check in straight away rather than waiting out the old interval, so the
+    /// Workers tab sees the machine back within seconds and it can take work again.
+    public func systemDidWake() {
+        guard pairing != nil else { return }
+        startHeartbeat()
+    }
+
+    /// Called before the app exits. The heartbeat stops so the server sees a clean gap rather
+    /// than a beat followed by silence, and any job is handed back rather than left to lapse.
+    public func prepareToQuit() async {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+        await stopWork(because: "The sidecar was quit, so the job was handed back.")
+    }
+
+    private func beginActivity() {
+        guard activity == nil else { return }
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Encoding for Optimisarr")
+    }
+
+    private func endActivity() {
+        if let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+        }
+        activity = nil
     }
 
     private func startHeartbeat() {
@@ -194,6 +251,7 @@ public final class SidecarSession: ObservableObject {
 
         status = .working(jobId: assignment.jobId, progress: .fetchingSource)
         let jobId = assignment.jobId
+        beginActivity()
         // The task holds the session for the job's duration, which is intended: a job is stopped
         // by cancelling this task (see unpair), never by the session quietly going away under it.
         jobTask = Task { [weak self] in
@@ -213,6 +271,7 @@ public final class SidecarSession: ObservableObject {
     private func finish(_ outcome: JobOutcome, workerId: Int) {
         lastOutcome = outcome
         jobTask = nil
+        endActivity()
         if pairing != nil {
             status = .connected(workerId: workerId, lastCheckIn: Date())
         }

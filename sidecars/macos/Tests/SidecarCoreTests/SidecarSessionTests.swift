@@ -40,6 +40,26 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
+/// A job that runs until it is cancelled, then reports what the real runner would after handing
+/// the lease back. Lets the sleep and quit paths be walked without ffmpeg or a server.
+final class HangingExecutor: WorkExecutor, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var started = false
+    private(set) var cancelled = false
+
+    func execute(
+        _ assignment: Assignment, pairing: StoredPairing,
+        progress: @escaping @Sendable (JobProgress) -> Void
+    ) async -> JobOutcome {
+        lock.withLock { started = true }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        lock.withLock { cancelled = true }
+        return .released(jobId: assignment.jobId, reason: "The job was cancelled on this machine.")
+    }
+}
+
 @MainActor
 @Suite("Session lifecycle")
 struct SidecarSessionTests {
@@ -154,6 +174,77 @@ struct SidecarSessionTests {
         }
 
         #expect(session.status.summary == "Connected")
+    }
+
+    private static let beat: ScriptedTransport.Reply =
+        .init(status: 200, json: ["workerId": 11, "protocolVersion": 1, "heartbeatIntervalSeconds": 30])
+    private static let claim: ScriptedTransport.Reply = .init(status: 200, json: [
+        "leaseId": "lease-1", "jobId": 12, "sourceBytes": 4096, "videoEncoder": "libx265",
+        "renewWithinSeconds": 30, "arguments": ["-i", "{{input}}", "{{output}}.mp4"], "outputExtension": "mp4",
+        "quality": ["measure": false, "model": "vmaf_v0.6.1", "frameSubsample": 1, "clipVmaf": false,
+                    "minimumHarmonicMean": 93.0, "minimumMinimum": 80.0],
+    ])
+
+    private func workingSession(_ executor: HangingExecutor) async throws -> SidecarSession {
+        let store = InMemoryCredentialStore(
+            stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11))
+        // Beat, claim, then whatever comes next (a release, a beat) is answered 204.
+        let transport = ScriptedTransport([Self.beat, Self.claim, .init(status: 204, json: [:])])
+        let session = SidecarSession(
+            client: SidecarClient(transport: transport), store: store,
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], maxConcurrency: 1),
+            executor: executor,
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+        session.restore()
+        try await waitFor { executor.started }
+        return session
+    }
+
+    @Test("going to sleep hands the job back at once and stops checking in")
+    func sleepHandsTheJobBack() async throws {
+        let executor = HangingExecutor()
+        let session = try await workingSession(executor)
+
+        await session.systemWillSleep()
+
+        #expect(executor.cancelled)
+        guard case let .released(jobId, reason) = session.lastOutcome else {
+            Issue.record("expected a release, got \(String(describing: session.lastOutcome))")
+            return
+        }
+        #expect(jobId == 12)
+        #expect(reason.contains("went to sleep"))
+    }
+
+    @Test("quitting hands the job back before the app exits")
+    func quitHandsTheJobBack() async throws {
+        let executor = HangingExecutor()
+        let session = try await workingSession(executor)
+
+        await session.prepareToQuit()
+
+        #expect(executor.cancelled)
+        guard case let .released(_, reason) = session.lastOutcome else {
+            Issue.record("expected a release, got \(String(describing: session.lastOutcome))")
+            return
+        }
+        #expect(reason.contains("quit"))
+    }
+
+    @Test("stopping work when idle is a no-op")
+    func stopWhenIdle() async throws {
+        let store = InMemoryCredentialStore(
+            stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11))
+        let (session, _) = session([Self.beat], store: store)
+        session.restore()
+        try await waitFor {
+            if case .connected = session.status { return true }
+            return false
+        }
+
+        await session.stopWork(because: "nothing")
+
+        #expect(session.lastOutcome == nil)
     }
 
     /// Polls a condition rather than sleeping a fixed time, so the tests stay fast and are not

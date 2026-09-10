@@ -62,7 +62,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shown on first launch too, while nothing is paired. Someone who has just installed this has
     /// no reason to know it lives in the menu bar, and if the icon is hidden they would otherwise
     /// see nothing happen at all.
+    /// The sleep and wake hooks live here rather than in the session so SidecarCore stays free
+    /// of AppKit and its lifecycle can be tested by calling the same two methods directly.
+    private func observePowerEvents() {
+        let centre = NSWorkspace.shared.notificationCenter
+        centre.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in await AppState.shared.session.systemWillSleep() }
+        }
+        centre.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in AppState.shared.session.systemDidWake() }
+        }
+    }
+
+    /// Quitting mid-encode hands the job back first, so the server reassigns it now rather than
+    /// after the lease lapses. The reply is deferred only for as long as that one call takes.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor in
+            await AppState.shared.session.prepareToQuit()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        observePowerEvents()
         // Deferred rather than run inline. Restoring reads the Keychain, and anything that touches
         // the Keychain can in principle block; doing it here on the launch path once left the app
         // running with no menu bar icon and no window at all, because it was stuck behind a modal
