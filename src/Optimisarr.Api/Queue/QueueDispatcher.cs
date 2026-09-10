@@ -745,7 +745,33 @@ public sealed class QueueDispatcher(
                     cancellationToken);
             }
 
-            await VerifyAndFinishAsync(jobId, candidatePath, work.Value, cancellationToken, remoteQuality: delivered.Accepted);
+            var disposition = await VerifyAndFinishAsync(
+                jobId, candidatePath, work.Value, cancellationToken,
+                // A worker's hardware decode can corrupt frames as a local one can; the retry
+                // cannot happen on the worker, so it is a requeue with software decode required.
+                softwareDecodeRetryAvailable: deliveredLease!.HardwareDecoder is not null,
+                remoteQuality: delivered.Accepted);
+            if (disposition == VerificationDisposition.RetryWithSoftwareDecode)
+            {
+                DeleteWorkOutput(candidatePath);
+                await WithJobAsync(jobId, job =>
+                {
+                    job.PreferSoftwareDecode = true;
+                    job.Status = JobStatus.Queued;
+                    job.Progress = 0;
+                    job.WorkOutputPath = null;
+                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                }, cancellationToken);
+                logger.LogWarning(
+                    "Job {JobId}: the candidate {Worker} decoded with {Decoder} showed decoder corruption; requeued to be encoded with software decode",
+                    jobId, deliveredBy.Name, deliveredLease.HardwareDecoder);
+                await RecordWorkerProblemAsync(
+                    deliveredBy.Id,
+                    $"Its {deliveredLease.HardwareDecoder} decode of {Path.GetFileName(work.Value.Original.Path)} produced corrupt frames; the job was requeued to decode in software.",
+                    cancellationToken);
+                return;
+            }
+
             await RecordDeliveredVerdictAsync(jobId, deliveredBy.Id, cancellationToken);
         }
         catch (JobNoLongerEligibleException ex)
@@ -1211,7 +1237,8 @@ public sealed class QueueDispatcher(
             Path.GetExtension(work.Spec.OutputPath).TrimStart('.'),
             work.VerificationPolicy,
             QualityScoreCommandBuilder.ModelVersionFor(width, height),
-            quality));
+            quality,
+            work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null));
     }
 
     /// <summary>
@@ -1576,10 +1603,17 @@ public sealed class QueueDispatcher(
         // reordering around an input seek can move the clip several frames before its VMAF
         // reference. Hardware encoding remains enabled. Normal jobs retain the existing
         // hardware-decode path and transparent software fallback.
-        // A remote worker's decoders are not yet part of the contract, so its command decodes in
-        // software: the path every filter here is proven on, and the one that needs no device.
-        var hardwareDecode = !placement.IsRemote && HardwareDecodePolicy.ShouldUse(
-            queueSettings.HardwareDecode,
+        // A remote worker decodes in hardware only with a decoder it proved by a real decode, and
+        // only for the encoder family that decoder belongs to; otherwise its command decodes in
+        // software, the path every filter here is proven on. A job whose hardware-decoded candidate
+        // already came back corrupt decodes in software wherever it runs next.
+        var remoteHardwareDecoder = placement.RemoteWorker is { } decodingWorker
+            ? RemoteHardwareDecoder(decodingWorker, videoEncoderName)
+            : null;
+        var hardwareDecode = !job.PreferSoftwareDecode
+            && (placement.IsRemote ? remoteHardwareDecoder is not null : true)
+            && HardwareDecodePolicy.ShouldUse(
+            placement.IsRemote || queueSettings.HardwareDecode,
             isDisposable,
             spec.Kind,
             spec.VideoCodec,
@@ -1686,8 +1720,20 @@ public sealed class QueueDispatcher(
             hardwareToneMap,
             media.Width is > 0 && media.Height is > 0
                 ? new PictureSize(media.Width.Value, media.Height.Value)
-                : null);
+                : null,
+            SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null);
     }
+
+    /// <summary>
+    /// The decoder a worker's command may use: VideoToolbox, when the worker proved it and the
+    /// encoder is VideoToolbox too. Other families are not paired with a worker decoder yet.
+    /// </summary>
+    private static string? RemoteHardwareDecoder(WorkerCapabilities worker, string? videoEncoder) =>
+        videoEncoder is not null
+        && videoEncoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase)
+        && worker.HardwareDecoders.Any(decoder => string.Equals(decoder, "videotoolbox", StringComparison.OrdinalIgnoreCase))
+            ? "videotoolbox"
+            : null;
 
     /// <summary>
     /// Runs a bounded, fail-open preparation search for an adaptive library. Every candidate uses

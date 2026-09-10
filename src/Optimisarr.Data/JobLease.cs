@@ -63,6 +63,13 @@ public sealed class JobLease
     public string? DeliveredSha256 { get; set; }
 
     /// <summary>
+    /// The hardware decoder the assignment told the worker to use, or null for software decode.
+    /// Recorded so a delivered candidate that fails with the signature of decoder corruption can be
+    /// tried again in software rather than failed outright.
+    /// </summary>
+    public string? HardwareDecoder { get; set; }
+
+    /// <summary>
     /// Seconds of output the worker's ffmpeg had produced at its latest renewal. The server turns
     /// this into a fraction against the source duration, because the worker never learns it.
     /// </summary>

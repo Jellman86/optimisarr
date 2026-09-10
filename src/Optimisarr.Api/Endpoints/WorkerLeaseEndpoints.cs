@@ -203,7 +203,8 @@ internal static class WorkerLeaseEndpoints
 
                 var requirements = new JobRequirements(
                     VideoEncoder: assignment.VideoEncoder,
-                    HardwareDecoder: null,
+                    // Named only when the command actually uses one, and then it must be proved.
+                    HardwareDecoder: assignment.HardwareDecoder,
                     // Only a job whose policy will judge VMAF needs a worker that can score it.
                     Vmaf: assignment.Verification.QualityGateEnabled ? VmafCapability.Cpu : VmafCapability.None,
                     // Scratch for the candidate plus headroom; a worker that cannot hold the output
@@ -232,6 +233,7 @@ internal static class WorkerLeaseEndpoints
                     // Bound to the lease so delivery names the candidate by the contract, not by
                     // the source; the replacement's final extension comes from that name.
                     OutputExtension = assignment.OutputExtension,
+                    HardwareDecoder = assignment.HardwareDecoder,
                     // What the worker was asked to measure, fixed now so the evidence it returns is
                     // judged against this, not against a policy that may have changed since.
                     QualityContractJson = assignment.Quality is null

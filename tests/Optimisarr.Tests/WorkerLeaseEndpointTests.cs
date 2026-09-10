@@ -83,7 +83,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private Task<HttpClient> PairWorkerWithEncoders(string name, params string[] encoders) =>
         PairWorkerWithEncoders(name, 1, encoders);
 
-    private async Task<HttpClient> PairWorkerWithEncoders(string name, int concurrency, params string[] encoders)
+    private Task<HttpClient> PairWorkerWithEncoders(string name, int concurrency, params string[] encoders) =>
+        PairWorker(name, concurrency, encoders, decoders: []);
+
+    private async Task<HttpClient> PairWorker(string name, int concurrency, string[] encoders, string[] decoders)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -99,7 +102,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             protocolMinimum = 1,
             protocolMaximum = 1,
             videoEncoders = encoders,
-            hardwareDecoders = Array.Empty<string>(),
+            hardwareDecoders = decoders,
             vmaf = "Cpu",
             freeScratchBytes = 500L * 1024 * 1024 * 1024,
             maxConcurrency = concurrency,
@@ -369,6 +372,69 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Contains("{{reference}}", command);
         Assert.Contains(command, arg => arg.Contains("log_path={{log}}") && arg.Contains("model=version=vmaf_v0.6.1"));
         Assert.Equal("-", command[^1]);
+    }
+
+    [Fact]
+    public async Task A_worker_that_proved_its_decoder_is_told_to_decode_in_hardware()
+    {
+        // The decoder is used only where it was proved by a real decode, and only with the
+        // encoder family it belongs to; the lease records it so a corrupt result can be retried
+        // in software rather than failed.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Apple", 1, ["hevc_videotoolbox"], ["videotoolbox"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
+
+        var hwaccel = arguments.IndexOf("-hwaccel");
+        Assert.True(hwaccel >= 0, string.Join(" ", arguments));
+        Assert.Equal("videotoolbox", arguments[hwaccel + 1]);
+        Assert.Equal("hevc_videotoolbox", arguments[arguments.IndexOf("-c:v:0") + 1]);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await db.JobLeases.SingleAsync(l => l.JobId == jobId && l.State == Optimisarr.Core.Workers.LeaseState.Held);
+        Assert.Equal("videotoolbox", lease.HardwareDecoder);
+    }
+
+    [Fact]
+    public async Task A_worker_without_a_proved_decoder_decodes_in_software()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Apple", 1, ["hevc_videotoolbox"], []);
+        await QueueAJob(videoEncoder: null);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
+
+        Assert.DoesNotContain("-hwaccel", arguments);
+    }
+
+    [Fact]
+    public async Task A_job_whose_hardware_decode_came_back_corrupt_is_decoded_in_software_next_time()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Apple", 1, ["hevc_videotoolbox"], ["videotoolbox"]);
+        var jobId = await QueueAJob(videoEncoder: null);
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = await db.Jobs.SingleAsync(j => j.Id == jobId);
+            job.PreferSoftwareDecode = true;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var arguments = (await claim.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
+
+        Assert.DoesNotContain("-hwaccel", arguments);
     }
 
     [Fact]
