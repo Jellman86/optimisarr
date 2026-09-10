@@ -864,18 +864,64 @@ public sealed class QueueDispatcher(
                     }
                 }
 
-                await VerifyAndFinishAsync(jobId, spec.OutputPath, preparedWork, cancellationToken);
+                var disposition = await VerifyAndFinishAsync(
+                    jobId,
+                    spec.OutputPath,
+                    preparedWork,
+                    cancellationToken,
+                    softwareDecodeRetryAvailable: preparedWork.UsedHardwareDecode
+                        && preparedWork.SoftwareFallbackArguments is not null);
+                if (disposition == VerificationDisposition.RetryWithSoftwareDecode)
+                {
+                    // One more encode, with the universal software decoder feeding the same encoder.
+                    // The retried work cannot fall back again, so this cannot loop.
+                    DeleteWorkOutput(spec.OutputPath);
+                    arguments = preparedWork.SoftwareFallbackArguments!;
+                    var retriedWork = preparedWork with
+                    {
+                        Arguments = arguments,
+                        SoftwareFallbackArguments = null,
+                        UsedHardwareDecode = false,
+                        UsedHardwareToneMap = false,
+                        SoftwareDecodeRetryReason = HardwareDecodeFallback.SoftwareDecodeRetryReason
+                    };
+                    await WithJobAsync(jobId, job =>
+                    {
+                        job.Status = JobStatus.Transcoding;
+                        job.Progress = 0;
+                        job.VerificationPassed = null;
+                        job.VerifiedAt = null;
+                        job.OutputSizeBytes = null;
+                        job.UpdatedAt = DateTimeOffset.UtcNow;
+                    }, cancellationToken);
+                    await BeginTranscodeAsync(
+                        jobId,
+                        spec.OutputPath,
+                        arguments,
+                        preparedWork.VideoEncoder,
+                        preparedWork.VideoQuality,
+                        cancellationToken);
+                    await NotifyAsync();
+                    run = await RunFfmpegAsync(
+                        jobId,
+                        arguments,
+                        progressDuration,
+                        expectedFrameCount,
+                        hardwareEncoder,
+                        cancellationToken);
+                    if (run.ExitCode == 0)
+                    {
+                        await VerifyAndFinishAsync(jobId, spec.OutputPath, retriedWork, cancellationToken);
+                    }
+                    else
+                    {
+                        await FailFromFfmpegRunAsync(jobId, spec.OutputPath, run);
+                    }
+                }
             }
             else
             {
-                DeleteWorkOutput(spec.OutputPath);
-                // Translate known ffmpeg failures into a clear, actionable reason; fall back to the
-                // raw stderr tail for anything unrecognised.
-                var error = FfmpegErrorInterpreter.Explain(run.Error)
-                    ?? run.Error
-                    ?? $"ffmpeg exited with code {run.ExitCode}";
-                await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log);
-                await NotifyJobFailedAsync(jobId, error);
+                await FailFromFfmpegRunAsync(jobId, spec.OutputPath, run);
             }
         }
         catch (JobNoLongerEligibleException ex)
@@ -948,7 +994,10 @@ public sealed class QueueDispatcher(
         bool UsedHardwareToneMap = false,
         // The inventory's picture size, when it has one. A remote assignment names the VMAF
         // model from it so the worker's evidence can be held to the model this machine would use.
-        PictureSize? SourcePicture = null)
+        PictureSize? SourcePicture = null,
+        // Why this work is a second encode of the same job, when it is one; carried into the
+        // verification report's context so the record explains itself.
+        string? SoftwareDecodeRetryReason = null)
     {
         public void Deconstruct(out TranscodeSpec spec, out IReadOnlyList<string> arguments)
         {
@@ -2131,6 +2180,18 @@ public sealed class QueueDispatcher(
             log.ToLog());
     }
 
+    // Translate known ffmpeg failures into a clear, actionable reason; fall back to the raw
+    // stderr tail for anything unrecognised. The partial output is never left behind.
+    private async Task FailFromFfmpegRunAsync(int jobId, string outputPath, FfmpegRun run)
+    {
+        DeleteWorkOutput(outputPath);
+        var error = FfmpegErrorInterpreter.Explain(run.Error)
+            ?? run.Error
+            ?? $"ffmpeg exited with code {run.ExitCode}";
+        await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log);
+        await NotifyJobFailedAsync(jobId, error);
+    }
+
     private async Task BeginTranscodeAsync(
         int jobId,
         string outputPath,
@@ -2293,7 +2354,24 @@ public sealed class QueueDispatcher(
     // check plus duration/stream/size comparison against the original. A failed
     // report leaves the job Failed with the output retained for inspection — the
     // original is never touched either way.
-    private async Task VerifyAndFinishAsync(int jobId, string outputPath, JobWork work, CancellationToken cancellationToken)
+    private enum VerificationDisposition
+    {
+        /// <summary>The job reached a terminal state, a queued retry, or replacement.</summary>
+        Finished,
+
+        /// <summary>
+        /// The hardware-decoded output failed the way a corrupt decode fails. The report is saved;
+        /// the caller owns the software re-encode because only it holds the fallback command.
+        /// </summary>
+        RetryWithSoftwareDecode
+    }
+
+    private async Task<VerificationDisposition> VerifyAndFinishAsync(
+        int jobId,
+        string outputPath,
+        JobWork work,
+        CancellationToken cancellationToken,
+        bool softwareDecodeRetryAvailable = false)
     {
         await WithJobAsync(jobId, job =>
         {
@@ -2367,7 +2445,8 @@ public sealed class QueueDispatcher(
                     outcome.VmafSampling,
                     policy.MinimumVmafHarmonicMean,
                     policy.MinimumVmafMin,
-                    policy.MinimumVmafCatastrophicMin)
+                    policy.MinimumVmafCatastrophicMin,
+                    work.SoftwareDecodeRetryReason)
             }
         };
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
@@ -2386,13 +2465,31 @@ public sealed class QueueDispatcher(
 
         if (!outcome.Report.Passed)
         {
+            // Asked before the higher-quality retry: a corrupt decode fails at every quality, so
+            // re-encoding it at a higher one would only spend a second encode on the same rubbish.
+            if (softwareDecodeRetryAvailable
+                && !work.IsDisposable
+                && HardwareDecodeFallback.ShouldRetryAfterVerification(
+                    outcome.Report,
+                    policy.MinimumVmafCatastrophicMin))
+            {
+                logger.LogWarning(
+                    "Job {JobId}: the hardware-decoded output failed verification with the signature of "
+                    + "decoder corruption ({Failures}); re-encoding with software decode",
+                    jobId,
+                    string.Join("; ", outcome.Report.Checks
+                        .Where(check => check.Outcome == CheckOutcome.Failed)
+                        .Select(check => check.Name)));
+                return VerificationDisposition.RetryWithSoftwareDecode;
+            }
+
             if (!work.IsDisposable && VmafRetryPolicy.ShouldRetry(
                     outcome.Report,
                     work.VideoQuality?.RetryCount ?? 0,
                     work.VideoQuality?.Effective))
             {
                 await QueueHigherQualityRetryAsync(jobId, outputPath);
-                return;
+                return VerificationDisposition.Finished;
             }
 
             var failed = outcome.Report.Checks
@@ -2412,16 +2509,17 @@ public sealed class QueueDispatcher(
                     work.VideoQuality?.RetryCount ?? 0,
                     work.VideoQuality?.Effective));
             await NotifyJobFailedAsync(jobId, summary);
-            return;
+            return VerificationDisposition.Finished;
         }
 
         if (work.IsDisposable)
         {
             await CompleteAsync(jobId, JobStatus.Completed, progress: 1.0);
-            return;
+            return VerificationDisposition.Finished;
         }
 
         await FinishSuccessfulJobAsync(jobId, outputPath, work, settings.DryRunMode);
+        return VerificationDisposition.Finished;
     }
 
     internal static VerificationClip? BuildVerificationClip(

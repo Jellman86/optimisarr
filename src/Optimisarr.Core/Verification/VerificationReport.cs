@@ -19,7 +19,10 @@ public sealed record VerificationContext(
     string? VmafSampling,
     double MinimumVmafHarmonicMean,
     double MinimumVmafFifthPercentile,
-    double MinimumVmafCatastrophicMin);
+    double MinimumVmafCatastrophicMin,
+    // Set when this report judges a second encode made with software decode after the first,
+    // hardware-decoded one failed with the signature of decoder corruption. Null otherwise.
+    string? DecodeRetry = null);
 
 /// <summary>
 /// Structured VMAF evidence retained independently of the pass/fail checks. Measure-only callers
