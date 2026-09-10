@@ -146,6 +146,13 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var renewals = 0
     private(set) var qualityReport: [String: Any]?
     private(set) var qualityReportedBeforeDelivery = false
+    /// Whether the server offers resumable delivery; off means an older server, whole-file only.
+    var resumable = false
+    /// Drop the chunk that starts at this offset once, as a failed connection would.
+    var dropChunkAt: Int64? = nil
+    private var staged = Data()
+    private(set) var chunkOffsets: [Int64] = []
+    private(set) var completedViaChunks = false
 
     init(sourceBytes: Data, claimJSON: [String: Any]? = nil) {
         self.sourceBytes = sourceBytes
@@ -171,6 +178,35 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             if path.hasSuffix("/release") {
                 released = true
                 return (Data(), response(request, 204))
+            }
+            if path.hasSuffix("/result/offset") {
+                guard resumable else { return (Data(), response(request, 404)) }
+                return (Data("{\"bytes\":\(staged.count)}".utf8), response(request, 200))
+            }
+            if path.hasSuffix("/result"), request.httpMethod == "PATCH" {
+                guard resumable else { return (Data(), response(request, 404)) }
+                let offset = Int64(request.value(forHTTPHeaderField: "X-Optimisarr-Offset") ?? "-1") ?? -1
+                chunkOffsets.append(offset)
+                if let drop = dropChunkAt, drop == offset {
+                    dropChunkAt = nil
+                    throw SidecarError.transferFailed(reason: "connection reset")
+                }
+                guard offset == Int64(staged.count) else {
+                    let body = Data("{\"error\":\"offset\",\"details\":{\"bytes\":\(staged.count)}}".utf8)
+                    return (body, response(request, 409))
+                }
+                staged.append(request.httpBody ?? Data())
+                return (Data("{\"bytes\":\(staged.count)}".utf8), response(request, 200))
+            }
+            if path.hasSuffix("/result/complete") {
+                guard resumable else { return (Data(), response(request, 404)) }
+                deliveredFile = staged
+                deliveredHeaders = request.allHTTPHeaderFields ?? [:]
+                completedViaChunks = true
+                let body = deliverStatus == 202
+                    ? Data(#"{"jobId":12,"bytes":\#(staged.count),"candidateSha256":"x"}"#.utf8)
+                    : Data(#"{"error":"The uploaded candidate does not match the hash the worker declared."}"#.utf8)
+                return (body, response(request, deliverStatus))
             }
             if path.hasSuffix("/quality") {
                 qualityReport = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
@@ -638,5 +674,55 @@ struct MeasurementFlowTests {
         _ = await runner.execute(assignment(), pairing: pairing) { _ in }
 
         #expect(server.qualityReport == nil)
+    }
+}
+
+@Suite("Resumable delivery")
+struct ResumableDeliveryTests {
+    private func runner(_ server: FakeWorkerServer) -> JobRunner {
+        JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(candidate: Data(repeating: 9, count: 200)),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+    }
+
+    @Test("a server that offers resumable delivery receives the candidate in chunks and completes with both hashes")
+    func deliversInChunks() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        server.resumable = true
+
+        let outcome = await runner(server).execute(assignment(), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 200))
+        #expect(server.completedViaChunks)
+        #expect(server.deliveredFile == Data(repeating: 9, count: 200))
+        #expect(server.deliveredHeaders["X-Optimisarr-Source-Sha256"] == server.sourceSha256)
+    }
+
+    @Test("a dropped chunk is retried from the offset the server reports, and nothing is sent twice")
+    func resumesAfterADroppedChunk() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        server.resumable = true
+        server.dropChunkAt = 0
+
+        let outcome = await runner(server).execute(assignment(), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 200))
+        // First attempt at 0 was dropped, the offset query said 0, the retry at 0 landed.
+        #expect(server.chunkOffsets == [0, 0])
+        #expect(server.deliveredFile == Data(repeating: 9, count: 200))
+    }
+
+    @Test("a server without resumable delivery still receives the whole file at once")
+    func fallsBackToWholeFile() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+
+        let outcome = await runner(server).execute(assignment(), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 200))
+        #expect(!server.completedViaChunks)
+        #expect(server.deliveredFile == Data(repeating: 9, count: 200))
     }
 }

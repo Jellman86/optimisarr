@@ -67,6 +67,12 @@
   verification with the signature of decoder corruption is not failed: the job is requeued to
   decode in software wherever it runs next, and the worker's card says why. Migration
   `AddDecodeFacts`.
+- **A candidate can be delivered in resumable chunks.** `GET …/result/offset`, `PATCH …/result`
+  with `X-Optimisarr-Offset`, and `POST …/result/complete` let a worker append a multi-gigabyte
+  candidate 64 MB at a time and, after a dropped connection, ask where it got to and carry on;
+  the assembled file is hashed and judged exactly as a whole upload, and the staging file is
+  named by lease so a resumed upload can only continue its own transfer. The macOS sidecar
+  delivers this way when the server offers it and in one piece otherwise.
 
 ## 0.2.12 — 2026-09-10
 

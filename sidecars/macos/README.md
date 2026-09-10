@@ -28,7 +28,8 @@ server has verified it can finish a job that came back — asks for work. A job 
    then receives carries the same hash. If a measurement cannot be made, the candidate is still
    delivered and the server measures for itself.
 6. **Deliver.** The candidate is hashed and uploaded with both hashes, so the server can bind it to
-   this exact source. The server then verifies it against the original exactly as it would a local
+   this exact source — in 64 MB chunks at offsets the server confirms, resuming from whatever it
+   holds after a dropped connection, or in one request against a server that predates that. The server then verifies it against the original exactly as it would a local
    encode. Nothing is replaced from here, ever.
 
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every

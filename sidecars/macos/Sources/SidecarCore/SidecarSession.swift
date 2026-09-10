@@ -297,6 +297,8 @@ public final class SidecarSession: ObservableObject {
             // Job-time errors never reach pairing or check-in, but the mapping stays total so a
             // new case cannot be forgotten silently.
             return .unreachable(reason: reason)
+        case let .uploadOffsetMismatch(serverHolds):
+            return .unreachable(reason: "The upload lost its place; the server holds \(serverHolds) bytes.")
         }
     }
 }
