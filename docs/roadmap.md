@@ -577,7 +577,15 @@ the replacement workflow is trustworthy.
 
      **Corrected 2026-09-04:** the assignment now carries a resolved encode contract and a claim
      can succeed; the same test asserts an executable command is returned. The verification pass
-     for a returned candidate landed the same day. **Still to build:** drain controls.
+     for a returned candidate landed the same day. **Landed 2026-09-10: per-library placement.**
+     A video library's Advanced options say where its work may run — *Here or on a worker*, *Only
+     on this server*, *Prefer a worker* (held for an online, non-draining worker for up to ten
+     minutes), or *Only on workers* — as one filter over the shared queue that the local dispatcher
+     and a worker's claim both read from `WorkPlacementPolicy`, so a job keeps its priority and
+     age wherever it is allowed to run. While remote workers are off every placement runs on the
+     server, which is what keeps a library from stalling on a feature not in use. **Still to
+     build:** drain controls, and an "on a worker" placement for adaptive libraries once selection
+     can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 

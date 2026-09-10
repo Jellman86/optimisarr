@@ -128,6 +128,8 @@ export type HardwareCapability = {
   error: string | null
 }
 
+export type WorkPlacement = 'Anywhere' | 'LocalOnly' | 'PreferWorker' | 'WorkerOnly'
+
 export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
@@ -184,6 +186,8 @@ export type LibraryRules = {
   minimumImageSsim: number
   imageMetadataGateEnabled: boolean
   videoQualityStrategy: 'Fixed' | 'AdaptiveVmaf'
+  /** Where this library's video re-encodes may run once remote workers are on. Ignored while they are off. */
+  workPlacement: WorkPlacement
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
@@ -291,6 +295,7 @@ export function newLibraryDefaults(): SaveLibrary {
     minimumImageSsim: 0.95,
     imageMetadataGateEnabled: true,
     videoQualityStrategy: 'AdaptiveVmaf',
+    workPlacement: 'Anywhere',
     autoEnqueueEnabled: false,
     autoEnqueueWindowStart: '00:00',
     autoEnqueueWindowEnd: '00:00',

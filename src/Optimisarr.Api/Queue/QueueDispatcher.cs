@@ -437,26 +437,67 @@ public sealed class QueueDispatcher(
         List<QueuedJob> queued;
         List<int> delivered;
         Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
+        var remoteWorkersOn = false;
+        var aWorkerCouldTakeWork = false;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            // A library's placement only means something while work can actually go elsewhere:
+            // the switch on and the preview flag present. Otherwise "only on workers" would hold a
+            // job for a claim that the worker routes refuse, which is a stall nobody asked for.
+            remoteWorkersOn = settings.RemoteWorkersEnabled
+                && scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>().Available;
+            if (remoteWorkersOn)
+            {
+                var offlineBefore = DateTimeOffset.UtcNow - WorkerLiveness.OfflineAfter;
+                aWorkerCouldTakeWork = await db.Workers
+                    .AsNoTracking()
+                    .AnyAsync(
+                        worker => worker.RevokedAt == null
+                            && worker.MaxConcurrency > 0
+                            && worker.LastSeenAt != null
+                            && worker.LastSeenAt > offlineBefore,
+                        stoppingToken);
+            }
+
+            var placements = await db.Libraries
+                .AsNoTracking()
+                .Select(library => new { library.Id, library.WorkPlacement })
+                .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, stoppingToken);
             delivered = await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.AwaitingVerification)
                 .OrderBy(job => job.Id)
                 .Select(job => job.Id)
                 .ToListAsync(stoppingToken);
-            queued = await db.Jobs
+            queued = (await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
+                .Select(job => new
+                {
+                    job.Id,
+                    job.LibraryId,
+                    job.Priority,
+                    job.EnqueuedAt,
+                    IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
+                    IgnoreLibraryWindow = job.Type == JobType.Preview,
+                    // Only a normal job is ever offered to a worker, so only a normal job can be
+                    // held for one; a calibration or preview is placed exactly as before.
+                    HonoursPlacement = job.Type == JobType.Normal,
+                })
+                .ToListAsync(stoppingToken))
                 .Select(job => new QueuedJob(
                     job.Id,
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
-                    job.Type == JobType.Calibration && job.IgnoreMediaActivity,
-                    job.Type == JobType.Preview))
-                .ToListAsync(stoppingToken);
+                    job.IgnoreMediaActivity,
+                    job.IgnoreLibraryWindow,
+                    job.HonoursPlacement && job.LibraryId is { } libraryId
+                        && placements.TryGetValue(libraryId, out var placement)
+                        ? placement
+                        : WorkPlacement.Anywhere))
+                .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
             // auto-optimise off has no window, so its (manually enqueued) jobs may run anytime.
@@ -500,7 +541,10 @@ public sealed class QueueDispatcher(
         }
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
+        var nowUtc = DateTimeOffset.UtcNow;
         var runnable = queued
+            .Where(job => WorkPlacementPolicy.MayRunLocally(
+                job.Placement, remoteWorkersOn, aWorkerCouldTakeWork, job.EnqueuedAt, nowUtc))
             .Where(job =>
             {
                 var window = job.LibraryId is { } libraryId
@@ -982,6 +1026,7 @@ public sealed class QueueDispatcher(
         OriginalSnapshot Original,
         VerificationPolicy VerificationPolicy,
         VideoQualityStrategy VideoQualityStrategy,
+        WorkPlacement Placement,
         int? AdaptiveVideoQuality,
         bool AutoReplace,
         int CpuThreadLimit,
@@ -1054,6 +1099,11 @@ public sealed class QueueDispatcher(
         if (prepared is not { } work)
         {
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
+        }
+
+        if (!WorkPlacementPolicy.MayRunOnWorker(work.Placement))
+        {
+            return RemoteWorkPlan.Refused("The library keeps its work on this server.");
         }
 
         // Only a video re-encode has an encoder to match and arguments worth shipping; a remux,
@@ -1545,6 +1595,7 @@ public sealed class QueueDispatcher(
             original,
             verificationPolicy,
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
+            library?.WorkPlacement ?? WorkPlacement.Anywhere,
             job.AdaptiveVideoQuality,
             library?.AutoReplace ?? false,
             queueSettings.CpuThreadLimit,

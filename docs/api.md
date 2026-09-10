@@ -300,6 +300,7 @@ Create and update library bodies use the same shape. Common fields:
   "hdrHandling": null,
   "qualityCrf": null,
   "videoQualityStrategy": "Fixed",
+  "workPlacement": "Anywhere",
   "encoderPreset": "balanced",
   "vmafQualityGateEnabled": false,
   "minVmafHarmonicMean": 93,
@@ -341,7 +342,9 @@ the Visually lossless 93/80/50 floors, representative-window scoring, and every-
 An explicitly disabled VMAF gate keeps the omitted strategy on Fixed, as do non-video and remux-only
 libraries. An explicitly supplied `AdaptiveVmaf` is accepted only when
 `vmafQualityGateEnabled` is `true`; invalid combinations return `400` rather than silently changing
-the requested policy.
+the requested policy. `workPlacement` accepts `Anywhere` (the default when omitted), `LocalOnly`,
+`PreferWorker`, or `WorkerOnly`, and says where the library's video re-encodes may run once remote
+workers are switched on; it is stored but has no effect while they are off.
 
 Verification fields are owned by each library. The API accepts the complete shape for every media
 type, but the UI shows only applicable controls: video can configure subtitle retention and VMAF,

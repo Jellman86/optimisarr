@@ -117,7 +117,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private async Task<int> QueueAJob(
         string? videoEncoder = "libx265",
         VideoQualityStrategy strategy = VideoQualityStrategy.Fixed,
-        RuleProfile profile = RuleProfile.ConservativeHevc)
+        RuleProfile profile = RuleProfile.ConservativeHevc,
+        WorkPlacement placement = WorkPlacement.Anywhere)
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -128,6 +129,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             Path = Path.Combine(_api.LibraryDirectory, Guid.NewGuid().ToString("N")),
             VideoQualityStrategy = strategy,
             RuleProfile = profile,
+            WorkPlacement = placement,
         };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
@@ -224,6 +226,34 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_library_kept_on_this_server_is_never_offered_to_a_worker()
+    {
+        // The operator said this library's encodes stay here — perhaps this machine's encoder is
+        // the one they trust for it, perhaps the files are slow to send. A capable worker asking
+        // for work gets the next job that is allowed to travel, or nothing.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob(placement: WorkPlacement.LocalOnly);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_worker_only_job_is_offered_like_any_other()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        var jobId = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(jobId));
     }
 
     [Fact]
