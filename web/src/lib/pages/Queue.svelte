@@ -316,6 +316,7 @@
       case 'FetchingSource': return t(i18n.m.queue.remote_sending, { worker })
       case 'Encoding': return t(i18n.m.queue.remote_encoding, { worker })
       case 'Delivering': return t(i18n.m.queue.remote_returning, { worker })
+      case 'Measuring': return t(i18n.m.queue.remote_measuring, { worker })
       default: return t(i18n.m.queue.remote_claimed, { worker })
     }
   }

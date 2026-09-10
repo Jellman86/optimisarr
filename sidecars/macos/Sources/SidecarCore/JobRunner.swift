@@ -91,6 +91,7 @@ public enum JobOutcome: Sendable, Equatable {
 public enum JobProgress: Sendable, Equatable {
     case fetchingSource
     case encoding(encodedSeconds: Double)
+    case measuring
     case delivering
 }
 
@@ -189,6 +190,39 @@ public struct JobRunner: WorkExecutor {
         }
     }
 
+    /// Runs each of the server's measurement commands and reads back its log. Nil means the
+    /// measurement could not be made in full — a refused command, a failed ffmpeg, a missing log —
+    /// and nothing is reported, so the server never sees half an answer.
+    private func measure(
+        _ assignment: Assignment, ffmpeg: URL, source: URL, candidate: URL, scratch: URL
+    ) async -> [String]? {
+        var logs: [String] = []
+        for (index, arguments) in assignment.quality.commands.enumerated() {
+            guard let command = try? MeasurementCommand.validate(arguments) else { return nil }
+            let log = scratch.appendingPathComponent("vmaf-\(index).json", isDirectory: false)
+            let materialised = command.materialise(distorted: candidate, reference: source, log: log)
+            guard let result = try? await runner.run(ffmpeg, materialised, progress: { _ in }), result.exitCode == 0,
+                  let contents = try? String(contentsOf: log, encoding: .utf8), !contents.isEmpty
+            else { return nil }
+            logs.append(contents)
+        }
+        return logs
+    }
+
+    /// A renewal that only says where the job is; a lost lease still surfaces, everything else is
+    /// left for the regular renewal loop to notice.
+    private func renewQuietly(_ assignment: Assignment, pairing: StoredPairing, progress: JobProgress) async throws {
+        do {
+            try await client.renew(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, progress: progress)
+        } catch SidecarError.leaseLost {
+            throw SidecarError.leaseLost(reason: "The lease was lost while measuring quality.")
+        } catch {
+            // Transient; the next renewal will say the same thing.
+        }
+    }
+
     private func run(
         _ assignment: Assignment,
         pairing: StoredPairing,
@@ -256,8 +290,23 @@ public struct JobRunner: WorkExecutor {
                 reason: "ffmpeg exited with code \(encode?.0 ?? -1)." + (detail.isEmpty ? "" : " \(detail)"))
         }
 
-        progress(.delivering)
         let candidateHash = try Self.sha256(of: candidate)
+
+        // The server's measurement, run here and returned as the raw logs. Measuring is the one
+        // part of verification this machine may contribute, and it is only an offer: if it
+        // cannot be made, the candidate is still delivered and the server measures for itself.
+        if assignment.quality.measure, !assignment.quality.commands.isEmpty {
+            progress(.measuring)
+            try await renewQuietly(assignment, pairing: pairing, progress: .measuring)
+            if let logs = await measure(assignment, ffmpeg: ffmpeg, source: source, candidate: candidate, scratch: scratch) {
+                try? await client.reportQuality(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    leaseId: assignment.leaseId, sourceSha256: declaredSourceHash,
+                    candidateSha256: candidateHash, logs: logs)
+            }
+        }
+
+        progress(.delivering)
         let receipt = try await client.deliver(
             serverAddress: pairing.serverAddress, credential: pairing.credential,
             leaseId: assignment.leaseId, file: candidate,

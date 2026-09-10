@@ -118,7 +118,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         string? videoEncoder = "libx265",
         VideoQualityStrategy strategy = VideoQualityStrategy.Fixed,
         RuleProfile profile = RuleProfile.ConservativeHevc,
-        WorkPlacement placement = WorkPlacement.Anywhere)
+        WorkPlacement placement = WorkPlacement.Anywhere,
+        bool qualityGate = false)
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -130,6 +131,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             VideoQualityStrategy = strategy,
             RuleProfile = profile,
             WorkPlacement = placement,
+            VmafQualityGateEnabled = qualityGate ? true : null,
         };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
@@ -337,6 +339,150 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         listed.EnsureSuccessStatusCode();
         return (await listed.Content.ReadFromJsonAsync<JsonElement>())
             .EnumerateArray().Single(job => job.GetProperty("id").GetInt32() == jobId);
+    }
+
+    private const string LibvmafLog = """
+        {
+          "frames": [ { "frameNum": 0, "metrics": { "vmaf": 96.0 } }, { "frameNum": 1, "metrics": { "vmaf": 94.0 } } ],
+          "pooled_metrics": { "vmaf": { "min": 94.0, "max": 96.0, "mean": 95.0, "harmonic_mean": 94.9 } }
+        }
+        """;
+
+    [Fact]
+    public async Task An_assignment_carries_the_servers_own_measurement_command()
+    {
+        // The worker is told what to measure the way it is told what to encode: the server's own
+        // command, with placeholders where this machine's paths would be. Nothing about windows,
+        // models or thresholds is left for the worker to derive.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Measurer");
+        await QueueAJob(profile: RuleProfile.ConservativeHevc, qualityGate: true);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var quality = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("quality");
+
+        Assert.True(quality.GetProperty("measure").GetBoolean());
+        Assert.Equal("Full file", quality.GetProperty("sampling").GetString());
+        var command = Assert.Single(quality.GetProperty("commands").EnumerateArray()).EnumerateArray().Select(a => a.GetString()!).ToList();
+        Assert.Contains("{{distorted}}", command);
+        Assert.Contains("{{reference}}", command);
+        Assert.Contains(command, arg => arg.Contains("log_path={{log}}") && arg.Contains("model=version=vmaf_v0.6.1"));
+        Assert.Equal("-", command[^1]);
+    }
+
+    [Fact]
+    public async Task A_job_without_a_quality_gate_asks_the_worker_to_measure_nothing()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Measurer");
+        await QueueAJob();
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var quality = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("quality");
+
+        Assert.False(quality.GetProperty("measure").GetBoolean());
+        Assert.Empty(quality.GetProperty("commands").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Returned_libvmaf_logs_are_parsed_here_and_bound_to_both_hashes()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Measurer");
+        var jobId = await QueueAJob(qualityGate: true);
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        var sourceHash = await SourceHashOf(jobId, worker, leaseId);
+
+        using var reported = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality", new
+        {
+            sourceSha256 = sourceHash,
+            candidateSha256 = "cafe",
+            logs = new[] { LibvmafLog },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, reported.StatusCode);
+        var pooled = await reported.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(94.9, pooled.GetProperty("vmafHarmonicMean").GetDouble(), precision: 3);
+        Assert.Equal(2, pooled.GetProperty("frameCount").GetInt32());
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await db.JobLeases.SingleAsync(l => l.Id == Guid.Parse(leaseId));
+        Assert.Equal("cafe", lease.QualityCandidateSha256);
+        Assert.Contains("94.9", lease.QualityScoresJson);
+    }
+
+    [Fact]
+    public async Task Evidence_with_the_wrong_number_of_logs_or_an_unreadable_log_is_refused()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Measurer");
+        var jobId = await QueueAJob(qualityGate: true);
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        var sourceHash = await SourceHashOf(jobId, worker, leaseId);
+
+        using var tooMany = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality", new
+        {
+            sourceSha256 = sourceHash, candidateSha256 = "cafe", logs = new[] { LibvmafLog, LibvmafLog },
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+
+        using var garbage = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality", new
+        {
+            sourceSha256 = sourceHash, candidateSha256 = "cafe", logs = new[] { "not json" },
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, garbage.StatusCode);
+    }
+
+    [Fact]
+    public async Task Evidence_measured_against_another_source_is_refused_and_written_on_the_card()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Measurer");
+        var workerId = await WorkerIdNamed("Measurer");
+        var jobId = await QueueAJob(qualityGate: true);
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        await SourceHashOf(jobId, worker, leaseId);
+
+        using var refused = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality", new
+        {
+            sourceSha256 = "0000", candidateSha256 = "cafe", logs = new[] { LibvmafLog },
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        using var listed = await Admin().GetAsync("/api/workers");
+        var row = (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == workerId);
+        Assert.Contains("different source", row.GetProperty("lastProblem").GetString());
+    }
+
+    [Fact]
+    public async Task Evidence_cannot_be_reported_for_a_lease_that_asked_for_none()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Measurer");
+        await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+
+        using var refused = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/quality", new
+        {
+            sourceSha256 = "0000", candidateSha256 = "cafe", logs = new[] { LibvmafLog },
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+    }
+
+    /// <summary>Fetching the source is what stamps the job's source hash; returns it.</summary>
+    private async Task<string> SourceHashOf(int jobId, HttpClient worker, string leaseId)
+    {
+        using var source = await worker.GetAsync($"/api/workers/leases/{leaseId}/source");
+        source.EnsureSuccessStatusCode();
+        return source.Headers.GetValues("X-Optimisarr-Source-Sha256").Single();
     }
 
     [Fact]

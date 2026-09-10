@@ -44,6 +44,25 @@ public sealed class JobLease
     public RemoteStage? Stage { get; set; }
 
     /// <summary>
+    /// The measurement the worker was asked to make, serialised <see cref="RemoteQualityContract"/>,
+    /// fixed at claim so returned evidence is judged against exactly what was asked. Null when the
+    /// job's policy had no quality gate.
+    /// </summary>
+    public string? QualityContractJson { get; set; }
+
+    /// <summary>The pooled scores the server parsed from the worker's libvmaf logs. Null until reported.</summary>
+    public string? QualityScoresJson { get; set; }
+
+    /// <summary>The source hash the worker says it measured against.</summary>
+    public string? QualitySourceSha256 { get; set; }
+
+    /// <summary>The candidate hash the worker says it measured; must match what it then delivers.</summary>
+    public string? QualityCandidateSha256 { get; set; }
+
+    /// <summary>The hash of the candidate actually received, computed here as it arrived.</summary>
+    public string? DeliveredSha256 { get; set; }
+
+    /// <summary>
     /// Seconds of output the worker's ffmpeg had produced at its latest renewal. The server turns
     /// this into a fraction against the source duration, because the worker never learns it.
     /// </summary>

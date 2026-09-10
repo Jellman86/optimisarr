@@ -133,6 +133,7 @@ private extension JobProgress {
         case let .encoding(seconds):
             let whole = Int(seconds)
             return String(format: "Encoding · %d:%02d:%02d of output", whole / 3600, whole % 3600 / 60, whole % 60)
+        case .measuring: return "Measuring quality (VMAF)"
         case .delivering: return "Delivering the candidate"
         }
     }

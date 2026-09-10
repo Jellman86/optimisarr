@@ -13,5 +13,8 @@ public enum RemoteStage
     Encoding = 1,
 
     /// <summary>The candidate is being returned to the server.</summary>
-    Delivering = 2
+    Delivering = 2,
+
+    /// <summary>libvmaf is scoring the candidate against the source on the worker.</summary>
+    Measuring = 3
 }

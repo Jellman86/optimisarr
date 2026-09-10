@@ -283,7 +283,39 @@ public struct SidecarClient: Sendable {
         switch progress {
         case .fetchingSource: return "FetchingSource"
         case .encoding: return "Encoding"
+        case .measuring: return "Measuring"
         case .delivering: return "Delivering"
+        }
+    }
+
+    /// Returns the raw libvmaf logs for the commands the assignment carried, bound to both hashes,
+    /// before the candidate is delivered. The server parses and pools them; nothing is computed
+    /// here. A refusal is reported as `deliveryRefused` so the caller can carry on and deliver:
+    /// the server will simply measure for itself.
+    public func reportQuality(
+        serverAddress: String, credential: String, leaseId: String,
+        sourceSha256: String, candidateSha256: String, logs: [String]
+    ) async throws {
+        var request = try authorised(
+            serverAddress, "/api/workers/leases/\(leaseId)/quality", credential: credential, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "sourceSha256": sourceSha256,
+            "candidateSha256": candidateSha256,
+            "logs": logs,
+        ])
+        let (data, response) = try await perform(request)
+        switch response.statusCode {
+        case 200:
+            return
+        case 401:
+            throw SidecarError.credentialRejected
+        case 403, 404:
+            throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer this worker's.")
+        case 400, 409:
+            throw SidecarError.deliveryRefused(reason: Self.message(data) ?? "The server declined the quality evidence.")
+        case let status:
+            throw SidecarError.unexpectedResponse(status: status)
         }
     }
 

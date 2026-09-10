@@ -595,6 +595,11 @@ the replacement workflow is trustworthy.
      it refuses or discards something the worker did. **And the queue says where a remote job is:**
      "encoding on Mac Studio…" with the worker's progress, "returned from … · waiting to be
      verified", and "waiting for a worker…" for a queued job its library keeps off this server.
+     **Worker-side VMAF landed the same day:** the assignment carries the server's own libvmaf
+     command per window with path placeholders, the sidecar runs them and posts the raw logs with
+     both hashes, and the server parses, pools and judges them with `RemoteQualityEvidenceValidator`
+     at verification — accepted only when bound to the delivered hash and a policy at least as
+     strict as now required, otherwise measured again here with the reason on the worker's card.
      **Still to build:** an "on a worker" placement for adaptive libraries once selection can
      hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on

@@ -160,6 +160,7 @@ internal static class WorkerResultEndpoints
             File.Move(stagingPath, finalPath);
 
             job.WorkOutputPath = finalPath;
+            lease.DeliveredSha256 = actualHash;
 
             // Deliberately not ReadyToReplace. Verification has not run, and a candidate produced
             // elsewhere earns nothing until every local gate has been repeated against it. Nor

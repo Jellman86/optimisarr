@@ -21,13 +21,18 @@ server has verified it can finish a job that came back — asks for work. A job 
 4. **Encode, renewing.** The bundled ffmpeg runs the command against this Mac's paths. The lease
    is renewed throughout; losing it stops the encode rather than finishing work the server has
    already given to someone else.
-5. **Deliver.** The candidate is hashed and uploaded with both hashes, so the server can bind it to
+5. **Measure.** When the library has a quality gate, the assignment also carries the server's own
+   libvmaf command for each measurement window, validated the same way. The app runs them against
+   the source and the candidate and posts the raw JSON logs with both hashes. Nothing is computed
+   here; the server parses, pools and judges the logs, and only believes them if the candidate it
+   then receives carries the same hash. If a measurement cannot be made, the candidate is still
+   delivered and the server measures for itself.
+6. **Deliver.** The candidate is hashed and uploaded with both hashes, so the server can bind it to
    this exact source. The server then verifies it against the original exactly as it would a local
    encode. Nothing is replaced from here, ever.
 
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every
-exit path. One job at a time. Quality evidence (VMAF) is not yet measured here; the server measures
-it itself for now.
+exit path. One job at a time.
 
 This loop has run end to end on real hardware: `LiveWorkLoopTests` pairs with a running server,
 claims a queued job, encodes it with the bundled ffmpeg and delivers it, and the server's own

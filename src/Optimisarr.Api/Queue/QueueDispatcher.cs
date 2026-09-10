@@ -606,6 +606,13 @@ public sealed class QueueDispatcher(
     internal static async Task<Worker?> DeliveringWorkerAsync(
         OptimisarrDbContext db,
         int jobId,
+        CancellationToken cancellationToken) =>
+        (await DeliveringLeaseAsync(db, jobId, cancellationToken))?.Worker;
+
+    /// <summary>The lease under which the candidate now on disk was delivered: the latest completed one.</summary>
+    internal static async Task<JobLease?> DeliveringLeaseAsync(
+        OptimisarrDbContext db,
+        int jobId,
         CancellationToken cancellationToken)
     {
         var completed = await db.JobLeases
@@ -616,8 +623,21 @@ public sealed class QueueDispatcher(
 
         return completed
             .OrderByDescending(lease => lease.AcquiredAt)
-            .Select(lease => lease.Worker)
             .FirstOrDefault();
+    }
+
+    private async Task RecordWorkerProblemAsync(int workerId, string message, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == workerId, cancellationToken);
+        if (worker is null)
+        {
+            return;
+        }
+
+        WorkerProblems.Record(worker, message, DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     // Single-writer claim for a delivered candidate: only transition if still waiting, so two
@@ -662,17 +682,22 @@ public sealed class QueueDispatcher(
         try
         {
             string? candidatePath;
-            Worker? deliveredBy;
+            string? sourceSha256;
+            JobLease? deliveredLease;
             await using (var scope = scopeFactory.CreateAsyncScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-                candidatePath = await db.Jobs
+                var facts = await db.Jobs
                     .AsNoTracking()
                     .Where(job => job.Id == jobId)
-                    .Select(job => job.WorkOutputPath)
+                    .Select(job => new { job.WorkOutputPath, job.SourceSha256 })
                     .FirstOrDefaultAsync(cancellationToken);
-                deliveredBy = await DeliveringWorkerAsync(db, jobId, cancellationToken);
+                candidatePath = facts?.WorkOutputPath;
+                sourceSha256 = facts?.SourceSha256;
+                deliveredLease = await DeliveringLeaseAsync(db, jobId, cancellationToken);
             }
+
+            var deliveredBy = deliveredLease?.Worker;
 
             if (candidatePath is null || !File.Exists(candidatePath))
             {
@@ -705,7 +730,22 @@ public sealed class QueueDispatcher(
             }
 
             await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
-            await VerifyAndFinishAsync(jobId, candidatePath, work.Value, cancellationToken);
+
+            // The worker's own VMAF measurement stands in for this machine's only when it is bound
+            // to these exact bytes and this policy. Anything less is measured again here, and the
+            // worker's card says why its evidence was not taken.
+            var delivered = DeliveredQualityEvidence.Resolve(deliveredLease!, sourceSha256, work.Value.VerificationPolicy);
+            if (delivered.WasAsked && delivered.Accepted is null
+                && work.Value.VerificationPolicy.RequiresVmaf(work.Value.Spec.Kind, work.Value.Original.VideoReencoded))
+            {
+                await RecordWorkerProblemAsync(
+                    deliveredBy.Id,
+                    $"Its quality evidence for {Path.GetFileName(work.Value.Original.Path)} was not accepted, so this server measured VMAF itself: "
+                    + (delivered.Objections.Count > 0 ? string.Join(" ", delivered.Objections) : "no evidence was returned."),
+                    cancellationToken);
+            }
+
+            await VerifyAndFinishAsync(jobId, candidatePath, work.Value, cancellationToken, remoteQuality: delivered.Accepted);
             await RecordDeliveredVerdictAsync(jobId, deliveredBy.Id, cancellationToken);
         }
         catch (JobNoLongerEligibleException ex)
@@ -1152,12 +1192,26 @@ public sealed class QueueDispatcher(
             ? (work.Spec.CropTo?.Width ?? picture.Width, work.Spec.CropTo?.Height ?? picture.Height)
             : (0, 0);
 
+        var quality = work.SourcePicture is { } source
+            ? RemoteQualityPlanner.Plan(
+                work.VerificationPolicy,
+                source.Width,
+                source.Height,
+                work.Original.IsHdr,
+                work.Original.HdrConvertedToSdr,
+                work.DurationSeconds,
+                work.Spec.TargetFrameRate ?? work.VideoFrameRate,
+                work.Spec.CropTo,
+                work.Spec.FrameRate)
+            : null;
+
         return RemoteWorkPlan.For(new RemoteAssignment(
             work.VideoEncoder,
             work.Arguments,
             Path.GetExtension(work.Spec.OutputPath).TrimStart('.'),
             work.VerificationPolicy,
-            QualityScoreCommandBuilder.ModelVersionFor(width, height)));
+            QualityScoreCommandBuilder.ModelVersionFor(width, height),
+            quality));
     }
 
     /// <summary>
@@ -2448,7 +2502,8 @@ public sealed class QueueDispatcher(
         string outputPath,
         JobWork work,
         CancellationToken cancellationToken,
-        bool softwareDecodeRetryAvailable = false)
+        bool softwareDecodeRetryAvailable = false,
+        RemoteQuality? remoteQuality = null)
     {
         await WithJobAsync(jobId, job =>
         {
@@ -2507,7 +2562,8 @@ public sealed class QueueDispatcher(
                 cancellationToken,
                 clip,
                 qualityProgress,
-                vmafAcceleration);
+                vmafAcceleration,
+                remoteQuality);
         }
         outcome = outcome with
         {
