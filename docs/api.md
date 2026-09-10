@@ -598,7 +598,9 @@ The assignment's `quality` block carries the server's own libvmaf command per me
 (`commands`, with `{{distorted}}`, `{{reference}}` and `{{log}}` placeholders) and the `sampling`
 those windows represent, fixed at claim and recorded on the lease. A worker that returns its logs
 before delivering spares the server the VMAF pass, which is roughly half the cost of verification;
-every other gate is still repeated locally. Evidence that is missing, names other bytes, or was
+every other gate is still repeated locally. The command decodes with a hardware decoder only
+when the worker proved it and it belongs to the encoder's family; the lease records the decoder,
+and a candidate that fails with decoder corruption requeues the job for software decode. Evidence that is missing, names other bytes, or was
 measured under a weaker policy than the library now requires is not used: the server measures
 VMAF itself and writes the reason on the worker's card.
 

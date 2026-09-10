@@ -96,6 +96,20 @@ struct AssignmentCommandTests {
         }
     }
 
+    @Test("this platform's own hardware decoder is accepted, any other is refused by name")
+    func hardwareDecoder() throws {
+        var apple = serverCommand
+        apple.insert(contentsOf: ["-hwaccel", "videotoolbox"], at: 0)
+        let command = try AssignmentCommand.validate(apple, outputExtension: "mp4")
+        #expect(command.arguments.prefix(2) == ["-hwaccel", "videotoolbox"])
+
+        var other = serverCommand
+        other.insert(contentsOf: ["-hwaccel", "cuda"], at: 0)
+        #expect(throws: AssignmentCommandError.unknownHardwareDecoder("cuda")) {
+            try AssignmentCommand.validate(other, outputExtension: "mp4")
+        }
+    }
+
     @Test("a second input is refused however it is spelt")
     func refusesSecondInput() {
         var tampered = serverCommand

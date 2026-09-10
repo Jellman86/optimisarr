@@ -59,6 +59,12 @@ build lists VideoToolbox whether or not a given machine can open it, so listing 
 sidecar advertise encoders that fail on first use. Hardware *decode* is proved the same way — encode
 a clip, decode it back with VideoToolbox engaged, and both halves must succeed.
 
+When the server has seen that proof, the command it sends decodes with VideoToolbox for a
+VideoToolbox encode, with the frames left in system memory so its filters still apply; the
+validator accepts `-hwaccel videotoolbox` and nothing else under that option. If a candidate decoded
+that way comes back with the signature of decoder corruption, the server requeues the job to decode
+in software and says so on this worker's card.
+
 A machine that proves nothing reports nothing, and Optimisarr's capability matcher fails closed, so
 such a worker is never offered work. Honesty here is the safety mechanism: a sidecar that overstated
 itself would have jobs scheduled onto it that could only fail.

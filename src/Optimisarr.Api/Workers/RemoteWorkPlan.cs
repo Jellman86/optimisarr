@@ -16,7 +16,9 @@ public sealed record RemoteAssignment(
     VerificationPolicy Verification,
     string VmafModel,
     /// <summary>The VMAF measurement the worker is asked to make; null when the policy has no gate.</summary>
-    RemoteQualityContract? Quality = null);
+    RemoteQualityContract? Quality = null,
+    /// <summary>The hardware decoder the command uses, which the worker must have proved; null for software.</summary>
+    string? HardwareDecoder = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

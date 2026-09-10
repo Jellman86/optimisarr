@@ -602,7 +602,10 @@ the replacement workflow is trustworthy.
      strict as now required, otherwise measured again here with the reason on the worker's card.
      **Sidecar lifecycle, same day:** an activity assertion while a job runs (no App Nap, no
      idle sleep), the job handed back before the Mac sleeps or the app quits, check-ins resumed on
-     wake, and a Start-at-login toggle via `SMAppService`. **Still to build:** an "on a worker"
+     wake, and a Start-at-login toggle via `SMAppService`. **Hardware decode on the worker:** a
+     proved VideoToolbox decoder is used for VideoToolbox encodes with frames left in system
+     memory, recorded on the lease, and a corrupt result requeues the job for software decode
+     (`Job.PreferSoftwareDecode`). **Still to build:** an "on a worker"
      placement for adaptive libraries once selection can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.

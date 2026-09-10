@@ -379,7 +379,9 @@ public sealed class FfmpegCommandBuilderTests
         Assert.DoesNotContain("-maxrate", args);
         Assert.DoesNotContain("-init_hw_device", args);
         Assert.DoesNotContain("-vaapi_device", args);
-        Assert.DoesNotContain("-hwaccel", args);
+        // Its decoder is the one hardware option it does take, and only as a plain -hwaccel: no
+        // device, no pinned output format, no upload filter.
+        Assert.DoesNotContain("-hwaccel_output_format", args);
         Assert.DoesNotContain("hwupload", string.Join(" ", args));
     }
 
@@ -553,6 +555,30 @@ public sealed class FfmpegCommandBuilderTests
         // The encoder is still QSV with its constant-quality knob.
         Assert.Equal("hevc_qsv", args[IndexOf(args, "-c:v:0") + 1]);
         Assert.Equal("24", args[IndexOf(args, "-global_quality") + 1]);
+    }
+
+    [Fact]
+    public void Videotoolbox_hardware_decode_adds_hwaccel_but_leaves_frames_in_system_memory()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_videotoolbox", hardwareDecode: true);
+
+        // Decoded by VideoToolbox, before -i; no output format, so ffmpeg downloads the frames
+        // and every software filter still works. That is the whole reason the option is safe.
+        var hwaccelIndex = IndexOf(args, "-hwaccel");
+        Assert.Equal("videotoolbox", args[hwaccelIndex + 1]);
+        Assert.True(hwaccelIndex < IndexOf(args, "-i"));
+        Assert.DoesNotContain("-hwaccel_output_format", args);
+        Assert.Equal("hevc_videotoolbox", args[IndexOf(args, "-c:v:0") + 1]);
+    }
+
+    [Fact]
+    public void Videotoolbox_without_hardware_decode_names_no_hwaccel()
+    {
+        var args = FfmpegCommandBuilder.Build(
+            Reencode(crf: 24), videoEncoder: "hevc_videotoolbox", hardwareDecode: false);
+
+        Assert.DoesNotContain("-hwaccel", args);
     }
 
     [Fact]

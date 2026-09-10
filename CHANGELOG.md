@@ -60,6 +60,13 @@
   than two minutes later when the lease lapses; check-ins resume on wake. Quitting the app
   mid-job hands the job back before exiting. The menu gains **Start at login**, registered
   through the system's login-item service.
+- **A remote worker decodes in hardware when it proved it can.** A worker that proved
+  VideoToolbox decode by a real decode is sent a command that decodes with it, for VideoToolbox
+  encodes, with the frames left in system memory so every software filter still applies; the
+  claim requires the proved decoder and the lease records it. A delivered candidate that fails
+  verification with the signature of decoder corruption is not failed: the job is requeued to
+  decode in software wherever it runs next, and the worker's card says why. Migration
+  `AddDecodeFacts`.
 
 ## 0.2.12 — 2026-09-10
 

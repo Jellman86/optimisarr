@@ -137,7 +137,7 @@ public static class FfmpegCommandBuilder
         // A hardware tone-map consumes the decoded GPU surfaces directly. All other HDR-to-SDR
         // work retains the software colour pipeline and therefore needs system-memory frames.
         var useHardwareDecode = hardwareDecode
-            && family is EncoderFamily.Nvenc or EncoderFamily.Qsv or EncoderFamily.Vaapi
+            && family is EncoderFamily.Nvenc or EncoderFamily.Qsv or EncoderFamily.Vaapi or EncoderFamily.VideoToolbox
             && (!spec.TonemapToSdr || useHardwareToneMap);
 
         AppendHardwareDeviceInit(args, family, useHardwareDecode);
@@ -581,6 +581,14 @@ public static class FfmpegCommandBuilder
                 args.Add("cuda");
                 args.Add("-hwaccel_output_format");
                 args.Add("cuda");
+                break;
+            case EncoderFamily.VideoToolbox when hardwareDecode:
+                // Decode with VideoToolbox but leave the frames in system memory: without an
+                // output format ffmpeg downloads them, so every software filter here still works
+                // and the encoder uploads once. Apple's zero-copy path is not needed for the
+                // encoder to be fast, and a proven software-filter graph is worth more.
+                args.Add("-hwaccel");
+                args.Add("videotoolbox");
                 break;
             case EncoderFamily.Vaapi:
                 args.Add("-vaapi_device");
