@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.12 — 2026-09-10
+
 ### Fixed
 
 - **A corrupt hardware decode is now re-encoded with software decode instead of being retried at
