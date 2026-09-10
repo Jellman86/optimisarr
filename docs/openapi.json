@@ -1184,10 +1184,93 @@
         ],
         "type": "object"
       },
+      "QualityEvidenceAcceptedDto": {
+        "properties": {
+          "frameCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "vmafFifthPercentile": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "vmafHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "vmafMin": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "leaseId",
+          "vmafHarmonicMean",
+          "vmafFifthPercentile",
+          "vmafMin",
+          "frameCount"
+        ],
+        "type": "object"
+      },
+      "QualityEvidenceRequest": {
+        "properties": {
+          "candidateSha256": {
+            "type": "string"
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceSha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceSha256",
+          "candidateSha256",
+          "logs"
+        ],
+        "type": "object"
+      },
       "QualityRequirementDto": {
         "properties": {
           "clipVmaf": {
             "type": "boolean"
+          },
+          "commands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
           },
           "frameSubsample": {
             "format": "int32",
@@ -1218,6 +1301,9 @@
           },
           "model": {
             "type": "string"
+          },
+          "sampling": {
+            "type": "string"
           }
         },
         "required": [
@@ -1226,7 +1312,9 @@
           "frameSubsample",
           "clipVmaf",
           "minimumHarmonicMean",
-          "minimumMinimum"
+          "minimumMinimum",
+          "commands",
+          "sampling"
         ],
         "type": "object"
       },
@@ -5011,6 +5099,87 @@
               }
             },
             "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/quality": {
+      "post": {
+        "operationId": "ReportQualityEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualityEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityEvidenceAcceptedDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "tags": [

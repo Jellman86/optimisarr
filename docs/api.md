@@ -584,6 +584,7 @@ sidecar learns of a drain on its next check-in rather than at the end of its job
 | `DELETE` | `/api/workers/{id}/drain` | Resume a drained worker. `409 worker.revoked` for a revoked worker, which can only come back by pairing again. |
 | `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
 | `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. Optional body `{ "stage": "FetchingSource" \| "Encoding" \| "Delivering", "encodedSeconds": 123.4 }` says where the worker is; the server scales encoded seconds against the source duration into the job's progress and pushes it over `jobProgress`. `400 worker.lease.stageInvalid` for an unknown stage, `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/quality` | Report the libvmaf JSON logs for the commands the assignment carried, with `sourceSha256` and `candidateSha256`. The server parses and pools them itself and stores the result on the lease; `400 worker.quality.windowCount` / `worker.quality.logInvalid`, `409 worker.quality.notRequested` when the assignment asked for no measurement, `409 worker.quality.sourceMismatch` for another source. Evidence is used at verification only if the candidate then delivered carries the same hash. |
 | `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
 | `POST` | `/api/workers/leases/{leaseId}/result` | Deliver the encoded candidate. Requires `X-Optimisarr-Source-Sha256` and `X-Optimisarr-Candidate-Sha256`; `202` when accepted, `409` when the source does not match, the upload does not match its declared hash, or the lease is no longer held. |
 | `GET` | `/api/workers/leases/{leaseId}/source` | Stream the source for a held lease. Supports `Range` for resumable transfer, and returns `X-Optimisarr-Source-Sha256` so the worker can verify what it received. |
@@ -592,6 +593,14 @@ A delivered candidate is written to the same work directory a local transcode wo
 the job moves to `Verifying` — never to `ReadyToReplace`. Verification has not run at that point, and
 a candidate produced elsewhere earns nothing until every local gate has been repeated against it.
 Nothing about delivering a result touches the original.
+
+The assignment's `quality` block carries the server's own libvmaf command per measurement window
+(`commands`, with `{{distorted}}`, `{{reference}}` and `{{log}}` placeholders) and the `sampling`
+those windows represent, fixed at claim and recorded on the lease. A worker that returns its logs
+before delivering spares the server the VMAF pass, which is roughly half the cost of verification;
+every other gate is still repeated locally. Evidence that is missing, names other bytes, or was
+measured under a weaker policy than the library now requires is not used: the server measures
+VMAF itself and writes the reason on the worker's card.
 
 Checks run in an order chosen for what each protects: authenticate first, so nothing about a lease
 is revealed to a caller with no claim on it; then prove the claim is still held, which covers both

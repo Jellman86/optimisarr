@@ -130,6 +130,8 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var deliveredHeaders: [String: String] = [:]
     private(set) var released = false
     private(set) var renewals = 0
+    private(set) var qualityReport: [String: Any]?
+    private(set) var qualityReportedBeforeDelivery = false
 
     init(sourceBytes: Data, claimJSON: [String: Any]? = nil) {
         self.sourceBytes = sourceBytes
@@ -155,6 +157,11 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             if path.hasSuffix("/release") {
                 released = true
                 return (Data(), response(request, 204))
+            }
+            if path.hasSuffix("/quality") {
+                qualityReport = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
+                qualityReportedBeforeDelivery = deliveredFile == nil
+                return (Data(#"{"leaseId":"x","vmafHarmonicMean":94.9}"#.utf8), response(request, 200))
             }
             return (Data(), response(request, 404))
         }
@@ -188,10 +195,22 @@ struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
     var candidate = Data("candidate bytes".utf8)
     var delay: TimeInterval = 0
 
+    var measurementExitCode: Int32 = 0
+
     func run(
         _ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void
     ) async throws -> (exitCode: Int32, stderr: String) {
         if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+        // A measurement names its log inside the filter; write the kind of log libvmaf would.
+        if let filter = arguments.firstIndex(of: "-lavfi").map({ arguments[$0 + 1] }),
+           let range = filter.range(of: "log_path=") {
+            let logPath = String(filter[range.upperBound...]).components(separatedBy: ":")[0]
+            if measurementExitCode == 0 {
+                try Data(#"{"frames":[{"frameNum":0,"metrics":{"vmaf":96.0}}],"pooled_metrics":{"vmaf":{"min":96.0,"max":96.0,"mean":96.0,"harmonic_mean":96.0}}}"#.utf8)
+                    .write(to: URL(fileURLWithPath: logPath))
+            }
+            return (measurementExitCode, "")
+        }
         progress(12.5)
         if exitCode == 0 {
             try candidate.write(to: URL(fileURLWithPath: arguments.last!))
@@ -200,14 +219,22 @@ struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
     }
 }
 
-private func assignment(renewWithinSeconds: Int = 30) -> Assignment {
+private let measurementCommand: [String] = [
+    "-nostdin", "-v", "error", "-stats",
+    "-i", "{{distorted}}", "-i", "{{reference}}",
+    "-lavfi", "[0:v]scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=8:n_subsample=1:log_fmt=json:log_path={{log}}:shortest=1:repeatlast=0",
+    "-f", "null", "-",
+]
+
+private func assignment(renewWithinSeconds: Int = 30, measure: Bool = false) -> Assignment {
     Assignment(
         leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: 4_096,
         videoEncoder: "hevc_videotoolbox", renewWithinSeconds: renewWithinSeconds,
         arguments: serverCommand, outputExtension: "mp4",
         quality: QualityRequirement(
-            measure: true, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
-            minimumHarmonicMean: 93, minimumMinimum: 80))
+            measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
+            minimumHarmonicMean: 93, minimumMinimum: 80,
+            commands: measure ? [measurementCommand] : [], sampling: "Full file"))
 }
 
 private let pairing = StoredPairing(serverAddress: "localhost:8787", credential: "secret", workerId: 3)
@@ -484,5 +511,118 @@ struct SessionWorkLoopTests {
         #expect(transport.heartbeats > 0)
         #expect(transport.claims == 0)
         session.unpair()
+    }
+}
+
+@Suite("Measurement command")
+struct MeasurementCommandTests {
+    @Test("the server's libvmaf command is accepted and all three tokens are substituted")
+    func acceptsServerShape() throws {
+        let command = try MeasurementCommand.validate(measurementCommand)
+        let materialised = command.materialise(
+            distorted: URL(fileURLWithPath: "/scratch/candidate.mp4"),
+            reference: URL(fileURLWithPath: "/scratch/source"),
+            log: URL(fileURLWithPath: "/scratch/vmaf-0.json"))
+
+        #expect(materialised[5] == "/scratch/candidate.mp4")
+        #expect(materialised[7] == "/scratch/source")
+        #expect(materialised[9].contains("log_path=/scratch/vmaf-0.json"))
+        #expect(!materialised.joined(separator: " ").contains("{{"))
+    }
+
+    @Test("inputs must be the two tokens in libvmaf's order, never a path")
+    func refusesRealInputs() {
+        var swapped = measurementCommand
+        swapped[5] = "{{reference}}"; swapped[7] = "{{distorted}}"
+        #expect(throws: MeasurementCommandError.inputsMustBePlaceholders(["{{reference}}", "{{distorted}}"])) {
+            try MeasurementCommand.validate(swapped)
+        }
+        var real = measurementCommand
+        real[7] = "/Volumes/Media/film.mkv"
+        #expect(throws: MeasurementCommandError.inputsMustBePlaceholders(["{{distorted}}", "/Volumes/Media/film.mkv"])) {
+            try MeasurementCommand.validate(real)
+        }
+    }
+
+    @Test("a command that writes anything but a log is refused")
+    func refusesRealOutput() {
+        var writes = measurementCommand
+        writes[writes.count - 2] = "mp4"; writes[writes.count - 1] = "out.mp4"
+        #expect(throws: MeasurementCommandError.mustEndWithNullOutput) { try MeasurementCommand.validate(writes) }
+    }
+
+    @Test("an option the server's builder never emits is refused by name")
+    func refusesUnknownOption() {
+        var extra = measurementCommand
+        extra.insert(contentsOf: ["-hwaccel", "videotoolbox"], at: 4)
+        #expect(throws: MeasurementCommandError.unknownOption("-hwaccel")) { try MeasurementCommand.validate(extra) }
+    }
+
+    @Test("the filter must name the log token exactly once and nothing else may")
+    func requiresOneLogToken() {
+        var none = measurementCommand
+        none[9] = none[9].replacingOccurrences(of: "{{log}}", with: "vmaf.json")
+        #expect(throws: MeasurementCommandError.logPlaceholderMissing) { try MeasurementCommand.validate(none) }
+        var stray = measurementCommand
+        stray[2] = "{{log}}"
+        #expect(throws: MeasurementCommandError.strayPlaceholder("{{log}}")) { try MeasurementCommand.validate(stray) }
+    }
+}
+
+@Suite("Measurement in the job flow")
+struct MeasurementFlowTests {
+    @Test("a gated job measures after encoding and reports the logs, bound to both hashes, before delivering")
+    func reportsBeforeDelivery() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(measure: true), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        let report = try #require(server.qualityReport)
+        #expect(server.qualityReportedBeforeDelivery)
+        #expect(report["sourceSha256"] as? String == server.sourceSha256)
+        #expect(report["candidateSha256"] as? String == server.deliveredHeaders["X-Optimisarr-Candidate-Sha256"])
+        let logs = try #require(report["logs"] as? [String])
+        #expect(logs.count == 1)
+        #expect(logs[0].contains("harmonic_mean"))
+    }
+
+    @Test("a measurement that cannot be made reports nothing and the candidate is still delivered")
+    func failedMeasurementStillDelivers() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        var fake = FakeTranscodeRunner()
+        fake.measurementExitCode = 1
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: fake,
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(measure: true), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(server.qualityReport == nil)
+    }
+
+    @Test("a job with no gate measures nothing")
+    func ungatedJobSkipsMeasurement() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        _ = await runner.execute(assignment(), pairing: pairing) { _ in }
+
+        #expect(server.qualityReport == nil)
     }
 }

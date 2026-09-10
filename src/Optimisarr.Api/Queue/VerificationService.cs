@@ -6,6 +6,13 @@ using Optimisarr.Core.Verification;
 namespace Optimisarr.Api.Queue;
 
 /// <summary>The properties of the original file a converted output is judged against.</summary>
+/// <summary>
+/// A VMAF measurement made by a remote worker that verification may use instead of its own,
+/// already parsed and pooled here and already bound to the delivered bytes. Verification treats it
+/// as it would its own measurement: every other gate still runs.
+/// </summary>
+public sealed record RemoteQuality(QualityResult Result, string Sampling);
+
 public sealed record OriginalSnapshot(
     string Path,
     long SizeBytes,
@@ -84,7 +91,8 @@ public sealed class VerificationService(
         CancellationToken cancellationToken,
         VerificationClip? clip = null,
         IProgress<double>? qualityProgress = null,
-        VmafAcceleration vmafAcceleration = VmafAcceleration.None)
+        VmafAcceleration vmafAcceleration = VmafAcceleration.None,
+        RemoteQuality? remoteQuality = null)
     {
         var preparedReference = clip is null
             ? new PreparedReference(original, 0)
@@ -133,7 +141,15 @@ public sealed class VerificationService(
             // audio and image jobs have their own applicable verification gates.
             QualityResult? qualityResult = null;
             string? vmafSampling = null;
-            if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            if (remoteQuality is not null && policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            {
+                // Measured on the worker, parsed and bound here. The expensive half of verification
+                // is the one part a worker is allowed to contribute.
+                qualityResult = remoteQuality.Result;
+                vmafSampling = $"{remoteQuality.Sampling}, measured by the worker";
+                qualityProgress?.Report(1);
+            }
+            else if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
                 var windows = clip is null && referenceVideoDuration is { } total
                     ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)

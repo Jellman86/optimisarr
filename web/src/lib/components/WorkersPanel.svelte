@@ -182,6 +182,7 @@
       case 'FetchingSource': return i18n.m.workers.stage_fetchingsource
       case 'Encoding': return i18n.m.workers.stage_encoding
       case 'Delivering': return i18n.m.workers.stage_delivering
+      case 'Measuring': return i18n.m.workers.stage_measuring
       default: return i18n.m.workers.stage_claimed
     }
   }

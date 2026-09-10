@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -6,6 +7,7 @@ using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
@@ -43,7 +45,29 @@ internal sealed record QualityRequirementDto(
     int FrameSubsample,
     bool ClipVmaf,
     double MinimumHarmonicMean,
-    double MinimumMinimum);
+    double MinimumMinimum,
+    /// <summary>
+    /// The server's own libvmaf command per measurement window, with <c>{{distorted}}</c>,
+    /// <c>{{reference}}</c> and <c>{{log}}</c> standing in for the worker's paths. Empty when nothing
+    /// is to be measured. The worker returns the raw JSON logs in this order.
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<string>> Commands,
+    /// <summary>How the windows sample the file, for the report.</summary>
+    string Sampling);
+
+/// <summary>The libvmaf logs a worker returns, one per command it was sent, bound to both hashes.</summary>
+internal sealed record QualityEvidenceRequest(
+    string SourceSha256,
+    string CandidateSha256,
+    IReadOnlyList<string> Logs);
+
+/// <summary>The pooled scores the server read from those logs.</summary>
+internal sealed record QualityEvidenceAcceptedDto(
+    Guid LeaseId,
+    double? VmafHarmonicMean,
+    double? VmafFifthPercentile,
+    double? VmafMin,
+    int? FrameCount);
 
 internal sealed record LeaseRenewedDto(Guid LeaseId, DateTimeOffset ExpiresUtc);
 
@@ -56,6 +80,8 @@ internal sealed record RenewRequest(string? Stage = null, double? EncodedSeconds
 
 internal static class WorkerLeaseEndpoints
 {
+    private static readonly JsonSerializerOptions EvidenceJson = new(JsonSerializerDefaults.Web);
+
     public static void MapWorkerLeaseEndpoints(this WebApplication app)
     {
         // A worker asking for something to do. 204 when there is nothing it can run, which is the
@@ -206,6 +232,11 @@ internal static class WorkerLeaseEndpoints
                     // Bound to the lease so delivery names the candidate by the contract, not by
                     // the source; the replacement's final extension comes from that name.
                     OutputExtension = assignment.OutputExtension,
+                    // What the worker was asked to measure, fixed now so the evidence it returns is
+                    // judged against this, not against a policy that may have changed since.
+                    QualityContractJson = assignment.Quality is null
+                        ? null
+                        : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
                 });
 
                 // The exclusion that matters: off the queue, so this machine will not also run it.
@@ -241,7 +272,9 @@ internal static class WorkerLeaseEndpoints
                         policy.VmafFrameSubsample,
                         policy.ClipVmafEnabled,
                         policy.MinimumVmafHarmonicMean,
-                        policy.MinimumVmafMin)));
+                        policy.MinimumVmafMin,
+                        assignment.Quality?.Commands ?? [],
+                        assignment.Quality?.Sampling ?? "None")));
             }
 
             return Results.NoContent();
@@ -320,6 +353,116 @@ internal static class WorkerLeaseEndpoints
         .Produces<LeaseRenewedDto>()
         .Produces<ApiError>(StatusCodes.Status400BadRequest)
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+
+        // The worker's libvmaf logs, delivered before the candidate. Every number is parsed and
+        // pooled here by the same code that reads a local measurement; the worker sends only what
+        // ffmpeg wrote. Accepted logs are bound to the hashes the worker declares, and are used
+        // only if the candidate it then delivers carries the same hash.
+        app.MapPost("/api/workers/leases/{leaseId:guid}/quality", async (
+            Guid leaseId,
+            QualityEvidenceRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
+            var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+            if (worker is null)
+            {
+                return WorkerGate.Unauthenticated();
+            }
+
+            var lease = await db.JobLeases
+                .Include(l => l.Job)
+                .ThenInclude(job => job!.MediaFile)
+                .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
+            if (lease is null)
+            {
+                return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
+            }
+
+            if (lease.WorkerId != worker.Id)
+            {
+                return Results.Json(
+                    new ApiError("worker.lease.notHolder", "That lease belongs to another worker."),
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            if (lease.ToDomain().StateAt(now) != LeaseState.Held)
+            {
+                return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+            }
+
+            var contract = lease.QualityContractJson is { } contractJson
+                ? JsonSerializer.Deserialize<RemoteQualityContract>(contractJson, EvidenceJson)
+                : null;
+            if (contract is null)
+            {
+                return ApiErrors.Conflict("worker.quality.notRequested",
+                    "This lease asked for no quality measurement, so none can be reported.");
+            }
+
+            if (request.Logs is null || request.Logs.Count != contract.WindowCount)
+            {
+                return ApiErrors.BadRequest("worker.quality.windowCount",
+                    $"Expected {contract.WindowCount} libvmaf log(s), one per command sent, but received {request.Logs?.Count ?? 0}.");
+            }
+
+            var relativePath = lease.Job?.MediaFile?.RelativePath ?? $"job {lease.JobId}";
+            if (!string.Equals(lease.Job?.SourceSha256, request.SourceSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                WorkerProblems.Record(worker,
+                    $"Its quality evidence for {relativePath} was measured against a different source and was refused.",
+                    now);
+                await db.SaveChangesAsync(cancellationToken);
+                return ApiErrors.Conflict("worker.quality.sourceMismatch",
+                    "That evidence was measured against a different source than this job's.");
+            }
+
+            var windows = new List<QualityResult>(contract.WindowCount);
+            foreach (var log in request.Logs)
+            {
+                var parsed = string.IsNullOrWhiteSpace(log) ? null : QualityScoreParser.Parse(log);
+                if (parsed is null)
+                {
+                    return ApiErrors.BadRequest("worker.quality.logInvalid",
+                        "A returned log is not a libvmaf JSON log with pooled VMAF metrics.");
+                }
+
+                windows.Add(QualityResult.Ok(parsed with { ModelVersion = contract.Model }));
+            }
+
+            var pooled = QualityScoreAggregator.Combine(windows, contract.Sampling);
+            if (!pooled.Measured || pooled.Scores is null)
+            {
+                return ApiErrors.BadRequest("worker.quality.logInvalid",
+                    pooled.Error ?? "The returned logs produced no usable score.");
+            }
+
+            lease.QualityScoresJson = JsonSerializer.Serialize(pooled.Scores, EvidenceJson);
+            lease.QualitySourceSha256 = request.SourceSha256;
+            lease.QualityCandidateSha256 = request.CandidateSha256;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(new QualityEvidenceAcceptedDto(
+                lease.Id,
+                pooled.Scores.VmafHarmonicMean,
+                pooled.Scores.VmafFifthPercentile,
+                pooled.Scores.VmafMin,
+                pooled.Scores.FrameCount));
+        })
+        .WithName("ReportQualityEvidence")
+        .Produces<QualityEvidenceAcceptedDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
 
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
             Guid leaseId,

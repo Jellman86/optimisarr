@@ -189,6 +189,9 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
             entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
+            entity.Property(lease => lease.QualitySourceSha256).HasMaxLength(64);
+            entity.Property(lease => lease.QualityCandidateSha256).HasMaxLength(64);
+            entity.Property(lease => lease.DeliveredSha256).HasMaxLength(64);
 
             // Removing a job removes its leases; a lease without a job claims nothing.
             entity.HasOne(lease => lease.Job)

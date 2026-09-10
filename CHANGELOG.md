@@ -43,6 +43,17 @@
   job its library keeps off this server reads "waiting for a worker…", judged by the dispatcher's
   own rule so the row never says waiting for a job the server would start. `GET /api/jobs` gains
   `workerName`, `remoteStage` and `waitingForWorker`.
+- **A remote worker measures VMAF, and the server decides whether to believe it.** An assignment
+  now carries the server's own libvmaf command for each measurement window, with placeholders for
+  the worker's paths, fixed at claim and recorded on the lease. The macOS sidecar runs them after
+  its encode and posts the raw JSON logs with both hashes to `POST
+  /api/workers/leases/{id}/quality` before delivering the candidate; the server parses and pools
+  the logs with the same code that reads a local measurement. At verification the evidence stands
+  in for this server's VMAF pass, roughly half the cost of verifying, only when it is bound to the
+  delivered candidate's hash and to a policy at least as strict as the library requires now.
+  Otherwise the server measures VMAF itself and writes why on the worker's card. Every other gate
+  is still repeated here, and a low score fails the candidate the ordinary way. New stage
+  `Measuring`; migration `AddLeaseQualityEvidence`.
 
 ## 0.2.12 — 2026-09-10
 

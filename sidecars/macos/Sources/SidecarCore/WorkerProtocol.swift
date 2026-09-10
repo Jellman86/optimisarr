@@ -87,10 +87,15 @@ public struct QualityRequirement: Sendable, Equatable {
     public let clipVmaf: Bool
     public let minimumHarmonicMean: Double
     public let minimumMinimum: Double
+    /// The server's own libvmaf command per measurement window, with path placeholders. Empty
+    /// means nothing is to be measured here; an older server sends none.
+    public let commands: [[String]]
+    public let sampling: String
 
     public init(
         measure: Bool, model: String, frameSubsample: Int, clipVmaf: Bool,
-        minimumHarmonicMean: Double, minimumMinimum: Double
+        minimumHarmonicMean: Double, minimumMinimum: Double,
+        commands: [[String]] = [], sampling: String = "None"
     ) {
         self.measure = measure
         self.model = model
@@ -98,6 +103,8 @@ public struct QualityRequirement: Sendable, Equatable {
         self.clipVmaf = clipVmaf
         self.minimumHarmonicMean = minimumHarmonicMean
         self.minimumMinimum = minimumMinimum
+        self.commands = commands
+        self.sampling = sampling
     }
 
     init?(json: [String: Any]) {
@@ -111,7 +118,9 @@ public struct QualityRequirement: Sendable, Equatable {
         else { return nil }
         self.init(
             measure: measure, model: model, frameSubsample: frameSubsample, clipVmaf: clipVmaf,
-            minimumHarmonicMean: harmonic, minimumMinimum: minimum)
+            minimumHarmonicMean: harmonic, minimumMinimum: minimum,
+            commands: json["commands"] as? [[String]] ?? [],
+            sampling: json["sampling"] as? String ?? "None")
     }
 }
 
