@@ -11,6 +11,11 @@ namespace Optimisarr.Core.Verification;
 /// </summary>
 public static class VerificationEvaluator
 {
+    // Half a percent covers the rounding between a planned rate (59.94 / 2) and ffprobe's rational
+    // for the same cadence (30000/1001), while staying far under the factor of two a missed
+    // decimation would show.
+    private const double FrameRateTolerance = 0.005;
+
     public static VerificationReport Evaluate(VerificationInput input, VerificationPolicy policy)
     {
         var isImage = input.Kind == MediaKind.Image;
@@ -681,10 +686,44 @@ public static class VerificationEvaluator
             return Fail(name, "Source/output video dimensions could not be compared.");
         }
 
-        if (originalWidth != outputWidth || originalHeight != outputHeight)
+        // A re-encode that was told to scale is judged against what it was told, not against the
+        // source. An output at the source size when a downscale was intended is the interesting
+        // failure: the file is sound, but it is not the job that was asked for, and it must not
+        // replace the original under the belief that it is smaller. A copied stream never has an
+        // intent to honour — it cannot be scaled — so it falls through to the source-size rule.
+        if (input.VideoReencoded
+            && input.ExpectedWidth is { } expectedWidth
+            && input.ExpectedHeight is { } expectedHeight)
+        {
+            if (outputWidth != expectedWidth || outputHeight != expectedHeight)
+            {
+                return Fail(name,
+                    $"Video resolution is {outputWidth}x{outputHeight}; the encode intended {expectedWidth}x{expectedHeight} (source {originalWidth}x{originalHeight}).");
+            }
+        }
+        else if (originalWidth != outputWidth || originalHeight != outputHeight)
         {
             return Fail(name,
                 $"Video resolution changed from {originalWidth}x{originalHeight} to {outputWidth}x{outputHeight} without a resize policy.");
+        }
+
+        // Likewise a re-encode told to decimate is held to the rate it was told. An output at the
+        // source rate means the fps filter was dropped somewhere; the file is sound but it is not
+        // the job that was asked for. Probed rates carry rounding, so the comparison allows half a
+        // percent — far under the factor of two any real miss would show.
+        if (input.VideoReencoded && input.ExpectedFrameRate is { } expectedFrameRate)
+        {
+            if (input.OutputFrameRate is not { } outputFrameRate || outputFrameRate <= 0)
+            {
+                return Fail(name,
+                    $"Video frame rate could not be read; the encode intended {expectedFrameRate:0.###} fps.");
+            }
+
+            if (Math.Abs(outputFrameRate - expectedFrameRate) / expectedFrameRate > FrameRateTolerance)
+            {
+                return Fail(name,
+                    $"Video frame rate is {outputFrameRate:0.###} fps; the encode intended {expectedFrameRate:0.###} fps.");
+            }
         }
 
         var originalFormat = PixelFormatInfo.Parse(input.OriginalPixelFormat, input.OriginalBitsPerRawSample);

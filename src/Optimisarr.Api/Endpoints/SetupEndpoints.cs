@@ -151,7 +151,7 @@ internal static class SetupEndpoints
                     "Setup can be applied only from the final review step.");
             }
 
-            if (!SettingsRequestParser.TryParse(request.Settings, out var queueSettings, out var error))
+            if (!SettingsRequestParser.TryParse(request.Settings, settings.RemoteWorkersAvailable, out var queueSettings, out var error))
             {
                 return ApiErrors.BadRequest(error!.Code, error.Message);
             }

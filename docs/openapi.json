@@ -80,6 +80,73 @@
         ],
         "type": "object"
       },
+      "AssignmentDto": {
+        "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expiresUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "outputExtension": {
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/QualityRequirementDto"
+          },
+          "renewWithinSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "sourceBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "videoEncoder": {
+            "type": "string"
+          },
+          "vmaf": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "leaseId",
+          "jobId",
+          "sourceBytes",
+          "videoEncoder",
+          "vmaf",
+          "expiresUtc",
+          "renewWithinSeconds",
+          "arguments",
+          "outputExtension",
+          "quality"
+        ],
+        "type": "object"
+      },
       "BulkReplacementFailure": {
         "properties": {
           "jobId": {
@@ -366,6 +433,70 @@
         ],
         "type": "object"
       },
+      "HeartbeatRequest": {
+        "properties": {
+          "freeScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "maxConcurrency": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "freeScratchBytes",
+          "maxConcurrency"
+        ],
+        "type": "object"
+      },
+      "HeartbeatResponse": {
+        "properties": {
+          "heartbeatIntervalSeconds": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "protocolVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "serverTimeUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "workerId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "workerId",
+          "protocolVersion",
+          "serverTimeUtc",
+          "heartbeatIntervalSeconds"
+        ],
+        "type": "object"
+      },
       "JellyfinConnectRequest": {
         "properties": {
           "baseUrl": {
@@ -398,6 +529,23 @@
         "required": [
           "baseUrl",
           "secret"
+        ],
+        "type": "object"
+      },
+      "LeaseRenewedDto": {
+        "properties": {
+          "expiresUtc": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "leaseId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "leaseId",
+          "expiresUtc"
         ],
         "type": "object"
       },
@@ -452,6 +600,18 @@
               "boolean"
             ]
           },
+          "contentTune": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cropBlackBars": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "default": false,
             "type": "boolean"
@@ -472,6 +632,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "excludeHardLinkedFiles": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "excludePaths": {
@@ -532,6 +698,24 @@
               "string"
             ]
           },
+          "maxBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "maxFrameRate": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -561,6 +745,15 @@
           },
           "mediaType": {
             "type": "string"
+          },
+          "minBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
           },
           "minFileSizeBytes": {
             "format": "int64",
@@ -678,6 +871,18 @@
               "boolean"
             ]
           },
+          "skipSourceCodecs": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "strongerAdaptiveQuantisation": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -714,6 +919,15 @@
           "videoAudioCodec": {
             "type": [
               "null",
+              "string"
+            ]
+          },
+          "videoDownscaleHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
               "string"
             ]
           },
@@ -794,6 +1008,158 @@
         ],
         "type": "object"
       },
+      "PairRequest": {
+        "properties": {
+          "architecture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "freeScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "hardwareDecoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "maxConcurrency": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "operatingSystem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "protocolMaximum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "protocolMinimum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "videoEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "vmaf": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "operatingSystem",
+          "architecture",
+          "protocolMinimum",
+          "protocolMaximum",
+          "videoEncoders",
+          "hardwareDecoders",
+          "vmaf",
+          "freeScratchBytes",
+          "maxConcurrency"
+        ],
+        "type": "object"
+      },
+      "PairResponse": {
+        "properties": {
+          "credential": {
+            "type": "string"
+          },
+          "protocolVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "workerId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "workerId",
+          "credential",
+          "protocolVersion"
+        ],
+        "type": "object"
+      },
+      "PairingCodeDto": {
+        "properties": {
+          "attemptsRemaining": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "expiresUtc": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expiresUtc",
+          "attemptsRemaining"
+        ],
+        "type": "object"
+      },
       "PlexServersRequest": {
         "properties": {
           "token": {
@@ -805,6 +1171,52 @@
         },
         "required": [
           "token"
+        ],
+        "type": "object"
+      },
+      "QualityRequirementDto": {
+        "properties": {
+          "clipVmaf": {
+            "type": "boolean"
+          },
+          "frameSubsample": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "measure": {
+            "type": "boolean"
+          },
+          "minimumHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumMinimum": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "measure",
+          "model",
+          "frameSubsample",
+          "clipVmaf",
+          "minimumHarmonicMean",
+          "minimumMinimum"
         ],
         "type": "object"
       },
@@ -918,6 +1330,35 @@
           "freeDiskBytes",
           "workRoot",
           "waitingReason"
+        ],
+        "type": "object"
+      },
+      "ResultAcceptedDto": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "candidateSha256": {
+            "type": "string"
+          },
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "jobId",
+          "bytes",
+          "candidateSha256"
         ],
         "type": "object"
       },
@@ -1070,6 +1511,18 @@
               "boolean"
             ]
           },
+          "contentTune": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cropBlackBars": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "downmixToStereo": {
             "type": [
               "null",
@@ -1095,6 +1548,12 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "excludeHardLinkedFiles": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "excludePaths": {
@@ -1157,6 +1616,24 @@
               "string"
             ]
           },
+          "maxBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "maxFrameRate": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "maxHeight": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1187,6 +1664,15 @@
           "mediaType": {
             "type": [
               "null",
+              "string"
+            ]
+          },
+          "minBitrateKbps": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
               "string"
             ]
           },
@@ -1334,6 +1820,18 @@
               "boolean"
             ]
           },
+          "skipSourceCodecs": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "strongerAdaptiveQuantisation": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "targetContainer": {
             "type": [
               "null",
@@ -1373,6 +1871,15 @@
               "string"
             ]
           },
+          "videoDownscaleHeight": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "videoQualityStrategy": {
             "type": [
               "null",
@@ -1404,6 +1911,9 @@
           "priority",
           "minFileSizeBytes",
           "maxHeight",
+          "videoDownscaleHeight",
+          "maxFrameRate",
+          "cropBlackBars",
           "reencodeSameCodecAboveBytes",
           "skipEfficientSources",
           "targetVideoCodec",
@@ -1411,6 +1921,12 @@
           "hdrHandling",
           "optimiseDolbyVision",
           "excludePaths",
+          "excludeHardLinkedFiles",
+          "skipSourceCodecs",
+          "contentTune",
+          "maxBitrateKbps",
+          "minBitrateKbps",
+          "strongerAdaptiveQuantisation",
           "qualityCrf",
           "encoderPreset",
           "audioTargetCodec",
@@ -1546,6 +2062,14 @@
               "integer",
               "string"
             ]
+          },
+          "remoteWorkersAvailable": {
+            "default": false,
+            "type": "boolean"
+          },
+          "remoteWorkersEnabled": {
+            "default": false,
+            "type": "boolean"
           },
           "replacementAllowCrossFilesystem": {
             "type": "boolean"
@@ -1744,13 +2268,111 @@
           "reclaimedBytes"
         ],
         "type": "object"
+      },
+      "WorkerDto": {
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "freeScratchBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "hardwareDecoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxConcurrency": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "operatingSystem": {
+            "type": "string"
+          },
+          "pairedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "protocolVersion": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "videoEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "vmaf": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "operatingSystem",
+          "architecture",
+          "protocolVersion",
+          "videoEncoders",
+          "hardwareDecoders",
+          "vmaf",
+          "freeScratchBytes",
+          "maxConcurrency",
+          "pairedAt",
+          "lastSeenAt",
+          "revokedAt",
+          "online"
+        ],
+        "type": "object"
       }
     }
   },
   "info": {
     "description": "HTTP API for Optimisarr \u2014 safe, verified FFmpeg transcoding for self-hosted media libraries. This contract is still pre-1.0 and may change between releases.",
     "title": "Optimisarr API",
-    "version": "0.2.11.0"
+    "version": "0.2.12.0"
   },
   "openapi": "3.1.1",
   "paths": {
@@ -4188,6 +4810,372 @@
           "System"
         ]
       }
+    },
+    "/api/workers": {
+      "get": {
+        "operationId": "ListWorkers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkerDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/claim": {
+      "post": {
+        "operationId": "ClaimWork",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/heartbeat": {
+      "post": {
+        "operationId": "WorkerHeartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/release": {
+      "post": {
+        "operationId": "ReleaseLease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/renew": {
+      "post": {
+        "operationId": "RenewLease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseRenewedDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/result": {
+      "post": {
+        "operationId": "DeliverResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultAcceptedDto"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/source": {
+      "get": {
+        "operationId": "FetchLeaseSource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/pair": {
+      "post": {
+        "operationId": "PairWorker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/pairing-code": {
+      "delete": {
+        "operationId": "CancelWorkerPairingCode",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
+      "get": {
+        "operationId": "ActiveWorkerPairingCode",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingCodeDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
+      "post": {
+        "operationId": "IssueWorkerPairingCode",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingCodeDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/{id}": {
+      "delete": {
+        "operationId": "RevokeWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
     }
   },
   "tags": [
@@ -4217,6 +5205,9 @@
     },
     {
       "name": "Realtime"
+    },
+    {
+      "name": "Workers"
     }
   ]
 }

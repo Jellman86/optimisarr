@@ -132,6 +132,9 @@ export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
   maxHeight: number | null
+  videoDownscaleHeight: number | null
+  maxFrameRate: number | null
+  cropBlackBars: boolean
   reencodeSameCodecAboveBytes: number | null
   skipEfficientSources: boolean
   targetVideoCodec: string | null
@@ -139,6 +142,12 @@ export type LibraryRules = {
   hdrHandling: string | null
   optimiseDolbyVision: boolean
   excludePaths: string | null
+  excludeHardLinkedFiles: boolean
+  skipSourceCodecs: string | null
+  contentTune: string | null
+  maxBitrateKbps: number | null
+  minBitrateKbps: number | null
+  strongerAdaptiveQuantisation: boolean
   qualityCrf: number | null
   encoderPreset: string | null
   audioTargetCodec: string | null
@@ -230,6 +239,9 @@ export function newLibraryDefaults(): SaveLibrary {
     priority: 0,
     minFileSizeBytes: null,
     maxHeight: null,
+    videoDownscaleHeight: null,
+    maxFrameRate: null,
+    cropBlackBars: false,
     reencodeSameCodecAboveBytes: null,
     skipEfficientSources: true,
     targetVideoCodec: null,
@@ -237,6 +249,12 @@ export function newLibraryDefaults(): SaveLibrary {
     hdrHandling: null,
     optimiseDolbyVision: false,
     excludePaths: null,
+    excludeHardLinkedFiles: false,
+    skipSourceCodecs: null,
+    contentTune: 'None',
+    maxBitrateKbps: null,
+    minBitrateKbps: null,
+    strongerAdaptiveQuantisation: false,
     qualityCrf: null,
     encoderPreset: null,
     audioTargetCodec: null,
@@ -314,6 +332,11 @@ export type Settings = {
   replacementAllowCrossFilesystem: boolean
   dryRunMode: boolean
   replacementQuarantineRetentionDays: number
+  /** Opt-in. Off by default: one container stays the complete, uncomplicated way to run this. */
+  remoteWorkersEnabled: boolean
+  /** Groundwork only in this release: the switch and the Workers tab exist only when the server
+   * was started with OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true. */
+  remoteWorkersAvailable: boolean
 }
 
 export type TimedCleanupPreview = {
@@ -691,6 +714,36 @@ export type NotificationTestResult = {
 
 export type ArrConnectionType = 'Sonarr' | 'Radarr'
 
+/**
+ * VMAF backends a sidecar can prove. Ordered: CUDA also implies CPU. Sent and received as a name,
+ * never an ordinal, so the worker contract cannot shift meaning if the enum is ever renumbered.
+ */
+export type VmafCapability = 'None' | 'Cpu' | 'Cuda'
+
+export type Worker = {
+  id: number
+  name: string
+  operatingSystem: string
+  architecture: string
+  protocolVersion: number
+  videoEncoders: string[]
+  hardwareDecoders: string[]
+  vmaf: VmafCapability
+  freeScratchBytes: number
+  maxConcurrency: number
+  pairedAt: string
+  lastSeenAt: string | null
+  revokedAt: string | null
+  /** Computed by the server from its own liveness rule, so the UI never invents a second one. */
+  online: boolean
+}
+
+export type WorkerPairingCode = {
+  code: string
+  expiresUtc: string
+  attemptsRemaining: number
+}
+
 export type ArrConnection = {
   id: number
   name: string
@@ -1034,6 +1087,15 @@ export const api = {
     request<void>(`/api/notification-targets/${id}`, { method: 'DELETE' }),
   testNotificationTarget: (id: number) =>
     request<NotificationTestResult>(`/api/notification-targets/${id}/test`, { method: 'POST' }),
+
+  workers: () => request<Worker[]>('/api/workers'),
+  revokeWorker: (id: number) => request<void>(`/api/workers/${id}`, { method: 'DELETE' }),
+  issueWorkerPairingCode: () =>
+    request<WorkerPairingCode>('/api/workers/pairing-code', { method: 'POST' }),
+  /** Null when no code is currently on screen — the ordinary resting state, not an error. */
+  activeWorkerPairingCode: () => request<WorkerPairingCode | null>('/api/workers/pairing-code'),
+  cancelWorkerPairingCode: () =>
+    request<void>('/api/workers/pairing-code', { method: 'DELETE' }),
 
   arrConnections: () => request<ArrConnection[]>('/api/arr-connections'),
   createArrConnection: (body: SaveArrConnection) =>

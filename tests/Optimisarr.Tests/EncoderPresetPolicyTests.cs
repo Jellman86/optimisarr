@@ -33,6 +33,9 @@ public sealed class EncoderPresetPolicyTests
     [InlineData("h264_vaapi")]
     [InlineData("hevc_vaapi")]
     [InlineData("av1_vaapi")]
+    // VideoToolbox likewise has no preset vocabulary; Apple's encoder takes its own defaults.
+    [InlineData("hevc_videotoolbox")]
+    [InlineData("h264_videotoolbox")]
     public void Vaapi_uses_its_driver_default_instead_of_receiving_an_invalid_preset(string encoder)
     {
         var result = EncoderPresetPolicy.Resolve(encoder, "efficient");

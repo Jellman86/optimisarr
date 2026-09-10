@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api;
 using Optimisarr.Api.Diagnostics;
+using Optimisarr.Api.Workers;
 using Optimisarr.Api.Endpoints;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Metrics;
@@ -42,10 +43,13 @@ var ffprobe = MediaToolCommands.ResolveFfprobe(
 builder.Services.AddSingleton(new TranscodeOptions(transcodeFfmpeg));
 builder.Services.AddSingleton(new HardwareCapabilityService(transcodeFfmpeg));
 builder.Services.AddSingleton<LibraryScanner>();
+builder.Services.AddSingleton<Optimisarr.Api.Workers.WorkerPairingService>();
 var mediaProbe = new MediaProbeService(ffprobe);
 builder.Services.AddSingleton(mediaProbe);
 builder.Services.AddSingleton<IMediaProbeService>(mediaProbe);
 builder.Services.AddSingleton(new DecodeHealthCheck(transcodeFfmpeg));
+// Black-bar detection is a decode-only pass, so it uses the transcoding ffmpeg like the decode check.
+builder.Services.AddSingleton(new CropDetectService(transcodeFfmpeg));
 builder.Services.AddSingleton(new TimestampIntegrityCheck(ffprobe));
 builder.Services.AddSingleton(new ReferenceFrameAlignmentProbe(ffprobe));
 // VMAF/loudness measurement needs an ffmpeg built with libvmaf, which may be a
@@ -64,6 +68,7 @@ builder.Services.AddSingleton(new ImageComparisonReferenceService(transcodeFfmpe
 builder.Services.AddSingleton(new ImageMarkerService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmentVariable("OPTIMISARR_EXIFTOOL")));
 builder.Services.AddSingleton<VerificationService>();
+builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
@@ -227,6 +232,14 @@ app.MapStatsEndpoints(configDirectory);
 
 app.MapReplacementEndpoints();
 
+app.MapWorkerEndpoints();
+
+app.MapWorkerLeaseEndpoints();
+
+app.MapWorkerSourceEndpoints();
+
+app.MapWorkerResultEndpoints();
+
 app.MapHub<JobsHub>("/hubs/jobs");
 
 app.MapFallbackToFile("index.html", staticFileOptions);
@@ -257,9 +270,11 @@ internal sealed record SettingsDto(
     string? HdrToneMapMode,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
-    int ReplacementQuarantineRetentionDays)
+    int ReplacementQuarantineRetentionDays,
+    bool RemoteWorkersEnabled = false,
+    bool RemoteWorkersAvailable = false)
 {
-    public static SettingsDto From(QueueSettings settings) => new(
+    public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,
         settings.MinFreeDiskBytes,
         settings.CpuThreadLimit,
@@ -269,7 +284,9 @@ internal sealed record SettingsDto(
         settings.HdrToneMapMode.ToString(),
         settings.ReplacementAllowCrossFilesystem,
         settings.DryRunMode,
-        settings.ReplacementQuarantineRetentionDays);
+        settings.ReplacementQuarantineRetentionDays,
+        settings.RemoteWorkersEnabled,
+        remoteWorkersAvailable);
 }
 
 internal sealed record QueueStatusDto(
@@ -330,6 +347,9 @@ internal sealed record SaveLibraryRequest(
     int? Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    int? VideoDownscaleHeight,
+    int? MaxFrameRate,
+    bool? CropBlackBars,
     long? ReencodeSameCodecAboveBytes,
     bool? SkipEfficientSources,
     string? TargetVideoCodec,
@@ -337,6 +357,12 @@ internal sealed record SaveLibraryRequest(
     string? HdrHandling,
     bool? OptimiseDolbyVision,
     string? ExcludePaths,
+    bool? ExcludeHardLinkedFiles,
+    string? SkipSourceCodecs,
+    string? ContentTune,
+    int? MaxBitrateKbps,
+    int? MinBitrateKbps,
+    bool? StrongerAdaptiveQuantisation,
     int? QualityCrf,
     string? EncoderPreset,
     string? AudioTargetCodec,
@@ -399,6 +425,9 @@ internal sealed record LibraryDto(
     int Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    int? VideoDownscaleHeight,
+    int? MaxFrameRate,
+    bool CropBlackBars,
     long? ReencodeSameCodecAboveBytes,
     bool SkipEfficientSources,
     string? TargetVideoCodec,
@@ -406,6 +435,12 @@ internal sealed record LibraryDto(
     string? HdrHandling,
     bool OptimiseDolbyVision,
     string? ExcludePaths,
+    bool ExcludeHardLinkedFiles,
+    string? SkipSourceCodecs,
+    string? ContentTune,
+    int? MaxBitrateKbps,
+    int? MinBitrateKbps,
+    bool StrongerAdaptiveQuantisation,
     int? QualityCrf,
     string? EncoderPreset,
     string? AudioTargetCodec,
@@ -461,6 +496,9 @@ internal sealed record LibraryDto(
         library.Priority,
         library.MinFileSizeBytes,
         library.MaxHeight,
+        library.VideoDownscaleHeight,
+        library.MaxFrameRate,
+        library.CropBlackBars,
         library.ReencodeSameCodecAboveBytes,
         library.SkipEfficientSources,
         library.TargetVideoCodec,
@@ -468,6 +506,12 @@ internal sealed record LibraryDto(
         library.HdrHandling?.ToString(),
         library.OptimiseDolbyVision,
         library.ExcludePaths,
+        library.ExcludeHardLinkedFiles,
+        library.SkipSourceCodecs,
+        library.ContentTune.ToString(),
+        library.MaxBitrateKbps,
+        library.MinBitrateKbps,
+        library.StrongerAdaptiveQuantisation,
         library.QualityCrf,
         NormaliseEncoderPreset(library.EncoderPreset),
         library.AudioTargetCodec,

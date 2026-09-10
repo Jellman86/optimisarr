@@ -74,7 +74,18 @@ public sealed record LibrarySnapshot(
     double? MaxTruePeakDbtp = null,
     bool? ImageQualityGateEnabled = null,
     double? MinimumImageSsim = null,
-    bool? ImageMetadataGateEnabled = null);
+    bool? ImageMetadataGateEnabled = null,
+    // Appended, and nullable, so a snapshot taken before this existed still imports and leaves
+    // the exclusion off — which is also its default for a new library.
+    bool? ExcludeHardLinkedFiles = null,
+    string? SkipSourceCodecs = null,
+    string? ContentTune = null,
+    int? MaxBitrateKbps = null,
+    bool? StrongerAdaptiveQuantisation = null,
+    int? MinBitrateKbps = null,
+    int? VideoDownscaleHeight = null,
+    bool? CropBlackBars = null,
+    int? MaxFrameRate = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

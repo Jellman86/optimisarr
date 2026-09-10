@@ -10,6 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte'
   import CandidateTable from '../components/CandidateTable.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
+  import ActionMenu from '../components/ActionMenu.svelte'
 
   let {
     embeddedEditorId = null,
@@ -52,6 +53,14 @@
     { value: 1080, label: '1080p' },
     { value: 720, label: '720p' },
     { value: 480, label: '480p' },
+  ])
+
+  // Only two stops: 60 catches high-frame-rate captures, 30 catches broadcast 50/60. Anything
+  // finer invites a cap the planner would mostly have to refuse.
+  const frameRateCaps = $derived([
+    { value: null, label: i18n.m.libraries.video_fps_cap_none },
+    { value: 60, label: '60 fps' },
+    { value: 30, label: '30 fps' },
   ])
 
   const DEFAULT_CRF = 23
@@ -437,6 +446,49 @@
   const showAudioOptions = $derived(isAudioType(form.mediaType))
   const showImageOptions = $derived(isImageType(form.mediaType))
 
+  // The codecs worth offering as a source exclusion, by what the library actually holds. Named
+  // with ffprobe's own spelling, because that is what the rule compares against. Offering a fixed
+  // set rather than a text box means an operator cannot silently mistype a codec into a rule that
+  // then never fires.
+  const videoSourceCodecs = ['h264', 'hevc', 'av1', 'vp9', 'vp8', 'mpeg2video', 'mpeg4', 'vc1']
+  const audioSourceCodecs = ['flac', 'alac', 'opus', 'aac', 'mp3', 'vorbis', 'ac3', 'dts']
+  const imageSourceCodecs = ['mjpeg', 'png', 'webp', 'tiff', 'bmp', 'gif']
+
+  const offeredSourceCodecs = $derived([
+    ...(showVideoOptions ? videoSourceCodecs : []),
+    ...(showAudioOptions ? audioSourceCodecs : []),
+    ...(showImageOptions ? imageSourceCodecs : []),
+  ])
+
+  // Advanced encoder options are rare enough that three permanently visible controls would be
+  // noise for almost everyone. One line opens them, and it starts open for a library that already
+  // has one set so a saved choice is never hidden from the person who made it.
+  let showEncoderTuning = $state(false)
+
+  const hasEncoderTuning = $derived(
+    (form.contentTune != null && form.contentTune !== 'None')
+      || form.maxBitrateKbps != null
+      || form.minBitrateKbps != null
+      || form.strongerAdaptiveQuantisation === true,
+  )
+
+  const skippedCodecs = $derived(
+    (form.skipSourceCodecs ?? '')
+      .split(',')
+      .map((codec) => codec.trim().toLowerCase())
+      .filter(Boolean),
+  )
+
+  function toggleSkippedCodec(codec: string) {
+    const next = skippedCodecs.includes(codec)
+      ? skippedCodecs.filter((c) => c !== codec)
+      : [...skippedCodecs, codec]
+    // Stored in the offered order rather than click order, so the saved value is stable and two
+    // libraries configured the same way compare equal.
+    form.skipSourceCodecs =
+      offeredSourceCodecs.filter((c) => next.includes(c)).join(', ') || null
+  }
+
   const isRemuxProfile = $derived(form.ruleProfile === 'RemuxCleanup')
   const isTrackCleanupProfile = $derived(form.ruleProfile === 'TrackCleanup')
   // Both no-encode profiles take the compatibility→efficiency slider out of play.
@@ -658,6 +710,18 @@
   // Per-library filesystem access (exists / readable / writable), keyed by library id.
   let access = $state<Record<number, LibraryAccess>>({})
 
+  // One line for how a library gets its work: the auto-optimise window (or that it is off), and
+  // whether verified outputs replace originals on their own.
+  function scheduleLabel(library: Library): string {
+    const window = library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd
+      ? i18n.m.libraries.any_time
+      : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}`
+    const schedule = library.autoEnqueueEnabled
+      ? t(i18n.m.libraries.auto_optimise_window, { window })
+      : i18n.m.libraries.auto_optimise_off
+    return library.autoReplace ? `${schedule} · ${i18n.m.libraries.badge_auto_replace}` : schedule
+  }
+
   function accessMessage(value: LibraryAccess): string {
     if (!value.exists) return i18n.m.libraries.access_missing_detail
     if (!value.readable) return i18n.m.libraries.access_unreadable_detail
@@ -756,6 +820,9 @@
       priority: library.priority,
       minFileSizeBytes: library.minFileSizeBytes,
       maxHeight: library.maxHeight,
+      videoDownscaleHeight: library.videoDownscaleHeight ?? null,
+      maxFrameRate: library.maxFrameRate ?? null,
+      cropBlackBars: library.cropBlackBars ?? false,
       reencodeSameCodecAboveBytes: library.reencodeSameCodecAboveBytes,
       skipEfficientSources: library.skipEfficientSources,
       targetVideoCodec: library.targetVideoCodec,
@@ -763,8 +830,21 @@
       hdrHandling: library.hdrHandling,
       optimiseDolbyVision: library.optimiseDolbyVision,
       excludePaths: library.excludePaths,
+      // Coerced rather than passed through: a two-way binding onto a boolean prop throws
+      // props_invalid_value on undefined, which takes the whole editor down rather than
+      // degrading. A response that predates this field — an older server, a trimmed payload —
+      // must leave the switch off, not blank the page.
+      excludeHardLinkedFiles: library.excludeHardLinkedFiles ?? false,
+      skipSourceCodecs: library.skipSourceCodecs ?? null,
       qualityCrf: library.qualityCrf,
       encoderPreset: library.encoderPreset,
+      // Same coercion as the hardlink switch above, and for the same reason: the adaptive
+      // quantisation toggle binds two-way onto a boolean, which throws on undefined and takes the
+      // whole editor down. The tune drives a select, so it needs a real member to select.
+      contentTune: library.contentTune ?? 'None',
+      maxBitrateKbps: library.maxBitrateKbps ?? null,
+      minBitrateKbps: library.minBitrateKbps ?? null,
+      strongerAdaptiveQuantisation: library.strongerAdaptiveQuantisation ?? false,
       audioTargetCodec: library.audioTargetCodec,
       audioBitrateKbps: library.audioBitrateKbps,
       videoAudioCodec: library.videoAudioCodec,
@@ -851,14 +931,23 @@
       minFileSizeBytes: minSizeMb === '' ? null : Math.round(Number(minSizeMb) * BYTES_PER_MB),
       reencodeSameCodecAboveBytes: sameCodecGb === '' ? null : Math.round(Number(sameCodecGb) * BYTES_PER_GB),
       maxHeight: form.maxHeight ? Number(form.maxHeight) : null,
+      videoDownscaleHeight: form.videoDownscaleHeight == null ? null : Number(form.videoDownscaleHeight),
+      maxFrameRate: form.maxFrameRate == null ? null : Number(form.maxFrameRate),
+      cropBlackBars: form.cropBlackBars,
       priority: Number(form.priority) || 0,
       targetVideoCodec: emptyToNull(form.targetVideoCodec),
       targetContainer: emptyToNull(form.targetContainer),
       hdrHandling: emptyToNull(form.hdrHandling),
       optimiseDolbyVision: form.optimiseDolbyVision,
       excludePaths: emptyToNull(form.excludePaths),
+      excludeHardLinkedFiles: form.excludeHardLinkedFiles,
+      skipSourceCodecs: emptyToNull(form.skipSourceCodecs),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
+      contentTune: form.contentTune,
+      maxBitrateKbps: form.maxBitrateKbps == null ? null : Number(form.maxBitrateKbps),
+      minBitrateKbps: form.minBitrateKbps == null ? null : Number(form.minBitrateKbps),
+      strongerAdaptiveQuantisation: form.strongerAdaptiveQuantisation,
       audioTargetCodec: emptyToNull(form.audioTargetCodec),
       audioBitrateKbps: toNullableNumber(form.audioBitrateKbps),
       videoAudioCodec: emptyToNull(form.videoAudioCodec),
@@ -1831,6 +1920,98 @@
           {/if}
         </div>
 
+        <!-- Black-bar removal. A bare switch until it is on: the panel below explains why the
+             quality check cannot catch a wrong crop and where the safety actually comes from,
+             which is only worth a reader's attention once it can affect them. -->
+        <div class="mt-4">
+          <Toggle
+            bind:checked={form.cropBlackBars}
+            label={i18n.m.libraries.crop_bars_label}
+            hint={i18n.m.libraries.crop_bars_tip}
+          />
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.crop_bars_hint}</p>
+          {#if form.cropBlackBars}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              {i18n.m.libraries.crop_bars_on_detail}
+            </div>
+          {/if}
+        </div>
+
+        <!-- Advanced encoder options. Hidden behind one line because almost nobody needs them, and
+             three always-visible controls here would bury the quality slider that most people do.
+             Each knob is portable intent: the encoder chosen at dispatch receives only what it
+             understands, which is why the note below names who honours what rather than implying
+             every setting reaches every GPU. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+            <input
+              type="checkbox"
+              class="checkbox"
+              checked={showEncoderTuning || hasEncoderTuning}
+              onchange={(e) => (showEncoderTuning = e.currentTarget.checked)}
+            />
+            {i18n.m.libraries.encoder_tuning}
+          </label>
+
+          {#if showEncoderTuning || hasEncoderTuning}
+            <div class="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="label" for="lib-tune">{i18n.m.libraries.content_tune} <InfoTip text={i18n.m.libraries.content_tune_tip} /></label>
+                <select id="lib-tune" class="input" bind:value={form.contentTune}>
+                  <option value="None">{i18n.m.libraries.encoder_default}</option>
+                  <option value="Animation">{i18n.m.libraries.content_tune_animation}</option>
+                  <option value="Grain">{i18n.m.libraries.content_tune_grain}</option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="lib-maxbitrate">{i18n.m.libraries.max_bitrate} <InfoTip text={i18n.m.libraries.max_bitrate_tip} /></label>
+                <input
+                  id="lib-maxbitrate"
+                  class="input"
+                  type="number"
+                  min="100"
+                  max="200000"
+                  placeholder={i18n.m.libraries.max_bitrate_none}
+                  bind:value={form.maxBitrateKbps}
+                />
+              </div>
+            </div>
+
+            <!-- A floor only means something inside the window a cap defines, so it is offered
+                 only once a cap exists. Shown then rather than always, because for most people the
+                 honest answer to "minimum bitrate?" is "why would I" — it spends bits on scenes
+                 that need none. -->
+            {#if form.maxBitrateKbps != null}
+              <div class="mt-4 max-w-[16rem]">
+                <label class="label" for="lib-minbitrate">{i18n.m.libraries.min_bitrate} <InfoTip text={i18n.m.libraries.min_bitrate_tip} /></label>
+                <input
+                  id="lib-minbitrate"
+                  class="input"
+                  type="number"
+                  min="100"
+                  max={form.maxBitrateKbps}
+                  placeholder={i18n.m.libraries.min_bitrate_none}
+                  bind:value={form.minBitrateKbps}
+                />
+              </div>
+            {/if}
+
+            <div class="mt-4">
+              <Toggle
+                bind:checked={form.strongerAdaptiveQuantisation}
+                label={i18n.m.libraries.adaptive_quantisation}
+                hint={i18n.m.libraries.adaptive_quantisation_tip}
+              />
+            </div>
+
+            {#if hasEncoderTuning}
+              <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                {i18n.m.libraries.encoder_tuning_support}
+              </div>
+            {/if}
+          {/if}
+        </div>
+
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip text={i18n.m.libraries.audio_track_tip} /></label>
@@ -2075,6 +2256,25 @@
               {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
             </select>
           </div>
+          <!-- Two controls that both mention a height and mean opposite things: "skip above"
+               leaves a tall file alone, "downscale to" converts it. Side by side so the
+               difference is visible, with the tip stating which wins when both are set. -->
+          <div>
+            <label class="label" for="lib-downscale">{i18n.m.libraries.video_downscale_to} <InfoTip text={i18n.m.libraries.video_downscale_to_tip} /></label>
+            <select id="lib-downscale" class="input" bind:value={form.videoDownscaleHeight}>
+              <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
+              {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
+            </select>
+          </div>
+          <!-- The temporal twin of "downscale to": the tip carries the one rule worth knowing,
+               that only clean halvings happen, so a reader is not surprised when a 50 fps source
+               under a 60 cap is left alone. -->
+          <div>
+            <label class="label" for="lib-fps-cap">{i18n.m.libraries.video_fps_cap} <InfoTip text={i18n.m.libraries.video_fps_cap_tip} /></label>
+            <select id="lib-fps-cap" class="input" bind:value={form.maxFrameRate}>
+              {#each frameRateCaps as cap}<option value={cap.value}>{cap.label}</option>{/each}
+            </select>
+          </div>
           {/if}
           {#if !isTrackCleanupProfile}
           <div>
@@ -2087,6 +2287,52 @@
           <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip text={i18n.m.libraries.exclude_paths_tip} /></label>
           <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
         </div>
+
+        <!-- Hardlinks belong with the path exclusions rather than the video section: every profile
+             and every media kind ends in a replacement, so a shared inode is at stake for all of
+             them. The row stays a bare switch until it is switched on, because the fail-closed
+             behaviour below is only worth a reader's attention once it can affect them. -->
+        <div class="mt-4">
+          <Toggle
+            bind:checked={form.excludeHardLinkedFiles}
+            label={i18n.m.libraries.hardlinks_label}
+            hint={i18n.m.libraries.hardlinks_tip}
+          />
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.hardlinks_hint}</p>
+          {#if form.excludeHardLinkedFiles}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              {i18n.m.libraries.hardlinks_on_detail}
+            </div>
+          {/if}
+        </div>
+
+        <!-- Source-codec exclusions. A fixed set of chips rather than free text: the rule matches
+             ffprobe's spelling exactly, so a typed name that is subtly wrong would look configured
+             and quietly do nothing. Only the codecs this library's media type can actually contain
+             are offered. -->
+        {#if offeredSourceCodecs.length > 0}
+        <div class="mt-4">
+          <span class="label">{i18n.m.libraries.skip_codecs} <InfoTip text={i18n.m.libraries.skip_codecs_tip} /></span>
+          <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.skip_codecs_hint}</p>
+          <div class="flex flex-wrap gap-2">
+            {#each offeredSourceCodecs as codec (codec)}
+              <button
+                type="button"
+                aria-pressed={skippedCodecs.includes(codec)}
+                onclick={() => toggleSkippedCodec(codec)}
+                class="rounded-full border px-3 py-1 font-mono text-xs transition-colors {skippedCodecs.includes(codec)
+                  ? 'border-cyan-500 bg-cyan-600/15 text-cyan-700 dark:text-cyan-300'
+                  : 'border-slate-300 text-slate-600 hover:border-slate-400 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500'}"
+              >{codec}</button>
+            {/each}
+          </div>
+          {#if skippedCodecs.length > 0}
+            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              {i18n.m.libraries.skip_codecs_on_detail}
+            </div>
+          {/if}
+        </div>
+        {/if}
       </section>
 
     </div>
@@ -2157,84 +2403,92 @@
     {/if}
   {/if}
 {:else if libraries.length > 0}
-  <div class="grid gap-4">
+  <!-- One card per library, two to a row. Each leads with the number that matters (how many
+       files) and a plain-words status; preset, schedule and path follow as a short list. Scan is
+       the only button — enqueue, configure and delete sit in the menu so the destructive action
+       never competes with the primary one. -->
+  <div class="grid gap-4 md:grid-cols-2">
     {#each libraries as library (library.id)}
-      <div class="card p-4">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
-              <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
-              <!-- The rule profile is a video preset; only show it for video libraries (it is
-                   meaningless for Music/Photo, which use their own audio/image rules). -->
-              {#if isVideoType(library.mediaType)}
-                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(library.ruleProfile)}</span>
+      {@const summary = summaries[library.id]}
+      {@const a = access[library.id]}
+      {@const busy = busyId === library.id}
+      <div class="card flex flex-col gap-3.5 p-5 {library.enabled ? '' : 'opacity-60'}" data-library-card={library.id}>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <span class="truncate text-base font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
+            <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
+            {#if library.priority !== 0}
+              <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
+            {/if}
+            {#if !library.enabled}
+              <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.libraries.badge_disabled}</span>
+            {/if}
+            <!-- Access is only worth a badge when it is a problem; a healthy path says nothing. -->
+            {#if a && !a.ok}
+              {#if !a.exists}
+                <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
+              {:else if !a.readable}
+                <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
+              {:else}
+                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
               {/if}
-              {#if library.priority !== 0}
-                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
-              {/if}
-              {#if !library.enabled}
-                <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.libraries.badge_disabled}</span>
-              {/if}
-              {#if library.autoEnqueueEnabled}
-                <span class="badge bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300" title={i18n.m.libraries.auto_optimise_title}>
-                  {t(i18n.m.libraries.badge_auto_optimise, { window: library.autoEnqueueWindowStart === library.autoEnqueueWindowEnd ? i18n.m.libraries.any_time : `${library.autoEnqueueWindowStart}–${library.autoEnqueueWindowEnd}` })}
-                </span>
-              {/if}
-              {#if library.autoReplace}
-                <span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" title={i18n.m.libraries.auto_replace_title}>{i18n.m.libraries.badge_auto_replace}</span>
-              {/if}
-              {#if access[library.id]}
-                {@const a = access[library.id]}
-                {#if a.ok}
-                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={accessMessage(a)}>{i18n.m.libraries.access_ok}</span>
-                {:else if !a.exists}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
-                {:else if !a.readable}
-                  <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
-                {:else}
-                  <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
-                {/if}
-              {/if}
-            </div>
-            <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{library.path}</div>
-            <div class="mt-1 text-xs text-slate-400">
-              {t(i18n.m.libraries.files_discovered, { count: library.fileCount.toLocaleString() })}
-              {#if summaries[library.id]}
-                · <span class="text-emerald-600 dark:text-emerald-400">{t(i18n.m.libraries.eligible_count, { count: summaries[library.id].eligible.toLocaleString() })}</span>
-                · {t(i18n.m.libraries.skipped_count, { count: summaries[library.id].skipped.toLocaleString() })}
-              {/if}
-              {#if library.autoEnqueueEnabled && library.lastAutoEnqueueAt}
-                · {t(i18n.m.libraries.last_auto_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}
-              {/if}
-            </div>
-            {#if access[library.id] && !access[library.id].ok}
-              <div class="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <span>{accessMessage(access[library.id])}</span>
-              </div>
             {/if}
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button class="btn btn-primary" onclick={() => scan(library)} disabled={busyId === library.id || !library.enabled}>
-              <Icon name={busyId === library.id ? 'rotate' : 'search'} class="h-4 w-4 {busyId === library.id ? 'animate-spin' : ''}" />
-              {busyId === library.id ? i18n.m.libraries.working : i18n.m.libraries.scan}
-            </button>
-            <button class="btn" onclick={() => enqueue(library)} disabled={busyId === library.id || !library.enabled} title={i18n.m.libraries.enqueue_title}>
-              <Icon name="plus" class="h-4 w-4" />
-              {i18n.m.libraries.enqueue}
-            </button>
-            <button class="btn" onclick={() => router.go(`/libraries/${library.id}/configure`)} disabled={busyId === library.id}>
-              <Icon name="sliders" class="h-4 w-4" />
-              {i18n.m.libraries.configure}
-            </button>
-            <button class="btn btn-danger" onclick={() => remove(library)} disabled={busyId === library.id}>
-              <Icon name="trash" class="h-4 w-4" />
-              {i18n.m.libraries.delete}
-            </button>
-          </div>
+          <ActionMenu
+            label={t(i18n.m.libraries.more_actions, { name: library.name })}
+            disabled={busy}
+            items={[
+              { label: i18n.m.libraries.enqueue, icon: 'plus', title: i18n.m.libraries.enqueue_title, disabled: !library.enabled, onSelect: () => enqueue(library) },
+              { label: i18n.m.libraries.configure, icon: 'sliders', onSelect: () => router.go(`/libraries/${library.id}/configure`) },
+              { label: i18n.m.libraries.delete, icon: 'trash', danger: true, onSelect: () => remove(library) },
+            ]}
+          />
         </div>
 
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-slate-800 dark:text-slate-100">{library.fileCount.toLocaleString()}</span>
+          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.libraries.files_label}</span>
+          {#if summary}
+            <!-- The one place the summary lights up: only when something is actually waiting. -->
+            {#if summary.eligible > 0}
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-cyan-600 dark:text-cyan-400" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+                <Icon name="plus" class="h-3.5 w-3.5" />
+                {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
+              </span>
+            {:else}
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+                <Icon name="check" class="h-3.5 w-3.5" />
+                {i18n.m.libraries.all_optimal}
+              </span>
+            {/if}
+          {/if}
+        </div>
+
+        <div class="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <div class="flex items-center gap-2"><Icon name="folder" class="h-3.5 w-3.5 flex-shrink-0" /><span class="truncate font-mono">{library.path}</span></div>
+          <!-- The rule profile is a video preset; it is meaningless for Music/Photo libraries. -->
+          {#if isVideoType(library.mediaType)}
+            <div class="flex items-center gap-2"><Icon name="sliders" class="h-3.5 w-3.5 flex-shrink-0" /><span>{profileLabel(library.ruleProfile)}</span></div>
+          {/if}
+          <div class="flex items-center gap-2"><Icon name="clock" class="h-3.5 w-3.5 flex-shrink-0" /><span>{scheduleLabel(library)}</span></div>
+        </div>
+
+        {#if a && !a.ok}
+          <div class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+            <span>{accessMessage(a)}</span>
+          </div>
+        {/if}
+
+        <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
+            <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
+            {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
+          </button>
+          {#if library.lastAutoEnqueueAt}
+            <span class="text-xs tabular-nums text-slate-400 dark:text-slate-500">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+          {/if}
+        </div>
       </div>
     {/each}
   </div>

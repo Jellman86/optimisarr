@@ -66,6 +66,7 @@ public sealed class LibraryInventoryService(
                     RelativePath = scanned.RelativePath,
                     SizeBytes = scanned.SizeBytes,
                     ModifiedAt = scanned.ModifiedAt,
+                    HardLinkCount = scanned.HardLinkCount,
                     DiscoveredAt = now,
                     UpdatedAt = now,
                     Status = MediaFileStatus.Discovered
@@ -105,7 +106,17 @@ public sealed class LibraryInventoryService(
                 file.ProbeError = null;
             }
 
-            if (contentChanged || file.RelativePath != scanned.RelativePath)
+            // The link count moves independently of the content: a download client can add or drop
+            // a link without changing a byte or the modified time. Refresh it on every scan, but
+            // only count a row as updated when the value actually differs, so a repeat scan of an
+            // unchanged library still writes nothing.
+            var linkCountChanged = file.HardLinkCount != scanned.HardLinkCount;
+            if (linkCountChanged)
+            {
+                file.HardLinkCount = scanned.HardLinkCount;
+            }
+
+            if (contentChanged || linkCountChanged || file.RelativePath != scanned.RelativePath)
             {
                 file.RelativePath = scanned.RelativePath;
                 file.UpdatedAt = now;

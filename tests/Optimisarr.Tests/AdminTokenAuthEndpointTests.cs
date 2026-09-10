@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -26,7 +27,8 @@ namespace Optimisarr.Tests;
 /// no-token rejections never reach the endpoint (the middleware short-circuits), so they don't
 /// depend on database state.
 /// </summary>
-public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEndpointTests.TokenedApi>
+[Collection(TokenedApiCollection.Name)]
+public sealed class AdminTokenAuthEndpointTests
 {
     private readonly TokenedApi _api;
 
@@ -66,6 +68,13 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
     [InlineData("POST", "/api/replacements/1/rollback")]
     [InlineData("POST", "/api/replacements/1/approve")]
     [InlineData("GET", "/api/diagnostics")]       // admin support snapshot
+    // Worker administration stays behind the token; only the pairing exchange itself is open,
+    // and that one carries the PIN as its own credential.
+    [InlineData("POST", "/api/workers/pairing-code")]
+    [InlineData("GET", "/api/workers/pairing-code")]
+    [InlineData("DELETE", "/api/workers/pairing-code")]
+    [InlineData("GET", "/api/workers")]
+    [InlineData("DELETE", "/api/workers/1")]
     public async Task A_protected_endpoint_is_401_without_the_token(string method, string path)
     {
         using var response = await _api.CreateClient()
@@ -84,6 +93,45 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
 
         // /api/ready may be 503 in the test host (no /work, /trash), but it must never be 401.
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Worker_pairing_is_reachable_without_the_token_but_refuses_a_wrong_pin()
+    {
+        // Remote workers are opt-in, so turn them on: this test is about the admin-token boundary,
+        // and a 403 from the feature switch would prove nothing about it either way.
+        var admin = _api.CreateClient();
+        admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
+        using (var doc = JsonDocument.Parse(current.GetRawText()))
+        {
+            var payload = new Dictionary<string, object?>();
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                payload[property.Name] = JsonSerializer.Deserialize<object?>(property.Value.GetRawText());
+            }
+            payload["remoteWorkersEnabled"] = true;
+            (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
+        }
+
+        // The route must be open — a pairing sidecar has no admin token and cannot get one — while
+        // still handing out nothing without the correct PIN. With no code issued, every PIN is wrong.
+        using var response = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", new
+        {
+            code = "12345678",
+            name = "Attacker",
+            operatingSystem = "linux",
+            architecture = "x64",
+            protocolMinimum = 1,
+            protocolMaximum = 1,
+            vmaf = "Cpu", // a name, not an ordinal — see WorkerEndpoints.PairRequest
+            freeScratchBytes = 0L,
+            maxConcurrency = 1
+        });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.DoesNotContain("credential", await response.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -879,6 +927,8 @@ public sealed class AdminTokenAuthEndpointTests : IClassFixture<AdminTokenAuthEn
             Directory.CreateDirectory(LibraryDirectory);
             Environment.SetEnvironmentVariable(AdminTokenAuth.EnvironmentVariable, Token);
             Environment.SetEnvironmentVariable("OPTIMISARR_CONFIG_DIR", _configDir);
+            // The worker tests exercise the preview; the availability tests turn it off per host.
+            Environment.SetEnvironmentVariable(RemoteWorkersFeature.EnvironmentVariable, "true");
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

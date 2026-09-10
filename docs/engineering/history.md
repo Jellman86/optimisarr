@@ -3,6 +3,329 @@
 Detailed, dated engineering record: what shipped, the per-phase plan, and current status.
 The forward-looking summary lives in [`../roadmap.md`](../roadmap.md).
 
+**Corrected on dev (2026-09-01) — no job could ever be offered to a remote worker.** The claim
+route builds its `JobRequirements` with `VideoEncoder: job.VideoEncoder ?? string.Empty`, and
+`Job.VideoEncoder` is assigned in exactly one place: `QueueDispatcher`, when a *local* transcode
+resolves an encoder. Its own doc comment says as much — "so the UI can show whether it ran on the
+GPU or CPU". A queued job has never dispatched, so the value is null, and
+`WorkerCapabilityMatcher` refuses an unnamed encoder because "an unnamed encoder is a malformed
+assignment, not a wildcard". Every claim fell through to `204`.
+
+That refusal is right; the requirement was wrong. Two endpoint test suites missed it because both
+construct a queued job with `VideoEncoder = "libx265"` set by hand — a row the application never
+writes. Tests that build state the production code cannot produce will agree with themselves
+forever. A test now queues a job the way the app does and pins the `204`, so the gap is visible
+rather than inferred, and it will fail the moment an assignment can name an encoder properly.
+
+The fix is not to populate the column earlier. The encoder recorded on a job is the one *this
+machine* resolved, which for a Mac worker would usually be the wrong answer anyway — a job marked
+`libx265` would never match a machine advertising `hevc_videotoolbox`. The encoder has to be
+resolved *for the worker* from its proved capabilities at claim time, which is part of the resolved
+encode policy the assignment does not yet carry: `AssignmentDto` names an encoder and a VMAF
+capability and nothing else — no quality, container, effort, audio, HDR treatment, track removals,
+or thresholds. A worker holding one cannot know what to encode. That payload is the keystone the
+rest of the distributed path waits on.
+
+Noted alongside it: the assignment hands the worker `job.MediaFile.Path`, the server's absolute
+library path. The source route was deliberately built to take no path — "a worker presents a lease
+and the server resolves the file" — so leaking the layout through the assignment works against that
+design and should go when the payload is rebuilt.
+
+**Corrected on dev (2026-08-24) — worker capabilities cross the wire as names, not ordinals.** The
+pairing slice exposed `VmafCapability` directly on its DTOs, making it the only enum in the whole
+generated OpenAPI document rendered as `{"type": "integer"}`. That was justified at the time as
+matching the API's convention. It did not: `SaveArrConnectionRequest.Type` and
+`SaveNotificationTargetRequest.Type` are `string?` on the wire and parsed into enums by a
+`Parsed*` record, `JobDto` carries `job.Status.ToString()`, and the calibration report serialises
+through `JsonStringEnumConverter`. Enums already reached the wire as strings everywhere; the worker
+DTOs were the exception, not the rule.
+
+The reason it matters more here than it would elsewhere is that this contract is implemented by
+separately-versioned third-party sidecars. Optimisarr's own web client ships from this repository at
+the same version as the server and cannot disagree about what `2` means; a native tray app can lag
+or lead by months. Inserting a member into `VmafCapability` would silently change what an existing
+paired worker is believed to support — and that value gates whether a job may be offered to it, so a
+quietly wrong capability would arrive through a side door the protocol negotiation was built to
+close.
+
+`PairRequest.Vmaf` is now `string?`, parsed at the boundary with an error naming the valid values,
+following the same shape as the jobs endpoint's `job.status.invalid`. A missing value means the
+worker claims no VMAF support — a real answer — while anything unrecognised is refused, so a typo
+cannot quietly downgrade a capable worker to `None`. `WorkerDto.Vmaf` is the name, which also let
+the web client drop an ordinal-indexed label lookup in favour of the value itself. An end-to-end
+test asserts the field is a JSON string rather than a number, so the ordinal form cannot return
+unnoticed. Breaking for the worker contract, but its only consumer today is a curl command in
+testing; the cost of this change rises steeply once a tray app ships.
+
+**Started on dev (2026-08-24) — what makes a remote quality measurement admissible.** VMAF is the
+one thing Optimisarr will accept from a sidecar without deriving it again, so the rule for believing
+it is worth stating precisely. Everything else about a returned candidate is re-checked locally
+because those checks are cheap relative to the encode; VMAF is not, at roughly half the cost of
+verification, so re-measuring it would give back most of the benefit of distributing the work.
+
+The failure this guards against is not a worker that lies loudly. It is one that answers a slightly
+different question — measuring a different encode, or grading itself against an easier policy — and
+returns a number that looks like an answer. So evidence is refused unless it names the exact source
+and candidate hashes, names the VMAF model, and was measured against thresholds at least as strict
+as the library requires. Stricter is accepted: passing a harder test than the one set still passes
+the one set.
+
+The model requirement is not bookkeeping. The same file scores differently under the HD and 4K
+models, so an unlabelled score cannot meaningfully be compared to a threshold at all.
+
+Absent evidence is refused rather than read as "nothing objected", which is the difference between
+failing closed and having a worker skip measuring entirely and sail through. Every objection is
+reported rather than the first, for the same reason the capability matcher names them all.
+
+Twelve tests, written before the validator and each describing a way this goes wrong rather than a
+way it goes right.
+
+**Started on dev (2026-08-24) — taking delivery of a candidate encoded elsewhere.** The tests were
+written before the endpoint and lead with the ways it goes wrong, because the happy path is not what
+loses media: a candidate encoded from a different source, a result arriving after the claim lapsed,
+a truncated upload, a second result for one lease, and a delivery attempted by a worker that never
+held the lease.
+
+The order of the checks is chosen for what each one protects rather than for convenience.
+Authenticate first, so nothing about a lease is revealed to a caller with no claim on it. Then prove
+the claim is still held — which covers the late result and the duplicate delivery in a single check,
+since a completed lease is no longer held. Then prove the candidate is about *this* source, using
+the hash recorded when the source was fetched: a file encoded from different bytes is not evidence
+about this job whatever its quality, and verifying one would mean judging a candidate against the
+wrong original. Only after all of that is anything written to disk.
+
+The upload is streamed and hashed in one pass under a `.partial` name, so a multi-gigabyte candidate
+never sits in memory and a transfer that dies leaves nothing that could be mistaken for a finished
+file. A hash mismatch deletes the staging file rather than keeping it.
+
+An accepted candidate sets `Verifying`, deliberately not `ReadyToReplace`. Nothing has judged it
+yet, and a candidate produced on another machine earns nothing until every local gate has been
+repeated against it. That does mean such a job currently sits in `Verifying` with nothing to advance
+it — a stalled job is the right failure while the verification slice is outstanding, where marking
+it replaceable would not be.
+
+**Started on dev (2026-08-24) — the sidecar can work out what it is actually capable of.** Probing
+mirrors the server's `HardwareCapabilityService` rather than inventing a second approach: parse
+`ffmpeg -encoders` for a cheap first pass, then confirm each hardware encoder with a real throwaway
+encode to the null muxer. The distinction matters more on Apple than elsewhere, because every macOS
+ffmpeg build lists VideoToolbox whether or not the machine in front of you can open it — listing
+alone would have the sidecar advertise encoders that fail on first use, and a job scheduled against
+a false capability can only fail. CPU encoders are trusted from the listing, as the server trusts
+them.
+
+VMAF can only ever be CPU here. Apple GPUs have no VMAF compute backend, so a test asserts the
+parser can never return `Cuda` — guarding the honesty of the capability rather than the parsing.
+
+A worker with no encoder reports zero concurrency too. Advertising capacity while advertising no
+encoder would show the server a live worker it can never actually use.
+
+ffmpeg will be bundled in the app rather than found on the system, so the worker's build matches the
+server's. The roadmap already treats FFmpeg build as a scheduling criterion, and the reason becomes
+concrete here: the server re-verifies a returned candidate, which only means something if the same
+encode settings produce comparable output at both ends. Nothing is bundled yet — the probing reports
+nothing without it, which is the correct behaviour rather than a gap to paper over.
+
+**Started on dev (2026-08-24) — a worker can fetch the file it was given.** The design constraint
+that shaped this route is that the worker names nothing. It presents a lease id and the server
+resolves lease → job → media file → path; there is deliberately no path, filename, or library
+parameter anywhere in the signature. Any of them would turn a paired sidecar into an arbitrary file
+reader on the host, and no amount of validation on such a parameter is as safe as not accepting one.
+Access is also bounded in time rather than only in scope: a lease that is no longer held serves
+nothing, so releasing a job ends the worker's reach into the library at the same moment it gives the
+work back.
+
+Delivery is over HTTP rather than a shared mount, chosen deliberately over the cheaper option. A
+shared SMB/NFS path mapping would avoid moving multi-gigabyte files across the network twice per
+job, but it would also mean a sidecar that pairs with a PIN in thirty seconds then requires mount
+configuration before it can do anything. Zero-config pairing that demands NFS is not zero-config.
+The shared-storage path remains worth adding as an optimisation for workers that can already see the
+library; it is not the thing to build first.
+
+The source hash is computed once and stored on the job rather than per request, because re-reading
+gigabytes on every resumed transfer would be its own performance bug. It exists for the slice after
+this one: a returned candidate and its quality evidence have to be bound to the exact bytes that
+were encoded, since a measurement taken against a different version of the file is not evidence
+about this one.
+
+Range support is not a nicety here. A worker on a home network pulling an 8 GB original will
+sometimes lose the connection, and without resumption every drop costs the whole transfer again.
+
+**Started on dev (2026-08-24) — leases become real, and a worker can claim a job.** The decision
+that carries the safety is representing a claim as a job *status* rather than a flag or a join. A
+claimed job moves from `Queued` to `Leased`, and the local dispatcher selects on `Queued`, so it
+simply stops seeing the job — no query has to remember to check for a lease, and none can be added
+later that forgets. The same reasoning as revocation being enforced by the credential lookup: make
+the exclusion structural and it cannot be omitted at a call site.
+
+Two holders is a database error rather than a possible outcome. A unique index over `JobId` filtered
+to `State = 'Held'` means a race loses at the constraint; the claim path catches that and moves to
+the next candidate instead of treating it as a failure. Lapsed leases are reclaimed at the top of
+the claim path rather than by a background sweeper, so the queue heals on the next thing that would
+have used it — a control plane that was down for an hour recovers on the first claim rather than
+waiting for a timer.
+
+Two SQLite constraints shaped the implementation, both already known here: `DateTimeOffset` cannot
+be compared or ordered in SQL, so lease expiry filtering and the queue ordering both run in memory,
+the latter over a light projection so only the shortlisted jobs are loaded with their media file.
+
+Pairing now also stamps `LastSeenAt`. Without it a freshly paired worker read as offline until its
+first heartbeat and was refused work for that window, which is wrong: pairing is itself proof we
+just heard from the machine.
+
+Adding this test class broke two unrelated setup and calibration tests, because the tokened host
+fixture is shared across the collection and these tests create libraries and jobs the others count.
+They now clean up after themselves. Worth recording as the second time shared-fixture state has
+bitten: the first was the process-wide config directory race.
+
+**Started on dev (2026-08-24) — the macOS sidecar gets a second implementation of the protocol.**
+`sidecars/macos` is a Swift package rather than an `.xcodeproj`, so the build is reviewable in a
+diff instead of a few thousand lines of generated XML, and the protocol client sits in its own
+target with no SwiftUI or AppKit dependency — which is what lets the contract be tested without
+launching a menu bar. It lives in this repository rather than its own because the client and the
+contract have to change together; `web/` was already precedent for a separate toolchain here. The
+`.dockerignore` gained `sidecars`, because the Dockerfile ends with a broad `COPY . .` and native
+client source has no business in the Linux image.
+
+The point of building it now, before the server can dispatch anything, is that a client written
+against the published contract is the only real test of that contract. The `VmafCapability`
+ordinal mistake survived several slices of server work and was caught by a question, not by a test;
+a second implementation is what catches that class of error by construction. A live suite —
+skipped unless pointed at a running instance — pairs, checks in, and confirms the PIN is single-use
+against the real API rather than a stub.
+
+The app claims nothing it cannot prove. It bundles no encoding tools, so it reports no encoders, no
+VMAF backend, and zero concurrency, which the server reads as drained and never offers work to.
+That honesty is the safety mechanism rather than a placeholder: a sidecar overstating itself would
+have jobs scheduled onto it that could only fail. Revocation, protocol incompatibility, and the
+feature being switched off are kept as distinct states because they need different responses — a
+revoked credential is terminal and is discarded, while the feature being off is recoverable and the
+credential is kept, so switching it back on does not force a re-pair.
+
+**Started on dev (2026-08-24) — the lease state machine.** A lease is one worker's exclusive claim
+on one job, and it exists to stop two machines encoding the same original. The instructive part is
+which failure it optimises against: losing a lease merely wastes work, whereas freeing one while its
+holder is still running produces two candidates racing for one source. `WorkerLease.Duration` is
+therefore *derived* from `WorkerLiveness.OfflineAfter` rather than chosen independently, so the
+invariant — a job can only be reclaimed after its holder was already declared unreachable — holds
+structurally and not merely by convention. A test asserts the relationship as well, so neither
+constant can be tuned into overlap.
+
+Expiry is computed at read time rather than stored. A sweeper may tidy rows, but correctness must
+not depend on one having run, or a control plane restarting after downtime would wake up still
+believing a long-dead worker holds a job. Renewing or completing a lapsed lease is refused, which is
+precisely what makes the late-result case safe: a worker that vanished, whose job moved on, cannot
+deliver a candidate through a claim it no longer holds. Release is idempotent so a worker retrying
+after a dropped response is not punished for being careful, and ownership is checked before state in
+every operation so a stranger learns nothing about a lease it does not hold. Nothing is persisted or
+dispatched yet, so no job can currently be leased.
+
+**Started on dev (2026-08-24) — worker credentials finally authenticate something.** Pairing issued
+a credential but nothing consumed it: `WorkerCredential.Matches` had no call site, so the secret
+handed to a sidecar was inert. `POST /api/workers/heartbeat` closes that. `WorkerAuth` resolves the
+worker from a bearer credential by looking it up on its stored fingerprint — the standard
+stored-hash token pattern, chosen over scanning and comparing every row because the secret is 256
+bits of randomness and an indexed lookup on its hash leaks nothing usable, while the alternative
+would table-scan on every beat. A revoked worker's fingerprint is null and therefore matches
+nothing, so revocation is enforced by the lookup itself and cannot be forgotten at a call site. An
+end-to-end test pairs, beats, revokes, and proves the credential is dead afterwards; another proves
+the admin token does not authenticate a worker, since the two credentials authorise different things
+and accepting one for the other would let anything holding it impersonate a paired machine.
+
+Liveness is one rule shared by the API and the UI. The 30-second interval and the 2-minute threshold
+are deliberately different numbers: were they equal, a single dropped packet would flap a healthy
+worker between online and offline. A test asserts the *relationship* (threshold at least three
+intervals) rather than the literals, so tuning either constant cannot quietly reintroduce the flap.
+Last-seen is stamped from the control plane's clock, never the request, so a sidecar with a wrong or
+dishonest clock cannot claim to be alive, and the heartbeat response returns the interval so a
+sidecar paces itself from the server instead of hard-coding a value that could drift out of step.
+
+Heartbeats carry only the volatile numbers — free scratch and current concurrency. Encoders and VMAF
+support stay as established at pairing, because a worker quietly changing what it claims to support
+between assignments is something the control plane should re-establish deliberately rather than
+absorb from a beat.
+
+Closing a gap this slice exposed: `/api/workers/pair` and `/heartbeat` both answer 401 on bad
+credentials, but the OpenAPI transformer only annotates admin-token protection, so neither
+documented it. A sidecar SDK generated from the spec — exactly the audience this contract serves —
+would not have known. Both routes now declare that response themselves.
+
+**Started on dev (2026-08-24) — worker pairing reaches the API.** The PIN primitives below are now
+wired to endpoints and storage, so a sidecar can genuinely pair. `POST /api/workers/pair` redeems a
+code, negotiates the protocol, writes a `Workers` row (migration `AddWorkers`), and returns the
+credential once; issue/read/withdraw, list, and revoke routes sit alongside it.
+
+Two decisions carry the security weight. First, `/api/workers/pair` is the only worker route outside
+the admin token, because a pairing sidecar holds the PIN and nothing else and cannot obtain a token.
+That widening is bounded deliberately: the route is inert unless an operator has just issued a code,
+it authenticates before doing any other work, and it yields nothing without the correct PIN. The
+generated OpenAPI proves the boundary — every other worker operation documents a `401` and this one
+does not — and both the unit and the real-host end-to-end auth tests assert it in each direction.
+
+Second, the active PIN lives in memory and is never persisted. Writing a short-lived secret to the
+config database would give it a durability it should not have and would carry it into backups;
+losing it on restart is correct, because the operator simply asks for another. The service stores
+the code's post-attempt state, which is what makes the cap real — `PairingCode` is immutable, so
+without that every request would restart from zero failed attempts.
+
+Redemption happens before protocol negotiation, so an incompatible sidecar spends the code rather
+than probing versions repeatedly on one PIN. Enum payloads were initially integers on the claim that
+this matched the rest of the API — **that was wrong, and is corrected below in the 2026-08-24 entry
+on capability names**; the rest of the API converts enums to strings at the wire boundary and the
+worker DTOs were the only exception. Credentials
+are returned exactly once and stored only as fingerprints, so revocation clears the fingerprint and
+keeps the row for the audit trail.
+
+**Started on dev (2026-08-24) — PIN pairing and worker credentials for remote transcoding.**
+The security primitives behind roadmap item 9's pairing bullet, as pure `Optimisarr.Core.Workers`
+logic with no HTTP, persistence, or UI wiring, so no machine can pair yet. The intended flow is the
+familiar one: Optimisarr displays a PIN, the operator types it into the sidecar along with this
+server's URL, and the sidecar exchanges it for a credential.
+
+The design problem is that a PIN short enough to retype by hand — eight digits — has too little
+entropy to survive sustained guessing on its own. Security therefore rests on three properties
+together rather than on length: the code lives five minutes, redeems exactly once, and is
+**destroyed** after five wrong guesses rather than rate-limited, so the attempt budget is a
+vanishing fraction of the code space and a burned code refuses even the genuine PIN. Malformed
+input spends an attempt too, otherwise probing the format would be cheaper than guessing digits;
+operator spacing is tolerated because people read grouped digits. A dead code (used, expired, or
+burned) reports that without comparing, so nothing can be learned by racing a spent code. A
+regression test asserts the attempt-budget-to-code-space ratio directly, so shortening the PIN or
+raising the cap fails the suite rather than quietly weakening the argument.
+
+Credentials are 32 random bytes, returned to the worker once and stored only as a SHA-256
+fingerprint compared in constant time, matching the existing admin-token approach. A leaked
+database therefore yields no usable credential, and revocation is total: an absent fingerprint
+matches nothing. Endpoints, the worker table, the PIN display, assignment/lease binding, rotation,
+and TLS guidance all remain to build.
+
+**Started on dev (2026-08-24) — versioned worker protocol groundwork for remote transcoding.**
+The first slice of the distributed-transcoding contract (roadmap item 9) lands as pure
+`Optimisarr.Core.Workers` logic with no HTTP, persistence, or queue wiring, so no job can reach a
+sidecar yet and no destructive path is touched. `WorkerProtocol.Negotiate` compares a worker's
+supported version range against this build's and picks the highest both speak; a worker that is
+entirely older or entirely newer, or that reports an inverted range, is refused with a reason
+rather than assumed compatible, because the control plane owns the contract and a silent
+assumption here is what would schedule a job onto an incompatible sidecar. `WorkerCapabilityMatcher`
+decides whether an assignment may be offered at all, failing closed on encoder, hardware decoder,
+VMAF mode, scratch space, and concurrency, and naming every unmet requirement rather than the first
+so an operator can see why a paired sidecar sits idle. VMAF capability is ordered so a proved CUDA
+backend satisfies a CPU requirement but never the reverse; a drained worker is expressed as zero
+concurrency. Registration, pairing, heartbeats, leases, progress, cancellation, hashes, the
+resolved-policy payload, evidence, and acknowledgement are all still to define.
+
+**Decision (2026-08-24) — Adaptive per-title VMAF stays the default for new libraries while
+Experimental.** Release 0.2.11 made the adaptive path the default for new video re-encode libraries.
+The prototype-acceptance comparison the roadmap asks for — total work, selected quality, size, VMAF,
+and repeatability against the fixed path — has not been recorded on any encoder family, and the
+2026-08-11 Intel QSV record validates the sampled-VMAF seek-alignment correction rather than quality
+targeting. The default was reviewed against that gap and deliberately kept, as a recorded exception
+to the conservative-default rule in [`../../CLAUDE.md`](../../CLAUDE.md) §1 and
+[`../roadmap.md`](../roadmap.md). The safety model is unchanged: the search falls back to the fixed
+quality when evidence is missing or non-monotonic, and every structural, decode, duration, tail,
+stream, size, and configured VMAF gate still runs before replacement. The exposure is probing time
+and choice stability on newly created libraries only. The Experimental label and the acceptance
+requirement both stand; removing either still needs the cross-family evidence described below.
+
 **Experimental on dev (2026-07-27) — per-library adaptive VMAF quality path.** Video re-encode
 libraries can keep the fixed preset/custom quality or explicitly opt into a bounded per-title search.
 The editor presents the alternatives as radio cards with their actual processing paths and cost.

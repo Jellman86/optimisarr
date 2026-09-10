@@ -115,6 +115,67 @@ public sealed class FfmpegProgressParserTests
     }
 
     [Fact]
+    public void A_clock_that_has_run_past_its_end_is_disbelieved_in_favour_of_the_other()
+    {
+        // The reporter's encode (#95): the frame count was derived from a nominal rate and came up
+        // short, so frames said 104% while the timestamp clock, still inside its range, said 94%.
+        // Believing the larger clock showed "100% · ~2s left" for the last six percent.
+        var sample = new FfmpegProgressSample(ElapsedSeconds: 2_430, Frame: 62_400, Fps: 30, Speed: 1.24);
+
+        var reading = FfmpegProgressCalculator.Measure(
+            durationSeconds: 2_580,
+            expectedFrameCount: 60_000,
+            sample);
+
+        Assert.Equal(2_430.0 / 2_580.0, reading!.Progress, precision: 6);
+        Assert.False(reading.EstimateExhausted);
+    }
+
+    [Fact]
+    public void The_estimate_is_exhausted_only_when_every_informative_clock_has_overrun()
+    {
+        var sample = new FfmpegProgressSample(ElapsedSeconds: 2_700, Frame: 62_400, Fps: 30, Speed: 1.24);
+
+        var reading = FfmpegProgressCalculator.Measure(
+            durationSeconds: 2_580,
+            expectedFrameCount: 60_000,
+            sample);
+
+        Assert.Equal(0.999, reading!.Progress);
+        Assert.True(reading.EstimateExhausted);
+    }
+
+    [Fact]
+    public void A_pinned_clock_at_zero_does_not_count_as_a_truthful_reading()
+    {
+        // Copied streams pin out_time at zero. That must neither be believed as "0%" nor stop an
+        // overrun frame clock from being recognised as exhausted.
+        var sample = new FfmpegProgressSample(ElapsedSeconds: 0, Frame: 1_600, Fps: 80, Speed: null);
+
+        var reading = FfmpegProgressCalculator.Measure(
+            durationSeconds: 60,
+            expectedFrameCount: 1_500,
+            sample);
+
+        Assert.Equal(0.999, reading!.Progress);
+        Assert.True(reading.EstimateExhausted);
+    }
+
+    [Fact]
+    public void Protocol_parser_marks_only_the_end_block_as_final()
+    {
+        var parser = new FfmpegProgressProtocolParser();
+        parser.ParseLine("frame=100");
+        var running = parser.ParseLine("progress=continue");
+        parser.ParseLine("frame=480");
+        var final = parser.ParseLine("progress=end");
+
+        Assert.False(running!.IsFinal);
+        Assert.True(final!.IsFinal);
+        Assert.Equal(480, final.Frame);
+    }
+
+    [Fact]
     public void Parses_time_fps_and_speed_from_a_progress_line()
     {
         const string line = "frame=  120 fps= 30 q=28.0 size=    1024kB time=00:01:04.00 bitrate= 131.1kbits/s speed=1.5x";

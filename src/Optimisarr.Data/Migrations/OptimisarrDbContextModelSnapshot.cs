@@ -15,7 +15,7 @@ namespace Optimisarr.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("Optimisarr.Data.ActivityWatcher", b =>
                 {
@@ -180,6 +180,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<Guid?>("CalibrationSessionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DetectedCrop")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("EffectiveVideoQuality")
                         .HasColumnType("INTEGER");
 
@@ -240,6 +243,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("RequestedVideoQuality")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SourceSha256")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("TEXT");
 
@@ -290,6 +296,44 @@ namespace Optimisarr.Data.Migrations
                     b.ToTable("Jobs");
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.JobLease", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("AcquiredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OutputExtension")
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WorkerId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId")
+                        .IsUnique()
+                        .HasFilter("\"State\" = 'Held'");
+
+                    b.HasIndex("WorkerId");
+
+                    b.ToTable("JobLeases");
+                });
+
             modelBuilder.Entity("Optimisarr.Data.Library", b =>
                 {
                     b.Property<int>("Id")
@@ -324,8 +368,16 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool?>("ClipVmafEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ContentTune")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("CropBlackBars")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("DownmixToStereo")
                         .HasColumnType("INTEGER");
@@ -339,6 +391,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<string>("EncoderPreset")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("ExcludeHardLinkedFiles")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ExcludePaths")
                         .HasMaxLength(2048)
@@ -376,6 +431,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset?>("LastAutoEnqueueAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("MaxBitrateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MaxFrameRate")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("MaxHeight")
                         .HasColumnType("INTEGER");
 
@@ -389,6 +450,9 @@ namespace Optimisarr.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("MinBitrateKbps")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long?>("MinFileSizeBytes")
                         .HasColumnType("INTEGER");
@@ -456,6 +520,12 @@ namespace Optimisarr.Data.Migrations
                     b.Property<bool>("SkipEfficientSources")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SkipSourceCodecs")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("StrongerAdaptiveQuantisation")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("TargetContainer")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -480,6 +550,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<string>("VideoAudioCodec")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("VideoDownscaleHeight")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("VideoQualityStrategy")
                         .HasColumnType("INTEGER");
@@ -538,6 +611,9 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("FrameCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("HardLinkCount")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("Height")
@@ -732,6 +808,72 @@ namespace Optimisarr.Data.Migrations
                     b.ToTable("Replacements");
                 });
 
+            modelBuilder.Entity("Optimisarr.Data.Worker", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Architecture")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CredentialFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("FreeScratchBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HardwareDecoders")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxConcurrency")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OperatingSystem")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("PairedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProtocolVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VideoEncoders")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Vmaf")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CredentialFingerprint")
+                        .IsUnique();
+
+                    b.ToTable("Workers");
+                });
+
             modelBuilder.Entity("Optimisarr.Data.Job", b =>
                 {
                     b.HasOne("Optimisarr.Data.MediaFile", "MediaFile")
@@ -741,6 +883,25 @@ namespace Optimisarr.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("MediaFile");
+                });
+
+            modelBuilder.Entity("Optimisarr.Data.JobLease", b =>
+                {
+                    b.HasOne("Optimisarr.Data.Job", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Optimisarr.Data.Worker", "Worker")
+                        .WithMany()
+                        .HasForeignKey("WorkerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+
+                    b.Navigation("Worker");
                 });
 
             modelBuilder.Entity("Optimisarr.Data.MediaFile", b =>

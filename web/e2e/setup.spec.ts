@@ -10,6 +10,7 @@ const settings = {
   replacementAllowCrossFilesystem: false,
   dryRunMode: true,
   replacementQuarantineRetentionDays: 0,
+  remoteWorkersEnabled: false,
 }
 
 const recommendation = {

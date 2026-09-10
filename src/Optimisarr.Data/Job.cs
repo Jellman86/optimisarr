@@ -17,7 +17,27 @@ public enum JobStatus
     ReadyToReplace = 4,
     Completed = 5,
     Failed = 6,
-    Cancelled = 7
+    Cancelled = 7,
+
+    /// <summary>
+    /// Claimed by a remote worker and being transcoded off this machine.
+    ///
+    /// A distinct status rather than a flag or a join, so the local dispatcher — which selects on
+    /// <see cref="Queued"/> — cannot pick the job up as well. The exclusion is then structural: a
+    /// future query cannot forget to check for a lease, because a leased job simply is not queued.
+    /// </summary>
+    Leased = 8,
+
+    /// <summary>
+    /// A remote worker has delivered its candidate and this machine has not yet verified it.
+    ///
+    /// Distinct from <see cref="Verifying"/> on purpose. That status means verification is
+    /// running here right now, and restart recovery rightly treats it as interrupted work whose
+    /// output is discarded; a delivered candidate is finished work that must survive a restart
+    /// and wait for the dispatcher to pick it up. Nothing about a candidate in this state is
+    /// trusted yet: every local gate is still to run before it can become a replacement.
+    /// </summary>
+    AwaitingVerification = 9
 }
 
 /// <summary>
@@ -101,6 +121,14 @@ public sealed class Job
     /// </summary>
     public int? AdaptiveVideoQuality { get; set; }
 
+    /// <summary>
+    /// The black-bar crop decided for this title as <c>width:height:x:y</c>, or <c>none</c> when
+    /// detection ran and found no bars worth removing. Null means detection has not run. Persisted
+    /// for the same reason as <see cref="AdaptiveVideoQuality"/>: a crash, automatic, or operator
+    /// retry must encode the same picture the verified attempt did, not re-detect and drift.
+    /// </summary>
+    public string? DetectedCrop { get; set; }
+
     /// <summary>Encoder quality mode shown to the operator (CRF, ICQ, CQ, or QP).</summary>
     public string? VideoQualityMode { get; set; }
 
@@ -147,6 +175,16 @@ public sealed class Job
     /// the API (<c>GET /api/jobs/{id}/log</c>) without reading container logs. Null otherwise.
     /// </summary>
     public string? ProcessLog { get; set; }
+
+    /// <summary>
+    /// SHA-256 of the source as it was when a remote worker first fetched it.
+    ///
+    /// Computed once and kept, because hashing a multi-gigabyte file is not something to repeat per
+    /// request. It is what later binds a returned candidate and its quality evidence to the exact
+    /// bytes that were encoded: a result measured against a different source is not evidence about
+    /// this one.
+    /// </summary>
+    public string? SourceSha256 { get; set; }
 
     // --- Verification (Phase 4: populated once the output has been verified) ---
 

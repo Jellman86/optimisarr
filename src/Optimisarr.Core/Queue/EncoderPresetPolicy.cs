@@ -128,7 +128,9 @@ public static class EncoderPresetPolicy
             });
         }
 
-        if (encoder.EndsWith("_vaapi", StringComparison.Ordinal))
+        // Neither VA-API nor VideoToolbox has a preset vocabulary; each takes its driver's defaults.
+        if (encoder.EndsWith("_vaapi", StringComparison.Ordinal)
+            || encoder.EndsWith("_videotoolbox", StringComparison.Ordinal))
         {
             return Success(effort, null);
         }

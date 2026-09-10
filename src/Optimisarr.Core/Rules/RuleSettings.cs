@@ -33,6 +33,37 @@ public sealed record RuleSettings
     public int? MaxHeight { get; init; }
 
     /// <summary>
+    /// When set, a video re-encode taller than this is scaled down to it, keeping aspect. Sources
+    /// at or below it are untouched — a downscale exists to save space, and upscaling spends bits
+    /// to invent nothing. Distinct from <see cref="MaxHeight"/>, which excludes taller files
+    /// entirely; when both are set the exclusion wins, since it is checked first. The exact output
+    /// size is computed once from the probed source so the encode filter and the verification gate
+    /// agree by construction. The VMAF gate still compares at the source's display size, so a heavy
+    /// downscale can legitimately fail a high quality floor — which is the honest result.
+    /// </summary>
+    public int? VideoDownscaleHeight { get; init; }
+
+    /// <summary>
+    /// When set, a video re-encode faster than this many frames per second is decimated to a clean
+    /// halving of its source rate that sits under the cap (60 → 30, 59.94 → 29.97, 120 → 30).
+    /// Sources at or under the cap, and sources no halving can bring cleanly under it, are left at
+    /// their own rate — see <see cref="Queue.FrameRatePlanner"/>. The quality check compares
+    /// against the original decimated identically, so it judges the frames that were kept.
+    /// </summary>
+    public int? MaxFrameRate { get; init; }
+
+    /// <summary>
+    /// When <c>true</c>, black bars are detected on a video re-encode and cropped away. Off by
+    /// default, and worth understanding before turning on: the verification gates cannot catch a
+    /// wrong crop, because the quality check compares against a reference cropped the same way.
+    /// Safety comes from the planner instead — the crop is the union of what several sampled
+    /// windows kept, never one scene's answer, and anything implausible yields no crop. Material
+    /// that changes aspect ratio partway through (IMAX sequences in a scope film) can still lose
+    /// picture if no sampled window lands on the wider scenes.
+    /// </summary>
+    public bool CropBlackBars { get; init; }
+
+    /// <summary>
     /// When set, a video source already encoded at or below this density — measured as bits per
     /// pixel-second, i.e. the file bitrate divided by (width × height), so it is resolution- and
     /// frame-rate-independent — is skipped before any transcode, because re-encoding it to the
@@ -73,6 +104,38 @@ public sealed record RuleSettings
 
     /// <summary>Relative-path substrings that exclude a file (e.g. "Extras", "Featurettes").</summary>
     public IReadOnlyList<string> ExcludePathSegments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// When <c>true</c>, a file whose inode carries more than one name is left untouched. The usual
+    /// case is a download still being seeded that a *arr hardlinked into the library: the bytes are
+    /// shared, so replacing the file changes what the other name resolves to.
+    ///
+    /// Defaults to <c>false</c> — a link count above one is not by itself evidence of a problem, and
+    /// enabling this for everyone would quietly stop optimising whole libraries on upgrade. Once on,
+    /// a count that cannot be read excludes the file too: the operator has said this matters, so an
+    /// unreadable answer is not a licence to proceed.
+    /// </summary>
+    public bool ExcludeHardLinkedFiles { get; init; }
+
+    /// <summary>
+    /// Source codecs (ffprobe names, e.g. "av1") this library leaves untouched, whatever else the
+    /// profile would do to them. Compared against the codec that drives a file's eligibility: the
+    /// audio codec for an audio file, the video or still-picture codec otherwise.
+    ///
+    /// This is not the same as the existing same-codec and already-efficient skips. Those infer
+    /// that a re-encode would not pay; this records that the operator does not want one — the
+    /// usual case being a codec their devices play happily but their hardware cannot encode, where
+    /// converting costs hours of CPU to gain nothing. Empty (the default) excludes nothing.
+    /// </summary>
+    public IReadOnlyList<string> SkipSourceCodecs { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Advanced encoder intent — content tune, bitrate cap, adaptive quantisation — stored
+    /// portably and mapped onto the vocabulary of whichever encoder is chosen at dispatch. The
+    /// default asks for nothing, so a library that never opens Advanced options builds exactly
+    /// the command it always did.
+    /// </summary>
+    public Queue.EncoderTuning EncoderTuning { get; init; } = Queue.EncoderTuning.None;
 
     /// <summary>The codec a lossless audio file is re-encoded to (ffprobe name, e.g. "opus").</summary>
     public string TargetAudioCodec { get; init; } = AudioTarget.DefaultCodec;

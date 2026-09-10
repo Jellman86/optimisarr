@@ -15,9 +15,11 @@ the replacement workflow is trustworthy.
   engineering history belongs in
   [`engineering/history.md`](engineering/history.md).
 - Code and tests remain the source of truth. Never present roadmap work as
-  shipped until the repository proves it.
+  shipped until the repository proves it. The converse matters too: an entry left
+  describing finished work as outstanding sends effort at an item that has none.
+- Status claims last verified against the repository: **2026-08-24**.
 
-## Up next (priority order, updated 2026-07-29)
+## Up next (priority order, updated 2026-08-24)
 
 1. **Phase 14 gold-standard hardening** — the next maturity pass is about making
    Optimisarr safer to expose, easier to automate, and easier to change without
@@ -245,20 +247,27 @@ the replacement workflow is trustworthy.
      apply transaction explicitly rolls back on an exception, and applying setup leaves a sentinel
      source file byte-for-byte unchanged while preview work remains disposable under `/work`.
 
-3. **Phase 13 release hardening** — release controls are in progress; dry-run mode,
-   config-and-secrets backups, migration smoke coverage, synthetic-media integration
-  coverage, GHCR publishing, README quickstart hardening, troubleshooting, and security
-  notes are shipped. Backups intentionally omit media, jobs, replacements, quarantine,
-  and rollback history. CI stays on standard GitHub-hosted public-repo runners and avoids
-  paid external services.
+3. **Phase 13 release hardening: done.** Dry-run mode, config-and-secrets backups, migration
+   smoke coverage, synthetic-media integration coverage, GHCR publishing, README quickstart
+  hardening, troubleshooting, and security notes are all shipped, and the exit criterion is met:
+  a careful user can run Optimisarr against a real library with dry-run, verification, quarantine,
+  and rollback available. Every deliverable in
+  [`engineering/history.md`](engineering/history.md#phase-13-release-hardening) is marked done.
 
-4. **First-class diagnostics & observability API** — make "why did this fail?" answerable
-   from the API alone, without SSH-ing the host or reading container logs. Today failed-job
-   detail *is* reachable (`GET /api/jobs` carries `ErrorMessage`, `FfmpegArguments`, and the
-   verification report per job), but it is unfiltered, unaggregated, and lossy. Scope:
+   Two deliverables are deliberately narrower than their one-line names suggest, and those bounds
+   are the intended scope rather than outstanding work: config backup covers portable
+   config-and-secrets snapshots, leaving raw SQLite state backup external and operator-owned; and
+   migration testing covers empty-database smoke. Backups intentionally omit media, jobs,
+   replacements, quarantine, and rollback history. CI stays on standard GitHub-hosted public-repo
+   runners and avoids paid external services.
+
+4. **First-class diagnostics & observability API: done.** "Why did this fail?" is answerable
+   from the API alone, without SSH-ing the host or reading container logs. Failed-job detail was
+   already reachable when this entry opened (`GET /api/jobs` carries `ErrorMessage`,
+   `FfmpegArguments`, and the verification report per job), but it was unfiltered, unaggregated,
+   and lossy. Every bullet below has since shipped. Scope:
    - **Status-filtered job queries: done.** `GET /api/jobs?status=Failed` narrows server-side so
-     callers don't fetch every row and filter client-side. (Library/reason/date filters and
-     pagination remain to add.)
+     callers don't fetch every row and filter client-side.
    - **Failure aggregation endpoint: done.** `GET /api/jobs/failures` groups failures by classified
      reason (size-saving gate, container incompatibility, image-based subtitles, replacement
      collision, source/output missing, verification, other) with counts and recent sample jobs,
@@ -445,36 +454,236 @@ the replacement workflow is trustworthy.
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
-9. **Optional Windows and macOS sidecars for distributed transcoding: planned.** Keep one
+9. **Optional Windows and macOS sidecars for distributed transcoding: started; hidden behind
+   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS` since 2026-09-10 until the list below is done.** Keep one
    Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
    contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
    it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
    quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
-   continue to be the complete, uncomplicated default.
+   continue to be the complete, uncomplicated default. **That opt-in now exists:** the
+   `workers.remoteEnabled` setting is off by default and off on upgrade, no Workers tab is shown
+   while it is off, and every route that pairs a machine or accepts a check-in refuses with `403`
+   so the switch is a real boundary rather than a UI preference. Turning it off is non-destructive:
+   check-ins stop at once, but paired records survive so an operator can still see and revoke them,
+   and re-enabling restores them without a re-pair.
 
-   - **Versioned worker protocol and explicit ownership.** Define a platform-neutral contract before
-     either app: registration, capability discovery, heartbeats, leases, progress, cancellation,
-     source/output hashes, the fully resolved encode and verification policy, structured FFmpeg
-     evidence, and result acknowledgement. The main app owns job state, scheduling, rules, and every
-     destructive transition. Protocol versions and worker capabilities must be negotiated so an
-     upgrade cannot silently schedule a job onto an incompatible sidecar.
-   - **Secure pairing and revocation.** Register a sidecar through a short-lived, single-use code
-     displayed by the main app, then issue it a unique revocable credential. Bind every assignment
-     and result to the registered worker and job lease; redact credentials from diagnostics and
-     logs. Document TLS expectations, certificate trust, credential rotation, and the difference
-     between a private LAN and an authenticated secure connection rather than treating LAN access
-     as authentication.
-   - **Efficient, integrity-checked media delivery.** Support resumable, bounded, checksummed
+   - **Versioned worker protocol and explicit ownership: started.** Define a platform-neutral
+     contract before either app: registration, capability discovery, heartbeats, leases, progress,
+     cancellation, source/output hashes, the fully resolved encode and verification policy,
+     structured FFmpeg evidence, and result acknowledgement. The main app owns job state,
+     scheduling, rules, and every destructive transition. Protocol versions and worker capabilities
+     must be negotiated so an upgrade cannot silently schedule a job onto an incompatible sidecar.
+     **Landed so far:** version negotiation and capability matching as pure `Optimisarr.Core.Workers`
+     logic — the control plane owns the contract and a newer sidecar falls back to what this build
+     speaks, non-overlapping ranges are refused with a reason, and an assignment is offered only
+     when the encoder, hardware decoder, VMAF mode, scratch space, and concurrency all clear, with
+     every unmet requirement named. Nothing is wired to HTTP, persistence, or the queue yet, so no
+     work can currently reach a sidecar. **Still to define:** registration, heartbeats, leases,
+     progress and cancellation, hashes, the resolved-policy payload, evidence, and acknowledgement.
+   - **Secure pairing and revocation: started.** Register a sidecar through a short-lived,
+     single-use code displayed by the main app, then issue it a unique revocable credential. Bind
+     every assignment and result to the registered worker and job lease; redact credentials from
+     diagnostics and logs. Document TLS expectations, certificate trust, credential rotation, and
+     the difference between a private LAN and an authenticated secure connection rather than
+     treating LAN access as authentication.
+     **Landed so far:** the pairing PIN and credential primitives as pure
+     `Optimisarr.Core.Workers` logic. The operator reads an eight-digit PIN from Optimisarr and
+     types it into the sidecar with this server's URL; the PIN lives five minutes, redeems once,
+     and is destroyed after five wrong guesses rather than throttled, so a typed-length code stays
+     safe on its attempt budget rather than its length. Credentials are stored only as SHA-256
+     fingerprints and compared in constant time, which makes revocation total — discarding the
+     fingerprint ends the worker's access. A sidecar can now actually pair: `POST
+     /api/workers/pair` redeems a PIN, negotiates the protocol, records the worker, and returns its
+     credential once, with issue/read/withdraw, list, and revoke routes alongside it and a `Workers`
+     table behind migration `AddWorkers`. That pair route is the single worker endpoint outside the
+     admin token, because a pairing sidecar holds only the PIN — it is inert unless an operator has
+     just issued a code, and yields nothing without the correct one. The active PIN is held in
+     memory and never persisted, so it stays out of the database and its backups. Settings has a
+     Workers tab that issues a PIN, shows it grouped alongside the server address with a live
+     countdown and remaining attempts, lists paired workers, and revokes them — a tab rather than a
+     sidebar entry, following the same reasoning that kept Tools and Failures out of the sidebar.
+     A paired worker now authenticates: `POST /api/workers/heartbeat` resolves the sidecar from its
+     bearer credential, stamps the last-seen time from the control plane's own clock, and records
+     the volatile numbers it reports (free scratch, current concurrency). A revoked worker fails
+     there because its stored fingerprint is gone, so revocation needs no separate check and cannot
+     be forgotten at a call site. Reachability uses one rule shared by the API and UI — a 30-second
+     interval against a 2-minute threshold, deliberately different so one dropped beat cannot flap
+     the status — and the Workers tab shows Online, Offline, Drained, or Revoked.
+     **Still to build:** binding assignments and results to the credential and lease, credential
+     rotation, and the TLS/LAN guidance.
+   - **Efficient, integrity-checked media delivery: started.** Support resumable, bounded, checksummed
      streaming when the sidecar cannot see the library. Also offer an explicit shared-storage path
      mapping for SMB/NFS-mounted media so multi-gigabyte sources need not cross the network twice.
      Shared sources remain read-only; sidecar scratch stays isolated. The main app verifies source
      identity before dispatch and rejects an output, report, or resumed transfer whose hashes,
      lease, size, or policy no longer match.
-   - **Capability-aware leases and recovery.** Schedule only when OS, architecture, FFmpeg build,
-     encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the job.
-     Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and make
-     retry after disconnect or restart safe. A lost, duplicated, late, cancelled, or partially
+     **Landed so far:** `GET /api/workers/leases/{leaseId}/source` streams an assigned original with
+     `Range` support so a dropped transfer resumes, and returns the source SHA-256 so the worker can
+     verify what it received. The route takes no path, filename, or library parameter — a worker
+     presents a lease and the server resolves the file — so a paired sidecar cannot be induced to
+     read anything other than the original already assigned to it. The source is opened shared and
+     read-only, and access ends when the lease stops being held. The hash is computed once and kept
+     on the job, which is what will later bind a returned candidate to the exact bytes encoded.
+     `POST /api/workers/leases/{leaseId}/result` takes the candidate back, streamed and hashed as it
+     arrives under a temporary name so a dead transfer never leaves something resembling a finished
+     file. It is refused unless the worker still holds the lease, the declared source hash matches
+     the one recorded when the source was fetched, and the upload matches the hash the worker
+     declared — which together cover the late result, the duplicate delivery, the candidate encoded
+     from the wrong original, and the truncated upload. An accepted candidate lands in the work
+     directory a local transcode would have used and the job moves to `Verifying`, never to
+     `ReadyToReplace`.
+     **Landed on the evidence side:** `RemoteQualityEvidenceValidator` defines what makes a remote
+     VMAF measurement admissible, failing closed on every path. Evidence is refused unless it names
+     the exact source and candidate hashes, names the VMAF model — an unlabelled score cannot be
+     compared to a threshold, since the same file scores differently under the HD and 4K models —
+     and was measured against thresholds at least as strict as the library requires. Stricter is
+     accepted: passing a harder test than the one set still passes the one set. Absent evidence is
+     refused rather than read as "nothing objected".
+     **Still to build:** the shared-storage path mapping for workers that can already see the
+     library, resumable upload, wiring the evidence contract into the result route, and running the
+     existing verification over a returned candidate so every structural, decode, duration, tail,
+     stream and size gate is repeated locally.
+   - **Capability-aware leases and recovery: started.** Schedule only when OS, architecture, FFmpeg
+     build, encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the
+     job. Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and
+     make retry after disconnect or restart safe. A lost, duplicated, late, cancelled, or partially
      uploaded result must never become replaceable.
+     **Landed so far:** the lease state machine as pure `Optimisarr.Core.Workers` logic. A lease is
+     one worker's exclusive claim on one job, and its duration is *derived* from the offline
+     threshold rather than set independently, so a job can only ever be reclaimed after its holder
+     has already been declared unreachable — never while it still counts as online, which is the
+     case that would put two encoders on one original. Expiry is computed when the lease is read
+     rather than stored, so correctness never depends on a sweeper having run and a control plane
+     restarting after downtime cannot wake up believing a dead worker still holds a job. Renewing
+     or completing a lapsed lease is refused, which is what makes a late result from a vanished
+     worker unusable; release is idempotent so a worker retrying after a dropped response is not
+     punished; and no worker can touch a lease it does not hold. Leases are now persisted and work is
+     dispatched against them: `POST /api/workers/claim` offers one job at a time, only where the
+     worker's proved capabilities satisfy it, and a claimed job moves from `Queued` to `Leased` so
+     the local dispatcher — which selects on `Queued` — stops seeing it. That exclusion is
+     structural rather than a check a future query could forget. A unique filtered index over held
+     leases means two holders is a database error rather than a possible outcome. Lapsed leases are
+     reclaimed whenever a worker asks for work, so recovery needs no background sweeper.
+
+     **Corrected 2026-09-01: no job can currently be offered to a worker, so nothing is dispatched
+     in practice.** The claim route names the required encoder from `Job.VideoEncoder`, which is
+     written once during *local* dispatch to record what actually ran. A job sitting in the queue —
+     the only state this route selects — has none, and the matcher correctly refuses an unnamed
+     encoder as a malformed assignment rather than treating it as a wildcard. Every claim therefore
+     falls through to `204`. The endpoint tests did not catch this because each hand-sets
+     `VideoEncoder` on a queued job, a state the application never produces; a test now pins the
+     real shape. The deeper reason is the same one the next bullet describes: the assignment carries
+     no resolved encode policy, so there is nothing to name an encoder *for this worker* from.
+
+     **Corrected 2026-09-04:** the assignment now carries a resolved encode contract and a claim
+     can succeed; the same test asserts an executable command is returned. The verification pass
+     for a returned candidate landed the same day. **Still to build:** drain controls.
+   - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
+     the first, and the first two are server work of similar size to a normal feature slice.
+
+     1. **A resolved encode policy in the assignment: landed 2026-09-04.** Before it, `AssignmentDto` carried
+        `LeaseId, JobId, SourcePath, SourceBytes, VideoEncoder, Vmaf, ExpiresUtc,
+        RenewWithinSeconds` — no quality, container, encoder effort, audio codec or bitrate, HDR
+        treatment, track removals, encoder tuning, or VMAF thresholds. A worker holding one cannot
+        know what to encode. This slice must also resolve the encoder *for the worker* from its
+        proved capabilities (which is what makes a claim possible at all — see the correction
+        above), and stop sending `job.MediaFile.Path`, since the source route deliberately takes no
+        path.
+
+        **Open design decision.** Either send a declarative policy and let the sidecar build its own
+        FFmpeg arguments — which duplicates `FfmpegCommandBuilder`'s ~589 lines of container,
+        subtitle, VFR and tone-map subtleties in Swift, and invites drift — or send the argument
+        array the server already builds for that encoder, with placeholders for input and output,
+        and have the worker validate it against an allowlist before substituting. The second keeps
+        one tested source of truth for the encode contract and suits a design where the *output* is
+        judged rather than the command; it needs care that a compromised or buggy server cannot
+        direct a worker's FFmpeg at anything but its own scratch paths. **Decided 2026-09-04: the
+        argument array.** The worker validates it against an allowlist and substitutes only its
+        own scratch paths.
+
+        **Landed:** `QueueDispatcher.PrepareRemoteWorkAsync` runs the dispatcher's own preparation
+        with the encoder chosen from the worker's proved list (`WorkerEncoderCatalogue` feeding
+        `EncoderSelector` in Auto order), software decode, no thread limit, and `{{input}}` /
+        `{{output}}.<ext>` placeholders (`WorkerProtocol`). The assignment carries the argument
+        array, the output extension, and the VMAF requirement (measure, model, subsample, clip,
+        thresholds); it no longer carries a server path. Refused with a logged reason: remux, audio
+        and image jobs, and adaptive-VMAF libraries whose per-title quality has not been chosen,
+        since selection runs on this machine's encoder and does not transfer. The VideoToolbox
+        family is now known to the selector, the quality, preset and tuning policies, and the
+        command builder (`-q:v` on a linear map from the CRF scale; **real-hardware calibration of
+        that line is still owed**). Left for later pieces: adaptive selection on the worker,
+        hardware decode for a worker that proves a decoder, the VMAF command itself (piece 3 will
+        ship it as a second server-built array so crop, frame-rate and HDR preparation stay in one
+        place), and the worker-side allowlist validation.
+
+     2. **A verification pass for a delivered candidate: landed 2026-09-04.** Before it,
+        `POST /api/workers/leases/{id}/result`
+        accepted an upload, bound it to the lease and source hash, and set the job to `Verifying`
+        — where nothing picks it up. `QueueDispatcher` only ever selects `Queued`. Worse, the
+        startup recovery sweep treats any `Verifying` job as interrupted, deletes its work output
+        and requeues it, so a returned candidate is silently discarded at the next restart. That is
+        an acceptable interim only because nothing can be delivered today; it becomes a race that
+        destroys a finished encode the moment a drainer exists, so both must land together.
+
+        `VerifyAndFinishAsync` reads only eight of `JobWork`'s twenty-four fields — `Spec`,
+        `Original`, `VerificationPolicy`, `VideoEncoder`, `VideoQuality`, `IsCalibration`,
+        `IsDisposable`, `UsedHardwareDecode` — and none is a local-transcode artefact, so extracting
+        a verification input that both paths build is tractable. `RemoteQualityEvidenceValidator`
+        (already merged, still unwired) judges the returned VMAF evidence.
+
+        **Open design decision.** A delivered-and-waiting job is currently indistinguishable from
+        one mid-verification locally. Either add a `JobStatus` such as `AwaitingVerification` —
+        honest, visible to operators, correct recovery semantics, but a migration, nine locales, UI
+        states, and a wider enum that sidecars observe — or a nullable marker on `Job`, which is one
+        column and no translation surface but hides the distinction. **Decided 2026-09-04: the
+        status.** The recovery sweep's mistake is a state-semantics one, and a hidden marker would
+        paper over exactly the distinction it gets wrong.
+
+        **Landed:** `JobStatus.AwaitingVerification` (string-converted column, so no migration).
+        Delivery sets it; `DispatchAsync` drains it ahead of new encodes under the same cap and
+        activity policy; `VerifyDeliveredAsync` rebuilds the contract for the delivering worker
+        (`LoadWorkAsync` with the remote placement) and hands the candidate to the same
+        `VerifyAndFinishAsync` a local encode uses, so replacement, auto-replace, VMAF retry and
+        failure handling are shared. Restart recovery (`RecoveryActionFor`) keeps a delivered
+        candidate found mid-verification, recognised by its `remote-<job>` name (`RemoteCandidate`),
+        and requeues local work as before. Enqueue de-duplication, timed cleanup, stats, queue
+        clearing, cancel and the queue page all know the two remote statuses. A result for a job
+        that is no longer `Leased` (cancelled, say) is refused. VMAF is re-measured locally for now;
+        `RemoteQualityEvidenceValidator` is wired in with piece 3, when a worker can produce
+        evidence to validate.
+
+     3. **The sidecar's work loop: landed 2026-09-04.** Claim, renew, release, source download
+        with a hash check, transcode with progress, and result upload are implemented
+        (`SidecarClient`, `JobRunner`, `AssignmentCommand`), and `SidecarSession` claims one job
+        per healthy check-in while idle. The command contract on the worker side is an explicit
+        allowlist of the options the server's builder emits, the two placeholder tokens as the only
+        input and output, and no path-like value; a refused command hands the job back naming the
+        token. Losing the lease cancels the encode; forgetting the pairing cancels the job; scratch
+        is removed on every exit path. **Left for later:** Range-resumed downloads (a dropped
+        transfer restarts today), and VMAF measurement on the worker with the evidence upload that
+        `RemoteQualityEvidenceValidator` will judge (the server re-measures until then).
+
+        **Real-hardware evidence (2026-09-04, Apple Silicon Mac, local server built from dev):**
+        `LiveWorkLoopTests` paired with proved capabilities, claimed a queued 1080p60 H.264 job,
+        received `hevc_videotoolbox` with the 30 fps cap applied, encoded with the bundled ffmpeg,
+        and delivered; the server verified the candidate through every gate including VMAF
+        (harmonic mean 97.74 against a floor of 93) and marked it ready to replace. The VMAF
+        retry also crossed the boundary: a first candidate failed the gate, was requeued at
+        higher quality, claimed again and delivered again. The run found four defects, all fixed
+        in the same change: Kestrel's 30 MB body cap refused the candidate; the delivering worker
+        was looked up by ordering a `DateTimeOffset` in SQLite; the candidate was named after the
+        source's extension rather than the contract's container (the replacement takes the final
+        extension from that name); and the frame-rate cap's `fps` filter and the verification's
+        reference preparation kept different frames on an exact 2:1, scoring 48 for a 97 encode —
+        both sides now thin by frame index. The worker-side allowlist also refused the new filter
+        for its escaped comma until taught to tell an escape from a Windows path, which is the
+        fail-closed behaviour it exists for.
+
+     4. **Drain controls**, and then productionisation: launch-at-login, sleep/wake, App Nap,
+        low-disk handling, cancel-on-quit. Developer ID signing and notarisation are unblocked — a
+        paid Apple Developer membership is available — but remain the last step, and neither
+        platform is described as supported until there is real-hardware acceptance evidence.
+
    - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
      tool/model versions, preparation details, hashes, and captured process evidence as one result
      bound to the assignment. The main app independently re-probes the returned file and repeats the
@@ -487,11 +696,28 @@ the replacement workflow is trustworthy.
      encoding, and only the hardware encoders/decoders proved available on that machine. NVIDIA
      CUDA VMAF may be advertised when the bundled tools prove it; CPU VMAF remains the portable
      fallback.
-   - **macOS sidecar application.** Ship a signed and notarized service with a minimal menu-bar UI
+   - **macOS sidecar application: started.** Ship a signed and notarized service with a minimal menu-bar UI
      and durable launch-at-login/background-service behaviour. Support Apple Silicon first, probe
      rather than assume VideoToolbox capabilities, and use CPU VMAF because Apple GPUs have no VMAF
      compute backend. Test sleep/wake, App Nap, low-disk handling, upgrades, cancellation, and
      permission prompts without requiring broad access to the user's filesystem.
+     **Landed so far:** `sidecars/macos`, a Swift package (not an `.xcodeproj`, so the build is
+     reviewable as text) building a `MenuBarExtra` app that pairs by URL and PIN, keeps its
+     credential in the Keychain, and checks in on the interval the server states. It now bundles an
+     ffmpeg built from pinned source and reports what this Mac proves it can do — each VideoToolbox
+     encoder confirmed by a real throwaway encode, hardware decode by an encode-then-decode round
+     trip — because every Apple build lists VideoToolbox whether or not a machine can open it. A Mac
+     that proves nothing still reports nothing, and the fail-closed matcher never offers it work. Revocation, an incompatible protocol,
+     and the feature being switched off server-side are each surfaced distinctly rather than as a
+     generic failure. A live test suite runs the real client against a running server, which is how
+     this contract gets a second implementation holding it honest. It now claims work, fetches the
+     source by lease, validates and runs the server's command with the bundled ffmpeg, renews the
+     lease throughout, and delivers the candidate with both hashes (see piece 3 above), and has
+     done so end to end on real Apple Silicon hardware against a server built from `dev`, with the
+     candidate passing every server gate including VMAF. **Still to build:** VMAF on the worker,
+     Range-resumed transfers, launch-at-login, sleep/wake and App Nap handling, drain controls,
+     and Developer ID signing and notarisation. Neither platform is described as supported until
+     that list is done and the evidence is repeated on a release build.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests
@@ -512,6 +738,19 @@ the replacement workflow is trustworthy.
       their saved path and Fixed remains available. The per-library radio path states the upper bound
       of four qualities across three 40-second scenes and the Queue uses its
       probing stage during preparation. Cancellation follows the normal active-job control.
+    - **Defaulting an Experimental path on is a deliberate, recorded exception.** It is the one
+      accepted departure from "defaults should be conservative" below and from the same rule in
+      [`CLAUDE.md`](../CLAUDE.md) §1, taken with the prototype-acceptance evidence below still
+      outstanding on every encoder family. The reasoning: the safety model is unchanged, because the
+      search falls back to the fixed quality whenever evidence is missing or non-monotonic, and the
+      finished output still clears every structural, decode, duration, tail, stream, size, and
+      configured VMAF gate before any replacement. What is unproven is cost and predictability —
+      probing time and the stability of the selected quality — not whether an original can be lost.
+      The blast radius is bounded to newly created libraries, existing saved choices are untouched,
+      and Fixed stays one selection away. Defaulting it on is also what produces the real-world
+      evidence this entry needs; left opt-in, too few libraries would exercise it for the acceptance
+      comparison to ever arrive. The Experimental label stays until that evidence does, so the
+      default is an evidence-gathering decision rather than a claim the path is proved.
     - **Representative evidence, not a favourable frame search.** Reuse deterministic early, middle,
       and late windows selected before any scores are known. Apply the complete picture contract
       (codec, bit depth, resolution, HDR treatment, encoder effort, and relevant filters) to every
@@ -541,7 +780,9 @@ the replacement workflow is trustworthy.
 - Safety beats savings.
 - No original file is deleted until verification has passed.
 - Every destructive action must have a rollback path.
-- Defaults should be conservative and understandable.
+- Defaults should be conservative and understandable. One recorded exception stands: Adaptive
+  per-title VMAF defaults on for new video re-encode libraries while still labelled Experimental,
+  for the reasons given under adaptive per-title VMAF quality targeting above.
 - The app should feel familiar to Docker media-stack users.
 - One container should be enough for normal use.
 

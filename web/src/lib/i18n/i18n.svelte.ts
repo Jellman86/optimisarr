@@ -101,7 +101,8 @@ export const i18n = createI18n()
 export function mediaTypeLabel(mediaType: string, messages: Messages): string {
   switch (mediaType) {
     case 'Film': return messages.common.media_type_film
-    case 'TV': return messages.common.media_type_tv
+    case 'TV':
+    case 'Tv': return messages.common.media_type_tv
     case 'Music': return messages.common.media_type_music
     case 'Photo': return messages.common.media_type_photo
     case 'Other': return messages.common.media_type_other

@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
@@ -19,11 +20,18 @@ public sealed record QueueSettings(
     VerificationPolicy VerificationPolicy,
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
-    int ReplacementQuarantineRetentionDays);
+    int ReplacementQuarantineRetentionDays,
+    bool RemoteWorkersEnabled = false);
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
-public sealed class SettingsStore(OptimisarrDbContext db)
+public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? remoteWorkers = null)
 {
+    /// <summary>
+    /// Whether this deployment offers remote workers at all. The stored switch decides whether an
+    /// operator has turned them on; this decides whether the switch exists.
+    /// </summary>
+    public bool RemoteWorkersAvailable => remoteWorkers?.Available ?? false;
+
     private static readonly string[] LegacyVerificationSettingKeys =
     [
         "verification.qualityGateEnabled",
@@ -67,7 +75,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
         SettingKeys.HdrToneMapMode,
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.DryRunMode,
-        SettingKeys.ReplacementQuarantineRetentionDays
+        SettingKeys.ReplacementQuarantineRetentionDays,
+        SettingKeys.RemoteWorkersEnabled
     };
 
     /// <summary>
@@ -155,7 +164,8 @@ public sealed class SettingsStore(OptimisarrDbContext db)
                 || setting.Key == SettingKeys.HdrToneMapMode
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
-                || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays)
+                || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays
+                || setting.Key == SettingKeys.RemoteWorkersEnabled)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
 
         return new QueueSettings(
@@ -173,7 +183,10 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             VerificationPolicy.Default,
             ParseBool(settings.GetValueOrDefault(SettingKeys.ReplacementAllowCrossFilesystem), fallback: false),
             ParseBool(settings.GetValueOrDefault(SettingKeys.DryRunMode), fallback: false),
-            ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0));
+            ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0),
+            // Off unless explicitly turned on. A fresh install, and any install that predates this
+            // setting, has remote workers disabled.
+            ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false));
     }
 
     /// <summary>
@@ -231,7 +244,9 @@ public sealed class SettingsStore(OptimisarrDbContext db)
             [SettingKeys.DryRunMode] =
                 settings.DryRunMode.ToString(CultureInfo.InvariantCulture),
             [SettingKeys.ReplacementQuarantineRetentionDays] =
-                Math.Max(0, settings.ReplacementQuarantineRetentionDays).ToString(CultureInfo.InvariantCulture)
+                Math.Max(0, settings.ReplacementQuarantineRetentionDays).ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.RemoteWorkersEnabled] =
+                settings.RemoteWorkersEnabled.ToString(CultureInfo.InvariantCulture)
         }, cancellationToken);
     }
 

@@ -1,5 +1,285 @@
 # Changelog
 
+## 0.2.12 — 2026-09-10
+
+### Fixed
+
+- **A corrupt hardware decode is now re-encoded with software decode instead of being retried at
+  a higher quality and then excluded.** On two different Intel hosts, QSV decoded certain H.264 MKV
+  sources into broken frames (159 of 959 in one window, all scoring zero) while the same hevc_qsv
+  encoder fed by software decode scored 96. The verification gates rejected every such output, so
+  no original was ever touched, but the rejection looked like a weak encode: the job spent a second
+  full encode on the higher-quality retry, failed again the same way, and the file was auto-excluded
+  for good. On one install that had happened to 265 MKV files while MP4 sources never failed once.
+  A hardware-decoded output that fails with decoder corruption's signature — decode errors, or any
+  frame below the catastrophic VMAF floor — is now re-encoded once with software decode feeding the
+  same encoder, and that second result is what the gates judge. The report's context records the
+  retry and why. A weak but intact encode, whose worst frame stays above the floor, keeps the
+  higher-quality retry as before. Files auto-excluded by the old behaviour are not re-queued
+  automatically; un-exclude them and they will be tried again the new way.
+
+- **The progress bar could reach 100% with minutes still to run
+  ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The reporter's diagnostics showed
+  the encode alive and busy the whole time: ffmpeg at 280% CPU, and the job finishing on its own.
+  The bar had believed the wrong clock. Progress is read from two clocks, encoded time and encoded
+  frames, and took the more advanced one; a frame count derived from a nominal rate came up short,
+  so the frame clock passed 100% while the time clock, still inside its range, said 94%. A clock
+  that has run past its own end has proven its expectation wrong, so it is now disbelieved in
+  favour of the other; only when both have overrun does the bar stop at 99% and drop the
+  seconds-left estimate rather than print "~2s" from a figure it can no longer trust. The probe
+  also now reads the exact frame count mkvmerge writes into Matroska files (`NUMBER_OF_FRAMES`),
+  which the rate-derived estimate was standing in for.
+
+- **A TV library's type badge read "Tv".** The API serialises the media type as `Tv` while the
+  label lookup only knew `TV`, so the raw enum name leaked into the badge (and the end-to-end mock
+  sent `TV`, which hid it). The lookup now accepts both and the mock sends what the API sends.
+
+- **A transcode could sit at "100% · ~2s left" until the container was restarted
+  ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The status was still Transcoding,
+  which means ffmpeg had not exited; on a healthy encode the final progress block and the exit are
+  the same instant (measured 0.00 s apart with the bundled build). Two things were wrong. The bar
+  was rounding a value the backend deliberately keeps below one, so it claimed a finish that had
+  not happened and then computed a seconds-left figure from the sliver that remained. And nothing
+  watched the process: an ffmpeg that stopped exiting, or stopped reporting, held its queue slot
+  forever. The bar now floors to 99% until ffmpeg actually exits, the final block is shown as
+  "Finishing…" with no estimate, and a stall monitor fails the job with a reason — two minutes
+  without an exit after the final block, or thirty minutes without any progress while the queue is
+  not paused — and discards the output, so the retry and exclusion policies see it like any other
+  failure. A paused encode is never counted; SIGSTOP silences it on purpose.
+
+- **A frame-rate-capped encode could fail its own quality check.** The cap thinned frames with
+  FFmpeg's `fps` filter, which picks each output slot by nearest timestamp. On an exact 2:1 every
+  odd source frame sits precisely on the rounding boundary, so which neighbour is kept depends on
+  the stream's timebase and on whether timestamps were reset first — and the verification's
+  reference preparation resets them before thinning while the encode does not. The two kept
+  different frames for half the picture, and a 60 → 30 encode that scores VMAF 97 against the
+  right frames scored 48 against the wrong ones and was failed. Both sides now keep frames by
+  index, recovered from each frame's own time and the probed source rate, which has no boundary to
+  fall on; verified at 97 on the same encode. A variable-frame-rate source is no longer capped,
+  since it has no "every second frame" that means the same thing to both sides. Found on the first
+  real hardware run of the cap; no released build carried it.
+
+- **The weekly secret scan now acknowledges three reviewed historical documentation examples.**
+  Exact Gitleaks fingerprints suppress only the known placeholder authorization headers; new or
+  changed findings continue to fail the scan.
+
+### Changed
+
+- **The Libraries page is calmer, and every control lives in one place.** Each library is now a
+  card that leads with the number that matters (how many files) and a plain-words status: "All
+  already optimal" in muted text, or "12 ready to optimise" in cyan when something is actually
+  waiting — the only time the summary lights up. The four badges that were identical on every
+  library (preset, schedule, auto-replace, "access ok") are gone; preset and schedule read as a
+  short icon list under the path, and access is only mentioned when it is a problem. Scan is the
+  one button on the card; Enqueue, Configure and Delete sit in a keyboard-operable "more actions"
+  menu, so the destructive action no longer sits at equal weight to the primary one. Cards go two
+  to a row and stack on a phone. "Skipped" now explains itself on hover and points at Configure ›
+  Candidates for the per-file reason.
+
+### Added
+
+- **Stronger adaptive quantisation now reaches SVT-AV1
+  ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The toggle used to do nothing on a
+  CPU AV1 encode, which is exactly where the reporter tried it. SVT-AV1 already runs delta-QP
+  adaptive quantisation under CRF, so "stronger" is its variance boost, which raises quality in
+  flat and dark blocks on top of that default; it is sent as
+  `enable-variance-boost=1:variance-boost-strength=2` through `-svtav1-params`, the only door
+  SVT-AV1 options have in FFmpeg. Needs SVT-AV1 2.1 or newer; the bundled jellyfin-ffmpeg carries
+  3.1.2 and accepted it on a real host. Intel QSV and VA-API still receive nothing: FFmpeg's shared
+  VAAPI encoder has no per-block quantiser control at all, and QSV's only nearby knob is documented
+  for bitrate-driven modes rather than the constant-quality mode used here. The library form's
+  support note now says so.
+
+- **Groundwork for remote transcoding workers, hidden in this release.** A remote worker cannot
+  yet do a job for you: the macOS sidecar has done one end-to-end encode on a developer's
+  machine, and worker-side quality measurement, drain controls, credential binding, resumable
+  transfers, signing, and the Windows sidecar are still to build. Everything below therefore sits
+  behind `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`: without it the **Remote workers** switch
+  and the **Workers** tab do not appear, the setting cannot be turned on, and every worker route
+  answers 403 `workers.unavailable`, whatever an older database may have stored. The pieces that
+  landed, kept here so the record is complete:
+  - **A delivered candidate larger than 30 MB was refused.** The result route inherited Kestrel's
+    default request body cap, meant for form posts, so the first real delivery from a Mac sidecar
+    failed with "request body too large" and the worker handed the job back. The route now lifts the
+    cap; it already streams the body to disk in bounded chunks, so no memory is at stake. Found by
+    the live work-loop test on real hardware.
+
+  - **A delivered candidate was named after the source rather than its own container.** A worker
+    told to produce MP4 from an MKV source had its candidate stored as `.mkv`, and the replacement
+    takes the final extension from that name. The container the assignment promised is now recorded
+    on the lease when it is granted (migration `AddLeaseOutputExtension`) and the candidate is named
+    from it; a lease with no recorded container cannot be delivered against. The same live run also
+    found that looking up the delivering worker ordered leases by a date in SQLite, which SQLite
+    cannot do; the ordering now happens in memory and a test asks the real database. Both found on
+    the first real delivery.
+
+  - **The macOS sidecar now does work.** On each healthy check-in while idle it claims a job, and
+    runs it end to end: the server's command is validated against an explicit contract before a byte
+    is fetched (known options only, the only input and output are the two placeholder tokens, no value
+    that looks like a path — anything else is refused whole and the job handed back with the token
+    named); the source is fetched by lease into the app's own scratch and hashed, and a transfer that
+    does not match the server's hash is never encoded; the bundled ffmpeg runs while the lease is
+    renewed, and losing the lease stops the encode; the candidate is hashed and delivered with both
+    hashes for the server to verify exactly as it would a local encode. The menu shows the job and
+    stage, and how the last job ended. Scratch is removed on every exit path; forgetting the pairing
+    cancels a running job. One job at a time. VMAF is not yet measured on the Mac; the server measures
+    it itself for now.
+
+  - **A candidate delivered by a remote worker is now verified and can earn replacement.** Before
+    this, a delivered candidate was set to Verifying, where nothing picked it up, and the next
+    restart's recovery sweep deleted it as an interrupted encode. Delivery now lands the job in a new
+    **Delivered, awaiting verification** status. The dispatcher picks such jobs up ahead of starting
+    new encodes, under the same concurrency cap and activity policy, rebuilds the encode contract for
+    the worker that produced the candidate, and runs every local gate against it — decode, duration,
+    tail, streams, size, resolution, frame rate, and the VMAF comparison — through exactly the path a
+    local encode takes. A candidate that passes becomes ready to replace or is auto-replaced as the
+    library asks; one that fails is retried at higher quality or failed, as before. Restart recovery
+    now tells a delivered candidate mid-verification from an interrupted local encode and keeps it.
+    The queue shows **Encoding remotely** and the new status by name, both count as active, and
+    clearing or cancelling treats a delivered candidate as pending work. A result arriving for a job
+    the operator has cancelled is refused rather than quietly reviving it. VMAF is re-measured here
+    for now; accepting a worker's own measurement is wired in with the sidecar's work loop.
+
+  - **A remote worker can now be handed an executable assignment.** Until now every claim returned
+    nothing: the assignment named no encoder and carried no encode policy, so no sidecar could be
+    offered work (the characterisation test that pinned this now asserts the opposite). A claim now
+    runs the same preparation as local dispatch — fresh probes, crop detection, the picture, audio
+    and track contract, verification policy — with the encoder chosen from what the worker proved,
+    in the same preference order this machine uses for its own hardware, and hands over the exact
+    FFmpeg argument array this machine would have run. Two tokens stand in for paths, `{{input}}`
+    and `{{output}}` with the container extension attached, so no path on the server is ever sent
+    and a worker substitutes only its own scratch. The assignment also states the VMAF requirement
+    (whether to measure, which model, frame subsample, clip mode, thresholds) so evidence can be bound
+    to the policy this machine will judge by. Not offered, each with a reason in the debug log:
+    remux, audio and image jobs, and jobs from adaptive-VMAF libraries whose per-title quality has
+    not yet been chosen, because that selection runs on this machine's encoder and a quality chosen
+    for one encoder means nothing on another. The VideoToolbox encoder family is now understood
+    end to end — selection, quality, preset, tuning and the command builder — so a Mac that proves
+    `hevc_videotoolbox` receives `-q:v` on Apple's scale rather than a CRF it would reject. That
+    quality line is a straight mapping and still owes calibration on real hardware; the VMAF gate,
+    not the mapping, is what guarantees a result.
+
+  - **The macOS sidecar now knows what its Mac can actually do.** It bundles its own ffmpeg, built
+    from pinned source rather than downloaded — no prebuilt Apple Silicon build met the requirement,
+    and a worker that cannot measure quality cannot do the job at all. It then proves its hardware
+    instead of assuming it: each VideoToolbox encoder is confirmed with a real throwaway encode, and
+    hardware decode by encoding a clip and decoding it back, because every Apple build lists
+    VideoToolbox whether or not a given machine can open it. Capabilities are probed at pairing, so
+    what the server records is what the machine could do just then. A Mac that proves nothing reports
+    nothing and is never offered work. **It still transcodes nothing** — no work is requested, because
+    the server cannot yet finish a job returned by a worker.
+
+  - **Remote transcoding sidecars can now be paired with a PIN.** Settings gains a **Workers** tab.
+    Press Pair a sidecar, then type the code and the server address it shows into your sidecar app.
+    The code lasts five minutes, works once, and is destroyed after five wrong entries, so a code
+    short enough to retype stays safe. Paired workers are listed with their platform, encoders, and
+    status, and can be revoked; revoking ends a worker's access immediately and keeps the record.
+    Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file — a worker
+    never can. **No work reaches a sidecar yet**, so pairing has no effect on your library today; it
+    is there so a connection can be set up and tested while the rest is built. The entries below
+    describe the routes a worker will use once that is true — claiming, fetching a source, returning
+    a candidate — none of which can currently be exercised end to end.
+  - **Remote workers are off unless you turn them on.** Settings → General has a Remote workers
+    switch, off by default and off on upgrade. While it is off there is no Workers tab and no sidecar
+    can pair or check in, so a normal single-container install is unchanged and never has to think
+    about it. Turning it back off stops check-ins immediately but keeps what is already paired, so
+    nothing is lost and turning it on again restores it.
+  - **A remote worker can now return the file it encoded.** The upload is checksummed on arrival and
+    refused if it does not match, if it was encoded from a different source, or if the worker no
+    longer holds the job. An accepted file waits for verification and cannot replace anything until
+    every check Optimisarr runs on its own transcodes has passed against it too.
+  - **A remote worker can now download the file it has been given.** Transfers resume where they left
+    off if the connection drops, and come with a checksum so the worker can confirm it received the
+    file intact. A worker can only ever fetch the exact original it was assigned, and only while it
+    still holds the job.
+  - **The route for a worker to claim a job now exists, but no job can be offered through it yet.**
+    A paired sidecar can ask for work, and Optimisarr will only ever hand out a job where the worker
+    has proved it has the encoder, VMAF support, scratch space and spare concurrency that job needs.
+    A claimed job leaves the queue so this machine will not also run it, and comes straight back if
+    the worker gives it up or goes silent. In practice nothing is handed out: the offer names the
+    encoder recorded on the job, and that is only written when *this* machine transcodes, so a queued
+    job has none and the request is correctly refused as incomplete. Remote transcoding therefore has
+    no effect on your library in this release.
+  - **Paired sidecars now report in, and the Workers list shows whether each one is reachable.** A
+    worker checks in every 30 seconds using the credential it was given at pairing, and is shown as
+    offline after two minutes of silence rather than on a single missed check-in, so a brief network
+    blip does not make the status flicker. Revoking a worker stops its check-ins immediately.
+
+- **A library can now cap frame rate on re-encode.** Advanced options gain **Cap frame rate at**,
+  with 60 and 30 fps stops, beside the resolution controls; this completes the framerate ask in
+  #95. It is a cap, not a target: a faster source is halved until it sits under the cap (60 → 30,
+  59.94 → 29.97, 120 → 30), and only clean halvings happen, because any other ratio repeats or
+  skips a frame every few and judders. A source already at or under the cap keeps its rate, and so
+  does one that no halving brings cleanly under it — a 45 fps source under a 30 cap is left alone
+  rather than made worse. The VMAF check decimates the original identically, so it judges the frames
+  that were kept against their own source frames rather than against neighbours, and the structure
+  gate holds the output to the intended rate, so an encode whose fps filter was dropped somewhere
+  cannot replace the original as if it had been capped. A capped encode takes over cadence from the
+  variable-frame-rate handling, forces software decoding for that job (as a downscale does), and
+  scales its progress estimate to the frames that survive. Nothing is set by default.
+
+- **A library can now remove black bars on re-encode.** A **Remove black bars** switch, off by
+  default, detects letterbox and pillarbox bars and crops them away, so players show the right
+  shape and nothing is spent encoding black. The quality check compares against the original
+  cropped the same way, so it measures the picture that is kept — which also means it cannot catch
+  a wrong crop. The safety is in how the crop is chosen: several scenes are sampled and the crop
+  keeps everything any of them kept, so a dark scene cannot narrow it; bars a few pixels wide are
+  ignored, and a crop that would remove most of the frame is treated as a detection failure and
+  skipped. The decided crop is recorded on the job so a retry reuses it rather than detecting
+  again. One limitation is stated plainly in the form: a film that switches aspect ratio partway
+  through can lose picture in those scenes if no sample lands on them, and the quality check will
+  not warn. Leave it off for such material.
+
+- **A library can now downscale video on re-encode.** Advanced options gain a **Downscale to**
+  choice beside **Skip files above**; the two mention a height and mean opposite things, so they sit
+  together. Sources already at or below the chosen height keep their own size — this only ever
+  shrinks. Under the hood the exact output size is computed once from the probed source and handed
+  to both the encode filter and the verification gate, so the two cannot disagree about rounding.
+  That gate previously rejected any change of resolution with a message naming a "resize policy"
+  that did not exist; it now has one, and holds an output to the size the encode intended rather
+  than to the source. The VMAF check still compares against the original at full size, so a heavy
+  downscale can honestly fail a strict quality floor. A downscale forces software decoding for that
+  job, because the scale filter cannot read frames a hardware decoder leaves on the GPU; the hardware
+  encoder is unaffected. Nothing is set by default.
+
+- **A minimum bitrate can now sit under the maximum.** The **Fine-tune the encoder** group offers a
+  floor once a cap is set, completing the bitrate pair asked for in #95. It is deliberately the
+  less useful half: a floor forces bits into scenes that need none, so it costs space rather than
+  saving any, and exists for streaming setups that stall at very low bitrates. It is refused
+  without a cap or above one, because a floor is a window constraint and an inverted or open
+  window cannot be honoured. It reaches x264/x265 only — NVENC reads a cap but never a floor, and
+  passing it one would look applied while doing nothing. Nothing is set by default.
+
+- **Video re-encodes can now be fine-tuned per library.** Advanced options gain a **Fine-tune the
+  encoder** group with three settings: a **content tune** for animation or film grain, a **maximum
+  bitrate** ceiling on top of the quality target, and **stronger adaptive quantisation** to spend
+  more bits where the eye notices. Each is stored as intent rather than as a raw FFmpeg flag, so
+  the encoder actually chosen for a job receives only what it understands: content tune and
+  adaptive quantisation reach the software x264/x265 encoders, NVENC honours adaptive quantisation
+  but has no content tune, and the bitrate cap reaches x264/x265 and NVENC. The library form says which
+  encoders honour what as soon as you set one, because in Auto mode a library cannot know in
+  advance which encoder it will land on. Anything a family cannot express is dropped rather than
+  approximated, and a library that sets none of these builds exactly the command it always did.
+
+- **A library can now leave chosen source codecs alone.** Each library's Advanced options list the
+  codecs its media type can actually contain; pick any and files already in them are never made
+  candidates, so they are never encoded and never replaced. This is for the case where a codec
+  plays fine on your devices but your hardware cannot encode it — an AV1 file under an HEVC target
+  would otherwise be converted, costing hours of CPU to gain little. It is separate from the
+  existing automatic skips, which leave a file alone when it is already the target codec or is
+  encoded efficiently enough that shrinking it is improbable; this one records that you do not want
+  the work done at all, and says so as the reason. Nothing is excluded by default.
+
+- **A library can now skip hardlinked files.** Settings for each library gain a **Skip hardlinked
+  files** switch under Advanced options. A hardlink means one file on disk is reachable by more
+  than one name — usually a download client still seeding the exact file Sonarr or Radarr imported.
+  Both names are the same bytes, so replacing the file changes what the other one points at and can
+  break a seed. While the switch is on, any file with more than one name is left out of the
+  library's candidates, and so is a file whose link count cannot be read, rather than guessing. The
+  count is captured by every scan and read again immediately before any replacement, so a file
+  linked after it was queued is still caught. Off by default and off on upgrade, so an existing
+  installation's candidates are unchanged.
+
 ## 0.2.11 — 2026-08-13
 
 ### Fixed

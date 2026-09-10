@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
 
@@ -9,10 +10,19 @@ internal static class SettingsRequestParser
 {
     public static bool TryParse(
         SettingsDto request,
+        bool remoteWorkersAvailable,
         out QueueSettings settings,
         out SettingsRequestError? error)
     {
         settings = default!;
+        if (request.RemoteWorkersEnabled && !remoteWorkersAvailable)
+        {
+            return Fail(
+                "workers.unavailable",
+                "Remote workers are groundwork in this release, not a feature. "
+                + $"Set {RemoteWorkersFeature.EnvironmentVariable}=true to try the preview.",
+                out error);
+        }
 
         if (request.MaxConcurrentJobs < 1)
             return Fail("settings.maxConcurrentJobs.minimum", "Max concurrent jobs must be at least 1.", out error);
@@ -46,7 +56,8 @@ internal static class SettingsRequestParser
             VerificationPolicy.Default,
             request.ReplacementAllowCrossFilesystem,
             request.DryRunMode,
-            request.ReplacementQuarantineRetentionDays);
+            request.ReplacementQuarantineRetentionDays,
+            request.RemoteWorkersEnabled);
         error = null;
         return true;
     }

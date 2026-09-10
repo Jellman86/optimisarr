@@ -14,6 +14,9 @@ internal readonly record struct ParsedLibrary(
     int Priority,
     long? MinFileSizeBytes,
     int? MaxHeight,
+    int? VideoDownscaleHeight,
+    int? MaxFrameRate,
+    bool CropBlackBars,
     long? ReencodeSameCodecAboveBytes,
     bool SkipEfficientSources,
     string? TargetVideoCodec,
@@ -21,6 +24,12 @@ internal readonly record struct ParsedLibrary(
     HdrHandling? HdrHandling,
     bool OptimiseDolbyVision,
     string? ExcludePaths,
+    bool ExcludeHardLinkedFiles,
+    string? SkipSourceCodecs,
+    ContentTune ContentTune,
+    int? MaxBitrateKbps,
+    int? MinBitrateKbps,
+    bool StrongerAdaptiveQuantisation,
     int? QualityCrf,
     string? EncoderPreset,
     string? AudioTargetCodec,
@@ -65,6 +74,9 @@ internal readonly record struct ParsedLibrary(
 /// <summary>Validates and normalises a library create/update request.</summary>
 internal static class LibraryRequestParser
 {
+    // Generous next to the real list (eight-odd codec names) and small enough to stay sane.
+    private const int MaxCodecListLength = 256;
+
     public static bool TryParse(SaveLibraryRequest request, out ParsedLibrary parsed, out string? error)
     {
         parsed = default;
@@ -175,6 +187,24 @@ internal static class LibraryRequestParser
         if (request.MaxHeight is <= 0)
         {
             error = "Maximum resolution must be greater than zero.";
+            return false;
+        }
+
+        // Bounded to real display heights, and even because 4:2:0 chroma needs even dimensions
+        // on both axes — an odd height is a filter that fails rather than a picture that is
+        // slightly the wrong size.
+        if (request.VideoDownscaleHeight is { } downscale
+            && (downscale < 240 || downscale > 4320 || downscale % 2 != 0))
+        {
+            error = "Downscale height must be an even number between 240 and 4320 pixels, or blank for none.";
+            return false;
+        }
+
+        // Bounded to rates a display actually shows. Below cinema rate the cap could only ever
+        // refuse; above 120 no consumer source exists to cap.
+        if (request.MaxFrameRate is { } frameRateCap && (frameRateCap < 24 || frameRateCap > 120))
+        {
+            error = "Frame-rate cap must be between 24 and 120 fps, or blank for none.";
             return false;
         }
 
@@ -290,6 +320,64 @@ internal static class LibraryRequestParser
             return false;
         }
 
+        // The form offers a fixed set of chips, but this endpoint takes free text and the value is
+        // persisted. Bounding the length keeps a malformed or hostile request from writing an
+        // unbounded column, the same reasoning as the kept-language lists.
+        var skipSourceCodecs = Trim(request.SkipSourceCodecs);
+        if (skipSourceCodecs is { Length: > MaxCodecListLength })
+        {
+            error = $"Excluded source codecs must be at most {MaxCodecListLength} characters "
+                + "(a comma-separated list such as \"av1, vp9\").";
+            return false;
+        }
+
+        // Named rather than ordinal on the wire, so inserting a tune later cannot silently change
+        // what an existing stored value means. An unrecognised name is refused rather than
+        // defaulting to None, which would look accepted and quietly do nothing.
+        //
+        // Enum.TryParse also accepts a *number* for any enum and returns whatever integer it was
+        // handed, member or not — "999" would parse happily into a ContentTune that does not exist,
+        // and the tuning policy, which only asks "is this Animation?", would then encode it as
+        // grain. Requiring a defined member closes that.
+        var contentTune = ContentTune.None;
+        if (Trim(request.ContentTune) is { } requestedTune
+            && (!Enum.TryParse(requestedTune, ignoreCase: true, out contentTune)
+                || !Enum.IsDefined(contentTune)))
+        {
+            error = $"Unknown content tune '{requestedTune}'. Expected None, Animation, or Grain.";
+            return false;
+        }
+
+        if (request.MaxBitrateKbps is { } cap && (cap < 100 || cap > 200_000))
+        {
+            error = "Maximum bitrate must be between 100 and 200000 kbps, or blank for no cap.";
+            return false;
+        }
+
+        if (request.MinBitrateKbps is { } floor)
+        {
+            if (floor < 100 || floor > 200_000)
+            {
+                error = "Minimum bitrate must be between 100 and 200000 kbps, or blank for no floor.";
+                return false;
+            }
+
+            // A floor is a VBV constraint and has no meaning without the ceiling that defines the
+            // window; an inverted pair is an impossible window. Refuse both here rather than
+            // storing a setting that looks applied and is then silently dropped at encode time.
+            if (request.MaxBitrateKbps is not { } ceiling)
+            {
+                error = "Minimum bitrate needs a maximum bitrate as well; a floor has no meaning without a cap.";
+                return false;
+            }
+
+            if (floor > ceiling)
+            {
+                error = $"Minimum bitrate ({floor} kbps) cannot be above the maximum ({ceiling} kbps).";
+                return false;
+            }
+        }
+
         var targetImageFormat = Trim(request.TargetImageFormat);
         if (targetImageFormat is not null && !ImageTarget.IsEncodable(targetImageFormat))
         {
@@ -361,6 +449,9 @@ internal static class LibraryRequestParser
             request.Priority ?? 0,
             request.MinFileSizeBytes,
             request.MaxHeight,
+            request.VideoDownscaleHeight,
+            request.MaxFrameRate,
+            request.CropBlackBars ?? false,
             request.ReencodeSameCodecAboveBytes,
             request.SkipEfficientSources ?? true,
             Trim(request.TargetVideoCodec),
@@ -368,6 +459,12 @@ internal static class LibraryRequestParser
             hdrHandling,
             request.OptimiseDolbyVision ?? false,
             Trim(request.ExcludePaths),
+            request.ExcludeHardLinkedFiles ?? false,
+            skipSourceCodecs,
+            contentTune,
+            request.MaxBitrateKbps,
+            request.MinBitrateKbps,
+            request.StrongerAdaptiveQuantisation ?? false,
             request.QualityCrf,
             encoderPreset,
             audioTargetCodec is null ? null : audioTargetCodec.ToLowerInvariant(),

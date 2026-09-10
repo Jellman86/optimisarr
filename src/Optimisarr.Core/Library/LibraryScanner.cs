@@ -5,7 +5,10 @@ public sealed record ScannedFile(
     string AbsolutePath,
     string RelativePath,
     long SizeBytes,
-    DateTimeOffset ModifiedAt);
+    DateTimeOffset ModifiedAt,
+    // How many names point at this file's inode; null when the platform or filesystem would not
+    // say. Only above one is interesting: it means another location shares these exact bytes.
+    int? HardLinkCount = null);
 
 public sealed record LibraryScanOptions
 {
@@ -117,7 +120,11 @@ public sealed class LibraryScanner
                 path,
                 System.IO.Path.GetRelativePath(root, path),
                 info.Length,
-                modifiedAt));
+                modifiedAt,
+                // One extra stat on a file this walk has already stat'ed. Captured for every scan
+                // rather than only when some library wants it, so turning the exclusion on takes
+                // effect immediately instead of waiting for the next rescan.
+                IO.HardLinkProbe.CountLinks(path)));
         }
 
         return new LibraryScanResult(files, skippedUnsettled, skippedNonMedia);

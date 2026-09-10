@@ -27,18 +27,12 @@
   import Banner from '../components/Banner.svelte'
   import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
+  import WorkersPanel from '../components/WorkersPanel.svelte'
 
   // Settings is split into tabs so each concern is found quickly and Tools lives here
   // rather than in its own sidebar entry. The General tab holds the core settings the
   // single "Save settings" button persists together; the rest manage their own records.
-  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'backup'
-  let tabs: { key: TabKey; label: string }[] = $derived([
-    { key: 'general', label: i18n.m.settings.tab_general },
-    { key: 'connections', label: i18n.m.settings.tab_connections },
-    { key: 'notifications', label: i18n.m.settings.tab_notifications },
-    { key: 'tools', label: i18n.m.settings.tab_tools },
-    { key: 'backup', label: i18n.m.settings.tab_backup },
-  ])
+  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'workers' | 'backup'
   // A visit to the old /tools route lands on Settings with the Tools tab open.
   let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
 
@@ -410,8 +404,23 @@
     hdrToneMapMode: 'Software',
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
+    remoteWorkersEnabled: false,
+    remoteWorkersAvailable: false,
     replacementQuarantineRetentionDays: 0,
   })
+
+  let tabs: { key: TabKey; label: string }[] = $derived([
+    { key: 'general', label: i18n.m.settings.tab_general },
+    { key: 'connections', label: i18n.m.settings.tab_connections },
+    { key: 'notifications', label: i18n.m.settings.tab_notifications },
+    { key: 'tools', label: i18n.m.settings.tab_tools },
+    // Only once opted in, and only where the server offers the preview at all: a default
+    // single-container install should not have to wonder what a remote worker is.
+    ...(settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+      ? [{ key: 'workers' as TabKey, label: i18n.m.settings.tab_workers }]
+      : []),
+    { key: 'backup', label: i18n.m.settings.tab_backup },
+  ])
 
   let minFreeDiskGiB = $state('10')
   let loading = $state(true)
@@ -435,7 +444,15 @@
     loading = true
     error = null
     try {
-      settings = await api.settings()
+      // Merged over the current values rather than replacing them outright. A response that omits
+      // a field — an older server, a partial payload — would otherwise leave a boolean undefined,
+      // and `bind:checked={undefined}` throws hard enough to take the whole page down with it.
+      //
+      // The merge must happen *after* the await. Spreading `settings` inline in the same
+      // expression reads it synchronously, which makes the calling $effect depend on it, so
+      // assigning it here would retrigger the effect and loop forever on "Loading…".
+      const loaded = await api.settings()
+      settings = { ...settings, ...loaded }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
       await loadCleanupPreview()
     } catch (err) {
@@ -450,7 +467,7 @@
     error = null
     message = null
     try {
-      settings = await api.saveSettings({
+      const saved = await api.saveSettings({
         ...settings,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
@@ -458,6 +475,7 @@
         replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
         minFreeDiskBytes: gibToBytes(minFreeDiskGiB),
       })
+      settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
       message = i18n.m.settings.saved
       await loadCleanupPreview()
@@ -717,6 +735,16 @@
         hint={i18n.m.settings.dry_run_hint}
       />
     </div>
+    {#if settings.remoteWorkersAvailable}
+      <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
+      <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+        <Toggle
+          bind:checked={settings.remoteWorkersEnabled}
+          label={i18n.m.settings.remote_workers}
+          hint={i18n.m.settings.remote_workers_hint}
+        />
+      </div>
+    {/if}
     <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
@@ -1137,6 +1165,17 @@
       class="min-w-0"
     >
       <ToolsPanel />
+    </div>
+  {/if}
+
+  {#if activeTab === 'workers'}
+    <div
+      id="settings-panel-workers"
+      role="tabpanel"
+      aria-labelledby="settings-tab-workers"
+      class="min-w-0"
+    >
+      <WorkersPanel />
     </div>
   {/if}
 

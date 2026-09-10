@@ -13,7 +13,22 @@ public static class AdminTokenAuth
     public static bool IsOpenPath(PathString path) =>
         path.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
         || path.Equals("/api/ready", StringComparison.OrdinalIgnoreCase)
-        || path.Equals("/api/auth/status", StringComparison.OrdinalIgnoreCase);
+        || path.Equals("/api/auth/status", StringComparison.OrdinalIgnoreCase)
+        // A sidecar pairing for the first time holds only the PIN the operator read off this
+        // server — it has no admin token and cannot obtain one, so this route carries its own
+        // authentication instead. The PIN is the credential here: the route is inert unless an
+        // operator has just issued one, it dies after five wrong guesses, and it expires in
+        // minutes. It hands out nothing without the correct code.
+        || path.Equals("/api/workers/pair", StringComparison.OrdinalIgnoreCase)
+        // Likewise for a paired sidecar checking in. It authenticates with its own 32-byte
+        // credential, which is a stronger secret than the admin token and authorises only the
+        // worker routes; a revoked worker fails here because its stored fingerprint is gone.
+        || path.Equals("/api/workers/heartbeat", StringComparison.OrdinalIgnoreCase)
+        // Claiming work and managing a claim are likewise worker-credential routes. The lease ones
+        // carry an id, so they are matched by segment rather than exact equality — and deliberately
+        // scoped to /leases so this cannot widen to the whole /api/workers surface by accident.
+        || path.Equals("/api/workers/claim", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api/workers/leases", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsProtectedPath(PathString path) =>
         path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)

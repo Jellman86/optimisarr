@@ -35,6 +35,31 @@ public sealed class Library
     public int? MaxHeight { get; set; }
 
     /// <summary>
+    /// When set, a video re-encode taller than this is scaled down to it, keeping aspect. Sources
+    /// at or below it are left at their own size — a downscale saves space, and upscaling would
+    /// spend bits to invent nothing. Distinct from <see cref="MaxHeight"/>, which excludes taller
+    /// files outright; that exclusion is checked first, so it wins when both are set. Null (the
+    /// default) means no downscale.
+    /// </summary>
+    public int? VideoDownscaleHeight { get; set; }
+
+    /// <summary>
+    /// When set, a video re-encode faster than this many frames per second is decimated to a clean
+    /// halving of its source rate under the cap (60 → 30, 59.94 → 29.97). Sources at or under the
+    /// cap, and sources no halving brings cleanly under it, keep their own rate. Null (the default)
+    /// means no cap.
+    /// </summary>
+    public int? MaxFrameRate { get; set; }
+
+    /// <summary>
+    /// When true, black bars are detected and cropped away on video re-encode. Off by default.
+    /// The crop is decided from several sampled scenes and keeps everything any of them showed;
+    /// implausibly small or large crops mean no crop. Material that changes aspect ratio partway
+    /// through can still lose picture if no sample lands on the wider scenes.
+    /// </summary>
+    public bool CropBlackBars { get; set; }
+
+    /// <summary>
     /// When set, a file already in the target video codec is re-encoded anyway if it is at least
     /// this many bytes — for shrinking oversized same-codec files (e.g. a huge HEVC remux when the
     /// target is HEVC). Null (the default) keeps the conservative behaviour of skipping a file that
@@ -69,6 +94,54 @@ public sealed class Library
 
     /// <summary>Newline-separated relative-path substrings to exclude (e.g. "Extras").</summary>
     public string? ExcludePaths { get; set; }
+
+    /// <summary>
+    /// When true, files whose inode carries more than one name are left untouched — typically a
+    /// download still being seeded that a *arr hardlinked into the library, where replacing the
+    /// file would change what the other name resolves to. Off by default, and off on upgrade, so
+    /// an existing installation's candidates are unchanged. While on, a file whose link count
+    /// cannot be read is excluded too.
+    /// </summary>
+    public bool ExcludeHardLinkedFiles { get; set; }
+
+    /// <summary>
+    /// Comma-separated ffprobe codec names (e.g. "av1, vp9") this library never optimises,
+    /// whatever else its profile would do. Matched against the codec that drives a file's
+    /// eligibility — the audio codec for an audio file, the video or still-picture codec
+    /// otherwise. Null or empty (the default) excludes nothing. A name that matches no codec
+    /// simply never fires, so an unrecognised entry cannot exclude something unexpected.
+    /// </summary>
+    public string? SkipSourceCodecs { get; set; }
+
+    /// <summary>
+    /// Portable content tune for video re-encodes ("Animation" or "Grain"). Null (the default)
+    /// leaves every encoder on its own tuning. Only the software x264/x265 encoders understand
+    /// content tuning; other families receive nothing rather than an approximation.
+    /// </summary>
+    public ContentTune ContentTune { get; set; } = ContentTune.None;
+
+    /// <summary>
+    /// A ceiling on the output's video bitrate in kbps, applied alongside the quality target.
+    /// Null (the default) means no cap. A cap can only make an output smaller, so it cannot
+    /// weaken the size-saving verification gate.
+    /// </summary>
+    public int? MaxBitrateKbps { get; set; }
+
+    /// <summary>
+    /// A floor under the output's video bitrate in kbps. Honoured only alongside
+    /// <see cref="MaxBitrateKbps"/>, and only by x264/x265, because a floor is a VBV constraint:
+    /// without a cap there is no window to hold it in, and NVENC never reads one. A floor spends
+    /// bits on scenes that need none, so it exists for streaming stability, not for saving space.
+    /// Null (the default) means no floor.
+    /// </summary>
+    public int? MinBitrateKbps { get; set; }
+
+    /// <summary>
+    /// When true, video re-encodes ask the encoder to spend more bits where the eye notices —
+    /// flat gradients and dark scenes. Expressed as aq-mode on x264/x265 and as spatial/temporal
+    /// AQ on NVENC; families with no equivalent keep their own defaults.
+    /// </summary>
+    public bool StrongerAdaptiveQuantisation { get; set; }
 
     /// <summary>Encoder quality target (CRF/CQ). Null uses the encoder default.</summary>
     public int? QualityCrf { get; set; }

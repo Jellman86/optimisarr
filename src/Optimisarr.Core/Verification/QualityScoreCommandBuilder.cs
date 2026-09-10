@@ -44,7 +44,15 @@ public sealed record QualityMeasurementContext(
     int? MeasureDurationSeconds = null,
     int FrameSubsample = 1,
     VmafAcceleration Acceleration = VmafAcceleration.None,
-    double? ReferenceFrameRate = null);
+    double? ReferenceFrameRate = null,
+    // The crop the encode applied, so the reference is cropped identically before comparison. A
+    // cropped output measured against an uncropped reference is comparing different pictures.
+    // The comparison then happens at the cropped size.
+    Queue.CropRect? ReferenceCrop = null,
+    // How a capped encode thinned its frames, so the reference is thinned by the same index rule
+    // before any timestamp handling. Decimating by nearest timestamp instead can keep different
+    // frames than the encode kept, and then the comparison is of neighbours, not of the same frame.
+    Queue.FrameRateDecimation? ReferenceDecimation = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -64,6 +72,14 @@ public static class QualityScoreCommandBuilder
     public const string HdModelVersion = "vmaf_v0.6.1";
     public const string UhdModelVersion = "vmaf_4k_v0.6.1";
     public const int MaximumFrameSubsample = 10;
+
+    /// <summary>
+    /// The viewing model for a picture of this size. Cropped cinema masters are commonly
+    /// 3840x1600-ish while still intended for a 4K display, so either UHD axis selects the 4K
+    /// model. Public so an assignment can tell a remote worker which model its evidence must name.
+    /// </summary>
+    public static string ModelVersionFor(int referenceWidth, int referenceHeight) =>
+        referenceWidth >= 3840 || referenceHeight >= 2160 ? UhdModelVersion : HdModelVersion;
     private const int SampleSeekPrerollSeconds = 5;
     private const string DefaultRenderDevice = "/dev/dri/renderD128";
 
@@ -96,13 +112,29 @@ public static class QualityScoreCommandBuilder
         // The established HDR path uses software zscale/tonemap and preserves 10-bit frames.
         // None of the accelerated graphs can reproduce that preparation exactly, so correctness
         // takes priority over speed for HDR material.
-        var acceleration = context.ReferenceIsHdr ? VmafAcceleration.None : context.Acceleration;
+        // A crop is a software filter with no CUDA counterpart in the accelerated graph, so a
+        // cropped comparison stays on the CPU path — the same choice HDR makes, for the same
+        // reason: correctness over speed.
+        // A decimated reference likewise: the frame selection must be reproduced exactly, and
+        // only the CPU graph carries it.
+        var acceleration = context.ReferenceIsHdr
+            || context.ReferenceCrop is not null
+            || context.ReferenceDecimation is not null
+            ? VmafAcceleration.None
+            : context.Acceleration;
 
-        // Cropped cinema masters are commonly 3840x1600-ish while still intended
-        // for a 4K display, so either UHD axis selects the 4K viewing model.
-        var model = context.ReferenceWidth >= 3840 || context.ReferenceHeight >= 2160
-            ? UhdModelVersion
-            : HdModelVersion;
+        // Thinning by frame index happens before anything touches timestamps, so the index each
+        // frame is judged by is the one the encode judged it by.
+        var referenceDecimation = context.ReferenceDecimation is { } decimation
+            ? $"{Queue.FrameRatePlanner.Filter(decimation)},"
+            : string.Empty;
+
+        // With a crop, the picture being judged is the cropped one: both streams are brought to
+        // its size, and the viewing model is chosen from it.
+        var referenceWidth = context.ReferenceCrop?.Width ?? context.ReferenceWidth;
+        var referenceHeight = context.ReferenceCrop?.Height ?? context.ReferenceHeight;
+
+        var model = ModelVersionFor(referenceWidth, referenceHeight);
         var colourPreprocessing = context.ReferenceIsHdr
             ? context.HdrConvertedToSdr
                 ? "HDR reference tone-mapped to SDR"
@@ -114,7 +146,7 @@ public static class QualityScoreCommandBuilder
             context.FrameSubsample,
             context.ReferenceFrameRate);
         var scale =
-            $"scale={context.ReferenceWidth}:{context.ReferenceHeight}:" +
+            $"scale={referenceWidth}:{referenceHeight}:" +
             "flags=bicubic:in_range=auto:out_range=tv";
         var pixelFormat = context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
@@ -135,6 +167,11 @@ public static class QualityScoreCommandBuilder
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
             : normalise;
+        if (context.ReferenceCrop is { } referenceCrop)
+        {
+            // The output is already cropped; only the reference needs it, and before anything else.
+            referencePreparation = $"{Queue.CropPlanner.Filter(referenceCrop)},{referencePreparation}";
+        }
         var boundedThreads = Math.Max(1, threads);
         var filter = acceleration == VmafAcceleration.Cuda
             ? BuildCudaFilter(
@@ -145,6 +182,7 @@ public static class QualityScoreCommandBuilder
                 distortedTimeline,
                 referenceTimeline)
             : BuildCpuFilter(
+                referenceDecimation,
                 normalise,
                 referencePreparation,
                 logPath,
@@ -200,6 +238,7 @@ public static class QualityScoreCommandBuilder
     }
 
     private static string BuildCpuFilter(
+        string referenceDecimation,
         string normalise,
         string referencePreparation,
         string logPath,
@@ -215,7 +254,7 @@ public static class QualityScoreCommandBuilder
             : string.Empty;
         return
             $"[0:v]{download}{distortedTimeline},{normalise}[dist];" +
-            $"[1:v]{download}{referenceTimeline},{referencePreparation}[ref];" +
+            $"[1:v]{download}{referenceDecimation}{referenceTimeline},{referencePreparation}[ref];" +
             "[dist][ref]libvmaf=" +
             $"model=version={model}:" +
             $"n_threads={threads}:n_subsample={frameSubsample}:" +

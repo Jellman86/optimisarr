@@ -22,6 +22,10 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<Exclusion> Exclusions => Set<Exclusion>();
 
+    public DbSet<Worker> Workers => Set<Worker>();
+
+    public DbSet<JobLease> JobLeases => Set<JobLease>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -41,6 +45,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.RuleProfile).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ImageDownscaleMode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.ContentTune).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
             entity.Property(library => library.TargetContainer).HasMaxLength(32);
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
@@ -158,6 +163,50 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(exclusion => exclusion.Reason).HasMaxLength(512);
             entity.Property(exclusion => exclusion.Source).HasConversion<string>().HasMaxLength(32);
             entity.HasIndex(exclusion => exclusion.LibraryId);
+        });
+
+        modelBuilder.Entity<Worker>(entity =>
+        {
+            entity.HasKey(worker => worker.Id);
+            entity.Property(worker => worker.Name).IsRequired().HasMaxLength(160);
+            entity.Property(worker => worker.OperatingSystem).HasMaxLength(32);
+            entity.Property(worker => worker.Architecture).HasMaxLength(32);
+            entity.Property(worker => worker.VideoEncoders).HasMaxLength(1024);
+            entity.Property(worker => worker.HardwareDecoders).HasMaxLength(1024);
+            entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
+            // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
+            entity.Property(worker => worker.CredentialFingerprint).HasMaxLength(64);
+            // Every authenticated worker call arrives with a credential and no id, so the
+            // fingerprint is the lookup key. Unique because two workers must never share one.
+            entity.HasIndex(worker => worker.CredentialFingerprint).IsUnique();
+        });
+
+        modelBuilder.Entity<JobLease>(entity =>
+        {
+            entity.HasKey(lease => lease.Id);
+            entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
+            entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
+
+            // Removing a job removes its leases; a lease without a job claims nothing.
+            entity.HasOne(lease => lease.Job)
+                .WithMany()
+                .HasForeignKey(lease => lease.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A worker row is kept after revocation for the audit trail, so its leases are kept too
+            // rather than cascading away the record of what it once held.
+            entity.HasOne(lease => lease.Worker)
+                .WithMany()
+                .HasForeignKey(lease => lease.WorkerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Two workers must never hold the same job. Enforced in the schema rather than trusted
+            // to the claim path, so a race or a future call site cannot produce a second holder.
+            entity.HasIndex(lease => lease.JobId)
+                .IsUnique()
+                .HasFilter("\"State\" = 'Held'");
+
+            entity.HasIndex(lease => lease.WorkerId);
         });
     }
 }

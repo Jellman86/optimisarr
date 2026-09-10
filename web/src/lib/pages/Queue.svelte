@@ -100,7 +100,15 @@
 
   function telemetryLabel(progress: JobProgress | undefined): string {
     if (!progress) return ''
-    return [speedLabel(progress.speed), etaLabel(progress.etaSeconds)].filter(Boolean).join(' · ')
+    const tail = progress.finishing ? i18n.m.queue.finishing : etaLabel(progress.etaSeconds)
+    return [speedLabel(progress.speed), tail].filter(Boolean).join(' · ')
+  }
+
+  // A transcode's bar is floored, not rounded: the backend keeps the value below 1 until ffmpeg
+  // exits, so "100%" would claim a finish that has not happened. The last percent belongs to the
+  // finishing state, not to an estimate that has run out of runway.
+  function transcodePercent(progress: number): number {
+    return Math.floor(Math.min(progress, 0.999) * 100)
   }
 
   // The endpoint returns the exact suspension outcome so unsupported/partial states stay honest.
@@ -146,7 +154,7 @@
     }
   }
 
-  const ACTIVE = ['Queued', 'Probing', 'Transcoding', 'Verifying', 'ReadyToReplace']
+  const ACTIVE = ['Queued', 'Probing', 'Transcoding', 'Verifying', 'Leased', 'AwaitingVerification', 'ReadyToReplace']
   function isActive(status: string) {
     return ACTIVE.includes(status)
   }
@@ -340,6 +348,7 @@
       case 'Transcoding':
       case 'Probing':
       case 'Verifying':
+      case 'Leased':
         return 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
       case 'ReadyToReplace':
       case 'Completed':
@@ -360,6 +369,8 @@
     Probing: i18n.m.queue.status_probing,
     Transcoding: i18n.m.queue.status_transcoding,
     Verifying: i18n.m.queue.status_verifying,
+    Leased: i18n.m.queue.status_leased,
+    AwaitingVerification: i18n.m.queue.status_awaitingverification,
     ReadyToReplace: i18n.m.queue.status_readytoreplace,
     Completed: i18n.m.queue.status_completed,
     Failed: i18n.m.queue.status_failed,
@@ -553,14 +564,15 @@
 
             {#if job.status === 'Transcoding'}
               <div class="mt-3 flex items-center gap-3">
-                <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
-                <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
+                <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {transcodePercent(job.progress)}%"></div></div>
+                <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{transcodePercent(job.progress)}%</span>
               </div>
               {#if telemetry}
                 <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-slate-400">
                   {#if telemetry.fps != null}<span>{telemetry.fps.toFixed(0)} fps</span>{/if}
                   {#if telemetry.speed != null}<span>{speedLabel(telemetry.speed)}</span>{/if}
-                  {#if telemetry.etaSeconds != null}<span>{etaLabel(telemetry.etaSeconds)}</span>{/if}
+                  {#if telemetry.finishing}<span>{i18n.m.queue.finishing}</span>
+                  {:else if telemetry.etaSeconds != null}<span>{etaLabel(telemetry.etaSeconds)}</span>{/if}
                 </div>
               {/if}
               <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -735,9 +747,9 @@
                 <div class="space-y-1">
                   <div class="flex items-center gap-2">
                     <div class="progress-track">
-                      <div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div>
+                      <div class="progress-fill" style="width: {transcodePercent(job.progress)}%"></div>
                     </div>
-                    <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
+                    <span class="w-9 text-right text-xs tabular-nums text-slate-500">{transcodePercent(job.progress)}%</span>
                   </div>
                   {#if telemetryLabel(live[job.id])}
                     <div class="text-[11px] tabular-nums text-slate-400">{telemetryLabel(live[job.id])}</div>

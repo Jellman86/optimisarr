@@ -83,7 +83,7 @@ internal static class DiagnosticsQueries
             version,
             DateTimeOffset.UtcNow,
             environment,
-            SettingsDto.From(queue),
+            SettingsDto.From(queue, settings.RemoteWorkersAvailable),
             stats,
             toolChecks,
             hardwareCapability,

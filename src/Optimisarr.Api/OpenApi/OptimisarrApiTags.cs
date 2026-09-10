@@ -9,7 +9,7 @@ namespace Optimisarr.Api.OpenApi;
 internal static class OptimisarrApiTags
 {
     public static readonly string[] AllTags =
-        ["System", "Setup", "Settings", "Libraries", "Inventory", "Queue", "Replacements", "Integrations", "Realtime"];
+        ["System", "Setup", "Settings", "Libraries", "Inventory", "Queue", "Replacements", "Integrations", "Realtime", "Workers"];
 
     public static string TagFor(string path)
     {
@@ -27,6 +27,7 @@ internal static class OptimisarrApiTags
             || p.StartsWith("/api/inventory", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/preview", StringComparison.OrdinalIgnoreCase)) return "Inventory";
         if (p.StartsWith("/api/jobs", StringComparison.OrdinalIgnoreCase)) return "Queue";
+        if (p.StartsWith("/api/workers", StringComparison.OrdinalIgnoreCase)) return "Workers";
         if (p.StartsWith("/api/replacements", StringComparison.OrdinalIgnoreCase)) return "Replacements";
         if (p.StartsWith("/api/activity-watchers", StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/api/notification-targets", StringComparison.OrdinalIgnoreCase)

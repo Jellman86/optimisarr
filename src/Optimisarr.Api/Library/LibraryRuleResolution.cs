@@ -59,12 +59,22 @@ internal static class LibraryRuleResolution
         {
             MinFileSizeBytes = library.MinFileSizeBytes,
             MaxHeight = library.MaxHeight,
+            VideoDownscaleHeight = library.VideoDownscaleHeight,
+            MaxFrameRate = library.MaxFrameRate,
+            CropBlackBars = library.CropBlackBars,
             ReencodeSameCodecAboveBytes = library.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = library.TargetVideoCodec,
             TargetContainer = library.TargetContainer,
             Hdr = library.HdrHandling,
             OptimiseDolbyVision = library.OptimiseDolbyVision,
             ExcludePathSegments = ParseExcludePaths(library.ExcludePaths),
+            ExcludeHardLinkedFiles = library.ExcludeHardLinkedFiles,
+            SkipSourceCodecs = ParseCodecList(library.SkipSourceCodecs),
+            EncoderTuning = new EncoderTuning(
+                Tune: library.ContentTune,
+                MaxBitrateKbps: library.MaxBitrateKbps,
+                MinBitrateKbps: library.MinBitrateKbps,
+                StrongerAdaptiveQuantisation: library.StrongerAdaptiveQuantisation),
             TargetAudioCodec = library.AudioTargetCodec,
             AudioBitrateKbps = library.AudioBitrateKbps,
             VideoAudioCodec = library.VideoAudioCodec,
@@ -83,6 +93,23 @@ internal static class LibraryRuleResolution
             ImageDownscaleMode = library.ImageDownscaleMode,
             ImageDownscaleValue = library.ImageDownscaleValue
         };
+    }
+
+    // Codec names are stored comma-separated, the same shape as the kept-language lists. No
+    // validation against a known-codec set: an unrecognised name matches nothing, so the failure
+    // mode of a typo is that the exclusion does not fire, never that the wrong file is excluded.
+    private static IReadOnlyList<string>? ParseCodecList(string? codecs)
+    {
+        if (string.IsNullOrWhiteSpace(codecs))
+        {
+            return null;
+        }
+
+        var names = codecs
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+
+        return names.Length > 0 ? names : null;
     }
 
     // Operators enter one path substring per line; blank lines are ignored.

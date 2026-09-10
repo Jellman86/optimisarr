@@ -178,6 +178,54 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task A_scan_records_how_many_names_point_at_each_discovered_file()
+    {
+        WriteMediaFile("Show/S01E01.mkv");
+        var library = await CreateLibraryAsync();
+
+        await ScanAsync(library);
+
+        await using var db = new OptimisarrDbContext(_options);
+        var file = await db.MediaFiles.SingleAsync();
+        Assert.Equal(1, file.HardLinkCount);
+    }
+
+    [Fact]
+    public async Task A_link_added_after_the_first_scan_is_picked_up_by_the_next_one()
+    {
+        // The case this whole feature exists for: a download client hardlinks a file that has
+        // already been discovered. Nothing about the content changes, so the usual size/mtime
+        // comparison sees nothing, and the count has to be refreshed on its own account.
+        var path = WriteMediaFile("Show/S01E01.mkv");
+        var library = await CreateLibraryAsync();
+        await ScanAsync(library);
+
+        HardLink(path, Path.Combine(_root, "seeding.mkv"));
+
+        var rescan = await ScanAsync(library);
+
+        Assert.Equal(1, rescan.Updated);
+        await using var db = new OptimisarrDbContext(_options);
+        var file = await db.MediaFiles.SingleAsync(f => f.Path == path);
+        Assert.Equal(2, file.HardLinkCount);
+    }
+
+    [Fact]
+    public async Task Rescanning_an_unchanged_link_count_still_updates_nothing()
+    {
+        // Refreshing the count on every scan must not cost the library its idempotency.
+        var path = WriteMediaFile("Show/S01E01.mkv");
+        HardLink(path, Path.Combine(_root, "seeding.mkv"));
+        var library = await CreateLibraryAsync();
+
+        await ScanAsync(library);
+        var second = await ScanAsync(library);
+
+        Assert.Equal(0, second.Added);
+        Assert.Equal(0, second.Updated);
+    }
+
     private async Task<Library> CreateLibraryAsync()
     {
         await using var db = new OptimisarrDbContext(_options);
@@ -194,14 +242,25 @@ public sealed class LibraryInventoryServiceTests : IDisposable
         return await service.ScanAsync(library, CancellationToken.None);
     }
 
-    private void WriteMediaFile(string relativePath)
+    private string WriteMediaFile(string relativePath)
     {
         var fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         File.WriteAllText(fullPath, "content");
         // Make it settled (older than the default settling period).
         File.SetLastWriteTimeUtc(fullPath, DateTime.UtcNow.AddHours(-1));
+        return fullPath;
     }
+
+    private static void HardLink(string existing, string created)
+    {
+        Assert.True(Link(existing, created) == 0,
+            $"link() failed with errno {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
+        // A new link changes the directory entry, not the file, so the linked file stays settled.
+    }
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "link", SetLastError = true)]
+    private static extern int Link(string existing, string created);
 
     public void Dispose()
     {

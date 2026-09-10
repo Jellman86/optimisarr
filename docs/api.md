@@ -517,6 +517,92 @@ Replacement statuses:
 | `RolledBack` | The original was restored and the replacement removed. |
 | `Purged` | The quarantined original was deleted by approval or retention. Rollback is no longer available. |
 
+## Remote Workers
+
+Optional remote transcoding sidecars. Optimisarr stays the control plane and the sole authority over
+destructive transitions: a worker contributes spare capacity and can never replace, quarantine, move,
+or delete an original.
+
+Pairing is PIN-based. The operator issues a code in Optimisarr and types it into the sidecar along
+with this server's URL. The code lives five minutes, redeems once, and is destroyed after five wrong
+guesses rather than throttled, so a code short enough to retype is safe on its attempt budget rather
+than its length.
+
+`POST /api/workers/pair` is the **only** worker route reachable without the admin token — a pairing
+sidecar holds the PIN and nothing else, so that route authenticates itself. It is inert unless an
+operator has just issued a code, and returns nothing without the correct one. Every other worker
+route stays behind the admin token.
+
+The credential is returned exactly once, in the pairing response. Optimisarr stores only its SHA-256
+fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
+outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
+
+Remote workers are a preview: the whole surface exists only when the container starts with
+`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`; without it every route below answers `403` with code
+`workers.unavailable`, and `PUT /api/settings` refuses `remoteWorkersEnabled: true` with `400`.
+
+Remote workers are opt-in. While the `workers.remoteEnabled` setting is off — the default, and the
+value any upgrade inherits — `POST /api/workers/pairing-code`, `POST /api/workers/pair`, and
+`POST /api/workers/heartbeat` all answer `403 workers.disabled`. `GET /api/workers` and
+`DELETE /api/workers/{id}` stay available so an operator can still see and remove what is paired
+after switching the feature off.
+
+Capabilities are named, not numbered. `vmaf` is `None`, `Cpu`, or `Cuda` (case-insensitive on the
+way in; omitting it means the worker claims no VMAF support). An unrecognised name is rejected with
+`worker.vmaf.invalid` rather than silently treated as `None`, so a typo cannot quietly downgrade a
+capable worker. Names are used because this contract is implemented by separately-versioned
+sidecars: an ordinal would change meaning if the set ever gained a member, and that value decides
+whether a job may be offered to a worker at all.
+
+A worker checks in every 30 seconds and is treated as offline after 2 minutes of silence. Those are
+different numbers on purpose: declaring a worker offline on one missed beat would make the status
+flap on a single dropped packet. The control plane stamps the last-seen time from its own clock, so
+a sidecar with a wrong clock cannot claim to be alive, and the heartbeat response carries the
+interval so a sidecar paces itself from the server rather than hard-coding a value that could drift
+out of step with the threshold.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/workers/pairing-code` | Issue a pairing PIN, replacing any previous one. |
+| `GET` | `/api/workers/pairing-code` | Read the PIN currently on screen. `204` when none is live — the resting state, not an error. |
+| `DELETE` | `/api/workers/pairing-code` | Withdraw the active PIN. |
+| `POST` | `/api/workers/pair` | Redeem a PIN and register a sidecar. Open route; the PIN is the credential. Returns the worker credential once. |
+| `POST` | `/api/workers/heartbeat` | A paired sidecar checks in and reports free scratch space and current concurrency. Open route; authenticated by the worker credential as `Authorization: Bearer`, not the admin token. `401` when the credential is absent, unknown, or revoked. |
+| `GET` | `/api/workers` | List paired workers with an `online` flag the server computes from its own liveness rule. Never returns credential fingerprints. |
+| `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
+| `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
+| `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
+| `POST` | `/api/workers/leases/{leaseId}/result` | Deliver the encoded candidate. Requires `X-Optimisarr-Source-Sha256` and `X-Optimisarr-Candidate-Sha256`; `202` when accepted, `409` when the source does not match, the upload does not match its declared hash, or the lease is no longer held. |
+| `GET` | `/api/workers/leases/{leaseId}/source` | Stream the source for a held lease. Supports `Range` for resumable transfer, and returns `X-Optimisarr-Source-Sha256` so the worker can verify what it received. |
+
+A delivered candidate is written to the same work directory a local transcode would have used, and
+the job moves to `Verifying` — never to `ReadyToReplace`. Verification has not run at that point, and
+a candidate produced elsewhere earns nothing until every local gate has been repeated against it.
+Nothing about delivering a result touches the original.
+
+Checks run in an order chosen for what each protects: authenticate first, so nothing about a lease
+is revealed to a caller with no claim on it; then prove the claim is still held, which covers both
+the late result and the duplicate delivery; then prove the candidate was encoded from this job's
+source; and only then is anything written to disk. The upload is streamed and hashed as it arrives,
+under a temporary name, so a transfer that dies part-way never leaves something resembling a
+finished candidate.
+
+The source route takes no path, filename, or library parameter, by design. A worker presents a lease
+id and the server resolves the file from it, so a paired sidecar can only ever read the exact
+original the control plane already assigned to it — there is no shape of request that reads anything
+else. The original is opened shared and read-only, and access ends the moment the lease stops being
+held, so releasing a job also ends the worker's reach into the library.
+
+A claimed job leaves the `Queued` status for `Leased`, which is how the local queue stops seeing it:
+the dispatcher selects on `Queued`, so the exclusion is structural rather than a check a future
+query could forget. Releasing a claim, or a lease lapsing, returns the job to `Queued`.
+
+Lapsed leases are reclaimed whenever a worker asks for work, so a job whose holder went silent
+returns to the queue without a background sweeper needing to be running. A lease outlives the point
+at which its holder would be declared offline, so a job is never handed to a second worker while the
+first still counts as reachable.
+
 ## Stats
 
 | Method | Endpoint | Purpose |

@@ -13,13 +13,16 @@ public static class RuleResolver
 
         // Track cleanup is a deliberately narrow, lossless contract. Do not let overrides left
         // behind by a previous encoding profile silently turn it into a transcode, remux, resize,
-        // HDR exclusion, or media-type conversion. Only path exclusions and the two language
-        // policies are relevant to this mode.
+        // HDR exclusion, or media-type conversion. Only the exclusions and the two language
+        // policies are relevant to this mode — stripping streams is still a replacement, so a
+        // shared inode or an untouchable source codec is at stake exactly as it is for a re-encode.
         if (profile == Domain.RuleProfile.TrackCleanup)
         {
             return settings with
             {
                 ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+                ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
+                SkipSourceCodecs = overrides.SkipSourceCodecs ?? settings.SkipSourceCodecs,
                 KeepAudioLanguages = overrides.KeepAudioLanguages ?? settings.KeepAudioLanguages,
                 KeepSubtitleLanguages = overrides.KeepSubtitleLanguages ?? settings.KeepSubtitleLanguages
             };
@@ -29,12 +32,18 @@ public static class RuleResolver
         {
             MinFileSizeBytes = overrides.MinFileSizeBytes ?? settings.MinFileSizeBytes,
             MaxHeight = overrides.MaxHeight ?? settings.MaxHeight,
+            VideoDownscaleHeight = overrides.VideoDownscaleHeight ?? settings.VideoDownscaleHeight,
+            MaxFrameRate = overrides.MaxFrameRate ?? settings.MaxFrameRate,
+            CropBlackBars = overrides.CropBlackBars ?? settings.CropBlackBars,
             ReencodeSameCodecAboveBytes = overrides.ReencodeSameCodecAboveBytes ?? settings.ReencodeSameCodecAboveBytes,
             TargetVideoCodec = Normalise(overrides.TargetVideoCodec) ?? settings.TargetVideoCodec,
             TargetContainer = Normalise(overrides.TargetContainer) ?? settings.TargetContainer,
             Hdr = overrides.Hdr ?? settings.Hdr,
             OptimiseDolbyVision = overrides.OptimiseDolbyVision ?? settings.OptimiseDolbyVision,
             ExcludePathSegments = overrides.ExcludePathSegments ?? settings.ExcludePathSegments,
+            ExcludeHardLinkedFiles = overrides.ExcludeHardLinkedFiles ?? settings.ExcludeHardLinkedFiles,
+            SkipSourceCodecs = overrides.SkipSourceCodecs ?? settings.SkipSourceCodecs,
+            EncoderTuning = overrides.EncoderTuning ?? settings.EncoderTuning,
             TargetAudioCodec = Normalise(overrides.TargetAudioCodec) ?? settings.TargetAudioCodec,
             AudioBitrateKbps = overrides.AudioBitrateKbps ?? settings.AudioBitrateKbps,
             VideoAudioCodec = ResolveVideoAudioCodec(overrides.VideoAudioCodec, settings.VideoAudioCodec),
