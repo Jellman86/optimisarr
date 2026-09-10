@@ -562,7 +562,8 @@ different numbers on purpose: declaring a worker offline on one missed beat woul
 flap on a single dropped packet. The control plane stamps the last-seen time from its own clock, so
 a sidecar with a wrong clock cannot claim to be alive, and the heartbeat response carries the
 interval so a sidecar paces itself from the server rather than hard-coding a value that could drift
-out of step with the threshold.
+out of step with the threshold. The response also says whether the worker is `draining`, so a
+sidecar learns of a drain on its next check-in rather than at the end of its job.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -573,6 +574,8 @@ out of step with the threshold.
 | `POST` | `/api/workers/heartbeat` | A paired sidecar checks in and reports free scratch space and current concurrency. Open route; authenticated by the worker credential as `Authorization: Bearer`, not the admin token. `401` when the credential is absent, unknown, or revoked. |
 | `GET` | `/api/workers` | List paired workers with an `online` flag the server computes from its own liveness rule. Never returns credential fingerprints. |
 | `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
+| `POST` | `/api/workers/{id}/drain` | Ask a worker to finish what it holds and take no more. Its leases still renew and deliver; only new claims are refused. Idempotent; returns the worker row with `drainRequestedAt` set and `heldLeases`, the jobs the drain is waiting on. |
+| `DELETE` | `/api/workers/{id}/drain` | Resume a drained worker. `409 worker.revoked` for a revoked worker, which can only come back by pairing again. |
 | `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
 | `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. `403` if the lease belongs to another worker, `409` once it has lapsed. |
 | `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |

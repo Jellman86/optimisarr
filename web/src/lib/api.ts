@@ -741,6 +741,10 @@ export type Worker = {
   revokedAt: string | null
   /** Computed by the server from its own liveness rule, so the UI never invents a second one. */
   online: boolean
+  /** When an operator asked the worker to finish what it holds and take no more; null while it takes work. */
+  drainRequestedAt: string | null
+  /** Leases the worker holds right now: what a drain is waiting on. */
+  heldLeases: number
 }
 
 export type WorkerPairingCode = {
@@ -1095,6 +1099,8 @@ export const api = {
 
   workers: () => request<Worker[]>('/api/workers'),
   revokeWorker: (id: number) => request<void>(`/api/workers/${id}`, { method: 'DELETE' }),
+  drainWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'POST' }),
+  resumeWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'DELETE' }),
   issueWorkerPairingCode: () =>
     request<WorkerPairingCode>('/api/workers/pairing-code', { method: 'POST' }),
   /** Null when no code is currently on screen — the ordinary resting state, not an error. */

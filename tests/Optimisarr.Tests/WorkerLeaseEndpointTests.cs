@@ -170,6 +170,88 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         return job.Id;
     }
 
+    private async Task<int> WorkerIdNamed(string name)
+    {
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        return await db.Workers.Where(w => w.Name == name && w.RevokedAt == null)
+            .OrderByDescending(w => w.Id).Select(w => w.Id).FirstAsync();
+    }
+
+    [Fact]
+    public async Task A_draining_worker_is_offered_nothing_until_it_is_resumed()
+    {
+        // Drain is a claim refusal and nothing more. The queue is untouched, the worker keeps
+        // checking in, and resuming hands it the same job it was refused a moment earlier.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Drainer");
+        var workerId = await WorkerIdNamed("Drainer");
+        var jobId = await QueueAJob();
+        var admin = Admin();
+
+        using var drained = await admin.PostAsync($"/api/workers/{workerId}/drain", null);
+        Assert.Equal(HttpStatusCode.OK, drained.StatusCode);
+        var drainedRow = await drained.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.NotEqual(JsonValueKind.Null, drainedRow.GetProperty("drainRequestedAt").ValueKind);
+
+        using var refused = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, refused.StatusCode);
+        Assert.Equal(JobStatus.Queued, await StatusOf(jobId));
+
+        using var resumed = await admin.DeleteAsync($"/api/workers/{workerId}/drain");
+        Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
+        var resumedRow = await resumed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, resumedRow.GetProperty("drainRequestedAt").ValueKind);
+
+        using var offered = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, offered.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(jobId));
+    }
+
+    [Fact]
+    public async Task Draining_keeps_the_lease_a_worker_already_holds()
+    {
+        // The whole point of drain over revoke: work in flight finishes. The lease still renews,
+        // the operator can see it is what the drain is waiting on, and the sidecar hears about
+        // the drain on its next check-in rather than at the end of the job.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Finisher");
+        var workerId = await WorkerIdNamed("Finisher");
+        await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+
+        using var drained = await Admin().PostAsync($"/api/workers/{workerId}/drain", null);
+        Assert.Equal(HttpStatusCode.OK, drained.StatusCode);
+        Assert.Equal(1, (await drained.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("heldLeases").GetInt32());
+
+        using var renewed = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/renew", new { });
+        Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
+
+        using var beat = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 500L * 1024 * 1024 * 1024,
+            maxConcurrency = 1,
+        });
+        Assert.Equal(HttpStatusCode.OK, beat.StatusCode);
+        Assert.True((await beat.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("draining").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_revoked_worker_cannot_be_resumed()
+    {
+        await EnableRemoteWorkers();
+        await PairCapableWorker("Gone");
+        var workerId = await WorkerIdNamed("Gone");
+        var admin = Admin();
+        (await admin.DeleteAsync($"/api/workers/{workerId}")).EnsureSuccessStatusCode();
+
+        using var resumed = await admin.DeleteAsync($"/api/workers/{workerId}/drain");
+
+        Assert.Equal(HttpStatusCode.Conflict, resumed.StatusCode);
+    }
+
     private async Task<JobStatus> StatusOf(int jobId)
     {
         using var scope = _api.Services.CreateScope();

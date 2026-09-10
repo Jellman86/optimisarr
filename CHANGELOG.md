@@ -18,6 +18,13 @@
   per-title VMAF libraries still run here whatever the choice says, and the editor says that too.
   New `workPlacement` on the library API and in config backups (an older backup restores as
   *Here or on a worker*); migration `AddLibraryWorkPlacement`.
+- **A remote worker can be drained.** `POST /api/workers/{id}/drain` asks a worker to finish what
+  it holds and take no more: its leases still renew and deliver, the claim route offers it nothing,
+  the local dispatcher stops counting it as a worker a *Prefer a worker* library could wait for,
+  and its heartbeat response says `draining` so the sidecar can show it. `DELETE
+  /api/workers/{id}/drain` resumes it, and refuses a revoked worker with `409` because only
+  pairing again brings one back. `GET /api/workers` gains `drainRequestedAt` and `heldLeases`, the
+  jobs a drain is waiting on. Migration `AddWorkerDrain`.
 
 ## 0.2.12 — 2026-09-10
 

@@ -158,6 +158,8 @@ struct HeartbeatTests {
 
         #expect(transport.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer secret")
         #expect(result.heartbeatInterval == 30)
+        // An older server says nothing about draining, which reads as not draining.
+        #expect(result.draining == false)
     }
 
     @Test("a revoked credential is reported distinctly so the app can stop using it")
