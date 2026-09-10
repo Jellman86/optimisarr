@@ -94,6 +94,25 @@ public enum JobProgress: Sendable, Equatable {
     case delivering
 }
 
+/// The most recent progress, shared between the ffmpeg reader and the renewal loop. A lock
+/// rather than an actor because the reader is a synchronous callback on ffmpeg's pipe.
+final class LatestProgress: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: JobProgress
+
+    init(_ initial: JobProgress) { value = initial }
+
+    func set(_ progress: JobProgress) {
+        lock.lock(); defer { lock.unlock() }
+        value = progress
+    }
+
+    func get() -> JobProgress {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+}
+
 /// Executes assignments, so the session can be driven in tests without an ffmpeg or a server.
 public protocol WorkExecutor: Sendable {
     func execute(
@@ -203,22 +222,25 @@ public struct JobRunner: WorkExecutor {
         }
 
         let arguments = command.materialise(input: source, output: candidate)
+        let latest = LatestProgress(.encoding(encodedSeconds: 0))
         let encode = try await withThrowingTaskGroup(of: (Int32, String)?.self) { group in
             group.addTask {
                 let result = try await runner.run(ffmpeg, arguments) { seconds in
+                    latest.set(.encoding(encodedSeconds: seconds))
                     progress(.encoding(encodedSeconds: seconds))
                 }
                 return result
             }
             group.addTask {
                 // Renew at half the window the server states, so one missed renewal does not
-                // cost the lease. A lost lease throws, which cancels the encode below.
-                let interval = max(5, Double(assignment.renewWithinSeconds) / 2)
+                // cost the lease, and no less often than every fifteen seconds so the bar the
+                // operator watches actually moves. A lost lease throws, which cancels the encode.
+                let interval = min(15, max(5, Double(assignment.renewWithinSeconds) / 2))
                 while true {
                     try await sleep(interval)
                     try await client.renew(
                         serverAddress: pairing.serverAddress, credential: pairing.credential,
-                        leaseId: assignment.leaseId)
+                        leaseId: assignment.leaseId, progress: latest.get())
                 }
             }
             // The encode finishes first in every healthy run; the renewal loop only ever ends by

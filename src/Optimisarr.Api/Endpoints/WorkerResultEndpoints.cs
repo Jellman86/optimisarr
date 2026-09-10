@@ -104,6 +104,10 @@ internal static class WorkerResultEndpoints
             // verifying — and potentially replacing — against the wrong original.
             if (!string.Equals(job.SourceSha256, claimedSource, StringComparison.OrdinalIgnoreCase))
             {
+                WorkerProblems.Record(worker,
+                    $"Its candidate for {job.MediaFile.RelativePath} was encoded from a different source and was refused.",
+                    DateTimeOffset.UtcNow);
+                await db.SaveChangesAsync(cancellationToken);
                 return ApiErrors.Conflict("worker.result.sourceMismatch",
                     "That candidate was encoded from a different source than this job's.");
             }
@@ -144,6 +148,10 @@ internal static class WorkerResultEndpoints
                 // Truncated, corrupted, or misdescribed. Any of those verified as a real candidate
                 // could end up replacing an original with a broken file.
                 TryDelete(stagingPath);
+                WorkerProblems.Record(worker,
+                    $"Its candidate for {job.MediaFile.RelativePath} did not match the hash it declared and was refused.",
+                    DateTimeOffset.UtcNow);
+                await db.SaveChangesAsync(cancellationToken);
                 return ApiErrors.Conflict("worker.result.hashMismatch",
                     "The uploaded candidate does not match the hash the worker declared.");
             }

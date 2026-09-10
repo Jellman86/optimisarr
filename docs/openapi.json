@@ -1343,6 +1343,26 @@
         ],
         "type": "object"
       },
+      "RenewRequest": {
+        "properties": {
+          "encodedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "stage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "ResultAcceptedDto": {
         "properties": {
           "bytes": {
@@ -2287,6 +2307,12 @@
       },
       "WorkerDto": {
         "properties": {
+          "activeJobs": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerJobDto"
+            },
+            "type": "array"
+          },
           "architecture": {
             "type": "string"
           },
@@ -2324,6 +2350,19 @@
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "lastProblem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastProblemAt": {
+            "format": "date-time",
+            "type": [
+              "null",
               "string"
             ]
           },
@@ -2396,7 +2435,46 @@
           "revokedAt",
           "online",
           "drainRequestedAt",
-          "heldLeases"
+          "heldLeases",
+          "activeJobs",
+          "lastProblem",
+          "lastProblemAt"
+        ],
+        "type": "object"
+      },
+      "WorkerJobDto": {
+        "properties": {
+          "jobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "progress": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "relativePath",
+          "stage",
+          "progress"
         ],
         "type": "object"
       }
@@ -4985,6 +5063,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RenewRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -4995,6 +5089,16 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "401": {
             "content": {

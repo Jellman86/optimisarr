@@ -162,6 +162,31 @@ struct HeartbeatTests {
         #expect(result.draining == false)
     }
 
+    @Test("a renewal says where the job is, in the server's names")
+    func renewCarriesProgress() async throws {
+        let transport = StubTransport(status: 200)
+
+        try await SidecarClient(transport: transport).renew(
+            serverAddress: "localhost:8787", credential: "secret", leaseId: "lease-1",
+            progress: .encoding(encodedSeconds: 42.5))
+
+        let body = try #require(transport.lastRequest?.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["stage"] as? String == "Encoding")
+        #expect(json["encodedSeconds"] as? Double == 42.5)
+        #expect(transport.lastRequest?.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    }
+
+    @Test("a renewal with nothing to report sends no body, as older sidecars did")
+    func renewWithoutProgress() async throws {
+        let transport = StubTransport(status: 200)
+
+        try await SidecarClient(transport: transport).renew(
+            serverAddress: "localhost:8787", credential: "secret", leaseId: "lease-1")
+
+        #expect(transport.lastRequest?.httpBody == nil)
+    }
+
     @Test("a revoked credential is reported distinctly so the app can stop using it")
     func revoked() async throws {
         let transport = StubTransport(status: 401, json: [

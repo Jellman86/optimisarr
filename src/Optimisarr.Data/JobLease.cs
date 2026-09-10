@@ -40,6 +40,15 @@ public sealed class JobLease
     /// </summary>
     public string? OutputExtension { get; set; }
 
+    /// <summary>Where the worker says it is, from its latest renewal. Null until it reports.</summary>
+    public RemoteStage? Stage { get; set; }
+
+    /// <summary>
+    /// Seconds of output the worker's ffmpeg had produced at its latest renewal. The server turns
+    /// this into a fraction against the source duration, because the worker never learns it.
+    /// </summary>
+    public double? EncodedSeconds { get; set; }
+
     /// <summary>Rebuilds the domain lease so every decision runs through one state machine.</summary>
     public WorkerLease ToDomain() =>
         new(Id, JobId, WorkerId, AcquiredAt, ExpiresAt, State);

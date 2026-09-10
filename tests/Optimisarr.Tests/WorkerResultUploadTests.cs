@@ -165,6 +165,13 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         using var response = await worker.SendAsync(Upload(leaseId, CandidateBytes, wrongSource));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        // And the operator can read what happened on the worker's card, because the worker only
+        // ever sees a 409.
+        using var listed = await Admin().GetAsync("/api/workers");
+        var row = (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("name").GetString() == "Wrong source" && w.GetProperty("revokedAt").ValueKind == JsonValueKind.Null);
+        Assert.Contains("different source", row.GetProperty("lastProblem").GetString());
     }
 
     [Fact]

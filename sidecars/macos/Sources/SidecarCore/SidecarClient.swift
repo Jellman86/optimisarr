@@ -256,12 +256,35 @@ public struct SidecarClient: Sendable {
     }
 
     /// Extends the claim. Throws `leaseLost` when the server no longer recognises it as ours,
-    /// which is the signal to stop the work being done under it.
-    public func renew(serverAddress: String, credential: String, leaseId: String) async throws {
-        let request = try authorised(
+    /// which is the signal to stop the work being done under it. The renewal also says where the
+    /// job has got to, which is the only progress the server ever hears about a remote encode:
+    /// the stage by name, and ffmpeg's own encoded seconds, which the server scales against the
+    /// source duration because this side never learns it.
+    public func renew(
+        serverAddress: String, credential: String, leaseId: String,
+        progress: JobProgress? = nil
+    ) async throws {
+        var request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/renew", credential: credential, method: "POST")
+        if let progress {
+            var body: [String: Any] = ["stage": Self.stageName(progress)]
+            if case let .encoding(seconds) = progress {
+                body["encodedSeconds"] = seconds
+            }
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
         let (data, response) = try await perform(request)
         try Self.checkLease(response.statusCode, data)
+    }
+
+    /// The server's `RemoteStage` names. Sent as names because the two sides are versioned apart.
+    static func stageName(_ progress: JobProgress) -> String {
+        switch progress {
+        case .fetchingSource: return "FetchingSource"
+        case .encoding: return "Encoding"
+        case .delivering: return "Delivering"
+        }
     }
 
     /// Hands the job back so the server can reassign it. Tolerant of a lease already gone.

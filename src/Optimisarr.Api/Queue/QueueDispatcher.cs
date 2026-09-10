@@ -713,6 +713,7 @@ public sealed class QueueDispatcher(
 
             await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
             await VerifyAndFinishAsync(jobId, candidatePath, work.Value, cancellationToken);
+            await RecordDeliveredVerdictAsync(jobId, deliveredBy.Id, cancellationToken);
         }
         catch (JobNoLongerEligibleException ex)
         {
@@ -738,6 +739,37 @@ public sealed class QueueDispatcher(
             await NotifyAsync();
             Wake();
         }
+    }
+
+    /// <summary>
+    /// A delivered candidate that failed verification is the worker's problem to hear about, on
+    /// its own card: the worker itself only ever learns that its upload was accepted.
+    /// </summary>
+    private async Task RecordDeliveredVerdictAsync(int jobId, int workerId, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var verdict = await db.Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId)
+            .Select(job => new { job.Status, job.ErrorMessage, Path = job.MediaFile != null ? job.MediaFile.RelativePath : null })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (verdict is null || verdict.Status != JobStatus.Failed)
+        {
+            return;
+        }
+
+        var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == workerId, cancellationToken);
+        if (worker is null)
+        {
+            return;
+        }
+
+        WorkerProblems.Record(
+            worker,
+            $"Its candidate for {verdict.Path ?? $"job {jobId}"} failed verification: {verdict.ErrorMessage ?? "no reason recorded"}.",
+            DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
