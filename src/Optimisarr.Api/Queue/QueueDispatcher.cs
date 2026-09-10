@@ -454,6 +454,7 @@ public sealed class QueueDispatcher(
                     .AsNoTracking()
                     .AnyAsync(
                         worker => worker.RevokedAt == null
+                            && worker.DrainRequestedAt == null
                             && worker.MaxConcurrency > 0
                             && worker.LastSeenAt != null
                             && worker.LastSeenAt > offlineBefore,

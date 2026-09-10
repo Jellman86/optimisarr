@@ -58,6 +58,9 @@ public struct HeartbeatResult: Sendable, Equatable {
     public let workerId: Int
     public let protocolVersion: Int
     public let heartbeatInterval: TimeInterval
+    /// The operator asked this machine to finish what it holds and take no more. Absent from an
+    /// older server's response, which reads as not draining.
+    public let draining: Bool
 }
 
 /// Performs HTTP so the client can be tested without a network. Bodies that may be gigabytes —
@@ -210,7 +213,8 @@ public struct SidecarClient: Sendable {
                 // Guarded rather than trusted outright: a zero or negative interval from a
                 // malformed response would otherwise become a tight polling loop against the
                 // server.
-                heartbeatInterval: TimeInterval(max(5, seconds))
+                heartbeatInterval: TimeInterval(max(5, seconds)),
+                draining: body["draining"] as? Bool ?? false
             )
         case 401:
             // Unknown or revoked. Either way this credential is finished and the app must stop

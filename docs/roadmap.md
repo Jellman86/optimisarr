@@ -583,9 +583,12 @@ the replacement workflow is trustworthy.
      minutes), or *Only on workers* — as one filter over the shared queue that the local dispatcher
      and a worker's claim both read from `WorkPlacementPolicy`, so a job keeps its priority and
      age wherever it is allowed to run. While remote workers are off every placement runs on the
-     server, which is what keeps a library from stalling on a feature not in use. **Still to
-     build:** drain controls, and an "on a worker" placement for adaptive libraries once selection
-     can hand the final encode over.
+     server, which is what keeps a library from stalling on a feature not in use. **Landed the same
+     day: drain controls on the server.** `POST`/`DELETE /api/workers/{id}/drain` is a claim
+     refusal and nothing more — held leases renew and deliver, the heartbeat answers `draining`,
+     and a draining worker no longer counts as one a *Prefer a worker* library could wait for.
+     **Still to build:** the Workers tab controls for drain and resume, and an "on a worker"
+     placement for adaptive libraries once selection can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 
