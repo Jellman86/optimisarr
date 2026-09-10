@@ -54,6 +54,14 @@ public sealed class Worker
 
     public DateTimeOffset? LastSeenAt { get; set; }
 
+    /// <summary>
+    /// Set when an operator asks the worker to stop taking new work. A draining worker keeps every
+    /// lease it holds, finishes and delivers them, and is simply offered nothing more until this
+    /// is cleared. Distinct from the worker reporting zero concurrency itself, which is the
+    /// sidecar's own choice and changes with every heartbeat.
+    /// </summary>
+    public DateTimeOffset? DrainRequestedAt { get; set; }
+
     /// <summary>Set when an operator revokes the worker. A revoked row is kept for the audit trail.</summary>
     public DateTimeOffset? RevokedAt { get; set; }
 }

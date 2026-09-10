@@ -84,6 +84,13 @@ internal static class WorkerLeaseEndpoints
                 return Results.NoContent();
             }
 
+            // An operator asked this worker to finish what it holds and take no more. Its renewals
+            // and deliveries are untouched; only new offers stop.
+            if (worker.DrainRequestedAt is not null)
+            {
+                return Results.NoContent();
+            }
+
             var held = await db.JobLeases
                 .CountAsync(lease => lease.WorkerId == worker.Id && lease.State == LeaseState.Held, cancellationToken);
             if (held >= worker.MaxConcurrency)

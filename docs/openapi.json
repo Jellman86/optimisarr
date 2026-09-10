@@ -460,6 +460,9 @@
       },
       "HeartbeatResponse": {
         "properties": {
+          "draining": {
+            "type": "boolean"
+          },
           "heartbeatIntervalSeconds": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -493,7 +496,8 @@
           "workerId",
           "protocolVersion",
           "serverTimeUtc",
-          "heartbeatIntervalSeconds"
+          "heartbeatIntervalSeconds",
+          "draining"
         ],
         "type": "object"
       },
@@ -2286,6 +2290,13 @@
           "architecture": {
             "type": "string"
           },
+          "drainRequestedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "freeScratchBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2299,6 +2310,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "heldLeases": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
           },
           "id": {
             "format": "int32",
@@ -2375,7 +2394,9 @@
           "pairedAt",
           "lastSeenAt",
           "revokedAt",
-          "online"
+          "online",
+          "drainRequestedAt",
+          "heldLeases"
         ],
         "type": "object"
       }
@@ -5182,6 +5203,104 @@
           },
           "401": {
             "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/{id}/drain": {
+      "delete": {
+        "operationId": "ResumeWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      },
+      "post": {
+        "operationId": "DrainWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
           }
         },
         "tags": [

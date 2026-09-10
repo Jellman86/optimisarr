@@ -21,7 +21,11 @@ internal sealed record WorkerDto(
     DateTimeOffset PairedAt,
     DateTimeOffset? LastSeenAt,
     DateTimeOffset? RevokedAt,
-    bool Online);
+    bool Online,
+    /// <summary>When an operator asked this worker to stop taking work; null while it takes work.</summary>
+    DateTimeOffset? DrainRequestedAt,
+    /// <summary>Leases this worker holds right now: the jobs a drain is waiting on.</summary>
+    int HeldLeases);
 
 /// <summary>The PIN an operator reads off the screen and types into a sidecar.</summary>
 internal sealed record PairingCodeDto(string Code, DateTimeOffset ExpiresUtc, int AttemptsRemaining);
@@ -66,7 +70,9 @@ internal sealed record HeartbeatResponse(
     int WorkerId,
     int ProtocolVersion,
     DateTimeOffset ServerTimeUtc,
-    int HeartbeatIntervalSeconds);
+    int HeartbeatIntervalSeconds,
+    /// <summary>True while an operator has asked the worker to finish what it holds and take no more.</summary>
+    bool Draining);
 
 internal static class WorkerEndpoints
 {
@@ -225,7 +231,8 @@ internal static class WorkerEndpoints
                 worker.Id,
                 worker.ProtocolVersion,
                 worker.LastSeenAt.Value,
-                (int)WorkerLiveness.HeartbeatInterval.TotalSeconds));
+                (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
+                worker.DrainRequestedAt is not null));
         })
         .WithName("WorkerHeartbeat")
         .Produces<HeartbeatResponse>()
@@ -240,11 +247,63 @@ internal static class WorkerEndpoints
                 .OrderBy(worker => worker.Id)
                 .ToListAsync(cancellationToken);
 
+            var held = await HeldLeasesByWorkerAsync(db, cancellationToken);
             var now = DateTimeOffset.UtcNow;
-            return Results.Ok(workers.Select(w => ToDto(w, now)).ToList());
+            return Results.Ok(workers.Select(w => ToDto(w, now, held.GetValueOrDefault(w.Id))).ToList());
         })
         .WithName("ListWorkers")
         .Produces<IReadOnlyList<WorkerDto>>();
+
+        // Draining is a claim refusal and nothing more: the worker keeps what it holds, finishes
+        // and delivers it, and is offered nothing new until resumed. Idempotent both ways, so an
+        // operator clicking twice, or a retried request, cannot flip the state back.
+        app.MapPost("/api/workers/{id:int}/drain", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+            if (worker is null)
+            {
+                return ApiErrors.NotFound("worker.notFound", $"No worker with id {id}.", new { id });
+            }
+
+            worker.DrainRequestedAt ??= DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            return await WorkerRowAsync(worker, db, cancellationToken);
+        })
+        .WithName("DrainWorker")
+        .Produces<WorkerDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/workers/{id:int}/drain", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+            if (worker is null)
+            {
+                return ApiErrors.NotFound("worker.notFound", $"No worker with id {id}.", new { id });
+            }
+
+            // A revoked worker cannot authenticate, so "resume" would promise work it can never
+            // claim. Re-pairing is the only way back, and this says so.
+            if (worker.RevokedAt is not null)
+            {
+                return Results.Json(
+                    new ApiError("worker.revoked", "A revoked worker cannot resume; pair it again."),
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
+            worker.DrainRequestedAt = null;
+            await db.SaveChangesAsync(cancellationToken);
+            return await WorkerRowAsync(worker, db, cancellationToken);
+        })
+        .WithName("ResumeWorker")
+        .Produces<WorkerDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
 
         // Revocation clears the fingerprint rather than deleting the row, so the pairing stays in
         // the audit trail while the credential stops matching anything at all.
@@ -278,7 +337,27 @@ internal static class WorkerEndpoints
         _ => "That pairing code is not correct."
     };
 
-    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc) => new(
+    private static async Task<IResult> WorkerRowAsync(
+        Worker worker,
+        OptimisarrDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var held = await db.JobLeases
+            .CountAsync(lease => lease.WorkerId == worker.Id && lease.State == LeaseState.Held, cancellationToken);
+        return Results.Ok(ToDto(worker, DateTimeOffset.UtcNow, held));
+    }
+
+    private static async Task<Dictionary<int, int>> HeldLeasesByWorkerAsync(
+        OptimisarrDbContext db,
+        CancellationToken cancellationToken) =>
+        await db.JobLeases
+            .AsNoTracking()
+            .Where(lease => lease.State == LeaseState.Held)
+            .GroupBy(lease => lease.WorkerId)
+            .Select(group => new { WorkerId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(group => group.WorkerId, group => group.Count, cancellationToken);
+
+    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc, int heldLeases) => new(
         worker.Id,
         worker.Name,
         worker.OperatingSystem,
@@ -294,7 +373,9 @@ internal static class WorkerEndpoints
         worker.RevokedAt,
         // Revoked workers are never "online" whatever their last heartbeat said, so the UI cannot
         // show a green light next to a worker that can no longer authenticate.
-        worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc));
+        worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc),
+        worker.DrainRequestedAt,
+        heldLeases);
 
     /// <summary>
     /// Accepts a capability name, case-insensitively. An absent value means the worker claims no
