@@ -69,8 +69,8 @@
       const [nextJobs, nextStatus] = await Promise.all([api.jobs(), api.queueStatus()])
       jobs = nextJobs
       queueStatus = nextStatus
-      // Drop stale telemetry for jobs that are no longer transcoding.
-      const transcoding = new Set(nextJobs.filter((j) => j.status === 'Transcoding').map((j) => j.id))
+      // Drop stale telemetry for jobs that are no longer encoding, here or on a worker.
+      const transcoding = new Set(nextJobs.filter((j) => j.status === 'Transcoding' || j.status === 'Leased').map((j) => j.id))
       for (const id of Object.keys(live)) {
         if (!transcoding.has(Number(id))) delete live[Number(id)]
       }
@@ -303,8 +303,22 @@
   // The "now processing" hero: jobs actively doing work right now (usually one, since the
   // default concurrency is 1). Queued count feeds the idle state.
   let processingJobs = $derived(
-    jobs.filter((j) => j.status === 'Transcoding' || j.status === 'Probing' || j.status === 'Verifying'),
+    jobs.filter((j) =>
+      j.status === 'Transcoding' || j.status === 'Probing' || j.status === 'Verifying'
+      || j.status === 'Leased' || j.status === 'AwaitingVerification'),
   )
+
+  // A remote job's stage line, worded from this server's side: the source is being sent, the
+  // worker is encoding, the candidate is coming back.
+  function remoteStageLabel(job: Job): string {
+    const worker = job.workerName ?? '?'
+    switch (job.remoteStage) {
+      case 'FetchingSource': return t(i18n.m.queue.remote_sending, { worker })
+      case 'Encoding': return t(i18n.m.queue.remote_encoding, { worker })
+      case 'Delivering': return t(i18n.m.queue.remote_returning, { worker })
+      default: return t(i18n.m.queue.remote_claimed, { worker })
+    }
+  }
   let queuedCount = $derived(jobs.filter((j) => j.status === 'Queued').length)
   // Whether the hero backdrop image resolved for a job id (from a connected media server). A 404
   // (no server / no match) leaves it false and the hero stays plain.
@@ -542,7 +556,13 @@
                   </div>
                 {:else}
                   <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
-                    {job.status === 'Transcoding' ? i18n.m.queue.now_encoding : job.status === 'Probing' ? i18n.m.queue.now_probing : i18n.m.queue.now_verifying}
+                    {#if job.status === 'Leased'}
+                      {t(i18n.m.queue.now_remote, { worker: job.workerName ?? '?' })}
+                    {:else if job.status === 'AwaitingVerification'}
+                      {t(i18n.m.queue.now_returned, { worker: job.workerName ?? '?' })}
+                    {:else}
+                      {job.status === 'Transcoding' ? i18n.m.queue.now_encoding : job.status === 'Probing' ? i18n.m.queue.now_probing : i18n.m.queue.now_verifying}
+                    {/if}
                   </div>
                 {/if}
                 <div class="truncate font-medium text-slate-800 dark:text-slate-100" title={job.relativePath ?? ''}>
@@ -586,6 +606,21 @@
                   detail={activity.metrics?.gpuEngine}
                 />
               </div>
+            {:else if job.status === 'Leased'}
+              <!-- The worker's own progress, scaled by the server; no CPU/GPU graphs because the
+                   load is on another machine. -->
+              {#if job.remoteStage === 'Encoding'}
+                <div class="mt-3 flex items-center gap-3">
+                  <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
+                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
+                </div>
+              {:else}
+                <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
+              {/if}
+              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{remoteStageLabel(job)}</div>
+            {:else if job.status === 'AwaitingVerification'}
+              <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
+              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{i18n.m.queue.returned_waiting}</div>
             {:else}
               {#if job.status === 'Verifying' && job.progress > 0}
                 <div class="mt-3 flex items-center gap-3">
@@ -595,7 +630,15 @@
               {:else}
                 <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
               {/if}
-              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.probing_source : i18n.m.queue.verifying_output}</div>
+              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">
+                {#if job.status === 'Probing'}
+                  {i18n.m.queue.probing_source}
+                {:else if job.workerName}
+                  {t(i18n.m.queue.verifying_returned, { worker: job.workerName })}
+                {:else}
+                  {i18n.m.queue.verifying_output}
+                {/if}
+              </div>
               {#if job.status === 'Verifying'}
                 <!-- VMAF scoring is CPU-only, so show just the CPU graph to convey the high load. -->
                 <div class="mt-3">
@@ -765,8 +808,32 @@
                   {:else}
                     <div class="progress-track"><div class="progress-indeterminate"></div></div>
                   {/if}
-                  <div class="text-[11px] text-sky-600 dark:text-sky-400">{job.status === 'Probing' ? i18n.m.queue.stage_probing : i18n.m.queue.stage_verifying}</div>
+                  <div class="text-[11px] text-sky-600 dark:text-sky-400">
+                    {#if job.status === 'Probing'}
+                      {i18n.m.queue.stage_probing}
+                    {:else if job.workerName}
+                      {t(i18n.m.queue.stage_verifying_returned, { worker: job.workerName })}
+                    {:else}
+                      {i18n.m.queue.stage_verifying}
+                    {/if}
+                  </div>
                 </div>
+              {:else if job.status === 'Leased'}
+                <div class="space-y-1">
+                  {#if job.remoteStage === 'Encoding'}
+                    <div class="flex items-center gap-2">
+                      <div class="progress-track"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
+                      <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
+                    </div>
+                  {:else}
+                    <div class="progress-track"><div class="progress-indeterminate"></div></div>
+                  {/if}
+                  <div class="text-[11px] text-sky-600 dark:text-sky-400">{remoteStageLabel(job)}</div>
+                </div>
+              {:else if job.status === 'AwaitingVerification'}
+                <span class="text-[11px] text-sky-600 dark:text-sky-400">{t(i18n.m.queue.returned_from, { worker: job.workerName ?? '?' })}</span>
+              {:else if job.status === 'Queued' && job.waitingForWorker}
+                <span class="text-xs text-amber-600 dark:text-amber-400" title={i18n.m.queue.waiting_for_worker_title}>{i18n.m.queue.waiting_for_worker}</span>
               {:else if job.status === 'Queued'}
                 <span class="text-xs text-slate-400">{i18n.m.queue.stage_waiting}</span>
               {:else if job.status === 'Failed'}

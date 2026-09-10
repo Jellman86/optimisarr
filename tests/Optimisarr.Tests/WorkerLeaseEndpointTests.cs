@@ -269,6 +269,77 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_queue_row_names_the_worker_and_its_stage()
+    {
+        // The same lease facts the Workers tab shows, read from the job's side: a row that says
+        // "encoding on Mac Studio" rather than a bare "Encoding remotely".
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Rowmaker");
+        var jobId = await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        (await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/renew", new { stage = "Encoding", encodedSeconds = 25.0 }))
+            .EnsureSuccessStatusCode();
+
+        var row = await JobRow(jobId);
+
+        Assert.Equal("Leased", row.GetProperty("status").GetString());
+        Assert.Equal("Rowmaker", row.GetProperty("workerName").GetString());
+        Assert.Equal("Encoding", row.GetProperty("remoteStage").GetString());
+        Assert.Equal(0.25, row.GetProperty("progress").GetDouble(), precision: 3);
+        Assert.False(row.GetProperty("waitingForWorker").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_queued_job_kept_for_a_worker_says_it_is_waiting()
+    {
+        // The row is judged by the dispatcher's own rule, so "waiting for a worker" is never shown
+        // for a job this server would start, and always shown for one it will not.
+        await EnableRemoteWorkers();
+        var held = await QueueAJob(placement: WorkPlacement.WorkerOnly);
+        var free = await QueueAJob(placement: WorkPlacement.Anywhere);
+
+        Assert.True((await JobRow(held)).GetProperty("waitingForWorker").GetBoolean());
+        Assert.False((await JobRow(free)).GetProperty("waitingForWorker").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, (await JobRow(free)).GetProperty("workerName").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_job_that_prefers_a_worker_waits_only_while_one_is_online()
+    {
+        // Exercises the liveness lookup against the real database: SQLite cannot compare a
+        // DateTimeOffset column, so the comparison must run in memory or the whole queue feed
+        // fails the moment remote workers are on.
+        await EnableRemoteWorkers();
+        // The host is shared across this collection, so workers other tests paired are still
+        // online. Draining them is the operator's own way of saying "not you", and it is what
+        // the availability rule excludes, so the first assertion starts from nothing available.
+        var admin = Admin();
+        foreach (var row in (await (await admin.GetAsync("/api/workers")).Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray())
+        {
+            if (row.GetProperty("revokedAt").ValueKind == JsonValueKind.Null)
+            {
+                (await admin.PostAsync($"/api/workers/{row.GetProperty("id").GetInt32()}/drain", null)).EnsureSuccessStatusCode();
+            }
+        }
+
+        var jobId = await QueueAJob(placement: WorkPlacement.PreferWorker);
+        Assert.False((await JobRow(jobId)).GetProperty("waitingForWorker").GetBoolean());
+
+        // Pairing checks the worker in, so from here one is online and could take the job.
+        await PairCapableWorker("Preferred");
+        Assert.True((await JobRow(jobId)).GetProperty("waitingForWorker").GetBoolean());
+    }
+
+    private async Task<JsonElement> JobRow(int jobId)
+    {
+        using var listed = await Admin().GetAsync("/api/jobs");
+        listed.EnsureSuccessStatusCode();
+        return (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(job => job.GetProperty("id").GetInt32() == jobId);
+    }
+
+    [Fact]
     public async Task Renewing_with_an_unknown_stage_is_refused()
     {
         await EnableRemoteWorkers();

@@ -445,21 +445,14 @@ public sealed class QueueDispatcher(
             // A library's placement only means something while work can actually go elsewhere:
             // the switch on and the preview flag present. Otherwise "only on workers" would hold a
             // job for a claim that the worker routes refuse, which is a stall nobody asked for.
-            remoteWorkersOn = settings.RemoteWorkersEnabled
-                && scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>().Available;
-            if (remoteWorkersOn)
-            {
-                var offlineBefore = DateTimeOffset.UtcNow - WorkerLiveness.OfflineAfter;
-                aWorkerCouldTakeWork = await db.Workers
-                    .AsNoTracking()
-                    .AnyAsync(
-                        worker => worker.RevokedAt == null
-                            && worker.DrainRequestedAt == null
-                            && worker.MaxConcurrency > 0
-                            && worker.LastSeenAt != null
-                            && worker.LastSeenAt > offlineBefore,
-                        stoppingToken);
-            }
+            var availability = await WorkerAvailability.ResolveAsync(
+                db,
+                settings.RemoteWorkersEnabled,
+                scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(),
+                DateTimeOffset.UtcNow,
+                stoppingToken);
+            remoteWorkersOn = availability.RemoteWorkersOn;
+            aWorkerCouldTakeWork = availability.AWorkerCouldTakeWork;
 
             var placements = await db.Libraries
                 .AsNoTracking()

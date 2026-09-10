@@ -36,6 +36,13 @@
   a candidate encoded from the wrong source or with the wrong hash, a delivered candidate that
   failed verification — because the worker itself never learns of those. Migration
   `AddWorkerActivity`; the macOS sidecar sends the new renewal body.
+- **A queue row says where a remote job is.** A leased job reads "encoding on Mac Studio…" with
+  the worker's own progress bar (or "sending the source…", "returning the candidate…"), a
+  delivered one "returned from Mac Studio · waiting to be verified", and the "Now" card names the
+  machine instead of showing this server's CPU and GPU graphs for work it is not doing. A queued
+  job its library keeps off this server reads "waiting for a worker…", judged by the dispatcher's
+  own rule so the row never says waiting for a job the server would start. `GET /api/jobs` gains
+  `workerName`, `remoteStage` and `waitingForWorker`.
 
 ## 0.2.12 — 2026-09-10
 

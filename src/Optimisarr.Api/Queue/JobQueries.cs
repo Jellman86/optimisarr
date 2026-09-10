@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Optimisarr.Api.Workers;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Api.Queue;
@@ -32,7 +34,13 @@ public sealed record JobDto(
     DateTimeOffset EnqueuedAt,
     DateTimeOffset? StartedAt,
     DateTimeOffset? FinishedAt,
-    bool Clearable);
+    bool Clearable,
+    /// <summary>The remote worker holding, or having delivered, this job; null for local work.</summary>
+    string? WorkerName = null,
+    /// <summary>Where that worker last said it was: Claimed, FetchingSource, Encoding, Delivering. Null unless leased.</summary>
+    string? RemoteStage = null,
+    /// <summary>A queued job its library's placement keeps off this server until a worker takes it.</summary>
+    bool WaitingForWorker = false);
 
 public static class JobQueries
 {
@@ -63,7 +71,8 @@ public static class JobQueries
     public static async Task<JobQueryResult> QueryAsync(
         OptimisarrDbContext db,
         JobQuery filter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        WorkerAvailability? availability = null)
     {
         var liveRollbackJobIds = (await db.Replacements
                 .AsNoTracking()
@@ -118,12 +127,18 @@ public static class JobQueries
                 false))
             .ToListAsync(cancellationToken);
 
+        var remote = await RemoteFactsAsync(db, jobs, cancellationToken);
+        var waiting = await WaitingForWorkerAsync(db, jobs, availability, cancellationToken);
+
         var ordered = jobs
             .Select(job => job with
             {
                 Clearable = JobClearing.IsClearable(
                     new Job { Id = job.Id, Status = Enum.Parse<JobStatus>(job.Status) },
-                    liveRollbackJobIds)
+                    liveRollbackJobIds),
+                WorkerName = remote.GetValueOrDefault(job.Id).WorkerName,
+                RemoteStage = remote.GetValueOrDefault(job.Id).Stage,
+                WaitingForWorker = waiting.Contains(job.Id),
             })
             // A job's effective time is when it finished, or when it was enqueued if it hasn't.
             .Where(job => WithinRange(job.FinishedAt ?? job.EnqueuedAt, filter.Since, filter.Until))
@@ -136,6 +151,89 @@ public static class JobQueries
             : ordered;
 
         return new JobQueryResult(page, ordered.Count);
+    }
+
+    /// <summary>
+    /// Which worker a remote job is on, or came back from, and where it said it was. Only the
+    /// statuses a lease can put a job in are looked up, so a large local-only queue costs nothing
+    /// here. The latest lease wins: a job reclaimed from a vanished worker and taken by another
+    /// names the one that actually holds it.
+    /// </summary>
+    private static async Task<Dictionary<int, (string? WorkerName, string? Stage)>> RemoteFactsAsync(
+        OptimisarrDbContext db,
+        IReadOnlyList<JobDto> jobs,
+        CancellationToken cancellationToken)
+    {
+        var remoteIds = jobs
+            .Where(job => job.Status is nameof(JobStatus.Leased) or nameof(JobStatus.AwaitingVerification) or nameof(JobStatus.Verifying))
+            .Select(job => job.Id)
+            .ToList();
+        if (remoteIds.Count == 0)
+        {
+            return [];
+        }
+
+        var leases = await db.JobLeases
+            .AsNoTracking()
+            .Where(lease => remoteIds.Contains(lease.JobId)
+                && (lease.State == LeaseState.Held || lease.State == LeaseState.Completed))
+            .Select(lease => new
+            {
+                lease.JobId,
+                lease.AcquiredAt,
+                lease.State,
+                lease.Stage,
+                WorkerName = lease.Worker != null ? lease.Worker.Name : null,
+            })
+            .ToListAsync(cancellationToken);
+
+        return leases
+            .GroupBy(lease => lease.JobId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var latest = group.OrderByDescending(lease => lease.AcquiredAt).First();
+                    // A stage only means something while the lease is held; a delivered job is
+                    // back in this server's hands and its row says so through its status.
+                    var stage = latest.State == LeaseState.Held ? latest.Stage?.ToString() ?? "Claimed" : null;
+                    return (latest.WorkerName, stage);
+                });
+    }
+
+    /// <summary>
+    /// The queued jobs this server is holding back for a worker, judged by the same rule the
+    /// dispatcher applies, so a row never says "waiting" for a job the dispatcher would start.
+    /// </summary>
+    private static async Task<HashSet<int>> WaitingForWorkerAsync(
+        OptimisarrDbContext db,
+        IReadOnlyList<JobDto> jobs,
+        WorkerAvailability? availability,
+        CancellationToken cancellationToken)
+    {
+        if (availability is not { RemoteWorkersOn: true })
+        {
+            return [];
+        }
+
+        var queued = jobs.Where(job => job.Status == nameof(JobStatus.Queued) && job.LibraryId is not null).ToList();
+        if (queued.Count == 0)
+        {
+            return [];
+        }
+
+        var placements = await db.Libraries
+            .AsNoTracking()
+            .Select(library => new { library.Id, library.WorkPlacement })
+            .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        return queued
+            .Where(job => placements.TryGetValue(job.LibraryId!.Value, out var placement)
+                && !WorkPlacementPolicy.MayRunLocally(
+                    placement, availability.RemoteWorkersOn, availability.AWorkerCouldTakeWork, job.EnqueuedAt, now))
+            .Select(job => job.Id)
+            .ToHashSet();
     }
 
     private static bool WithinRange(DateTimeOffset value, DateTimeOffset? since, DateTimeOffset? until) =>

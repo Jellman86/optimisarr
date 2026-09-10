@@ -605,6 +605,12 @@ export type Job = {
   startedAt: string | null
   finishedAt: string | null
   clearable: boolean
+  /** The remote worker holding, or having delivered, this job; null for local work. */
+  workerName: string | null
+  /** Where that worker last said it was (Claimed, FetchingSource, Encoding, Delivering); null unless leased. */
+  remoteStage: string | null
+  /** A queued job its library keeps off this server until a worker takes it. */
+  waitingForWorker: boolean
 }
 
 export type EnqueueResult = {
