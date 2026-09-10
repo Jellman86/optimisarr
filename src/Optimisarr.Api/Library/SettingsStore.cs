@@ -1,3 +1,4 @@
+using Optimisarr.Api.Workers;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Settings;
@@ -23,8 +24,14 @@ public sealed record QueueSettings(
     bool RemoteWorkersEnabled = false);
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
-public sealed class SettingsStore(OptimisarrDbContext db)
+public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? remoteWorkers = null)
 {
+    /// <summary>
+    /// Whether this deployment offers remote workers at all. The stored switch decides whether an
+    /// operator has turned them on; this decides whether the switch exists.
+    /// </summary>
+    public bool RemoteWorkersAvailable => remoteWorkers?.Available ?? false;
+
     private static readonly string[] LegacyVerificationSettingKeys =
     [
         "verification.qualityGateEnabled",

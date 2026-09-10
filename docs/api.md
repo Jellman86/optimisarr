@@ -537,6 +537,10 @@ The credential is returned exactly once, in the pairing response. Optimisarr sto
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
 outright because an absent fingerprint matches nothing; the row is kept for the audit trail.
 
+Remote workers are a preview: the whole surface exists only when the container starts with
+`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`; without it every route below answers `403` with code
+`workers.unavailable`, and `PUT /api/settings` refuses `remoteWorkersEnabled: true` with `400`.
+
 Remote workers are opt-in. While the `workers.remoteEnabled` setting is off — the default, and the
 value any upgrade inherits — `POST /api/workers/pairing-code`, `POST /api/workers/pair`, and
 `POST /api/workers/heartbeat` all answer `403 workers.disabled`. `GET /api/workers` and
