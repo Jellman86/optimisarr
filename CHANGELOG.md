@@ -4,6 +4,20 @@
 
 ### Fixed
 
+- **A corrupt hardware decode is now re-encoded with software decode instead of being retried at
+  a higher quality and then excluded.** On two different Intel hosts, QSV decoded certain H.264 MKV
+  sources into broken frames (159 of 959 in one window, all scoring zero) while the same hevc_qsv
+  encoder fed by software decode scored 96. The verification gates rejected every such output, so
+  no original was ever touched, but the rejection looked like a weak encode: the job spent a second
+  full encode on the higher-quality retry, failed again the same way, and the file was auto-excluded
+  for good. On one install that had happened to 265 MKV files while MP4 sources never failed once.
+  A hardware-decoded output that fails with decoder corruption's signature — decode errors, or any
+  frame below the catastrophic VMAF floor — is now re-encoded once with software decode feeding the
+  same encoder, and that second result is what the gates judge. The report's context records the
+  retry and why. A weak but intact encode, whose worst frame stays above the floor, keeps the
+  higher-quality retry as before. Files auto-excluded by the old behaviour are not re-queued
+  automatically; un-exclude them and they will be tried again the new way.
+
 - **The progress bar could reach 100% with minutes still to run
   ([#95](https://github.com/Jellman86/optimisarr/issues/95)).** The reporter's diagnostics showed
   the encode alive and busy the whole time: ffmpeg at 280% CPU, and the job finishing on its own.
