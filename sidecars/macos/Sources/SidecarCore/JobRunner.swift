@@ -190,6 +190,63 @@ public struct JobRunner: WorkExecutor {
         }
     }
 
+    /// Bytes per chunk of a resumable upload. Large enough that a film is a few dozen requests,
+    /// small enough that a dropped connection loses a minute, not an hour.
+    static let chunkBytes: Int64 = 64 * 1024 * 1024
+
+    /// How many times a chunk may fail before the delivery is given up.
+    static let maxChunkFailures = 20
+
+    /// Delivers the candidate in chunks the server confirms, resuming from whatever it holds
+    /// after a failure; a server that predates resumable delivery gets the whole file at once.
+    private func deliver(
+        _ assignment: Assignment, pairing: StoredPairing, candidate: URL,
+        sourceSha256: String, candidateSha256: String
+    ) async throws -> DeliveryReceipt {
+        guard var offset = try await client.uploadOffset(
+            serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId)
+        else {
+            return try await client.deliver(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, file: candidate,
+                sourceSha256: sourceSha256, candidateSha256: candidateSha256)
+        }
+
+        let size = (try? FileManager.default.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value ?? 0
+        let handle = try FileHandle(forReadingFrom: candidate)
+        defer { try? handle.close() }
+
+        var failures = 0
+        while offset < size {
+            try Task.checkCancellation()
+            try handle.seek(toOffset: UInt64(offset))
+            let length = Int(min(Self.chunkBytes, size - offset))
+            guard let chunk = try handle.read(upToCount: length), !chunk.isEmpty else {
+                throw SidecarError.transferFailed(reason: "The candidate could not be read at offset \(offset).")
+            }
+            do {
+                offset = try await client.uploadChunk(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    leaseId: assignment.leaseId, offset: offset, chunk: chunk)
+            } catch let SidecarError.uploadOffsetMismatch(serverHolds) {
+                // The server is the authority on what arrived; carry on from its number.
+                offset = serverHolds
+            } catch SidecarError.transferFailed {
+                failures += 1
+                guard failures <= Self.maxChunkFailures else {
+                    throw SidecarError.transferFailed(reason: "The candidate upload failed \(failures) times.")
+                }
+                try await sleep(min(30, Double(failures) * 2))
+                offset = try await client.uploadOffset(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId) ?? offset
+            }
+        }
+
+        return try await client.completeUpload(
+            serverAddress: pairing.serverAddress, credential: pairing.credential,
+            leaseId: assignment.leaseId, sourceSha256: sourceSha256, candidateSha256: candidateSha256)
+    }
+
     /// Runs each of the server's measurement commands and reads back its log. Nil means the
     /// measurement could not be made in full — a refused command, a failed ffmpeg, a missing log —
     /// and nothing is reported, so the server never sees half an answer.
@@ -307,9 +364,8 @@ public struct JobRunner: WorkExecutor {
         }
 
         progress(.delivering)
-        let receipt = try await client.deliver(
-            serverAddress: pairing.serverAddress, credential: pairing.credential,
-            leaseId: assignment.leaseId, file: candidate,
+        let receipt = try await deliver(
+            assignment, pairing: pairing, candidate: candidate,
             sourceSha256: declaredSourceHash, candidateSha256: candidateHash)
         return .delivered(jobId: receipt.jobId, bytes: receipt.bytes)
     }
@@ -341,6 +397,7 @@ public struct JobRunner: WorkExecutor {
         case let .remoteWorkersDisabled(reason): return reason
         case let .transferFailed(reason): return reason
         case let .deliveryRefused(reason): return reason
+        case let .uploadOffsetMismatch(serverHolds): return "The upload lost its place; the server holds \(serverHolds) bytes."
         default: return "\(error)"
         }
     }

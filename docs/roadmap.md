@@ -605,7 +605,9 @@ the replacement workflow is trustworthy.
      wake, and a Start-at-login toggle via `SMAppService`. **Hardware decode on the worker:** a
      proved VideoToolbox decoder is used for VideoToolbox encodes with frames left in system
      memory, recorded on the lease, and a corrupt result requeues the job for software decode
-     (`Job.PreferSoftwareDecode`). **Still to build:** an "on a worker"
+     (`Job.PreferSoftwareDecode`). **Resumable upload:** chunked delivery at server-confirmed
+     offsets with a completion carrying both hashes; the sidecar resumes from the server's offset
+     after a dropped chunk. **Still to build:** an "on a worker"
      placement for adaptive libraries once selection can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.

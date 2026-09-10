@@ -34,6 +34,9 @@ public enum SidecarError: Error, Equatable, Sendable {
     /// A source or candidate transfer did not complete.
     case transferFailed(reason: String)
 
+    /// The server holds a different number of bytes than this side believed; resume from there.
+    case uploadOffsetMismatch(serverHolds: Int64)
+
     /// The server declined the delivered candidate; the reason is its own sentence.
     case deliveryRefused(reason: String)
 }
@@ -380,6 +383,82 @@ public struct SidecarClient: Sendable {
             throw SidecarError.transferFailed(reason: "The candidate upload failed: \(error.localizedDescription)")
         }
 
+        return try Self.receipt(data, response)
+    }
+
+    /// How much of a resumable upload the server already holds for this lease. Nil when the
+    /// server predates resumable delivery, which is the signal to upload in one piece instead.
+    public func uploadOffset(serverAddress: String, credential: String, leaseId: String) async throws -> Int64? {
+        let request = try authorised(
+            serverAddress, "/api/workers/leases/\(leaseId)/result/offset", credential: credential, method: "GET")
+        let (data, response) = try await perform(request)
+        switch response.statusCode {
+        case 200:
+            guard
+                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let bytes = (body["bytes"] as? NSNumber)?.int64Value
+            else { throw SidecarError.unexpectedResponse(status: 200) }
+            return bytes
+        case 404, 405:
+            return nil
+        case 401:
+            throw SidecarError.credentialRejected
+        case 403, 409:
+            throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer this worker's.")
+        case let status:
+            throw SidecarError.unexpectedResponse(status: status)
+        }
+    }
+
+    /// Appends one chunk at the offset the server holds. Returns the server's new offset, or
+    /// throws `uploadOffsetMismatch` naming the real offset when the two sides disagree.
+    public func uploadChunk(
+        serverAddress: String, credential: String, leaseId: String, offset: Int64, chunk: Data
+    ) async throws -> Int64 {
+        var request = try authorised(
+            serverAddress, "/api/workers/leases/\(leaseId)/result", credential: credential, method: "PATCH")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue(String(offset), forHTTPHeaderField: "X-Optimisarr-Offset")
+        request.httpBody = chunk
+        let (data, response) = try await perform(request)
+        switch response.statusCode {
+        case 200:
+            guard
+                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let bytes = (body["bytes"] as? NSNumber)?.int64Value
+            else { throw SidecarError.unexpectedResponse(status: 200) }
+            return bytes
+        case 409:
+            if let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let details = body["details"] as? [String: Any],
+               let bytes = (details["bytes"] as? NSNumber)?.int64Value {
+                throw SidecarError.uploadOffsetMismatch(serverHolds: bytes)
+            }
+            throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer this worker's.")
+        case 401:
+            throw SidecarError.credentialRejected
+        case 403, 404:
+            throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer this worker's.")
+        case let status:
+            throw SidecarError.unexpectedResponse(status: status)
+        }
+    }
+
+    /// Finishes a chunked delivery with both hashes; the server hashes what it assembled and
+    /// judges it exactly as a single-shot upload.
+    public func completeUpload(
+        serverAddress: String, credential: String, leaseId: String,
+        sourceSha256: String, candidateSha256: String
+    ) async throws -> DeliveryReceipt {
+        var request = try authorised(
+            serverAddress, "/api/workers/leases/\(leaseId)/result/complete", credential: credential, method: "POST")
+        request.setValue(sourceSha256, forHTTPHeaderField: "X-Optimisarr-Source-Sha256")
+        request.setValue(candidateSha256, forHTTPHeaderField: "X-Optimisarr-Candidate-Sha256")
+        let (data, response) = try await perform(request)
+        return try Self.receipt(data, response)
+    }
+
+    private static func receipt(_ data: Data, _ response: HTTPURLResponse) throws -> DeliveryReceipt {
         switch response.statusCode {
         case 202:
             guard
@@ -394,9 +473,9 @@ public struct SidecarClient: Sendable {
         case 401:
             throw SidecarError.credentialRejected
         case 403, 404:
-            throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer this worker's.")
+            throw SidecarError.leaseLost(reason: message(data) ?? "That lease is no longer this worker's.")
         case 400, 409:
-            throw SidecarError.deliveryRefused(reason: Self.message(data) ?? "The server declined the candidate.")
+            throw SidecarError.deliveryRefused(reason: message(data) ?? "The server declined the candidate.")
         case let status:
             throw SidecarError.unexpectedResponse(status: status)
         }

@@ -299,6 +299,113 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile!.Path));
     }
 
+    private static HttpRequestMessage Chunk(string leaseId, byte[] body, long offset)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/workers/leases/{leaseId}/result")
+        {
+            Content = new ByteArrayContent(body),
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        request.Headers.Add("X-Optimisarr-Offset", offset.ToString());
+        return request;
+    }
+
+    private static HttpRequestMessage Complete(string leaseId, string sourceHash, string candidateHash)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/workers/leases/{leaseId}/result/complete");
+        request.Headers.Add("X-Optimisarr-Source-Sha256", sourceHash);
+        request.Headers.Add("X-Optimisarr-Candidate-Sha256", candidateHash);
+        return request;
+    }
+
+    [Fact]
+    public async Task A_candidate_can_arrive_in_chunks_and_is_judged_exactly_as_a_whole_upload()
+    {
+        // The resumable form of delivery. Three chunks at the offsets the server confirms, then a
+        // completion carrying both hashes; the assembled file is hashed and accepted the same way.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Chunked");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+
+        using var offset0 = await worker.GetAsync($"/api/workers/leases/{leaseId}/result/offset");
+        Assert.Equal(0, (await offset0.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bytes").GetInt64());
+
+        var parts = new[] { CandidateBytes[..5], CandidateBytes[5..9], CandidateBytes[9..] };
+        long sent = 0;
+        foreach (var part in parts)
+        {
+            using var appended = await worker.SendAsync(Chunk(leaseId, part, sent));
+            Assert.Equal(HttpStatusCode.OK, appended.StatusCode);
+            sent += part.Length;
+            Assert.Equal(sent, (await appended.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bytes").GetInt64());
+        }
+
+        using var completed = await worker.SendAsync(Complete(leaseId, sourceHash, Sha256(CandidateBytes)));
+        Assert.Equal(HttpStatusCode.Accepted, completed.StatusCode);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.FirstAsync(j => j.LibraryId != null && _createdLibraries.Contains(j.LibraryId.Value));
+        Assert.Equal(JobStatus.AwaitingVerification, job.Status);
+        Assert.Equal(CandidateBytes, await File.ReadAllBytesAsync(job.WorkOutputPath!));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(job.WorkOutputPath!)!, "*.partial"));
+    }
+
+    [Fact]
+    public async Task A_chunk_at_the_wrong_offset_is_refused_with_the_real_one_so_the_worker_can_resume()
+    {
+        // The case a dropped connection produces: the worker believes a chunk landed that did
+        // not, or repeats one that did. The server names the truth and the worker carries on.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Resumer");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+
+        (await worker.SendAsync(Chunk(leaseId, CandidateBytes[..5], 0))).EnsureSuccessStatusCode();
+
+        using var repeated = await worker.SendAsync(Chunk(leaseId, CandidateBytes[..5], 0));
+        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
+        var body = await repeated.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("worker.result.offsetMismatch", body.GetProperty("code").GetString());
+
+        using var offset = await worker.GetAsync($"/api/workers/leases/{leaseId}/result/offset");
+        Assert.Equal(5, (await offset.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bytes").GetInt64());
+
+        (await worker.SendAsync(Chunk(leaseId, CandidateBytes[5..], 5))).EnsureSuccessStatusCode();
+        using var completed = await worker.SendAsync(Complete(leaseId, sourceHash, Sha256(CandidateBytes)));
+        Assert.Equal(HttpStatusCode.Accepted, completed.StatusCode);
+    }
+
+    [Fact]
+    public async Task Completing_an_upload_whose_bytes_do_not_match_the_declared_hash_is_refused_and_leaves_nothing()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Chunked mismatch");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+        (await worker.SendAsync(Chunk(leaseId, CandidateBytes[..5], 0))).EnsureSuccessStatusCode();
+
+        using var completed = await worker.SendAsync(Complete(leaseId, sourceHash, Sha256(CandidateBytes)));
+
+        Assert.Equal(HttpStatusCode.Conflict, completed.StatusCode);
+        using var offset = await worker.GetAsync($"/api/workers/leases/{leaseId}/result/offset");
+        Assert.Equal(0, (await offset.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("bytes").GetInt64());
+    }
+
+    [Fact]
+    public async Task Completing_with_nothing_staged_is_refused()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Empty");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(worker);
+
+        using var completed = await worker.SendAsync(Complete(leaseId, sourceHash, Sha256(CandidateBytes)));
+
+        Assert.Equal(HttpStatusCode.Conflict, completed.StatusCode);
+    }
+
     [Fact]
     public async Task A_candidate_for_a_job_the_operator_cancelled_is_refused()
     {
