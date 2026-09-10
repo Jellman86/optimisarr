@@ -12,9 +12,9 @@ public sealed class CalibrationVmafEvidenceTests
         (int SampleNumber, string? ReportJson)[] reports =
         {
             (1, ReportJson(new QualityScores(91, 90, 50, null, null,
-                ModelVersion: "vmaf_v0.6.1", VmafFifthPercentile: 80, FrameCount: 100))),
+                ModelVersion: "vmaf_v1.0.16_3d0h", VmafFifthPercentile: 80, FrameCount: 100))),
             (2, ReportJson(new QualityScores(97, 96, 60, null, null,
-                ModelVersion: "vmaf_v0.6.1", VmafFifthPercentile: 85, FrameCount: 300))),
+                ModelVersion: "vmaf_v1.0.16_3d0h", VmafFifthPercentile: 85, FrameCount: 300))),
             (3, JsonSerializer.Serialize(new VerificationReport(
                 [], Vmaf: new VmafEvidence(false, "libvmaf is unavailable.", null))))
         };
@@ -29,7 +29,7 @@ public sealed class CalibrationVmafEvidenceTests
         Assert.Equal(80, result.FifthPercentile);
         Assert.Equal(50, result.Minimum);
         Assert.Equal(400, result.FrameCount);
-        Assert.Equal("vmaf_v0.6.1", result.ModelVersion);
+        Assert.Equal("vmaf_v1.0.16_3d0h", result.ModelVersion);
         Assert.Equal(3, result.Samples.Count);
         Assert.False(result.Samples[2].Measured);
         Assert.Equal("libvmaf is unavailable.", result.Samples[2].Error);

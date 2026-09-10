@@ -30,7 +30,7 @@ RUN dotnet publish src/Optimisarr.Api/Optimisarr.Api.csproj \
 # Dedicated, dependency-free VMAF measurement binary. This image is multi-architecture
 # (linux/amd64 + linux/arm64), includes libvmaf, and is pinned by manifest digest so an upstream
 # tag change cannot silently alter Optimisarr's verification toolchain.
-FROM mwader/static-ffmpeg:8.1.2@sha256:33f770f812cbfc3de96c547157fc9faf8bd95a36481753439ffa761045167585 AS vmaf-ffmpeg
+FROM mwader/static-ffmpeg:9.0.1@sha256:54e55b0cb8f672870fc38ceb2e6c411855cb3b39c505f5f3b2505ee01ed5f2b7 AS vmaf-ffmpeg
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
@@ -64,7 +64,7 @@ COPY --from=vmaf-ffmpeg /ffmpeg /usr/local/lib/optimisarr/ffmpeg-vmaf
 RUN /usr/local/lib/optimisarr/ffmpeg-vmaf -hide_banner -filters 2>&1 \
     | grep -Eq '^[[:space:]].*[[:space:]]libvmaf[[:space:]]'
 
-COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
+COPY --chmod=0755 docker/entrypoint.sh /usr/bin/entrypoint.sh
 COPY --chmod=0755 scripts/nvenc_benchmark.sh /app/scripts/nvenc-benchmark
 COPY --from=api-build /app/publish/ /app/
 
@@ -81,4 +81,4 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl --fail --silent http://127.0.0.1:8787/api/ready || exit 1
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["entrypoint.sh"]

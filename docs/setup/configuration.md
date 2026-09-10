@@ -164,8 +164,8 @@ No libvmaf model or filter configuration is required in the UI. Optimisarr prepa
 both streams at the original's resolution with bicubic scaling, aligns their
 timebases and starting timestamps, resamples both onto the source's measured picture cadence before
 selecting sampled windows, normalises colour range and pixel format, and
-uses bounded automatic threading. It selects Netflix's `vmaf_v0.6.1` HDTV model
-for HD material and `vmaf_4k_v0.6.1` when either source axis reaches UHD. If a job
+uses bounded automatic threading. It selects Netflix's `vmaf_v1.0.16_3d0h` HDTV model
+for HD material and `vmaf_v1.0.16_1d5h_2160` when either source axis reaches UHD. If a job
 intentionally converts HDR to SDR, the reference receives the same production
 tone-map before comparison; HDR-preserving jobs keep both streams in the matching
 HDR transfer domain. SDR jobs follow the selected encoder's hardware decode path when Hardware
