@@ -383,6 +383,8 @@ public sealed class MigrationTests : IDisposable
         Assert.Null(films.VideoDownscaleHeight);
         Assert.False(films.CropBlackBars);
         Assert.Null(films.MaxFrameRate);
+        // And placement arrives as "anywhere": exactly how jobs were placed before the choice.
+        Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, films.WorkPlacement);
     }
 
     public void Dispose()

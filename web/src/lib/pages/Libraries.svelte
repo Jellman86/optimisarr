@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary } from '../api'
+  import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import FolderPicker from '../components/FolderPicker.svelte'
@@ -265,6 +265,24 @@
     form.vmafFrameSubsample ??= 1
   }
 
+  function placementName(placement: WorkPlacement): string {
+    switch (placement) {
+      case 'LocalOnly': return i18n.m.libraries.placement_local
+      case 'PreferWorker': return i18n.m.libraries.placement_prefer
+      case 'WorkerOnly': return i18n.m.libraries.placement_worker_only
+      default: return i18n.m.libraries.placement_anywhere
+    }
+  }
+
+  function placementDescription(placement: WorkPlacement): string {
+    switch (placement) {
+      case 'LocalOnly': return i18n.m.libraries.placement_local_desc
+      case 'PreferWorker': return i18n.m.libraries.placement_prefer_desc
+      case 'WorkerOnly': return i18n.m.libraries.placement_worker_only_desc
+      default: return i18n.m.libraries.placement_anywhere_desc
+    }
+  }
+
   function setVideoQualityStrategy(strategy: 'Fixed' | 'AdaptiveVmaf') {
     form.videoQualityStrategy = strategy
     // Adaptive selection needs a concrete target to make a decision. Choose the existing
@@ -384,6 +402,10 @@
   // Advanced (encoding/eligibility) settings always start collapsed, for both Add and Edit, so the
   // simple choice is what a library opens on.
   let showAdvanced = $state(false)
+  // Whether work can go to a remote worker at all: the switch on and the preview flag present.
+  // Decides whether the placement choice is shown; the choice itself is stored either way.
+  let remoteWorkersOn = $state(false)
+  const placements: WorkPlacement[] = ['Anywhere', 'LocalOnly', 'PreferWorker', 'WorkerOnly']
   // Edited in MB for friendliness; converted to bytes on save.
   let minSizeMb = $state<number | ''>('')
   // The same-codec re-encode threshold is edited in GB (these are "massive" files) and stored as bytes.
@@ -687,6 +709,7 @@
     }
     // Tallies are a best-effort enhancement of the list; a failure here must not blank the page.
     void loadSummaries()
+    void loadRemoteWorkers()
     // Proactively flag any path Optimisarr can't reach/read/write before the user hits a failure.
     void checkAllAccess()
 
@@ -742,6 +765,15 @@
     const timer = setInterval(() => void checkAllAccess(), 60_000)
     return () => clearInterval(timer)
   })
+
+  async function loadRemoteWorkers() {
+    try {
+      const settings = await api.settings()
+      remoteWorkersOn = settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
+    } catch {
+      remoteWorkersOn = false
+    }
+  }
 
   async function loadSummaries() {
     try {
@@ -891,6 +923,7 @@
         library.imageMetadataGateEnabled ?? defaults.imageMetadataGateEnabled,
       videoQualityStrategy:
         library.videoQualityStrategy ?? defaults.videoQualityStrategy,
+      workPlacement: library.workPlacement ?? defaults.workPlacement,
       autoEnqueueEnabled: library.autoEnqueueEnabled,
       autoEnqueueWindowStart: library.autoEnqueueWindowStart,
       autoEnqueueWindowEnd: library.autoEnqueueWindowEnd,
@@ -941,6 +974,7 @@
       optimiseDolbyVision: form.optimiseDolbyVision,
       excludePaths: emptyToNull(form.excludePaths),
       excludeHardLinkedFiles: form.excludeHardLinkedFiles,
+      workPlacement: form.workPlacement,
       skipSourceCodecs: emptyToNull(form.skipSourceCodecs),
       qualityCrf: form.qualityCrf == null ? null : Number(form.qualityCrf),
       encoderPreset: emptyToNull(form.encoderPreset),
@@ -2305,6 +2339,46 @@
             </div>
           {/if}
         </div>
+
+        <!-- Where a video re-encode may run. Only shown while work can actually go to a worker;
+             the stored choice is otherwise moot, and a control that does nothing would only invite
+             a wrong conclusion. A library that already holds a non-default value while workers
+             are off says so in one line instead, so nothing is silently kept. -->
+        {#if showVideoOptions && remoteWorkersOn}
+          <div class="mt-4" data-testid="work-placement">
+            <span class="label">{i18n.m.libraries.placement_label} <InfoTip text={i18n.m.libraries.placement_tip} /></span>
+            <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.placement_hint}</p>
+            <div class="grid gap-2 md:grid-cols-2" role="radiogroup" aria-label={i18n.m.libraries.placement_label}>
+              {#each placements as placement (placement)}
+                <label
+                  class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.workPlacement === placement ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+                >
+                  <input
+                    type="radio"
+                    name="work-placement"
+                    value={placement}
+                    class="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-600"
+                    checked={form.workPlacement === placement}
+                    onchange={() => (form.workPlacement = placement)}
+                  />
+                  <span>
+                    <span class="block text-sm font-semibold text-slate-900 dark:text-slate-100">{placementName(placement)}</span>
+                    <span class="mt-0.5 block text-xs leading-relaxed text-slate-600 dark:text-slate-300">{placementDescription(placement)}</span>
+                  </span>
+                </label>
+              {/each}
+            </div>
+            {#if form.videoQualityStrategy === 'AdaptiveVmaf' && form.workPlacement !== 'LocalOnly'}
+              <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                {i18n.m.libraries.placement_adaptive_note}
+              </div>
+            {/if}
+          </div>
+        {:else if showVideoOptions && form.workPlacement !== 'Anywhere'}
+          <p class="mt-4 text-xs text-slate-500 dark:text-slate-400">
+            {t(i18n.m.libraries.placement_kept_but_off, { placement: placementName(form.workPlacement) })}
+          </p>
+        {/if}
 
         <!-- Source-codec exclusions. A fixed set of chips rather than free text: the rule matches
              ffprobe's spelling exactly, so a typed name that is subtly wrong would look configured

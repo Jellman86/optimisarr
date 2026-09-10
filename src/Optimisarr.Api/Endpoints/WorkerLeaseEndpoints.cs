@@ -391,6 +391,11 @@ internal static class WorkerLeaseEndpoints
         }
 
         var library = media.Library;
+        if (library is not null && !WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement))
+        {
+            return false;
+        }
+
         if (library?.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && job.AdaptiveVideoQuality is null)
         {
             return false;

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+- **A library can say where its work may run once remote workers are on.** Advanced options gain
+  **Where this library's work may run**, shown only while remote workers are switched on and the
+  preview flag is present: *Here or on a worker* (the default, and what every existing library
+  upgrades to), *Only on this server*, *Prefer a worker* (held for an online, non-draining worker
+  for up to ten minutes, then this server takes it), and *Only on workers*. The choice is a filter
+  over the one shared queue, never a second queue: a job keeps its priority and age wherever it is
+  allowed to run, the local dispatcher and a worker's claim honour the same rule from
+  `WorkPlacementPolicy`, and a library kept on this server is never offered to a worker, neither
+  by the cheap pre-filter nor by full preparation. While remote workers are off every placement
+  runs here, so a library set to *Only on workers* cannot stall for a feature not in use; the
+  editor says so in one line when it is hiding a non-default choice for that reason. Adaptive
+  per-title VMAF libraries still run here whatever the choice says, and the editor says that too.
+  New `workPlacement` on the library API and in config backups (an older backup restores as
+  *Here or on a worker*); migration `AddLibraryWorkPlacement`.
+
 ## 0.2.12 — 2026-09-10
 
 ### Fixed

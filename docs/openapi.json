@@ -949,6 +949,12 @@
               "null",
               "boolean"
             ]
+          },
+          "workPlacement": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "required": [
@@ -1899,6 +1905,12 @@
             "type": [
               "null",
               "boolean"
+            ]
+          },
+          "workPlacement": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         },

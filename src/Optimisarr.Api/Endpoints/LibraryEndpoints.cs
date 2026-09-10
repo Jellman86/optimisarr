@@ -161,6 +161,7 @@ internal static class LibraryEndpoints
                 MinimumImageSsim = parsed.MinimumImageSsim,
                 ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled,
                 VideoQualityStrategy = parsed.VideoQualityStrategy,
+                WorkPlacement = parsed.WorkPlacement,
                 AutoEnqueueEnabled = parsed.AutoEnqueueEnabled,
                 AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart,
                 AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd,
@@ -255,6 +256,7 @@ internal static class LibraryEndpoints
             library.MinimumImageSsim = parsed.MinimumImageSsim;
             library.ImageMetadataGateEnabled = parsed.ImageMetadataGateEnabled;
             library.VideoQualityStrategy = parsed.VideoQualityStrategy;
+            library.WorkPlacement = parsed.WorkPlacement;
             library.AutoEnqueueEnabled = parsed.AutoEnqueueEnabled;
             library.AutoEnqueueWindowStart = parsed.AutoEnqueueWindowStart;
             library.AutoEnqueueWindowEnd = parsed.AutoEnqueueWindowEnd;

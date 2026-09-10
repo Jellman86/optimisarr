@@ -55,6 +55,13 @@ environment:
 
 Leave it unset unless you are following the sidecar work on `dev`.
 
+While the flag is present and the **Remote workers** switch is on, each video library's Advanced
+options gain **Where this library's work may run**: *Here or on a worker* (the default), *Only on
+this server*, *Prefer a worker* (held for an online worker for up to ten minutes, then this server
+takes it), or *Only on workers*. Only video re-encodes are ever offered to a worker; verification
+and replacement always happen on the server. Switching remote workers off makes every library run
+on the server again, whatever it is set to, so nothing can stall on a feature that is not in use.
+
 When the token is set, the web UI asks for it before loading operational data.
 API clients must send it as a bearer token:
 

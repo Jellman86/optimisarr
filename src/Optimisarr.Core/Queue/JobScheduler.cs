@@ -7,7 +7,8 @@ public sealed record QueuedJob(
     int Priority,
     DateTimeOffset EnqueuedAt,
     bool IgnoreMediaActivity = false,
-    bool IgnoreLibraryWindow = false);
+    bool IgnoreLibraryWindow = false,
+    WorkPlacement Placement = WorkPlacement.Anywhere);
 
 /// <summary>
 /// Decides which queued jobs to start next, given how many are already running, the global
