@@ -25,6 +25,17 @@
   /api/workers/{id}/drain` resumes it, and refuses a revoked worker with `409` because only
   pairing again brings one back. `GET /api/workers` gains `drainRequestedAt` and `heldLeases`, the
   jobs a drain is waiting on. Migration `AddWorkerDrain`.
+- **The Workers tab shows what each machine is doing.** Each paired sidecar is now a card:
+  status (Online, Draining, Drained, Offline, Revoked), what it proved it can do, what it is working
+  on with a stage and a progress bar, its load and free scratch, when it was last seen, and its last
+  problem. **Drain after this job**, **Resume taking work** and **Revoke** sit on the card. Progress
+  comes from the sidecar's lease renewals, which now carry the stage and ffmpeg's encoded seconds
+  (and happen at least every fifteen seconds while encoding); the server scales the seconds
+  against the source duration, so the queue row and the card move from one number. "Last problem"
+  is written by the server where it refuses or discards something the worker did — a lapsed lease,
+  a candidate encoded from the wrong source or with the wrong hash, a delivered candidate that
+  failed verification — because the worker itself never learns of those. Migration
+  `AddWorkerActivity`; the macOS sidecar sends the new renewal body.
 
 ## 0.2.12 — 2026-09-10
 

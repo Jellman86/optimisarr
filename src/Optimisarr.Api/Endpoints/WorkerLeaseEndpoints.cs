@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
@@ -44,6 +46,13 @@ internal sealed record QualityRequirementDto(
     double MinimumMinimum);
 
 internal sealed record LeaseRenewedDto(Guid LeaseId, DateTimeOffset ExpiresUtc);
+
+/// <summary>
+/// What a worker may say about a job when it renews. Both optional: an older sidecar renews with
+/// no body and the claim is simply extended. Stage is a name from <see cref="RemoteStage"/>;
+/// encoded seconds is ffmpeg's own out_time, which the server scales against the source duration.
+/// </summary>
+internal sealed record RenewRequest(string? Stage = null, double? EncodedSeconds = null);
 
 internal static class WorkerLeaseEndpoints
 {
@@ -243,19 +252,73 @@ internal static class WorkerLeaseEndpoints
 
         app.MapPost("/api/workers/leases/{leaseId:guid}/renew", async (
             Guid leaseId,
+            RenewRequest? request,
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
+            IHubContext<JobsHub> hub,
             CancellationToken cancellationToken) =>
-            await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
-                (lease, workerId, now) => lease.Renew(workerId, now),
-                (job, outcome) =>
+        {
+            RemoteStage? stage = null;
+            if (!string.IsNullOrWhiteSpace(request?.Stage))
+            {
+                // Names are the contract. An unknown one is refused rather than dropped, so a
+                // sidecar built against a newer stage list finds out at once instead of showing a
+                // job that never seems to move.
+                if (!Enum.TryParse<RemoteStage>(request.Stage, ignoreCase: true, out var parsed)
+                    || !Enum.IsDefined(parsed))
                 {
-                    // A renewal changes nothing about the job; it still belongs to the worker.
+                    return ApiErrors.BadRequest("worker.lease.stageInvalid",
+                        $"Unknown stage: {request.Stage}. Expected one of {string.Join(", ", Enum.GetNames<RemoteStage>())}.");
+                }
+
+                stage = parsed;
+            }
+
+            (int JobId, double Progress)? report = null;
+            var result = await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Renew(workerId, now),
+                (stored, job, outcome) =>
+                {
+                    // A renewal changes nothing about who owns the job; it may say where the
+                    // worker has got to, which is what the queue and the Workers tab show.
+                    if (stage is { } reported)
+                    {
+                        stored.Stage = reported;
+                    }
+
+                    if (request?.EncodedSeconds is { } encoded && encoded >= 0)
+                    {
+                        stored.EncodedSeconds = encoded;
+                        if (job.MediaFile?.DurationSeconds is { } duration && duration > 0)
+                        {
+                            // Held under 100% until the candidate is actually delivered, the same
+                            // convention the local encode uses so a bar never sits at "done".
+                            job.Progress = Math.Clamp(encoded / duration, 0, 0.99);
+                            report = (job.Id, job.Progress);
+                        }
+                    }
                 },
-                lease => Results.Ok(new LeaseRenewedDto(lease.Id, lease.ExpiresUtc))))
+                lease => Results.Ok(new LeaseRenewedDto(lease.Id, lease.ExpiresUtc)));
+
+            if (report is { } progress)
+            {
+                await hub.Clients.All.SendAsync("jobProgress", new
+                {
+                    jobId = progress.JobId,
+                    progress = progress.Progress,
+                    fps = (double?)null,
+                    speed = (double?)null,
+                    etaSeconds = (double?)null,
+                    finishing = false,
+                }, cancellationToken);
+            }
+
+            return result;
+        })
         .WithName("RenewLease")
         .Produces<LeaseRenewedDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
         .Produces<ApiError>(StatusCodes.Status401Unauthorized);
 
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
@@ -266,7 +329,7 @@ internal static class WorkerLeaseEndpoints
             CancellationToken cancellationToken) =>
             await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
                 (lease, workerId, now) => lease.Release(workerId, now),
-                (job, outcome) =>
+                (_, job, outcome) =>
                 {
                     // Giving a job up must never strand it, so it goes straight back on the queue
                     // for this machine or another worker to pick up.
@@ -291,7 +354,7 @@ internal static class WorkerLeaseEndpoints
         OptimisarrDbContext db,
         CancellationToken cancellationToken,
         Func<WorkerLease, int, DateTimeOffset, LeaseResult> operation,
-        Action<Job, LeaseOutcome> applyToJob,
+        Action<JobLease, Job, LeaseOutcome> applyToJob,
         Func<WorkerLease, IResult> success)
     {
         if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
@@ -307,6 +370,7 @@ internal static class WorkerLeaseEndpoints
 
         var stored = await db.JobLeases
             .Include(lease => lease.Job)
+            .ThenInclude(job => job!.MediaFile)
             .FirstOrDefaultAsync(lease => lease.Id == leaseId, cancellationToken);
 
         if (stored is null)
@@ -337,7 +401,7 @@ internal static class WorkerLeaseEndpoints
         stored.Apply(result.Lease);
         if (stored.Job is not null)
         {
-            applyToJob(stored.Job, result.Outcome);
+            applyToJob(stored, stored.Job, result.Outcome);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -358,6 +422,8 @@ internal static class WorkerLeaseEndpoints
         // in memory. Held leases are few, so pulling them and filtering here is cheap.
         var held = await db.JobLeases
             .Include(lease => lease.Job)
+            .ThenInclude(job => job!.MediaFile)
+            .Include(lease => lease.Worker)
             .Where(lease => lease.State == LeaseState.Held)
             .ToListAsync(cancellationToken);
 
@@ -371,6 +437,17 @@ internal static class WorkerLeaseEndpoints
         foreach (var lease in lapsed)
         {
             lease.State = LeaseState.Expired;
+
+            // The worker may never learn its lease lapsed — it went quiet, which is the whole
+            // reason — so the operator is told instead, on the worker's own card.
+            if (lease.Worker is { } holder)
+            {
+                WorkerProblems.Record(
+                    holder,
+                    $"Its lease on {lease.Job?.MediaFile?.RelativePath ?? $"job {lease.JobId}"} lapsed "
+                    + $"after {WorkerLiveness.OfflineAfter.TotalMinutes:0} minutes of silence; the job went back to the queue.",
+                    now);
+            }
 
             // Only a job still sitting in Leased is ours to hand back. One that moved on — because
             // an operator cancelled it, say — must not be dragged back onto the queue.

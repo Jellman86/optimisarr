@@ -153,6 +153,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             VideoCodec = "h264",
             Width = 1920,
             Height = 1080,
+            // Known so a worker's encoded seconds can become a fraction of the whole.
+            DurationSeconds = 100,
         };
         db.MediaFiles.Add(file);
         await db.SaveChangesAsync();
@@ -236,6 +238,96 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         });
         Assert.Equal(HttpStatusCode.OK, beat.StatusCode);
         Assert.True((await beat.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("draining").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Renewing_reports_where_the_worker_is_and_moves_the_queue_bar()
+    {
+        // The worker only knows ffmpeg's out_time; the server owns the duration, so the fraction
+        // is computed here and shown in two places from one number: the job's own progress and
+        // the worker's card.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Reporter");
+        var workerId = await WorkerIdNamed("Reporter");
+        var jobId = await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+
+        using var renewed = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/renew", new { stage = "Encoding", encodedSeconds = 50.0 });
+        Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
+
+        using var listed = await Admin().GetAsync("/api/workers");
+        var row = (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == workerId);
+        var active = Assert.Single(row.GetProperty("activeJobs").EnumerateArray());
+        Assert.Equal(jobId, active.GetProperty("jobId").GetInt32());
+        Assert.Equal("film.mkv", active.GetProperty("relativePath").GetString());
+        Assert.Equal("Encoding", active.GetProperty("stage").GetString());
+        Assert.Equal(0.5, active.GetProperty("progress").GetDouble(), precision: 3);
+        Assert.Equal(1, row.GetProperty("heldLeases").GetInt32());
+    }
+
+    [Fact]
+    public async Task Renewing_with_an_unknown_stage_is_refused()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+
+        using var renewed = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/renew", new { stage = "Teleporting" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, renewed.StatusCode);
+    }
+
+    [Fact]
+    public async Task Renewing_without_a_body_still_extends_the_claim()
+    {
+        // An older sidecar renews with nothing but the lease id, and must keep working.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+
+        using var renewed = await worker.PostAsync($"/api/workers/leases/{leaseId}/renew", null);
+
+        Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_lapsed_lease_is_written_on_the_workers_card()
+    {
+        // The worker that went quiet never hears its lease lapsed; the operator does, on the
+        // worker's own card, when the next claim from anyone reclaims it.
+        await EnableRemoteWorkers();
+        var quiet = await PairCapableWorker("Quiet");
+        var quietId = await WorkerIdNamed("Quiet");
+        var jobId = await QueueAJob();
+        using var claim = await quiet.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.SingleAsync(l => l.JobId == jobId && l.State == Optimisarr.Core.Workers.LeaseState.Held);
+            lease.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+
+        var other = await PairCapableWorker("Other");
+        using var reclaim = await other.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, reclaim.StatusCode);
+
+        using var listed = await Admin().GetAsync("/api/workers");
+        var row = (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == quietId);
+        Assert.Contains("lapsed", row.GetProperty("lastProblem").GetString());
+        Assert.Contains("film.mkv", row.GetProperty("lastProblem").GetString());
+        Assert.Empty(row.GetProperty("activeJobs").EnumerateArray());
     }
 
     [Fact]

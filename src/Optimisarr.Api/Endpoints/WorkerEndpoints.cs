@@ -25,7 +25,15 @@ internal sealed record WorkerDto(
     /// <summary>When an operator asked this worker to stop taking work; null while it takes work.</summary>
     DateTimeOffset? DrainRequestedAt,
     /// <summary>Leases this worker holds right now: the jobs a drain is waiting on.</summary>
-    int HeldLeases);
+    int HeldLeases,
+    /// <summary>The jobs behind those leases, with where the worker says it is on each.</summary>
+    IReadOnlyList<WorkerJobDto> ActiveJobs,
+    /// <summary>The most recent thing the server refused or discarded from this worker; null if nothing yet.</summary>
+    string? LastProblem,
+    DateTimeOffset? LastProblemAt);
+
+/// <summary>One job a worker holds. Stage is "Claimed" until the worker first says otherwise.</summary>
+internal sealed record WorkerJobDto(int JobId, string? RelativePath, string Stage, double Progress);
 
 /// <summary>The PIN an operator reads off the screen and types into a sidecar.</summary>
 internal sealed record PairingCodeDto(string Code, DateTimeOffset ExpiresUtc, int AttemptsRemaining);
@@ -247,9 +255,11 @@ internal static class WorkerEndpoints
                 .OrderBy(worker => worker.Id)
                 .ToListAsync(cancellationToken);
 
-            var held = await HeldLeasesByWorkerAsync(db, cancellationToken);
+            var active = await ActiveJobsByWorkerAsync(db, cancellationToken);
             var now = DateTimeOffset.UtcNow;
-            return Results.Ok(workers.Select(w => ToDto(w, now, held.GetValueOrDefault(w.Id))).ToList());
+            return Results.Ok(workers
+                .Select(w => ToDto(w, now, active.GetValueOrDefault(w.Id) ?? []))
+                .ToList());
         })
         .WithName("ListWorkers")
         .Produces<IReadOnlyList<WorkerDto>>();
@@ -342,22 +352,43 @@ internal static class WorkerEndpoints
         OptimisarrDbContext db,
         CancellationToken cancellationToken)
     {
-        var held = await db.JobLeases
-            .CountAsync(lease => lease.WorkerId == worker.Id && lease.State == LeaseState.Held, cancellationToken);
-        return Results.Ok(ToDto(worker, DateTimeOffset.UtcNow, held));
+        var active = await ActiveJobsByWorkerAsync(db, cancellationToken);
+        return Results.Ok(ToDto(worker, DateTimeOffset.UtcNow, active.GetValueOrDefault(worker.Id) ?? []));
     }
 
-    private static async Task<Dictionary<int, int>> HeldLeasesByWorkerAsync(
+    private static async Task<Dictionary<int, List<WorkerJobDto>>> ActiveJobsByWorkerAsync(
         OptimisarrDbContext db,
-        CancellationToken cancellationToken) =>
-        await db.JobLeases
+        CancellationToken cancellationToken)
+    {
+        var held = await db.JobLeases
             .AsNoTracking()
             .Where(lease => lease.State == LeaseState.Held)
-            .GroupBy(lease => lease.WorkerId)
-            .Select(group => new { WorkerId = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(group => group.WorkerId, group => group.Count, cancellationToken);
+            .Select(lease => new
+            {
+                lease.WorkerId,
+                lease.JobId,
+                lease.Stage,
+                lease.AcquiredAt,
+                RelativePath = lease.Job != null && lease.Job.MediaFile != null ? lease.Job.MediaFile.RelativePath : null,
+                Progress = lease.Job != null ? lease.Job.Progress : 0,
+            })
+            .ToListAsync(cancellationToken);
 
-    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc, int heldLeases) => new(
+        return held
+            .GroupBy(lease => lease.WorkerId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(lease => lease.AcquiredAt)
+                    .Select(lease => new WorkerJobDto(
+                        lease.JobId,
+                        lease.RelativePath,
+                        lease.Stage?.ToString() ?? "Claimed",
+                        lease.Progress))
+                    .ToList());
+    }
+
+    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc, IReadOnlyList<WorkerJobDto> activeJobs) => new(
         worker.Id,
         worker.Name,
         worker.OperatingSystem,
@@ -375,7 +406,10 @@ internal static class WorkerEndpoints
         // show a green light next to a worker that can no longer authenticate.
         worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc),
         worker.DrainRequestedAt,
-        heldLeases);
+        activeJobs.Count,
+        activeJobs,
+        worker.LastProblem,
+        worker.LastProblemAt);
 
     /// <summary>
     /// Accepts a capability name, case-insensitively. An absent value means the worker claims no

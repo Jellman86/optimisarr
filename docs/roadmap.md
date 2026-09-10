@@ -587,8 +587,14 @@ the replacement workflow is trustworthy.
      day: drain controls on the server.** `POST`/`DELETE /api/workers/{id}/drain` is a claim
      refusal and nothing more — held leases renew and deliver, the heartbeat answers `draining`,
      and a draining worker no longer counts as one a *Prefer a worker* library could wait for.
-     **Still to build:** the Workers tab controls for drain and resume, and an "on a worker"
-     placement for adaptive libraries once selection can hand the final encode over.
+     **And the Workers tab now shows it:** one card per sidecar with status (Online, Draining,
+     Drained, Offline, Revoked), proved capabilities, the jobs it holds with a stage and progress
+     bar, load and scratch, last seen, last problem, and the Drain / Resume / Revoke controls.
+     Progress reaches the server through lease renewals, which carry the stage and ffmpeg's
+     encoded seconds at least every fifteen seconds; "last problem" is written by the server where
+     it refuses or discards something the worker did. **Still to build:** the queue rows saying
+     where a remote job is, and an "on a worker" placement for adaptive libraries once selection
+     can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 

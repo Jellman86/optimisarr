@@ -745,6 +745,19 @@ export type Worker = {
   drainRequestedAt: string | null
   /** Leases the worker holds right now: what a drain is waiting on. */
   heldLeases: number
+  /** The jobs behind those leases, with where the worker says it is on each. */
+  activeJobs: WorkerJob[]
+  /** The most recent thing the server refused or discarded from this worker; null if nothing yet. */
+  lastProblem: string | null
+  lastProblemAt: string | null
+}
+
+export type WorkerJob = {
+  jobId: number
+  relativePath: string | null
+  /** "Claimed" until the worker first reports, then FetchingSource | Encoding | Delivering. */
+  stage: string
+  progress: number
 }
 
 export type WorkerPairingCode = {

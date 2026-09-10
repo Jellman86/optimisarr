@@ -62,6 +62,16 @@ public sealed class Worker
     /// </summary>
     public DateTimeOffset? DrainRequestedAt { get; set; }
 
+    /// <summary>
+    /// The most recent thing the server refused or discarded from this worker, in operator
+    /// language: a lapsed lease, a candidate from the wrong source, a delivered candidate that
+    /// failed verification. Null until something goes wrong; never cleared by success, because
+    /// the point is that an operator can still read it after the fact.
+    /// </summary>
+    public string? LastProblem { get; set; }
+
+    public DateTimeOffset? LastProblemAt { get; set; }
+
     /// <summary>Set when an operator revokes the worker. A revoked row is kept for the audit trail.</summary>
     public DateTimeOffset? RevokedAt { get; set; }
 }
