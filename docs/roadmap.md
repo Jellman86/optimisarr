@@ -600,8 +600,10 @@ the replacement workflow is trustworthy.
      both hashes, and the server parses, pools and judges them with `RemoteQualityEvidenceValidator`
      at verification — accepted only when bound to the delivered hash and a policy at least as
      strict as now required, otherwise measured again here with the reason on the worker's card.
-     **Still to build:** an "on a worker" placement for adaptive libraries once selection can
-     hand the final encode over.
+     **Sidecar lifecycle, same day:** an activity assertion while a job runs (no App Nap, no
+     idle sleep), the job handed back before the Mac sleeps or the app quits, check-ins resumed on
+     wake, and a Start-at-login toggle via `SMAppService`. **Still to build:** an "on a worker"
+     placement for adaptive libraries once selection can hand the final encode over.
    - **The next four pieces, in dependency order (recorded 2026-09-01).** Everything below waits on
      the first, and the first two are server work of similar size to a normal feature slice.
 

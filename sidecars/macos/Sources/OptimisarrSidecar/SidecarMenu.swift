@@ -10,6 +10,8 @@ struct SidecarMenu: View {
 
     @State private var serverAddress = ""
     @State private var pin = ""
+    @State private var startAtLogin = LoginItem.isEnabled
+    @State private var loginItemError: String?
     @State private var isPairing = false
 
     var body: some View {
@@ -117,6 +119,24 @@ struct SidecarMenu: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Start at login", isOn: Binding(
+                get: { startAtLogin },
+                set: { wanted in
+                    do {
+                        try LoginItem.setEnabled(wanted)
+                        startAtLogin = LoginItem.isEnabled
+                        loginItemError = nil
+                    } catch {
+                        startAtLogin = LoginItem.isEnabled
+                        loginItemError = "Could not change the login item: \(error.localizedDescription)"
+                    }
+                }))
+                .font(.caption)
+            if let loginItemError {
+                Text(loginItemError).font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Button("Forget this pairing") {
                 session.unpair()
