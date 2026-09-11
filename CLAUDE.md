@@ -240,8 +240,6 @@ the repo's package settings if anonymous `docker pull` is expected.
 - Pull requests state the outcome, included and excluded scope, verification
   results, and material safety or migration risk. Do not merge while a required
   check is failing or a blocking review conversation is unresolved.
-- **No sub-agents.** Do the work inline. Do not spawn sub-agents (e.g. the Agent/Task
-  "Explore"/"Plan"/general-purpose agents) to carry out tasks in this repo.
 - **Write GitHub Releases for the person updating their server, not for the commit
   history.** Follow [`docs/development/releasing.md`](docs/development/releasing.md)
   and start from [`.github/RELEASE_NOTES_TEMPLATE.md`](.github/RELEASE_NOTES_TEMPLATE.md).
