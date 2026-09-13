@@ -53,6 +53,12 @@ if (( ${#missing[@]} )); then
 fi
 
 mkdir -p "${VENDOR}" "${BUILD}" "${PREFIX}"
+# PKG_CONFIG_LIBDIR, not PKG_CONFIG_PATH. PATH *adds* to pkg-config's built-in search path, so on
+# any machine with Homebrew — every CI runner, most developer Macs — ffmpeg's configure still finds
+# /opt/homebrew/lib/pkgconfig and links whatever it discovers there. The published binary then
+# refuses to start on a user's Mac: "Library not loaded: /opt/homebrew/opt/libxcb/lib/libxcb.1.dylib".
+# LIBDIR *replaces* that search path, so only what this script built is visible.
+export PKG_CONFIG_LIBDIR="${PREFIX}/lib/pkgconfig"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
 export PATH="${PREFIX}/bin:${PATH}"
 
@@ -117,6 +123,10 @@ echo "==> ffmpeg"
     `# libvmaf is partly C++ (its SVM model parser), and ffmpeg links through the C driver, so the` \
     `# C++ runtime has to be named explicitly or the link fails on __cxa_throw and friends.` \
     --extra-libs="-lc++" \
+    `# Nothing is linked unless it is named below. Without this, configure quietly picks up` \
+    `# whatever happens to be installed on the build machine, and the result only runs there.` \
+    --disable-autodetect \
+    --enable-zlib \
     --enable-gpl \
     --enable-version3 \
     --enable-static --disable-shared \
@@ -138,5 +148,22 @@ echo "==> Built"
 "${VENDOR}/ffmpeg" -hide_banner -version | head -1
 echo "libvmaf present: $("${VENDOR}/ffmpeg" -hide_banner -filters 2>/dev/null | grep -c libvmaf)"
 echo "videotoolbox encoders: $("${VENDOR}/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -c videotoolbox)"
-echo "non-system dynamic links (should be none):"
-otool -L "${VENDOR}/ffmpeg" | tail -n +2 | grep -v '/usr/lib/\|/System/' || echo "  none"
+# A hard gate, not a note. This exact check printed the Homebrew libxcb dependency that shipped in
+# 0.1.0 and 0.1.1 and made both unusable on any Mac but the one that built them; it printed it and
+# the build carried on. A binary that is bundled into an app must depend on nothing but the OS.
+echo "==> Checking the binaries are self-contained"
+portable=true
+for binary in ffmpeg ffprobe; do
+  foreign="$(otool -L "${VENDOR}/${binary}" | tail -n +2 | grep -v '/usr/lib/\|/System/' || true)"
+  if [[ -n "${foreign}" ]]; then
+    echo "error: ${binary} links libraries that will not exist on a user's Mac:" >&2
+    echo "${foreign}" >&2
+    portable=false
+  fi
+done
+if [[ "${portable}" != true ]]; then
+  echo "       Something on this machine was picked up at configure time. The build is not" >&2
+  echo "       redistributable; do not ship it." >&2
+  exit 1
+fi
+echo "  both link only the OS"
