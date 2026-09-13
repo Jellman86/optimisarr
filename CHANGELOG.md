@@ -136,6 +136,10 @@
 
 ### Fixed
 
+- **Each job being processed gets its own card, with its own artwork.** Every running job shared
+  one card carrying only the first job's backdrop, so three jobs from three different shows read as
+  one thing behind the wrong picture. With remote workers this is the common case rather than a
+  corner: several jobs run at once and none of them is "the" job.
 - **The macOS sidecar's menu no longer changes shape or slides sideways while a job runs.** Each
   thumbnail in the film strip asked to fill the available width with no upper bound, so two dozen
   of them demanded far more than the menu's 340 points: the window grew, the content shifted left
