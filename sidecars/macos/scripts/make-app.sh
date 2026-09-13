@@ -11,6 +11,12 @@ cd "$(dirname "$0")/.."
 
 CONFIGURATION="${1:-debug}"
 APP_NAME="OptimisarrSidecar"
+
+# The version people will quote back at you in a bug report. Kept here rather than in a checked-in
+# Info.plist because the plist is generated below; release-app.sh passes the tag through.
+APP_VERSION="${APP_VERSION:-0.1.0}"
+# A build number must increase for each upload of the same version, so derive one that always does.
+BUILD_NUMBER="${BUILD_NUMBER:-$(date -u +%Y%m%d%H%M)}"
 BUNDLE="build/${APP_NAME}.app"
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
@@ -46,14 +52,20 @@ cat > "${BUNDLE}/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>OptimisarrSidecar</string>
   <key>CFBundleIdentifier</key><string>uk.optimisarr.sidecar</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>__APP_VERSION__</string>
+  <key>CFBundleVersion</key><string>__BUILD_NUMBER__</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHumanReadableCopyright</key><string>Optimisarr</string>
 </dict>
 PLIST
 echo '</plist>' >> "${BUNDLE}/Contents/Info.plist"
+
+# Substituted after the fact so the plist above stays a plain, readable heredoc.
+/usr/bin/sed -i '' \
+  -e "s/__APP_VERSION__/${APP_VERSION}/" \
+  -e "s/__BUILD_NUMBER__/${BUILD_NUMBER}/" \
+  "${BUNDLE}/Contents/Info.plist"
 
 # Signing.
 #

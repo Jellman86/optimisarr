@@ -4,6 +4,11 @@
 
 ### Added
 
+- **The macOS sidecar can be built as a notarised, distributable app.** `release-app.sh` signs
+  with a Developer ID, archives with `ditto`, submits to Apple, staples the ticket to the bundle and
+  checks the result the way Gatekeeper will; a `sidecar-v*` tag does the same in CI and attaches the
+  zip to the Release, caching the hour-long FFmpeg build against the tags it pins. The app also
+  carries a real version instead of a hardcoded 0.1.0.
 - **The macOS sidecar's menu shows what this Mac is actually doing.** A running job gets a
   time-lapse of the frames going through the encoder, with a strip beneath showing the run, and a
   real progress bar for the two stages that have one: bytes received while a source downloads and
