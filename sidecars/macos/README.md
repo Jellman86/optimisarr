@@ -170,7 +170,7 @@ before anything else can go wrong.
 can do that, from the Workers tab in Optimisarr. If a worker is revoked there, this app notices on
 its next check-in, discards the dead credential, and says so.
 
-## Signing
+## Signing and release
 
 `make-app.sh` applies an ad-hoc signature by default, which is enough to run locally. Set
 `SIGNING_IDENTITY` to sign with a real certificate:
@@ -183,9 +183,51 @@ SIGNING_IDENTITY="Developer ID Application: You (TEAMID)" ./scripts/make-app.sh 
 A real certificate is worth using even for local work. An ad-hoc signature is derived from the
 binary, so it changes on **every build**, and the Keychain — which decides access by signature —
 sees each rebuilt copy as a different application. The pairing then cannot be read, and on the
-legacy keychain macOS asks for a password to reach it. With a certificate the signature is stable
-and a pairing survives rebuilds.
+legacy keychain macOS asks for a password to reach it, over and over. With a certificate the
+signature is stable and a pairing survives rebuilds.
 
-Signing applies the hardened runtime and a secure timestamp, and signs the bundled `ffmpeg` and
-`ffprobe` first, both of which notarisation requires. Notarisation itself, and attaching a release
-build to a GitHub Release, are still to do.
+### What you need once
+
+1. **A Developer ID Application certificate.** In Xcode: Settings → Accounts → your Apple ID →
+   Manage Certificates → **+** → *Developer ID Application*. Only the Account Holder of the team
+   can create one. An *Apple Development* certificate is not a substitute: it signs and runs
+   locally, but Apple will not notarise anything signed with it.
+2. **An App Store Connect API key** for notarisation, from
+   [App Store Connect → Users and Access → Integrations → App Store Connect API](https://appstoreconnect.apple.com/access/integrations/api),
+   with the **Developer** role. Download the `.p8` once — it cannot be downloaded again — and note
+   the Key ID and the Issuer ID. Then store it under a name the release script can use:
+
+   ```bash
+   xcrun notarytool store-credentials optimisarr-notary \
+     --key ~/private_keys/AuthKey_XXXXXXXX.p8 --key-id XXXXXXXX --issuer <issuer-uuid>
+   ```
+
+### Cutting a release
+
+```bash
+SIGNING_IDENTITY="Developer ID Application: You (TEAMID)" \
+NOTARY_PROFILE=optimisarr-notary \
+./scripts/release-app.sh 0.1.0
+```
+
+That builds, signs with the hardened runtime and a secure timestamp (signing the bundled `ffmpeg`
+and `ffprobe` first, as notarisation requires), archives with `ditto`, submits to Apple, waits,
+staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will.
+Attach the resulting zip to the GitHub Release.
+
+Stapling matters: without the ticket attached, anyone who downloads the app on a machine that
+cannot reach Apple is told it "cannot be checked for malicious software".
+
+CI can do the same on a `sidecar-v*` tag — see
+[`.github/workflows/sidecar-release.yml`](../../.github/workflows/sidecar-release.yml), which needs
+these repository secrets:
+
+| Secret | What it is |
+| --- | --- |
+| `SIDECAR_CERTIFICATE_P12` | The Developer ID certificate and key, exported from Keychain Access as `.p12`, base64 encoded |
+| `SIDECAR_CERTIFICATE_PASSWORD` | The password set on that export |
+| `SIDECAR_NOTARY_KEY_P8` | The App Store Connect `.p8`, base64 encoded |
+| `SIDECAR_NOTARY_KEY_ID` | Its Key ID |
+| `SIDECAR_NOTARY_ISSUER` | The Issuer ID |
+
+Base64 a file for pasting with `base64 -i <file> | pbcopy`.
