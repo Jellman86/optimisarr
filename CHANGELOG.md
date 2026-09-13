@@ -114,6 +114,13 @@
 
 ### Fixed
 
+- **The macOS sidecar's bundled libx265 no longer crashes on its first frame.** Any libx265 encode
+  segfaulted, at any resolution and with any encoder settings. FFmpeg's wrapper guards x265's
+  multi-layer encoder API with `X265_BUILD >= 210` and no upper bound; x265 reverted that API at
+  build 213, so a wrapper built against x265 4.2 passed an array of pointers where the library
+  expected an array of pictures, and the pointer it read back was overwritten with zero. Upstream
+  added the missing `X265_BUILD < 213` bound in 7.1.1, so the pinned FFmpeg moves from `n7.1` to
+  `n7.1.2`. x265 stays at 4.2.
 - **The macOS sidecar proves every encoder before advertising it, CPU ones included.** It used
   to trust `ffmpeg -encoders` for software encoders and only test-encode the VideoToolbox ones. The
   bundled libx265 segfaults on its first frame on Apple Silicon, and the sidecar advertised it
