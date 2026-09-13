@@ -64,4 +64,14 @@ struct LiveCapabilityTests {
         #expect(!capabilities.audioEncoders.contains("libopus"))
         #expect(!capabilities.audioEncoders.contains("libmp3lame"))
     }
+
+    @Test("advertises the software AV1 encoder the bundled build now carries")
+    func provesAv1Encode() async {
+        // Apple ships no AV1 encoder in VideoToolbox on any Apple Silicon, M5 included, so AV1 is
+        // a software encode here. The server already maps an AV1 target to libsvtav1, which means
+        // bundling it is the whole of what lets an AV1 library run on a Mac.
+        let capabilities = await CapabilityProber(ffmpeg: ffmpeg).probe(name: "Live")
+
+        #expect(capabilities.videoEncoders.contains("libsvtav1"))
+    }
 }

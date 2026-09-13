@@ -79,6 +79,25 @@ itself would have jobs scheduled onto it that could only fail.
 Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file. A sidecar
 never can, by design, and nothing in this app is capable of touching media.
 
+## Codecs
+
+Encoding, all proved with a real test encode at launch rather than taken from FFmpeg's listing:
+
+| Target | On this Mac |
+| --- | --- |
+| H.264 | `h264_videotoolbox` (hardware) and `libx264` |
+| HEVC | `hevc_videotoolbox` (hardware) and `libx265` |
+| AV1 | `libsvtav1` (software only) |
+| Audio | `aac`. **Not** `libopus` or `libmp3lame` — the build links no external audio libraries, so a library set to Opus or MP3 is never offered to this worker |
+
+**There is no hardware AV1 encoder on Apple Silicon.** VideoToolbox on an M5 advertises 27 encoders
+and not one of them is AV1, so AV1 here is SVT-AV1 on the CPU. Decoding AV1 *is* a hardware path
+the chip has, and FFmpeg 8.0 is the first release with the VideoToolbox AV1 hwaccel, which is why
+the build is pinned there.
+
+Decoding covers H.264, HEVC, VP9, AV1, MPEG-2, VC-1 and ProRes, with VideoToolbox acceleration
+where the server asks for it.
+
 ## Requirements
 
 - macOS 14 or later

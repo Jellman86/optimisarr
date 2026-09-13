@@ -25,6 +25,11 @@ PREFIX="${BUILD}/prefix"
 # the pinned build.
 X264_TAG="${X264_TAG:-stable}"
 X265_TAG="${X265_TAG:-4.2}"
+# SVT-AV1 is the AV1 encoder Optimisarr already names for a software AV1 target, so bundling it is
+# what lets an AV1 library run on a Mac. Apple ships no AV1 encoder in VideoToolbox on any Apple
+# Silicon, M5 included — 27 encoders are advertised and not one is AV1 — so software is the only
+# way to encode AV1 here.
+SVTAV1_TAG="${SVTAV1_TAG:-v4.2.0}"
 VMAF_TAG="${VMAF_TAG:-v3.0.0}"
 # n7.1.2, not n7.1. The libx265 wrapper in the base n7.1 tag guards the multi-layer encoder API
 # with `#if X265_BUILD >= 210` and no upper bound. x265 reverted that API at build 213, so a
@@ -33,7 +38,10 @@ VMAF_TAG="${VMAF_TAG:-v3.0.0}"
 # `x265pic_lyrptr_out[0]` back as NULL, and dereferences it: a segfault on the very first frame of
 # any libx265 encode. Upstream added the missing `&& X265_BUILD < 213` bound, which is in n7.1.1
 # onwards. Diagnosed here 2026-09-13 from the crash's own disassembly.
-FFMPEG_TAG="${FFMPEG_TAG:-n7.1.2}"
+# n8.0.3. AV1 *decode* on the M5 is a hardware path the chip really has, and ffmpeg only gained the
+# VideoToolbox AV1 hwaccel in 8.0 — 7.1 has no such thing at any patch level. 8.0 also carries the
+# x265 build guard that 7.1.2 was pinned for.
+FFMPEG_TAG="${FFMPEG_TAG:-n8.0.3}"
 # Extra cmake flags for x265, e.g. -DENABLE_ASSEMBLY=OFF while chasing a crash.
 X265_CMAKE_FLAGS="${X265_CMAKE_FLAGS:-}"
 
@@ -75,13 +83,14 @@ clone_at() {
 echo "==> Fetching sources"
 clone_at "https://code.videolan.org/videolan/x264.git" "${X264_TAG}" x264
 clone_at "https://bitbucket.org/multicoreware/x265_git.git" "${X265_TAG}" x265
+clone_at "https://gitlab.com/AOMediaCodec/SVT-AV1.git" "${SVTAV1_TAG}" svtav1
 clone_at "https://github.com/Netflix/vmaf.git" "${VMAF_TAG}" vmaf
 clone_at "https://github.com/FFmpeg/FFmpeg.git" "${FFMPEG_TAG}" ffmpeg
 
 echo "==> Recording exactly what was built"
 {
   echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  for d in x264 x265 vmaf ffmpeg; do
+  for d in x264 x265 svtav1 vmaf ffmpeg; do
     printf '%-8s %s %s\n' "${d}" "$(git -C "${BUILD}/${d}" describe --tags --always 2>/dev/null || echo '?')" \
       "$(git -C "${BUILD}/${d}" rev-parse HEAD 2>/dev/null || echo '?')"
   done
@@ -103,6 +112,15 @@ if [[ ! -f "${PREFIX}/lib/libx265.a" ]]; then
   (cd "${BUILD}/x265/build" && cmake ../source -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
       -DENABLE_SHARED=OFF -DENABLE_CLI=OFF ${X265_CMAKE_FLAGS} >/dev/null && make -j"${JOBS}" >/dev/null && make install >/dev/null)
+fi
+
+if [[ ! -f "${PREFIX}/lib/libSvtAv1Enc.a" ]]; then
+  echo "==> SVT-AV1"
+  mkdir -p "${BUILD}/svtav1/build"
+  (cd "${BUILD}/svtav1/build" && cmake .. -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF -DBUILD_APPS=OFF -DBUILD_TESTING=OFF >/dev/null \
+    && make -j"${JOBS}" >/dev/null && make install >/dev/null)
 fi
 
 if [[ ! -f "${PREFIX}/lib/libvmaf.a" ]]; then
@@ -132,6 +150,7 @@ echo "==> ffmpeg"
     --enable-static --disable-shared \
     --enable-libx264 \
     --enable-libx265 \
+    --enable-libsvtav1 \
     --enable-libvmaf \
     --enable-videotoolbox \
     --disable-doc \
@@ -148,6 +167,8 @@ echo "==> Built"
 "${VENDOR}/ffmpeg" -hide_banner -version | head -1
 echo "libvmaf present: $("${VENDOR}/ffmpeg" -hide_banner -filters 2>/dev/null | grep -c libvmaf)"
 echo "videotoolbox encoders: $("${VENDOR}/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -c videotoolbox)"
+echo "AV1 encoder: $("${VENDOR}/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -c libsvtav1)"
+echo "AV1 hardware decode: $("${VENDOR}/ffmpeg" -hide_banner -h decoder=av1 2>/dev/null | grep -ci videotoolbox)"
 # A hard gate, not a note. This exact check printed the Homebrew libxcb dependency that shipped in
 # 0.1.0 and 0.1.1 and made both unusable on any Mac but the one that built them; it printed it and
 # the build carried on. A binary that is bundled into an app must depend on nothing but the OS.

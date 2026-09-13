@@ -4,6 +4,13 @@
 
 ### Added
 
+- **The macOS sidecar can encode AV1, and decode it in hardware.** SVT-AV1 is bundled, so a
+  library targeting AV1 can now run on a Mac; the server already named `libsvtav1` for a software
+  AV1 target, so nothing on the server side changed. Apple ships no AV1 encoder in VideoToolbox on
+  any Apple Silicon, M5 included, so AV1 encoding is on the CPU. Decoding AV1 is a hardware path
+  the chip does have, and FFmpeg 8.0 is the first release carrying the VideoToolbox AV1 hwaccel, so
+  the pinned FFmpeg moves from 7.1.2 to 8.0.3. That release also carries the x265 build guard 7.1.2
+  was pinned for.
 - **The macOS sidecar ships as a disk image you install by dragging.** A release now produces a
   signed, notarised and stapled `.dmg` alongside the zip, opening with the app beside a shortcut to
   Applications. A zip leaves the app wherever the browser put it, and a menu-bar app living in
