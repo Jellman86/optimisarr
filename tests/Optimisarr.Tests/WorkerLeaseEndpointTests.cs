@@ -246,6 +246,26 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Claiming_records_the_worker_command_on_the_job()
+    {
+        // The queue shows a job's ffmpeg arguments. For a remote job they used to be whatever this
+        // server last ran for it, which on the first real remote job meant a stale QSV command
+        // from a previous local attempt while the Mac was actually encoding with VideoToolbox.
+        await EnableRemoteWorkers();
+        var worker = await PairWorkerWithEncoders("Recorder", "hevc_videotoolbox");
+        var jobId = await QueueAJob();
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var arguments = assignment.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()!).ToList();
+
+        var row = await JobRow(jobId);
+        Assert.Equal("hevc_videotoolbox", row.GetProperty("videoEncoder").GetString());
+        Assert.Equal(string.Join(' ', arguments), row.GetProperty("ffmpegArguments").GetString());
+    }
+
+    [Fact]
     public async Task Renewing_reports_where_the_worker_is_and_moves_the_queue_bar()
     {
         // The worker only knows ffmpeg's out_time; the server owns the duration, so the fraction
