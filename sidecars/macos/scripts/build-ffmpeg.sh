@@ -26,7 +26,14 @@ PREFIX="${BUILD}/prefix"
 X264_TAG="${X264_TAG:-stable}"
 X265_TAG="${X265_TAG:-4.2}"
 VMAF_TAG="${VMAF_TAG:-v3.0.0}"
-FFMPEG_TAG="${FFMPEG_TAG:-n7.1}"
+# n7.1.2, not n7.1. The libx265 wrapper in the base n7.1 tag guards the multi-layer encoder API
+# with `#if X265_BUILD >= 210` and no upper bound. x265 reverted that API at build 213, so a
+# wrapper built against x265 4.2 passes an array of *pointers* where the library now expects an
+# array of *pictures*. x265 writes picture data over ffmpeg's pointers, ffmpeg reads
+# `x265pic_lyrptr_out[0]` back as NULL, and dereferences it: a segfault on the very first frame of
+# any libx265 encode. Upstream added the missing `&& X265_BUILD < 213` bound, which is in n7.1.1
+# onwards. Diagnosed here 2026-09-13 from the crash's own disassembly.
+FFMPEG_TAG="${FFMPEG_TAG:-n7.1.2}"
 # Extra cmake flags for x265, e.g. -DENABLE_ASSEMBLY=OFF while chasing a crash.
 X265_CMAKE_FLAGS="${X265_CMAKE_FLAGS:-}"
 
