@@ -101,6 +101,13 @@
 
 ### Fixed
 
+- **The macOS sidecar proves every encoder before advertising it, CPU ones included.** It used
+  to trust `ffmpeg -encoders` for software encoders and only test-encode the VideoToolbox ones. The
+  bundled libx265 segfaults on its first frame on Apple Silicon, and the sidecar advertised it
+  anyway, so the server could have chosen an encoder that would never finish a job. Every listed
+  encoder now has to complete a three-frame throwaway encode at launch, and a crash counts as a
+  refusal. The ffmpeg build script also takes its tags and extra x265 cmake flags from the
+  environment, so a rebuild can be tried without editing it.
 - **The queue shows the command a remote worker will actually run.** A job leased to a worker
   kept whatever ffmpeg arguments and encoder this server last used for it, so the first real remote
   job displayed a stale QSV command while the Mac was encoding with VideoToolbox. Claiming now
