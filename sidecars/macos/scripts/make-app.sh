@@ -55,11 +55,57 @@ cat > "${BUNDLE}/Contents/Info.plist" <<'PLIST'
 PLIST
 echo '</plist>' >> "${BUNDLE}/Contents/Info.plist"
 
-# Ad-hoc signature so the Keychain gives the bundle a stable identity to store its credential
-# against. Distribution needs a real Developer ID and notarisation; this is enough to run locally.
-codesign --force --sign - "${BUNDLE}" >/dev/null 2>&1 || {
-  echo "warning: ad-hoc codesign failed; the app will still run but Keychain access may prompt" >&2
-}
+# Signing.
+#
+# The Keychain decides what an app may read from the identity in its signature, so a *stable*
+# signature is what lets a paired credential survive a rebuild. An ad-hoc signature is derived
+# from the binary and therefore changes every single build, which makes every rebuilt copy a
+# different application to the Keychain — the credential becomes unreadable and, on the legacy
+# keychain, macOS asks the operator for a password to reach it. Set SIGNING_IDENTITY to a real
+# certificate and that stops for good:
+#
+#     SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/make-app.sh release
+#
+# `security find-identity -v -p codesigning` lists what this Mac holds. Ad-hoc remains the default
+# so a fresh clone builds and runs with no certificate at all.
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
+
+if [[ -n "${SIGNING_IDENTITY}" ]]; then
+  # keychain-access-groups moves the credential to the data protection keychain, which decides
+  # access by signature and never raises a dialog. It is a restricted entitlement: macOS kills an
+  # ad-hoc binary that claims it, which is exactly why it is written only when signing for real.
+  # No entitlements are claimed.
+  #
+  # keychain-access-groups would move the credential to the data protection keychain, which never
+  # raises a dialog — but it is a restricted entitlement and macOS refuses to launch an app that
+  # claims it without a matching provisioning profile (a bare "Launchd job spawn failed"). It is
+  # not needed: the prompting was caused by the signature changing on every build, and a stable
+  # certificate fixes that on the legacy keychain too. `CredentialStore` tries the data protection
+  # keychain first regardless, so a future profiled build gets it with no code change.
+
+  # Inside out: the bundled ffmpeg and ffprobe are separate Mach-O executables and must each carry
+  # their own signature before the bundle that contains them is sealed. The hardened runtime and a
+  # secure timestamp are both required for notarisation.
+  for tool in ffmpeg ffprobe; do
+    if [[ -f "${BUNDLE}/Contents/Resources/${tool}" ]]; then
+      codesign --force --options runtime --timestamp \
+        --sign "${SIGNING_IDENTITY}" "${BUNDLE}/Contents/Resources/${tool}"
+    fi
+  done
+
+  codesign --force --options runtime --timestamp \
+    --sign "${SIGNING_IDENTITY}" "${BUNDLE}"
+
+  echo "Signed with: ${SIGNING_IDENTITY}"
+  codesign --verify --deep --strict --verbose=2 "${BUNDLE}" 2>&1 | sed 's/^/  /'
+else
+  # Enough to run locally. The signature changes on every build, so a pairing does not survive one.
+  codesign --force --sign - "${BUNDLE}" >/dev/null 2>&1 || {
+    echo "warning: ad-hoc codesign failed; the app will still run but Keychain access may prompt" >&2
+  }
+  echo "Ad-hoc signed (development). A pairing will not survive a rebuild —"
+  echo "set SIGNING_IDENTITY to a real certificate to keep one."
+fi
 
 echo "Built ${BUNDLE}"
 echo "Run it with: open ${BUNDLE}"

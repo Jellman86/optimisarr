@@ -172,5 +172,20 @@ its next check-in, discards the dead credential, and says so.
 
 ## Signing
 
-`make-app.sh` applies an ad-hoc signature, which is enough to run locally. Distribution needs a real
-Developer ID and notarisation, and neither is set up yet.
+`make-app.sh` applies an ad-hoc signature by default, which is enough to run locally. Set
+`SIGNING_IDENTITY` to sign with a real certificate:
+
+```bash
+security find-identity -v -p codesigning          # what this Mac holds
+SIGNING_IDENTITY="Developer ID Application: You (TEAMID)" ./scripts/make-app.sh release
+```
+
+A real certificate is worth using even for local work. An ad-hoc signature is derived from the
+binary, so it changes on **every build**, and the Keychain — which decides access by signature —
+sees each rebuilt copy as a different application. The pairing then cannot be read, and on the
+legacy keychain macOS asks for a password to reach it. With a certificate the signature is stable
+and a pairing survives rebuilds.
+
+Signing applies the hardened runtime and a secure timestamp, and signs the bundled `ffmpeg` and
+`ffprobe` first, both of which notarisation requires. Notarisation itself, and attaching a release
+build to a GitHub Release, are still to do.

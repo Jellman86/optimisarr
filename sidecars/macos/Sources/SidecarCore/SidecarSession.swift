@@ -37,14 +37,21 @@ public enum SidecarStatus: Equatable, Sendable {
 /// reason for this to be concurrent; the work it does is network I/O, not computation.
 @MainActor
 public final class SidecarSession: ObservableObject {
-    @Published public private(set) var status: SidecarStatus = .unpaired
-    @Published public private(set) var serverAddress: String = ""
+    @Published public internal(set) var status: SidecarStatus = .unpaired
+    @Published public internal(set) var serverAddress: String = ""
 
     /// How the last job ended, kept so the menu can say what this machine last did for the server.
-    @Published public private(set) var lastOutcome: JobOutcome?
+    @Published public internal(set) var lastOutcome: JobOutcome?
 
     /// Every job in flight and where it has got to, keyed by job id.
-    @Published public private(set) var activeJobs: [Int: JobProgress] = [:]
+    @Published public internal(set) var activeJobs: [Int: JobProgress] = [:]
+
+    /// The recent frames each running job was seen encoding. Only collected while the menu is
+    /// open, and dropped as soon as the job ends.
+    @Published public internal(set) var filmStrips: [Int: FilmStrip] = [:]
+
+    /// The GPU reading taken alongside the last preview, when this Mac publishes one.
+    @Published public internal(set) var gpu: GpuUsage?
 
     /// How many jobs this Mac takes at once. Chosen by the operator, reported to the server on
     /// every check-in, and the ceiling the claim loop fills up to.
@@ -53,6 +60,9 @@ public final class SidecarSession: ObservableObject {
     public static let concurrencyRange = 1...4
 
     private let client: SidecarClient
+    /// True only for a session built by `posed(...)`.
+    var isPosed = false
+    private let previewGate: PreviewGate
     private let store: CredentialStore
     private let prober: CapabilityProber?
     private let executor: WorkExecutor?
@@ -73,7 +83,8 @@ public final class SidecarSession: ObservableObject {
         store: CredentialStore = KeychainCredentialStore(),
         capabilities: SidecarCapabilities = .provenToday(name: Host.current().localizedName ?? "Mac"),
         prober: CapabilityProber? = CapabilityProber(),
-        executor: WorkExecutor? = JobRunner(),
+        previewGate: PreviewGate = PreviewGate(),
+        executor: WorkExecutor? = nil,
         scratchCapacity: @escaping @Sendable () -> Int64 = {
             JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
         },
@@ -87,7 +98,10 @@ public final class SidecarSession: ObservableObject {
         self.store = store
         self.capabilities = capabilities
         self.prober = prober
-        self.executor = executor
+        self.previewGate = previewGate
+        // Built here rather than as a default argument so the runner can read the same gate this
+        // session hands to the menu.
+        self.executor = executor ?? JobRunner(wantsPreviews: { [previewGate] in previewGate.isWanted })
         self.scratchCapacity = scratchCapacity
         self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
         self.persistConcurrency = persistConcurrency
@@ -112,6 +126,9 @@ public final class SidecarSession: ObservableObject {
     /// without this a relaunched app reported no encoders and zero concurrency — "drained" to the
     /// server — and never took work again until it was paired afresh.
     public func restore() {
+        // A posed session is a still life for previews and `--render-menu`; restoring it would
+        // reach for the Keychain and overwrite the very state being looked at.
+        guard !isPosed else { return }
         guard pairing == nil else { return }
         guard let stored = try? store.load() else {
             status = .unpaired
@@ -173,6 +190,7 @@ public final class SidecarSession: ObservableObject {
         for task in jobTasks.values { task.cancel() }
         jobTasks = [:]
         activeJobs = [:]
+        filmStrips = [:]
         endActivity()
         try? store.clear()
         pairing = nil
@@ -303,7 +321,7 @@ public final class SidecarSession: ObservableObject {
             guard let assignment, jobTasks[assignment.jobId] == nil else { return }
 
             let jobId = assignment.jobId
-            activeJobs[jobId] = .fetchingSource
+            activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)
             refreshWorkingStatus()
             beginActivity()
             // The task holds the session for the job's duration, which is intended: a job is
@@ -313,6 +331,8 @@ public final class SidecarSession: ObservableObject {
                 guard let self else { return }
                 let outcome = await executor.execute(assignment, pairing: pairing) { progress in
                     Task { @MainActor in self.report(jobId: jobId, progress: progress) }
+                } preview: { frame in
+                    Task { @MainActor in self.report(jobId: jobId, frame: frame) }
                 }
                 self.finish(outcome, jobId: jobId, workerId: workerId)
             }
@@ -323,6 +343,23 @@ public final class SidecarSession: ObservableObject {
         guard jobTasks[jobId] != nil else { return }
         activeJobs[jobId] = progress
         refreshWorkingStatus()
+    }
+
+    private func report(jobId: Int, frame: Data) {
+        guard jobTasks[jobId] != nil else { return }
+        filmStrips[jobId, default: FilmStrip()].append(frame)
+        // Sampled here rather than on a timer of its own: the two readings then describe the same
+        // instant, and nothing runs while no job does.
+        gpu = GpuMonitor.sample()
+    }
+
+    /// Called by the menu as it opens and closes. Nothing is sampled while nobody is looking.
+    public func setPreviewsWanted(_ wanted: Bool) {
+        previewGate.set(wanted)
+        if !wanted {
+            filmStrips = [:]
+            gpu = nil
+        }
     }
 
     /// The menu bar shows one job; the earliest still running stands for the rest, and the menu
@@ -336,6 +373,7 @@ public final class SidecarSession: ObservableObject {
         lastOutcome = outcome
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
+        filmStrips[jobId] = nil
         if jobTasks.isEmpty {
             endActivity()
         } else {
@@ -396,5 +434,34 @@ extension SidecarStatus {
         case .disabledOnServer: return "Turned off on the server"
         case .pairingFailed: return "Pairing failed"
         }
+    }
+}
+
+public extension SidecarSession {
+    /// A session posed in a given state, for SwiftUI previews and for the app's own
+    /// `--render-menu` mode.
+    ///
+    /// The menu is the whole product here and it is fiddly to judge from code, but every state
+    /// worth looking at — mid-transfer, encoding with a strip of frames, revoked — needs a paired
+    /// server and a running job to reach for real. Posing one is how the layout gets reviewed
+    /// without that, and it is why the published properties are settable from here and nowhere
+    /// else.
+    static func posed(
+        status: SidecarStatus,
+        serverAddress: String = "https://optimisarr.pownet.uk",
+        activeJobs: [Int: JobProgress] = [:],
+        filmStrips: [Int: FilmStrip] = [:],
+        gpu: GpuUsage? = nil,
+        lastOutcome: JobOutcome? = nil
+    ) -> SidecarSession {
+        let session = SidecarSession(prober: nil, executor: nil)
+        session.isPosed = true
+        session.status = status
+        session.serverAddress = serverAddress
+        session.activeJobs = activeJobs
+        session.filmStrips = filmStrips
+        session.gpu = gpu
+        session.lastOutcome = lastOutcome
+        return session
     }
 }

@@ -88,11 +88,17 @@ public enum JobOutcome: Sendable, Equatable {
 }
 
 /// What is happening inside a running job, for the menu.
+///
+/// The two transfer stages carry byte counts because they are the ones that can take a long time
+/// with nothing else to show: a multi-gigabyte source over a home network looks identical to a
+/// stalled one unless the bytes are counted. A total of zero means it is not known yet, which is
+/// true for the moment before the first range comes back and for a server that answers with the
+/// whole file and no range header.
 public enum JobProgress: Sendable, Equatable {
-    case fetchingSource
+    case fetchingSource(received: Int64, total: Int64)
     case encoding(encodedSeconds: Double)
     case measuring
-    case delivering
+    case delivering(sent: Int64, total: Int64)
 }
 
 /// The most recent progress, shared between the ffmpeg reader and the renewal loop. A lock
@@ -120,11 +126,16 @@ private enum LeaseOperation<T: Sendable>: Sendable {
 }
 
 /// Executes assignments, so the session can be driven in tests without an ffmpeg or a server.
+///
+/// `preview` carries an occasional JPEG of the frame being encoded. It is separate from `progress`
+/// so the stage enum stays small and cheap to compare: previews arrive rarely and are worth
+/// several kilobytes each, while progress arrives many times a second.
 public protocol WorkExecutor: Sendable {
     func execute(
         _ assignment: Assignment,
         pairing: StoredPairing,
-        progress: @escaping @Sendable (JobProgress) -> Void
+        progress: @escaping @Sendable (JobProgress) -> Void,
+        preview: @escaping @Sendable (Data) -> Void
     ) async -> JobOutcome
 }
 
@@ -144,6 +155,9 @@ public struct JobRunner: WorkExecutor {
     private let runner: TranscodeRunner
     private let leadProbe: CommandRunner
     private let scratchRoot: URL
+    private let chunkBytes: Int64
+    private let previewSampler: FramePreviewSampler?
+    private let wantsPreviews: @Sendable () -> Bool
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
@@ -154,6 +168,9 @@ public struct JobRunner: WorkExecutor {
         runner: TranscodeRunner = ProcessTranscodeRunner(),
         leadProbe: CommandRunner = ProcessCommandRunner(),
         scratchRoot: URL = JobRunner.defaultScratchRoot(),
+        chunkBytes: Int64 = JobRunner.defaultChunkBytes,
+        previewSampler: FramePreviewSampler? = CapabilityProber.bundledFfmpeg().map { FramePreviewSampler(ffmpeg: $0) },
+        wantsPreviews: @escaping @Sendable () -> Bool = { false },
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
@@ -165,6 +182,9 @@ public struct JobRunner: WorkExecutor {
         self.runner = runner
         self.leadProbe = leadProbe
         self.scratchRoot = scratchRoot
+        self.chunkBytes = max(1, chunkBytes)
+        self.previewSampler = previewSampler
+        self.wantsPreviews = wantsPreviews
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
     }
@@ -194,13 +214,15 @@ public struct JobRunner: WorkExecutor {
     public func execute(
         _ assignment: Assignment,
         pairing: StoredPairing,
-        progress: @escaping @Sendable (JobProgress) -> Void
+        progress: @escaping @Sendable (JobProgress) -> Void,
+        preview: @escaping @Sendable (Data) -> Void = { _ in }
     ) async -> JobOutcome {
         let scratch = scratchRoot.appendingPathComponent("lease-\(assignment.leaseId)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: scratch) }
 
         do {
-            let outcome = try await run(assignment, pairing: pairing, scratch: scratch, progress: progress)
+            let outcome = try await run(
+                assignment, pairing: pairing, scratch: scratch, progress: progress, preview: preview)
             return outcome
         } catch let error as SidecarError {
             switch error {
@@ -220,7 +242,7 @@ public struct JobRunner: WorkExecutor {
 
     /// Bytes per chunk of a resumable upload. Large enough that a film is a few dozen requests,
     /// small enough that a dropped connection loses a minute, not an hour.
-    static let chunkBytes: Int64 = 64 * 1024 * 1024
+    public static let defaultChunkBytes: Int64 = 64 * 1024 * 1024
 
     /// How many times a chunk may fail before the delivery is given up.
     static let maxChunkFailures = 20
@@ -231,7 +253,8 @@ public struct JobRunner: WorkExecutor {
     static let maxSourceFailures = 20
 
     private func fetchSource(
-        _ assignment: Assignment, pairing: StoredPairing, destination: URL
+        _ assignment: Assignment, pairing: StoredPairing, destination: URL,
+        progress: @escaping @Sendable (Int64, Int64) -> Void
     ) async throws -> String {
         var failures = 0
         while true {
@@ -239,7 +262,7 @@ public struct JobRunner: WorkExecutor {
             do {
                 return try await client.fetchSource(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
-                    leaseId: assignment.leaseId, to: destination)
+                    leaseId: assignment.leaseId, to: destination, progress: progress)
             } catch SidecarError.transferFailed {
                 failures += 1
                 guard failures <= Self.maxSourceFailures else {
@@ -286,15 +309,20 @@ public struct JobRunner: WorkExecutor {
     /// after a failure; a server that predates resumable delivery gets the whole file at once.
     private func deliver(
         _ assignment: Assignment, pairing: StoredPairing, candidate: URL,
-        sourceSha256: String, candidateSha256: String
+        sourceSha256: String, candidateSha256: String,
+        progress: @escaping @Sendable (Int64, Int64) -> Void
     ) async throws -> DeliveryReceipt {
         guard var offset = try await client.uploadOffset(
             serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId)
         else {
-            return try await client.deliver(
+            // An older server takes the whole file in one request, so there is nothing to count
+            // along the way; the bar fills when it lands.
+            let receipt = try await client.deliver(
                 serverAddress: pairing.serverAddress, credential: pairing.credential,
                 leaseId: assignment.leaseId, file: candidate,
                 sourceSha256: sourceSha256, candidateSha256: candidateSha256)
+            progress(receipt.bytes, receipt.bytes)
+            return receipt
         }
 
         let size = (try? FileManager.default.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value ?? 0
@@ -305,7 +333,7 @@ public struct JobRunner: WorkExecutor {
         while offset < size {
             try Task.checkCancellation()
             try handle.seek(toOffset: UInt64(offset))
-            let length = Int(min(Self.chunkBytes, size - offset))
+            let length = Int(min(chunkBytes, size - offset))
             guard let chunk = try handle.read(upToCount: length), !chunk.isEmpty else {
                 throw SidecarError.transferFailed(reason: "The candidate could not be read at offset \(offset).")
             }
@@ -313,6 +341,7 @@ public struct JobRunner: WorkExecutor {
                 offset = try await client.uploadChunk(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId, offset: offset, chunk: chunk)
+                progress(offset, size)
             } catch let SidecarError.uploadOffsetMismatch(serverHolds) {
                 // The server is the authority on what arrived; carry on from its number.
                 offset = serverHolds
@@ -367,7 +396,8 @@ public struct JobRunner: WorkExecutor {
         _ assignment: Assignment,
         pairing: StoredPairing,
         scratch: URL,
-        progress: @escaping @Sendable (JobProgress) -> Void
+        progress: @escaping @Sendable (JobProgress) -> Void,
+        preview: @escaping @Sendable (Data) -> Void
     ) async throws -> JobOutcome {
         guard let ffmpeg else {
             return await release(assignment, pairing: pairing, reason: "This build has no ffmpeg to run.")
@@ -399,13 +429,17 @@ public struct JobRunner: WorkExecutor {
         }
         let source = scratch.appendingPathComponent("source", isDirectory: false)
         let candidate = scratch.appendingPathComponent("candidate.\(assignment.outputExtension)", isDirectory: false)
-        let latest = LatestProgress(.fetchingSource)
+        let latest = LatestProgress(.fetchingSource(received: 0, total: assignment.sourceBytes))
 
-        progress(.fetchingSource)
+        progress(.fetchingSource(received: 0, total: assignment.sourceBytes))
         let declaredSourceHash = try await whileRenewingLease(
             assignment, pairing: pairing, progress: latest.get
         ) {
-            try await fetchSource(assignment, pairing: pairing, destination: source)
+            try await fetchSource(assignment, pairing: pairing, destination: source) { received, total in
+                let stage = JobProgress.fetchingSource(received: received, total: total)
+                latest.set(stage)
+                progress(stage)
+            }
         }
         let actualSourceHash = try Self.sha256(of: source)
         guard actualSourceHash.caseInsensitiveCompare(declaredSourceHash) == .orderedSame else {
@@ -418,9 +452,17 @@ public struct JobRunner: WorkExecutor {
         let encode = try await whileRenewingLease(
             assignment, pairing: pairing, progress: latest.get
         ) {
-            try await runner.run(ffmpeg, arguments) { seconds in
+            try await runner.run(ffmpeg, arguments) { [previewSampler, wantsPreviews] seconds in
                 latest.set(.encoding(encodedSeconds: seconds))
                 progress(.encoding(encodedSeconds: seconds))
+                // Only while someone has the menu open, and never faster than the sampler's own
+                // interval: a frame grab is a whole process, and the encode is the job here.
+                guard let previewSampler, wantsPreviews() else { return }
+                Task {
+                    if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
+                        preview(frame)
+                    }
+                }
             }
         }
 
@@ -451,14 +493,21 @@ public struct JobRunner: WorkExecutor {
             }
         }
 
-        progress(.delivering)
-        latest.set(.delivering)
+        let candidateBytes = (try? FileManager.default
+            .attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value ?? 0
+        progress(.delivering(sent: 0, total: candidateBytes))
+        latest.set(.delivering(sent: 0, total: candidateBytes))
         let receipt = try await whileRenewingLease(
             assignment, pairing: pairing, progress: latest.get
         ) {
             try await deliver(
                 assignment, pairing: pairing, candidate: candidate,
-                sourceSha256: declaredSourceHash, candidateSha256: candidateHash)
+                sourceSha256: declaredSourceHash, candidateSha256: candidateHash
+            ) { sent, total in
+                let stage = JobProgress.delivering(sent: sent, total: total)
+                latest.set(stage)
+                progress(stage)
+            }
         }
         return .delivered(jobId: receipt.jobId, bytes: receipt.bytes)
     }

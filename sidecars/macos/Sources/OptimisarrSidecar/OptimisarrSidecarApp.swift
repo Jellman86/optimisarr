@@ -35,6 +35,16 @@ struct OptimisarrSidecarApp: App {
     }
 
     init() {
+        // A design pass over the menu, rather than the app: render its states and stop before any
+        // pairing, network or menu bar work begins.
+        let arguments = CommandLine.arguments
+        if let flag = arguments.firstIndex(of: MenuRenderer.flag), flag + 1 < arguments.count {
+            MainActor.assumeIsolated {
+                MenuRenderer.render(into: URL(fileURLWithPath: arguments[flag + 1]))
+            }
+            exit(0)
+        }
+
         // Accessory rather than regular: no Dock icon, no app switcher entry. Set in code so the
         // package behaves correctly even when run straight from the build directory.
         NSApplication.shared.setActivationPolicy(.accessory)

@@ -355,7 +355,8 @@ public struct SidecarClient: Sendable {
     /// Fetches the source for a lease to a file and returns the hash the server declared for it,
     /// so the caller can prove the transfer arrived intact before encoding a byte of it.
     public func fetchSource(
-        serverAddress: String, credential: String, leaseId: String, to destination: URL
+        serverAddress: String, credential: String, leaseId: String, to destination: URL,
+        progress: @escaping @Sendable (_ received: Int64, _ total: Int64) -> Void = { _, _ in }
     ) async throws -> String {
         var offset = Self.fileSize(destination)
         var declaredHash: String?
@@ -378,6 +379,9 @@ public struct SidecarClient: Sendable {
 
             switch response.statusCode {
             case 200:
+                // The whole file in one body: nothing to count on the way, so report it complete.
+                let size = Self.fileSize(destination)
+                progress(size, size)
                 return try Self.sourceHash(response, status: 200)
             case 206:
                 let hash = try Self.sourceHash(response, status: 206)
@@ -396,6 +400,7 @@ public struct SidecarClient: Sendable {
                     try? Self.truncate(destination, to: offset)
                     throw SidecarError.transferFailed(reason: "The source range did not arrive in full.")
                 }
+                progress(expectedSize, range.total)
                 if expectedSize == range.total {
                     return hash
                 }
