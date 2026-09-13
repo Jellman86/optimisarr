@@ -43,6 +43,13 @@ jobs:
           path: sidecars/macos/vendor
           key: sidecar-ffmpeg-${{ runner.arch }}-${{ hashFiles('sidecars/macos/scripts/build-ffmpeg.sh') }}
 
+      # libvmaf builds with meson and ninja, neither of which a macOS runner carries. x264, x265 and
+      # ffmpeg need only what is already there, which is why the build got as far as libvmaf before
+      # failing with "meson: command not found".
+      - name: Install the FFmpeg build tools
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: brew install meson ninja
+
       - name: Build FFmpeg
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         working-directory: sidecars/macos
