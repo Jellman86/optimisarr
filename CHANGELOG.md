@@ -101,6 +101,22 @@
 
 ### Fixed
 
+- **Sampled VMAF no longer scores a candidate against its own neighbouring frames.** Both inputs
+  of a sampled window are seeked to the same whole second and then paired by timestamp, but FFmpeg
+  stamps frames relative to each file's container start, which is the earliest stream. A source
+  whose audio leads its video by a frame of priming and a candidate whose video starts a frame
+  into its container therefore present the same picture 20 ms apart: half a frame, exactly the
+  cadence filter's rounding tie, so each window was a coin toss between frame N and frame N+1.
+  Held frames still scored well and moving ones scored zero, which is the "lowest frame 0, mean in
+  the 80s" signature that the decoder-corruption check then read as a broken hardware decode. The
+  first real remote job on 2026-09-13 was re-encoded three times on that reading and failed anyway;
+  on the same file the corrected measurement scores every window in the low 90s with no frame
+  under 70. The measurement now seeks to the nearest source picture instant, so retained frames sit
+  on slot centres, and removes the candidate's extra lead before cadence rounding. Locally the
+  server measures both leads from its probes; a remote worker measures them itself with its
+  ffprobe and fills in a token the server leaves in the filter, and reports no evidence rather
+  than half an answer when it cannot. Full-file measurements, which rebase both timelines, were
+  never affected.
 - **The Workers tab now notices a sidecar pairing without a reload.** While a pairing code was on
   screen the page only counted down; it never asked the server whether the code had been redeemed
   and never refreshed the worker list, and with no worker listed yet it never refreshed at all. A

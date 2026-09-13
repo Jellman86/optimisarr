@@ -169,6 +169,10 @@ public sealed class VerificationService(
                         reference,
                         outputPath,
                         originalProbe,
+                        // A preview's stream-copied clip is not the file VMAF reads, so its
+                        // container lead says nothing about the reference actually decoded.
+                        clip is null ? QueueDispatcher.ContainerLeadSeconds(originalProbe) : null,
+                        clip is null ? QueueDispatcher.ContainerLeadSeconds(outputProbe) : null,
                         quality,
                         // A preview's cheap stream-copy clip is suitable for duration/stream checks,
                         // but can retain keyframe pre-roll. VMAF decodes the full original from the
@@ -434,6 +438,8 @@ public sealed class VerificationService(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
+        double? referenceContainerLeadSeconds,
+        double? distortedContainerLeadSeconds,
         QualityScoreService quality,
         string qualityReferencePath,
         int? referenceStartSeconds,
@@ -467,7 +473,9 @@ public sealed class VerificationService(
             Acceleration: acceleration,
             ReferenceFrameRate: reference.FrameRate?.TargetFps ?? originalProbe.VideoFrameRate,
             ReferenceCrop: reference.Crop,
-            ReferenceDecimation: reference.FrameRate);
+            ReferenceDecimation: reference.FrameRate,
+            ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
+            DistortedContainerLeadSeconds: distortedContainerLeadSeconds);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,

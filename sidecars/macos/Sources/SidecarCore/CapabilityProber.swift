@@ -59,8 +59,13 @@ public struct CapabilityProber: Sendable {
     /// roadmap treats FFmpeg build as a scheduling criterion for good reason: the same encode
     /// settings must produce comparable output for the server's verification of a returned
     /// candidate to mean anything.
-    public static func bundledFfmpeg() -> URL? {
-        guard let resource = Bundle.main.resourceURL?.appendingPathComponent("ffmpeg"),
+    public static func bundledFfmpeg() -> URL? { bundled("ffmpeg") }
+
+    /// The ffprobe built alongside it, used to measure where a file's pictures start.
+    public static func bundledFfprobe() -> URL? { bundled("ffprobe") }
+
+    private static func bundled(_ name: String) -> URL? {
+        guard let resource = Bundle.main.resourceURL?.appendingPathComponent(name),
               FileManager.default.isExecutableFile(atPath: resource.path)
         else {
             return nil

@@ -23,6 +23,10 @@ public struct MeasurementCommand: Sendable, Equatable {
     public static let distortedPlaceholder = "{{distorted}}"
     public static let referencePlaceholder = "{{reference}}"
     public static let logPlaceholder = "{{log}}"
+    /// Filled in by this worker, inside the filter only, with the seconds by which the candidate
+    /// presents each picture later than the source. Only the worker has both files once the encode
+    /// exists, so only it can measure that; the server leaves the token where the number goes.
+    public static let distortedShiftPlaceholder = "{{distortedShift}}"
 
     static let flags: Set<String> = ["-nostdin", "-stats", "-y", "-nostats"]
     /// From `QualityScoreCommandBuilder`'s CPU path. Device and hardware-decode options are absent
@@ -70,19 +74,29 @@ public struct MeasurementCommand: Sendable, Equatable {
     }
 
     /// Substitutes this machine's paths for the three tokens.
-    public func materialise(distorted: URL, reference: URL, log: URL) -> [String] {
+    /// Whether the server left the candidate's lead for this worker to measure and fill in.
+    public var needsDistortedShift: Bool {
+        arguments.contains { $0.contains(Self.distortedShiftPlaceholder) }
+    }
+
+    public func materialise(distorted: URL, reference: URL, log: URL, distortedShift: String? = nil) -> [String] {
         arguments.map { argument in
             switch argument {
             case Self.distortedPlaceholder: return distorted.path
             case Self.referencePlaceholder: return reference.path
-            default: return argument.replacingOccurrences(of: Self.logPlaceholder, with: log.path)
+            default:
+                var value = argument.replacingOccurrences(of: Self.logPlaceholder, with: log.path)
+                if let distortedShift {
+                    value = value.replacingOccurrences(of: Self.distortedShiftPlaceholder, with: distortedShift)
+                }
+                return value
             }
         }
     }
 
     private static func checkValue(_ value: String, allowingLog: Bool) throws {
         if value.contains(distortedPlaceholder) || value.contains(referencePlaceholder)
-            || (!allowingLog && value.contains(logPlaceholder)) {
+            || (!allowingLog && (value.contains(logPlaceholder) || value.contains(distortedShiftPlaceholder))) {
             throw MeasurementCommandError.strayPlaceholder(value)
         }
         if value.contains("/") || value.hasPrefix("~") || AssignmentCommand.hasPathLikeBackslash(value) {

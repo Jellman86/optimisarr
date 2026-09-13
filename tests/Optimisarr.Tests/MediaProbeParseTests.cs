@@ -37,6 +37,28 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_keeps_the_container_start_so_a_picture_lead_can_be_measured()
+    {
+        // Audio priming puts the container start 21 ms before the first picture. FFmpeg seeks and
+        // timestamps relative to that container start, so the lead matters for frame alignment.
+        const string json = """
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080, "start_time": "0.000000" },
+            { "codec_type": "audio", "codec_name": "aac", "start_time": "-0.021000" }
+          ],
+          "format": { "format_name": "matroska,webm", "duration": "1389.674000", "start_time": "-0.021000" }
+        }
+        """;
+
+        var result = MediaProbeService.Parse(json);
+
+        Assert.Equal(0.0, result.VideoStartSeconds);
+        Assert.Equal(-0.021, result.ContainerStartSeconds);
+        Assert.Null(MediaProbeService.Parse(SampleJson).ContainerStartSeconds);
+    }
+
+    [Fact]
     public void Parse_retains_the_average_video_frame_rate_for_frame_aligned_quality_measurement()
     {
         const string json = """

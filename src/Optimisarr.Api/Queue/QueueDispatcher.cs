@@ -1218,6 +1218,18 @@ public sealed class QueueDispatcher(
             ? (work.Spec.CropTo?.Width ?? picture.Width, work.Spec.CropTo?.Height ?? picture.Height)
             : (0, 0);
 
+        // The measurement seeks on the source's frame grid, which needs to know where its first
+        // picture sits relative to its container start. That is not kept on the media record, so
+        // the source is probed here; a failed probe only costs the grid alignment, not the plan.
+        double? referenceContainerLead = null;
+        if (work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var sourceProbe = await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(work.Original.Path, cancellationToken);
+            referenceContainerLead = ContainerLeadSeconds(sourceProbe);
+        }
         var quality = work.SourcePicture is { } source
             ? RemoteQualityPlanner.Plan(
                 work.VerificationPolicy,
@@ -1227,6 +1239,7 @@ public sealed class QueueDispatcher(
                 work.Original.HdrConvertedToSdr,
                 work.DurationSeconds,
                 work.Spec.TargetFrameRate ?? work.VideoFrameRate,
+                referenceContainerLead,
                 work.Spec.CropTo,
                 work.Spec.FrameRate)
             : null;
@@ -1728,6 +1741,15 @@ public sealed class QueueDispatcher(
     /// The decoder a worker's command may use: VideoToolbox, when the worker proved it and the
     /// encoder is VideoToolbox too. Other families are not paired with a worker decoder yet.
     /// </summary>
+    /// <summary>
+    /// How far into its container a file's first picture sits, or null when ffprobe reported no
+    /// usable starts. Shared with local verification so both measure the same quantity.
+    /// </summary>
+    internal static double? ContainerLeadSeconds(MediaProbeResult probe) =>
+        probe.Success && probe.VideoStartSeconds is { } video && probe.ContainerStartSeconds is { } container
+            ? video - container
+            : null;
+
     private static string? RemoteHardwareDecoder(WorkerCapabilities worker, string? videoEncoder) =>
         videoEncoder is not null
         && videoEncoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase)

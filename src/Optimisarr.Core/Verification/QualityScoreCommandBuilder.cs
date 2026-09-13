@@ -52,7 +52,19 @@ public sealed record QualityMeasurementContext(
     // How a capped encode thinned its frames, so the reference is thinned by the same index rule
     // before any timestamp handling. Decimating by nearest timestamp instead can keep different
     // frames than the encode kept, and then the comparison is of neighbours, not of the same frame.
-    Queue.FrameRateDecimation? ReferenceDecimation = null);
+    Queue.FrameRateDecimation? ReferenceDecimation = null,
+    // How far into its own container each file's first picture sits (video start minus container
+    // start). FFmpeg seeks and stamps frames relative to the container start, which is the earliest
+    // stream, so two files whose pictures match frame for frame still present them at different
+    // instants when one carries audio priming the other does not. Half a frame of that is enough
+    // for the cadence filter to round the same picture into neighbouring slots and then score frame
+    // N against frame N+1. The reference's lead places the seek on its frame grid; the difference
+    // between the two leads is taken off the distorted timeline before rounding.
+    double? ReferenceContainerLeadSeconds = null,
+    double? DistortedContainerLeadSeconds = null,
+    // A remote worker measures the candidate's lead itself once it has encoded, so the server
+    // hands it this token to substitute rather than a number.
+    string? DistortedShiftToken = null);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -151,18 +163,24 @@ public static class QualityScoreCommandBuilder
         var pixelFormat = context.ReferenceIsHdr && !context.HdrConvertedToSdr
             ? "yuv420p10le"
             : "yuv420p";
-        var distortedInputStart = InputSeek(context.DistortedStartSeconds, context.MeasureDurationSeconds);
-        var referenceInputStart = InputSeek(context.ReferenceStartSeconds, context.MeasureDurationSeconds);
+        var distortedInputStart = InputSeek(
+            context.DistortedStartSeconds, context.MeasureDurationSeconds,
+            context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
+        var referenceInputStart = InputSeek(
+            context.ReferenceStartSeconds, context.MeasureDurationSeconds,
+            context.ReferenceFrameRate, context.ReferenceContainerLeadSeconds);
         var distortedTimeline = TimelinePreparation(
             context.DistortedStartSeconds,
             distortedInputStart,
             context.MeasureDurationSeconds,
-            context.ReferenceFrameRate);
+            context.ReferenceFrameRate,
+            DistortedShift(context));
         var referenceTimeline = TimelinePreparation(
             context.ReferenceStartSeconds,
             referenceInputStart,
             context.MeasureDurationSeconds,
-            context.ReferenceFrameRate);
+            context.ReferenceFrameRate,
+            shift: null);
         var normalise = $"{scale},format={pixelFormat}";
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
@@ -208,7 +226,7 @@ public static class QualityScoreCommandBuilder
         if (distortedInputStart is > 0)
         {
             arguments.Add("-ss");
-            arguments.Add(distortedInputStart.Value.ToString());
+            arguments.Add(FormatSeconds(distortedInputStart.Value));
         }
         AppendInputAcceleration(arguments, acceleration);
         // libvmaf requires distorted first and reference second.
@@ -220,7 +238,7 @@ public static class QualityScoreCommandBuilder
         if (referenceInputStart is > 0)
         {
             arguments.Add("-ss");
-            arguments.Add(referenceInputStart.Value.ToString());
+            arguments.Add(FormatSeconds(referenceInputStart.Value));
         }
         AppendInputAcceleration(arguments, acceleration);
         arguments.Add("-i");
@@ -281,18 +299,61 @@ public static class QualityScoreCommandBuilder
             $"log_fmt=json:log_path={logPath}:shortest=1:repeatlast=0";
     }
 
-    private static int? InputSeek(int? windowStartSeconds, int? windowDurationSeconds) =>
-        windowStartSeconds is not { } start
-            ? null
-            : windowDurationSeconds is > 0
-                ? Math.Max(0, start - SampleSeekPrerollSeconds)
-                : start;
+    private static double? InputSeek(
+        int? windowStartSeconds,
+        int? windowDurationSeconds,
+        double? referenceFrameRate,
+        double? referenceContainerLeadSeconds)
+    {
+        if (windowStartSeconds is not { } start)
+        {
+            return null;
+        }
+        if (windowDurationSeconds is not > 0)
+        {
+            return start;
+        }
+        var target = Math.Max(0, start - SampleSeekPrerollSeconds);
+        if (target == 0 || referenceFrameRate is not { } frameRate || referenceContainerLeadSeconds is not { } lead)
+        {
+            return target;
+        }
+        // A whole-second target usually falls between two reference pictures, leaving every retained
+        // picture some fraction of a frame from a cadence slot centre; at half a frame the rounding
+        // is a tie, and the half-millisecond of container timestamp rounding decides it differently
+        // for each input. Seeking to the nearest picture instant instead puts the pictures on the
+        // slot centres, where nothing that small can move them.
+        var frameSeconds = 1 / frameRate;
+        var snapped = Math.Round((target - lead) / frameSeconds) * frameSeconds + lead;
+        return Math.Round(Math.Max(0, snapped), 6);
+    }
+
+    // The distorted timeline shift: how much later than the reference the candidate presents the
+    // same picture, as a filter expression value. Nothing when there is nothing to remove.
+    private static string? DistortedShift(QualityMeasurementContext context)
+    {
+        if (context.DistortedShiftToken is { Length: > 0 } token)
+        {
+            return token;
+        }
+        if (context.DistortedContainerLeadSeconds is not { } distorted
+            || context.ReferenceContainerLeadSeconds is not { } reference)
+        {
+            return null;
+        }
+        var shift = Math.Round(distorted - reference, 6);
+        return Math.Abs(shift) < 0.0005 ? null : FormatSeconds(shift);
+    }
+
+    private static string FormatSeconds(double seconds) =>
+        seconds.ToString("0.######", CultureInfo.InvariantCulture);
 
     private static string TimelinePreparation(
         int? windowStartSeconds,
-        int? inputStartSeconds,
+        double? inputStartSeconds,
         int? windowDurationSeconds,
-        double? referenceFrameRate)
+        double? referenceFrameRate,
+        string? shift)
     {
         // An input seek leaves each decoder's first retained PTS relative to the common
         // pre-roll target. Different GOP layouts can therefore begin at different positive PTS
@@ -301,15 +362,24 @@ public static class QualityScoreCommandBuilder
         // their container origins first. The final reset leaves libvmaf with zero-based timelines.
         const string origin = "settb=AVTB,setpts=PTS-STARTPTS";
         var inputTimeline = inputStartSeconds is > 0 ? "settb=AVTB" : origin;
+        // A seeked input keeps its container-relative timestamps until fps has rounded them, so
+        // this is where the candidate's extra lead over the reference has to come off. A rebased
+        // (unseeked) timeline has already discarded both origins and needs no shift.
+        // settb=AVTB has just put the timestamps in microseconds, so the shift in seconds is scaled
+        // rather than divided by TB: a remote worker refuses any filter value containing a slash,
+        // since that is how a path would smuggle itself in, and the expression need not use one.
+        var lead = shift is not null && inputStartSeconds is > 0
+            ? $"setpts=PTS-{shift}*1000000,"
+            : string.Empty;
         var cadence = referenceFrameRate is { } frameRate
             ? $"fps=fps={frameRate.ToString("G17", CultureInfo.InvariantCulture)}:start_time=0,"
             : string.Empty;
         var alignment = windowStartSeconds is { } start && windowDurationSeconds is > 0
-            ? $"trim=start={start - (inputStartSeconds ?? 0)}:duration={windowDurationSeconds.Value},"
+            ? $"trim=start={FormatSeconds(start - (inputStartSeconds ?? 0))}:duration={windowDurationSeconds.Value},"
             : string.Empty;
         return cadence.Length == 0 && alignment.Length == 0
             ? origin
-            : $"{inputTimeline},{cadence}{alignment}{origin}";
+            : $"{inputTimeline},{lead}{cadence}{alignment}{origin}";
     }
 
     private static string DescribePreprocessing(
