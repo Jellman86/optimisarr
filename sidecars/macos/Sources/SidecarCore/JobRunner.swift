@@ -140,7 +140,9 @@ public protocol WorkExecutor: Sendable {
 public struct JobRunner: WorkExecutor {
     private let client: SidecarClient
     private let ffmpeg: URL?
+    private let ffprobe: URL?
     private let runner: TranscodeRunner
+    private let leadProbe: CommandRunner
     private let scratchRoot: URL
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
@@ -148,7 +150,9 @@ public struct JobRunner: WorkExecutor {
     public init(
         client: SidecarClient = SidecarClient(),
         ffmpeg: URL? = CapabilityProber.bundledFfmpeg(),
+        ffprobe: URL? = CapabilityProber.bundledFfprobe(),
         runner: TranscodeRunner = ProcessTranscodeRunner(),
+        leadProbe: CommandRunner = ProcessCommandRunner(),
         scratchRoot: URL = JobRunner.defaultScratchRoot(),
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
@@ -157,7 +161,9 @@ public struct JobRunner: WorkExecutor {
     ) {
         self.client = client
         self.ffmpeg = ffmpeg
+        self.ffprobe = ffprobe
         self.runner = runner
+        self.leadProbe = leadProbe
         self.scratchRoot = scratchRoot
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
@@ -333,10 +339,22 @@ public struct JobRunner: WorkExecutor {
         _ assignment: Assignment, ffmpeg: URL, source: URL, candidate: URL, scratch: URL
     ) async -> [String]? {
         var logs: [String] = []
-        for (index, arguments) in assignment.quality.commands.enumerated() {
-            guard let command = try? MeasurementCommand.validate(arguments) else { return nil }
+        let commands = assignment.quality.commands.compactMap { try? MeasurementCommand.validate($0) }
+        guard commands.count == assignment.quality.commands.count else { return nil }
+        // A sampled window pairs pictures by timestamp, so the server wants the candidate's extra
+        // lead over the source removed first. Only this machine has both files to measure it from.
+        var distortedShift: String?
+        if commands.contains(where: \.needsDistortedShift) {
+            guard let ffprobe,
+                  let sourceLead = await TimelineLead.measure(ffprobe: ffprobe, file: source, runner: leadProbe),
+                  let candidateLead = await TimelineLead.measure(ffprobe: ffprobe, file: candidate, runner: leadProbe)
+            else { return nil }
+            distortedShift = TimelineLead.shift(candidate: candidateLead, source: sourceLead)
+        }
+        for (index, command) in commands.enumerated() {
             let log = scratch.appendingPathComponent("vmaf-\(index).json", isDirectory: false)
-            let materialised = command.materialise(distorted: candidate, reference: source, log: log)
+            let materialised = command.materialise(
+                distorted: candidate, reference: source, log: log, distortedShift: distortedShift)
             guard let result = try? await runner.run(ffmpeg, materialised, progress: { _ in }), result.exitCode == 0,
                   let contents = try? String(contentsOf: log, encoding: .utf8), !contents.isEmpty
             else { return nil }

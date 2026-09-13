@@ -308,10 +308,34 @@ struct ResumableSourceDownloadTests {
 }
 
 /// Stands in for ffmpeg: writes the candidate the command names, or fails, without encoding.
+/// Remembers what a fake was asked to run, so a test can look at the materialised command.
+final class ArgumentRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [[String]] = []
+    var all: [[String]] { lock.withLock { recorded } }
+    func record(_ arguments: [String]) { lock.withLock { recorded.append(arguments) } }
+}
+
+/// Stands in for ffprobe: answers a container and video start for whichever file is named last.
+struct FakeLeadProbe: CommandRunner {
+    var candidate = (container: "0.000000", video: "0.041000")
+    var source = (container: "-0.021000", video: "0.000000")
+    var exitCode: Int32 = 0
+
+    func run(_ executable: URL, _ arguments: [String]) async -> (exitCode: Int32, output: String) {
+        let starts = arguments.last!.hasPrefix("/") && arguments.last!.contains("candidate") ? candidate : source
+        return (exitCode, """
+        {"streams":[{"codec_type":"video","start_time":"\(starts.video)"},{"codec_type":"audio","start_time":"-0.021000"}],
+         "format":{"start_time":"\(starts.container)"}}
+        """)
+    }
+}
+
 struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
     var exitCode: Int32 = 0
     var candidate = Data("candidate bytes".utf8)
     var delay: TimeInterval = 0
+    var recorder: ArgumentRecorder?
 
     var measurementExitCode: Int32 = 0
 
@@ -319,9 +343,12 @@ struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
         _ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void
     ) async throws -> (exitCode: Int32, stderr: String) {
         if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+        recorder?.record(arguments)
         // A measurement names its log inside the filter; write the kind of log libvmaf would.
+        // A token left in the filter is what real ffmpeg would choke on, so this fake does too.
         if let filter = arguments.firstIndex(of: "-lavfi").map({ arguments[$0 + 1] }),
            let range = filter.range(of: "log_path=") {
+            if filter.contains("{{") { return (1, "Invalid argument") }
             let logPath = String(filter[range.upperBound...]).components(separatedBy: ":")[0]
             if measurementExitCode == 0 {
                 try Data(#"{"frames":[{"frameNum":0,"metrics":{"vmaf":96.0}}],"pooled_metrics":{"vmaf":{"min":96.0,"max":96.0,"mean":96.0,"harmonic_mean":96.0}}}"#.utf8)
@@ -337,6 +364,16 @@ struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
     }
 }
 
+/// A sampled-window measurement as the server now builds it: seeked onto the source's frame grid,
+/// with the candidate's extra lead left for the worker to measure and fill in.
+private let shiftedMeasurementCommand: [String] = [
+    "-nostdin", "-v", "error", "-stats",
+    "-ss", "113.008875", "-i", "{{distorted}}", "-ss", "113.008875", "-i", "{{reference}}",
+    "-lavfi", "[0:v]settb=AVTB,setpts=PTS-{{distortedShift}}*1000000,fps=fps=23.976023976023978:start_time=0,trim=start=4.991125:duration=40,settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist];[1:v]settb=AVTB,fps=fps=23.976023976023978:start_time=0,trim=start=4.991125:duration=40,settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref];[dist][ref]libvmaf=model=version=vmaf_v0.6.1:n_threads=8:n_subsample=1:log_fmt=json:log_path={{log}}:shortest=1:repeatlast=0",
+    "-t", "40",
+    "-f", "null", "-",
+]
+
 private let measurementCommand: [String] = [
     "-nostdin", "-v", "error", "-stats",
     "-i", "{{distorted}}", "-i", "{{reference}}",
@@ -344,7 +381,10 @@ private let measurementCommand: [String] = [
     "-f", "null", "-",
 ]
 
-private func assignment(renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096) -> Assignment {
+private func assignment(
+    renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096,
+    commands: [[String]] = [measurementCommand]
+) -> Assignment {
     Assignment(
         leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: sourceBytes,
         videoEncoder: "hevc_videotoolbox", renewWithinSeconds: renewWithinSeconds,
@@ -352,7 +392,7 @@ private func assignment(renewWithinSeconds: Int = 30, measure: Bool = false, sou
         quality: QualityRequirement(
             measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
-            commands: measure ? [measurementCommand] : [], sampling: "Full file"))
+            commands: measure ? commands : [], sampling: "Full file"))
 }
 
 @Suite("Scratch capacity")
@@ -750,6 +790,38 @@ struct MeasurementCommandTests {
         #expect(throws: MeasurementCommandError.unknownOption("-hwaccel")) { try MeasurementCommand.validate(extra) }
     }
 
+    @Test("the shift token is allowed inside the filter only, and is filled with the measured lead")
+    func shiftToken() throws {
+        let command = try MeasurementCommand.validate(shiftedMeasurementCommand)
+        #expect(command.needsDistortedShift)
+        #expect(!(try MeasurementCommand.validate(measurementCommand)).needsDistortedShift)
+
+        let materialised = command.materialise(
+            distorted: URL(fileURLWithPath: "/tmp/c.mp4"), reference: URL(fileURLWithPath: "/tmp/s.mkv"),
+            log: URL(fileURLWithPath: "/tmp/v.json"), distortedShift: "0.02")
+        #expect(materialised[13].contains("setpts=PTS-0.02*1000000,fps="))
+        #expect(!materialised[13].contains("{{"))
+
+        var stray = shiftedMeasurementCommand
+        stray[5] = "{{distortedShift}}"
+        #expect(throws: MeasurementCommandError.strayPlaceholder("{{distortedShift}}")) {
+            try MeasurementCommand.validate(stray)
+        }
+    }
+
+    @Test("a picture lead is the video start less the container start, and the shift is their difference")
+    func leadAndShift() {
+        let json = """
+        {"streams":[{"codec_type":"audio","start_time":"-0.021000"},{"codec_type":"video","start_time":"0.000000"}],
+         "format":{"start_time":"-0.021000"}}
+        """
+        #expect(TimelineLead.parse(json) == 0.021)
+        #expect(TimelineLead.parse(#"{"streams":[],"format":{}}"#) == nil)
+        #expect(TimelineLead.shift(candidate: 0.041, source: 0.021) == "0.02")
+        #expect(TimelineLead.shift(candidate: 0.0, source: 0.021) == "-0.021")
+        #expect(TimelineLead.shift(candidate: 0.5, source: 0.5) == "0")
+    }
+
     @Test("the filter must name the log token exactly once and nothing else may")
     func requiresOneLogToken() {
         var none = measurementCommand
@@ -783,6 +855,51 @@ struct MeasurementFlowTests {
         let logs = try #require(report["logs"] as? [String])
         #expect(logs.count == 1)
         #expect(logs[0].contains("harmonic_mean"))
+    }
+
+    @Test("a sampled measurement fills in the candidate's lead from both files before running")
+    func fillsInTheShift() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let recorder = ArgumentRecorder()
+        var fake = FakeTranscodeRunner()
+        fake.recorder = recorder
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            ffprobe: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: fake,
+            leadProbe: FakeLeadProbe(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(measure: true, commands: [shiftedMeasurementCommand]), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        let report = try #require(server.qualityReport)
+        #expect((report["logs"] as? [String])?.count == 1)
+        let measurement = try #require(recorder.all.first { $0.contains("-lavfi") })
+        // The candidate's picture sits 41 ms into its container, the source's 21 ms: 20 ms to remove.
+        #expect(measurement[13].contains("setpts=PTS-0.02*1000000,fps="))
+    }
+
+    @Test("a sampled measurement with no ffprobe to measure the lead reports nothing")
+    func noProbeNoEvidence() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            ffprobe: nil,
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(measure: true, commands: [shiftedMeasurementCommand]), pairing: pairing) { _ in }
+
+        // Half an answer is worse than none: the server measures for itself.
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(server.qualityReport == nil)
     }
 
     @Test("a measurement that cannot be made reports nothing and the candidate is still delivered")

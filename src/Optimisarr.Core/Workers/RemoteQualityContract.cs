@@ -20,6 +20,10 @@ public sealed record RemoteQualityContract(
     public const string DistortedPlaceholder = "{{distorted}}";
     public const string ReferencePlaceholder = "{{reference}}";
     public const string LogPlaceholder = "{{log}}";
+    // Substituted by the worker inside the filter graph with the seconds by which its candidate
+    // presents each picture later than the source, measured from both files' container and video
+    // starts once the encode exists. See QualityMeasurementContext.DistortedShiftToken.
+    public const string DistortedShiftPlaceholder = "{{distortedShift}}";
 
     public int WindowCount => Commands.Count;
 }

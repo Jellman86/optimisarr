@@ -27,6 +27,7 @@ internal static class RemoteQualityPlanner
         bool hdrConvertedToSdr,
         double? durationSeconds,
         double? referenceFrameRate,
+        double? referenceContainerLeadSeconds,
         CropRect? crop,
         FrameRateDecimation? decimation)
     {
@@ -58,7 +59,9 @@ internal static class RemoteQualityPlanner
                 Acceleration: VmafAcceleration.None,
                 ReferenceFrameRate: referenceFrameRate,
                 ReferenceCrop: crop,
-                ReferenceDecimation: decimation);
+                ReferenceDecimation: decimation,
+                ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
+                DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder);
             var command = QualityScoreCommandBuilder.Build(
                 RemoteQualityContract.DistortedPlaceholder,
                 RemoteQualityContract.ReferencePlaceholder,

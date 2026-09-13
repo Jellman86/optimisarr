@@ -43,7 +43,11 @@ public sealed record MediaProbeResult(
     bool? IsVariableFrameRate,
     string? VideoProfile,
     string? Error,
-    double? VideoFrameRate = null)
+    double? VideoFrameRate = null,
+    // Where the container itself begins: the earliest timestamp of any stream. FFmpeg seeks and
+    // reports timestamps relative to this, so the video's start alone does not say where a picture
+    // will appear in a filter graph. Null when ffprobe did not report it.
+    double? ContainerStartSeconds = null)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
@@ -141,6 +145,7 @@ public sealed class MediaProbeService : IMediaProbeService
         double? duration = null;
         string? optimisedMarker = null;
         int? formatBitrateKbps = null;
+        double? containerStart = null;
         var formatTags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (root.TryGetProperty("format", out var format))
@@ -151,6 +156,7 @@ public sealed class MediaProbeService : IMediaProbeService
             }
 
             formatBitrateKbps = ReadBitrateKbps(format);
+            containerStart = ReadStartTime(format);
 
             if (format.TryGetProperty("duration", out var durationElement) &&
                 durationElement.ValueKind == JsonValueKind.String &&
@@ -347,7 +353,8 @@ public sealed class MediaProbeService : IMediaProbeService
             isVariableFrameRate,
             videoProfile,
             null,
-            videoFrameRate);
+            videoFrameRate,
+            containerStart);
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still
