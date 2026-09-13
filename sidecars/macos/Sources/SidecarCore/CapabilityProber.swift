@@ -34,7 +34,7 @@ public struct ProcessCommandRunner: CommandRunner {
 /// Works out what this Mac can actually do.
 ///
 /// Two stages, matching the server's `HardwareCapabilityService`: parse `ffmpeg -encoders` for a
-/// cheap first pass, then confirm each hardware encoder with a real throwaway encode. Every Apple
+/// cheap first pass, then confirm every encoder with a real throwaway encode. Every Apple
 /// ffmpeg build lists VideoToolbox whether or not this particular machine can open it, so listing
 /// alone would have the sidecar advertise encoders that fail on first use — and a job scheduled
 /// against a false capability is a job that can only fail.
@@ -86,11 +86,10 @@ public struct CapabilityProber: Sendable {
         }
 
         var proved: [String] = []
-        for encoder in EncoderListParser.parse(listing.output) {
-            if EncoderListParser.needsConfirmation(encoder) {
-                let probe = await runner.run(ffmpeg, EncoderProbeCommand.arguments(for: encoder))
-                guard probe.exitCode == 0 else { continue }
-            }
+        for encoder in EncoderListParser.parse(listing.output) where EncoderListParser.needsConfirmation(encoder) {
+            // A crash surfaces as a signal status rather than a clean error, and counts the same.
+            let probe = await runner.run(ffmpeg, EncoderProbeCommand.arguments(for: encoder))
+            guard probe.exitCode == 0 else { continue }
             proved.append(encoder)
         }
 

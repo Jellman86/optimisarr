@@ -52,14 +52,17 @@ struct EncoderListParserTests {
         #expect(EncoderListParser.parse("ffmpeg: command not found").isEmpty)
     }
 
-    @Test("hardware encoders must be proved, CPU encoders may be trusted")
+    @Test("every encoder must be proved, CPU ones included")
     func confirmationPolicy() {
-        // The distinction that matters: ffmpeg lists what it was compiled with, and every Apple
-        // build lists VideoToolbox whether or not this machine can actually open it.
+        // ffmpeg lists what it was compiled with. Every Apple build lists VideoToolbox whether or
+        // not this machine can open it, and a bundled libx265 that segfaults on its first frame
+        // (seen 2026-09-13) is listed just the same. Trusting the listing for CPU encoders let the
+        // sidecar advertise an encoder that could never finish a job.
         #expect(EncoderListParser.needsConfirmation("hevc_videotoolbox"))
         #expect(EncoderListParser.needsConfirmation("h264_videotoolbox"))
-        #expect(!EncoderListParser.needsConfirmation("libx265"))
-        #expect(!EncoderListParser.needsConfirmation("libx264"))
+        #expect(EncoderListParser.needsConfirmation("libx265"))
+        #expect(EncoderListParser.needsConfirmation("libx264"))
+        #expect(EncoderListParser.needsConfirmation("libsvtav1"))
     }
 }
 
