@@ -101,6 +101,13 @@
 
 ### Fixed
 
+- **The macOS sidecar proves every encoder before advertising it, CPU ones included.** It used
+  to trust `ffmpeg -encoders` for software encoders and only test-encode the VideoToolbox ones. The
+  bundled libx265 segfaults on its first frame on Apple Silicon, and the sidecar advertised it
+  anyway, so the server could have chosen an encoder that would never finish a job. Every listed
+  encoder now has to complete a three-frame throwaway encode at launch, and a crash counts as a
+  refusal. The ffmpeg build script also takes its tags and extra x265 cmake flags from the
+  environment, so a rebuild can be tried without editing it.
 - **Sampled VMAF no longer scores a candidate against its own neighbouring frames.** Both inputs
   of a sampled window are seeked to the same whole second and then paired by timestamp, but FFmpeg
   stamps frames relative to each file's container start, which is the earliest stream. A source
