@@ -738,6 +738,12 @@ public sealed class QueueDispatcher(
             if (delivered.WasAsked && delivered.Accepted is null
                 && work.Value.VerificationPolicy.RequiresVmaf(work.Value.Spec.Kind, work.Value.Original.VideoReencoded))
             {
+                // The worker's card keeps only its latest problem, and a later verdict overwrites
+                // this one within minutes. The log is where the reason survives.
+                logger.LogWarning(
+                    "Job {JobId}: quality evidence from {Worker} was not accepted, measuring VMAF locally: {Objections}",
+                    jobId, deliveredBy.Name,
+                    delivered.Objections.Count > 0 ? string.Join(" ", delivered.Objections) : "no evidence was returned");
                 await RecordWorkerProblemAsync(
                     deliveredBy.Id,
                     $"Its quality evidence for {Path.GetFileName(work.Value.Original.Path)} was not accepted, so this server measured VMAF itself: "
@@ -745,6 +751,12 @@ public sealed class QueueDispatcher(
                     cancellationToken);
             }
 
+            if (delivered.Accepted is not null)
+            {
+                logger.LogInformation(
+                    "Job {JobId}: quality evidence from {Worker} accepted; VMAF will not be re-measured here",
+                    jobId, deliveredBy.Name);
+            }
             var disposition = await VerifyAndFinishAsync(
                 jobId, candidatePath, work.Value, cancellationToken,
                 // A worker's hardware decode can corrupt frames as a local one can; the retry

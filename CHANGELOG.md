@@ -108,6 +108,13 @@
   encoder now has to complete a three-frame throwaway encode at launch, and a crash counts as a
   refusal. The ffmpeg build script also takes its tags and extra x265 cmake flags from the
   environment, so a rebuild can be tried without editing it.
+- **The queue shows the command a remote worker will actually run.** A job leased to a worker
+  kept whatever ffmpeg arguments and encoder this server last used for it, so the first real remote
+  job displayed a stale QSV command while the Mac was encoding with VideoToolbox. Claiming now
+  records the worker's encoder and arguments on the job.
+- **Why a worker's VMAF evidence was refused is now in the server log.** The worker's card keeps
+  only its latest problem, and a verification verdict overwrote the refusal within minutes, leaving
+  no trace of the reason. Both the refusal, with its objections, and an acceptance are logged.
 - **Sampled VMAF no longer scores a candidate against its own neighbouring frames.** Both inputs
   of a sampled window are seeked to the same whole second and then paired by timestamp, but FFmpeg
   stamps frames relative to each file's container start, which is the earliest stream. A source
