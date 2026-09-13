@@ -119,6 +119,13 @@
 
 ### Fixed
 
+- **A worker is no longer offered a job it has just handed back.** A released job returns to the
+  queue at once, and the claim loop offers the highest-priority queued job to whoever asks next, so
+  a worker that could not run a job took it again on its very next check-in and downloaded the
+  whole source afresh to fail the same way. A handback now earns that worker a ten-minute pause on
+  that job, which is long enough to break the loop and short enough that a Mac which was merely
+  asleep is useful again quickly. The pause is per worker, so another machine can still take it. A
+  job handed back three times stops being offered to workers at all and is left for the server.
 - **A worker is no longer sent a job whose audio encoder it does not have.** Advanced options
   offer Opus and MP3, which the server emits as `libopus` and `libmp3lame`. The macOS sidecar's
   bundled FFmpeg links no external audio libraries and has neither, and capability matching only

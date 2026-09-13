@@ -347,7 +347,8 @@ internal static class WorkerResultEndpoints
         // rightly discard it as interrupted. The dispatcher picks this status up in its turn.
         job.Status = JobStatus.AwaitingVerification;
 
-        lease.Apply(lease.ToDomain().Complete(worker.Id, DateTimeOffset.UtcNow).Lease);
+        var completedAt = DateTimeOffset.UtcNow;
+        lease.Apply(lease.ToDomain().Complete(worker.Id, completedAt).Lease, completedAt);
         await db.SaveChangesAsync(cancellationToken);
 
         // Accepted rather than OK: the candidate is delivered and intact, not yet judged.

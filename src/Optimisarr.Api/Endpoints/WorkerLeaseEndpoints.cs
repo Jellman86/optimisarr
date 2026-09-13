@@ -166,6 +166,21 @@ internal static class WorkerLeaseEndpoints
                 .Where(job => shortlist.Contains(job.Id))
                 .ToListAsync(cancellationToken);
 
+            // Who has already given these jobs back, and when. Read in one query rather than per
+            // candidate: the shortlist is 25 jobs and this runs on every check-in from every worker.
+            var handbacks = await db.JobLeases
+                .AsNoTracking()
+                .Where(lease => shortlist.Contains(lease.JobId) && lease.State == LeaseState.Released)
+                .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
+                .ToListAsync(cancellationToken);
+            var handbackCount = handbacks
+                .GroupBy(h => h.JobId)
+                .ToDictionary(g => g.Key, g => g.Count());
+            var lastHandbackHere = handbacks
+                .Where(h => h.WorkerId == worker.Id)
+                .GroupBy(h => h.JobId)
+                .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+
             var candidates = shortlist
                 .Select(id => loaded.FirstOrDefault(job => job.Id == id))
                 .Where(job => job is not null)
@@ -185,6 +200,19 @@ internal static class WorkerLeaseEndpoints
                 // Preparation repeats these refusals itself; this is only the cheap first pass.
                 if (!PlausiblyOfferable(job, capabilities))
                 {
+                    continue;
+                }
+
+                // A job this worker already gave back, or that too many workers have given back.
+                // Offering it again straight away is a loop that re-downloads the source each time.
+                lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
+                handbackCount.TryGetValue(job.Id, out var handedBackByAnyone);
+                if (!HandbackPolicy.MayOffer(handedBackHere, handedBackByAnyone, now))
+                {
+                    logger.LogDebug(
+                        "Job {JobId} not offered to worker {Worker}: {Reason}",
+                        job.Id, worker.Name,
+                        HandbackPolicy.Explain(handedBackHere, handedBackByAnyone, now));
                     continue;
                 }
 
@@ -551,7 +579,7 @@ internal static class WorkerLeaseEndpoints
                 return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
         }
 
-        stored.Apply(result.Lease);
+        stored.Apply(result.Lease, now);
         if (stored.Job is not null)
         {
             applyToJob(stored, stored.Job, result.Outcome);

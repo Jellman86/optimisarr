@@ -32,6 +32,14 @@ public sealed class JobLease
     public LeaseState State { get; set; } = LeaseState.Held;
 
     /// <summary>
+    /// When the lease stopped being held, whatever the reason. Needed because a worker that hands
+    /// a job back must not be offered the same job again immediately: without a time to compare
+    /// against, the only options are to re-offer it at once, which loops, or never again, which
+    /// punishes a worker that was merely asleep.
+    /// </summary>
+    public DateTimeOffset? EndedAt { get; set; }
+
+    /// <summary>
     /// The container extension the assignment told the worker to produce, recorded when the
     /// lease is granted. The delivered candidate is named with it, because the replacement takes
     /// its final extension from the candidate's name: a file named after the source but holding
@@ -79,9 +87,15 @@ public sealed class JobLease
     public WorkerLease ToDomain() =>
         new(Id, JobId, WorkerId, AcquiredAt, ExpiresAt, State);
 
-    public void Apply(WorkerLease lease)
+    public void Apply(WorkerLease lease, DateTimeOffset now)
     {
         ExpiresAt = lease.ExpiresUtc;
         State = lease.State;
+        // Stamped on the way out of Held, and only once: a lease that is released and later
+        // reclaimed by the expiry sweep should keep the time it actually stopped being worked.
+        if (lease.State != LeaseState.Held && EndedAt is null)
+        {
+            EndedAt = now;
+        }
     }
 }

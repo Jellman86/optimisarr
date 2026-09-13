@@ -323,6 +323,46 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_worker_is_not_offered_a_job_it_just_handed_back()
+    {
+        // Releasing puts the job straight back on the queue, and the claim loop offers the
+        // highest-priority queued job to whoever asks. Before this, the same worker took it again
+        // on its very next check-in and downloaded the whole source afresh to fail the same way.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Fussy");
+        await QueueAJob();
+
+        using var first = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using var second = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Another_worker_may_still_take_a_job_one_worker_handed_back()
+    {
+        // The pause is per worker. A job one machine cannot encode may be exactly what another can,
+        // and holding it from everyone would strand it.
+        await EnableRemoteWorkers();
+        var first = await PairCapableWorker("Refuser");
+        var second = await PairCapableWorker("Willing");
+        await QueueAJob();
+
+        using var claimed = await first.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claimed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var released = await first.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using var taken = await second.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, taken.StatusCode);
+    }
+
+    [Fact]
     public async Task Claiming_records_the_worker_command_on_the_job()
     {
         // The queue shows a job's ffmpeg arguments. For a remote job they used to be whatever this
