@@ -269,6 +269,13 @@ public struct JobRunner: WorkExecutor {
         let required = assignment.sourceBytes + assignment.sourceBytes / 2
         let preference = settings.workLocation
         let budget = settings.memoryBudgetBytes
+        // Logged before anything is created, so a step that never returns is visible as a job that
+        // started and said nothing more, rather than as a worker that silently stopped asking.
+        SidecarLog.job.info("""
+            Job \(assignment.jobId) claimed: \(assignment.videoEncoder, privacy: .public), \
+            source \(assignment.sourceBytes) bytes, needs \(required) bytes, \
+            wants \(String(describing: preference), privacy: .public)
+            """)
         var ramDisk: RamDisk?
         let root: URL
         switch WorkLocationPolicy.resolve(
@@ -279,6 +286,7 @@ public struct JobRunner: WorkExecutor {
         case let .folder(folder):
             root = folder
         case .memory:
+            SidecarLog.storage.info("Job \(assignment.jobId): creating a \(required)-byte RAM disk")
             if let disk = RamDisk.create(bytes: required) {
                 ramDisk = disk
                 root = disk.mountPoint

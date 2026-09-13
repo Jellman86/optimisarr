@@ -526,26 +526,28 @@
   <Banner kind="error" class="mb-4">{error}</Banner>
 {/if}
 
-<!-- Hero: what's being processed right now, with live progress, CPU/GPU usage, and a backdrop
-     pulled from a connected media server (when available). -->
+<!-- What is being processed right now: one card per job, each with live progress, CPU/GPU usage,
+     and its own backdrop from a connected media server (when available). One card for all of them
+     showed only the first job's artwork, which made two jobs look like one thing with the wrong
+     picture behind it. -->
 {#if !loading && processingJobs.length > 0}
-  {@const heroId = processingJobs[0].id}
-  {@const heroArt = artworkLoaded[heroId]}
-  <div class="card relative mb-4 overflow-hidden">
-    <img
-      src="/api/jobs/{heroId}/artwork"
-      alt=""
-      class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 {heroArt ? 'opacity-20 dark:opacity-30' : 'opacity-0'}"
-      onload={() => (artworkLoaded[heroId] = true)}
-      onerror={() => (artworkLoaded[heroId] = false)}
-    />
-    {#if heroArt}
-      <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/80 to-white/40 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-900/40"></div>
-    {/if}
-    <div class="relative space-y-4 p-4">
+  <div class="mb-4 space-y-3">
         {#each processingJobs as job (job.id)}
+          {@const art = artworkLoaded[job.id]}
           {@const telemetry = live[job.id]}
           {@const gpu = job.videoEncoder ? isGpuEncoder(job.videoEncoder) : false}
+          <div class="card relative overflow-hidden">
+            <img
+              src="/api/jobs/{job.id}/artwork"
+              alt=""
+              class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 {art ? 'opacity-20 dark:opacity-30' : 'opacity-0'}"
+              onload={() => (artworkLoaded[job.id] = true)}
+              onerror={() => (artworkLoaded[job.id] = false)}
+            />
+            {#if art}
+              <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/80 to-white/40 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-900/40"></div>
+            {/if}
+            <div class="relative p-4">
           <div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="min-w-0">
@@ -648,8 +650,9 @@
               {/if}
             {/if}
           </div>
+            </div>
+          </div>
         {/each}
-      </div>
   </div>
 {:else if !loading && jobs.length > 0}
   <div class="card mb-4 p-4">
