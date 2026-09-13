@@ -142,6 +142,9 @@ public struct Assignment: Sendable, Equatable {
 
     public let leaseId: String
     public let jobId: Int
+    /// What is being encoded. Empty from a server that predates the field, in which case the menu
+    /// falls back to the job number.
+    public let title: String
     public let sourceBytes: Int64
     public let videoEncoder: String
     public let renewWithinSeconds: Int
@@ -150,12 +153,13 @@ public struct Assignment: Sendable, Equatable {
     public let quality: QualityRequirement
 
     public init(
-        leaseId: String, jobId: Int, sourceBytes: Int64, videoEncoder: String,
+        leaseId: String, jobId: Int, title: String = "", sourceBytes: Int64, videoEncoder: String,
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
         quality: QualityRequirement
     ) {
         self.leaseId = leaseId
         self.jobId = jobId
+        self.title = title
         self.sourceBytes = sourceBytes
         self.videoEncoder = videoEncoder
         self.renewWithinSeconds = renewWithinSeconds
@@ -177,7 +181,11 @@ public struct Assignment: Sendable, Equatable {
             let quality = QualityRequirement(json: qualityJson)
         else { return nil }
         self.init(
-            leaseId: leaseId, jobId: jobId, sourceBytes: sourceBytes, videoEncoder: encoder,
+            leaseId: leaseId, jobId: jobId,
+            // Optional: a server that predates the field simply leaves the menu showing the job
+            // number, which is what it showed before.
+            title: json["title"] as? String ?? "",
+            sourceBytes: sourceBytes, videoEncoder: encoder,
             renewWithinSeconds: renew, arguments: arguments, outputExtension: outputExtension,
             quality: quality)
     }

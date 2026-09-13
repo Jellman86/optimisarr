@@ -156,7 +156,10 @@ struct SidecarMenu: View {
         }
     }
 
-    /// One running job: the frames going through it, what stage it is at, and how far along.
+    /// One running job: what it is, what is being done to it, and how it is getting on.
+    ///
+    /// The name comes first because that is the question someone opening this menu is asking —
+    /// "what is my Mac chewing on?" — and a job number answers it for nobody.
     private func jobCard(jobId: Int, progress: JobProgress) -> some View {
         Card {
             VStack(alignment: .leading, spacing: 7) {
@@ -164,25 +167,41 @@ struct SidecarMenu: View {
                     FilmStripView(strip: strip)
                 }
 
-                HStack(spacing: 6) {
-                    Image(systemName: progress.symbol)
-                        .font(.caption)
-                        .foregroundStyle(progress.tint)
-                        .frame(width: 13)
-                    Text("Job #\(jobId)")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.jobTitles[jobId].flatMap { $0.isEmpty ? nil : $0 } ?? "Job #\(jobId)")
                         .font(.system(size: 11, weight: .medium))
-                    Spacer(minLength: 4)
-                    Text(progress.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 5) {
+                        Image(systemName: progress.symbol)
+                            .font(.caption2)
+                            .foregroundStyle(progress.tint)
+                        Text(progress.label)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        // Only where bytes are actually moving; an encode has no speed to show.
+                        if let rate = session.transferRates[jobId], rate > 0 {
+                            Text(Self.rate(rate))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
-                // A bar only where there is a real fraction to draw. An encode reports seconds of
-                // output, not a fraction, because only the server knows the source's duration.
                 Meter(value: progress.fraction, tint: progress.tint)
             }
         }
+    }
+
+    /// "42.1 MB/s". Per second rather than per bit, matching the byte counts beside it.
+    private static func rate(_ bytesPerSecond: Double) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useMB, .useGB, .useKB]
+        return formatter.string(fromByteCount: Int64(bytesPerSecond)) + "/s"
     }
 
     /// The GPU figure, with the caveat stated rather than left for someone to discover.

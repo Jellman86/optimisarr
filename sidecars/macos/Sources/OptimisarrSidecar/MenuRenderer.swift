@@ -26,15 +26,20 @@ enum MenuRenderer {
             ("receiving", .posed(
                 status: .working(jobId: 5846, progress: .fetchingSource(received: 182_000_000, total: 493_040_520)),
                 activeJobs: [5846: .fetchingSource(received: 182_000_000, total: 493_040_520)],
+                jobTitles: [5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv"],
+                transferRates: [5846: 42_100_000],
                 gpu: GpuUsage(device: 0.04, memoryInUse: 700_000_000))),
             ("encoding", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
+                jobTitles: [5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv"],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704))),
             ("sending", .posed(
                 status: .working(jobId: 5846, progress: .delivering(sent: 300_000_000, total: 394_256_442)),
                 activeJobs: [5846: .delivering(sent: 300_000_000, total: 394_256_442)],
+                jobTitles: [5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv"],
+                transferRates: [5846: 68_400_000],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.06, memoryInUse: 900_000_000))),
             ("two-jobs", .posed(
@@ -42,6 +47,10 @@ enum MenuRenderer {
                 activeJobs: [
                     5846: .encoding(encodedSeconds: 751),
                     5847: .measuring,
+                ],
+                jobTitles: [
+                    5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv",
+                    5847: "Mad Men - S02E06 - Maidenform Bluray-720p.mkv",
                 ],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.62, memoryInUse: 2_100_000_000))),

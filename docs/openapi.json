@@ -126,6 +126,9 @@
               "string"
             ]
           },
+          "title": {
+            "type": "string"
+          },
           "videoEncoder": {
             "type": "string"
           },
@@ -136,6 +139,7 @@
         "required": [
           "leaseId",
           "jobId",
+          "title",
           "sourceBytes",
           "videoEncoder",
           "vmaf",
