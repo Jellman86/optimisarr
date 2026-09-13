@@ -32,6 +32,19 @@ X265_CMAKE_FLAGS="${X265_CMAKE_FLAGS:-}"
 
 JOBS="$(sysctl -n hw.ncpu)"
 
+# Checked up front rather than discovered forty minutes in. x264, x265 and ffmpeg need only cmake
+# and a compiler, but libvmaf builds with meson and ninja, so a machine without them gets most of
+# the way through and then stops with a bare "command not found".
+missing=()
+for tool in git cmake meson ninja pkg-config; do
+  command -v "${tool}" >/dev/null 2>&1 || missing+=("${tool}")
+done
+if (( ${#missing[@]} )); then
+  echo "error: missing build tools: ${missing[*]}" >&2
+  echo "       brew install ${missing[*]}" >&2
+  exit 1
+fi
+
 mkdir -p "${VENDOR}" "${BUILD}" "${PREFIX}"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
 export PATH="${PREFIX}/bin:${PATH}"
