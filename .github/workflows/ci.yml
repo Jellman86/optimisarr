@@ -72,6 +72,17 @@ jobs:
             RENDER_GID=107 docker compose -f "$file" config --quiet
           done
 
+  macos-sidecar:
+    name: macOS sidecar build & test
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: sidecars/macos
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift test
+      - run: swift build --configuration release
+
   docker:
     name: Docker image, smoke, and publish
     needs: [backend, frontend, docs]

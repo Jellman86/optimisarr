@@ -99,6 +99,23 @@ public struct URLSessionTransport: HTTPTransport {
         if http.statusCode == 200 {
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.moveItem(at: temporary, to: destination)
+        } else if http.statusCode == 206 {
+            if !FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.moveItem(at: temporary, to: destination)
+                return http
+            }
+
+            let input = try FileHandle(forReadingFrom: temporary)
+            let output = try FileHandle(forWritingTo: destination)
+            defer {
+                try? input.close()
+                try? output.close()
+                try? FileManager.default.removeItem(at: temporary)
+            }
+            try output.seekToEnd()
+            while let bytes = try input.read(upToCount: 1024 * 1024), !bytes.isEmpty {
+                try output.write(contentsOf: bytes)
+            }
         } else {
             try? FileManager.default.removeItem(at: temporary)
         }
@@ -121,9 +138,14 @@ public struct URLSessionTransport: HTTPTransport {
 /// with the server tests nothing about the contract.
 public struct SidecarClient: Sendable {
     private let transport: HTTPTransport
+    private let downloadChunkBytes: Int64
 
-    public init(transport: HTTPTransport = URLSessionTransport()) {
+    public init(
+        transport: HTTPTransport = URLSessionTransport(),
+        downloadChunkBytes: Int64 = 64 * 1024 * 1024
+    ) {
         self.transport = transport
+        self.downloadChunkBytes = max(1, downloadChunkBytes)
     }
 
     /// Redeems a PIN and returns the credential. The PIN is single-use: a failure here generally
@@ -335,30 +357,93 @@ public struct SidecarClient: Sendable {
     public func fetchSource(
         serverAddress: String, credential: String, leaseId: String, to destination: URL
     ) async throws -> String {
-        let request = try authorised(
-            serverAddress, "/api/workers/leases/\(leaseId)/source", credential: credential, method: "GET")
-        let response: HTTPURLResponse
-        do {
-            response = try await transport.download(request, to: destination)
-        } catch let error as SidecarError {
-            throw error
-        } catch {
-            throw SidecarError.transferFailed(reason: "The source transfer failed: \(error.localizedDescription)")
-        }
+        var offset = Self.fileSize(destination)
+        var declaredHash: String?
 
-        switch response.statusCode {
-        case 200:
-            guard let hash = response.value(forHTTPHeaderField: "X-Optimisarr-Source-Sha256"), !hash.isEmpty else {
-                throw SidecarError.unexpectedResponse(status: 200)
+        while true {
+            var request = try authorised(
+                serverAddress, "/api/workers/leases/\(leaseId)/source", credential: credential, method: "GET")
+            let width = downloadChunkBytes - 1
+            let end = offset > Int64.max - width ? Int64.max : offset + width
+            request.setValue("bytes=\(offset)-\(end)", forHTTPHeaderField: "Range")
+
+            let response: HTTPURLResponse
+            do {
+                response = try await transport.download(request, to: destination)
+            } catch let error as SidecarError {
+                throw error
+            } catch {
+                throw SidecarError.transferFailed(reason: "The source transfer failed: \(error.localizedDescription)")
             }
-            return hash
-        case 401:
-            throw SidecarError.credentialRejected
-        case 403, 404, 409:
-            throw SidecarError.leaseLost(reason: "The source is no longer available for this lease.")
-        case let status:
+
+            switch response.statusCode {
+            case 200:
+                return try Self.sourceHash(response, status: 200)
+            case 206:
+                let hash = try Self.sourceHash(response, status: 206)
+                if let declaredHash, declaredHash.caseInsensitiveCompare(hash) != .orderedSame {
+                    try? Self.truncate(destination, to: offset)
+                    throw SidecarError.transferFailed(reason: "The source changed while it was being downloaded.")
+                }
+                declaredHash = hash
+
+                guard let range = Self.contentRange(response), range.start == offset else {
+                    try? Self.truncate(destination, to: offset)
+                    throw SidecarError.transferFailed(reason: "The server returned an invalid source byte range.")
+                }
+                let expectedSize = range.end + 1
+                guard Self.fileSize(destination) == expectedSize else {
+                    try? Self.truncate(destination, to: offset)
+                    throw SidecarError.transferFailed(reason: "The source range did not arrive in full.")
+                }
+                if expectedSize == range.total {
+                    return hash
+                }
+                offset = expectedSize
+            case 401:
+                throw SidecarError.credentialRejected
+            case 403, 404, 409:
+                throw SidecarError.leaseLost(reason: "The source is no longer available for this lease.")
+            case let status:
+                throw SidecarError.unexpectedResponse(status: status)
+            }
+        }
+    }
+
+    private static func sourceHash(_ response: HTTPURLResponse, status: Int) throws -> String {
+        guard let hash = response.value(forHTTPHeaderField: "X-Optimisarr-Source-Sha256"), !hash.isEmpty else {
             throw SidecarError.unexpectedResponse(status: status)
         }
+        return hash
+    }
+
+    private static func contentRange(_ response: HTTPURLResponse) -> (start: Int64, end: Int64, total: Int64)? {
+        guard
+            let value = response.value(forHTTPHeaderField: "Content-Range"),
+            value.hasPrefix("bytes ")
+        else { return nil }
+        let parts = value.dropFirst("bytes ".count).split(separator: "/", maxSplits: 1)
+        guard parts.count == 2, let total = Int64(parts[1]) else { return nil }
+        let bounds = parts[0].split(separator: "-", maxSplits: 1)
+        guard
+            bounds.count == 2,
+            let start = Int64(bounds[0]),
+            let end = Int64(bounds[1]),
+            start >= 0,
+            end >= start,
+            total > end
+        else { return nil }
+        return (start, end, total)
+    }
+
+    private static func fileSize(_ file: URL) -> Int64 {
+        (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    private static func truncate(_ file: URL, to size: Int64) throws {
+        let handle = try FileHandle(forWritingTo: file)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: UInt64(size))
     }
 
     /// Delivers the candidate, declaring both hashes so the server can bind the file to the

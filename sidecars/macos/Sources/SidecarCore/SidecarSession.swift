@@ -56,6 +56,7 @@ public final class SidecarSession: ObservableObject {
     private let store: CredentialStore
     private let prober: CapabilityProber?
     private let executor: WorkExecutor?
+    private let scratchCapacity: @Sendable () -> Int64
     private var capabilities: SidecarCapabilities
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
@@ -73,6 +74,9 @@ public final class SidecarSession: ObservableObject {
         capabilities: SidecarCapabilities = .provenToday(name: Host.current().localizedName ?? "Mac"),
         prober: CapabilityProber? = CapabilityProber(),
         executor: WorkExecutor? = JobRunner(),
+        scratchCapacity: @escaping @Sendable () -> Int64 = {
+            JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
+        },
         jobConcurrency: Int = UserDefaults.standard.object(forKey: "jobConcurrency") as? Int ?? 1,
         persistConcurrency: @escaping @Sendable (Int) -> Void = { UserDefaults.standard.set($0, forKey: "jobConcurrency") },
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
@@ -84,6 +88,7 @@ public final class SidecarSession: ObservableObject {
         self.capabilities = capabilities
         self.prober = prober
         self.executor = executor
+        self.scratchCapacity = scratchCapacity
         self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
         self.persistConcurrency = persistConcurrency
         self.sleep = sleep
@@ -139,6 +144,7 @@ public final class SidecarSession: ObservableObject {
         if let prober {
             capabilities = await prober.probe(name: capabilities.name, maxConcurrency: jobConcurrency)
         }
+        capabilities.freeScratchBytes = max(0, scratchCapacity())
 
         do {
             let result = try await client.pair(
@@ -243,6 +249,7 @@ public final class SidecarSession: ObservableObject {
             guard let pairing else { return }
 
             do {
+                capabilities.freeScratchBytes = max(0, scratchCapacity())
                 let beat = try await client.heartbeat(
                     serverAddress: pairing.serverAddress,
                     credential: pairing.credential,

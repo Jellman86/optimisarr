@@ -15,6 +15,7 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     private(set) var callCount = 0
     /// How many times work was asked for, whatever the scripted answer was.
     private(set) var claims = 0
+    private(set) var heartbeatScratchBytes: [Int64] = []
 
     init(_ replies: [Reply]) {
         self.replies = replies
@@ -24,6 +25,12 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
         let reply: Reply = lock.withLock {
             callCount += 1
             if request.url?.path.hasSuffix("/claim") == true { claims += 1 }
+            if request.url?.path.hasSuffix("/heartbeat") == true,
+               let body = request.httpBody,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let bytes = (json["freeScratchBytes"] as? NSNumber)?.int64Value {
+                heartbeatScratchBytes.append(bytes)
+            }
             return replies.count > 1 ? replies.removeFirst() : replies[0]
         }
         let data = (try? JSONSerialization.data(withJSONObject: reply.json)) ?? Data()
@@ -187,6 +194,31 @@ struct SidecarSessionTests {
         }
 
         #expect(session.status.summary == "Connected")
+    }
+
+    @Test("every check-in reports current work-volume capacity rather than the launch-time value")
+    func heartbeatRefreshesScratchCapacity() async throws {
+        let store = InMemoryCredentialStore(
+            stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11))
+        let transport = ScriptedTransport([
+            .init(status: 200, json: ["workerId": 11, "protocolVersion": 1, "heartbeatIntervalSeconds": 30]),
+        ])
+        let session = SidecarSession(
+            client: SidecarClient(transport: transport),
+            store: store,
+            capabilities: SidecarCapabilities(
+                name: "Test", videoEncoders: ["libx265"], freeScratchBytes: 999, maxConcurrency: 1),
+            prober: nil,
+            executor: nil,
+            scratchCapacity: { 321 },
+            persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        session.restore()
+        try await waitFor { !transport.heartbeatScratchBytes.isEmpty }
+
+        #expect(transport.heartbeatScratchBytes.first == 321)
+        session.unpair()
     }
 
     private static let beat: ScriptedTransport.Reply =

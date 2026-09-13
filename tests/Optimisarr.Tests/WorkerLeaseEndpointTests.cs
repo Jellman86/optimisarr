@@ -946,15 +946,19 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var leaseId = assignment.GetProperty("leaseId").GetString()!;
 
         var request = new HttpRequestMessage(HttpMethod.Get, $"/api/workers/leases/{leaseId}/source");
-        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(1000, null);
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(1000, 1999);
 
         using var partial = await worker.SendAsync(request);
 
         // Without this a worker whose connection drops part-way through a multi-gigabyte source has
         // to start again from zero.
         Assert.Equal(HttpStatusCode.PartialContent, partial.StatusCode);
-        var tail = await partial.Content.ReadAsByteArrayAsync();
-        Assert.Equal(SourceBytes.Skip(1000).ToArray(), tail);
+        Assert.Equal(1000, partial.Content.Headers.ContentRange?.From);
+        Assert.Equal(1999, partial.Content.Headers.ContentRange?.To);
+        Assert.Equal(SourceBytes.Length, partial.Content.Headers.ContentRange?.Length);
+        var range = await partial.Content.ReadAsByteArrayAsync();
+        Assert.Equal(SourceBytes.Skip(1000).Take(1000).ToArray(), range);
+        Assert.Single(partial.Headers.GetValues("X-Optimisarr-Source-Sha256"));
     }
 
     [Fact]
