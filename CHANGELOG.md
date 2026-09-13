@@ -4,6 +4,25 @@
 
 ### Added
 
+- **A dropped source download resumes instead of starting a multi-gigabyte file again.** The macOS
+  sidecar fetches sources in bounded 64 MB byte ranges, keeps every complete range across transient
+  failures, and asks for the next missing byte. It validates each `Content-Range`, requires the
+  source hash on every response, and still hashes the assembled source before ffmpeg sees it. A
+  server that predates ranged delivery can return the whole file as before.
+- **A remote job keeps its lease during every long-running stage.** Renewal used to run only beside
+  ffmpeg, leaving a slow source download or candidate upload able to outlive its lease. Fetching,
+  encoding, VMAF measurement, and delivery now all renew with their current stage; if renewal says
+  the lease is gone, the in-flight transfer or process is cancelled immediately.
+- **The macOS sidecar has its own CI gate.** Pull requests and protected-branch pushes now run the
+  Swift protocol/lifecycle suite and a release build on an Apple Silicon macOS runner, so this
+  separately versioned client can no longer regress while the Linux backend and web jobs stay green.
+- **The macOS sidecar rechecks free scratch space before it downloads a claimed source.** The
+  server already considers reported capacity while assigning work, but free space can change
+  between a heartbeat and a claim, especially with several jobs at once. The runner now measures
+  the actual work volume immediately before transfer and hands back a job that cannot still hold
+  its source plus candidate allowance; an unreadable capacity fails closed before any media moves.
+  Every heartbeat also refreshes that same work-volume capacity instead of repeating the value
+  measured at launch, so a low-space Mac stops being offered work rather than repeatedly refusing it.
 - **A library can say where its work may run once remote workers are on.** Advanced options gain
   **Where this library's work may run**, shown only while remote workers are switched on and the
   preview flag is present: *Here or on a worker* (the default, and what every existing library

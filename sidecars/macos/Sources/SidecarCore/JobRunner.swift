@@ -114,6 +114,11 @@ final class LatestProgress: @unchecked Sendable {
     }
 }
 
+private enum LeaseOperation<T: Sendable>: Sendable {
+    case completed(T)
+    case renewalStopped
+}
+
 /// Executes assignments, so the session can be driven in tests without an ffmpeg or a server.
 public protocol WorkExecutor: Sendable {
     func execute(
@@ -137,6 +142,7 @@ public struct JobRunner: WorkExecutor {
     private let ffmpeg: URL?
     private let runner: TranscodeRunner
     private let scratchRoot: URL
+    private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
     public init(
@@ -144,6 +150,7 @@ public struct JobRunner: WorkExecutor {
         ffmpeg: URL? = CapabilityProber.bundledFfmpeg(),
         runner: TranscodeRunner = ProcessTranscodeRunner(),
         scratchRoot: URL = JobRunner.defaultScratchRoot(),
+        availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
@@ -152,6 +159,7 @@ public struct JobRunner: WorkExecutor {
         self.ffmpeg = ffmpeg
         self.runner = runner
         self.scratchRoot = scratchRoot
+        self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
     }
 
@@ -161,6 +169,20 @@ public struct JobRunner: WorkExecutor {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("OptimisarrSidecar/work", isDirectory: true)
+    }
+
+    /// Capacity of the volume that will actually hold work. The app-support path may not exist on
+    /// first launch, so walk to its nearest existing ancestor rather than reporting zero from a
+    /// URL whose volume metadata cannot yet be read.
+    public static func availableScratchBytes(at directory: URL) -> Int64? {
+        var existing = directory
+        while !FileManager.default.fileExists(atPath: existing.path) {
+            let parent = existing.deletingLastPathComponent()
+            guard parent != existing else { return nil }
+            existing = parent
+        }
+        let values = try? existing.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
     }
 
     public func execute(
@@ -196,6 +218,63 @@ public struct JobRunner: WorkExecutor {
 
     /// How many times a chunk may fail before the delivery is given up.
     static let maxChunkFailures = 20
+
+    /// Source ranges use the same bounded retry budget as candidate chunks. A transient network
+    /// failure keeps the complete ranges already on disk; an exhausted budget hands the lease
+    /// back instead of retrying forever.
+    static let maxSourceFailures = 20
+
+    private func fetchSource(
+        _ assignment: Assignment, pairing: StoredPairing, destination: URL
+    ) async throws -> String {
+        var failures = 0
+        while true {
+            try Task.checkCancellation()
+            do {
+                return try await client.fetchSource(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    leaseId: assignment.leaseId, to: destination)
+            } catch SidecarError.transferFailed {
+                failures += 1
+                guard failures <= Self.maxSourceFailures else {
+                    throw SidecarError.transferFailed(reason: "The source download failed \(failures) times.")
+                }
+                try await sleep(min(30, Double(failures) * 2))
+            }
+        }
+    }
+
+    /// Runs a potentially long stage beside the lease heartbeat. Whichever finishes first stops
+    /// the other: a completed stage no longer needs its renewal loop, while a refused renewal
+    /// cancels the transfer or process immediately so this Mac does no more work under a dead
+    /// lease. This wraps fetching, encoding, measuring, and delivery — not only ffmpeg.
+    private func whileRenewingLease<T: Sendable>(
+        _ assignment: Assignment,
+        pairing: StoredPairing,
+        progress: @escaping @Sendable () -> JobProgress,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: LeaseOperation<T>.self) { group in
+            group.addTask { .completed(try await operation()) }
+            group.addTask {
+                let interval = min(15, max(5, Double(assignment.renewWithinSeconds) / 2))
+                while !Task.isCancelled {
+                    try await sleep(interval)
+                    try await client.renew(
+                        serverAddress: pairing.serverAddress, credential: pairing.credential,
+                        leaseId: assignment.leaseId, progress: progress())
+                }
+                return .renewalStopped
+            }
+
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw CancellationError() }
+            switch first {
+            case let .completed(value): return value
+            case .renewalStopped: throw CancellationError()
+            }
+        }
+    }
 
     /// Delivers the candidate in chunks the server confirms, resuming from whatever it holds
     /// after a failure; a server that predates resumable delivery gets the whole file at once.
@@ -266,20 +345,6 @@ public struct JobRunner: WorkExecutor {
         return logs
     }
 
-    /// A renewal that only says where the job is; a lost lease still surfaces, everything else is
-    /// left for the regular renewal loop to notice.
-    private func renewQuietly(_ assignment: Assignment, pairing: StoredPairing, progress: JobProgress) async throws {
-        do {
-            try await client.renew(
-                serverAddress: pairing.serverAddress, credential: pairing.credential,
-                leaseId: assignment.leaseId, progress: progress)
-        } catch SidecarError.leaseLost {
-            throw SidecarError.leaseLost(reason: "The lease was lost while measuring quality.")
-        } catch {
-            // Transient; the next renewal will say the same thing.
-        }
-    }
-
     private func run(
         _ assignment: Assignment,
         pairing: StoredPairing,
@@ -299,13 +364,31 @@ public struct JobRunner: WorkExecutor {
         }
 
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        let required = assignment.sourceBytes.addingReportingOverflow(assignment.sourceBytes / 2)
+        guard assignment.sourceBytes > 0, !required.overflow else {
+            return await release(assignment, pairing: pairing, reason: "The assignment named an invalid source size.")
+        }
+        let requiredScratch = required.partialValue
+        guard let available = availableScratchBytes(scratch) else {
+            return await release(
+                assignment, pairing: pairing,
+                reason: "The Mac could not determine how much scratch space is available, so it did not download the source.")
+        }
+        guard available >= requiredScratch else {
+            return await release(
+                assignment, pairing: pairing,
+                reason: "The job needs \(requiredScratch) bytes of scratch space, but only \(available) bytes are available.")
+        }
         let source = scratch.appendingPathComponent("source", isDirectory: false)
         let candidate = scratch.appendingPathComponent("candidate.\(assignment.outputExtension)", isDirectory: false)
+        let latest = LatestProgress(.fetchingSource)
 
         progress(.fetchingSource)
-        let declaredSourceHash = try await client.fetchSource(
-            serverAddress: pairing.serverAddress, credential: pairing.credential,
-            leaseId: assignment.leaseId, to: source)
+        let declaredSourceHash = try await whileRenewingLease(
+            assignment, pairing: pairing, progress: latest.get
+        ) {
+            try await fetchSource(assignment, pairing: pairing, destination: source)
+        }
         let actualSourceHash = try Self.sha256(of: source)
         guard actualSourceHash.caseInsensitiveCompare(declaredSourceHash) == .orderedSame else {
             return await release(assignment, pairing: pairing,
@@ -313,38 +396,20 @@ public struct JobRunner: WorkExecutor {
         }
 
         let arguments = command.materialise(input: source, output: candidate)
-        let latest = LatestProgress(.encoding(encodedSeconds: 0))
-        let encode = try await withThrowingTaskGroup(of: (Int32, String)?.self) { group in
-            group.addTask {
-                let result = try await runner.run(ffmpeg, arguments) { seconds in
-                    latest.set(.encoding(encodedSeconds: seconds))
-                    progress(.encoding(encodedSeconds: seconds))
-                }
-                return result
+        latest.set(.encoding(encodedSeconds: 0))
+        let encode = try await whileRenewingLease(
+            assignment, pairing: pairing, progress: latest.get
+        ) {
+            try await runner.run(ffmpeg, arguments) { seconds in
+                latest.set(.encoding(encodedSeconds: seconds))
+                progress(.encoding(encodedSeconds: seconds))
             }
-            group.addTask {
-                // Renew at half the window the server states, so one missed renewal does not
-                // cost the lease, and no less often than every fifteen seconds so the bar the
-                // operator watches actually moves. A lost lease throws, which cancels the encode.
-                let interval = min(15, max(5, Double(assignment.renewWithinSeconds) / 2))
-                while true {
-                    try await sleep(interval)
-                    try await client.renew(
-                        serverAddress: pairing.serverAddress, credential: pairing.credential,
-                        leaseId: assignment.leaseId, progress: latest.get())
-                }
-            }
-            // The encode finishes first in every healthy run; the renewal loop only ever ends by
-            // throwing. Either way the other task is cancelled before returning.
-            let first = try await group.next()
-            group.cancelAll()
-            return first ?? nil
         }
 
-        guard let encode, encode.0 == 0 else {
-            let detail = encode?.1.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard encode.0 == 0 else {
+            let detail = encode.1.trimmingCharacters(in: .whitespacesAndNewlines)
             return await release(assignment, pairing: pairing,
-                reason: "ffmpeg exited with code \(encode?.0 ?? -1)." + (detail.isEmpty ? "" : " \(detail)"))
+                reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"))
         }
 
         let candidateHash = try Self.sha256(of: candidate)
@@ -354,8 +419,13 @@ public struct JobRunner: WorkExecutor {
         // cannot be made, the candidate is still delivered and the server measures for itself.
         if assignment.quality.measure, !assignment.quality.commands.isEmpty {
             progress(.measuring)
-            try await renewQuietly(assignment, pairing: pairing, progress: .measuring)
-            if let logs = await measure(assignment, ffmpeg: ffmpeg, source: source, candidate: candidate, scratch: scratch) {
+            latest.set(.measuring)
+            let logs = try await whileRenewingLease(
+                assignment, pairing: pairing, progress: latest.get
+            ) {
+                await measure(assignment, ffmpeg: ffmpeg, source: source, candidate: candidate, scratch: scratch)
+            }
+            if let logs {
                 try? await client.reportQuality(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId, sourceSha256: declaredSourceHash,
@@ -364,9 +434,14 @@ public struct JobRunner: WorkExecutor {
         }
 
         progress(.delivering)
-        let receipt = try await deliver(
-            assignment, pairing: pairing, candidate: candidate,
-            sourceSha256: declaredSourceHash, candidateSha256: candidateHash)
+        latest.set(.delivering)
+        let receipt = try await whileRenewingLease(
+            assignment, pairing: pairing, progress: latest.get
+        ) {
+            try await deliver(
+                assignment, pairing: pairing, candidate: candidate,
+                sourceSha256: declaredSourceHash, candidateSha256: candidateHash)
+        }
         return .delivered(jobId: receipt.jobId, bytes: receipt.bytes)
     }
 

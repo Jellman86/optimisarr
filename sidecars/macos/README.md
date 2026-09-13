@@ -16,8 +16,12 @@ server has verified it can finish a job that came back — asks for work. A job 
    `{{output}}` token in last position carrying the promised extension, and no other value looks
    like a path. Anything else is refused whole and the job handed back with the offending token
    named. The server decides *what* to encode; it never names files on this machine.
-3. **Fetch and prove.** The source is downloaded by lease into the app's own scratch and hashed;
-   a transfer that does not match the server's hash is never encoded.
+3. **Fetch and prove.** The source is downloaded by lease into the app's own scratch in 64 MB byte
+   ranges. A dropped connection resumes from the last complete range rather than restarting a
+   multi-gigabyte file. Every range is checked against the server's response and the assembled
+   source is hashed; a transfer that does not match the server's hash is never encoded. Immediately
+   before the first byte, the sidecar also rechecks that its real work volume can still hold the
+   source plus the candidate allowance and hands the lease back if it cannot.
 4. **Encode, renewing.** The bundled ffmpeg runs the command against this Mac's paths. The lease
    is renewed throughout; losing it stops the encode rather than finishing work the server has
    already given to someone else.
@@ -138,10 +142,14 @@ width. Once visible it can be ⌘-dragged wherever suits.
 
 ```bash
 swift test
+swift build --configuration release
 ```
 
-43 tests covering the protocol client, the pairing and check-in lifecycle, address handling,
-and capability probing — including live probes against the bundled ffmpeg.
+The suite covers the protocol client, resumable transfers, scratch-space refusal, lease loss during
+transfers, the pairing and check-in lifecycle, address handling, and capability probing — including
+live probes against the bundled ffmpeg. CI runs the ordinary suite and release build on an Apple
+Silicon macOS runner; the live suites remain explicit acceptance tests because they need the pinned
+FFmpeg and, for the work loop, a paired server with a suitable queued job.
 
 There is also a live suite that runs against a real server, skipped unless you point it at one:
 

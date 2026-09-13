@@ -153,6 +153,16 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private var staged = Data()
     private(set) var chunkOffsets: [Int64] = []
     private(set) var completedViaChunks = false
+    /// Serve the source in the byte ranges the client asks for rather than as one response.
+    var rangedSource = false
+    /// Drop the range beginning at this offset once, as an interrupted download would.
+    var dropSourceAt: Int64? = nil
+    private(set) var sourceOffsets: [Int64] = []
+    private(set) var sourceDownloads = 0
+    var sourceDelay: TimeInterval = 0
+    private(set) var sourceDownloadCompleted = false
+    var deliveryDelay: TimeInterval = 0
+    private(set) var deliveryCompleted = false
 
     init(sourceBytes: Data, claimJSON: [String: Any]? = nil) {
         self.sourceBytes = sourceBytes
@@ -218,13 +228,48 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     }
 
     func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse {
+        sourceDownloads += 1
+        if sourceDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(sourceDelay * 1_000_000_000))
+        }
+        sourceDownloadCompleted = true
+        if rangedSource {
+            let range = request.value(forHTTPHeaderField: "Range") ?? ""
+            let bounds = range
+                .replacingOccurrences(of: "bytes=", with: "")
+                .split(separator: "-", maxSplits: 1)
+            let start = Int64(bounds.first ?? "") ?? -1
+            let requestedEnd = Int64(bounds.count > 1 ? bounds[1] : "") ?? -1
+            sourceOffsets.append(start)
+            if let drop = dropSourceAt, drop == start {
+                dropSourceAt = nil
+                throw SidecarError.transferFailed(reason: "connection reset")
+            }
+            let end = min(requestedEnd, Int64(sourceBytes.count) - 1)
+            let chunk = sourceBytes[Int(start)...Int(end)]
+            if !FileManager.default.fileExists(atPath: destination.path) {
+                FileManager.default.createFile(atPath: destination.path, contents: nil)
+            }
+            let handle = try FileHandle(forWritingTo: destination)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: chunk)
+            return response(request, 206, headers: [
+                "Content-Range": "bytes \(start)-\(end)/\(sourceBytes.count)",
+                "X-Optimisarr-Source-Sha256": sourceSha256,
+            ])
+        }
         try sourceBytes.write(to: destination)
         return response(request, 200, headers: ["X-Optimisarr-Source-Sha256": sourceSha256])
     }
 
     func upload(_ request: URLRequest, fromFile file: URL) async throws -> (Data, HTTPURLResponse) {
+        if deliveryDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(deliveryDelay * 1_000_000_000))
+        }
         let delivered = try Data(contentsOf: file)
         return lock.withLock {
+            deliveryCompleted = true
             deliveredFile = delivered
             deliveredHeaders = request.allHTTPHeaderFields ?? [:]
             let body = deliverStatus == 202
@@ -236,6 +281,29 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
 
     private func response(_ request: URLRequest, _ status: Int, headers: [String: String] = [:]) -> HTTPURLResponse {
         HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!
+    }
+}
+
+@Suite("Resumable source download")
+struct ResumableSourceDownloadTests {
+    @Test("a dropped source range resumes from the last complete byte without downloading it twice")
+    func resumesAfterDroppedRange() async throws {
+        let bytes = Data((0..<200).map(UInt8.init))
+        let server = FakeWorkerServer(sourceBytes: bytes)
+        server.rangedSource = true
+        server.dropSourceAt = 64
+        let runner = JobRunner(
+            client: SidecarClient(transport: server, downloadChunkBytes: 64),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(server.sourceOffsets == [0, 64, 64, 128, 192])
+        #expect(server.deliveredFile == Data("candidate bytes".utf8))
     }
 }
 
@@ -276,15 +344,43 @@ private let measurementCommand: [String] = [
     "-f", "null", "-",
 ]
 
-private func assignment(renewWithinSeconds: Int = 30, measure: Bool = false) -> Assignment {
+private func assignment(renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096) -> Assignment {
     Assignment(
-        leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: 4_096,
+        leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: sourceBytes,
         videoEncoder: "hevc_videotoolbox", renewWithinSeconds: renewWithinSeconds,
         arguments: serverCommand, outputExtension: "mp4",
         quality: QualityRequirement(
             measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
             commands: measure ? [measurementCommand] : [], sampling: "Full file"))
+}
+
+@Suite("Scratch capacity")
+struct ScratchCapacityTests {
+    @Test("a job that no longer fits is handed back before its source is downloaded")
+    func refusesBeforeDownload() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 100))
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            availableScratchBytes: { _ in 149 },
+            sleep: { _ in })
+
+        let outcome = await runner.execute(
+            assignment(sourceBytes: 100), pairing: pairing) { _ in }
+
+        guard case let .released(jobId, reason) = outcome else {
+            Issue.record("expected a release, got \(outcome)")
+            return
+        }
+        #expect(jobId == 12)
+        #expect(reason.contains("150 bytes"))
+        #expect(reason.contains("149 bytes"))
+        #expect(server.sourceDownloads == 0)
+        #expect(server.deliveredFile == nil)
+    }
 }
 
 private let pairing = StoredPairing(serverAddress: "localhost:8787", credential: "secret", workerId: 3)
@@ -409,6 +505,52 @@ struct JobRunnerTests {
             return
         }
         #expect(Date().timeIntervalSince(started) < 4)
+        #expect(server.deliveredFile == nil)
+    }
+
+    @Test("losing the lease during a source transfer cancels the download")
+    func lostLeaseCancelsSourceTransfer() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 1, count: 64))
+        server.sourceDelay = 0.2
+        server.renewStatus = 409
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(renewWithinSeconds: 10), pairing: pairing) { _ in }
+
+        guard case .leaseLost = outcome else {
+            Issue.record("expected the lease to be lost, got \(outcome)")
+            return
+        }
+        #expect(!server.sourceDownloadCompleted)
+        #expect(server.deliveredFile == nil)
+    }
+
+    @Test("losing the lease during delivery cancels the upload")
+    func lostLeaseCancelsDelivery() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 1, count: 64))
+        server.deliveryDelay = 0.2
+        server.renewStatus = 409
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(renewWithinSeconds: 10), pairing: pairing) { _ in }
+
+        guard case .leaseLost = outcome else {
+            Issue.record("expected the lease to be lost, got \(outcome)")
+            return
+        }
+        #expect(!server.deliveryCompleted)
         #expect(server.deliveredFile == nil)
     }
 }

@@ -477,9 +477,9 @@ the replacement workflow is trustworthy.
      logic — the control plane owns the contract and a newer sidecar falls back to what this build
      speaks, non-overlapping ranges are refused with a reason, and an assignment is offered only
      when the encoder, hardware decoder, VMAF mode, scratch space, and concurrency all clear, with
-     every unmet requirement named. Nothing is wired to HTTP, persistence, or the queue yet, so no
-     work can currently reach a sidecar. **Still to define:** registration, heartbeats, leases,
-     progress and cancellation, hashes, the resolved-policy payload, evidence, and acknowledgement.
+     every unmet requirement named. Registration, heartbeats, leases, progress, cancellation,
+     hashes, the resolved-policy payload, evidence, and acknowledgement are now wired through the
+     HTTP API, persistence, queue, and macOS sidecar work loop.
    - **Secure pairing and revocation: started.** Register a sidecar through a short-lived,
      single-use code displayed by the main app, then issue it a unique revocable credential. Bind
      every assignment and result to the registered worker and job lease; redact credentials from
@@ -509,8 +509,8 @@ the replacement workflow is trustworthy.
      be forgotten at a call site. Reachability uses one rule shared by the API and UI — a 30-second
      interval against a 2-minute threshold, deliberately different so one dropped beat cannot flap
      the status — and the Workers tab shows Online, Offline, Drained, or Revoked.
-     **Still to build:** binding assignments and results to the credential and lease, credential
-     rotation, and the TLS/LAN guidance.
+     Assignments, source access, evidence, and results are now bound to the credential and lease.
+     **Still to build:** credential rotation and the TLS/LAN guidance.
    - **Efficient, integrity-checked media delivery: started.** Support resumable, bounded, checksummed
      streaming when the sidecar cannot see the library. Also offer an explicit shared-storage path
      mapping for SMB/NFS-mounted media so multi-gigabyte sources need not cross the network twice.
@@ -530,7 +530,7 @@ the replacement workflow is trustworthy.
      the one recorded when the source was fetched, and the upload matches the hash the worker
      declared — which together cover the late result, the duplicate delivery, the candidate encoded
      from the wrong original, and the truncated upload. An accepted candidate lands in the work
-     directory a local transcode would have used and the job moves to `Verifying`, never to
+     directory a local transcode would have used and the job moves to `AwaitingVerification`, never to
      `ReadyToReplace`.
      **Landed on the evidence side:** `RemoteQualityEvidenceValidator` defines what makes a remote
      VMAF measurement admissible, failing closed on every path. Evidence is refused unless it names
@@ -539,10 +539,10 @@ the replacement workflow is trustworthy.
      and was measured against thresholds at least as strict as the library requires. Stricter is
      accepted: passing a harder test than the one set still passes the one set. Absent evidence is
      refused rather than read as "nothing objected".
-     **Still to build:** the shared-storage path mapping for workers that can already see the
-     library, resumable upload, wiring the evidence contract into the result route, and running the
-     existing verification over a returned candidate so every structural, decode, duration, tail,
-     stream and size gate is repeated locally.
+     Resumable upload, worker-side evidence, and the local verification pass have since landed.
+     Source downloads now resume in validated 64 MB ranges too, with a final whole-file hash before
+     encoding. **Still to build:** the shared-storage path mapping for workers that can already see
+     the library.
    - **Capability-aware leases and recovery: started.** Schedule only when OS, architecture, FFmpeg
      build, encoder, decoder, VMAF mode, free scratch space, and configured concurrency satisfy the
      job. Persist idempotent leases with expiry and heartbeats, expose drain/disable controls, and
@@ -644,10 +644,8 @@ the replacement workflow is trustworthy.
         since selection runs on this machine's encoder and does not transfer. The VideoToolbox
         family is now known to the selector, the quality, preset and tuning policies, and the
         command builder (`-q:v` on a linear map from the CRF scale; **real-hardware calibration of
-        that line is still owed**). Left for later pieces: adaptive selection on the worker,
-        hardware decode for a worker that proves a decoder, the VMAF command itself (piece 3 will
-        ship it as a second server-built array so crop, frame-rate and HDR preparation stay in one
-        place), and the worker-side allowlist validation.
+        that line is still owed**). Hardware decode, the VMAF command, and worker-side allowlist
+        validation have since landed. Adaptive selection on the worker remains.
 
      2. **A verification pass for a delivered candidate: landed 2026-09-04.** Before it,
         `POST /api/workers/leases/{id}/result`
@@ -681,9 +679,9 @@ the replacement workflow is trustworthy.
         candidate found mid-verification, recognised by its `remote-<job>` name (`RemoteCandidate`),
         and requeues local work as before. Enqueue de-duplication, timed cleanup, stats, queue
         clearing, cancel and the queue page all know the two remote statuses. A result for a job
-        that is no longer `Leased` (cancelled, say) is refused. VMAF is re-measured locally for now;
-        `RemoteQualityEvidenceValidator` is wired in with piece 3, when a worker can produce
-        evidence to validate.
+        that is no longer `Leased` (cancelled, say) is refused. Worker-side VMAF evidence has since
+        landed and is accepted only when its hashes and policy satisfy `RemoteQualityEvidenceValidator`;
+        otherwise the server measures locally.
 
      3. **The sidecar's work loop: landed 2026-09-04.** Claim, renew, release, source download
         with a hash check, transcode with progress, and result upload are implemented
@@ -692,9 +690,9 @@ the replacement workflow is trustworthy.
         allowlist of the options the server's builder emits, the two placeholder tokens as the only
         input and output, and no path-like value; a refused command hands the job back naming the
         token. Losing the lease cancels the encode; forgetting the pairing cancels the job; scratch
-        is removed on every exit path. **Left for later:** Range-resumed downloads (a dropped
-        transfer restarts today), and VMAF measurement on the worker with the evidence upload that
-        `RemoteQualityEvidenceValidator` will judge (the server re-measures until then).
+        is removed on every exit path. Worker-side VMAF and resumable uploads landed on 2026-09-10.
+        On 2026-09-12 source downloads also became resumable in validated 64 MB ranges, and the
+        runner gained a fail-closed free-space recheck immediately before fetching a claimed source.
 
         **Real-hardware evidence (2026-09-04, Apple Silicon Mac, local server built from dev):**
         `LiveWorkLoopTests` paired with proved capabilities, claimed a queued 1080p60 H.264 job,
@@ -712,9 +710,9 @@ the replacement workflow is trustworthy.
         for its escaped comma until taught to tell an escape from a Windows path, which is the
         fail-closed behaviour it exists for.
 
-     4. **Drain controls**, and then productionisation: launch-at-login, sleep/wake, App Nap,
-        low-disk handling, cancel-on-quit. Developer ID signing and notarisation are unblocked — a
-        paid Apple Developer membership is available — but remain the last step, and neither
+     4. **Productionisation.** Drain controls, launch-at-login, sleep/wake, App Nap,
+        cancel-on-quit, and a pre-transfer low-disk refusal have landed. Developer ID signing,
+        notarisation, update packaging, and the full release-build acceptance run remain; neither
         platform is described as supported until there is real-hardware acceptance evidence.
 
    - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
@@ -744,13 +742,16 @@ the replacement workflow is trustworthy.
      and the feature being switched off server-side are each surfaced distinctly rather than as a
      generic failure. A live test suite runs the real client against a running server, which is how
      this contract gets a second implementation holding it honest. It now claims work, fetches the
-     source by lease, validates and runs the server's command with the bundled ffmpeg, renews the
-     lease throughout, and delivers the candidate with both hashes (see piece 3 above), and has
+     source by lease in resumable ranges, validates and runs the server's command with the bundled
+     ffmpeg, keeps the lease renewed, measures VMAF, and delivers the candidate with both hashes in
+     resumable chunks (see piece 3 above), and has
      done so end to end on real Apple Silicon hardware against a server built from `dev`, with the
-     candidate passing every server gate including VMAF. **Still to build:** VMAF on the worker,
-     Range-resumed transfers, launch-at-login, sleep/wake and App Nap handling, drain controls,
-     and Developer ID signing and notarisation. Neither platform is described as supported until
-     that list is done and the evidence is repeated on a release build.
+     candidate passing every server gate including VMAF. Launch-at-login, sleep/wake, App Nap,
+     drain controls, concurrent jobs, and a pre-transfer low-disk refusal have landed too.
+     Every long-running stage now renews the lease and cancels its transfer or process if the lease
+     is lost. **Still to build:** upgrade packaging, Developer ID signing and notarisation, and the
+     full acceptance run on a release build.
+     Neither platform is described as supported until that list is done.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests
