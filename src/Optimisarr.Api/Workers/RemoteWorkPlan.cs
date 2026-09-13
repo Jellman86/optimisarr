@@ -18,7 +18,9 @@ public sealed record RemoteAssignment(
     /// <summary>The VMAF measurement the worker is asked to make; null when the policy has no gate.</summary>
     RemoteQualityContract? Quality = null,
     /// <summary>The hardware decoder the command uses, which the worker must have proved; null for software.</summary>
-    string? HardwareDecoder = null);
+    string? HardwareDecoder = null,
+    /// <summary>The audio encoder the command names, which the worker must have proved; null when audio is copied.</summary>
+    string? AudioEncoder = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

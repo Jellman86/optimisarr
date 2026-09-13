@@ -14,6 +14,7 @@ internal sealed record WorkerDto(
     string Architecture,
     int ProtocolVersion,
     IReadOnlyList<string> VideoEncoders,
+    IReadOnlyList<string> AudioEncoders,
     IReadOnlyList<string> HardwareDecoders,
     string Vmaf,
     long FreeScratchBytes,
@@ -54,6 +55,7 @@ internal sealed record PairRequest(
     int ProtocolMinimum,
     int ProtocolMaximum,
     IReadOnlyList<string>? VideoEncoders,
+    IReadOnlyList<string>? AudioEncoders,
     IReadOnlyList<string>? HardwareDecoders,
     string? Vmaf,
     long FreeScratchBytes,
@@ -68,7 +70,20 @@ internal sealed record PairResponse(int WorkerId, string Credential, int Protoco
 /// worker quietly changing what it claims to support between assignments is a capability the
 /// control plane should re-establish deliberately, not absorb from a heartbeat.
 /// </summary>
-internal sealed record HeartbeatRequest(long FreeScratchBytes, int MaxConcurrency);
+/// <summary>
+/// A check-in. Capabilities ride along because a machine changes: FFmpeg is rebuilt, a driver
+/// stops working, an encoder that used to open no longer does. They were previously recorded only
+/// at pairing, so a sidecar that re-probed itself at launch could not tell the server, and the
+/// server went on scheduling against what was true the day the two were introduced. The capability
+/// fields are optional so an older sidecar still checks in; what it omits is left as it was.
+/// </summary>
+internal sealed record HeartbeatRequest(
+    long FreeScratchBytes,
+    int MaxConcurrency,
+    IReadOnlyList<string>? VideoEncoders = null,
+    IReadOnlyList<string>? AudioEncoders = null,
+    IReadOnlyList<string>? HardwareDecoders = null,
+    string? Vmaf = null);
 
 /// <summary>
 /// The acknowledgement. Carries the interval so a sidecar paces itself from the control plane
@@ -176,6 +191,7 @@ internal static class WorkerEndpoints
                 Architecture = Trimmed(request.Architecture, 32),
                 ProtocolVersion = negotiation.AgreedVersion,
                 VideoEncoders = Join(request.VideoEncoders),
+                AudioEncoders = Join(request.AudioEncoders),
                 HardwareDecoders = Join(request.HardwareDecoders),
                 Vmaf = vmaf,
                 FreeScratchBytes = Math.Max(0, request.FreeScratchBytes),
@@ -233,6 +249,26 @@ internal static class WorkerEndpoints
             worker.LastSeenAt = DateTimeOffset.UtcNow;
             worker.FreeScratchBytes = Math.Max(0, request.FreeScratchBytes);
             worker.MaxConcurrency = Math.Max(0, request.MaxConcurrency);
+
+            // Only what the sidecar actually sent. An older one omits these, and overwriting its
+            // recorded capabilities with nothing would silently drain a working worker.
+            if (request.VideoEncoders is not null)
+            {
+                worker.VideoEncoders = Join(request.VideoEncoders);
+            }
+            if (request.AudioEncoders is not null)
+            {
+                worker.AudioEncoders = Join(request.AudioEncoders);
+            }
+            if (request.HardwareDecoders is not null)
+            {
+                worker.HardwareDecoders = Join(request.HardwareDecoders);
+            }
+            if (request.Vmaf is not null && Enum.TryParse<VmafCapability>(request.Vmaf, true, out var vmaf))
+            {
+                worker.Vmaf = vmaf;
+            }
+
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new HeartbeatResponse(
@@ -395,6 +431,7 @@ internal static class WorkerEndpoints
         worker.Architecture,
         worker.ProtocolVersion,
         Split(worker.VideoEncoders),
+        Split(worker.AudioEncoders),
         Split(worker.HardwareDecoders),
         worker.Vmaf.ToString(),
         worker.FreeScratchBytes,

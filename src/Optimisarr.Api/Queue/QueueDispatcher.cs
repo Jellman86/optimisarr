@@ -1263,7 +1263,8 @@ public sealed class QueueDispatcher(
             work.VerificationPolicy,
             QualityScoreCommandBuilder.ModelVersionFor(width, height),
             quality,
-            work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null));
+            work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
+            work.Spec.AudioEncoder));
     }
 
     /// <summary>

@@ -54,6 +54,32 @@ public enum EncoderListParser {
     }
 }
 
+/// Parses `ffmpeg -encoders` for the audio encoders the server is able to ask for.
+///
+/// Deliberately narrow, and deliberately matched to the server's own list. Optimisarr can target
+/// AAC, Opus or MP3, which it emits as `aac`, `libopus` and `libmp3lame`. The bundled FFmpeg is
+/// built with none of the external audio libraries, so it carries `aac` and neither of the other
+/// two — advertising them would hand this machine a job it can only fail with "Unknown encoder".
+public enum AudioEncoderListParser {
+    static let interesting: Set<String> = ["aac", "libopus", "libmp3lame", "ac3", "eac3", "flac", "alac"]
+
+    /// Audio rows begin with `A` in the flags column, the same shape as the video listing.
+    public static func parse(_ output: String) -> [String] {
+        var found: [String] = []
+        for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
+            let parts = line.trimmingCharacters(in: .whitespaces)
+                .split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+            guard parts.count >= 2 else { continue }
+            let name = String(parts[1])
+            guard String(parts[0]).hasPrefix("A"), interesting.contains(name), !found.contains(name) else {
+                continue
+            }
+            found.append(name)
+        }
+        return found
+    }
+}
+
 /// Builds the throwaway encode that proves an encoder actually opens on this machine.
 ///
 /// Mirrors the server's `EncoderProbeCommand`: a few frames of a synthetic source to the null
@@ -66,6 +92,21 @@ public enum EncoderProbeCommand {
             "-f", "lavfi", "-i", "color=c=black:s=320x240:r=25:d=0.2",
             "-frames:v", "3",
             "-c:v", encoder,
+            "-f", "null", "-",
+        ]
+    }
+}
+
+/// The throwaway encode that proves an audio encoder opens.
+///
+/// A second of silence is enough: the failure being guarded against is the encoder not existing or
+/// refusing to open, which happens on the first frame.
+public enum AudioEncoderProbeCommand {
+    public static func arguments(for encoder: String) -> [String] {
+        [
+            "-hide_banner", "-v", "error",
+            "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=0.2",
+            "-c:a", encoder,
             "-f", "null", "-",
         ]
     }

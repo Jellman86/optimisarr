@@ -34,6 +34,13 @@ public sealed class Worker
     public string VideoEncoders { get; set; } = string.Empty;
 
     /// <summary>Comma-separated hardware decoders the worker proved.</summary>
+    /// <summary>
+    /// Audio encoders this worker proved, comma separated. Empty for a worker paired before the
+    /// server began asking, which is read as "none proved" and keeps such a worker off any job
+    /// that re-encodes audio until its next check-in refreshes this.
+    /// </summary>
+    public string AudioEncoders { get; set; } = string.Empty;
+
     public string HardwareDecoders { get; set; } = string.Empty;
 
     public VmafCapability Vmaf { get; set; } = VmafCapability.None;

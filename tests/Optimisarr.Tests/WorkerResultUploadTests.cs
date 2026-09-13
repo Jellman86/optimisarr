@@ -85,7 +85,8 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         {
             code = pin, name, operatingSystem = "linux", architecture = "x64",
             protocolMinimum = 1, protocolMaximum = 1,
-            videoEncoders = new[] { "libx265" }, hardwareDecoders = Array.Empty<string>(),
+            videoEncoders = new[] { "libx265" }, audioEncoders = new[] { "aac" },
+            hardwareDecoders = Array.Empty<string>(),
             vmaf = "Cpu", freeScratchBytes = 500L * 1024 * 1024 * 1024, maxConcurrency = 1,
         });
         paired.EnsureSuccessStatusCode();

@@ -738,6 +738,8 @@ export type Worker = {
   architecture: string
   protocolVersion: number
   videoEncoders: string[]
+  /** Audio encoders the worker proved. A job that re-encodes audio is only offered to a worker naming its encoder. */
+  audioEncoders: string[]
   hardwareDecoders: string[]
   vmaf: VmafCapability
   freeScratchBytes: number

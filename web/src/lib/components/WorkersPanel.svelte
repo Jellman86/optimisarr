@@ -300,6 +300,11 @@
               {#each worker.videoEncoders as encoder (encoder)}
                 <span class="rounded-md border border-slate-200 px-2 py-0.5 font-mono text-slate-700 dark:border-slate-700 dark:text-slate-200">{encoder}</span>
               {/each}
+              <!-- Audio matters as much as video: a library set to Opus or MP3 is only offered to
+                   a worker whose FFmpeg carries that encoder. -->
+              {#each worker.audioEncoders ?? [] as encoder (encoder)}
+                <span class="rounded-md border border-slate-200 px-2 py-0.5 font-mono text-slate-500 dark:border-slate-700 dark:text-slate-400">{encoder}</span>
+              {/each}
               {#if worker.hardwareDecoders.length > 0}
                 <span class="rounded-md border border-slate-200 px-2 py-0.5 text-slate-700 dark:border-slate-700 dark:text-slate-200">{t(i18n.m.workers.hw_decode, { list: worker.hardwareDecoders.join(', ') })}</span>
               {/if}

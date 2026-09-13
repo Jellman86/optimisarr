@@ -109,3 +109,48 @@ struct VmafSupportParserTests {
         #expect(VmafSupportParser.parse("libvmaf libvmaf_cuda") != .cuda)
     }
 }
+
+@Suite("Audio encoder listing")
+struct AudioEncoderListingTests {
+    private let listing = """
+     Encoders:
+      V..... = Video
+      ------
+     A....D aac                  AAC (Advanced Audio Coding)
+     A....D ac3                  ATSC A/52A AC-3
+     A....D pcm_s16le            PCM signed 16-bit little-endian
+     V....D libx265              libx265 H.265 / HEVC
+    """
+
+    @Test("only the encoders the server can ask for are reported")
+    func picksTheServersTargets() {
+        // Optimisarr targets AAC, Opus or MP3 and emits them as aac, libopus and libmp3lame.
+        // Reporting the hundred other things FFmpeg lists would be noise the server cannot use.
+        let found = AudioEncoderListParser.parse(listing)
+
+        #expect(found.contains("aac"))
+        #expect(found.contains("ac3"))
+        #expect(!found.contains("pcm_s16le"))
+        #expect(!found.contains("libx265"))
+    }
+
+    @Test("the bundled build's missing encoders are simply absent")
+    func absentEncodersAreNotInvented() {
+        // The bundled FFmpeg links no external audio libraries, so it has neither libopus nor
+        // libmp3lame. The library form offers Opus and MP3 regardless, and the server decides
+        // whether to offer the job — but only if this list is honest.
+        let found = AudioEncoderListParser.parse(listing)
+
+        #expect(!found.contains("libopus"))
+        #expect(!found.contains("libmp3lame"))
+    }
+
+    @Test("the probe encodes real silence rather than trusting the listing")
+    func probeShape() {
+        let arguments = AudioEncoderProbeCommand.arguments(for: "libopus")
+
+        #expect(arguments.contains("anullsrc=r=48000:cl=stereo:d=0.2"))
+        #expect(arguments[arguments.firstIndex(of: "-c:a")! + 1] == "libopus")
+        #expect(arguments.last == "-")
+    }
+}
