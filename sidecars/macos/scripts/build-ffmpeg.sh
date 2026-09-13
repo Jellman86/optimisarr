@@ -21,10 +21,14 @@ BUILD="$(pwd)/.build-ffmpeg"
 PREFIX="${BUILD}/prefix"
 
 # Pinned. Moving any of these is a deliberate act, not a drift.
-X264_TAG="stable"
-X265_TAG="4.2"
-VMAF_TAG="v3.0.0"
-FFMPEG_TAG="n7.1"
+# Each tag can be overridden from the environment for a one-off experiment; the defaults are
+# the pinned build.
+X264_TAG="${X264_TAG:-stable}"
+X265_TAG="${X265_TAG:-4.2}"
+VMAF_TAG="${VMAF_TAG:-v3.0.0}"
+FFMPEG_TAG="${FFMPEG_TAG:-n7.1}"
+# Extra cmake flags for x265, e.g. -DENABLE_ASSEMBLY=OFF while chasing a crash.
+X265_CMAKE_FLAGS="${X265_CMAKE_FLAGS:-}"
 
 JOBS="$(sysctl -n hw.ncpu)"
 
@@ -72,7 +76,7 @@ if [[ ! -f "${PREFIX}/lib/libx265.a" ]]; then
   # minimum-version half.
   (cd "${BUILD}/x265/build" && cmake ../source -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-      -DENABLE_SHARED=OFF -DENABLE_CLI=OFF >/dev/null && make -j"${JOBS}" >/dev/null && make install >/dev/null)
+      -DENABLE_SHARED=OFF -DENABLE_CLI=OFF ${X265_CMAKE_FLAGS} >/dev/null && make -j"${JOBS}" >/dev/null && make install >/dev/null)
 fi
 
 if [[ ! -f "${PREFIX}/lib/libvmaf.a" ]]; then

@@ -101,6 +101,13 @@
 
 ### Fixed
 
+- **The macOS sidecar proves every encoder before advertising it, CPU ones included.** It used
+  to trust `ffmpeg -encoders` for software encoders and only test-encode the VideoToolbox ones. The
+  bundled libx265 segfaults on its first frame on Apple Silicon, and the sidecar advertised it
+  anyway, so the server could have chosen an encoder that would never finish a job. Every listed
+  encoder now has to complete a three-frame throwaway encode at launch, and a crash counts as a
+  refusal. The ffmpeg build script also takes its tags and extra x265 cmake flags from the
+  environment, so a rebuild can be tried without editing it.
 - **The macOS sidecar's work-loop tests wait for a condition instead of a fixed delay.** A test
   that slept 200 ms and then asserted the job had run failed on a loaded CI runner where the first
   claim had not yet gone out, reporting a defect that did not exist. The shared `waitFor` helper
