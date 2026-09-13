@@ -43,10 +43,14 @@ public enum EncoderListParser {
         return found
     }
 
-    /// True when the encoder runs on the GPU and therefore needs proving rather than trusting.
-    /// CPU encoders are taken from the listing, matching how the server treats them.
+    /// Every encoder needs proving. Listing only says ffmpeg was compiled with it: a VideoToolbox
+    /// encoder can fail to open on a given machine, and a bundled software encoder can be broken
+    /// outright — the vendored libx265 segfaulted on its first frame on 2026-09-13 while this
+    /// sidecar, trusting the listing for CPU encoders, went on advertising it. The throwaway
+    /// encode costs well under a second per encoder and runs once per launch.
     public static func needsConfirmation(_ encoder: String) -> Bool {
-        encoder.hasSuffix("_videotoolbox")
+        _ = encoder
+        return true
     }
 }
 
