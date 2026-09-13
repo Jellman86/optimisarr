@@ -131,3 +131,42 @@ test('drain and resume act on one card and show what the server recorded', async
   await expect(studio.getByText('Online')).toBeVisible()
   await expect(studio.getByRole('button', { name: 'Drain after this job' })).toBeVisible()
 })
+
+test('a sidecar that redeems the code appears on the page without a reload', async ({ page }) => {
+  // The list and the code both live server-side; the page has to keep asking while a code is
+  // showing, because the only thing that ends a pairing is the sidecar redeeming it elsewhere.
+  let rows: typeof workers = []
+  let code: { code: string; expiresUtc: string; attemptsRemaining: number } | null = null
+  await mockWorkers(page, rows)
+  await page.route((url) => url.pathname === '/api/workers', (route) => json(route, rows))
+  await page.route((url) => url.pathname === '/api/workers/pairing-code', (route) => {
+    const method = route.request().method()
+    if (method === 'POST') {
+      code = { code: '82397571', expiresUtc: new Date(Date.now() + 300_000).toISOString(), attemptsRemaining: 5 }
+      return json(route, code)
+    }
+    if (method === 'DELETE') {
+      code = null
+      return route.fulfill({ status: 204 })
+    }
+    return code ? json(route, code) : route.fulfill({ status: 204 })
+  })
+
+  await page.goto('/#/settings')
+  await page.getByRole('tab', { name: 'Workers' }).click()
+  await expect(page.getByText('No sidecars are paired.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Pair a sidecar' }).click()
+  await expect(page.getByText('8239 7571')).toBeVisible()
+
+  // The sidecar redeems the code: the server forgets it and lists the new worker.
+  code = null
+  const stamp = new Date().toISOString()
+  rows = [{ ...workers[1], id: 7, name: 'Scott’s MacBook Air', pairedAt: stamp, lastSeenAt: stamp, drainRequestedAt: null, lastProblem: null, lastProblemAt: null }]
+
+  const card = page.locator('[data-testid="worker-card"]')
+  await expect(card).toHaveCount(1, { timeout: 10_000 })
+  await expect(card).toContainText('Scott’s MacBook Air')
+  await expect(page.getByText('8239 7571')).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Pair a sidecar' })).toBeVisible()
+})

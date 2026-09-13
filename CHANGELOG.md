@@ -80,6 +80,15 @@
   concurrency — "Drained" on the Workers tab — until it was paired again, because capabilities
   were only probed at pairing; the machine is now probed on every launch.
 
+### Fixed
+
+- **The Workers tab now notices a sidecar pairing without a reload.** While a pairing code was on
+  screen the page only counted down; it never asked the server whether the code had been redeemed
+  and never refreshed the worker list, and with no worker listed yet it never refreshed at all. A
+  freshly paired Mac therefore stayed invisible, under a code that had already been used, until the
+  operator reloaded. The page now polls every two seconds while a code is showing, drops the code
+  the moment the server no longer has it, and keeps a slow refresh going even when the list is empty.
+
 ## 0.2.12 — 2026-09-10
 
 ### Fixed
