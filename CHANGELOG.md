@@ -120,6 +120,13 @@
   that slept 200 ms and then asserted the job had run failed on a loaded CI runner where the first
   claim had not yet gone out, reporting a defect that did not exist. The shared `waitFor` helper
   polls with a generous timeout, so these tests stay fast locally and honest under load.
+- **The queue shows the command a remote worker will actually run.** A job leased to a worker
+  kept whatever ffmpeg arguments and encoder this server last used for it, so the first real remote
+  job displayed a stale QSV command while the Mac was encoding with VideoToolbox. Claiming now
+  records the worker's encoder and arguments on the job.
+- **Why a worker's VMAF evidence was refused is now in the server log.** The worker's card keeps
+  only its latest problem, and a verification verdict overwrote the refusal within minutes, leaving
+  no trace of the reason. Both the refusal, with its objections, and an acceptance are logged.
 - **The macOS sidecar stops asking for Keychain access over and over.** An ad-hoc signature is
   derived from the binary, so it changes on every build and the Keychain treats each rebuilt copy
   as a different application; reaching the stored pairing then raised a password prompt that kept
