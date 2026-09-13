@@ -25,3 +25,8 @@ sidecars/macos/.build-ffmpeg/
 
 # Work output written when tests exercise the queue against a relative work root.
 src/Optimisarr.Api/work/
+
+# Xcode's per-user state inside a Swift package: window layout, the last scheme selected, and
+# whose account opened it. Local to one person and one machine, and committed here by accident.
+**/.swiftpm/xcode/**/xcuserdata/
+**/.swiftpm/xcode/xcuserdata/
