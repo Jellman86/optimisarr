@@ -366,6 +366,54 @@ struct ResumableSourceDownloadTests {
     }
 }
 
+@Suite("Work location in a real job")
+struct WorkLocationJobTests {
+    @Test("a job too large for the memory budget runs on disk instead of being handed back")
+    func fallsBackToDiskRatherThanRefusing() async throws {
+        // The point of the fallback: a preference must never cost the work. Before, a job that did
+        // not fit was released, and a released job goes straight back on the queue to be offered
+        // again — a loop caused by a setting.
+        let server = FakeWorkerServer(sourceBytes: Data((0..<200).map(UInt8.init)))
+        let scratch = scratch()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch,
+            workLocation: { .memory },
+            // A budget of one byte: nothing can fit, so every job must take the disk path.
+            memoryBudget: { 1 },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        #expect(!server.released)
+    }
+
+    @Test("a chosen folder is where the job actually works")
+    func usesTheChosenFolder() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data((0..<200).map(UInt8.init)))
+        let chosen = scratch()
+        let unused = scratch()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: unused,
+            workLocation: { .folder(chosen) },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        // Scratch is removed on every exit path, so what is checked is that the default root was
+        // never used rather than that the chosen one still holds anything.
+        let leftInDefault = (try? FileManager.default.contentsOfDirectory(atPath: unused.path)) ?? []
+        #expect(leftInDefault.isEmpty)
+    }
+}
+
 /// A pair of byte counts, so a test can state the whole expected sequence in one line.
 struct Bytes: Equatable {
     let done: Int64

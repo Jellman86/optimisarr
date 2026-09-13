@@ -10,6 +10,8 @@ import SwiftUI
 /// own cannot tell a working Mac from a stuck one.
 struct SidecarMenu: View {
     @ObservedObject var session: SidecarSession
+    /// Opening a window is the app delegate's job, not this view's; nil in previews and renders.
+    var onShowOptions: (() -> Void)?
 
     @State private var serverAddress = ""
     @State private var pin = ""
@@ -279,6 +281,8 @@ struct SidecarMenu: View {
             }
 
             HStack(spacing: 8) {
+                Button("Options…") { onShowOptions?() }
+                    .controlSize(.small)
                 if case .unpaired = session.status {} else {
                     Button("Forget this pairing") {
                         session.unpair()
