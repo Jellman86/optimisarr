@@ -19,6 +19,9 @@ public final class SidecarSettings: ObservableObject {
     private let defaults: UserDefaults
     public let physicalMemoryBytes: Int64
 
+    /// What the job runner reads. Updated here, on the main actor, and read from anywhere.
+    public let snapshot = SettingsSnapshot()
+
     public init(defaults: UserDefaults = .standard, physicalMemoryBytes: Int64 = SidecarSettings.physicalMemoryBytes) {
         self.defaults = defaults
         self.physicalMemoryBytes = physicalMemoryBytes
@@ -42,6 +45,13 @@ public final class SidecarSettings: ObservableObject {
         default:
             workLocation = .applicationSupport
         }
+
+        publish()
+    }
+
+    /// Pushes the current values into the box the runner reads.
+    private func publish() {
+        snapshot.update(workLocation: workLocation, memoryBudgetBytes: memoryBudgetBytes)
     }
 
     public func setWorkLocation(_ location: WorkLocation) {
@@ -57,11 +67,13 @@ public final class SidecarSettings: ObservableObject {
             defaults.set("folder", forKey: Key.mode)
             defaults.set(url.path, forKey: Key.folder)
         }
+        publish()
     }
 
     public func setMemoryBudget(_ bytes: Int64) {
         memoryBudgetBytes = WorkLocationPolicy.clampBudget(bytes, physicalBytes: physicalMemoryBytes)
         defaults.set(NSNumber(value: memoryBudgetBytes), forKey: Key.budget)
+        publish()
     }
 
     /// Physical memory, for the RAM disk budget.

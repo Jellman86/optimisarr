@@ -212,7 +212,7 @@ internal static class WorkerLeaseEndpoints
                 handbackCount.TryGetValue(job.Id, out var handedBackByAnyone);
                 if (!HandbackPolicy.MayOffer(handedBackHere, handedBackByAnyone, now))
                 {
-                    logger.LogDebug(
+                    logger.LogInformation(
                         "Job {JobId} not offered to worker {Worker}: {Reason}",
                         job.Id, worker.Name,
                         HandbackPolicy.Explain(handedBackHere, handedBackByAnyone, now));
@@ -226,7 +226,7 @@ internal static class WorkerLeaseEndpoints
                 var plan = await dispatcher.PrepareRemoteWorkAsync(job.Id, capabilities, cancellationToken);
                 if (plan.Assignment is not { } assignment)
                 {
-                    logger.LogDebug(
+                    logger.LogInformation(
                         "Job {JobId} not offered to worker {Worker}: {Reason}",
                         job.Id, worker.Name, plan.Reason);
                     continue;
@@ -249,7 +249,10 @@ internal static class WorkerLeaseEndpoints
                 var match = WorkerCapabilityMatcher.Match(capabilities, requirements);
                 if (!match.Accepted)
                 {
-                    logger.LogDebug(
+                    // Information, not Debug. A paired worker sitting idle beside a full queue is
+                    // the single most confusing thing this feature can do, and the reason was
+                    // written only at a level nobody runs in production.
+                    logger.LogInformation(
                         "Job {JobId} not offered to worker {Worker}: {Reasons}",
                         job.Id, worker.Name, string.Join(" ", match.Reasons));
                     continue;
@@ -624,6 +627,7 @@ internal static class WorkerLeaseEndpoints
         foreach (var lease in lapsed)
         {
             lease.State = LeaseState.Expired;
+            lease.EndedAt ??= now;
 
             // The worker may never learn its lease lapsed — it went quiet, which is the whole
             // reason — so the operator is told instead, on the worker's own card.

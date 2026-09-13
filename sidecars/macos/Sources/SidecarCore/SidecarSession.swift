@@ -378,6 +378,15 @@ public final class SidecarSession: ObservableObject {
         transferRates[jobId] = rate
     }
 
+    private func log(_ status: SidecarStatus) {
+        switch status {
+        case .revoked, .pairingFailed, .unreachable, .disabledOnServer:
+            SidecarLog.session.error("Status: \(status.summary, privacy: .public)")
+        default:
+            SidecarLog.session.info("Status: \(status.summary, privacy: .public)")
+        }
+    }
+
     private func report(jobId: Int, frame: Data) {
         guard jobTasks[jobId] != nil else { return }
         filmStrips[jobId, default: FilmStrip()].append(frame)

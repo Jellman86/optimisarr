@@ -190,10 +190,15 @@ public struct JobRunner: WorkExecutor {
     private let chunkBytes: Int64
     private let previewSampler: FramePreviewSampler?
     private let wantsPreviews: @Sendable () -> Bool
-    /// Read per job rather than captured once, so changing the setting takes effect on the next
-    /// job without restarting the app.
-    private let workLocation: @Sendable () -> WorkLocation
-    private let memoryBudget: @Sendable () -> Int64
+    /// A thread-safe box rather than a closure, and deliberately so.
+    ///
+    /// These are read here, on a background task, while the settings themselves live on the main
+    /// actor for the options panel to observe. A closure invites bridging that with
+    /// `MainActor.assumeIsolated`, which traps rather than blocks; that shipped in 0.1.5 and
+    /// crashed the app the moment a job was claimed. A box cannot be misused that way.
+    ///
+    /// Read per job, so changing a setting takes effect on the next job without a restart.
+    private let settings: SettingsSnapshot
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
@@ -207,10 +212,10 @@ public struct JobRunner: WorkExecutor {
         chunkBytes: Int64 = JobRunner.defaultChunkBytes,
         previewSampler: FramePreviewSampler? = CapabilityProber.bundledFfmpeg().map { FramePreviewSampler(ffmpeg: $0) },
         wantsPreviews: @escaping @Sendable () -> Bool = { false },
-        workLocation: @escaping @Sendable () -> WorkLocation = { .applicationSupport },
-        memoryBudget: @escaping @Sendable () -> Int64 = {
-            WorkLocationPolicy.defaultBudget(physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory))
-        },
+        settings: SettingsSnapshot = SettingsSnapshot(
+            workLocation: .applicationSupport,
+            memoryBudgetBytes: WorkLocationPolicy.defaultBudget(
+                physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory))),
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
@@ -225,8 +230,7 @@ public struct JobRunner: WorkExecutor {
         self.chunkBytes = max(1, chunkBytes)
         self.previewSampler = previewSampler
         self.wantsPreviews = wantsPreviews
-        self.workLocation = workLocation
-        self.memoryBudget = memoryBudget
+        self.settings = settings
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
     }
@@ -263,8 +267,8 @@ public struct JobRunner: WorkExecutor {
         // A RAM disk is made per job and sized to it, so an idle sidecar holds no memory at all,
         // and a job too large for the memory budget quietly runs on disk instead of being lost.
         let required = assignment.sourceBytes + assignment.sourceBytes / 2
-        let preference = workLocation()
-        let budget = memoryBudget()
+        let preference = settings.workLocation
+        let budget = settings.memoryBudgetBytes
         var ramDisk: RamDisk?
         let root: URL
         switch WorkLocationPolicy.resolve(
@@ -278,12 +282,23 @@ public struct JobRunner: WorkExecutor {
             if let disk = RamDisk.create(bytes: required) {
                 ramDisk = disk
                 root = disk.mountPoint
+                SidecarLog.storage.info(
+                    "Job \(assignment.jobId): working in memory on \(disk.mountPoint.path, privacy: .public)")
             } else {
                 // The Mac would not give us the volume. That is a reason to use the disk, not a
                 // reason to give the job back.
                 root = scratchRoot
+                SidecarLog.storage.error("Job \(assignment.jobId): no RAM disk could be created; using the disk")
             }
         }
+        if let reason = WorkLocationPolicy.fallbackReason(
+            preference: preference, requiredBytes: required, memoryBudget: budget) {
+            SidecarLog.storage.notice("Job \(assignment.jobId): \(reason, privacy: .public)")
+        }
+        SidecarLog.job.info("""
+            Job \(assignment.jobId) starting: encoder \(assignment.videoEncoder, privacy: .public), \
+            source \(assignment.sourceBytes) bytes, working in \(root.path, privacy: .public)
+            """)
 
         let scratch = root.appendingPathComponent("lease-\(assignment.leaseId)", isDirectory: true)
         defer {
@@ -296,6 +311,7 @@ public struct JobRunner: WorkExecutor {
         do {
             let outcome = try await run(
                 assignment, pairing: pairing, scratch: scratch, progress: progress, preview: preview)
+            SidecarLog.job.info("Job \(assignment.jobId) finished: \(String(describing: outcome), privacy: .public)")
             return outcome
         } catch let error as SidecarError {
             switch error {

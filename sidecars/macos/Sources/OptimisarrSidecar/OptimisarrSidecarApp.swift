@@ -16,9 +16,7 @@ final class AppState {
         // The runner reads the location per job, so changing it here takes effect on the next job
         // without a restart.
         self.session = SidecarSession(
-            executor: JobRunner(
-                workLocation: { MainActor.assumeIsolated { settings.workLocation } },
-                memoryBudget: { MainActor.assumeIsolated { settings.memoryBudgetBytes } }))
+            executor: JobRunner(settings: settings.snapshot))
     }
 }
 
