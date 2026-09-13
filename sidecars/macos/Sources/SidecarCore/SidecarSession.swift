@@ -46,6 +46,13 @@ public final class SidecarSession: ObservableObject {
     /// Every job in flight and where it has got to, keyed by job id.
     @Published public internal(set) var activeJobs: [Int: JobProgress] = [:]
 
+    /// How fast each job's current transfer is moving, in bytes per second. Absent while a job is
+    /// encoding or measuring, which move no bytes, and until there are two reports to compare.
+    @Published public internal(set) var transferRates: [Int: Double] = [:]
+
+    /// What each running job is working on, keyed by job id. Empty when the server did not say.
+    @Published public internal(set) var jobTitles: [Int: String] = [:]
+
     /// The recent frames each running job was seen encoding. Only collected while the menu is
     /// open, and dropped as soon as the job ends.
     @Published public internal(set) var filmStrips: [Int: FilmStrip] = [:]
@@ -63,6 +70,9 @@ public final class SidecarSession: ObservableObject {
     /// True only for a session built by `posed(...)`.
     var isPosed = false
     private let previewGate: PreviewGate
+    /// One meter per job, reset when the job changes stage so a download's rate never colours an
+    /// upload's.
+    private var rateMeters: [Int: RateMeter] = [:]
     private let store: CredentialStore
     private let prober: CapabilityProber?
     private let executor: WorkExecutor?
@@ -190,6 +200,9 @@ public final class SidecarSession: ObservableObject {
         for task in jobTasks.values { task.cancel() }
         jobTasks = [:]
         activeJobs = [:]
+        jobTitles = [:]
+        transferRates = [:]
+        rateMeters = [:]
         filmStrips = [:]
         endActivity()
         try? store.clear()
@@ -323,6 +336,7 @@ public final class SidecarSession: ObservableObject {
 
             let jobId = assignment.jobId
             activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)
+            jobTitles[jobId] = assignment.title
             refreshWorkingStatus()
             beginActivity()
             // The task holds the session for the job's duration, which is intended: a job is
@@ -342,8 +356,26 @@ public final class SidecarSession: ObservableObject {
 
     private func report(jobId: Int, progress: JobProgress) {
         guard jobTasks[jobId] != nil else { return }
+        let previous = activeJobs[jobId]
         activeJobs[jobId] = progress
+        updateRate(jobId: jobId, from: previous, to: progress)
         refreshWorkingStatus()
+    }
+
+    /// Keeps the transfer rate for the two stages that move bytes.
+    private func updateRate(jobId: Int, from previous: JobProgress?, to progress: JobProgress) {
+        // A stage change starts a new measurement: a download's rate says nothing about an upload,
+        // and carrying it over would show a figure for the wrong thing.
+        if previous?.isSameStage(as: progress) != true {
+            rateMeters[jobId] = RateMeter()
+            transferRates[jobId] = nil
+        }
+
+        guard let moved = progress.transferredBytes else { return }
+        var meter = rateMeters[jobId] ?? RateMeter()
+        let rate = meter.observe(moved, at: Date())
+        rateMeters[jobId] = meter
+        transferRates[jobId] = rate
     }
 
     private func report(jobId: Int, frame: Data) {
@@ -374,6 +406,9 @@ public final class SidecarSession: ObservableObject {
         lastOutcome = outcome
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
+        jobTitles[jobId] = nil
+        transferRates[jobId] = nil
+        rateMeters[jobId] = nil
         filmStrips[jobId] = nil
         if jobTasks.isEmpty {
             endActivity()
@@ -429,7 +464,9 @@ extension SidecarStatus {
         case .unpaired: return "Not paired"
         case .pairing: return "Pairing…"
         case .connected: return "Connected"
-        case let .working(jobId, _): return "Encoding job #\(jobId)"
+        // The stage, not a fixed word: "Encoding" while a source is still downloading is simply
+        // untrue, and this line is the one thing visible from the menu bar without opening it.
+        case let .working(jobId, progress): return "\(progress.summary) job #\(jobId)"
         case .unreachable: return "Server unreachable"
         case .revoked: return "Access revoked"
         case .disabledOnServer: return "Turned off on the server"
@@ -451,6 +488,8 @@ public extension SidecarSession {
         status: SidecarStatus,
         serverAddress: String = "https://optimisarr.pownet.uk",
         activeJobs: [Int: JobProgress] = [:],
+        jobTitles: [Int: String] = [:],
+        transferRates: [Int: Double] = [:],
         filmStrips: [Int: FilmStrip] = [:],
         gpu: GpuUsage? = nil,
         lastOutcome: JobOutcome? = nil
@@ -460,6 +499,8 @@ public extension SidecarSession {
         session.status = status
         session.serverAddress = serverAddress
         session.activeJobs = activeJobs
+        session.jobTitles = jobTitles
+        session.transferRates = transferRates
         session.filmStrips = filmStrips
         session.gpu = gpu
         session.lastOutcome = lastOutcome

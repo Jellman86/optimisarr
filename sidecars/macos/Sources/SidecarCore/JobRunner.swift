@@ -101,6 +101,38 @@ public enum JobProgress: Sendable, Equatable {
     case delivering(sent: Int64, total: Int64)
 }
 
+public extension JobProgress {
+    /// One word for the stage, for the menu's header line.
+    var summary: String {
+        switch self {
+        case .fetchingSource: return "Receiving"
+        case .encoding: return "Encoding"
+        case .measuring: return "Measuring"
+        case .delivering: return "Sending"
+        }
+    }
+
+    /// Bytes moved so far, for the stages that move any.
+    var transferredBytes: Int64? {
+        switch self {
+        case let .fetchingSource(received, _): return received
+        case let .delivering(sent, _): return sent
+        case .encoding, .measuring: return nil
+        }
+    }
+
+    /// Whether two reports describe the same stage, ignoring how far through it they are.
+    func isSameStage(as other: JobProgress) -> Bool {
+        switch (self, other) {
+        case (.fetchingSource, .fetchingSource), (.encoding, .encoding),
+             (.measuring, .measuring), (.delivering, .delivering):
+            return true
+        default:
+            return false
+        }
+    }
+}
+
 /// The most recent progress, shared between the ffmpeg reader and the renewal loop. A lock
 /// rather than an actor because the reader is a synchronous callback on ffmpeg's pipe.
 final class LatestProgress: @unchecked Sendable {
