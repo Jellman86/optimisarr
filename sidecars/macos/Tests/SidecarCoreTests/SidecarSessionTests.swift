@@ -362,17 +362,4 @@ struct SidecarSessionTests {
         #expect(session.lastOutcome == nil)
     }
 
-    /// Polls a condition rather than sleeping a fixed time, so the tests stay fast and are not
-    /// timing-sensitive on a loaded machine.
-    private func waitFor(
-        timeout: TimeInterval = 2,
-        _ condition: @MainActor () -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if condition() { return }
-            try await Task.sleep(nanoseconds: 5_000_000)
-        }
-        Issue.record("Condition not met within \(timeout)s")
-    }
 }
