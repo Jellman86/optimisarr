@@ -708,7 +708,11 @@ struct SessionWorkLoopTests {
             sleep: { _ in try await Task.sleep(nanoseconds: 5_000_000) })
 
         session.restore()
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // Poll rather than sleep: the loop's own tasks decide when this is true, and how long
+        // that takes depends on the machine.
+        try await waitFor("the job to be executed and the loop to ask again") {
+            !executor.executed.isEmpty && session.lastOutcome != nil && transport.claims >= 2
+        }
 
         #expect(executor.executed.map(\.jobId) == [12])
         #expect(executor.executed.first?.arguments == serverCommand)
@@ -736,6 +740,9 @@ struct SessionWorkLoopTests {
             sleep: { _ in try await Task.sleep(nanoseconds: 5_000_000) })
 
         session.restore()
+        // Wait for the loop to be demonstrably running before asserting what it did not do;
+        // otherwise this passes simply by looking too early.
+        try await waitFor("the check-in loop to run") { transport.heartbeats > 0 }
         try await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(executor.executed.isEmpty)

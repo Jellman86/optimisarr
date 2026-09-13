@@ -108,6 +108,10 @@
   encoder now has to complete a three-frame throwaway encode at launch, and a crash counts as a
   refusal. The ffmpeg build script also takes its tags and extra x265 cmake flags from the
   environment, so a rebuild can be tried without editing it.
+- **The macOS sidecar's work-loop tests wait for a condition instead of a fixed delay.** A test
+  that slept 200 ms and then asserted the job had run failed on a loaded CI runner where the first
+  claim had not yet gone out, reporting a defect that did not exist. The shared `waitFor` helper
+  polls with a generous timeout, so these tests stay fast locally and honest under load.
 - **Sampled VMAF no longer scores a candidate against its own neighbouring frames.** Both inputs
   of a sampled window are seeked to the same whole second and then paired by timestamp, but FFmpeg
   stamps frames relative to each file's container start, which is the earliest stream. A source
