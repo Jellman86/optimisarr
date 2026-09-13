@@ -42,15 +42,32 @@
     return () => clearInterval(handle)
   })
 
+  // Both the list and the code live on the server, and the one event that ends a pairing —
+  // the sidecar redeeming the code — happens on another machine. So while a code is on screen
+  // the page asks often, and it keeps asking even when the list is empty: a first worker can
+  // appear at any moment, and the page is the only thing that will tell the operator.
+  // A code still within its time. Derived so the effect below only re-arms when this flips,
+  // not on every tick of the countdown.
+  let codeShowing = $derived(pairing !== null && secondsLeft > 0)
+
   $effect(() => {
-    if (pairing || loading || workers.length === 0) return
-    const handle = setInterval(() => void refresh(), 15000)
+    if (loading) return
+    const handle = setInterval(() => void refresh(), codeShowing ? 2000 : 15000)
     return () => clearInterval(handle)
   })
 
   async function refresh() {
     try {
-      workers = await api.workers()
+      const askCode = codeShowing
+      const [list, code] = await Promise.all([
+        api.workers(),
+        askCode ? api.activeWorkerPairingCode() : Promise.resolve(null),
+      ])
+      workers = list
+      // A code the server no longer has while it should still be live was redeemed or cancelled
+      // from elsewhere, so the panel stops showing it. A code still live brings its attempts
+      // left. A lapsed code is left alone so the expiry notice stays on screen.
+      if (askCode) pairing = code
     } catch {
       // A missed refresh is not worth an error banner; the next one will try again.
     }
