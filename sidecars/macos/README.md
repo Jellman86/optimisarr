@@ -98,6 +98,33 @@ the build is pinned there.
 Decoding covers H.264, HEVC, VP9, AV1, MPEG-2, VC-1 and ProRes, with VideoToolbox acceleration
 where the server asks for it.
 
+## Options
+
+**Options…** in the menu opens a panel for how the Mac does the work, kept apart from the menu so
+watching a job and configuring one stay separate.
+
+**Where work happens.** A job downloads its source and writes its candidate before sending it back,
+which together come to roughly one and a half times the size of the original. Three choices:
+
+- *The app's own folder*, inside Application Support on the startup disk. The default.
+- *A folder I choose* — an external SSD, or simply somewhere off the startup disk. If the drive is
+  not mounted at launch this falls back to the default rather than failing every job on a path that
+  no longer exists.
+- *Memory*, a RAM disk created for each job and destroyed when it ends.
+
+**About memory.** A job needing more working space than the budget runs on disk instead. It is
+never refused over this setting — losing work to a preference would be worse than ignoring the
+preference, and a refused job goes straight back on the queue to be offered again. The budget
+defaults to a quarter of installed memory and is adjustable between a twentieth and a half; a RAM
+disk holds real pages for as long as the job runs, and filling most of a Mac's memory with one
+leaves it swapping, which is slower than the SSD the setting was meant to avoid.
+
+It is also rarely faster. A download is limited by the network and an encode by the encoder, not by
+an Apple SSD. Most films will not fit any sensible budget.
+
+Stray volumes from a crash are swept at launch, since one left behind holds memory until the Mac
+reboots with nothing on screen to say so.
+
 ## Requirements
 
 - macOS 14 or later

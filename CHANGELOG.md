@@ -8,6 +8,12 @@
   rather than a job number, which answered the question nobody was asking, and the two transfer
   stages show a smoothed rate beside the byte counts. The header line names the real stage, so a
   source still downloading no longer reads as "Encoding".
+- **The macOS sidecar has an Options panel, and work can be moved off the startup disk.** A job's
+  source and candidate can go in the app's own folder, in a folder you choose, or on a RAM disk
+  created for that job and destroyed when it ends. A job needing more working space than the memory
+  budget runs on disk instead of being refused, because losing work to a preference would be worse
+  than ignoring the preference. The budget defaults to a quarter of installed memory and is
+  adjustable between a twentieth and a half. Stray RAM disks from a crash are swept at launch.
 - **The macOS sidecar can encode AV1, and decode it in hardware.** SVT-AV1 is bundled, so a
   library targeting AV1 can now run on a Mac; the server already named `libsvtav1` for a software
   AV1 target, so nothing on the server side changed. Apple ships no AV1 encoder in VideoToolbox on

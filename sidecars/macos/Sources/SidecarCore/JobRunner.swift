@@ -190,6 +190,10 @@ public struct JobRunner: WorkExecutor {
     private let chunkBytes: Int64
     private let previewSampler: FramePreviewSampler?
     private let wantsPreviews: @Sendable () -> Bool
+    /// Read per job rather than captured once, so changing the setting takes effect on the next
+    /// job without restarting the app.
+    private let workLocation: @Sendable () -> WorkLocation
+    private let memoryBudget: @Sendable () -> Int64
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
 
@@ -203,6 +207,10 @@ public struct JobRunner: WorkExecutor {
         chunkBytes: Int64 = JobRunner.defaultChunkBytes,
         previewSampler: FramePreviewSampler? = CapabilityProber.bundledFfmpeg().map { FramePreviewSampler(ffmpeg: $0) },
         wantsPreviews: @escaping @Sendable () -> Bool = { false },
+        workLocation: @escaping @Sendable () -> WorkLocation = { .applicationSupport },
+        memoryBudget: @escaping @Sendable () -> Int64 = {
+            WorkLocationPolicy.defaultBudget(physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory))
+        },
         availableScratchBytes: @escaping @Sendable (URL) -> Int64? = JobRunner.availableScratchBytes,
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
@@ -217,6 +225,8 @@ public struct JobRunner: WorkExecutor {
         self.chunkBytes = max(1, chunkBytes)
         self.previewSampler = previewSampler
         self.wantsPreviews = wantsPreviews
+        self.workLocation = workLocation
+        self.memoryBudget = memoryBudget
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
     }
@@ -249,8 +259,39 @@ public struct JobRunner: WorkExecutor {
         progress: @escaping @Sendable (JobProgress) -> Void,
         preview: @escaping @Sendable (Data) -> Void = { _ in }
     ) async -> JobOutcome {
-        let scratch = scratchRoot.appendingPathComponent("lease-\(assignment.leaseId)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: scratch) }
+        // Where this job works, which the operator may have moved to another volume or to memory.
+        // A RAM disk is made per job and sized to it, so an idle sidecar holds no memory at all,
+        // and a job too large for the memory budget quietly runs on disk instead of being lost.
+        let required = assignment.sourceBytes + assignment.sourceBytes / 2
+        let preference = workLocation()
+        let budget = memoryBudget()
+        var ramDisk: RamDisk?
+        let root: URL
+        switch WorkLocationPolicy.resolve(
+            preference: preference, requiredBytes: required, memoryBudget: budget
+        ) {
+        case .applicationSupport:
+            root = scratchRoot
+        case let .folder(folder):
+            root = folder
+        case .memory:
+            if let disk = RamDisk.create(bytes: required) {
+                ramDisk = disk
+                root = disk.mountPoint
+            } else {
+                // The Mac would not give us the volume. That is a reason to use the disk, not a
+                // reason to give the job back.
+                root = scratchRoot
+            }
+        }
+
+        let scratch = root.appendingPathComponent("lease-\(assignment.leaseId)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: scratch)
+            // Before anything else can go wrong: a RAM disk that outlives its job holds real
+            // memory until the Mac reboots, and nothing on screen would say so.
+            ramDisk?.destroy()
+        }
 
         do {
             let outcome = try await run(
