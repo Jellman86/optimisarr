@@ -305,6 +305,92 @@ struct ResumableSourceDownloadTests {
         #expect(server.sourceOffsets == [0, 64, 64, 128, 192])
         #expect(server.deliveredFile == Data("candidate bytes".utf8))
     }
+
+    @Test("each completed range moves the download bar, and the total is known from the first one")
+    func reportsDownloadProgress() async throws {
+        // Without a byte count the menu can only say "Fetching the source" for however long a
+        // multi-gigabyte transfer takes, which is indistinguishable from being stuck.
+        let bytes = Data((0..<200).map(UInt8.init))
+        let server = FakeWorkerServer(sourceBytes: bytes)
+        server.rangedSource = true
+        let reports = ProgressRecorder()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server, downloadChunkBytes: 64),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        _ = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { reports.record($0) }
+
+        // The opening report is the assignment's own declared size, so the bar is drawn at zero
+        // of the right total rather than appearing only once the first range lands.
+        #expect(reports.downloads == [(0, 200), (64, 200), (128, 200), (192, 200), (200, 200)].map(Bytes.init))
+    }
+
+    @Test("a server that sends the whole file at once still reports a finished download")
+    func reportsWholeFileDownload() async throws {
+        // An older server answers 200 with the entire body. There is no range to count, but the
+        // bar must still finish rather than sit at zero until the encode starts.
+        let bytes = Data((0..<200).map(UInt8.init))
+        let server = FakeWorkerServer(sourceBytes: bytes)
+        let reports = ProgressRecorder()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server, downloadChunkBytes: 64),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        _ = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { reports.record($0) }
+
+        #expect(reports.downloads.last == Bytes(200, 200))
+    }
+
+    @Test("each delivered chunk moves the upload bar")
+    func reportsUploadProgress() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data((0..<200).map(UInt8.init)))
+        server.resumable = true
+        let reports = ProgressRecorder()
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(candidate: Data(repeating: 7, count: 200)),
+            scratchRoot: scratch(),
+            chunkBytes: 64,
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        _ = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { reports.record($0) }
+
+        #expect(reports.uploads == [(0, 200), (64, 200), (128, 200), (192, 200), (200, 200)].map(Bytes.init))
+    }
+}
+
+/// A pair of byte counts, so a test can state the whole expected sequence in one line.
+struct Bytes: Equatable {
+    let done: Int64
+    let total: Int64
+    init(_ done: Int64, _ total: Int64) { self.done = done; self.total = total }
+}
+
+/// Collects the progress a job reported, split by the two transfer stages.
+final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var all: [JobProgress] = []
+
+    func record(_ progress: JobProgress) { lock.withLock { all.append(progress) } }
+
+    var downloads: [Bytes] {
+        lock.withLock {
+            all.compactMap { if case let .fetchingSource(received, total) = $0 { Bytes(received, total) } else { nil } }
+        }
+    }
+
+    var uploads: [Bytes] {
+        lock.withLock {
+            all.compactMap { if case let .delivering(sent, total) = $0 { Bytes(sent, total) } else { nil } }
+        }
+    }
 }
 
 /// Stands in for ffmpeg: writes the candidate the command names, or fails, without encoding.
@@ -625,7 +711,8 @@ final class RecordingExecutor: WorkExecutor, @unchecked Sendable {
 
     func execute(
         _ assignment: Assignment, pairing: StoredPairing,
-        progress: @escaping @Sendable (JobProgress) -> Void
+        progress: @escaping @Sendable (JobProgress) -> Void,
+        preview: @escaping @Sendable (Data) -> Void
     ) async -> JobOutcome {
         executed.append(assignment)
         progress(.encoding(encodedSeconds: 3))
