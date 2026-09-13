@@ -435,6 +435,15 @@
       },
       "HeartbeatRequest": {
         "properties": {
+          "audioEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "freeScratchBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -443,11 +452,35 @@
               "string"
             ]
           },
+          "hardwareDecoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "maxConcurrency": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "videoEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "vmaf": {
+            "type": [
+              "null",
               "string"
             ]
           }
@@ -1026,6 +1059,15 @@
               "string"
             ]
           },
+          "audioEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "code": {
             "type": [
               "null",
@@ -1109,6 +1151,7 @@
           "protocolMinimum",
           "protocolMaximum",
           "videoEncoders",
+          "audioEncoders",
           "hardwareDecoders",
           "vmaf",
           "freeScratchBytes",
@@ -2420,6 +2463,12 @@
           "architecture": {
             "type": "string"
           },
+          "audioEncoders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "drainRequestedAt": {
             "format": "date-time",
             "type": [
@@ -2530,6 +2579,7 @@
           "architecture",
           "protocolVersion",
           "videoEncoders",
+          "audioEncoders",
           "hardwareDecoders",
           "vmaf",
           "freeScratchBytes",
