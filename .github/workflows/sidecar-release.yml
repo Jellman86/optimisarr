@@ -68,8 +68,22 @@ jobs:
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
           security list-keychain -d user -s "$KEYCHAIN" login.keychain-db
           rm -f "$RUNNER_TEMP/certificate.p12"
-          echo "SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
-            | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)" >> "$GITHUB_ENV"
+
+          # -v lists only identities macOS considers valid. A Developer ID certificate is valid
+          # only if its issuing intermediate is present, so a missing chain shows up here as an
+          # empty result rather than an error. Left unchecked the identity would be empty, and the
+          # build would quietly produce an ad-hoc bundle that Apple then refuses to notarise.
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No valid Developer ID Application identity after importing the certificate."
+            echo "Identities present in the keychain, with why each was rejected:"
+            security find-identity -p codesigning "$KEYCHAIN" || true
+            echo "CSSMERR_TP_NOT_TRUSTED means the issuing intermediate is missing from this runner."
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build, sign, notarise and staple
         working-directory: sidecars/macos
