@@ -25,6 +25,9 @@ namespace Optimisarr.Api.Endpoints;
 internal sealed record AssignmentDto(
     Guid LeaseId,
     int JobId,
+    /// <summary>What is being encoded, for the worker to show. A job number alone tells an
+    /// operator standing at the Mac nothing about which of their files is being worked on.</summary>
+    string Title,
     long SourceBytes,
     string VideoEncoder,
     string Vmaf,
@@ -297,6 +300,9 @@ internal static class WorkerLeaseEndpoints
                 return Results.Ok(new AssignmentDto(
                     lease.Id,
                     job.Id,
+                    // The file name rather than the whole relative path: the worker shows this in
+                    // a narrow menu, and the folders above it are the server's business.
+                    Path.GetFileName(job.MediaFile.RelativePath),
                     job.MediaFile.SizeBytes,
                     assignment.VideoEncoder,
                     requirements.Vmaf.ToString(),

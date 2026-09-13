@@ -4,6 +4,10 @@
 
 ### Added
 
+- **The sidecar says what it is working on and how fast.** A running job is named by its file
+  rather than a job number, which answered the question nobody was asking, and the two transfer
+  stages show a smoothed rate beside the byte counts. The header line names the real stage, so a
+  source still downloading no longer reads as "Encoding".
 - **The macOS sidecar has an Options panel, and work can be moved off the startup disk.** A job's
   source and candidate can go in the app's own folder, in a folder you choose, or on a RAM disk
   created for that job and destroyed when it ends. A job needing more working space than the memory
@@ -132,6 +136,12 @@
 
 ### Fixed
 
+- **The macOS sidecar's menu no longer changes shape or slides sideways while a job runs.** Each
+  thumbnail in the film strip asked to fill the available width with no upper bound, so two dozen
+  of them demanded far more than the menu's 340 points: the window grew, the content shifted left
+  out of view and the panel turned square as frames accumulated. The strip is now a fixed number of
+  fixed-size slots showing the tail of the run. The job number also rendered as "#5,643", because
+  an integer in a label is grouped by locale.
 - **A worker is no longer offered a job it has just handed back.** A released job returns to the
   queue at once, and the claim loop offers the highest-priority queued job to whoever asks next, so
   a worker that could not run a job took it again on its very next check-in and downloaded the

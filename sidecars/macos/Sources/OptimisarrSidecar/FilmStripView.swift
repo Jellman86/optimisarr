@@ -14,6 +14,15 @@ struct FilmStripView: View {
     /// flicker.
     private static let framesPerSecond = 6.0
 
+    /// The strip is a fixed number of fixed-size slots.
+    ///
+    /// Both matter. An image asked to fill a height with no width limit reports an ideal width of
+    /// its own aspect ratio, and two dozen of those in a row demanded far more than the menu's
+    /// width — so the window grew, the content slid left and the panel changed shape as frames
+    /// arrived. Fixed slots also stop the strip jittering as the buffer fills.
+    private static let visibleThumbnails = 10
+    private static let thumbnailSize = CGSize(width: 26, height: 16)
+
     @State private var tick = 0
     private let timer = Timer.publish(
         every: 1 / framesPerSecond, on: .main, in: .common).autoconnect()
@@ -47,7 +56,9 @@ struct FilmStripView: View {
                     .foregroundStyle(.white.opacity(0.25))
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: 96)
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6).strokeBorder(.white.opacity(0.08))
@@ -58,22 +69,25 @@ struct FilmStripView: View {
     @ViewBuilder
     private var thumbnails: some View {
         if strip.frames.count > 1 {
-            let showing = ((tick % strip.frames.count) + strip.frames.count) % strip.frames.count
+            // The tail of the run, newest last, so the strip reads left to right in time.
+            let shown = Array(strip.frames.suffix(Self.visibleThumbnails).enumerated())
+            let offset = strip.frames.count - shown.count
+            let playing = ((tick % strip.frames.count) + strip.frames.count) % strip.frames.count
             HStack(spacing: 2) {
-                ForEach(Array(strip.frames.enumerated()), id: \.offset) { index, data in
+                ForEach(shown, id: \.offset) { index, data in
                     if let image = NSImage(data: data) {
                         Image(nsImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(height: 16)
-                            .frame(maxWidth: .infinity)
+                            .frame(width: Self.thumbnailSize.width, height: Self.thumbnailSize.height)
                             .clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 1.5))
-                            .opacity(index == showing ? 1 : 0.35)
+                            .opacity(index + offset == playing ? 1 : 0.35)
                     }
                 }
             }
-            .frame(height: 16)
+            .frame(height: Self.thumbnailSize.height)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityHidden(true)
         }
     }
