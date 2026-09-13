@@ -380,9 +380,8 @@ struct WorkLocationJobTests {
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
             runner: FakeTranscodeRunner(),
             scratchRoot: scratch,
-            workLocation: { .memory },
             // A budget of one byte: nothing can fit, so every job must take the disk path.
-            memoryBudget: { 1 },
+            settings: SettingsSnapshot(workLocation: .memory, memoryBudgetBytes: 1),
             sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
 
         let outcome = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { _ in }
@@ -401,7 +400,7 @@ struct WorkLocationJobTests {
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
             runner: FakeTranscodeRunner(),
             scratchRoot: unused,
-            workLocation: { .folder(chosen) },
+            settings: SettingsSnapshot(workLocation: .folder(chosen)),
             sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
 
         let outcome = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { _ in }
