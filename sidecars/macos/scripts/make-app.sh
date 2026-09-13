@@ -29,6 +29,13 @@ rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/Contents/MacOS" "${BUNDLE}/Contents/Resources"
 cp "${BINARY}" "${BUNDLE}/Contents/MacOS/${APP_NAME}"
 
+# The app icon. Built here rather than committed as a binary .icns so the one source PNG stays the
+# only artwork in the repository.
+if [[ -f Resources/AppIcon.png ]]; then
+  ./scripts/make-icon.sh >/dev/null
+  cp build/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
+fi
+
 # The bundled ffmpeg, if it has been built. Without it the app still runs and pairs; it simply
 # proves no encoders and is never offered work, which is the honest state rather than a broken one.
 if [[ -x vendor/ffmpeg ]]; then
@@ -50,6 +57,7 @@ cat > "${BUNDLE}/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key><string>Optimisarr Sidecar</string>
   <key>CFBundleDisplayName</key><string>Optimisarr Sidecar</string>
   <key>CFBundleExecutable</key><string>OptimisarrSidecar</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIdentifier</key><string>uk.optimisarr.sidecar</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>__APP_VERSION__</string>

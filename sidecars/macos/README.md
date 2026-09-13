@@ -212,8 +212,18 @@ NOTARY_PROFILE=optimisarr-notary \
 
 That builds, signs with the hardened runtime and a secure timestamp (signing the bundled `ffmpeg`
 and `ffprobe` first, as notarisation requires), archives with `ditto`, submits to Apple, waits,
-staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will.
-Attach the resulting zip to the GitHub Release.
+staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will. It
+then builds a disk image from the stapled app and notarises and staples that too. Attach both the
+`.dmg` and the `.zip` to the GitHub Release.
+
+The disk image is the one to point people at: it opens with the app beside a shortcut to
+Applications, so it installs by dragging. Install [`dmgbuild`](https://pypi.org/project/dmgbuild/)
+for that layout — `pip install dmgbuild`. Without it the image is still built and still works, but
+with Finder's default arrangement. Scripting Finder to do the layout was tried and abandoned: it
+times out under automation, so the result would be a coin toss.
+
+The app's icon is generated from `Resources/AppIcon.png`, the same mark the web app uses. That
+source is 192px, so sizes above 128 are upscaled; replace it with a larger master if one appears.
 
 Stapling matters: without the ticket attached, anyone who downloads the app on a machine that
 cannot reach Apple is told it "cannot be checked for malicious software".

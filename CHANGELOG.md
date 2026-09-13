@@ -4,6 +4,11 @@
 
 ### Added
 
+- **The macOS sidecar ships as a disk image you install by dragging.** A release now produces a
+  signed, notarised and stapled `.dmg` alongside the zip, opening with the app beside a shortcut to
+  Applications. A zip leaves the app wherever the browser put it, and a menu-bar app living in
+  Downloads is one tidy-up away from disappearing. The app also has an icon at last, generated from
+  the same mark the web app uses, instead of Finder's blank placeholder.
 - **The macOS sidecar can be built as a notarised, distributable app.** `release-app.sh` signs
   with a Developer ID, archives with `ditto`, submits to Apple, staples the ticket to the bundle and
   checks the result the way Gatekeeper will; a `sidecar-v*` tag does the same in CI and attaches the
