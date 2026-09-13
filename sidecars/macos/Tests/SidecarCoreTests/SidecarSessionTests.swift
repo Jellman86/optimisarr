@@ -60,7 +60,8 @@ final class HangingExecutor: WorkExecutor, @unchecked Sendable {
 
     func execute(
         _ assignment: Assignment, pairing: StoredPairing,
-        progress: @escaping @Sendable (JobProgress) -> Void
+        progress: @escaping @Sendable (JobProgress) -> Void,
+        preview: @escaping @Sendable (Data) -> Void
     ) async -> JobOutcome {
         lock.withLock { started = true; startedCount += 1 }
         while !Task.isCancelled {

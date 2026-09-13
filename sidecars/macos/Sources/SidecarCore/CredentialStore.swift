@@ -29,80 +29,121 @@ public struct StoredPairing: Codable, Sendable, Equatable {
 ///
 /// The credential is a long-lived secret that authorises a remote machine against someone's media
 /// server, so it belongs in the Keychain and nowhere else — never `UserDefaults`, never a plist,
-/// never a log line. `kSecAttrAccessibleAfterFirstUnlock` lets the app resume checking in after a
-/// reboot without the user being present, while still keeping the secret encrypted at rest.
+/// never a log line.
+///
+/// **Two keychains, deliberately.** A properly signed build uses the data protection keychain,
+/// where access is decided by the code signature and no dialog is ever raised. An ad-hoc build has
+/// no team identifier, so that keychain refuses it outright (`errSecMissingEntitlement`), and it
+/// falls back to the legacy file keychain. The legacy one guards items with an access control list
+/// naming the exact binary that wrote them, and an ad-hoc signature changes with every rebuild —
+/// so a rebuilt development build is a different application to it, and asks the operator for a
+/// password it should never be asking for. That was seen on 2026-09-13 as a prompt that would not
+/// stop. Reads therefore refuse interaction, and an item that cannot be read without it is removed
+/// and reported as "not paired" so the operator pairs once more instead of being nagged forever.
 public struct KeychainCredentialStore: CredentialStore {
     private let service: String
     private let account: String
+    private let accessGroup: String?
 
-    public init(service: String = "uk.optimisarr.sidecar", account: String = "worker-credential") {
+    public init(
+        service: String = "uk.optimisarr.sidecar",
+        account: String = "worker-credential",
+        accessGroup: String? = nil
+    ) {
         self.service = service
         self.account = account
+        self.accessGroup = accessGroup
     }
 
-    private var baseQuery: [String: Any] {
-        [
+    /// The data protection keychain first; the legacy one only where it is not available.
+    private var keychains: [Bool] { [true, false] }
+
+    private func baseQuery(dataProtection: Bool) -> [String: Any] {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
+        if dataProtection {
+            query[kSecUseDataProtectionKeychain as String] = true
+            if let accessGroup { query[kSecAttrAccessGroup as String] = accessGroup }
+        }
+        return query
     }
 
     public func load() throws -> StoredPairing? {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        for dataProtection in keychains {
+            var query = baseQuery(dataProtection: dataProtection)
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
 
-        // Never allow the Keychain to put a dialog on screen.
-        //
-        // An ad-hoc signature is not stable across builds, so a rebuilt app is a *different*
-        // application as far as the Keychain is concerned, and reading an item the previous build
-        // created raises an authorisation prompt. That prompt is modal, and this call sits on the
-        // launch path — so the app hangs behind it with no menu bar icon and no window, looking for
-        // all the world like it failed to start. Asking for the item without interaction turns that
-        // into an ordinary error we can handle instead.
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        query[kSecUseAuthenticationContext as String] = context
+            // Never let the Keychain put a dialog on screen. This call is on the launch path, and
+            // a modal prompt there hangs an app that has no window and no Dock icon to show for
+            // it — it simply looks as though it failed to start.
+            if !dataProtection {
+                let context = LAContext()
+                context.interactionNotAllowed = true
+                query[kSecUseAuthenticationContext as String] = context
+            }
 
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+            var item: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &item)
 
-        if status == errSecItemNotFound { return nil }
+            switch status {
+            case errSecSuccess:
+                guard let data = item as? Data else { throw KeychainError.unexpectedStatus(status) }
+                return try JSONDecoder().decode(StoredPairing.self, from: data)
 
-        // Present but unreadable — typically an item written by a previous build of this app.
-        // Treated as "not paired" rather than as a failure: the credential is unrecoverable either
-        // way, and asking the operator to pair again is far better than blocking the app or
-        // nagging them for a password they should not be typing into an unsigned build.
-        if status == errSecInteractionNotAllowed || status == errSecAuthFailed {
-            return nil
+            case errSecItemNotFound, errSecMissingEntitlement:
+                // Nothing here, or this keychain is not open to this build. Try the other.
+                continue
+
+            case errSecInteractionNotAllowed, errSecAuthFailed:
+                // Present but unreadable: written by a previous build of this app, whose signature
+                // this one no longer matches. Take it away rather than leave it to prompt on every
+                // future attempt; the secret is unrecoverable either way and pairing again is a
+                // few seconds' work.
+                SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
+                return nil
+
+            default:
+                throw KeychainError.unexpectedStatus(status)
+            }
         }
-
-        guard status == errSecSuccess, let data = item as? Data else {
-            throw KeychainError.unexpectedStatus(status)
-        }
-        return try JSONDecoder().decode(StoredPairing.self, from: data)
+        return nil
     }
 
     public func save(_ pairing: StoredPairing) throws {
         let data = try JSONEncoder().encode(pairing)
+        var lastStatus: OSStatus = errSecSuccess
 
-        // Replace rather than update-or-insert: pairing again should not leave a stale secret
-        // behind if the previous item was written by an older build with different attributes.
-        SecItemDelete(baseQuery as CFDictionary)
+        for dataProtection in keychains {
+            // Replace rather than update-or-insert: pairing again should not leave a stale secret
+            // behind if the previous item was written by an older build with different attributes.
+            SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
 
-        var query = baseQuery
-        query[kSecValueData as String] = data
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            var query = baseQuery(dataProtection: dataProtection)
+            query[kSecValueData as String] = data
+            query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
 
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw KeychainError.unexpectedStatus(status) }
+            let status = SecItemAdd(query as CFDictionary, nil)
+            if status == errSecSuccess { return }
+            lastStatus = status
+            // A build without the entitlement cannot use the data protection keychain at all.
+            if status != errSecMissingEntitlement { break }
+        }
+        throw KeychainError.unexpectedStatus(lastStatus)
     }
 
     public func clear() throws {
-        let status = SecItemDelete(baseQuery as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.unexpectedStatus(status)
+        for dataProtection in keychains {
+            let status = SecItemDelete(baseQuery(dataProtection: dataProtection) as CFDictionary)
+            guard status == errSecSuccess
+                || status == errSecItemNotFound
+                || status == errSecMissingEntitlement
+            else {
+                throw KeychainError.unexpectedStatus(status)
+            }
         }
     }
 }

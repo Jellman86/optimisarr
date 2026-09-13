@@ -4,6 +4,14 @@
 
 ### Added
 
+- **The macOS sidecar's menu shows what this Mac is actually doing.** A running job gets a
+  time-lapse of the frames going through the encoder, with a strip beneath showing the run, and a
+  real progress bar for the two stages that have one: bytes received while a source downloads and
+  bytes sent while a candidate is delivered. A GPU reading sits alongside, stating plainly that
+  VideoToolbox encodes on the media engine that macOS does not report. Frames and GPU are sampled
+  only while the menu is open. The menu itself is grouped into cards with a status colour carried
+  from the header, and `--render-menu` writes a picture of every state so a layout change can be
+  reviewed without a paired server and a running job.
 - **A dropped source download resumes instead of starting a multi-gigabyte file again.** The macOS
   sidecar fetches sources in bounded 64 MB byte ranges, keeps every complete range across transient
   failures, and asks for the next missing byte. It validates each `Content-Range`, requires the
@@ -101,6 +109,14 @@
 
 ### Fixed
 
+- **The macOS sidecar stops asking for Keychain access over and over.** An ad-hoc signature is
+  derived from the binary, so it changes on every build and the Keychain treats each rebuilt copy
+  as a different application; reaching the stored pairing then raised a password prompt that kept
+  coming back. `make-app.sh` now takes a `SIGNING_IDENTITY` and signs with a real certificate,
+  whose identity is stable across rebuilds, applying the hardened runtime and a timestamp and
+  signing the bundled ffmpeg and ffprobe first. The credential store also tries the data protection
+  keychain before the legacy one, and an item it cannot read without a prompt is removed and
+  reported as "not paired" rather than asked for again.
 - **Sampled VMAF no longer scores a candidate against its own neighbouring frames.** Both inputs
   of a sampled window are seeked to the same whole second and then paired by timestamp, but FFmpeg
   stamps frames relative to each file's container start, which is the earliest stream. A source
