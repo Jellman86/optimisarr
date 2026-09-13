@@ -52,4 +52,16 @@ struct LiveCapabilityTests {
         // it — so the prober encodes a throwaway clip and decodes it back before claiming decode.
         #expect(capabilities.hardwareDecoders.contains("videotoolbox"))
     }
+
+    @Test("reports the audio encoders the bundled build really has, and no others")
+    func provesAudioAgainstTheRealBuild() async {
+        // The bundled FFmpeg links no external audio libraries. If this ever starts reporting
+        // libopus or libmp3lame, either the build gained them or the probe stopped proving them —
+        // and the server would begin sending this machine work it cannot do.
+        let capabilities = await CapabilityProber(ffmpeg: ffmpeg).probe(name: "Live")
+
+        #expect(capabilities.audioEncoders.contains("aac"))
+        #expect(!capabilities.audioEncoders.contains("libopus"))
+        #expect(!capabilities.audioEncoders.contains("libmp3lame"))
+    }
 }

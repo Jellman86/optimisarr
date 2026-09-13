@@ -24,6 +24,7 @@ const workers = [
   {
     id: 1, name: 'Mac Studio', operatingSystem: 'macos', architecture: 'arm64', protocolVersion: 2,
     videoEncoders: ['hevc_videotoolbox', 'h264_videotoolbox', 'libx265', 'libsvtav1'],
+    audioEncoders: ['aac', 'libopus'],
     hardwareDecoders: ['videotoolbox'], vmaf: 'Cpu', freeScratchBytes: 118 * 1024 ** 3, maxConcurrency: 2,
     pairedAt: iso(86_400_000 * 12), lastSeenAt: iso(4_000), revokedAt: null, online: true,
     drainRequestedAt: null, heldLeases: 1,
@@ -32,7 +33,7 @@ const workers = [
   },
   {
     id: 2, name: 'MacBook Air', operatingSystem: 'macos', architecture: 'arm64', protocolVersion: 2,
-    videoEncoders: ['hevc_videotoolbox', 'libx265'], hardwareDecoders: [], vmaf: 'Cpu',
+    videoEncoders: ['hevc_videotoolbox', 'libx265'], audioEncoders: ['aac'], hardwareDecoders: [], vmaf: 'Cpu',
     freeScratchBytes: 41 * 1024 ** 3, maxConcurrency: 1,
     pairedAt: iso(86_400_000 * 3), lastSeenAt: iso(12_000), revokedAt: null, online: true,
     drainRequestedAt: iso(180_000), heldLeases: 0, activeJobs: [],
@@ -41,7 +42,7 @@ const workers = [
   },
   {
     id: 3, name: 'Office PC', operatingSystem: 'windows', architecture: 'x64', protocolVersion: 1,
-    videoEncoders: ['hevc_nvenc'], hardwareDecoders: ['cuda'], vmaf: 'None',
+    videoEncoders: ['hevc_nvenc'], audioEncoders: [], hardwareDecoders: ['cuda'], vmaf: 'None',
     freeScratchBytes: 0, maxConcurrency: 1,
     pairedAt: iso(86_400_000 * 40), lastSeenAt: iso(86_400_000 * 2), revokedAt: null, online: false,
     drainRequestedAt: null, heldLeases: 0, activeJobs: [],

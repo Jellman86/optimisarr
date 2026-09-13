@@ -32,6 +32,10 @@ public struct SidecarCapabilities: Sendable, Equatable {
     public var operatingSystem: String
     public var architecture: String
     public var videoEncoders: [String]
+    /// Audio encoders proved on this machine. The server refuses to offer a job that re-encodes
+    /// audio to a worker that has not named its encoder, so an empty list means audio-copy work
+    /// only rather than "unknown".
+    public var audioEncoders: [String]
     public var hardwareDecoders: [String]
     public var vmaf: VmafCapability
     public var freeScratchBytes: Int64
@@ -42,6 +46,7 @@ public struct SidecarCapabilities: Sendable, Equatable {
         operatingSystem: String = "macos",
         architecture: String = SidecarCapabilities.currentArchitecture,
         videoEncoders: [String] = [],
+        audioEncoders: [String] = [],
         hardwareDecoders: [String] = [],
         vmaf: VmafCapability = .none,
         freeScratchBytes: Int64 = 0,
@@ -51,6 +56,7 @@ public struct SidecarCapabilities: Sendable, Equatable {
         self.operatingSystem = operatingSystem
         self.architecture = architecture
         self.videoEncoders = videoEncoders
+        self.audioEncoders = audioEncoders
         self.hardwareDecoders = hardwareDecoders
         self.vmaf = vmaf
         self.freeScratchBytes = freeScratchBytes

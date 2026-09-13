@@ -272,7 +272,8 @@ public final class SidecarSession: ObservableObject {
                     serverAddress: pairing.serverAddress,
                     credential: pairing.credential,
                     freeScratchBytes: capabilities.freeScratchBytes,
-                    maxConcurrency: capabilities.maxConcurrency)
+                    maxConcurrency: capabilities.maxConcurrency,
+                    capabilities: capabilities)
 
                 interval = beat.heartbeatInterval
                 if jobTasks.isEmpty {

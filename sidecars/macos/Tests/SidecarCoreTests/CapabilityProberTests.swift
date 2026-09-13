@@ -17,11 +17,13 @@ final class ScriptedRunner: CommandRunner, @unchecked Sendable {
             if arguments.contains("-hwaccels") { return replies["hwaccels"] ?? (1, "") }
             // The decode half of the hardware round trip.
             if arguments.contains("-hwaccel") { return replies["decode"] ?? (1, "") }
-            // A confirmation encode; remember which encoder was proved.
-            if let index = arguments.firstIndex(of: "-c:v"), index + 1 < arguments.count {
-                let encoder = arguments[index + 1]
-                probedEncoders.append(encoder)
-                return replies[encoder] ?? (0, "")
+            // A confirmation encode, video or audio; remember which encoder was proved.
+            for flag in ["-c:v", "-c:a"] {
+                if let index = arguments.firstIndex(of: flag), index + 1 < arguments.count {
+                    let encoder = arguments[index + 1]
+                    probedEncoders.append(encoder)
+                    return replies[encoder] ?? (0, "")
+                }
             }
             return (1, "")
         }
@@ -65,6 +67,24 @@ struct CapabilityProberTests {
         // CPU encoders get the same treatment: proved by an encode, not trusted from the listing.
         #expect(runner.probedEncoders.contains("libx265"))
         #expect(capabilities.videoEncoders.contains("libx265"))
+    }
+
+    @Test("an audio encoder is proved before it is advertised")
+    func provesAudioEncoders() async {
+        // The bundled FFmpeg has aac and not libopus. Advertising libopus would earn this machine
+        // a job whose command it cannot run, which it can only hand straight back.
+        let runner = ScriptedRunner([
+            "encoders": (0, listing + "\n A....D aac  AAC\n A....D libopus  libopus Opus"),
+            "filters": (0, "libvmaf"),
+            "hevc_videotoolbox": (0, ""),
+            "aac": (0, ""),
+            "libopus": (1, "Unknown encoder 'libopus'"),
+        ])
+
+        let capabilities = await prober(runner).probe(name: "Mac")
+
+        #expect(capabilities.audioEncoders.contains("aac"))
+        #expect(!capabilities.audioEncoders.contains("libopus"))
     }
 
     @Test("a listed but crashing CPU encoder is not advertised")

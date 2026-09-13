@@ -170,6 +170,7 @@ public struct SidecarClient: Sendable {
             "protocolMinimum": WorkerProtocol.minimum,
             "protocolMaximum": WorkerProtocol.maximum,
             "videoEncoders": capabilities.videoEncoders,
+            "audioEncoders": capabilities.audioEncoders,
             "hardwareDecoders": capabilities.hardwareDecoders,
             "vmaf": capabilities.vmaf.rawValue,
             "freeScratchBytes": capabilities.freeScratchBytes,
@@ -203,11 +204,18 @@ public struct SidecarClient: Sendable {
     /// Reports in. The returned interval comes from the server so this app paces itself from the
     /// control plane rather than hard-coding a value that could drift out of step with the
     /// server's offline threshold.
+    /// Checks in, and says again what this machine can do.
+    ///
+    /// Capabilities ride along rather than being sent only at pairing. This app re-probes itself
+    /// on every launch, so a rebuilt FFmpeg or an encoder that stopped opening used to be known
+    /// here and nowhere else: the server went on scheduling against whatever was true when the
+    /// two were first introduced, and only pairing again corrected it.
     public func heartbeat(
         serverAddress: String,
         credential: String,
         freeScratchBytes: Int64,
-        maxConcurrency: Int
+        maxConcurrency: Int,
+        capabilities: SidecarCapabilities? = nil
     ) async throws -> HeartbeatResult {
         let url = try Self.endpoint(serverAddress, "/api/workers/heartbeat")
 
@@ -215,10 +223,17 @@ public struct SidecarClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        var body: [String: Any] = [
             "freeScratchBytes": freeScratchBytes,
             "maxConcurrency": maxConcurrency,
-        ])
+        ]
+        if let capabilities {
+            body["videoEncoders"] = capabilities.videoEncoders
+            body["audioEncoders"] = capabilities.audioEncoders
+            body["hardwareDecoders"] = capabilities.hardwareDecoders
+            body["vmaf"] = capabilities.vmaf.rawValue
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await perform(request)
 

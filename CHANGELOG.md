@@ -119,6 +119,18 @@
 
 ### Fixed
 
+- **A worker is no longer sent a job whose audio encoder it does not have.** Advanced options
+  offer Opus and MP3, which the server emits as `libopus` and `libmp3lame`. The macOS sidecar's
+  bundled FFmpeg links no external audio libraries and has neither, and capability matching only
+  ever considered video, so such a job was handed over, failed with "Unknown encoder", and came
+  straight back to be offered again. The sidecar now proves its audio encoders with a real encode
+  and advertises them, and the matcher checks the job's encoder against that list. Audio that is
+  copied names no encoder and needs none.
+- **A worker's capabilities are refreshed on every check-in, not only at pairing.** The sidecar
+  re-probes itself at each launch, but had no way to say so, so a rebuilt FFmpeg or an encoder that
+  stopped opening left the server scheduling against whatever was true when the two were first
+  introduced. Only pairing again corrected it. A check-in that omits capabilities, as an older
+  sidecar does, leaves them untouched rather than emptying them.
 - **The macOS sidecar's bundled FFmpeg runs on machines other than the one that built it.** The
   0.1.0 and 0.1.1 downloads linked Homebrew's `libxcb` and failed to start anywhere it was absent.
   The build set `PKG_CONFIG_PATH`, which *adds* to pkg-config's built-in search path, so configure

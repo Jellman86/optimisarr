@@ -86,7 +86,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     private Task<HttpClient> PairWorkerWithEncoders(string name, int concurrency, params string[] encoders) =>
         PairWorker(name, concurrency, encoders, decoders: []);
 
-    private async Task<HttpClient> PairWorker(string name, int concurrency, string[] encoders, string[] decoders)
+    private async Task<HttpClient> PairWorker(
+        string name, int concurrency, string[] encoders, string[] decoders, string[]? audioEncoders = null)
     {
         var admin = Admin();
         var issued = await admin.PostAsync("/api/workers/pairing-code", null);
@@ -102,6 +103,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             protocolMinimum = 1,
             protocolMaximum = 1,
             videoEncoders = encoders,
+            audioEncoders = audioEncoders ?? ["aac"],
             hardwareDecoders = decoders,
             vmaf = "Cpu",
             freeScratchBytes = 500L * 1024 * 1024 * 1024,
@@ -122,7 +124,8 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         VideoQualityStrategy strategy = VideoQualityStrategy.Fixed,
         RuleProfile profile = RuleProfile.ConservativeHevc,
         WorkPlacement placement = WorkPlacement.Anywhere,
-        bool qualityGate = false)
+        bool qualityGate = false,
+        string? videoAudioCodec = null)
     {
         using var scope = _api.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -135,6 +138,7 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             RuleProfile = profile,
             WorkPlacement = placement,
             VmafQualityGateEnabled = qualityGate ? true : null,
+            VideoAudioCodec = videoAudioCodec,
         };
         db.Libraries.Add(library);
         await db.SaveChangesAsync();
@@ -246,6 +250,79 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Claiming_is_refused_when_the_worker_cannot_run_the_jobs_audio_encoder()
+    {
+        // The library form offers Opus, which the server emits as libopus. The macOS sidecar's
+        // bundled FFmpeg has no libopus, so before this the job was handed over, failed with
+        // "Unknown encoder", and came straight back to be offered again.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("NoOpus", 1, ["libx265"], [], audioEncoders: ["aac"]);
+        await QueueAJob(videoAudioCodec: "opus");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_worker_that_can_run_the_jobs_audio_encoder_is_offered_it()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("HasOpus", 1, ["libx265"], [], audioEncoders: ["aac", "libopus"]);
+        await QueueAJob(videoAudioCodec: "opus");
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_check_in_refreshes_what_the_worker_can_do()
+    {
+        // Capabilities used to be recorded once, at pairing. A sidecar re-probes itself on every
+        // launch, so after a rebuilt FFmpeg or a broken encoder the server was scheduling against
+        // what was true the day the two were introduced, and only re-pairing corrected it.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Changes", 1, ["libx265"], [], audioEncoders: ["aac"]);
+        var workerId = await WorkerIdNamed("Changes");
+
+        using var beat = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 500L * 1024 * 1024 * 1024,
+            maxConcurrency = 1,
+            videoEncoders = new[] { "libx265", "hevc_videotoolbox" },
+            audioEncoders = new[] { "aac", "libopus" },
+            hardwareDecoders = new[] { "videotoolbox" },
+            vmaf = "Cpu",
+        });
+        Assert.Equal(HttpStatusCode.OK, beat.StatusCode);
+
+        var row = await WorkerRow(workerId);
+        Assert.Contains("hevc_videotoolbox", row.GetProperty("videoEncoders").EnumerateArray().Select(e => e.GetString()));
+        Assert.Contains("videotoolbox", row.GetProperty("hardwareDecoders").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public async Task A_check_in_that_omits_capabilities_leaves_them_alone()
+    {
+        // An older sidecar sends only free space and concurrency. Treating that as "proves
+        // nothing" would drain a working worker on its first check-in after a server upgrade.
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Older", 1, ["libx265"], [], audioEncoders: ["aac"]);
+        var workerId = await WorkerIdNamed("Older");
+
+        using var beat = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 500L * 1024 * 1024 * 1024,
+            maxConcurrency = 1,
+        });
+        Assert.Equal(HttpStatusCode.OK, beat.StatusCode);
+
+        var row = await WorkerRow(workerId);
+        Assert.Contains("libx265", row.GetProperty("videoEncoders").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
     public async Task Claiming_records_the_worker_command_on_the_job()
     {
         // The queue shows a job's ffmpeg arguments. For a remote job they used to be whatever this
@@ -354,6 +431,14 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         // Pairing checks the worker in, so from here one is online and could take the job.
         await PairCapableWorker("Preferred");
         Assert.True((await JobRow(jobId)).GetProperty("waitingForWorker").GetBoolean());
+    }
+
+    private async Task<JsonElement> WorkerRow(int workerId)
+    {
+        using var listed = await Admin().GetAsync("/api/workers");
+        listed.EnsureSuccessStatusCode();
+        return (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == workerId);
     }
 
     private async Task<JsonElement> JobRow(int jobId)

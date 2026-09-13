@@ -13,6 +13,7 @@ public class WorkerCapabilityMatcherTests
         OperatingSystem: "linux",
         Architecture: "x64",
         VideoEncoders: ["libx265", "hevc_nvenc"],
+        AudioEncoders: ["aac", "libopus"],
         HardwareDecoders: ["hevc_cuvid"],
         Vmaf: VmafCapability.Cuda,
         FreeScratchBytes: 100L * 1024 * 1024 * 1024,
@@ -20,6 +21,7 @@ public class WorkerCapabilityMatcherTests
 
     private static JobRequirements Wanted() => new(
         VideoEncoder: "libx265",
+        AudioEncoder: null,
         HardwareDecoder: null,
         Vmaf: VmafCapability.Cpu,
         ScratchBytes: 10L * 1024 * 1024 * 1024);
@@ -31,6 +33,27 @@ public class WorkerCapabilityMatcherTests
 
         Assert.True(match.Accepted);
         Assert.Empty(match.Reasons);
+    }
+
+    [Fact]
+    public void Match_rejects_a_missing_audio_encoder()
+    {
+        // The macOS sidecar's bundled FFmpeg has no libopus and no libmp3lame, while the library
+        // form offers Opus and MP3. Without this the job is handed to a worker that cannot run it,
+        // fails on "Unknown encoder", and comes straight back to be offered again.
+        var match = WorkerCapabilityMatcher.Match(Capable(), Wanted() with { AudioEncoder = "libmp3lame" });
+
+        Assert.False(match.Accepted);
+        Assert.Contains(match.Reasons, r => r.Contains("libmp3lame", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Match_accepts_a_job_that_copies_its_audio()
+    {
+        // A copied track needs no encoder, so naming none must not be read as an unmet requirement.
+        var match = WorkerCapabilityMatcher.Match(Capable(), Wanted() with { AudioEncoder = null });
+
+        Assert.True(match.Accepted);
     }
 
     [Fact]

@@ -93,6 +93,13 @@ public struct CapabilityProber: Sendable {
             proved.append(encoder)
         }
 
+        var provedAudio: [String] = []
+        for encoder in AudioEncoderListParser.parse(listing.output) {
+            let probe = await runner.run(ffmpeg, AudioEncoderProbeCommand.arguments(for: encoder))
+            guard probe.exitCode == 0 else { continue }
+            provedAudio.append(encoder)
+        }
+
         let filters = await runner.run(ffmpeg, ["-hide_banner", "-filters"])
         let vmaf = filters.exitCode == 0 ? VmafSupportParser.parse(filters.output) : VmafCapability.none
 
@@ -101,6 +108,7 @@ public struct CapabilityProber: Sendable {
         return SidecarCapabilities(
             name: name,
             videoEncoders: proved,
+            audioEncoders: provedAudio,
             hardwareDecoders: decoders,
             vmaf: vmaf,
             freeScratchBytes: freeScratchBytes(),

@@ -203,6 +203,10 @@ internal static class WorkerLeaseEndpoints
 
                 var requirements = new JobRequirements(
                     VideoEncoder: assignment.VideoEncoder,
+                    // Null when the audio is copied. When the command names one it has to be
+                    // proved: the library form offers Opus and MP3, and a sidecar whose FFmpeg
+                    // lacks libopus or libmp3lame can only fail the job and hand it straight back.
+                    AudioEncoder: assignment.AudioEncoder,
                     // Named only when the command actually uses one, and then it must be proved.
                     HardwareDecoder: assignment.HardwareDecoder,
                     // Only a job whose policy will judge VMAF needs a worker that can score it.

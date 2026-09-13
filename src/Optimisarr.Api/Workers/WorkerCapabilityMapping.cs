@@ -14,6 +14,7 @@ internal static class WorkerCapabilityMapping
         worker.OperatingSystem,
         worker.Architecture,
         Split(worker.VideoEncoders),
+        Split(worker.AudioEncoders),
         Split(worker.HardwareDecoders),
         worker.Vmaf,
         worker.FreeScratchBytes,
