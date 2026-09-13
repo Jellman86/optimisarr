@@ -119,6 +119,13 @@
 
 ### Fixed
 
+- **The macOS sidecar's bundled FFmpeg runs on machines other than the one that built it.** The
+  0.1.0 and 0.1.1 downloads linked Homebrew's `libxcb` and failed to start anywhere it was absent.
+  The build set `PKG_CONFIG_PATH`, which *adds* to pkg-config's built-in search path, so configure
+  still found `/opt/homebrew/lib/pkgconfig` and linked what it discovered. It now sets
+  `PKG_CONFIG_LIBDIR`, which replaces that path, and passes `--disable-autodetect` so nothing is
+  linked unless it is named. The build already checked for this and only printed the result; the
+  check now fails the build, for both `ffmpeg` and `ffprobe`.
 - **The macOS sidecar's bundled libx265 no longer crashes on its first frame.** Any libx265 encode
   segfaulted, at any resolution and with any encoder settings. FFmpeg's wrapper guards x265's
   multi-layer encoder API with `X265_BUILD >= 210` and no upper bound; x265 reverted that API at
