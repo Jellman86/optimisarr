@@ -92,6 +92,11 @@ jobs:
           echo "Signing identity: $IDENTITY"
           echo "SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
+      # dmgbuild writes the disk image's window layout directly, without scripting Finder, which
+      # times out on a runner with no logged-in session.
+      - name: Install dmgbuild
+        run: pipx install dmgbuild || pip3 install --break-system-packages dmgbuild
+
       - name: Build, sign, notarise and staple
         working-directory: sidecars/macos
         env:
@@ -107,6 +112,8 @@ jobs:
       - name: Attach it to the Release
         uses: softprops/action-gh-release@v2
         with:
-          files: sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.zip
+          files: |
+            sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.dmg
+            sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.zip
           tag_name: ${{ github.ref_name }}
           fail_on_unmatched_files: true

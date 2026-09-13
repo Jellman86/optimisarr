@@ -81,6 +81,31 @@ echo "==> Verifying the way Gatekeeper will"
 xcrun stapler validate "${BUNDLE}"
 spctl --assess --type execute --verbose=2 "${BUNDLE}"
 
+# The disk image is built from the *stapled* bundle, so the app carries its own ticket even after
+# someone drags it out. The image is then notarised in its own right, because the ticket that
+# matters to a download is the one attached to the file that was downloaded.
+DMG="build/${APP_NAME}-${VERSION}.dmg"
 echo
-echo "Done: ${ARCHIVE}"
-echo "Attach that to the GitHub Release."
+echo "==> Building the disk image"
+SIGNING_IDENTITY="${SIGNING_IDENTITY}" ./scripts/make-dmg.sh "${VERSION}"
+
+echo
+echo "==> Notarising the disk image"
+if [[ -n "${NOTARY_PROFILE:-}" ]]; then
+  xcrun notarytool submit "${DMG}" --keychain-profile "${NOTARY_PROFILE}" --wait
+else
+  xcrun notarytool submit "${DMG}" \
+    --key "${NOTARY_KEY}" --key-id "${NOTARY_KEY_ID}" --issuer "${NOTARY_ISSUER}" --wait
+fi
+
+echo
+echo "==> Stapling the disk image"
+xcrun stapler staple "${DMG}"
+xcrun stapler validate "${DMG}"
+spctl --assess --type open --context context:primary-signature --verbose=2 "${DMG}"
+
+echo
+echo "Done:"
+echo "  ${ARCHIVE}"
+echo "  ${DMG}"
+echo "Attach both to the GitHub Release."
