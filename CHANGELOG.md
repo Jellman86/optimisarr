@@ -2,7 +2,26 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The macOS sidecar no longer freezes on launch behind a Keychain prompt nobody can see.** An
+  upgrade that changed the app's signature left the stored credential unreadable, and the read that
+  found this out blocked the main thread waiting on a dialog — so the app started and then stopped
+  responding, with no window and no Dock icon to show for it, and nothing in the log. Two guards
+  meant to prevent exactly this did not work: the code suppressed Keychain interaction with an
+  `LAContext`, which governs the data protection keychain and has no bearing on the legacy
+  keychain's dialog, and it deferred the read into a task that was already on the main actor and so
+  blocked identically. The read now happens off the main actor with the legacy dialog properly
+  suppressed, an unreadable item is discarded as it was always meant to be, and the app says in its
+  log what it found.
+
 ### Added
+
+- **The macOS sidecar can be paired from a terminal.** `--pair <server>` reads a PIN from standard
+  input, pairs, and exits — so a Mac can be set up over SSH, scripted onto several machines, or
+  recovered remotely when a pairing is lost, none of which was possible when the pairing sheet was
+  the only way in. The PIN comes from stdin rather than an argument so it never reaches `ps` or a
+  shell history.
 
 - **The Workers tab shows which build each sidecar is running.** Until now the only version on
   screen was the protocol version, which says what the two ends agreed to speak and nothing about

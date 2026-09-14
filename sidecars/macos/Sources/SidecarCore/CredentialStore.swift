@@ -80,14 +80,27 @@ public struct KeychainCredentialStore: CredentialStore {
             // Never let the Keychain put a dialog on screen. This call is on the launch path, and
             // a modal prompt there hangs an app that has no window and no Dock icon to show for
             // it — it simply looks as though it failed to start.
-            if !dataProtection {
+            //
+            // Which knob does that depends on the keychain, and getting it wrong fails silently.
+            // An `LAContext` with `interactionNotAllowed` governs the data protection keychain's
+            // biometric and passcode gates; it has no bearing whatever on the legacy keychain's
+            // access-control dialog, which is what actually appears here. Suppressing that one
+            // needs the legacy switch below — deprecated, process-wide, and the only thing that
+            // works. Setting the context and believing the job done is how a 0.1.7 build shipped
+            // that hung on launch behind an invisible prompt, with a comment above it saying this
+            // could not happen.
+            var item: CFTypeRef?
+            let status: OSStatus
+            if dataProtection {
                 let context = LAContext()
                 context.interactionNotAllowed = true
                 query[kSecUseAuthenticationContext as String] = context
+                status = SecItemCopyMatching(query as CFDictionary, &item)
+            } else {
+                status = Self.withoutLegacyKeychainUI {
+                    SecItemCopyMatching(query as CFDictionary, &item)
+                }
             }
-
-            var item: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &item)
 
             switch status {
             case errSecSuccess:
@@ -145,6 +158,29 @@ public struct KeychainCredentialStore: CredentialStore {
                 throw KeychainError.unexpectedStatus(status)
             }
         }
+    }
+}
+
+extension KeychainCredentialStore {
+    /// Runs `body` with the legacy keychain forbidden from showing its access-control dialog, then
+    /// restores whatever the setting was.
+    ///
+    /// `SecKeychainSetUserInteractionAllowed` is deprecated and process-wide, which is unpleasant
+    /// on both counts — but it is the only thing that governs the legacy dialog, and a windowless
+    /// menu-bar app must never be able to hang behind one. With interaction off, a read of an item
+    /// this build cannot claim returns `errSecInteractionNotAllowed` immediately instead of
+    /// blocking, which is the answer the caller already knows how to act on.
+    static func withoutLegacyKeychainUI<T>(_ body: () -> T) -> T {
+        var previous: DarwinBoolean = true
+        let read = SecKeychainGetUserInteractionAllowed(&previous)
+        SecKeychainSetUserInteractionAllowed(false)
+        defer {
+            // Only put back what we actually managed to read, and only ever re-enable interaction
+            // that was already enabled: leaving it off for the whole process would break any
+            // later call that legitimately needs to ask.
+            SecKeychainSetUserInteractionAllowed(read == errSecSuccess ? previous.boolValue : true)
+        }
+        return body()
     }
 }
 

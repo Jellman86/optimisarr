@@ -54,6 +54,25 @@ struct OptimisarrSidecarApp: App {
             exit(0)
         }
 
+        // Pair from a terminal and exit, without ever putting a menu bar or a window on screen.
+        // A machine that can only be paired by hand cannot be set up over SSH or recovered
+        // remotely, which is a poor property for an app whose job is to sit in a cupboard.
+        if let flag = arguments.firstIndex(of: HeadlessPairing.flag), flag + 1 < arguments.count {
+            let address = arguments[flag + 1]
+            nonisolated(unsafe) var result: Int32 = 1
+            // Run the main run loop rather than blocking on a semaphore. Pairing has to touch the
+            // main actor — the session lives there — so parking the main thread on a wait means the
+            // work it is waiting for can never start, and the command hangs for ever. Running the
+            // loop lets that work proceed on the thread it needs, and stopping it is what ends the
+            // command.
+            Task {
+                result = await HeadlessPairing.run(serverAddress: address)
+                CFRunLoopStop(CFRunLoopGetMain())
+            }
+            CFRunLoopRun()
+            exit(result)
+        }
+
         // Accessory rather than regular: no Dock icon, no app switcher entry. Set in code so the
         // package behaves correctly even when run straight from the build directory.
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -113,13 +132,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         observePowerEvents()
         sweepStrayRamDisks()
-        // Deferred rather than run inline. Restoring reads the Keychain, and anything that touches
-        // the Keychain can in principle block; doing it here on the launch path once left the app
-        // running with no menu bar icon and no window at all, because it was stuck behind a modal
-        // authorisation prompt. Letting launch finish first means the icon appears whatever the
-        // Keychain does.
+        // Restoring reads the Keychain, and that read can block — on an item written by a build
+        // whose signature no longer matches, indefinitely. Deferring it into a `Task { @MainActor }`
+        // was not enough and looked like it was: this is already the main actor, so the block
+        // happened here just the same, leaving a windowless app that had started and then frozen.
+        // The session now does the read off the main actor; this waits for the answer only so it
+        // knows whether to offer pairing.
         Task { @MainActor in
-            AppState.shared.session.restore()
+            await AppState.shared.session.restoreAndSettle()
             if case .unpaired = AppState.shared.session.status {
                 showPairingWindow()
             }
