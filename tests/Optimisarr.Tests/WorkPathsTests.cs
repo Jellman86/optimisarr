@@ -100,6 +100,60 @@ public sealed class WorkPathsTests : IDisposable
         Assert.Equal([staleOrphan], result);
     }
 
+    [Fact]
+    public void Leaves_a_directory_a_running_encode_has_reserved()
+    {
+        // Two jobs on the same media file share /work/7139. One finishes and prunes on its way out
+        // while the other has created its tree but not yet opened its output — so the directory is
+        // empty, but deleting it would kill the second encode with "Error opening output".
+        var workRoot = Path.Combine(_root, "work");
+        var mediaDir = Path.Combine(workRoot, "7139", "The Dinosaurs", "Season 1");
+        Directory.CreateDirectory(mediaDir);
+        var reserved = Path.GetFullPath(mediaDir);
+
+        WorkPaths.PruneEmptyAncestors(
+            workRoot,
+            Path.Combine(mediaDir, "finished.mp4"),
+            dir => string.Equals(dir, reserved, StringComparison.Ordinal));
+
+        Assert.True(Directory.Exists(mediaDir));
+        Assert.True(Directory.Exists(Path.Combine(workRoot, "7139")));
+    }
+
+    [Fact]
+    public void Stops_walking_up_at_a_reserved_ancestor()
+    {
+        // The leaf is free to go, but its parent is held by another job's encode.
+        var workRoot = Path.Combine(_root, "work");
+        var mediaRoot = Path.Combine(workRoot, "7139");
+        var leaf = Path.Combine(mediaRoot, "The Dinosaurs", "Season 1");
+        Directory.CreateDirectory(leaf);
+        var reserved = Path.GetFullPath(Path.Combine(mediaRoot, "The Dinosaurs"));
+
+        WorkPaths.PruneEmptyAncestors(
+            workRoot,
+            Path.Combine(leaf, "gone.mp4"),
+            dir => string.Equals(dir, reserved, StringComparison.Ordinal));
+
+        Assert.False(Directory.Exists(leaf));
+        Assert.True(Directory.Exists(reserved));
+        Assert.True(Directory.Exists(mediaRoot));
+    }
+
+    [Fact]
+    public void Prunes_as_before_when_nothing_is_reserved()
+    {
+        var workRoot = Path.Combine(_root, "work");
+        var mediaDir = Path.Combine(workRoot, "7139", "The Dinosaurs", "Season 1");
+        Directory.CreateDirectory(mediaDir);
+
+        WorkPaths.PruneEmptyAncestors(
+            workRoot, Path.Combine(mediaDir, "gone.mp4"), _ => false);
+
+        Assert.False(Directory.Exists(Path.Combine(workRoot, "7139")));
+        Assert.True(Directory.Exists(workRoot));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

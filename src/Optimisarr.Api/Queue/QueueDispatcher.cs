@@ -57,6 +57,11 @@ public sealed class QueueDispatcher(
 
     private readonly string _workRoot = WorkPaths.Resolve(environment);
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
+    // Scratch directories an encode is writing into. A directory is momentarily empty between
+    // being created and FFmpeg opening its output, and two jobs on the same media file share one
+    // directory — so without this, one job's cleanup prunes another job's freshly made tree.
+    private readonly ConcurrentDictionary<string, int> _reservedWorkDirectories =
+        new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _dbLock = new(1, 1);
     private readonly SemaphoreSlim _wake = new(0, 1);
     private int _draining;
@@ -899,7 +904,6 @@ public sealed class QueueDispatcher(
 
             var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
-            Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
@@ -924,13 +928,23 @@ public sealed class QueueDispatcher(
                     work.Value.VideoFrameRate),
                 work.Value.VideoFrameRate,
                 spec.TargetFrameRate);
-            var run = await RunFfmpegAsync(
-                jobId,
-                arguments,
-                progressDuration,
-                expectedFrameCount,
-                hardwareEncoder,
-                cancellationToken);
+            // Claim the output directory before creating it and hold it until FFmpeg has finished,
+            // then create it here rather than earlier in this method. Another job on the same media
+            // file writes into the same directory and prunes it on its way out; between creation
+            // and FFmpeg opening the output the directory is empty, so an unclaimed one gets pruned
+            // and the encode dies on "Error opening output … No such file or directory".
+            FfmpegRun run;
+            using (ReserveWorkDirectory(Path.GetDirectoryName(spec.OutputPath)!))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
+                run = await RunFfmpegAsync(
+                    jobId,
+                    arguments,
+                    progressDuration,
+                    expectedFrameCount,
+                    hardwareEncoder,
+                    cancellationToken);
+            }
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
@@ -2369,21 +2383,30 @@ public sealed class QueueDispatcher(
 
     // Keeps the last few stderr lines for a one-line failure message and the complete bounded
     // diagnostic stream for the API. Progress is on stdout, so no warning or error is filtered out.
+    // The tail holds distinct lines: FFmpeg repeats a warning once per stream, and a file with
+    // twenty audio tracks buries the one line that says what actually went wrong under twenty
+    // identical copies of something harmless. The full log keeps every copy.
     private static async Task<FfmpegStderr> ReadStderrAsync(
         Process process,
         CancellationToken cancellationToken)
     {
         var tail = new Queue<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var log = new FfmpegLogBuffer();
 
         string? line;
         while ((line = await process.StandardError.ReadLineAsync(cancellationToken)) is not null)
         {
             log.Append(line);
+            if (!seen.Add(line))
+            {
+                continue;
+            }
+
             tail.Enqueue(line);
             while (tail.Count > 12)
             {
-                tail.Dequeue();
+                seen.Remove(tail.Dequeue());
             }
         }
 
@@ -2810,7 +2833,7 @@ public sealed class QueueDispatcher(
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             MoveFile(outputPath, destination);
             // The output left the work dir; clean up its now-empty per-media scratch tree.
-            WorkPaths.PruneEmptyAncestors(_workRoot, outputPath);
+            WorkPaths.PruneEmptyAncestors(_workRoot, outputPath, IsWorkDirectoryReserved);
 
             await WithJobAsync(jobId, job =>
             {
@@ -3171,6 +3194,61 @@ public sealed class QueueDispatcher(
     /// </summary>
     public bool TryDiscardWorkOutput(string? path) => DeleteWorkOutput(path);
 
+    // Held for as long as FFmpeg is writing into the directory. Reference counted, because two
+    // concurrent jobs on the same media file legitimately share one.
+    private IDisposable ReserveWorkDirectory(string directory)
+    {
+        var key = NormaliseDirectory(directory);
+        _reservedWorkDirectories.AddOrUpdate(key, 1, static (_, count) => count + 1);
+        return new WorkDirectoryReservation(_reservedWorkDirectories, key);
+    }
+
+    private bool IsWorkDirectoryReserved(string directory) =>
+        _reservedWorkDirectories.ContainsKey(NormaliseDirectory(directory));
+
+    private static string NormaliseDirectory(string directory)
+    {
+        try
+        {
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException)
+        {
+            return directory;
+        }
+    }
+
+    private sealed class WorkDirectoryReservation(
+        ConcurrentDictionary<string, int> reservations,
+        string key) : IDisposable
+    {
+        private bool _released;
+
+        public void Dispose()
+        {
+            if (_released)
+            {
+                return;
+            }
+
+            _released = true;
+            while (reservations.TryGetValue(key, out var count))
+            {
+                if (count <= 1)
+                {
+                    if (reservations.TryRemove(new KeyValuePair<string, int>(key, count)))
+                    {
+                        return;
+                    }
+                }
+                else if (reservations.TryUpdate(key, count - 1, count))
+                {
+                    return;
+                }
+            }
+        }
+    }
+
     private bool DeleteWorkOutput(string? path)
     {
         if (string.IsNullOrEmpty(path))
@@ -3198,7 +3276,7 @@ public sealed class QueueDispatcher(
 
         // Tidy the per-media-file scratch directory this output lived in so /work does not
         // accumulate an empty tree for every file ever processed.
-        WorkPaths.PruneEmptyAncestors(_workRoot, path);
+        WorkPaths.PruneEmptyAncestors(_workRoot, path, IsWorkDirectoryReserved);
         return true;
     }
 
