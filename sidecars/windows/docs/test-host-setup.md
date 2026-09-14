@@ -8,8 +8,16 @@ its tray application. The **container** half runs Optimisarr's own Docker image 
 GPU through WSL. Do the native half first; the container half only matters when working on GPU
 VMAF in the server image.
 
-Every step below has been run on a clean machine. Where a step has a trap in it, the trap is
-written down rather than left for the next person to rediscover.
+> **Read this before following it.** This guide was written from a Mac and was *not* executed
+> against real hardware. It was then followed on PICARD on 2026-09-14, and **six steps were wrong**
+> — which ones is not recorded here, because the person who hit them has not yet said. Treat every
+> step as a hypothesis and check its result rather than assuming the step worked.
+>
+> The sections marked **Verified 2026-09-14** below are the exception: those were run and their
+> output observed. Everything else still needs proving, and correcting in place as it is.
+
+Where a step has a trap in it, the trap is written down rather than left for the next person to
+rediscover.
 
 ---
 
@@ -106,6 +114,13 @@ the pinned version satisfies it.
 **Check it:** `dotnet --version` reports 10.x, `git --version` answers, and
 `dotnet test sidecars\windows\Optimisarr.Sidecar.slnx` passes. A green suite proves the toolchain
 far better than a version string does.
+
+**Verified 2026-09-14** on PICARD: .NET SDK 10.0.401, pwsh 7.6.6, suite green.
+
+**Do not clone into OneDrive.** PICARD's checkout is under
+`C:\Users\<user>\OneDrive\Documents\GitHub`, and sync can lock files mid-build and leave conflict
+copies, the same way iCloud does on a Mac. When a build fails in a way that makes no sense, suspect
+that before the code. Somewhere outside a synced folder is one less thing to rule out.
 
 ### 4. Network
 
@@ -257,8 +272,32 @@ systemctl restart docker
 **Check it:** this prints the card from inside a container, which is the whole point:
 
 ```powershell
-wsl -d Ubuntu -u root -- docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi
+wsl -d Ubuntu -u root -- docker run --rm --gpus all nvidia/cuda:12.6.2-base-ubuntu24.04 nvidia-smi
 ```
+
+**Verified 2026-09-14** on PICARD, driven from another machine over SSH:
+`NVIDIA GeForce RTX 4070, 12282 MiB, 616.92`.
+
+**That command fails when run over SSH rather than at the console**, with a message that says
+nothing about the real cause:
+
+```
+docker: error getting credentials - err: exit status 1,
+out: `A specified logon session does not exist. It may already have been terminated.`
+```
+
+Docker Desktop's credential helper is on the distro's `PATH` and wants an interactive Windows logon
+session, and a non-interactive SSH session has none. The image is public and needs no credentials at
+all, so point Docker at a config that has no credential store:
+
+```powershell
+wsl -d Ubuntu -- mkdir -p /tmp/dockercfg
+wsl -d Ubuntu -- bash -c "echo {} > /tmp/dockercfg/config.json"
+wsl -d Ubuntu -- env DOCKER_CONFIG=/tmp/dockercfg docker run --rm --gpus all `
+  nvidia/cuda:12.6.2-base-ubuntu24.04 nvidia-smi
+```
+
+This is the single most likely thing to make a correctly built host look broken.
 
 ### 10. Reaching the machine when nobody is logged in
 
@@ -279,7 +318,19 @@ wsl -d Ubuntu -u root -- systemctl is-active ssh
 ```
 
 Verified from a cold stop — after `wsl --shutdown` port 2222 refuses connections, and after one
-`wsl` command it answers on loopback, LAN and the overlay address. So the container half is always
+`wsl` command it answers on loopback, LAN and the overlay address.
+
+**A different symptom means a stale portproxy.** On PICARD after a reboot on 2026-09-14, port 2222
+**accepted** the TCP connection and then reset it during key exchange, rather than refusing it:
+
+```
+kex_exchange_identification: read: Connection reset by peer
+```
+
+That is a Windows `netsh portproxy` listener still in place with nothing behind it — the one step 7
+says to delete under mirrored networking. Refused means the distro is simply not running; accepted
+then reset means something is listening on Windows that should not be. Check with
+`netsh interface portproxy show v4tov4`. So the container half is always
 at most one command away, and never needs anyone signed in at the console.
 
 ---
