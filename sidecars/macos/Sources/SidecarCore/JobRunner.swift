@@ -201,6 +201,9 @@ public struct JobRunner: WorkExecutor {
     private let settings: SettingsSnapshot
     private let availableScratchBytes: @Sendable (URL) -> Int64?
     private let sleep: @Sendable (TimeInterval) async throws -> Void
+    /// Read on each lease renewal, so the load shown beside a running job is current rather than
+    /// up to a check-in interval old. Its own sampler: see `MachineLoadSampler`.
+    private let load: MachineLoadSampler
 
     public init(
         client: SidecarClient = SidecarClient(),
@@ -212,6 +215,7 @@ public struct JobRunner: WorkExecutor {
         chunkBytes: Int64 = JobRunner.defaultChunkBytes,
         previewSampler: FramePreviewSampler? = CapabilityProber.bundledFfmpeg().map { FramePreviewSampler(ffmpeg: $0) },
         wantsPreviews: @escaping @Sendable () -> Bool = { false },
+        load: MachineLoadSampler = MachineLoadSampler(),
         settings: SettingsSnapshot = SettingsSnapshot(
             workLocation: .applicationSupport,
             memoryBudgetBytes: WorkLocationPolicy.defaultBudget(
@@ -233,6 +237,7 @@ public struct JobRunner: WorkExecutor {
         self.settings = settings
         self.availableScratchBytes = availableScratchBytes
         self.sleep = sleep
+        self.load = load
     }
 
     /// Scratch under the app's own support directory rather than a shared temp location, so a
@@ -380,7 +385,8 @@ public struct JobRunner: WorkExecutor {
         progress: @escaping @Sendable () -> JobProgress,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: LeaseOperation<T>.self) { group in
+        let load = self.load
+        return try await withThrowingTaskGroup(of: LeaseOperation<T>.self) { group in
             group.addTask { .completed(try await operation()) }
             group.addTask {
                 let interval = min(15, max(5, Double(assignment.renewWithinSeconds) / 2))
@@ -388,7 +394,7 @@ public struct JobRunner: WorkExecutor {
                     try await sleep(interval)
                     try await client.renew(
                         serverAddress: pairing.serverAddress, credential: pairing.credential,
-                        leaseId: assignment.leaseId, progress: progress())
+                        leaseId: assignment.leaseId, progress: progress(), load: load.sample())
                 }
                 return .renewalStopped
             }

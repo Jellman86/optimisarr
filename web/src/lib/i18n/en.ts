@@ -1386,6 +1386,9 @@ export const en = {
     platform_line: '{os} · {arch} · protocol {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Sidecar version not reported',
+    cpu_label: 'CPU',
+    gpu_label: 'GPU',
+    gpu_hint: 'GPU utilisation only. A hardware encode may run on a separate media engine that reports nothing here, so this can read low while the machine is busy.',
   },
 }
 

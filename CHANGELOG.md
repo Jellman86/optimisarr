@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- **The Workers tab shows how busy each machine is.** A remote worker was a black box: it either
+  took a job or it did not, and there was no way to see whether the Mac in the other room was
+  saturated, idle, or sharing its CPU with something else. Sidecars now report CPU and GPU load
+  with every check-in, and every few seconds while a job runs, so the figure beside a running
+  encode is current rather than a check-in old. A worker that cannot measure itself reports
+  nothing and is shown as reporting nothing, because "idle" and "no answer" are different answers
+  to give someone deciding where work should go. GPU is labelled as utilisation only: a hardware
+  encode can run on a media engine that reports nothing at all, so the number reads low while the
+  machine is flat out.
+
 ### Fixed
 
 - **The macOS sidecar no longer freezes on launch behind a Keychain prompt nobody can see.** An

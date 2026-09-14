@@ -21,6 +21,15 @@ internal sealed record WorkerDto(
     string Vmaf,
     long FreeScratchBytes,
     int MaxConcurrency,
+    /// <summary>How busy the worker's machine last said it was, 0-1; null when it has not said.</summary>
+    double? CpuBusyFraction,
+    /// <summary>
+    /// The worker's accelerator utilisation, 0-1, or null. Low does not mean unused: a dedicated
+    /// media engine — Apple silicon's VideoToolbox encoder among them — does not appear here.
+    /// </summary>
+    double? GpuBusyFraction,
+    /// <summary>When those two were reported, so a stale reading is not drawn as current.</summary>
+    DateTimeOffset? LoadReportedAt,
     DateTimeOffset PairedAt,
     DateTimeOffset? LastSeenAt,
     DateTimeOffset? RevokedAt,
@@ -91,6 +100,13 @@ internal sealed record HeartbeatRequest(
     IReadOnlyList<string>? AudioEncoders = null,
     IReadOnlyList<string>? HardwareDecoders = null,
     string? Vmaf = null,
+    /// <summary>
+    /// How busy the machine is, 0-1, each optional and separately so: a worker can report its CPU
+    /// while having no readable accelerator. Absent leaves whatever was last reported, so a
+    /// momentary failure to read does not erase a good figure.
+    /// </summary>
+    double? CpuBusyFraction = null,
+    double? GpuBusyFraction = null,
     /// <summary>
     /// The sidecar's own build, repeated on every check-in rather than only at pairing — upgrading
     /// a sidecar does not re-pair it, so a version recorded once would be wrong from the first
@@ -289,6 +305,7 @@ internal static class WorkerEndpoints
             {
                 worker.SidecarVersion = Trimmed(request.SidecarVersion, 64);
             }
+            RecordLoad(worker, request.CpuBusyFraction, request.GpuBusyFraction);
 
             await db.SaveChangesAsync(cancellationToken);
 
@@ -488,6 +505,32 @@ internal static class WorkerEndpoints
                     .ToList());
     }
 
+    /// <summary>
+    /// Stores whichever load figures the worker actually sent. Silence leaves the previous reading
+    /// alone rather than blanking it: a sidecar that could not read its counters this once has not
+    /// stopped being busy, and an older one that never reports must not clear what a newer one did.
+    /// Out-of-range values are dropped rather than clamped, since a figure outside 0-1 means the
+    /// sender is confused and guessing on its behalf would hide that.
+    /// </summary>
+    internal static void RecordLoad(Worker worker, double? cpu, double? gpu)
+    {
+        var recorded = false;
+        if (cpu is { } cpuValue && double.IsFinite(cpuValue) && cpuValue is >= 0 and <= 1)
+        {
+            worker.CpuBusyFraction = cpuValue;
+            recorded = true;
+        }
+        if (gpu is { } gpuValue && double.IsFinite(gpuValue) && gpuValue is >= 0 and <= 1)
+        {
+            worker.GpuBusyFraction = gpuValue;
+            recorded = true;
+        }
+        if (recorded)
+        {
+            worker.LoadReportedAt = DateTimeOffset.UtcNow;
+        }
+    }
+
     private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc, IReadOnlyList<WorkerJobDto> activeJobs) => new(
         worker.Id,
         worker.Name,
@@ -501,6 +544,11 @@ internal static class WorkerEndpoints
         worker.Vmaf.ToString(),
         worker.FreeScratchBytes,
         worker.MaxConcurrency,
+        // Only while it is current. A worker that stopped reporting mid-encode would otherwise go
+        // on showing the busiest number it ever sent, which is worse than showing nothing.
+        WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc) ? worker.CpuBusyFraction : null,
+        WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc) ? worker.GpuBusyFraction : null,
+        worker.LoadReportedAt,
         worker.PairedAt,
         worker.LastSeenAt,
         worker.RevokedAt,

@@ -216,7 +216,8 @@ public struct SidecarClient: Sendable {
         credential: String,
         freeScratchBytes: Int64,
         maxConcurrency: Int,
-        capabilities: SidecarCapabilities? = nil
+        capabilities: SidecarCapabilities? = nil,
+        load: MachineLoad? = nil
     ) async throws -> HeartbeatResult {
         let url = try Self.endpoint(serverAddress, "/api/workers/heartbeat")
 
@@ -239,6 +240,11 @@ public struct SidecarClient: Sendable {
             body["hardwareDecoders"] = capabilities.hardwareDecoders
             body["vmaf"] = capabilities.vmaf.rawValue
         }
+        // Only what was actually measured. A machine whose CPU ticks could not be read, or whose
+        // first reading has nothing to compare against, sends nothing rather than a zero the
+        // Workers tab would draw as an idle Mac.
+        if let cpu = load?.cpu { body["cpuBusyFraction"] = cpu }
+        if let gpu = load?.gpu { body["gpuBusyFraction"] = gpu }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await perform(request)
@@ -308,15 +314,24 @@ public struct SidecarClient: Sendable {
     /// source duration because this side never learns it.
     public func renew(
         serverAddress: String, credential: String, leaseId: String,
-        progress: JobProgress? = nil
+        progress: JobProgress? = nil,
+        load: MachineLoad? = nil
     ) async throws {
         var request = try authorised(
             serverAddress, "/api/workers/leases/\(leaseId)/renew", credential: credential, method: "POST")
+        var body: [String: Any] = [:]
         if let progress {
-            var body: [String: Any] = ["stage": Self.stageName(progress)]
+            body["stage"] = Self.stageName(progress)
             if case let .encoding(seconds) = progress {
                 body["encodedSeconds"] = seconds
             }
+        }
+        // Load rides the renewal as well as the check-in, because this is where it matters: a
+        // renewal happens every few seconds while a job runs, so the figure an operator watches
+        // during an encode is current rather than up to a check-in interval old.
+        if let cpu = load?.cpu { body["cpuBusyFraction"] = cpu }
+        if let gpu = load?.gpu { body["gpuBusyFraction"] = gpu }
+        if !body.isEmpty {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }

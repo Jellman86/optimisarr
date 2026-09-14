@@ -1192,5 +1192,8 @@ export const zh: Messages = {
     platform_line: '{os} · {arch} · 协议 {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: '未报告 Sidecar 版本',
+    cpu_label: 'CPU',
+    gpu_label: 'GPU',
+    gpu_hint: '仅为 GPU 使用率。硬件编码可能运行在此处不上报的独立媒体引擎上，因此机器繁忙时该数值仍可能很低。',
   },
 }
