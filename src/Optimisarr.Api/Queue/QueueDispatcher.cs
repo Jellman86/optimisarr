@@ -63,6 +63,9 @@ public sealed class QueueDispatcher(
     // When each queued job first became eligible to run, so a PreferWorker hold measures the time a
     // worker actually had to claim it rather than time the job spent parked outside its window.
     private readonly ConcurrentDictionary<int, DateTimeOffset> _firstRunnableAt = new();
+    // Only ever touched from the single dispatch loop, so no lock is needed for these two.
+    private string? _lastIdleSummary;
+    private DateTimeOffset _lastIdleLoggedAt = DateTimeOffset.MinValue;
     private readonly ConcurrentDictionary<string, int> _reservedWorkDirectories =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _dbLock = new(1, 1);
@@ -616,7 +619,17 @@ public sealed class QueueDispatcher(
         // genuinely surprising — queued work, free capacity, and still nothing chosen.
         if (toStart.Count == 0 && queued.Count > 0 && _running.Count < maxConcurrent)
         {
-            logger.LogInformation(
+            // Throttled, because the loop runs every three seconds: a queue parked outside its
+            // window overnight would otherwise write some thirty thousand identical lines and bury
+            // everything worth reading. Logged when the answer changes, and once every five minutes
+            // besides so a long stall still leaves a trail rather than one line at the start of it.
+            var summary = $"{queued.Count}/{withinWindow.Count}/{runnable.Count}/{activity.Active}";
+            var now = DateTimeOffset.UtcNow;
+            if (summary != _lastIdleSummary || now - _lastIdleLoggedAt > TimeSpan.FromMinutes(5))
+            {
+                _lastIdleSummary = summary;
+                _lastIdleLoggedAt = now;
+                logger.LogInformation(
                 "Queue: {Queued} queued, none started — {InWindow} inside their library window, "
                 + "{Runnable} of those this machine may run ({Placement}), "
                 + "{Startable} selected (media activity: {Activity})",
@@ -628,6 +641,7 @@ public sealed class QueueDispatcher(
                     : $"{withinWindow.Count - runnable.Count} held for a worker",
                 toStart.Count,
                 activity.Active ? "streaming" : "idle");
+            }
         }
 
         foreach (var jobId in toStart)
@@ -1010,6 +1024,14 @@ public sealed class QueueDispatcher(
                 // is what makes the preference real.
                 if (await ShouldHandToWorkerAsync(jobId, cancellationToken))
                 {
+                    // Restart the head start, or handing the job back achieves nothing. The clock
+                    // began when the job first became runnable — before a quality search that takes
+                    // minutes — so by now it has almost always lapsed, and the dispatcher polls
+                    // every three seconds while a worker only asks on its next check-in. Without
+                    // this the server would take the job straight back and the handback would be a
+                    // round trip to nowhere.
+                    _firstRunnableAt[jobId] = DateTimeOffset.UtcNow;
+
                     await WithJobAsync(jobId, job =>
                     {
                         job.Status = JobStatus.Queued;
