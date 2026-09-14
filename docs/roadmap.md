@@ -828,23 +828,36 @@ the replacement workflow is trustworthy.
       answer or to "no update". It is a notification only: YA-WAMF never updates itself, and
       pulling a new image stays the orchestrator's job. Take all of that.
 
-    - **Default off, not default on.** This is the one substantive departure. YA-WAMF defaults its
-      check on, which is reasonable for a bird-feeder classifier. Optimisarr is pointed at whatever
-      library someone has, and a request that says "this address runs Optimisarr" is a disclosure
-      some operators will not accept at any frequency. It must be opt-in, and the setting must show
-      the exact request that would be made before anyone turns it on.
+    - **Default off.** Running Optimisarr is not itself a thing anyone need be coy about — it
+      optimises media, and that is all it says about anyone. The reason to default the check off is
+      narrower and better: it is a network request the operator did not ask for, on a machine whose
+      whole job is to sit quietly next to a media library, and the polite default for that is not to
+      make it. Opt-in, with the exact request shown before anyone turns it on.
 
-    - **No endpoint of ours.** YA-WAMF fetches from a project-operated Cloudflare Worker. Optimisarr
-      should ask a public, generic destination — GitHub's own releases API — or a URL the operator
-      sets to a mirror, an internal cache, or nothing at all. Do not build a receiver: a receiver we
-      run is a log we would then have to promise not to keep, and a promise is a weaker thing than
-      not having the data.
+    - **Reuse YA-WAMF's Worker shape, with its logging turned off.** A project-operated Cloudflare
+      Worker reading a D1 table is the right mechanism: it edge-caches, it avoids GitHub's rate
+      limits, and it is the only way to answer the branch channels, since GitHub's releases API
+      knows nothing about a dev build's commit. YA-WAMF's `/version` already does exactly this — a
+      D1 read, no writes, nothing taken from the caller, `Cache-Control: no-store`. What must differ
+      is `wrangler.jsonc`: YA-WAMF sets `observability.enabled: true` with `logs.enabled` and
+      `invocation_logs` at a 0.1 head sampling rate, so one request in ten is recorded with its
+      metadata. Optimisarr's route wants observability off, no Logpush, no Tail Worker, no Analytics
+      Engine binding, and no `console.log` of anything from the request.
 
-    - **Nothing in the request but the request.** No installation identifier, no version in a query
-      string, no counting, no cohorts, no install totals. YA-WAMF's community install-count rides
-      the same switch as its update check; that must not come across. The only thing an operator
-      exposes is their source IP to whoever serves the release list, and the setting must say so
-      plainly rather than describing itself as "anonymous".
+    - **Disclose what is recorded and for how long, including the part we do not control.** Honest
+      disclosure means not overclaiming. We can say truthfully that we log nothing and store
+      nothing, and that the response is a static read no request of ours writes to. We cannot say
+      Cloudflare sees nothing: any hosted endpoint terminates the connection, and Cloudflare keeps
+      its own aggregate edge analytics as any host would. The setting should name the destination,
+      say what our side records (nothing) and for how long (not at all), say plainly that the
+      connection itself is visible to the host as with any request to any server, and let the
+      operator decide. A setting that calls itself "anonymous" and stops there is the thing to
+      avoid.
+
+    - **Nothing in the request that identifies an install.** No installation identifier, no version
+      in a query string, no counting, no cohorts, no install totals. YA-WAMF's community
+      install-count rides the same switch as its update check; that must not come across — it is the
+      one part that needs an identity, and this feature should need none.
 
     - **Three states, not two.** Off (the default), check only when asked, and check periodically. A
       person pressing "Check now" is not a beacon, and that middle state is likely the one most
@@ -873,7 +886,9 @@ the replacement workflow is trustworthy.
       outbound request is attempted; a test that the enabled check makes exactly one request
       carrying no identifying payload; pure comparison tests covering same-version, dev-ahead-of-
       stable, and unparseable input; a degradation test proving a failed fetch keeps the last known
-      answer and never blocks or surfaces an error into a page; sidecar skew shown in the Workers
+      answer and never blocks or surfaces an error into a page; the Worker deployed with
+      observability disabled and no log or analytics binding, proved by its own configuration in
+      review; sidecar skew shown in the Workers
       tab and proved to involve no network call; a test proving a sidecar makes no outbound request
       of its own in any configuration, and that the heartbeat carries no update field while the
       controller's check is off; the sidecar surfacing "a newer version is available" in its own
