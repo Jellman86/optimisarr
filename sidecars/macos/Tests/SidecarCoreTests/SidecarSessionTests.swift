@@ -146,6 +146,31 @@ struct SidecarSessionTests {
         #expect(session.status == .revoked)
     }
 
+    @Test("a credential store that blocks does not block the caller")
+    func aBlockingStoreDoesNotFreezeTheApp() async throws {
+        // The real Keychain blocks indefinitely on a legacy item written by a build whose signature
+        // no longer matches — it waits on a dialog the operator may never see. `SidecarSession` is
+        // `@MainActor` and the app has no window and no Dock icon, so a read left on this actor is
+        // an app that starts and then freezes with nothing whatever to show for it. That shipped in
+        // 0.1.7. The read therefore has to happen somewhere else, and `restore()` has to come back
+        // to its caller immediately.
+        let store = BlockingCredentialStore(
+            blockFor: .milliseconds(400),
+            stored: StoredPairing(serverAddress: "localhost:8787", credential: "stale", workerId: 9))
+        let (session, _) = session([
+            .init(status: 401, json: ["error": "Unknown or revoked worker credential."]),
+        ], store: store)
+
+        let started = ContinuousClock.now
+        session.restore()
+        let returnedAfter = ContinuousClock.now - started
+
+        // Returned while the read was still outstanding, rather than after it.
+        #expect(returnedAfter < .milliseconds(200))
+        // And still arrives at the right answer once the read finishes.
+        try await waitFor { session.status == .revoked }
+    }
+
     @Test("the feature being switched off keeps the credential and keeps trying")
     func disabledIsRecoverable() async throws {
         let store = InMemoryCredentialStore(
@@ -363,4 +388,29 @@ struct SidecarSessionTests {
         #expect(session.lastOutcome == nil)
     }
 
+}
+
+
+/// A store whose read blocks the calling thread, the way the Keychain does when it is waiting on a
+/// dialog. Deliberately a synchronous sleep rather than an `await`: the point of the test is that a
+/// thread is held, which an `await` would not reproduce.
+private final class BlockingCredentialStore: CredentialStore, @unchecked Sendable {
+    private let blockFor: Duration
+    private let lock = NSLock()
+    private var stored: StoredPairing?
+
+    init(blockFor: Duration, stored: StoredPairing?) {
+        self.blockFor = blockFor
+        self.stored = stored
+    }
+
+    func load() throws -> StoredPairing? {
+        let seconds = Double(blockFor.components.seconds)
+            + Double(blockFor.components.attoseconds) / 1e18
+        Thread.sleep(forTimeInterval: seconds)
+        return lock.withLock { stored }
+    }
+
+    func save(_ pairing: StoredPairing) throws { lock.withLock { stored = pairing } }
+    func clear() throws { lock.withLock { stored = nil } }
 }

@@ -216,6 +216,32 @@ before anything else can go wrong.
 can do that, from the Workers tab in Optimisarr. If a worker is revoked there, this app notices on
 its next check-in, discards the dead credential, and says so.
 
+An item written by an earlier build whose signature this one no longer matches cannot be read —
+an ad-hoc build's signature changes every time it is rebuilt, so to the Keychain it is a different
+application each time. The app detects that without letting a dialog appear, removes the item, and
+reports itself unpaired so you pair once more rather than being asked for a password for ever.
+Builds signed with the same Developer ID certificate read each other's items, so an upgrade keeps
+its pairing.
+
+## Pairing without a screen
+
+```
+echo "<pin>" | /Applications/OptimisarrSidecar.app/Contents/MacOS/OptimisarrSidecar \
+  --pair https://optimisarr.example.com
+```
+
+Pairs and exits, printing the worker id on success and the reason on failure. Nothing appears on
+screen, so a Mac can be paired over SSH, scripted onto several machines at once, or recovered
+remotely when a pairing is lost.
+
+The PIN is read from standard input rather than taken as an argument, so it never lands in `ps`
+output or a shell history. Get one from the Workers tab, or from
+`POST /api/workers/pairing-code`.
+
+Give the address with its scheme. A bare host is reached over `http://`, which is right for a
+server on a home network and wrong for one behind a TLS proxy; the failure message says so when the
+address had no scheme.
+
 ## Signing and release
 
 `make-app.sh` applies an ad-hoc signature by default, which is enough to run locally. Set

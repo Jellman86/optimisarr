@@ -74,6 +74,10 @@ public final class SidecarSession: ObservableObject {
     /// upload's.
     private var rateMeters: [Int: RateMeter] = [:]
     private let store: CredentialStore
+    /// The outstanding credential load, if one is running. Held so repeated menu opens do not
+    /// stack reads of the same item, and so a caller that must decide what to show next can wait
+    /// for the answer instead of racing it.
+    private var restoreTask: Task<Void, Never>?
     private let prober: CapabilityProber?
     private let executor: WorkExecutor?
     private let scratchCapacity: @Sendable () -> Int64
@@ -140,12 +144,45 @@ public final class SidecarSession: ObservableObject {
         // reach for the Keychain and overwrite the very state being looked at.
         guard !isPosed else { return }
         guard pairing == nil else { return }
-        guard let stored = try? store.load() else {
+        // The menu calls this every time it opens, and the load below is now asynchronous — without
+        // this, opening the menu twice in quick succession would start a second read of the same
+        // item while the first was still outstanding.
+        guard restoreTask == nil else { return }
+
+        restoreTask = Task { [weak self] in
+            guard let self else { return }
+            // Off this actor entirely. Reading the Keychain can block — on a legacy item written by
+            // a build whose signature no longer matches, indefinitely — and this class is
+            // `@MainActor`, so doing it inline freezes the app. A `Task { @MainActor in … }` around
+            // the call does not help and reads as though it does: it is already the main actor, so
+            // it blocks in exactly the same way once it starts. A windowless menu-bar app that
+            // freezes here has no window to show for it and looks simply dead, which is what
+            // 0.1.7 did.
+            let store = self.store
+            let stored = await Task.detached(priority: .userInitiated) { try? store.load() }.value
+            self.finishRestoring(stored)
+        }
+    }
+
+    /// Restores, and waits for the stored credential to have been looked for. For a caller that
+    /// must decide what to show next — the launch path, which opens the pairing window when there
+    /// is nothing to restore — and would otherwise read `status` before the answer exists.
+    public func restoreAndSettle() async {
+        restore()
+        let outstanding = restoreTask
+        await outstanding?.value
+    }
+
+    private func finishRestoring(_ stored: StoredPairing?) {
+        restoreTask = nil
+        guard let stored else {
+            SidecarLog.session.info("No stored pairing; waiting to be paired")
             status = .unpaired
             return
         }
         pairing = stored
         serverAddress = stored.serverAddress
+        SidecarLog.session.info("Restored pairing with worker \(stored.workerId, privacy: .public)")
         if let prober {
             Task { [weak self] in
                 guard let self else { return }
