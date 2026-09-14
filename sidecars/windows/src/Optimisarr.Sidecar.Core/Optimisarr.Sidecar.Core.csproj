@@ -6,4 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- So the tests can reach helpers that are implementation detail to everyone else: URL
+         construction and version formatting are worth pinning, and neither belongs on the public
+         surface of a client whose job is to pair and check in. -->
+    <InternalsVisibleTo Include="Optimisarr.Sidecar.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
+  </ItemGroup>
+
 </Project>
