@@ -4,6 +4,21 @@
 
 ### Fixed
 
+- **A library that prefers a worker now actually sends it work.** Setting every library to prefer a
+  sidecar changed nothing, for a reason no setting made visible: a worker cannot be offered a job
+  until a per-title quality has been chosen for it, that search runs on the server, and the server
+  ran the encode straight afterwards. The job was unofferable right up to the moment the server
+  started encoding it, so the preference had no instant at which it could apply. The search is the
+  server's decision and stays there; the encode that follows is now handed back to the queue when a
+  worker could take it, which is the point at which the preference finally means something. A job
+  still awaiting its quality is no longer held for a worker either, since holding it was waiting for
+  something that could not happen.
+- **The queue says why nothing is running.** Ninety jobs queued, nothing running, nothing paused and
+  no waiting reason was indistinguishable from a dispatcher that had stopped — every gate was
+  reasonable and none of them said anything. It now reports, once a cycle, how many jobs were inside
+  their window, how many this machine may run, how many were held for a worker, and whether media is
+  streaming.
+
 - **"Prefer a worker" now actually prefers one.** A library set to prefer a sidecar was still having
   every job run on the server. The preference gives a worker first refusal for a few minutes, and
   that clock ran from the moment a job was enqueued — but a library with an optimise window enqueues
