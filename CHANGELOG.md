@@ -4,6 +4,11 @@
 
 ### Added
 
+- **An orphaned sidecar can be removed from the Workers tab.** Revoking keeps the record, which is
+  right for a worker turned off deliberately, but pairing the same machine again left the old entry
+  on the list for ever with nothing that cleared it. Remove deletes the record and its lease
+  history. It is offered only for a worker that is revoked or offline, and refused outright while
+  one is still holding a job, since removing it mid-job would strand the work.
 - **The sidecar says what it is working on and how fast.** A running job is named by its file
   rather than a job number, which answered the question nobody was asking, and the two transfer
   stages show a smoothed rate beside the byte counts. The header line names the real stage, so a

@@ -363,6 +363,67 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_revoked_worker_can_be_removed_entirely()
+    {
+        // Revoking keeps the row for the audit trail, which is right for a worker that was turned
+        // off deliberately. It is wrong for an orphan: pairing the same Mac again leaves the old
+        // record on the Workers tab for ever with no way to clear it.
+        await EnableRemoteWorkers();
+        await PairCapableWorker("Orphan");
+        var workerId = await WorkerIdNamed("Orphan");
+
+        using var revoked = await Admin().DeleteAsync($"/api/workers/{workerId}");
+        Assert.Equal(HttpStatusCode.NoContent, revoked.StatusCode);
+
+        using var forgotten = await Admin().PostAsync($"/api/workers/{workerId}/forget", null);
+        Assert.Equal(HttpStatusCode.NoContent, forgotten.StatusCode);
+
+        using var listed = await Admin().GetAsync("/api/workers");
+        var rows = (await listed.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().ToList();
+        Assert.DoesNotContain(rows, w => w.GetProperty("id").GetInt32() == workerId);
+    }
+
+    [Fact]
+    public async Task A_worker_holding_a_job_cannot_be_removed()
+    {
+        // Removing it would strand the job: the lease it is renewing would vanish underneath it,
+        // and the candidate it is about to deliver would have nowhere to land. Revoke first, let
+        // the work finish or lapse, then remove.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Busy");
+        var workerId = await WorkerIdNamed("Busy");
+        await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+
+        using var refused = await Admin().PostAsync($"/api/workers/{workerId}/forget", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+    }
+
+    [Fact]
+    public async Task Removing_a_worker_takes_its_finished_leases_with_it()
+    {
+        // The lease rows point at the worker, so the row cannot simply be deleted around them.
+        // A forgotten worker's history has no subject left to describe, so it goes too.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Historic");
+        var workerId = await WorkerIdNamed("Historic");
+        var jobId = await QueueAJob();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        var leaseId = (await claim.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("leaseId").GetString()!;
+        using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { });
+        Assert.Equal(HttpStatusCode.NoContent, released.StatusCode);
+
+        using var forgotten = await Admin().PostAsync($"/api/workers/{workerId}/forget", null);
+        Assert.Equal(HttpStatusCode.NoContent, forgotten.StatusCode);
+
+        // The job it had held is untouched and still queued for someone else.
+        var row = await JobRow(jobId);
+        Assert.Equal("Queued", row.GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task Claiming_records_the_worker_command_on_the_job()
     {
         // The queue shows a job's ffmpeg arguments. For a remote job they used to be whatever this

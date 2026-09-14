@@ -1159,6 +1159,8 @@ export const zh: Messages = {
     status_drained: "已停用",
     status_revoked: "已吊销",
     revoke: "吊销",
+    forget: "移除",
+    forget_confirm: "从列表中移除 {name}？记录及其历史将被删除。仅用于不会再回来的 sidecar；若只是要停止，吊销即可。",
     revoke_confirm: "要吊销 {name} 吗？它会立即停止接收任务，需重新配对才能恢复。",
     vmaf: "VMAF：{mode}",
     preview_note: '远程工作节点是预览功能。已配对的边车可以接手允许此操作的媒体库中的视频重新编码；每个候选文件都会先返回本机校验，然后才会触碰原始文件。',
