@@ -176,6 +176,98 @@ public sealed class SidecarClient(HttpClient http)
         }
     }
 
+    /// <summary>
+    /// Asks for work. Returns null when there is nothing for this machine, which is the ordinary
+    /// answer rather than a failure: the server matches a job against what this worker proved it
+    /// can do, and most of the time nothing matches or nothing is waiting.
+    /// </summary>
+    public async Task<Assignment?> ClaimAsync(
+        StoredPairing pairing, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, Endpoint(pairing.ServerAddress, "/api/workers/claim"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+
+        using var response = await http.SendAsync(request, cancellationToken);
+        return response.StatusCode switch
+        {
+            HttpStatusCode.NoContent => null,
+            HttpStatusCode.OK => await response.Content.ReadFromJsonAsync<Assignment>(Json, cancellationToken),
+            HttpStatusCode.Unauthorized => throw new SidecarException(
+                "The server no longer recognises this worker's credential. Pair again.", recoverable: false),
+            _ => throw new SidecarException(
+                $"The server replied unexpectedly to a claim (HTTP {(int)response.StatusCode}).", recoverable: true),
+        };
+    }
+
+    /// <summary>
+    /// Extends a lease, and says where this machine has got to.
+    ///
+    /// <para>A lapsed lease means the job has been handed to somebody else, so this failing is not
+    /// a transient to shrug off: whatever is running locally should stop rather than spend an hour
+    /// encoding something the server has already reassigned.</para>
+    /// </summary>
+    public async Task RenewAsync(
+        StoredPairing pairing,
+        Guid leaseId,
+        RemoteStage stage,
+        double? encodedSeconds = null,
+        MachineLoad? load = null,
+        CancellationToken cancellationToken = default)
+    {
+        var body = new Dictionary<string, object?> { ["stage"] = stage.ToString() };
+        if (encodedSeconds is { } seconds)
+        {
+            body["encodedSeconds"] = seconds;
+        }
+        // Carried here as well as on the check-in: a renewal happens every few seconds while a job
+        // runs, so this is the figure an operator watching an encode actually sees.
+        if (load?.CpuBusyFraction is { } cpu)
+        {
+            body["cpuBusyFraction"] = cpu;
+        }
+        if (load?.GpuBusyFraction is { } gpu)
+        {
+            body["gpuBusyFraction"] = gpu;
+        }
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/renew"))
+        {
+            Content = JsonContent.Create(body, options: Json),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        throw new SidecarException(
+            response.StatusCode switch
+            {
+                HttpStatusCode.Conflict => "That lease has lapsed and the job may have been reassigned.",
+                HttpStatusCode.Forbidden => "That lease belongs to another worker.",
+                _ => $"Renewing the lease failed (HTTP {(int)response.StatusCode}).",
+            },
+            // None of these are worth retrying against the same lease: the work this machine is
+            // doing is already void, and carrying on only burns electricity.
+            recoverable: false);
+    }
+
+    /// <summary>Gives a job back, so it returns to the queue at once rather than waiting to lapse.</summary>
+    public async Task ReleaseAsync(
+        StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/release"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        using var response = await http.SendAsync(request, cancellationToken);
+        // Best effort by design: a release that does not land costs a lease period, while throwing
+        // here would lose the reason the job was being given back in the first place.
+    }
+
     private sealed record HeartbeatResponse(
         int WorkerId,
         int ProtocolVersion,
