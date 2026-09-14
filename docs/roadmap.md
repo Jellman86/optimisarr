@@ -851,19 +851,73 @@ the replacement workflow is trustworthy.
       operators actually want. Honour the proxy configuration the rest of the app uses, so an
       install that reaches the internet through one egress does not quietly open another.
 
-    - **The sidecar half needs no network at all, and should land first.** Workers now report their
-      own build on pairing and on every check-in, so the server can already tell that a paired
-      sidecar is older than the server expects, purely from data it holds. That is the more useful
-      half of this entry, it carries none of the privacy question, and it should ship independently
-      rather than waiting behind the release check.
+    - **The sidecars are covered by the same entry, and must not each phone out.** A sidecar needs
+      to know a newer sidecar exists just as the controller does, and sidecars are released on their
+      own tags. The obvious implementation — every sidecar asking GitHub for itself — is the wrong
+      one: it turns one disclosure into one per machine, from machines whose owners may not have
+      been the ones who chose to enable anything, and it needs egress from hosts that often have
+      none. A sidecar already talks to exactly one peer it trusts. So the controller makes the
+      single check, when its operator has enabled it, and hands the answer back in the heartbeat
+      response a sidecar is making anyway. A sidecar makes no outbound internet request of its own,
+      ever, and a worker machine behind a firewall with no route out still learns it is behind.
+      With the check disabled, the heartbeat carries no such field and nothing is asked of anyone.
+
+    - **Sidecar version skew needs no network at all, and should land first.** Workers now report
+      their own build on pairing and on every check-in, so the controller can already tell that a
+      paired sidecar is older than the controller expects, purely from data it holds. That is the
+      most useful piece of this entry, it carries none of the privacy question, and it should ship
+      independently rather than waiting behind the release check. It also covers the common case
+      directly: most fleets are behind because someone upgraded the container and not the machines.
 
     - **Evidence to call it complete.** A test that boots with no configuration and proves no
       outbound request is attempted; a test that the enabled check makes exactly one request
       carrying no identifying payload; pure comparison tests covering same-version, dev-ahead-of-
       stable, and unparseable input; a degradation test proving a failed fetch keeps the last known
       answer and never blocks or surfaces an error into a page; sidecar skew shown in the Workers
-      tab and proved to involve no network call; documentation stating exactly what is sent, to
-      whom, how often, and what enabling it reveals; and the new strings in all nine locales.
+      tab and proved to involve no network call; a test proving a sidecar makes no outbound request
+      of its own in any configuration, and that the heartbeat carries no update field while the
+      controller's check is off; the sidecar surfacing "a newer version is available" in its own
+      menu from what the heartbeat told it; documentation stating exactly what is sent, to whom, how
+      often, and what enabling it reveals; and the new strings in all nine locales.
+
+12. **Run the controller natively on Apple Silicon.** The published image is amd64 only, so on an
+    Apple Silicon Mac it runs emulated or not at all — which is the wrong answer for a transcoder,
+    where emulation is not a mild tax. The work is smaller than it looks, and the honest limitation
+    needs saying as loudly as the capability.
+
+    - **The image is closer than the pipeline is.** Every base the Dockerfile uses already publishes
+      arm64: `mcr.microsoft.com/dotnet/sdk:10.0`, `mcr.microsoft.com/dotnet/aspnet:10.0`,
+      `node:26-bookworm-slim`, and the digest-pinned `mwader/static-ffmpeg:9.0.1`, whose pin is a
+      manifest list carrying `linux/arm64` rather than a single-architecture manifest. The Jellyfin
+      Debian repository publishes `amd64 armhf arm64`, and the sources entry already derives its
+      architecture from `dpkg --print-architecture` rather than hard-coding one. So the build is
+      expected to work largely as written; what does not exist is a pipeline that produces it.
+
+    - **What actually blocks it is the publish step.** CI runs a plain `docker build`, so only the
+      runner's own architecture is ever tagged and pushed. This needs buildx and a manifest list per
+      tag. Prefer native arm64 runners to QEMU: an emulated build of this image is slow enough to
+      matter on every push, and — more to the point — a container smoke test executed under
+      emulation proves much less than one executed on the architecture it claims to support.
+
+    - **Say plainly that there is no hardware transcoding.** Under Docker on macOS the container is
+      a Linux VM: no VideoToolbox, no `/dev/dri`, no VA-API or QSV, no NVENC. An Apple Silicon
+      controller is software encoding only. That belongs in the documentation and in what hardware
+      detection reports, so nobody discovers it by watching a 4K encode crawl. Detection must
+      degrade to a clear statement of what is available rather than erroring on absent devices.
+
+    - **The fast path on a Mac is the sidecar, and the docs should say so.** The macOS sidecar
+      already encodes with VideoToolbox natively, because it is not in a container. So the shape
+      worth recommending is the controller running where the media and the `*arr` stack already
+      live, with the encoding handed to a paired sidecar — which is what the work-placement setting
+      exists to express. Apple Silicon support for the controller is about running the control
+      plane there, not about making the container the fastest encoder on the machine.
+
+    - **Evidence to call it complete.** A manifest list published for both architectures on every
+      tag, with the existing container smoke test run natively on each rather than emulated;
+      hardware detection on arm64 reporting software-only cleanly instead of failing on missing
+      devices; documentation stating what acceleration is and is not available on Apple Silicon and
+      recommending the sidecar for encoding; and one real end-to-end run on an Apple Silicon host
+      that transcodes, verifies, and replaces a file.
 
 
 ## Guiding principles
