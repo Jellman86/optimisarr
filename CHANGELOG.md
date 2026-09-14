@@ -16,6 +16,17 @@
   rows and the detail panel now show the percentage, and say "Selecting quality" rather than
   "Probing source" once it is measuring candidates, because by then it is no longer reading the
   source.
+- **The Windows test-host guide now works when you follow it.** Provisioning a machine from
+  `sidecars/windows/docs/test-host-setup.md` failed at seven separate points, several of them
+  silently. Installing PowerShell the way it said produced a per-user alias rather than
+  `C:\Program Files\PowerShell\7\pwsh.exe`, so sshd fell back to `cmd.exe` — the one thing that step
+  exists to prevent. The OpenSSH capability needs a reboot before its service exists, so the
+  commands that started and configured it could not have worked, and even after a reboot the service
+  comes back set to start manually. In the distro, editing the SSH port did nothing because Ubuntu
+  24.04 socket-activates ssh, leaving the host on port 22 with no error to say so; the port-forward
+  command never expanded its own argument; and `sudo` prompted for a password no script could
+  supply. The guide now carries what actually works, including why mirrored WSL networking removes
+  the port-forward entirely, and how to reach the distro from a machine with nobody logged in.
 
 ### Added
 
