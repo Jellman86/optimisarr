@@ -83,6 +83,22 @@ jobs:
       - run: swift test
       - run: swift build --configuration release
 
+  windows-sidecar:
+    name: Windows sidecar build & test
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: sidecars/windows
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # The core has no Windows-only dependencies on purpose, but it is built here anyway: this is
+      # the platform it ships on, and a Windows-only compile error should fail on a Windows runner
+      # rather than on someone's machine.
+      - run: dotnet test Optimisarr.Sidecar.slnx --configuration Release
+
   docker:
     name: Docker image, smoke, and publish
     needs: [backend, frontend, docs]

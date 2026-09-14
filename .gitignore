@@ -30,3 +30,7 @@ src/Optimisarr.Api/work/
 # whose account opened it. Local to one person and one machine, and committed here by accident.
 **/.swiftpm/xcode/**/xcuserdata/
 **/.swiftpm/xcode/xcuserdata/
+
+# .NET build output for the Windows sidecar.
+sidecars/windows/**/bin/
+sidecars/windows/**/obj/

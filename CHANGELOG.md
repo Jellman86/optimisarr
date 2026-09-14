@@ -4,6 +4,13 @@
 
 ### Added
 
+- **A Windows sidecar has begun, starting with capability probing.** A Windows machine will
+  contribute spare encoding capacity the way a Mac does, as a service so it works with nobody logged
+  in, with a tray application as its window onto that service. The first piece is the part worth
+  getting right before anything else: every encoder, hardware decoder and VMAF backend is proved by
+  running it, never read from FFmpeg's listing, because a build lists NVENC on a machine with no
+  NVIDIA card. NVIDIA hardware VMAF is scored for real, since the server sends a GPU measurement
+  command on the strength of that answer alone.
 - **An orphaned sidecar can be removed from the Workers tab.** Revoking keeps the record, which is
   right for a worker turned off deliberately, but pairing the same machine again left the old entry
   on the list for ever with nothing that cleared it. Remove deletes the record and its lease
