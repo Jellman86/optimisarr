@@ -808,6 +808,63 @@ the replacement workflow is trustworthy.
       available. Promote it from experimental only if the bounded search saves meaningful space or avoids failures without
       creating surprising encode time, unstable choices, or weaker verification.
 
+11. **Tell an operator a newer version exists, without telling anyone anything.** Optimisarr has no
+    way to say "there is a newer release" or "this sidecar is older than the server it is paired
+    to". The first is why a fix can sit unnoticed for weeks; the second is why a Mac ran a build two
+    commits behind a fix it needed and nothing on the page could have said so. YA-WAMF already
+    solves the release half, and its design is worth reusing — but its privacy posture is not, and
+    the difference matters more here than the mechanism does.
+
+    - **What YA-WAMF does, and which parts to take.** `backend/app/utils/version.py` keeps the
+      comparison pure and free of I/O, so "is a newer release available?" is deterministic and
+      unit-testable without a network; it compares only the numeric release core, so a dev build of
+      the same version is not an update, a dev build ahead of stable does not nag, and an
+      unparseable version never reports one. `backend/app/version.py` composes `base-branch+hash`
+      from a `VERSION` file, the branch, and the git hash, omitting the branch for release
+      channels. `backend/app/services/update_service.py` is channel-aware — a branch install
+      compares commit hashes against its own branch, a release install compares semver against
+      stable — and wraps the fetch in a single-flight lock with a fifteen-minute success cache and a
+      five-minute failure retry, never blocking a request and degrading to the last known good
+      answer or to "no update". It is a notification only: YA-WAMF never updates itself, and
+      pulling a new image stays the orchestrator's job. Take all of that.
+
+    - **Default off, not default on.** This is the one substantive departure. YA-WAMF defaults its
+      check on, which is reasonable for a bird-feeder classifier. Optimisarr is pointed at whatever
+      library someone has, and a request that says "this address runs Optimisarr" is a disclosure
+      some operators will not accept at any frequency. It must be opt-in, and the setting must show
+      the exact request that would be made before anyone turns it on.
+
+    - **No endpoint of ours.** YA-WAMF fetches from a project-operated Cloudflare Worker. Optimisarr
+      should ask a public, generic destination — GitHub's own releases API — or a URL the operator
+      sets to a mirror, an internal cache, or nothing at all. Do not build a receiver: a receiver we
+      run is a log we would then have to promise not to keep, and a promise is a weaker thing than
+      not having the data.
+
+    - **Nothing in the request but the request.** No installation identifier, no version in a query
+      string, no counting, no cohorts, no install totals. YA-WAMF's community install-count rides
+      the same switch as its update check; that must not come across. The only thing an operator
+      exposes is their source IP to whoever serves the release list, and the setting must say so
+      plainly rather than describing itself as "anonymous".
+
+    - **Three states, not two.** Off (the default), check only when asked, and check periodically. A
+      person pressing "Check now" is not a beacon, and that middle state is likely the one most
+      operators actually want. Honour the proxy configuration the rest of the app uses, so an
+      install that reaches the internet through one egress does not quietly open another.
+
+    - **The sidecar half needs no network at all, and should land first.** Workers now report their
+      own build on pairing and on every check-in, so the server can already tell that a paired
+      sidecar is older than the server expects, purely from data it holds. That is the more useful
+      half of this entry, it carries none of the privacy question, and it should ship independently
+      rather than waiting behind the release check.
+
+    - **Evidence to call it complete.** A test that boots with no configuration and proves no
+      outbound request is attempted; a test that the enabled check makes exactly one request
+      carrying no identifying payload; pure comparison tests covering same-version, dev-ahead-of-
+      stable, and unparseable input; a degradation test proving a failed fetch keeps the last known
+      answer and never blocks or surfaces an error into a page; sidecar skew shown in the Workers
+      tab and proved to involve no network call; documentation stating exactly what is sent, to
+      whom, how often, and what enabling it reveals; and the new strings in all nine locales.
+
 
 ## Guiding principles
 
