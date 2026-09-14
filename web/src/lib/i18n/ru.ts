@@ -366,6 +366,8 @@ export const ru: Messages = {
     now_probing: "Сейчас исследую",
     now_verifying: "Сейчас проверяю",
     probing_source: "Источник зондирования…",
+    selecting_quality: 'Подбор качества…',
+    selecting_quality_short: 'подбор качества…',
     verifying_output: "Проверка вывода…",
     nothing_processing: "Сейчас ничего не обрабатывается.",
     queued_waiting_one: "Задача обработки {count} поставлена ​​в очередь и ожидает запуска.",

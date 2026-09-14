@@ -625,7 +625,10 @@
               <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
               <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{i18n.m.queue.returned_waiting}</div>
             {:else}
-              {#if job.status === 'Verifying' && job.progress > 0}
+              <!-- Probing reports real progress too: the adaptive quality search encodes and scores
+                   sample windows, which is minutes of work, and a bar that only slides about says
+                   nothing about how much of it is left. -->
+              {#if (job.status === 'Verifying' || job.status === 'Probing') && job.progress > 0}
                 <div class="mt-3 flex items-center gap-3">
                   <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
                   <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
@@ -635,7 +638,9 @@
               {/if}
               <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">
                 {#if job.status === 'Probing'}
-                  {i18n.m.queue.probing_source}
+                  <!-- Once it is measuring candidates it is choosing a quality, not reading the
+                       source, and saying "probing source" then is simply the wrong sentence. -->
+                  {job.progress > 0 ? i18n.m.queue.selecting_quality : i18n.m.queue.probing_source}
                 {:else if job.workerName}
                   {t(i18n.m.queue.verifying_returned, { worker: job.workerName })}
                 {:else}
@@ -804,7 +809,7 @@
                 </div>
               {:else if job.status === 'Probing' || job.status === 'Verifying'}
                 <div class="space-y-1">
-                  {#if job.status === 'Verifying' && job.progress > 0}
+                  {#if (job.status === 'Verifying' || job.status === 'Probing') && job.progress > 0}
                     <div class="flex items-center gap-2">
                       <div class="progress-track"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
                       <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
@@ -814,7 +819,7 @@
                   {/if}
                   <div class="text-[11px] text-sky-600 dark:text-sky-400">
                     {#if job.status === 'Probing'}
-                      {i18n.m.queue.stage_probing}
+                      {job.progress > 0 ? i18n.m.queue.selecting_quality_short : i18n.m.queue.stage_probing}
                     {:else if job.workerName}
                       {t(i18n.m.queue.stage_verifying_returned, { worker: job.workerName })}
                     {:else}
@@ -967,8 +972,21 @@
             </div>
           {/if}
         {:else if selectedJob.status === 'Probing' || selectedJob.status === 'Verifying'}
-          <div class="progress-track"><div class="progress-indeterminate"></div></div>
-          <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{selectedJob.status === 'Probing' ? i18n.m.queue.stage_probing_full : i18n.m.queue.stage_verifying_full}</p>
+          {#if selectedJob.progress > 0}
+            <div class="flex items-center gap-2">
+              <div class="progress-track"><div class="progress-fill" style="width: {Math.round(selectedJob.progress * 100)}%"></div></div>
+              <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(selectedJob.progress * 100)}%</span>
+            </div>
+          {:else}
+            <div class="progress-track"><div class="progress-indeterminate"></div></div>
+          {/if}
+          <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">
+            {#if selectedJob.status === 'Probing'}
+              {selectedJob.progress > 0 ? i18n.m.queue.selecting_quality : i18n.m.queue.stage_probing_full}
+            {:else}
+              {i18n.m.queue.stage_verifying_full}
+            {/if}
+          </p>
         {:else if selectedJob.status === 'Failed'}
           <p class="text-sm text-red-600 dark:text-red-400">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
           {#if selectedJob.errorMessage}

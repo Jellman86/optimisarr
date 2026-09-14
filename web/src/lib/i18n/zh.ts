@@ -366,6 +366,8 @@ export const zh: Messages = {
     now_probing: "现在正在探索",
     now_verifying: "正在验证",
     probing_source: "探寻来源……",
+    selecting_quality: '正在选择画质…',
+    selecting_quality_short: '正在选择画质…',
     verifying_output: "验证输出...",
     nothing_processing: "现在没有任何处理。",
     queued_waiting_one: "{count} 处理任务排队等待启动。",

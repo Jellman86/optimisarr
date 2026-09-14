@@ -60,6 +60,9 @@ public sealed class QueueDispatcher(
     // Scratch directories an encode is writing into. A directory is momentarily empty between
     // being created and FFmpeg opening its output, and two jobs on the same media file share one
     // directory — so without this, one job's cleanup prunes another job's freshly made tree.
+    // When each queued job first became eligible to run, so a PreferWorker hold measures the time a
+    // worker actually had to claim it rather than time the job spent parked outside its window.
+    private readonly ConcurrentDictionary<int, DateTimeOffset> _firstRunnableAt = new();
     private readonly ConcurrentDictionary<string, int> _reservedWorkDirectories =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _dbLock = new(1, 1);
@@ -541,9 +544,15 @@ public sealed class QueueDispatcher(
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
         var nowUtc = DateTimeOffset.UtcNow;
-        var runnable = queued
-            .Where(job => WorkPlacementPolicy.MayRunLocally(
-                job.Placement, remoteWorkersOn, aWorkerCouldTakeWork, job.EnqueuedAt, nowUtc))
+
+        // The window first, then placement — the order matters, and getting it the other way round
+        // is why "prefer a worker" quietly never preferred one. PreferWorker gives a worker first
+        // refusal for a few minutes, and that clock used to run from when the job was enqueued. A
+        // library with an optimise window enqueues its work hours before that window opens, so the
+        // hold expired while every job sat ineligible to run at all; by the time the window opened
+        // the server was free to take the lot, and did. The hold now starts when a job first
+        // becomes runnable, which is what it was always meant to mean.
+        var withinWindow = queued
             .Where(job =>
             {
                 var window = job.LibraryId is { } libraryId
@@ -557,6 +566,18 @@ public sealed class QueueDispatcher(
                     nowLocal);
             })
             .ToList();
+
+        // Kept in memory rather than on the job: losing it across a restart simply restarts the
+        // hold, which errs towards offering the work to a worker — the safe direction for a
+        // setting whose whole purpose is to prefer one.
+        foreach (var job in withinWindow)
+        {
+            _firstRunnableAt.TryAdd(job.Id, nowUtc);
+        }
+        PruneFirstRunnable(queued);
+
+        var runnable = SelectLocallyRunnable(
+            withinWindow, _firstRunnableAt, remoteWorkersOn, aWorkerCouldTakeWork, nowUtc);
 
         var toStart = JobScheduler.SelectJobsToStart(
             runnable,
@@ -3201,6 +3222,54 @@ public sealed class QueueDispatcher(
         var key = NormaliseDirectory(directory);
         _reservedWorkDirectories.AddOrUpdate(key, 1, static (_, count) => count + 1);
         return new WorkDirectoryReservation(_reservedWorkDirectories, key);
+    }
+
+    /// <summary>
+    /// Which of the jobs eligible to run right now this machine may take itself.
+    ///
+    /// Separated from the dispatch loop because the bug it fixes is invisible in the policy it
+    /// calls: <see cref="WorkPlacementPolicy.MayRunLocally"/> was always correct, and was simply
+    /// being handed the wrong instant. Passing the moment a job became runnable, rather than the
+    /// moment it was enqueued, is the whole of the fix, and it is only testable if the choice of
+    /// instant lives somewhere a test can reach.
+    /// </summary>
+    internal static List<QueuedJob> SelectLocallyRunnable(
+        IReadOnlyList<QueuedJob> withinWindow,
+        IReadOnlyDictionary<int, DateTimeOffset> firstRunnableAt,
+        bool remoteWorkersEnabled,
+        bool aWorkerCouldTakeWork,
+        DateTimeOffset nowUtc) =>
+        withinWindow
+            .Where(job => WorkPlacementPolicy.MayRunLocally(
+                job.Placement,
+                remoteWorkersEnabled,
+                aWorkerCouldTakeWork,
+                // Never the enqueue time. A job parked outside its library's window was not being
+                // offered to anybody, so counting that wait against a worker's head start hands
+                // the work straight to this machine the instant the window opens.
+                firstRunnableAt.TryGetValue(job.Id, out var runnableSince) ? runnableSince : nowUtc,
+                nowUtc))
+            .ToList();
+
+    /// <summary>
+    /// Forgets jobs that have left the queue, so a long-running server does not accumulate a
+    /// timestamp for every job it has ever dispatched.
+    /// </summary>
+    private void PruneFirstRunnable(IReadOnlyCollection<QueuedJob> queued)
+    {
+        if (_firstRunnableAt.IsEmpty)
+        {
+            return;
+        }
+
+        var stillQueued = queued.Select(job => job.Id).ToHashSet();
+        foreach (var id in _firstRunnableAt.Keys)
+        {
+            if (!stillQueued.Contains(id))
+            {
+                _firstRunnableAt.TryRemove(id, out _);
+            }
+        }
     }
 
     private bool IsWorkDirectoryReserved(string directory) =>

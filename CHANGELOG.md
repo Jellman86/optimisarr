@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixed
+
+- **"Prefer a worker" now actually prefers one.** A library set to prefer a sidecar was still having
+  every job run on the server. The preference gives a worker first refusal for a few minutes, and
+  that clock ran from the moment a job was enqueued — but a library with an optimise window enqueues
+  its work hours before the window opens, so the head start expired while the job sat ineligible to
+  run at all. The instant the window opened, the server was free to take the entire backlog, and
+  did. The hold now starts when a job first becomes runnable, which is what it always meant.
+- **The queue shows how far the quality search has got.** A job selecting a per-title quality
+  reports real progress, and the preview screen has always shown it, but the queue drew a sliding
+  bar that said nothing — the progress bar was gated on the verification stage alone. The hero, the
+  rows and the detail panel now show the percentage, and say "Selecting quality" rather than
+  "Probing source" once it is measuring candidates, because by then it is no longer reading the
+  source.
+
 ### Added
 
 - **The Workers tab shows how busy each machine is.** A remote worker was a black box: it either

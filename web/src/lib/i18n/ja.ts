@@ -366,6 +366,8 @@ export const ja: Messages = {
     now_probing: "現在調査中",
     now_verifying: "ただいま検証中",
     probing_source: "ソースを調査中…",
+    selecting_quality: '画質を選択中…',
+    selecting_quality_short: '画質を選択中…',
     verifying_output: "出力を確認しています…",
     nothing_processing: "現在何も処理していません。",
     queued_waiting_one: "{count} 処理タスクがキューに入れられ、開始を待機しています。",

@@ -527,6 +527,8 @@ export const en = {
     now_probing: 'Now probing',
     now_verifying: 'Now verifying',
     probing_source: 'Probing source…',
+    selecting_quality: 'Selecting quality…',
+    selecting_quality_short: 'selecting quality…',
     verifying_output: 'Scoring perceptual quality (VMAF) against the original…',
     nothing_processing: 'Nothing processing right now.',
     queued_waiting_one: ' {count} job queued and waiting to start.',

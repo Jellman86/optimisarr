@@ -387,6 +387,8 @@ empty: 'Aún no hay contenido aquí. Añade una biblioteca y escanéala desde la
     now_probing: 'Sondeando ahora',
     now_verifying: 'Verificando ahora',
     probing_source: 'Sondeando origen…',
+    selecting_quality: 'Seleccionando calidad…',
+    selecting_quality_short: 'seleccionando calidad…',
     verifying_output: 'Verificando salida…',
     nothing_processing: 'Nada procesándose en este momento.',
     queued_waiting_one: ' {count} trabajo en cola esperando para iniciar.',
