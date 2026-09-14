@@ -934,6 +934,58 @@ the replacement workflow is trustworthy.
       recommending the sidecar for encoding; and one real end-to-end run on an Apple Silicon host
       that transcodes, verifies, and replaces a file.
 
+13. **Run the per-title quality search where the encode runs.** The search is the expensive half of
+    an adaptive job — a bounded set of sample encodes, each scored with libvmaf — and it runs on the
+    control plane while the cheap half is handed to whichever machine has the GPU. That is the wrong
+    way round, and on 2026-09-14 it was also the reason "prefer a worker" did nothing at all: a
+    worker cannot be offered a job until a quality has been chosen, the choice is made by the
+    server, and the server went straight on to encode it. There was no instant at which the
+    preference could apply. The handback shipped that day — return the job to the queue once the
+    quality is chosen — makes the setting work, but it is a stopgap for this entry rather than the
+    answer.
+
+    - **One lease covers the search and the encode.** This is the decision that shapes everything
+      else. If one worker searches and another encodes, the source crosses the network twice, and
+      these are whole video files; today it effectively crosses twice anyway, because the server
+      reads it locally to search and the worker then downloads it to encode. Binding both to a
+      single assignment moves it **once**, which is a larger saving than the processor time that
+      prompted the idea. It also removes the round trip through the queue that the handback adds.
+
+    - **The protocol grows a shape, and two clients implement it.** An assignment today names one
+      encoder and one quality, and delivery is a candidate file. A searching assignment must instead
+      carry the range to search, the measurement commands for each sample, and the policy the
+      evidence will be held to — and the worker returns a chosen value and its evidence before any
+      full encode begins. Much of this exists: `QualityRequirement` already ships per-window libvmaf
+      commands, and `/api/workers/leases/{id}/quality` already takes raw libvmaf logs back. This is
+      an extension of a conversation the two ends already have. It is still a versioned contract
+      with a Swift implementation and a C# one, so the shape wants settling before either is
+      written, not during.
+
+    - **The control plane still owns the decision.** It sends the bounds, the sample windows and the
+      thresholds; the worker measures and reports. A worker proposing a value the server did not
+      offer, or reporting evidence that does not match the policy it was given, is refused — a score
+      taken under an easier policy is evidence about something else. The server records the chosen
+      value against the job exactly as it does now, so a recovery retry stays anchored to it.
+
+    - **Safety is unchanged, and that is what makes this worth attempting.** A search only chooses a
+      setting; it never authorises a replacement. The finished encode still clears the structural,
+      decode, duration, tail, stream, size and configured VMAF gates on this machine before anything
+      is replaced. A worker that chooses badly produces an encode that then fails verification, not
+      a bad replacement. So this is an efficiency change rather than a trust one.
+
+    - **Read why it lives in the dispatcher before moving it.** The feature is still marked
+      Experimental above, and its notes say the search deliberately does not cache a decision across
+      work. That is about caching rather than placement, but the two were written together, and ten
+      minutes spent on the reasoning is cheaper than discovering it afterwards.
+
+    - **Evidence to call it complete.** A worker that searches and encodes under one lease with the
+      source transferred once, proved by counting the transfers; a worker's proposed quality refused
+      when it is outside the offered bounds or its evidence was taken under a different policy; the
+      server falling back to its own search when no worker can take the job, so a fleet that is
+      absent or incapable never stalls a library; both sidecars implementing the same contract
+      against the same tests; and a real adaptive job completing end to end on a worker with the
+      chosen quality and its evidence recorded against the job as they are today.
+
 
 ## Guiding principles
 
