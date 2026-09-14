@@ -117,6 +117,20 @@ test('each paired sidecar is a card that says what it can do, what it is doing, 
   await expect(office.getByRole('button', { name: 'Stop taking work' })).toBeVisible()
 })
 
+test('an offline sidecar can be removed from the list, a working one cannot', async ({ page }) => {
+  // Revoking keeps the record, which is right for a worker turned off deliberately. An orphan —
+  // the same machine paired twice — needs clearing, and there was no way to do it.
+  await mockWorkers(page)
+  await page.goto('/#/settings')
+  await page.getByRole('tab', { name: 'Workers' }).click()
+
+  const cards = page.locator('[data-testid="worker-card"]')
+  // Mac Studio is online and mid-job: removal is not offered.
+  await expect(cards.nth(0).getByRole('button', { name: 'Remove' })).toHaveCount(0)
+  // Office PC has been offline for two days.
+  await expect(cards.nth(2).getByRole('button', { name: 'Remove' })).toBeVisible()
+})
+
 test('drain and resume act on one card and show what the server recorded', async ({ page }) => {
   await mockWorkers(page)
   await page.goto('/#/settings')

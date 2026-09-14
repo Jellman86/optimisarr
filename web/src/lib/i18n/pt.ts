@@ -1159,6 +1159,8 @@ export const pt: Messages = {
     status_drained: "Esvaziado",
     status_revoked: "Revogado",
     revoke: "Revogar",
+    forget: "Remover",
+    forget_confirm: "Remover {name} da lista? O registo e o seu histórico são eliminados. Use para um sidecar que não vai voltar; revogar basta para parar um.",
     revoke_confirm: "Revogar {name}? Deixa imediatamente de receber trabalho e terá de ser emparelhado novamente.",
     vmaf: "VMAF: {mode}",
     preview_note: 'Os workers remotos são uma prévia. Um sidecar pareado pode assumir recodificações de vídeo de bibliotecas que permitem isso; todo candidato volta para cá para ser verificado antes que um original seja tocado.',

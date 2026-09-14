@@ -1353,6 +1353,8 @@ export const en = {
     status_drained: 'Drained',
     status_revoked: 'Revoked',
     revoke: 'Revoke',
+    forget: 'Remove',
+    forget_confirm: 'Remove {name} from the list? This deletes the record and its history. Use it for a sidecar that is gone for good; revoking is enough to stop one working.',
     revoke_confirm: 'Revoke {name}? It stops receiving work immediately and must be paired again to return.',
     vmaf: 'VMAF: {mode}',
     preview_note: 'Remote workers are a preview. A paired sidecar can take video re-encodes from libraries that allow it; every candidate comes back here to be verified before an original is touched.',

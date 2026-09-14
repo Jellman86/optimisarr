@@ -114,6 +114,20 @@
     }
   }
 
+  async function forget(worker: Worker) {
+    if (!confirm(t(i18n.m.workers.forget_confirm, { name: worker.name }))) return
+    busy = true
+    error = null
+    try {
+      await api.forgetWorker(worker.id)
+      workers = await api.workers()
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+    } finally {
+      busy = false
+    }
+  }
+
   async function revoke(worker: Worker) {
     if (!confirm(t(i18n.m.workers.revoke_confirm, { name: worker.name }))) return
     busy = true
@@ -367,6 +381,13 @@
                 <button class="btn btn-ghost text-red-600 dark:text-red-400" disabled={busy} onclick={() => revoke(worker)}>
                   {i18n.m.workers.revoke}
                 </button>
+                <!-- Only for a sidecar that is not coming back. A live one should be revoked, which
+                     stops it working while keeping the record of what it did. -->
+                {#if worker.revokedAt || !worker.online}
+                  <button class="btn btn-ghost text-slate-500 dark:text-slate-400" disabled={busy} onclick={() => forget(worker)}>
+                    {i18n.m.workers.forget}
+                  </button>
+                {/if}
               </div>
             {/if}
           </article>

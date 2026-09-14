@@ -1120,6 +1120,8 @@ export const api = {
 
   workers: () => request<Worker[]>('/api/workers'),
   revokeWorker: (id: number) => request<void>(`/api/workers/${id}`, { method: 'DELETE' }),
+  /** Removes the record entirely. Revoking keeps it for the audit trail; this is for an orphan. */
+  forgetWorker: (id: number) => request<void>(`/api/workers/${id}/forget`, { method: 'POST' }),
   drainWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'POST' }),
   resumeWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'DELETE' }),
   issueWorkerPairingCode: () =>

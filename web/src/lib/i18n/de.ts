@@ -1214,6 +1214,8 @@ export const de: Messages = {
     status_drained: 'Entleert',
     status_revoked: 'Widerrufen',
     revoke: 'Widerrufen',
+    forget: 'Entfernen',
+    forget_confirm: '{name} aus der Liste entfernen? Der Eintrag und seine Historie werden gelöscht. Nur für einen Sidecar, der endgültig weg ist; zum Stoppen genügt Widerrufen.',
     revoke_confirm: '{name} widerrufen? Es erhält sofort keine Aufgaben mehr und muss erneut gekoppelt werden.',
     vmaf: 'VMAF: {mode}',
     preview_note: 'Remote-Worker sind eine Vorschau. Ein gekoppelter Sidecar kann Video-Neukodierungen aus Bibliotheken übernehmen, die es erlauben; jeder Kandidat kommt zur Prüfung hierher zurück, bevor ein Original angefasst wird.',

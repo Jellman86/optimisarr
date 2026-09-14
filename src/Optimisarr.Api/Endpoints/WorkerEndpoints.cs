@@ -372,6 +372,49 @@ internal static class WorkerEndpoints
             return Results.NoContent();
         })
         .WithName("RevokeWorker");
+
+        // Revoking keeps the row, which is right for a worker turned off deliberately: the audit
+        // trail of what it once held outlives it. It is wrong for an orphan — pairing the same
+        // machine again leaves the old record on the Workers tab for ever with nothing that clears
+        // it — so removal is a separate, deliberate act rather than a second meaning for DELETE.
+        app.MapPost("/api/workers/{id:int}/forget", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+            if (worker is null)
+            {
+                return ApiErrors.NotFound("worker.notFound", $"No worker with id {id}.", new { id });
+            }
+
+            // Removing a worker mid-job would strand it: the lease it is renewing would vanish
+            // underneath it and the candidate it is about to deliver would have nowhere to land.
+            var held = await db.JobLeases
+                .CountAsync(lease => lease.WorkerId == id && lease.State == LeaseState.Held, cancellationToken);
+            if (held > 0)
+            {
+                return ApiErrors.Conflict(
+                    "worker.stillWorking",
+                    $"{worker.Name} is still holding {held} job(s). Revoke it and let the work finish or lapse, then remove it.",
+                    new { id, held });
+            }
+
+            // The lease rows point at this worker and are deliberately not cascaded, so they have
+            // to go first. A forgotten worker's history has no subject left to describe.
+            var leases = await db.JobLeases
+                .Where(lease => lease.WorkerId == id)
+                .ToListAsync(cancellationToken);
+            db.JobLeases.RemoveRange(leases);
+            db.Workers.Remove(worker);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.NoContent();
+        })
+        .WithName("ForgetWorker")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
     private static string RedemptionMessage(PairingRedemption redemption) => redemption switch
