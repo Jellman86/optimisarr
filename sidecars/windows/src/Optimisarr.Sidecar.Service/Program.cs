@@ -131,8 +131,15 @@ public static class Program
     }
 
     /// <summary>
-    /// FFmpeg on PATH, or none. Found by asking the system rather than guessing an install path, so
-    /// a winget, Chocolatey or hand-unzipped copy all work the same way.
+    /// The FFmpeg this sidecar will use, in the order that gives the most predictable answer.
+    ///
+    /// The bundled copy comes first. It is pinned, hash-checked and proved by
+    /// <c>scripts/fetch-ffmpeg.ps1</c>, so it is the only one whose capabilities are known; whatever
+    /// happens to be on PATH may lack NVENC, or libvmaf, or both, and the operator would never be
+    /// told — the worker would simply never be offered the work it was installed for.
+    ///
+    /// An explicit override still wins over everything, for the machine that has a better build
+    /// than the one shipped.
     /// </summary>
     private static string? FindFfmpeg()
     {
@@ -140,6 +147,21 @@ public static class Program
         if (!string.IsNullOrWhiteSpace(configured))
         {
             return File.Exists(configured) ? configured : null;
+        }
+
+        // Beside the executable once installed; up in vendor/ when run from a build tree.
+        var here = AppContext.BaseDirectory;
+        foreach (var candidate in new[]
+                 {
+                     Path.Combine(here, "ffmpeg.exe"),
+                     Path.Combine(here, "vendor", "ffmpeg.exe"),
+                     Path.GetFullPath(Path.Combine(here, "..", "..", "..", "..", "..", "vendor", "ffmpeg.exe")),
+                 })
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
         }
 
         foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
