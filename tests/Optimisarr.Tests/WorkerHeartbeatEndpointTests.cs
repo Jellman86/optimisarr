@@ -201,6 +201,106 @@ public sealed class WorkerHeartbeatEndpointTests
         Assert.Equal(string.Empty, await ReportedVersion(admin, workerId));
     }
 
+    [Fact]
+    public async Task A_worker_reports_how_busy_its_machine_is()
+    {
+        await EnableRemoteWorkers();
+        var admin = Admin();
+
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+        using var paired = await _api.CreateClient()
+            .PostAsJsonAsync("/api/workers/pair", PairBody(code, "Busy worker"));
+        paired.EnsureSuccessStatusCode();
+        var pairing = await paired.Content.ReadFromJsonAsync<JsonElement>();
+        var workerId = pairing.GetProperty("workerId").GetInt32();
+        var worker = _api.CreateClient();
+        worker.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", pairing.GetProperty("credential").GetString()!);
+
+        // Nothing said yet, so nothing is claimed on its behalf.
+        var (cpu, gpu) = await ReportedLoad(admin, workerId);
+        Assert.Null(cpu);
+        Assert.Null(gpu);
+
+        using var busy = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 1024L,
+            maxConcurrency = 2,
+            cpuBusyFraction = 0.87,
+            gpuBusyFraction = 0.42,
+        });
+        busy.EnsureSuccessStatusCode();
+        (cpu, gpu) = await ReportedLoad(admin, workerId);
+        Assert.Equal(0.87, cpu);
+        Assert.Equal(0.42, gpu);
+
+        // A check-in that says nothing about load leaves the last reading alone. A machine that
+        // could not read its counters this once has not stopped being busy, and blanking the figure
+        // would show an idle Mac mid-encode.
+        using var quiet = await worker.PostAsJsonAsync("/api/workers/heartbeat", Beat());
+        quiet.EnsureSuccessStatusCode();
+        (cpu, gpu) = await ReportedLoad(admin, workerId);
+        Assert.Equal(0.87, cpu);
+        Assert.Equal(0.42, gpu);
+
+        // One figure without the other is a normal state: a worker with no readable accelerator
+        // still knows its CPU.
+        using var cpuOnly = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 1024L,
+            maxConcurrency = 2,
+            cpuBusyFraction = 0.1,
+        });
+        cpuOnly.EnsureSuccessStatusCode();
+        (cpu, gpu) = await ReportedLoad(admin, workerId);
+        Assert.Equal(0.1, cpu);
+        Assert.Equal(0.42, gpu);
+    }
+
+    [Fact]
+    public async Task A_load_figure_outside_nought_to_one_is_refused_rather_than_clamped()
+    {
+        await EnableRemoteWorkers();
+        // Clamping would record a confident 100% for a sender that is plainly confused, and hide
+        // the bug behind a plausible number.
+        var admin = Admin();
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+        using var paired = await _api.CreateClient()
+            .PostAsJsonAsync("/api/workers/pair", PairBody(code, "Confused worker"));
+        var pairing = await paired.Content.ReadFromJsonAsync<JsonElement>();
+        var workerId = pairing.GetProperty("workerId").GetInt32();
+        var worker = _api.CreateClient();
+        worker.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", pairing.GetProperty("credential").GetString()!);
+
+        using var nonsense = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 1024L,
+            maxConcurrency = 2,
+            cpuBusyFraction = 4.2,
+            gpuBusyFraction = -1.0,
+        });
+        // The check-in still succeeds — a bad load figure is not a reason to refuse a worker.
+        nonsense.EnsureSuccessStatusCode();
+        var (cpu, gpu) = await ReportedLoad(admin, workerId);
+        Assert.Null(cpu);
+        Assert.Null(gpu);
+    }
+
+    private async Task<(double? Cpu, double? Gpu)> ReportedLoad(HttpClient admin, int workerId)
+    {
+        using var listed = await admin.GetAsync("/api/workers");
+        var row = (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray().Single(w => w.GetProperty("id").GetInt32() == workerId);
+        static double? Read(JsonElement row, string name) =>
+            row.GetProperty(name).ValueKind == JsonValueKind.Null
+                ? null
+                : row.GetProperty(name).GetDouble();
+        return (Read(row, "cpuBusyFraction"), Read(row, "gpuBusyFraction"));
+    }
+
     private static object PairBodyWith(string code, string name, string sidecarVersion)
     {
         var body = new Dictionary<string, object?>

@@ -448,11 +448,29 @@
               "array"
             ]
           },
+          "cpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "freeScratchBytes": {
             "format": "int64",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "gpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -1492,7 +1510,25 @@
       },
       "RenewRequest": {
         "properties": {
+          "cpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "encodedSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "gpuBusyFraction": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -2485,6 +2521,15 @@
             },
             "type": "array"
           },
+          "cpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "drainRequestedAt": {
             "format": "date-time",
             "type": [
@@ -2497,6 +2542,15 @@
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "gpuBusyFraction": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           },
@@ -2536,6 +2590,13 @@
             ]
           },
           "lastSeenAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "loadReportedAt": {
             "format": "date-time",
             "type": [
               "null",
@@ -2604,6 +2665,9 @@
           "vmaf",
           "freeScratchBytes",
           "maxConcurrency",
+          "cpuBusyFraction",
+          "gpuBusyFraction",
+          "loadReportedAt",
           "pairedAt",
           "lastSeenAt",
           "revokedAt",

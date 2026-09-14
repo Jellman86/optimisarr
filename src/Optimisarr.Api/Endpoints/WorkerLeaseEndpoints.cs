@@ -79,7 +79,16 @@ internal sealed record LeaseRenewedDto(Guid LeaseId, DateTimeOffset ExpiresUtc);
 /// no body and the claim is simply extended. Stage is a name from <see cref="RemoteStage"/>;
 /// encoded seconds is ffmpeg's own out_time, which the server scales against the source duration.
 /// </summary>
-internal sealed record RenewRequest(string? Stage = null, double? EncodedSeconds = null);
+internal sealed record RenewRequest(
+    string? Stage = null,
+    double? EncodedSeconds = null,
+    /// <summary>
+    /// How busy the worker's machine is, 0-1. Carried here as well as on the check-in because a
+    /// renewal happens every few seconds while a job runs, so this is the figure an operator
+    /// watching an encode actually sees. Both optional; absent leaves the last reading alone.
+    /// </summary>
+    double? CpuBusyFraction = null,
+    double? GpuBusyFraction = null);
 
 internal static class WorkerLeaseEndpoints
 {
@@ -379,7 +388,9 @@ internal static class WorkerLeaseEndpoints
                         }
                     }
                 },
-                lease => Results.Ok(new LeaseRenewedDto(lease.Id, lease.ExpiresUtc)));
+                lease => Results.Ok(new LeaseRenewedDto(lease.Id, lease.ExpiresUtc)),
+                renewing => WorkerEndpoints.RecordLoad(
+                    renewing, request?.CpuBusyFraction, request?.GpuBusyFraction));
 
             if (report is { } progress)
             {
@@ -545,7 +556,10 @@ internal static class WorkerLeaseEndpoints
         CancellationToken cancellationToken,
         Func<WorkerLease, int, DateTimeOffset, LeaseResult> operation,
         Action<JobLease, Job, LeaseOutcome> applyToJob,
-        Func<WorkerLease, IResult> success)
+        Func<WorkerLease, IResult> success,
+        // Runs only once the lease operation has succeeded, so a refused or lapsed renewal records
+        // nothing about the machine that sent it.
+        Action<Worker>? applyToWorker = null)
     {
         if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
         {
@@ -593,6 +607,10 @@ internal static class WorkerLeaseEndpoints
         {
             applyToJob(stored, stored.Job, result.Outcome);
         }
+        // The authenticated worker, not `stored.Worker`: that navigation is not included by the
+        // query above, so reaching through it would have compiled, run, and silently recorded
+        // nothing at all.
+        applyToWorker?.Invoke(worker);
 
         await db.SaveChangesAsync(cancellationToken);
         return success(result.Lease);

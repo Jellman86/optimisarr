@@ -60,6 +60,30 @@ public sealed class Worker
     /// <summary>Free scratch space last reported. Zero until the worker reports.</summary>
     public long FreeScratchBytes { get; set; }
 
+    /// <summary>
+    /// How busy the worker's machine said it was, 0 to 1, when it last reported. Null means it has
+    /// not said — an older sidecar, a machine whose counters could not be read, or a reading with
+    /// nothing to compare against. Deliberately nullable rather than defaulting to zero, because
+    /// "idle" and "no answer" are different things to show someone deciding where work should go.
+    /// </summary>
+    public double? CpuBusyFraction { get; set; }
+
+    /// <summary>
+    /// The worker's accelerator utilisation, 0 to 1, or null if it has not said.
+    ///
+    /// Low does not mean unused. On Apple silicon a VideoToolbox encode runs on a dedicated media
+    /// engine that is not the GPU's shader cores and is not reported here at all, so a Mac can be
+    /// flat out encoding while this reads near zero. Shown next to the encoder in use, never alone.
+    /// </summary>
+    public double? GpuBusyFraction { get; set; }
+
+    /// <summary>
+    /// When the two figures above were reported. A load reading is only worth showing while it is
+    /// recent: without this, a worker that went offline mid-encode would go on displaying the
+    /// busiest number it ever sent.
+    /// </summary>
+    public DateTimeOffset? LoadReportedAt { get; set; }
+
     /// <summary>Jobs the worker will accept at once. Zero means drained — no new assignments.</summary>
     public int MaxConcurrency { get; set; }
 

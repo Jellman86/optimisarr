@@ -1237,5 +1237,8 @@ remove: 'Rimuovi',
     platform_line: '{os} · {arch} · protocollo {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Versione del sidecar non comunicata',
+    cpu_label: 'CPU',
+    gpu_label: 'GPU',
+    gpu_hint: 'Solo utilizzo della GPU. Una codifica hardware può girare su un motore multimediale separato che qui non riporta nulla, quindi il valore può risultare basso anche con la macchina occupata.',
   },
 }

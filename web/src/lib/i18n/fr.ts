@@ -1239,5 +1239,8 @@ segment_only: 'segment uniquement',
     platform_line: '{os} · {arch} · protocole {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Version du sidecar non communiquée',
+    cpu_label: 'Processeur',
+    gpu_label: 'GPU',
+    gpu_hint: 'Utilisation du GPU uniquement. Un encodage matériel peut s’exécuter sur un moteur multimédia distinct qui ne remonte rien ici : cette valeur peut donc rester basse alors que la machine travaille.',
   },
 }

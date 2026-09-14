@@ -1192,5 +1192,8 @@ export const ru: Messages = {
     platform_line: '{os} · {arch} · протокол {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Версия sidecar не сообщена',
+    cpu_label: 'ЦП',
+    gpu_label: 'GPU',
+    gpu_hint: 'Только загрузка GPU. Аппаратное кодирование может выполняться на отдельном медиадвижке, который здесь ничего не сообщает, поэтому значение может быть низким даже при занятой машине.',
   },
 }

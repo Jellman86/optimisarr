@@ -739,6 +739,15 @@ export type Worker = {
   protocolVersion: number
   /** The sidecar's own build, as it reported it. Empty when it reports none. */
   sidecarVersion: string
+  /** How busy the machine last said it was, 0-1. Null when it has not said — never assume zero. */
+  cpuBusyFraction: number | null
+  /**
+   * Accelerator utilisation, 0-1, or null. Low does not mean unused: a dedicated media engine,
+   * Apple silicon's VideoToolbox encoder among them, does not appear here at all.
+   */
+  gpuBusyFraction: number | null
+  /** When those were reported, so a stale reading is not drawn as current. */
+  loadReportedAt: string | null
   videoEncoders: string[]
   /** Audio encoders the worker proved. A job that re-encodes audio is only offered to a worker naming its encoder. */
   audioEncoders: string[]

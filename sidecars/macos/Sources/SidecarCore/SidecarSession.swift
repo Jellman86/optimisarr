@@ -74,6 +74,9 @@ public final class SidecarSession: ObservableObject {
     /// upload's.
     private var rateMeters: [Int: RateMeter] = [:]
     private let store: CredentialStore
+    /// Sampled at each check-in. Its own sampler rather than the job runner's: see
+    /// `MachineLoadSampler`.
+    private let load = MachineLoadSampler()
     /// The outstanding credential load, if one is running. Held so repeated menu opens do not
     /// stack reads of the same item, and so a caller that must decide what to show next can wait
     /// for the answer instead of racing it.
@@ -323,7 +326,10 @@ public final class SidecarSession: ObservableObject {
                     credential: pairing.credential,
                     freeScratchBytes: capabilities.freeScratchBytes,
                     maxConcurrency: capabilities.maxConcurrency,
-                    capabilities: capabilities)
+                    capabilities: capabilities,
+                    // So an idle Mac still says how busy it is. While a job runs, its lease
+                    // renewals carry a fresher figure at a much shorter cadence.
+                    load: load.sample())
 
                 interval = beat.heartbeatInterval
                 if jobTasks.isEmpty {

@@ -1242,5 +1242,8 @@ segment_only: 'solo segmento',
     platform_line: '{os} · {arch} · protocolo {version}',
     sidecar_version: 'Sidecar {version}',
     sidecar_version_unknown: 'Versión del sidecar no informada',
+    cpu_label: 'CPU',
+    gpu_label: 'GPU',
+    gpu_hint: 'Solo uso de GPU. Una codificación por hardware puede ejecutarse en un motor multimedia independiente que no informa aquí, por lo que este valor puede ser bajo aunque la máquina esté ocupada.',
   },
 }

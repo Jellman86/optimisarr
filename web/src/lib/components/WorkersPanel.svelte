@@ -333,6 +333,36 @@
               {/if}
             </div>
 
+            <!-- How busy the machine says it is. Only shown when it has actually said: a worker
+                 that reports nothing shows nothing, rather than a 0% that would read as an idle
+                 Mac and invite someone to send it more work. -->
+            {#if worker.cpuBusyFraction != null || worker.gpuBusyFraction != null}
+              <div class="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300" data-testid="worker-load">
+                {#if worker.cpuBusyFraction != null}
+                  <span class="flex items-center gap-1.5">
+                    <span class="text-slate-500 dark:text-slate-400">{i18n.m.workers.cpu_label}</span>
+                    <span class="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                      <span class="block h-full rounded-full bg-sky-500" style="width: {Math.round(worker.cpuBusyFraction * 100)}%"></span>
+                    </span>
+                    <span class="font-mono tabular-nums">{Math.round(worker.cpuBusyFraction * 100)}%</span>
+                  </span>
+                {/if}
+                {#if worker.gpuBusyFraction != null}
+                  <!-- Titled, not footnoted: a hardware encode on Apple silicon runs on a media
+                       engine that is not the GPU's shader cores and is not measurable, so this
+                       reads low while the Mac is flat out. Better to say so than to let someone
+                       conclude the accelerator is idle. -->
+                  <span class="flex items-center gap-1.5" title={i18n.m.workers.gpu_hint}>
+                    <span class="text-slate-500 dark:text-slate-400">{i18n.m.workers.gpu_label}</span>
+                    <span class="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                      <span class="block h-full rounded-full bg-violet-500" style="width: {Math.round(worker.gpuBusyFraction * 100)}%"></span>
+                    </span>
+                    <span class="font-mono tabular-nums">{Math.round(worker.gpuBusyFraction * 100)}%</span>
+                  </span>
+                {/if}
+              </div>
+            {/if}
+
             <dl class="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 text-sm">
               <dt class="text-slate-500 dark:text-slate-400">{i18n.m.workers.working_on}</dt>
               <dd class="min-w-0 text-slate-800 dark:text-slate-200">
