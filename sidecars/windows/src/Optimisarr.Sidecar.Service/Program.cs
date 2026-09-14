@@ -1,4 +1,7 @@
 using System.Runtime.Versioning;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Optimisarr.Sidecar.Core.Capabilities;
 using Optimisarr.Sidecar.Core.Session;
 
@@ -25,20 +28,64 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
-        using var stopping = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, eventArgs) =>
+        if (Has(args, "--install"))
         {
-            // Stop the check-in loop and let it unwind, rather than being killed mid-request.
-            eventArgs.Cancel = true;
-            stopping.Cancel();
-        };
+            return ServiceControl.Install();
+        }
+
+        if (Has(args, "--uninstall"))
+        {
+            return ServiceControl.Uninstall();
+        }
 
         var pairIndex = Array.FindIndex(args, argument =>
             string.Equals(argument, "--pair", StringComparison.OrdinalIgnoreCase));
+        if (pairIndex >= 0)
+        {
+            using var stopping = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                stopping.Cancel();
+            };
+            return await PairAsync(args, pairIndex, stopping.Token);
+        }
 
-        return pairIndex >= 0
-            ? await PairAsync(args, pairIndex, stopping.Token)
-            : await RunAsync(stopping.Token);
+        return await RunHostAsync(args);
+    }
+
+    private static bool Has(string[] args, string flag) =>
+        args.Any(argument => string.Equals(argument, flag, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Runs the check-in loop under the generic host, as a Windows service when Windows started it
+    /// and as an ordinary console process otherwise.
+    ///
+    /// <para>The same executable does both deliberately. Being able to run it in a terminal and
+    /// watch it is how anyone will diagnose a machine that is misbehaving, and a service that can
+    /// only be observed through the Event Log is one nobody can debug.</para>
+    /// </summary>
+    private static async Task<int> RunHostAsync(string[] args)
+    {
+        var builder = Host.CreateApplicationBuilder(args);
+
+        builder.Services.AddWindowsService(options => options.ServiceName = ServiceControl.ServiceName);
+
+        // Where a headless machine gets to explain itself. Console logging is useless under a
+        // service with no console, and the Event Log is the one place an operator will think to
+        // look on a Windows box.
+        builder.Logging.AddEventLog(settings => settings.SourceName = ServiceControl.ServiceName);
+
+        builder.Services.AddSingleton(_ =>
+        {
+            var session = Build(out Func<CancellationToken, Task<SidecarCapabilities>> _);
+            return session;
+        });
+        builder.Services.AddHostedService<SidecarWorker>();
+
+        using var host = builder.Build();
+        await host.RunAsync();
+        return 0;
     }
 
     private static async Task<int> PairAsync(string[] args, int pairIndex, CancellationToken cancellationToken)
@@ -87,18 +134,6 @@ public static class Program
             }
             return 1;
         }
-    }
-
-    private static async Task<int> RunAsync(CancellationToken cancellationToken)
-    {
-        var session = Build(out _);
-        await session.RunAsync(cancellationToken);
-        return session.Status.State switch
-        {
-            SidecarState.Unpaired => 2,
-            SidecarState.Stopped => 1,
-            _ => 0,
-        };
     }
 
     /// <summary>
@@ -210,6 +245,8 @@ public static class Program
             // measured, because an invented figure is worse than an absent one.
             load: () => null,
             delay: Task.Delay,
-            report: status => Console.WriteLine($"{DateTimeOffset.Now:HH:mm:ss}  {status.Detail}"));
+            // Left to the caller: under a service there is no console to write to, and the
+            // hosted worker routes this to the Event Log instead.
+            report: null);
     }
 }
