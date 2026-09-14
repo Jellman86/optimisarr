@@ -55,6 +55,11 @@ because claiming one the build lacks means a job handed over and refused with "U
 `libvmaf_cuda` while the machine has no usable CUDA device, and the server sends a GPU measurement
 command on the strength of this answer alone, so it is scored for real.
 
+## Setting up a machine to test on
+
+See [Setting up a Windows test host](docs/test-host-setup.md): remote access, tooling, the scratch
+folder, and optionally WSL with Docker for testing the server image against an NVIDIA GPU.
+
 ## Building and testing
 
 ```bash
