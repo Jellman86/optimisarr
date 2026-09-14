@@ -477,13 +477,30 @@ public struct JobRunner: WorkExecutor {
             else { return nil }
             distortedShift = TimelineLead.shift(candidate: candidateLead, source: sourceLead)
         }
+        // Logged because a measurement that comes back wrong is otherwise undiagnosable after the
+        // fact: the scratch directory is deleted on every exit path, so the command, the files it
+        // compared and the score it produced exist nowhere once the job ends. A window scoring near
+        // zero is the signature of the two timelines being misaligned rather than of a bad encode,
+        // and knowing which window, and what shift was applied, is the whole diagnosis.
+        SidecarLog.job.info("""
+            Job \(assignment.jobId): measuring \(commands.count) window(s), \
+            distorted shift \(distortedShift ?? "none", privacy: .public)
+            """)
+
         for (index, command) in commands.enumerated() {
             let log = scratch.appendingPathComponent("vmaf-\(index).json", isDirectory: false)
             let materialised = command.materialise(
                 distorted: candidate, reference: source, log: log, distortedShift: distortedShift)
             guard let result = try? await runner.run(ffmpeg, materialised, progress: { _ in }), result.exitCode == 0,
                   let contents = try? String(contentsOf: log, encoding: .utf8), !contents.isEmpty
-            else { return nil }
+            else {
+                SidecarLog.job.error("Job \(assignment.jobId): window \(index) could not be measured")
+                return nil
+            }
+            if let summary = VmafLogSummary.of(contents) {
+                SidecarLog.job.info(
+                    "Job \(assignment.jobId): window \(index) \(summary, privacy: .public)")
+            }
             logs.append(contents)
         }
         return logs

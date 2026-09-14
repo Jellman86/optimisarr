@@ -181,3 +181,42 @@ struct LiveFramePreviewTests {
         #expect(bytes.count > 500)
     }
 }
+
+@Suite("VMAF log summary")
+struct VmafLogSummaryTests {
+    private func log(_ scores: [Double]) -> String {
+        let frames = scores.enumerated()
+            .map { "{\"frameNum\":\($0.offset),\"metrics\":{\"vmaf\":\($0.element)}}" }
+            .joined(separator: ",")
+        return "{\"frames\":[\(frames)]}"
+    }
+
+    @Test("a healthy window reads as healthy")
+    func healthy() {
+        let summary = VmafLogSummary.of(log([95, 96, 94, 97]))
+
+        #expect(summary?.contains("4 frames") == true)
+        #expect(summary?.contains("0 below 5") == true)
+    }
+
+    @Test("frames scoring zero are counted, because the mean hides them")
+    func zerosAreSurfaced() {
+        // The signature of two timelines misaligned in time: a respectable average with individual
+        // frames at zero. An average alone would read as a merely mediocre encode.
+        let summary = VmafLogSummary.of(log([98, 0, 97, 0, 96]))
+
+        #expect(summary?.contains("2 below 5") == true)
+        #expect(summary?.contains("min 0.00") == true)
+    }
+
+    @Test("a zero-scoring frame does not divide the harmonic mean by zero")
+    func zeroIsSafe() {
+        #expect(VmafLogSummary.of(log([0, 0])) != nil)
+    }
+
+    @Test("junk and empty logs report nothing rather than a wrong number")
+    func refusesJunk() {
+        #expect(VmafLogSummary.of("not json") == nil)
+        #expect(VmafLogSummary.of("{\"frames\":[]}") == nil)
+    }
+}

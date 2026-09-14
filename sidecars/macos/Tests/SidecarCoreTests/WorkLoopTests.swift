@@ -366,6 +366,29 @@ struct ResumableSourceDownloadTests {
     }
 }
 
+@Suite("Timeline lead")
+struct TimelineLeadShiftTests {
+    @Test("a gap under half a microsecond is written as plain zero")
+    func tinyGapIsZero() {
+        // The server parses this back out of the filter graph, so "0" rather than "0.0000004".
+        #expect(TimelineLead.shift(candidate: 0.0410002, source: 0.041) == "0")
+        #expect(TimelineLead.shift(candidate: 0.041, source: 0.041) == "0")
+    }
+
+    @Test("a real gap is written to the microsecond, without trailing zeros")
+    func realGapIsKept() {
+        // The case seen on 2026-09-14: a source whose video starts 31 ms after its container and a
+        // candidate that starts at 41 ms.
+        #expect(TimelineLead.shift(candidate: 0.041016, source: 0.031) == "0.010016")
+        #expect(TimelineLead.shift(candidate: 0.041, source: 0.0) == "0.041")
+    }
+
+    @Test("a candidate earlier than its source keeps its sign")
+    func negativeGapIsKept() {
+        #expect(TimelineLead.shift(candidate: 0.021, source: 0.031) == "-0.01")
+    }
+}
+
 @Suite("Work location in a real job")
 struct WorkLocationJobTests {
     @Test("a job too large for the memory budget runs on disk instead of being handed back")

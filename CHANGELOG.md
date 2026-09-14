@@ -148,6 +148,16 @@
 
 ### Fixed
 
+- **A worker now records what its VMAF measurement actually did.** Its scratch directory is deleted
+  on every exit path, so after a job ended the command, the files it compared and the score it
+  produced existed nowhere. Each window is logged with its frame count, mean, harmonic mean, lowest
+  frame and how many frames scored near zero, along with the timing shift applied — a window full of
+  zero-scoring frames beside a respectable average is the signature of two timelines misaligned
+  rather than of a bad encode, and an average alone hides it.
+- **The worker's timing-shift guard tested the wrong thing.** Its check for a gap too small to
+  matter multiplied the source lead by a million and compared that, rather than the difference
+  between the two leads, for want of a pair of brackets. It gave the right answer for every real
+  pair, which is why it went unnoticed.
 - **Each job being processed gets its own card, with its own artwork.** Every running job shared
   one card carrying only the first job's backdrop, so three jobs from three different shows read as
   one thing behind the wrong picture. With remote workers this is the common case rather than a

@@ -36,7 +36,12 @@ public enum TimelineLead {
     /// The seconds by which the candidate presents a picture later than the source, formatted the
     /// way the server formats seconds in a filter graph: up to six decimals, no trailing zeros.
     public static func shift(candidate: Double, source: Double) -> String {
-        let value = (candidate - source * 1_000_000).rounded() == 0 ? 0 : candidate - source
+        // The difference in microseconds, which is the unit the filter graph works in: a gap
+        // below half a microsecond is no gap at all and is written as a plain 0 rather than as a
+        // long decimal the server would have to parse back. The parentheses matter — without them
+        // this multiplied the *source* by a million and compared that, which happened to give the
+        // right answer for every real pair but tested something else entirely.
+        let value = ((candidate - source) * 1_000_000).rounded() == 0 ? 0 : candidate - source
         var text = String(format: "%.6f", value)
         while text.hasSuffix("0") { text.removeLast() }
         if text.hasSuffix(".") { text.removeLast() }
