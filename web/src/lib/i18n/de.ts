@@ -391,6 +391,8 @@ export const de: Messages = {
     now_probing: 'Analysiert gerade',
     now_verifying: 'Prüft gerade',
     probing_source: 'Quelle wird analysiert …',
+    selecting_quality: 'Qualität wird gewählt…',
+    selecting_quality_short: 'Qualität wird gewählt…',
     verifying_output: 'Ausgabe wird geprüft …',
     nothing_processing: 'Derzeit wird nichts verarbeitet.',
     queued_waiting_one: ' {count} Aufgabe eingereiht und wartet auf den Start.',

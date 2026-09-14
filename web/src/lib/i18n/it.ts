@@ -382,6 +382,8 @@ quarantine: {
     now_probing: 'Analisi in corso',
     now_verifying: 'Verifica in corso',
     probing_source: 'Analisi sorgente…',
+    selecting_quality: 'Selezione della qualità…',
+    selecting_quality_short: 'selezione della qualità…',
     verifying_output: 'Verifica output…',
     nothing_processing: 'Nessun processo in corso.',
     queued_waiting_one: ' {count} processo in coda e in attesa di iniziare.',

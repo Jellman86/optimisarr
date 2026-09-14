@@ -366,6 +366,8 @@ export const pt: Messages = {
     now_probing: "Agora sondando",
     now_verifying: "Agora verificando",
     probing_source: "Fonte de sondagem…",
+    selecting_quality: 'A selecionar qualidade…',
+    selecting_quality_short: 'a selecionar qualidade…',
     verifying_output: "Verificando saída…",
     nothing_processing: "Nada processando no momento.",
     queued_waiting_one: "A tarefa de processamento {count} está na fila e aguardando para ser iniciada.",

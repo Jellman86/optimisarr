@@ -1,3 +1,4 @@
+using Optimisarr.Api.Queue;
 using Optimisarr.Core.Queue;
 
 namespace Optimisarr.Tests;
@@ -76,5 +77,78 @@ public sealed class WorkPlacementPolicyTests
     {
         Assert.True(WorkPlacementPolicy.MayRunLocally(
             placement, remoteWorkersEnabled: true, aWorkerCouldTakeIt: true, Now, Now));
+    }
+}
+
+/// <summary>
+/// The dispatcher's choice of *which instant* to measure a worker's head start from. The policy it
+/// calls was never wrong; it was being handed the enqueue time, and a library with an optimise
+/// window enqueues its work hours before that window opens.
+/// </summary>
+public sealed class PreferWorkerHoldTests
+{
+    private static readonly DateTimeOffset WindowOpened =
+        new(2026, 9, 15, 0, 0, 0, TimeSpan.Zero);
+
+    private static QueuedJob Job(int id, DateTimeOffset enqueuedAt) =>
+        new(id, LibraryId: 2, Priority: 0, EnqueuedAt: enqueuedAt,
+            Placement: WorkPlacement.PreferWorker);
+
+    [Fact]
+    public void A_backlog_that_waited_all_day_for_its_window_still_offers_the_worker_first_refusal()
+    {
+        // Enqueued at 07:53, ineligible until midnight: the job spent sixteen hours being offered
+        // to nobody. Counting that against the worker handed the whole backlog to this machine the
+        // moment the window opened, which is exactly what happened on 2026-09-14.
+        var job = Job(5889, WindowOpened.AddHours(-16));
+        var firstRunnable = new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened };
+
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [job], firstRunnable,
+            remoteWorkersEnabled: true, aWorkerCouldTakeWork: true,
+            nowUtc: WindowOpened.AddMinutes(1));
+
+        Assert.Empty(runnable); // held for the worker
+    }
+
+    [Fact]
+    public void The_hold_still_lapses_so_an_idle_worker_never_strands_the_queue()
+    {
+        var job = Job(5889, WindowOpened.AddHours(-16));
+        var firstRunnable = new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened };
+
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [job], firstRunnable,
+            remoteWorkersEnabled: true, aWorkerCouldTakeWork: true,
+            nowUtc: WindowOpened.AddMinutes(11));
+
+        Assert.Single(runnable);
+    }
+
+    [Fact]
+    public void A_job_with_no_recorded_moment_is_treated_as_runnable_now()
+    {
+        // The map lives in memory, so a restart mid-window leaves nothing recorded. Treating that
+        // as "became runnable now" restarts the hold, which errs towards the worker — the safe
+        // direction for a setting whose whole purpose is to prefer one.
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [Job(5889, WindowOpened.AddHours(-16))],
+            new Dictionary<int, DateTimeOffset>(),
+            remoteWorkersEnabled: true, aWorkerCouldTakeWork: true,
+            nowUtc: WindowOpened);
+
+        Assert.Empty(runnable);
+    }
+
+    [Fact]
+    public void With_no_worker_able_to_take_it_this_machine_runs_it_at_once()
+    {
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [Job(5889, WindowOpened.AddHours(-16))],
+            new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened },
+            remoteWorkersEnabled: true, aWorkerCouldTakeWork: false,
+            nowUtc: WindowOpened);
+
+        Assert.Single(runnable);
     }
 }
