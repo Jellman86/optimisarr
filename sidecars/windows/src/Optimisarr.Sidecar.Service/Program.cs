@@ -237,16 +237,31 @@ public static class Program
             token);
         var capture = probe;
 
+        // One client for control traffic, another for transfers. A whole-video upload must not sit
+        // behind the same 30-second timeout as a check-in, and a check-in must not queue behind a
+        // 40 GB download on a connection-limited handler.
+        var control = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var bulk = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var client = new SidecarClient(control);
+        var loadSampler = new MachineLoadSampler();
+
+        var runner = new JobRunner(
+            client,
+            new JobTransfer(bulk),
+            new ProcessTranscoder(),
+            FindFfmpeg() ?? "ffmpeg.exe",
+            scratch,
+            loadSampler.Sample);
+
         return new SidecarSession(
-            new SidecarClient(new HttpClient { Timeout = TimeSpan.FromSeconds(30) }),
+            client,
             new DpapiCredentialStore(),
             capture,
-            // Load reporting arrives with the job runner; nothing is claimed until it can be
-            // measured, because an invented figure is worse than an absent one.
-            load: () => null,
+            load: loadSampler.Sample,
             delay: Task.Delay,
             // Left to the caller: under a service there is no console to write to, and the
             // hosted worker routes this to the Event Log instead.
-            report: null);
+            report: null,
+            runJob: (pairing, assignment, token) => runner.RunAsync(pairing, assignment, token));
     }
 }
