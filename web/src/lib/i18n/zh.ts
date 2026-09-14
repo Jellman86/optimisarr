@@ -1190,5 +1190,7 @@ export const zh: Messages = {
     resume: '恢复接收任务',
     paired_on: '配对于 {date}',
     platform_line: '{os} · {arch} · 协议 {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: '未报告 Sidecar 版本',
   },
 }

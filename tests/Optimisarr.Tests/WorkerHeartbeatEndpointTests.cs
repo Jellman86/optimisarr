@@ -142,6 +142,96 @@ public sealed class WorkerHeartbeatEndpointTests
     }
 
     [Fact]
+    public async Task A_sidecar_upgrading_itself_is_visible_without_re_pairing()
+    {
+        await EnableRemoteWorkers();
+        // The whole point of the field: upgrading a sidecar does not re-pair it, so a build
+        // recorded only at pairing would be wrong from the first upgrade onwards and quietly stay
+        // wrong — which is exactly how a machine ran a build nobody realised was stale.
+        var admin = Admin();
+
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+
+        var body = (Dictionary<string, object?>)PairBodyWith(code, "Upgrading worker", "0.1.5 (202609131900)");
+        using var paired = await _api.CreateClient().PostAsJsonAsync("/api/workers/pair", body);
+        paired.EnsureSuccessStatusCode();
+        var pairing = await paired.Content.ReadFromJsonAsync<JsonElement>();
+        var workerId = pairing.GetProperty("workerId").GetInt32();
+        var credential = pairing.GetProperty("credential").GetString()!;
+
+        Assert.Equal("0.1.5 (202609131900)", await ReportedVersion(admin, workerId));
+
+        var worker = _api.CreateClient();
+        worker.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+
+        // The upgraded build checks in.
+        using var upgraded = await worker.PostAsJsonAsync("/api/workers/heartbeat", new
+        {
+            freeScratchBytes = 1024L,
+            maxConcurrency = 2,
+            sidecarVersion = "0.1.6 (202609141130)",
+        });
+        upgraded.EnsureSuccessStatusCode();
+        Assert.Equal("0.1.6 (202609141130)", await ReportedVersion(admin, workerId));
+
+        // A check-in that omits it leaves the recorded build alone rather than blanking it: an
+        // older sidecar saying nothing must not erase what a newer one already reported.
+        using var silent = await worker.PostAsJsonAsync("/api/workers/heartbeat", Beat());
+        silent.EnsureSuccessStatusCode();
+        Assert.Equal("0.1.6 (202609141130)", await ReportedVersion(admin, workerId));
+    }
+
+    [Fact]
+    public async Task A_sidecar_that_reports_no_build_pairs_and_reads_as_empty()
+    {
+        await EnableRemoteWorkers();
+        // A sidecar written against the earlier contract must still pair. It reads as empty rather
+        // than as some assumed version, and the UI shows that absence rather than inventing one.
+        var admin = Admin();
+
+        using var issued = await admin.PostAsync("/api/workers/pairing-code", null);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+
+        using var paired = await _api.CreateClient()
+            .PostAsJsonAsync("/api/workers/pair", PairBody(code, "Older sidecar"));
+        paired.EnsureSuccessStatusCode();
+        var workerId = (await paired.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("workerId").GetInt32();
+
+        Assert.Equal(string.Empty, await ReportedVersion(admin, workerId));
+    }
+
+    private static object PairBodyWith(string code, string name, string sidecarVersion)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["code"] = code,
+            ["name"] = name,
+            ["operatingSystem"] = "macos",
+            ["architecture"] = "arm64",
+            ["protocolMinimum"] = 1,
+            ["protocolMaximum"] = 1,
+            ["videoEncoders"] = new[] { "libx265" },
+            ["hardwareDecoders"] = Array.Empty<string>(),
+            ["vmaf"] = "Cpu",
+            ["freeScratchBytes"] = 50L * 1024 * 1024 * 1024,
+            ["maxConcurrency"] = 2,
+            ["sidecarVersion"] = sidecarVersion,
+        };
+        return body;
+    }
+
+    private async Task<string?> ReportedVersion(HttpClient admin, int workerId)
+    {
+        using var listed = await admin.GetAsync("/api/workers");
+        return (await listed.Content.ReadFromJsonAsync<JsonElement>())
+            .EnumerateArray()
+            .Single(w => w.GetProperty("id").GetInt32() == workerId)
+            .GetProperty("sidecarVersion")
+            .GetString();
+    }
+
+    [Fact]
     public async Task Pairing_rejects_an_unknown_capability_name_and_says_what_is_valid()
     {
         await EnableRemoteWorkers();

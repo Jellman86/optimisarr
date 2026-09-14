@@ -303,6 +303,12 @@
                 <h3 class="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{worker.name}</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">
                   {t(i18n.m.workers.platform_line, { os: worker.operatingSystem, arch: worker.architecture, version: worker.protocolVersion })}
+                  <!-- The build the machine is actually running, which the protocol version above
+                       does not tell you. Shown even when absent: a worker that reports no version
+                       is running something older than this, and that is worth seeing. -->
+                  · {worker.sidecarVersion
+                    ? t(i18n.m.workers.sidecar_version, { version: worker.sidecarVersion })
+                    : i18n.m.workers.sidecar_version_unknown}
                   · {t(i18n.m.workers.paired_on, { date: paired(worker) })}
                 </p>
               </div>

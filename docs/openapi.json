@@ -473,6 +473,12 @@
               "string"
             ]
           },
+          "sidecarVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "videoEncoders": {
             "items": {
               "type": "string"
@@ -1128,6 +1134,12 @@
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
+              "string"
+            ]
+          },
+          "sidecarVersion": {
+            "type": [
+              "null",
               "string"
             ]
           },
@@ -2566,6 +2578,9 @@
               "string"
             ]
           },
+          "sidecarVersion": {
+            "type": "string"
+          },
           "videoEncoders": {
             "items": {
               "type": "string"
@@ -2582,6 +2597,7 @@
           "operatingSystem",
           "architecture",
           "protocolVersion",
+          "sidecarVersion",
           "videoEncoders",
           "audioEncoders",
           "hardwareDecoders",

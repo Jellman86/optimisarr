@@ -1190,5 +1190,7 @@ export const ru: Messages = {
     resume: 'Снова принимать работу',
     paired_on: 'Сопряжён {date}',
     platform_line: '{os} · {arch} · протокол {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Версия sidecar не сообщена',
   },
 }

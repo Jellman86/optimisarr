@@ -175,6 +175,7 @@ public struct SidecarClient: Sendable {
             "vmaf": capabilities.vmaf.rawValue,
             "freeScratchBytes": capabilities.freeScratchBytes,
             "maxConcurrency": capabilities.maxConcurrency,
+            "sidecarVersion": SidecarBuild.version,
         ])
 
         let (data, response) = try await perform(request)
@@ -223,9 +224,14 @@ public struct SidecarClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
+        // Sent on every check-in, not only at pairing: upgrading this app does not re-pair it, so
+        // a version recorded once would be wrong from the first upgrade onwards. Unconditional,
+        // unlike the capabilities below, because it costs nothing and it is the field an operator
+        // reads to answer "is this machine running the build I installed?".
         var body: [String: Any] = [
             "freeScratchBytes": freeScratchBytes,
             "maxConcurrency": maxConcurrency,
+            "sidecarVersion": SidecarBuild.version,
         ]
         if let capabilities {
             body["videoEncoders"] = capabilities.videoEncoders
