@@ -1240,5 +1240,7 @@ segment_only: 'solo segmento',
     resume: 'Volver a aceptar trabajo',
     paired_on: 'Emparejado el {date}',
     platform_line: '{os} · {arch} · protocolo {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Versión del sidecar no informada',
   },
 }

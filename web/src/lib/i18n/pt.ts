@@ -1190,5 +1190,7 @@ export const pt: Messages = {
     resume: 'Voltar a aceitar trabalho',
     paired_on: 'Pareado em {date}',
     platform_line: '{os} · {arch} · protocolo {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Versão do sidecar não informada',
   },
 }

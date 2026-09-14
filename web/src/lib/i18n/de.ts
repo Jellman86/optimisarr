@@ -1245,5 +1245,7 @@ export const de: Messages = {
     resume: 'Wieder Arbeit annehmen',
     paired_on: 'Gekoppelt am {date}',
     platform_line: '{os} · {arch} · Protokoll {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Sidecar-Version nicht gemeldet',
   },
 }

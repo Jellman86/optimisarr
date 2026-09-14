@@ -1384,6 +1384,8 @@ export const en = {
     resume: 'Resume taking work',
     paired_on: 'Paired {date}',
     platform_line: '{os} · {arch} · protocol {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Sidecar version not reported',
   },
 }
 

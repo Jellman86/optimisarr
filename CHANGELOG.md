@@ -4,6 +4,12 @@
 
 ### Added
 
+- **The Workers tab shows which build each sidecar is running.** Until now the only version on
+  screen was the protocol version, which says what the two ends agreed to speak and nothing about
+  what is installed — so a Mac quietly ran a build two commits behind the fix it needed, and
+  nothing on the page could have told you. A sidecar now reports its own version and build number
+  on pairing and on every check-in, since upgrading it does not re-pair it. A worker that reports
+  nothing is shown as reporting nothing rather than being assumed current.
 - **A Windows sidecar has begun, starting with capability probing.** A Windows machine will
   contribute spare encoding capacity the way a Mac does, as a service so it works with nobody logged
   in, with a tray application as its window onto that service. The first piece is the part worth

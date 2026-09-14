@@ -13,6 +13,8 @@ internal sealed record WorkerDto(
     string OperatingSystem,
     string Architecture,
     int ProtocolVersion,
+    /// <summary>The sidecar's own build, as it reported it. Empty when it does not report one.</summary>
+    string SidecarVersion,
     IReadOnlyList<string> VideoEncoders,
     IReadOnlyList<string> AudioEncoders,
     IReadOnlyList<string> HardwareDecoders,
@@ -59,7 +61,12 @@ internal sealed record PairRequest(
     IReadOnlyList<string>? HardwareDecoders,
     string? Vmaf,
     long FreeScratchBytes,
-    int MaxConcurrency);
+    int MaxConcurrency,
+    /// <summary>
+    /// The sidecar's own build. Optional, so a sidecar written against the earlier contract still
+    /// pairs; it is recorded and displayed, never used to decide what a worker may be offered.
+    /// </summary>
+    string? SidecarVersion = null);
 
 /// <summary>The credential, returned exactly once. Optimisarr keeps only its fingerprint.</summary>
 internal sealed record PairResponse(int WorkerId, string Credential, int ProtocolVersion);
@@ -83,7 +90,13 @@ internal sealed record HeartbeatRequest(
     IReadOnlyList<string>? VideoEncoders = null,
     IReadOnlyList<string>? AudioEncoders = null,
     IReadOnlyList<string>? HardwareDecoders = null,
-    string? Vmaf = null);
+    string? Vmaf = null,
+    /// <summary>
+    /// The sidecar's own build, repeated on every check-in rather than only at pairing — upgrading
+    /// a sidecar does not re-pair it, so a version recorded once would be wrong from the first
+    /// upgrade onwards and quietly stay wrong.
+    /// </summary>
+    string? SidecarVersion = null);
 
 /// <summary>
 /// The acknowledgement. Carries the interval so a sidecar paces itself from the control plane
@@ -190,6 +203,7 @@ internal static class WorkerEndpoints
                 OperatingSystem = Trimmed(request.OperatingSystem, 32),
                 Architecture = Trimmed(request.Architecture, 32),
                 ProtocolVersion = negotiation.AgreedVersion,
+                SidecarVersion = Trimmed(request.SidecarVersion, 64),
                 VideoEncoders = Join(request.VideoEncoders),
                 AudioEncoders = Join(request.AudioEncoders),
                 HardwareDecoders = Join(request.HardwareDecoders),
@@ -267,6 +281,13 @@ internal static class WorkerEndpoints
             if (request.Vmaf is not null && Enum.TryParse<VmafCapability>(request.Vmaf, true, out var vmaf))
             {
                 worker.Vmaf = vmaf;
+            }
+            // Recorded on every check-in so an upgrade shows up without re-pairing, but only when
+            // the sidecar actually said something: an older one omits this, and blanking what a
+            // previous check-in reported would lose the answer rather than refresh it.
+            if (request.SidecarVersion is not null)
+            {
+                worker.SidecarVersion = Trimmed(request.SidecarVersion, 64);
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -473,6 +494,7 @@ internal static class WorkerEndpoints
         worker.OperatingSystem,
         worker.Architecture,
         worker.ProtocolVersion,
+        worker.SidecarVersion,
         Split(worker.VideoEncoders),
         Split(worker.AudioEncoders),
         Split(worker.HardwareDecoders),

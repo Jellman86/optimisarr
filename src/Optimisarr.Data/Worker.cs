@@ -30,6 +30,18 @@ public sealed class Worker
     /// <summary>The protocol version agreed at pairing, from <see cref="WorkerProtocol.Negotiate"/>.</summary>
     public int ProtocolVersion { get; set; }
 
+    /// <summary>
+    /// The sidecar's own build, as its author versions it — not the protocol version above, which
+    /// says only what the two ends agreed to speak. Without this an operator cannot tell whether a
+    /// worker is running the build they think they installed, and a fix shipped to the server can
+    /// sit unused on the machine that needs it with nothing on screen to say so.
+    ///
+    /// Free text from the remote machine: shown escaped, never parsed, never compared to decide
+    /// what a worker may be offered. Empty for a worker paired before the server began asking, and
+    /// for any sidecar that does not report one.
+    /// </summary>
+    public string SidecarVersion { get; set; } = string.Empty;
+
     /// <summary>Comma-separated encoders the worker proved, not assumed from its platform.</summary>
     public string VideoEncoders { get; set; } = string.Empty;
 

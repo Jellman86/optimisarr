@@ -1235,5 +1235,7 @@ remove: 'Rimuovi',
     resume: 'Riprendi ad accettare lavoro',
     paired_on: 'Associato il {date}',
     platform_line: '{os} · {arch} · protocollo {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Versione del sidecar non comunicata',
   },
 }

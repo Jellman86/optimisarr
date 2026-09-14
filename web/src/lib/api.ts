@@ -737,6 +737,8 @@ export type Worker = {
   operatingSystem: string
   architecture: string
   protocolVersion: number
+  /** The sidecar's own build, as it reported it. Empty when it reports none. */
+  sidecarVersion: string
   videoEncoders: string[]
   /** Audio encoders the worker proved. A job that re-encodes audio is only offered to a worker naming its encoder. */
   audioEncoders: string[]

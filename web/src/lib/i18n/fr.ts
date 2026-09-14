@@ -1237,5 +1237,7 @@ segment_only: 'segment uniquement',
     resume: 'Reprendre le travail',
     paired_on: 'Appairé le {date}',
     platform_line: '{os} · {arch} · protocole {version}',
+    sidecar_version: 'Sidecar {version}',
+    sidecar_version_unknown: 'Version du sidecar non communiquée',
   },
 }

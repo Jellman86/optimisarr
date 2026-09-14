@@ -1190,5 +1190,7 @@ export const ja: Messages = {
     resume: 'ジョブの受け付けを再開',
     paired_on: '{date} にペアリング',
     platform_line: '{os} · {arch} · プロトコル {version}',
+    sidecar_version: 'サイドカー {version}',
+    sidecar_version_unknown: 'サイドカーのバージョンは未報告',
   },
 }
