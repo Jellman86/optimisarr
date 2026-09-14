@@ -8,7 +8,13 @@ public sealed record QueuedJob(
     DateTimeOffset EnqueuedAt,
     bool IgnoreMediaActivity = false,
     bool IgnoreLibraryWindow = false,
-    WorkPlacement Placement = WorkPlacement.Anywhere);
+    WorkPlacement Placement = WorkPlacement.Anywhere,
+    /// <summary>
+    /// False while a library that chooses a per-title quality has not yet chosen one for this job.
+    /// The search runs on the control plane, and no worker may be offered the job until it has, so
+    /// this decides whether holding the job for a worker means anything at all.
+    /// </summary>
+    bool QualityChosen = true);
 
 /// <summary>
 /// Decides which queued jobs to start next, given how many are already running, the global

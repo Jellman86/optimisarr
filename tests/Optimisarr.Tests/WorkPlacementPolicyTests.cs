@@ -90,9 +90,11 @@ public sealed class PreferWorkerHoldTests
     private static readonly DateTimeOffset WindowOpened =
         new(2026, 9, 15, 0, 0, 0, TimeSpan.Zero);
 
-    private static QueuedJob Job(int id, DateTimeOffset enqueuedAt) =>
+    private static QueuedJob Job(int id, DateTimeOffset enqueuedAt, bool qualityChosen = true) =>
         new(id, LibraryId: 2, Priority: 0, EnqueuedAt: enqueuedAt,
-            Placement: WorkPlacement.PreferWorker);
+            Placement: WorkPlacement.PreferWorker, QualityChosen: qualityChosen);
+
+    private static Func<QueuedJob, bool> WorkerCouldTake(bool could = true) => _ => could;
 
     [Fact]
     public void A_backlog_that_waited_all_day_for_its_window_still_offers_the_worker_first_refusal()
@@ -105,7 +107,7 @@ public sealed class PreferWorkerHoldTests
 
         var runnable = QueueDispatcher.SelectLocallyRunnable(
             [job], firstRunnable,
-            remoteWorkersEnabled: true, aWorkerCouldTakeWork: true,
+            remoteWorkersEnabled: true, WorkerCouldTake(),
             nowUtc: WindowOpened.AddMinutes(1));
 
         Assert.Empty(runnable); // held for the worker
@@ -119,7 +121,7 @@ public sealed class PreferWorkerHoldTests
 
         var runnable = QueueDispatcher.SelectLocallyRunnable(
             [job], firstRunnable,
-            remoteWorkersEnabled: true, aWorkerCouldTakeWork: true,
+            remoteWorkersEnabled: true, WorkerCouldTake(),
             nowUtc: WindowOpened.AddMinutes(11));
 
         Assert.Single(runnable);
@@ -134,7 +136,7 @@ public sealed class PreferWorkerHoldTests
         var runnable = QueueDispatcher.SelectLocallyRunnable(
             [Job(5889, WindowOpened.AddHours(-16))],
             new Dictionary<int, DateTimeOffset>(),
-            remoteWorkersEnabled: true, aWorkerCouldTakeWork: true,
+            remoteWorkersEnabled: true, WorkerCouldTake(),
             nowUtc: WindowOpened);
 
         Assert.Empty(runnable);
@@ -146,9 +148,68 @@ public sealed class PreferWorkerHoldTests
         var runnable = QueueDispatcher.SelectLocallyRunnable(
             [Job(5889, WindowOpened.AddHours(-16))],
             new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened },
-            remoteWorkersEnabled: true, aWorkerCouldTakeWork: false,
+            remoteWorkersEnabled: true, WorkerCouldTake(false),
             nowUtc: WindowOpened);
 
         Assert.Single(runnable);
+    }
+}
+
+
+/// <summary>
+/// The interaction that made "prefer a worker" meaningless on every adaptive library: a worker
+/// cannot be offered a job until a per-title quality has been chosen, and only the control plane
+/// chooses one.
+/// </summary>
+public sealed class AdaptiveQualityHoldTests
+{
+    private static readonly DateTimeOffset WindowOpened =
+        new(2026, 9, 15, 0, 0, 0, TimeSpan.Zero);
+
+    private static QueuedJob Job(bool qualityChosen) =>
+        new(5889, LibraryId: 2, Priority: 0, EnqueuedAt: WindowOpened,
+            Placement: WorkPlacement.PreferWorker, QualityChosen: qualityChosen);
+
+    [Fact]
+    public void A_job_still_awaiting_its_quality_search_is_never_held_for_a_worker()
+    {
+        // Holding it would wait for something that cannot happen: the claim route refuses a job
+        // with no chosen quality, and this machine has promised not to start it. That stalled every
+        // adaptive library for the length of the hold and then ran it locally anyway.
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [Job(qualityChosen: false)],
+            new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened },
+            remoteWorkersEnabled: true,
+            aWorkerCouldTakeIt: job => !QueueDispatcher.AwaitsLocalQualityChoice(job, new HashSet<int> { 2 }),
+            nowUtc: WindowOpened);
+
+        Assert.Single(runnable);
+    }
+
+    [Fact]
+    public void Once_the_quality_is_chosen_the_worker_gets_its_head_start()
+    {
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [Job(qualityChosen: true)],
+            new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened },
+            remoteWorkersEnabled: true,
+            aWorkerCouldTakeIt: job => !QueueDispatcher.AwaitsLocalQualityChoice(job, new HashSet<int> { 2 }),
+            nowUtc: WindowOpened);
+
+        Assert.Empty(runnable);
+    }
+
+    [Fact]
+    public void A_library_that_does_not_choose_per_title_quality_is_unaffected()
+    {
+        // Nothing to wait for, so the preference applies from the moment the job can run.
+        var runnable = QueueDispatcher.SelectLocallyRunnable(
+            [Job(qualityChosen: false)],
+            new Dictionary<int, DateTimeOffset> { [5889] = WindowOpened },
+            remoteWorkersEnabled: true,
+            aWorkerCouldTakeIt: job => !QueueDispatcher.AwaitsLocalQualityChoice(job, new HashSet<int>()),
+            nowUtc: WindowOpened);
+
+        Assert.Empty(runnable);
     }
 }

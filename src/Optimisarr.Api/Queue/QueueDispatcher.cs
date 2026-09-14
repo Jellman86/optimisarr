@@ -63,6 +63,9 @@ public sealed class QueueDispatcher(
     // When each queued job first became eligible to run, so a PreferWorker hold measures the time a
     // worker actually had to claim it rather than time the job spent parked outside its window.
     private readonly ConcurrentDictionary<int, DateTimeOffset> _firstRunnableAt = new();
+    // Only ever touched from the single dispatch loop, so no lock is needed for these two.
+    private string? _lastIdleSummary;
+    private DateTimeOffset _lastIdleLoggedAt = DateTimeOffset.MinValue;
     private readonly ConcurrentDictionary<string, int> _reservedWorkDirectories =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _dbLock = new(1, 1);
@@ -443,6 +446,7 @@ public sealed class QueueDispatcher(
         }
 
         List<QueuedJob> queued;
+        HashSet<int> adaptiveLibraryIds = [];
         List<int> delivered;
         Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
         var remoteWorkersOn = false;
@@ -466,6 +470,14 @@ public sealed class QueueDispatcher(
                 .AsNoTracking()
                 .Select(library => new { library.Id, library.WorkPlacement })
                 .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, stoppingToken);
+            // Libraries whose jobs a worker cannot be offered until this machine has chosen a
+            // per-title quality for them.
+            var adaptiveLibraries = await db.Libraries
+                .AsNoTracking()
+                .Where(library => library.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
+                .Select(library => library.Id)
+                .ToListAsync(stoppingToken);
+            adaptiveLibraryIds = [.. adaptiveLibraries];
             delivered = await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.AwaitingVerification)
@@ -483,6 +495,7 @@ public sealed class QueueDispatcher(
                     job.EnqueuedAt,
                     IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
                     IgnoreLibraryWindow = job.Type == JobType.Preview,
+                    QualityChosen = job.AdaptiveVideoQuality != null,
                     // Only a normal job is ever offered to a worker, so only a normal job can be
                     // held for one; a calibration or preview is placed exactly as before.
                     HonoursPlacement = job.Type == JobType.Normal,
@@ -498,7 +511,8 @@ public sealed class QueueDispatcher(
                     job.HonoursPlacement && job.LibraryId is { } libraryId
                         && placements.TryGetValue(libraryId, out var placement)
                         ? placement
-                        : WorkPlacement.Anywhere))
+                        : WorkPlacement.Anywhere,
+                    job.QualityChosen))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -576,14 +590,60 @@ public sealed class QueueDispatcher(
         }
         PruneFirstRunnable(queued);
 
+        // A worker cannot be offered a job whose per-title quality has not been chosen yet, and
+        // that choice is made here, by this machine. Holding such a job for a worker is a wait for
+        // something that cannot happen: the claim route refuses it, and this machine has promised
+        // not to start it. Every library set to adaptive quality and "prefer a worker" stalled for
+        // the length of the hold and was then run locally anyway — so the preference never once
+        // did what it says.
         var runnable = SelectLocallyRunnable(
-            withinWindow, _firstRunnableAt, remoteWorkersOn, aWorkerCouldTakeWork, nowUtc);
+            withinWindow,
+            _firstRunnableAt,
+            remoteWorkersOn,
+            job => aWorkerCouldTakeWork && !AwaitsLocalQualityChoice(job, adaptiveLibraryIds),
+            nowUtc);
 
         var toStart = JobScheduler.SelectJobsToStart(
             runnable,
             _running.Count,
             maxConcurrent,
             mediaServicesActive: activity.Active);
+
+        // Say why nothing started, when something plainly could have.
+        //
+        // Every gate above is individually reasonable and none of them logged, so a queue holding
+        // ninety jobs with nothing running, nothing paused and no waiting reason on the status
+        // endpoint was indistinguishable from a dispatcher that had simply stopped. Diagnosing it
+        // from outside took three wrong guesses; naming the filter that emptied the list makes it
+        // a fact instead. Logged once per cycle at Information, and only when the answer is
+        // genuinely surprising — queued work, free capacity, and still nothing chosen.
+        if (toStart.Count == 0 && queued.Count > 0 && _running.Count < maxConcurrent)
+        {
+            // Throttled, because the loop runs every three seconds: a queue parked outside its
+            // window overnight would otherwise write some thirty thousand identical lines and bury
+            // everything worth reading. Logged when the answer changes, and once every five minutes
+            // besides so a long stall still leaves a trail rather than one line at the start of it.
+            var summary = $"{queued.Count}/{withinWindow.Count}/{runnable.Count}/{activity.Active}";
+            var now = DateTimeOffset.UtcNow;
+            if (summary != _lastIdleSummary || now - _lastIdleLoggedAt > TimeSpan.FromMinutes(5))
+            {
+                _lastIdleSummary = summary;
+                _lastIdleLoggedAt = now;
+                logger.LogInformation(
+                "Queue: {Queued} queued, none started — {InWindow} inside their library window, "
+                + "{Runnable} of those this machine may run ({Placement}), "
+                + "{Startable} selected (media activity: {Activity})",
+                queued.Count,
+                withinWindow.Count,
+                runnable.Count,
+                withinWindow.Count == runnable.Count
+                    ? "placement is not holding any back"
+                    : $"{withinWindow.Count - runnable.Count} held for a worker",
+                toStart.Count,
+                activity.Active ? "streaming" : "idle");
+            }
+        }
+
         foreach (var jobId in toStart)
         {
             if (Volatile.Read(ref _draining) != 0
@@ -869,6 +929,41 @@ public sealed class QueueDispatcher(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Whether a job whose per-title quality has just been chosen should go back to the queue for a
+    /// worker rather than being encoded here.
+    ///
+    /// <para>Only when a worker could actually take it. A preference that stalled a library because
+    /// nothing was listening would be worse than ignoring the preference, so an absent, drained or
+    /// incapable fleet means this machine simply carries on.</para>
+    /// </summary>
+    private async Task<bool> ShouldHandToWorkerAsync(int jobId, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var settings = await GetQueueSettingsAsync(cancellationToken);
+
+        var availability = await WorkerAvailability.ResolveAsync(
+            db,
+            settings.RemoteWorkersEnabled,
+            scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        if (!availability.RemoteWorkersOn || !availability.AWorkerCouldTakeWork)
+        {
+            return false;
+        }
+
+        var placement = await db.Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId && job.Type == JobType.Normal)
+            .Select(job => job.MediaFile!.Library!.WorkPlacement)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
+    }
+
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
     {
         try
@@ -921,6 +1016,34 @@ public sealed class QueueDispatcher(
                 preparedWork.IsCalibration))
             {
                 preparedWork = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+
+                // The search is the control plane's decision and only it can make one; the encode
+                // that follows is not. A library set to prefer a worker meant nothing at all while
+                // both happened here: the job was unofferable until the quality was chosen, and by
+                // the time it was chosen this machine was already encoding it. Handing it back now
+                // is what makes the preference real.
+                if (await ShouldHandToWorkerAsync(jobId, cancellationToken))
+                {
+                    // Restart the head start, or handing the job back achieves nothing. The clock
+                    // began when the job first became runnable — before a quality search that takes
+                    // minutes — so by now it has almost always lapsed, and the dispatcher polls
+                    // every three seconds while a worker only asks on its next check-in. Without
+                    // this the server would take the job straight back and the handback would be a
+                    // round trip to nowhere.
+                    _firstRunnableAt[jobId] = DateTimeOffset.UtcNow;
+
+                    await WithJobAsync(jobId, job =>
+                    {
+                        job.Status = JobStatus.Queued;
+                        job.Progress = 0;
+                        job.UpdatedAt = DateTimeOffset.UtcNow;
+                    }, cancellationToken);
+                    logger.LogInformation(
+                        "Job {JobId}: quality chosen here; returned to the queue so a worker can encode it",
+                        jobId);
+                    await NotifyAsync();
+                    return;
+                }
             }
 
             var (spec, arguments) = preparedWork;
@@ -3233,17 +3356,25 @@ public sealed class QueueDispatcher(
     /// moment it was enqueued, is the whole of the fix, and it is only testable if the choice of
     /// instant lives somewhere a test can reach.
     /// </summary>
+    /// <summary>
+    /// True when no worker can be offered this job yet, because its library chooses a per-title
+    /// quality and this job has not been given one. The search runs here, so until it has, the job
+    /// belongs to this machine whatever the placement says.
+    /// </summary>
+    internal static bool AwaitsLocalQualityChoice(QueuedJob job, IReadOnlySet<int> adaptiveLibraryIds) =>
+        !job.QualityChosen && job.LibraryId is { } libraryId && adaptiveLibraryIds.Contains(libraryId);
+
     internal static List<QueuedJob> SelectLocallyRunnable(
         IReadOnlyList<QueuedJob> withinWindow,
         IReadOnlyDictionary<int, DateTimeOffset> firstRunnableAt,
         bool remoteWorkersEnabled,
-        bool aWorkerCouldTakeWork,
+        Func<QueuedJob, bool> aWorkerCouldTakeIt,
         DateTimeOffset nowUtc) =>
         withinWindow
             .Where(job => WorkPlacementPolicy.MayRunLocally(
                 job.Placement,
                 remoteWorkersEnabled,
-                aWorkerCouldTakeWork,
+                aWorkerCouldTakeIt(job),
                 // Never the enqueue time. A job parked outside its library's window was not being
                 // offered to anybody, so counting that wait against a worker's head start hands
                 // the work straight to this machine the instant the window opens.
