@@ -16,6 +16,7 @@ public sealed class AdaptiveProbeReportTests
         QualityGateEnabled = true,
         MinimumVmafHarmonicMean = 85,
         MinimumVmafMin = 70,
+        MinimumVmafCatastrophicMin = 40,
     };
 
     private static QualityScores Scores(double harmonic, double? fifth, double min, int frames) =>
@@ -30,10 +31,11 @@ public sealed class AdaptiveProbeReportTests
 
         var described = AdaptiveProbeReport.Describe(probe, Policy);
 
-        // Both halves of every comparison, so the line answers "how far off was it" on its own.
+        // Both halves of every comparison, so the line answers "how far off was it" on its own —
+        // and each figure beside the threshold that actually judges it.
         Assert.Contains("harmonic 9.75 of 85", described);
-        Assert.Contains("lowest 0 of 70", described);
-        Assert.Contains("fifth percentile 0", described);
+        Assert.Contains("fifth percentile 0 of 70", described);
+        Assert.Contains("lowest 0 of 40", described);
         Assert.Contains("2877 frames", described);
     }
 
@@ -55,8 +57,28 @@ public sealed class AdaptiveProbeReportTests
 
         var described = AdaptiveProbeReport.Describe(probe, Policy);
 
-        Assert.Contains("fifth percentile unmeasured", described);
+        // With no fifth percentile measured the gate falls back to the lowest frame, so the line
+        // shows what was actually compared rather than a blank.
+        Assert.Contains("fifth percentile 60 of 70", described);
         Assert.Contains("unmeasured frames", described);
+    }
+
+    [Fact]
+    public void Each_figure_stands_beside_the_gate_that_judges_it()
+    {
+        // The three comparisons are not the ones the names suggest: the *fifth percentile* is held
+        // to MinimumVmafMin and the lowest frame to the catastrophic floor, which is far lower.
+        // Written the other way round, this line printed "lowest 62.07 of 70" beside "met the VMAF
+        // target" on a candidate that had passed — a contradiction in the one place someone looks
+        // to understand a verdict — and left the number that was actually deciding bare.
+        var probe = new AdaptiveQualityProbe(32, MeetsTarget: true, EncodedBytes: 16_385_456,
+            Scores(93.14, 78.45, 62.07, 2878));
+
+        var described = AdaptiveProbeReport.Describe(probe, Policy);
+
+        Assert.Contains("fifth percentile 78.45 of 70", described);
+        Assert.Contains("lowest 62.07 of 40", described);
+        Assert.DoesNotContain("lowest 62.07 of 70", described);
     }
 
     [Fact]
