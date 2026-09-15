@@ -60,6 +60,20 @@ public final class SidecarSession: ObservableObject {
     /// The GPU reading taken alongside the last preview, when this Mac publishes one.
     @Published public internal(set) var gpu: GpuUsage?
 
+    /// How busy this Mac is, for the menu to draw beside a running job.
+    ///
+    /// Sampled on its own short timer rather than alongside a preview frame. Tying it to frames
+    /// meant the figure only moved when one arrived — and stopped entirely when previews were off,
+    /// which they were in every shipped build.
+    @Published public internal(set) var cpu: Double?
+
+    /// Turns of the menu bar cube, advanced only while a job is running.
+    ///
+    /// A cube spinning about its body diagonal keeps exactly the hexagonal silhouette the mark
+    /// already has; only the three visible edges rotate. So this is the mark itself turning rather
+    /// than a different icon swapped in, which is what makes it read as "still the same app, busy".
+    @Published public internal(set) var spin: Double = 0
+
     /// How many jobs this Mac takes at once. Chosen by the operator, reported to the server on
     /// every check-in, and the ceiling the claim loop fills up to.
     @Published public private(set) var jobConcurrency: Int
@@ -70,6 +84,11 @@ public final class SidecarSession: ObservableObject {
     /// True only for a session built by `posed(...)`.
     var isPosed = false
     private let previewGate: PreviewGate
+    /// Drives the menu bar's spin and the load figures. Runs only while there is work, because a
+    /// timer redrawing a menu bar icon for hours on a laptop is a cost with nothing to show for it
+    /// when the machine is idle.
+    private var uiTicker: Task<Void, Never>?
+    private let uiLoad = MachineLoadSampler()
     /// One meter per job, reset when the job changes stage so a download's rate never colours an
     /// upload's.
     private var rateMeters: [Int: RateMeter] = [:]
@@ -101,6 +120,9 @@ public final class SidecarSession: ObservableObject {
         capabilities: SidecarCapabilities = .provenToday(name: Host.current().localizedName ?? "Mac"),
         prober: CapabilityProber? = CapabilityProber(),
         previewGate: PreviewGate = PreviewGate(),
+        /// The settings a job runs under, when this session is building its own runner. Ignored
+        /// when `executor` is supplied, which only tests do.
+        settingsSnapshot: SettingsSnapshot? = nil,
         executor: WorkExecutor? = nil,
         scratchCapacity: @escaping @Sendable () -> Int64 = {
             JobRunner.availableScratchBytes(at: JobRunner.defaultScratchRoot()) ?? 0
@@ -118,7 +140,9 @@ public final class SidecarSession: ObservableObject {
         self.previewGate = previewGate
         // Built here rather than as a default argument so the runner can read the same gate this
         // session hands to the menu.
-        self.executor = executor ?? JobRunner(wantsPreviews: { [previewGate] in previewGate.isWanted })
+        self.executor = executor ?? JobRunner(
+            wantsPreviews: { [previewGate] in previewGate.isWanted },
+            settings: settingsSnapshot ?? SettingsSnapshot())
         self.scratchCapacity = scratchCapacity
         self.jobConcurrency = Self.concurrencyRange.contains(jobConcurrency) ? jobConcurrency : 1
         self.persistConcurrency = persistConcurrency
@@ -166,6 +190,14 @@ public final class SidecarSession: ObservableObject {
             self.finishRestoring(stored)
         }
     }
+
+    /// Whether a stored pairing has been loaded.
+    ///
+    /// Not the same question as `status`, and the difference matters: a restored pairing leaves the
+    /// status alone until the first check-in answers, so a freshly launched app that *is* paired
+    /// still reads as `.unpaired` for a second or two. Asking the status instead is how the app
+    /// came to open its fallback window on every single launch.
+    public var isPaired: Bool { pairing != nil }
 
     /// Restores, and waits for the stored credential to have been looked for. For a caller that
     /// must decide what to show next — the launch path, which opens the pairing window when there
@@ -433,23 +465,61 @@ public final class SidecarSession: ObservableObject {
     private func report(jobId: Int, frame: Data) {
         guard jobTasks[jobId] != nil else { return }
         filmStrips[jobId, default: FilmStrip()].append(frame)
-        // Sampled here rather than on a timer of its own: the two readings then describe the same
-        // instant, and nothing runs while no job does.
-        gpu = GpuMonitor.sample()
     }
 
-    /// Called by the menu as it opens and closes. Nothing is sampled while nobody is looking.
+    /// Called by the menu as it opens and closes. Frames are only extracted while somebody is
+    /// looking, because pulling one costs an ffmpeg invocation per sample.
+    ///
+    /// Load is not gated this way. It is cheap to read, it drives the menu bar mark as well as the
+    /// menu, and tying it to the preview gate is how the GPU figure came to be invisible: it was
+    /// sampled beside a preview frame, and previews were never switched on in a shipped build.
     public func setPreviewsWanted(_ wanted: Bool) {
         previewGate.set(wanted)
         if !wanted {
             filmStrips = [:]
+        }
+    }
+
+    /// Starts or stops the short timer behind the menu bar's spin and the load figures.
+    ///
+    /// Only while a job is running. A timer redrawing a menu bar icon on a laptop for hours is a
+    /// cost with nothing to show for it once the machine is idle, and an idle Mac has no load worth
+    /// watching either.
+    private func setTickerRunning(_ running: Bool) {
+        guard running != (uiTicker != nil) else { return }
+
+        guard running else {
+            uiTicker?.cancel()
+            uiTicker = nil
+            cpu = nil
             gpu = nil
+            spin = 0
+            return
+        }
+
+        uiTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let reading = self.uiLoad.sample()
+                self.cpu = reading?.cpu
+                if let device = reading?.gpu {
+                    self.gpu = GpuUsage(device: device, memoryInUse: self.gpu?.memoryInUse ?? 0)
+                }
+                // A third of a turn per second. The cube has three-fold symmetry about the axis it
+                // spins on, so a third of a turn is a whole revolution as far as the eye is
+                // concerned — fast enough to read as motion, slow enough not to nag.
+                self.spin += 1.0 / 18.0
+                try? await Task.sleep(for: .milliseconds(Int(1000.0 / 6.0)))
+            }
         }
     }
 
     /// The menu bar shows one job; the earliest still running stands for the rest, and the menu
     /// itself lists them all.
     private func refreshWorkingStatus() {
+        // Driven from the one place that knows whether anything is running, so the menu bar stops
+        // spinning the moment the last job ends rather than whenever someone next opens the menu.
+        setTickerRunning(!activeJobs.isEmpty)
         guard let first = activeJobs.keys.min(), let progress = activeJobs[first] else { return }
         status = .working(jobId: first, progress: progress)
     }
@@ -458,6 +528,7 @@ public final class SidecarSession: ObservableObject {
         lastOutcome = outcome
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
+        setTickerRunning(!activeJobs.isEmpty)
         jobTitles[jobId] = nil
         transferRates[jobId] = nil
         rateMeters[jobId] = nil

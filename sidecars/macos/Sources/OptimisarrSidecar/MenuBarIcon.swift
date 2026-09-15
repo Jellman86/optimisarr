@@ -18,10 +18,12 @@ enum MenuBarIcon {
     /// Menu bar content is 16pt tall by convention; a touch smaller leaves optical breathing room.
     private static let size = NSSize(width: 18, height: 18)
 
-    static func image(for status: SidecarStatus) -> NSImage {
+    /// - Parameter spin: turns of the cube about its body diagonal, for showing that work is
+    ///   happening. Zero when nothing is running.
+    static func image(for status: SidecarStatus, spin: Double = 0) -> NSImage {
         let image = NSImage(size: size, flipped: false) { rect in
             let badge = badge(for: status)
-            drawCube(in: rect, badged: badge != nil)
+            drawCube(in: rect, badged: badge != nil, spin: spin)
             if let badge {
                 draw(badge: badge, in: rect)
             }
@@ -34,7 +36,7 @@ enum MenuBarIcon {
         return image
     }
 
-    private static func drawCube(in rect: NSRect, badged: Bool) {
+    private static func drawCube(in rect: NSRect, badged: Bool, spin: Double) {
         // Shifted up and left when badged so the dot gets its own corner. Overlapping the mark
         // instead means punching a hole through an edge, which reads as a broken cube rather than
         // a cube with a status dot.
@@ -72,9 +74,22 @@ enum MenuBarIcon {
 
         // The three visible front edges, meeting at the centre — what makes it read as a solid
         // rather than a flat hexagon.
+        //
+        // Spinning turns only these, never the silhouette, and that is not a shortcut: a cube
+        // rotated about the body diagonal pointing at the viewer keeps exactly this hexagonal
+        // outline, and the three visible edges sweep round inside it. So the busy mark is the same
+        // cube turning rather than a different icon swapped in — which is what stops a spinning
+        // menu bar from reading as "something is wrong".
+        //
+        // Three-fold symmetry about that axis means a third of a turn is a whole revolution as far
+        // as anyone watching is concerned.
+        let sweep = CGFloat(spin.truncatingRemainder(dividingBy: 1)) * (2 * .pi / 3)
         for index in stride(from: 1, to: 6, by: 2) {
+            let angle = CGFloat.pi / 2 + CGFloat(index) * (CGFloat.pi / 3) + sweep
             path.move(to: centre)
-            path.line(to: vertices[index])
+            path.line(to: NSPoint(
+                x: centre.x + radius * cos(angle),
+                y: centre.y + radius * sin(angle)))
         }
 
         NSColor.black.setStroke()

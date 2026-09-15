@@ -15,8 +15,11 @@ final class AppState {
         self.settings = settings
         // The runner reads the location per job, so changing it here takes effect on the next job
         // without a restart.
-        self.session = SidecarSession(
-            executor: JobRunner(settings: settings.snapshot))
+        // No executor is passed. `SidecarSession` builds one itself wired to the preview gate it
+        // hands the menu, and passing one here silently replaced it with a runner whose previews
+        // defaulted to off — which is why no shipped build has ever drawn a film strip. The
+        // settings it needs are given to the session instead, so the two cannot come apart again.
+        self.session = SidecarSession(settingsSnapshot: settings.snapshot)
     }
 }
 
@@ -38,7 +41,7 @@ struct OptimisarrSidecarApp: App {
             // Optimisarr's own mark rather than a stock symbol, drawn as a template so macOS tints
             // it for the menu bar's appearance. State rides along as a badge instead of swapping
             // the icon wholesale, so the thing in the menu bar stays recognisably this app.
-            Image(nsImage: MenuBarIcon.image(for: session.status))
+            Image(nsImage: MenuBarIcon.image(for: session.status, spin: session.spin))
         }
         .menuBarExtraStyle(.window)
     }
@@ -90,10 +93,26 @@ struct OptimisarrSidecarApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var optionsWindow: NSWindow?
+    /// False until the stored pairing has been looked for. Reopen arrives before that answer does.
+    private var restoreSettled = false
 
     /// `open` on an already-running app raises this instead of starting a second copy, which is
     /// what makes relaunching the escape hatch.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        // Only when there is something the menu cannot do. This used to raise a window every time,
+        // so logging in — or opening the app from Finder out of habit — put a window on screen for
+        // an app whose whole interface is in the menu bar.
+        //
+        // Two conditions, not one. Reopen also arrives *during* launch, before the stored pairing
+        // has been read, and the status is `.unpaired` until it has been — so testing the status
+        // alone still showed a window on every launch, which is the bug this was meant to fix.
+        // Until the restore has settled, the launch path below owns that decision and this one
+        // stays out of it.
+        //
+        // The cost is that the window no longer works as an escape hatch for a menu bar icon lost
+        // behind the notch while paired. That is the rarer problem, and a window nobody asked for
+        // every login is the one actually being experienced.
+        guard restoreSettled, !AppState.shared.session.isPaired else { return true }
         showPairingWindow()
         return true
     }
@@ -140,7 +159,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // knows whether to offer pairing.
         Task { @MainActor in
             await AppState.shared.session.restoreAndSettle()
-            if case .unpaired = AppState.shared.session.status {
+            restoreSettled = true
+            // Whether a pairing was found, not what the status says. A restored pairing leaves the
+            // status at `.unpaired` until the first check-in answers, so asking the status opened
+            // this window on every launch of a perfectly well paired app.
+            if !AppState.shared.session.isPaired {
                 showPairingWindow()
             }
         }
