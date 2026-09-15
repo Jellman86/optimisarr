@@ -937,6 +937,86 @@ public sealed class QueueDispatcher(
     /// nothing was listening would be worse than ignoring the preference, so an absent, drained or
     /// incapable fleet means this machine simply carries on.</para>
     /// </summary>
+    /// <summary>
+    /// Expresses one candidate quality as commands the worker holding this job can run.
+    ///
+    /// <para>Built here rather than in the endpoint because it needs the job's spec, its encoder and
+    /// the source's picture — the same facts <see cref="PrepareRemoteWorkAsync"/> assembles to build
+    /// an assignment. The endpoint asks for a candidate and gets commands; it never learns what a
+    /// sample encode looks like.</para>
+    ///
+    /// <para>Null when the search cannot be expressed at all: no quality gate, no readable source
+    /// picture, no windows. The caller then leaves the job to be searched locally, which is the
+    /// behaviour that existed before any of this.</para>
+    /// </summary>
+    public async Task<AdaptiveSearchStep?> PlanAdaptiveStepAsync(
+        int jobId,
+        int quality,
+        CancellationToken cancellationToken)
+    {
+        var work = await LoadWorkAsync(jobId, cancellationToken);
+        if (work is not { } loaded
+            || loaded.Spec.VideoCodec is null
+            || loaded.VideoEncoder is null
+            || loaded.SourcePicture is not { } source)
+        {
+            return null;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var sourceProbe = await scope.ServiceProvider
+            .GetRequiredService<MediaProbeService>()
+            .ProbeAsync(loaded.Original.Path, cancellationToken);
+
+        // The primary picture timeline, not the container's. A subtitle or attachment stream can
+        // extend a container well past the programme, and a window planned on that can land after
+        // the last frame and produce an empty, unscorable sample.
+        var samplingDuration = MediaTimelineDuration.Resolve(
+            MediaKind.Video,
+            sourceProbe.VideoDurationSeconds,
+            loaded.DurationSeconds);
+        if (samplingDuration is not > 0)
+        {
+            return null;
+        }
+
+        return AdaptiveSearchPlanner.Plan(
+            quality,
+            loaded.Spec,
+            loaded.VideoEncoder,
+            Path.GetExtension(loaded.Spec.OutputPath),
+            VmafWindowPlanner.PlanAdaptive(samplingDuration.Value),
+            loaded.VerificationPolicy,
+            source.Width,
+            source.Height,
+            loaded.Original.IsHdr,
+            loaded.Original.HdrConvertedToSdr,
+            samplingDuration,
+            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate,
+            ContainerLeadSeconds(sourceProbe),
+            loaded.Spec.CropTo,
+            loaded.Spec.FrameRate);
+    }
+
+    /// <summary>
+    /// The two facts an exchange of the quality search needs about a job: what its evidence is
+    /// judged by, and which quality the search brackets around.
+    ///
+    /// <para>Both come from the job's own work, so a search that runs on a worker is judged and
+    /// centred exactly as one that runs here. Rebuilding an approximate policy from the contract's
+    /// two thresholds would leave out the catastrophic floor and quietly judge a remote search more
+    /// leniently; taking the baseline from the job's requested quality rather than its effective
+    /// one would bracket around a different number than a local search would.</para>
+    /// </summary>
+    public async Task<(VerificationPolicy Policy, int Baseline)?> GetSearchContextAsync(
+        int jobId, CancellationToken cancellationToken)
+    {
+        var work = await LoadWorkAsync(jobId, cancellationToken);
+        return work is { VideoQuality: { } quality }
+            ? (work.Value.VerificationPolicy, quality.Effective)
+            : null;
+    }
+
     private async Task<bool> ShouldHandToWorkerAsync(int jobId, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();

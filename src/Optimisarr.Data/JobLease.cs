@@ -61,6 +61,25 @@ public sealed class JobLease
     /// <summary>The pooled scores the server parsed from the worker's libvmaf logs. Null until reported.</summary>
     public string? QualityScoresJson { get; set; }
 
+    /// <summary>
+    /// Candidates this worker has measured so far in the per-title quality search, as a serialised
+    /// list of <see cref="Optimisarr.Core.Queue.AdaptiveQualityProbe"/>. Null for a job whose
+    /// quality was already settled before it was offered.
+    ///
+    /// <para>On the lease rather than the job, because the search is bound to the machine running
+    /// it: a quality proven by measuring one encoder means nothing on another, so half a search
+    /// from a worker that vanished must not be inherited by whoever picks the job up next. A lapsed
+    /// lease takes its evidence with it, and the next attempt starts again.</para>
+    /// </summary>
+    public string? AdaptiveProbesJson { get; set; }
+
+    /// <summary>
+    /// The candidate quality this worker was last asked to measure. Held so a report can be checked
+    /// against the question: a worker answers what it was asked or it answers nothing, since the
+    /// search brackets and every later candidate derives from this one.
+    /// </summary>
+    public int? AdaptiveAskedQuality { get; set; }
+
     /// <summary>The source hash the worker says it measured against.</summary>
     public string? QualitySourceSha256 { get; set; }
 

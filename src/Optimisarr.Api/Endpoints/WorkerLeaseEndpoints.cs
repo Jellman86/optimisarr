@@ -64,6 +64,24 @@ internal sealed record QualityEvidenceRequest(
     string CandidateSha256,
     IReadOnlyList<string> Logs);
 
+/// <summary>
+/// What a worker measured for one candidate quality in the per-title search: the bytes its sample
+/// encodes produced, and the raw libvmaf logs. It reports no verdict, because whether a candidate
+/// met the target needs the library's policy and the pooling rules, and both live here.
+/// </summary>
+internal sealed record AdaptiveProbeRequest(
+    int Quality,
+    long EncodedBytes,
+    IReadOnlyList<string> Logs);
+
+/// <summary>
+/// Measure this next, or stop searching and encode at this quality. Never both.
+/// </summary>
+internal sealed record AdaptiveProbeDirectionDto(
+    AdaptiveSearchStep? NextStep,
+    int? SelectedQuality,
+    string Reason);
+
 /// <summary>The pooled scores the server read from those logs.</summary>
 internal sealed record QualityEvidenceAcceptedDto(
     Guid LeaseId,
@@ -416,6 +434,145 @@ internal static class WorkerLeaseEndpoints
         // pooled here by the same code that reads a local measurement; the worker sends only what
         // ffmpeg wrote. Accepted logs are bound to the hashes the worker declares, and are used
         // only if the candidate it then delivers carries the same hash.
+        // One exchange of the per-title quality search: the worker reports what it measured, and
+        // is told what to do next. At most four of these happen per job.
+        app.MapPost("/api/workers/leases/{leaseId:guid}/quality-probe", async (
+            Guid leaseId,
+            AdaptiveProbeRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            QueueDispatcher dispatcher,
+            CancellationToken cancellationToken) =>
+        {
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
+            var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+            if (worker is null)
+            {
+                return WorkerGate.Unauthenticated();
+            }
+
+            var lease = await db.JobLeases
+                .Include(l => l.Job)
+                .ThenInclude(job => job!.MediaFile)
+                .ThenInclude(media => media!.Library)
+                .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
+            if (lease is null)
+            {
+                return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
+            }
+
+            if (lease.WorkerId != worker.Id)
+            {
+                return Results.Json(
+                    new ApiError("worker.lease.notHolder", "That lease belongs to another worker."),
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            if (lease.ToDomain().StateAt(DateTimeOffset.UtcNow) != LeaseState.Held)
+            {
+                // The search dies with the lease. Half a search proves nothing on its own, and the
+                // evidence is bound to the encoder that produced it, so the next holder starts over.
+                return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+            }
+
+            if (lease.AdaptiveAskedQuality is not { } asked)
+            {
+                return ApiErrors.Conflict("worker.search.notRequested",
+                    "This lease was not asked to search for a quality.");
+            }
+
+            var contract = lease.QualityContractJson is { } contractJson
+                ? JsonSerializer.Deserialize<RemoteQualityContract>(contractJson, EvidenceJson)
+                : null;
+            if (contract is null)
+            {
+                return ApiErrors.Conflict("worker.quality.notRequested",
+                    "This lease asked for no quality measurement, so none can be reported.");
+            }
+
+            // Judged and centred exactly as a local search would be. Both facts come from the
+            // job's own work rather than being reconstructed here, because an approximate policy
+            // would leave out the catastrophic floor and a different baseline would bracket around
+            // a different number.
+            if (await dispatcher.GetSearchContextAsync(lease.JobId, cancellationToken)
+                is not var (policy, baseline))
+            {
+                return ApiErrors.Conflict("worker.search.notRequested",
+                    "This job can no longer be read, so its search cannot continue.");
+            }
+
+            var prior = lease.AdaptiveProbesJson is { } probesJson
+                ? JsonSerializer.Deserialize<List<AdaptiveQualityProbe>>(probesJson, EvidenceJson) ?? []
+                : [];
+
+            var progress = AdaptiveSearchCoordinator.Advance(
+                baseline, prior, asked, 
+                new AdaptiveSearchReport(request.Quality, request.EncodedBytes, request.Logs ?? []),
+                contract,
+                policy);
+            if (progress is null)
+            {
+                return ApiErrors.BadRequest("worker.search.reportInvalid",
+                    "That report measured a quality this lease did not ask for, or its logs carry no usable score.");
+            }
+
+            lease.AdaptiveProbesJson = JsonSerializer.Serialize(progress.Probes, EvidenceJson);
+
+            if (progress.Decision.Complete)
+            {
+                lease.AdaptiveAskedQuality = null;
+                // Recorded on the job, exactly as a local search records it. Without this the
+                // server would not know what the worker is encoding at: the value would exist only
+                // in the reply the worker acted on, so a recovery retry would start from nothing
+                // and the queue would show no chosen quality at all.
+                if (lease.Job is { } searched)
+                {
+                    searched.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    searched.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                await db.SaveChangesAsync(cancellationToken);
+                return Results.Ok(new AdaptiveProbeDirectionDto(
+                    null, progress.Decision.SelectedQuality, progress.Decision.Reason));
+            }
+
+            var next = await dispatcher.PlanAdaptiveStepAsync(
+                lease.JobId, progress.Decision.NextQuality!.Value, cancellationToken);
+            if (next is null)
+            {
+                // The search cannot be expressed any further, so it ends where it stands rather
+                // than leaving the worker waiting for an instruction that will not come.
+                lease.AdaptiveAskedQuality = null;
+                if (lease.Job is { } stalled)
+                {
+                    stalled.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    stalled.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                await db.SaveChangesAsync(cancellationToken);
+                return Results.Ok(new AdaptiveProbeDirectionDto(
+                    null,
+                    progress.Decision.SelectedQuality,
+                    "No further candidate could be planned; encoding at the selected quality."));
+            }
+
+            lease.AdaptiveAskedQuality = next.Quality;
+            lease.QualityContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(new AdaptiveProbeDirectionDto(next, null, progress.Decision.Reason));
+        })
+        .WithName("ReportAdaptiveProbe")
+        .Produces<AdaptiveProbeDirectionDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         app.MapPost("/api/workers/leases/{leaseId:guid}/quality", async (
             Guid leaseId,
             QualityEvidenceRequest request,
