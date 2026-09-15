@@ -52,6 +52,12 @@ public sealed class SidecarSession(
 {
     public SessionStatus Status { get; private set; } = new(SidecarState.Unpaired, "Not paired");
 
+    /// <summary>The jobs running beside the check-in loop, by id, so they can be waited for.</summary>
+    private readonly Dictionary<int, Task> _jobs = [];
+
+    /// <summary>Guards the status, which several jobs and the loop all write.</summary>
+    private readonly Lock _statusGate = new();
+
     /// <summary>
     /// Redeems a PIN and stores the credential immediately — the server issues it exactly once and
     /// cannot reissue it, so anything that went wrong after this point would cost the pairing.
@@ -100,22 +106,25 @@ public sealed class SidecarSession(
 
                 // Asking is free and almost always answered with "nothing". Draining is the server
                 // saying it wants this machine to stop taking work, so it is not even asked.
-                if (runJob is not null && !beat.Draining && capabilities.MaxConcurrency > 0)
+                //
+                // Filled up to capacity rather than one at a time, and — the part that matters —
+                // the jobs run *beside* this loop rather than inside it. Awaiting one here stopped
+                // the check-ins for as long as it took, so any job over two minutes made a machine
+                // that was busily encoding look offline to the server, and an offline worker is not
+                // one the queue holds work for. It also meant a second job could never be started
+                // however much the machine had spare.
+                while (runJob is not null
+                    && !beat.Draining
+                    && Running < capabilities.MaxConcurrency
+                    && !cancellationToken.IsCancellationRequested)
                 {
                     var assignment = await client.ClaimAsync(pairing, cancellationToken);
-                    if (assignment is not null)
+                    if (assignment is null)
                     {
-                        Set(SidecarState.Working, $"Job {assignment.JobId}: {assignment.Title}");
-                        var outcome = await runJob(pairing, assignment, cancellationToken);
-                        Set(
-                            SidecarState.Connected,
-                            $"Job {outcome.JobId}: {outcome.Detail}");
-
-                        // Straight round again rather than waiting out a check-in interval: a
-                        // machine that has just proved it can take work should be asked for more
-                        // while the queue is still busy.
-                        continue;
+                        break;
                     }
+
+                    Start(runJob, pairing, assignment, cancellationToken);
                 }
             }
             catch (SidecarException exception) when (!exception.Recoverable)
@@ -123,6 +132,7 @@ public sealed class SidecarSession(
                 // A revoked credential or a protocol the server will not speak. Beating on would be
                 // an endless run of refusals, and the stored secret is worthless either way.
                 store.Clear();
+                await DrainAsync();
                 Set(SidecarState.Stopped, exception.Message);
                 return;
             }
@@ -134,6 +144,7 @@ public sealed class SidecarSession(
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                await DrainAsync();
                 return;
             }
             catch (Exception exception)
@@ -159,14 +170,130 @@ public sealed class SidecarSession(
             }
             catch (OperationCanceledException)
             {
+                await DrainAsync();
                 return;
+            }
+        }
+
+        await DrainAsync();
+    }
+
+    /// <summary>How many jobs are running beside the check-in loop right now.</summary>
+    private int Running
+    {
+        get { lock (_jobs) { return _jobs.Count; } }
+    }
+
+    /// <summary>
+    /// Starts a job alongside the loop and forgets about it until it finishes.
+    ///
+    /// <para>Deliberately not awaited. The loop's whole purpose while a job runs is to keep saying
+    /// this machine is alive, and it cannot do that from inside the job.</para>
+    ///
+    /// <para>Nothing thrown by a job reaches the loop, so a job that fails in a way nobody foresaw
+    /// costs that job and not the service. The status it leaves behind is the last word on it.</para>
+    /// </summary>
+    private void Start(
+        Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>> run,
+        StoredPairing pairing,
+        Assignment assignment,
+        CancellationToken cancellationToken)
+    {
+        lock (_jobs)
+        {
+            // The server should never offer the same job twice, but a worker that ran it twice
+            // would encode the same title into two files and deliver whichever finished last.
+            if (_jobs.ContainsKey(assignment.JobId))
+            {
+                return;
+            }
+
+            _jobs[assignment.JobId] = Task.CompletedTask;
+        }
+
+        Set(SidecarState.Working, $"Job {assignment.JobId}: {assignment.Title}");
+
+        var running = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    var outcome = await run(pairing, assignment, cancellationToken);
+                    Finish($"Job {outcome.JobId}: {outcome.Detail}", assignment.JobId);
+                }
+                catch (OperationCanceledException)
+                {
+                    // The service is stopping. The runner hands the job back on its way out, so
+                    // the server has it again within a check-in rather than a lease's lifetime.
+                    Finish($"Job {assignment.JobId}: stopped", assignment.JobId);
+                }
+                catch (Exception exception)
+                {
+                    Finish($"Job {assignment.JobId}: {exception.Message}", assignment.JobId, faulted: true);
+                }
+            },
+            CancellationToken.None);
+
+        lock (_jobs)
+        {
+            // Only if it is still listed: a job short enough to finish before this line has already
+            // removed itself, and putting its task back would leave one nothing ever waits on.
+            if (_jobs.ContainsKey(assignment.JobId))
+            {
+                _jobs[assignment.JobId] = running;
             }
         }
     }
 
+    /// <summary>
+    /// Waits for whatever is still running, so a stopping service hands its jobs back rather than
+    /// vanishing with them.
+    ///
+    /// <para>The token is already cancelled by the time this is reached, so each runner is on its
+    /// way out and releasing its lease. Without this the process would exit mid-encode and the
+    /// server would wait a full lease for a job it could have had in seconds.</para>
+    /// </summary>
+    private async Task DrainAsync()
+    {
+        Task[] outstanding;
+        lock (_jobs)
+        {
+            outstanding = [.. _jobs.Values];
+        }
+
+        if (outstanding.Length == 0)
+        {
+            return;
+        }
+
+        Set(SidecarState.Working, $"Stopping: handing back {outstanding.Length} job(s)");
+        // Bounded: a runner wedged on a network call must not hold the service open for ever.
+        // Windows stops waiting long before this and kills the process anyway.
+        await Task.WhenAny(Task.WhenAll(outstanding), Task.Delay(TimeSpan.FromSeconds(20)));
+    }
+
+    /// <summary>Records how a job ended and says what this machine is doing now.</summary>
+    private void Finish(string detail, int jobId, bool faulted = false)
+    {
+        lock (_jobs)
+        {
+            _jobs.Remove(jobId);
+        }
+
+        // Working while others are still going, connected when the machine is idle again. Said
+        // from here rather than from the loop because the loop may be asleep between check-ins.
+        Set(faulted ? SidecarState.Faulted : (Running > 0 ? SidecarState.Working : SidecarState.Connected), detail);
+    }
+
     private void Set(SidecarState state, string detail)
     {
-        Status = new SessionStatus(state, detail);
-        report?.Invoke(Status);
+        SessionStatus status;
+        lock (_statusGate)
+        {
+            status = new SessionStatus(state, detail);
+            Status = status;
+        }
+
+        report?.Invoke(status);
     }
 }
