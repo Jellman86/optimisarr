@@ -187,6 +187,27 @@ the replacement workflow is trustworthy.
      reference branch against it — rather than a speculative change to the path that guards every
      replacement.
 
+   - **Open: a path inside a filter description is not a path.** FFmpeg unescapes a filter
+     description twice on the way in — once by the filtergraph parser, again by the filter's own
+     option parser — so a bare colon ends the option and a bare backslash is eaten as an escape.
+     The Windows sidecar failed every quality search on this until 2026-09-15; the fix writes
+     forward slashes and escapes the colon with *two* backslashes, proven against the real FFmpeg
+     on the machine (of five spellings only `C\\:/path` and `'C\:/path'` produce a log).
+
+     Two places still substitute a log path raw, and both are safe today by where the path comes
+     from rather than by anything they do:
+
+     - the macOS sidecar, whose scratch lives under `~/Library/Application Support` — safe until a
+       home directory contains an apostrophe, which opens a quoted section and swallows the rest of
+       the graph. Worth fixing to the same rule; it was left alone on 2026-09-15 only because the
+       Swift toolchain was unusable that day and the Mac was the one sidecar working.
+     - the server itself, whose log path is always `Path.GetTempPath()/optimisarr-vmaf-<guid>.json`
+       and so contains nothing that needs escaping. It would break if `TMPDIR` ever pointed
+       somewhere with a colon or an apostrophe in it.
+
+     The reference and distorted paths are `-i` arguments, not filter options, and must **not** be
+     escaped — doing so would name files that do not exist.
+
 2. **Gold-standard first-run setup wizard: complete** — turn a new, empty installation into safe,
    understandable libraries without hiding Docker-level mistakes or weakening Optimisarr's
    fail-closed defaults. This is the next independently actionable product item while the hardware
