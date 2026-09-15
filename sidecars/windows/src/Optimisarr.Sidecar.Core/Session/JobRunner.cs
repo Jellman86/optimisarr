@@ -512,8 +512,14 @@ public sealed class JobRunner(
         // before the lease lapses, rarely enough not to be chatter.
         var interval = TimeSpan.FromSeconds(Math.Clamp(assignment.RenewWithinSeconds / 2.0, 5, 15));
 
+        // The lease is only really gone when the server says so, or when it has been out of touch
+        // for longer than the window the lease was granted for. A single failed renewal used to
+        // end the loop and take the job with it, so a restarted container — a deployment, which
+        // happens often — threw away every encode that was running at the time, minutes in.
+        var window = TimeSpan.FromSeconds(assignment.RenewWithinSeconds);
         var renewing = Task.Run(async () =>
         {
+            var lastRenewed = DateTimeOffset.UtcNow;
             while (!stageCancelled.IsCancellationRequested)
             {
                 try
@@ -522,15 +528,29 @@ public sealed class JobRunner(
                     await client.RenewAsync(
                         pairing, assignment.LeaseId, stage, encodedSeconds?.Invoke(), load(),
                         stageCancelled.Token);
+                    lastRenewed = DateTimeOffset.UtcNow;
+                    continue;
                 }
                 catch (OperationCanceledException)
                 {
                     return;
                 }
-                catch (SidecarException)
+                catch (SidecarException problem) when (!problem.Recoverable)
                 {
                     // The lease is no longer ours. Stop the work rather than finish an encode
                     // nobody will accept.
+                    await stageCancelled.CancelAsync();
+                    return;
+                }
+                catch (Exception)
+                {
+                    // Every other reason is the same reason: a renewal that did not happen. What
+                    // stopped it says nothing about whether the lease survives; only how long it
+                    // has now been since one landed does.
+                }
+
+                if (DateTimeOffset.UtcNow - lastRenewed >= window)
+                {
                     await stageCancelled.CancelAsync();
                     return;
                 }

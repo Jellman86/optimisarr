@@ -513,11 +513,38 @@ public struct JobRunner: WorkExecutor {
             group.addTask { .completed(try await operation()) }
             group.addTask {
                 let interval = min(15, max(5, Double(assignment.renewWithinSeconds) / 2))
+                // The lease is only really gone when the server says so, or when it has been out
+                // of touch for longer than the window the lease was granted for. A single failed
+                // renewal used to end this loop and take the job with it, so a restarted
+                // container — a deployment, which happens often — threw away every encode that
+                // was running at the time, minutes in.
+                let window = Double(assignment.renewWithinSeconds)
+                var lastRenewed = Date()
                 while !Task.isCancelled {
                     try await sleep(interval)
-                    try await client.renew(
-                        serverAddress: pairing.serverAddress, credential: pairing.credential,
-                        leaseId: assignment.leaseId, progress: progress(), load: load.sample())
+                    do {
+                        try await client.renew(
+                            serverAddress: pairing.serverAddress, credential: pairing.credential,
+                            leaseId: assignment.leaseId, progress: progress(), load: load.sample())
+                        lastRenewed = Date()
+                        continue
+                    } catch let problem as SidecarError where problem.endsTheLease {
+                        // The server has said this job is not this worker's. Thrown rather than
+                        // returned, so the job ends as a lost lease and not as something this
+                        // machine chose to hand back.
+                        throw problem
+                    } catch {
+                        // Every other reason is the same reason: a renewal that did not happen.
+                        // What stopped it says nothing about whether the lease survives; only how
+                        // long it has been since one landed does.
+                    }
+
+                    guard Date().timeIntervalSince(lastRenewed) < window else {
+                        throw SidecarError.leaseLost(reason: """
+                            The lease could not be renewed for \(Int(window)) seconds, \
+                            which is as long as the server granted it for.
+                            """)
+                    }
                 }
                 return .renewalStopped
             }
