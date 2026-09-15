@@ -399,6 +399,35 @@ struct TimelineLeadShiftTests {
         #expect(TimelineLead.shift(candidate: 0.041, source: 0.0) == "0.041")
     }
 
+    /// The same table is asserted in the Windows sidecar's own suite
+    /// (`TimelineLeadSharedTableTests`). Both workers report to one server, which parses what comes
+    /// back, so the two implementations agreeing is a contract rather than a coincidence — and the
+    /// only way to hold two languages to it is to write the answers down once and check them in
+    /// both places. Change one side and this fails; change the rule and change both tables.
+    @Test("both sidecars write the same shift")
+    func theSharedTable() {
+        let cases: [(candidate: Double, source: Double, expected: String)] = [
+            (0.042, 0, "0.042"),
+            (0, 0.042, "-0.042"),
+            (1.5, 1, "0.5"),
+            (0.0000001, 0, "0"),
+            (1.0, 1.0, "0"),
+            (0.9999999, 1.0, "0"),
+            (2, 2, "0"),
+            (0.1, 0, "0.1"),
+            (0.0416667, 0, "0.041667"),
+            (-0.5, 0.25, "-0.75"),
+            (0.0000004, 0, "0"),
+            (0.0000006, 0, "0.000001"),
+        ]
+        for entry in cases {
+            #expect(
+                TimelineLead.shift(candidate: entry.candidate, source: entry.source) == entry.expected,
+                "candidate \(entry.candidate), source \(entry.source)")
+        }
+    }
+
+
     @Test("a candidate earlier than its source keeps its sign")
     func negativeGapIsKept() {
         #expect(TimelineLead.shift(candidate: 0.021, source: 0.031) == "-0.01")
