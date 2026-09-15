@@ -74,6 +74,18 @@ public sealed class JobLease
     public string? AdaptiveProbesJson { get; set; }
 
     /// <summary>
+    /// How to measure the candidate currently being searched, serialised
+    /// <see cref="RemoteQualityContract"/>.
+    ///
+    /// <para>Separate from <see cref="QualityContractJson"/>, which is the contract the finished
+    /// candidate will be verified against. They describe different measurements — a sample is a
+    /// clip judged from its own first frame, the final candidate is a whole file with windows cut
+    /// out of it — so reusing one field for both would leave the search's last sample standing in
+    /// for the verification contract once the search ended.</para>
+    /// </summary>
+    public string? AdaptiveContractJson { get; set; }
+
+    /// <summary>
     /// The candidate quality this worker was last asked to measure. Held so a report can be checked
     /// against the question: a worker answers what it was asked or it answers nothing, since the
     /// search brackets and every later candidate derives from this one.

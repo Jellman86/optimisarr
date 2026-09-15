@@ -590,17 +590,16 @@ public sealed class QueueDispatcher(
         }
         PruneFirstRunnable(queued);
 
-        // A worker cannot be offered a job whose per-title quality has not been chosen yet, and
-        // that choice is made here, by this machine. Holding such a job for a worker is a wait for
-        // something that cannot happen: the claim route refuses it, and this machine has promised
-        // not to start it. Every library set to adaptive quality and "prefer a worker" stalled for
-        // the length of the hold and was then run locally anyway — so the preference never once
-        // did what it says.
+        // Every job a worker could take is now held for one, including those whose per-title
+        // quality is still unchosen: the search travels with the job, so a worker can be offered it
+        // before a quality exists. That was not true yesterday, and the exception carved out for it
+        // then would now hand every adaptive job straight back to this machine — the exact stall it
+        // was written to cure, inverted.
         var runnable = SelectLocallyRunnable(
             withinWindow,
             _firstRunnableAt,
             remoteWorkersOn,
-            job => aWorkerCouldTakeWork && !AwaitsLocalQualityChoice(job, adaptiveLibraryIds),
+            _ => aWorkerCouldTakeWork,
             nowUtc);
 
         var toStart = JobScheduler.SelectJobsToStart(
@@ -952,9 +951,25 @@ public sealed class QueueDispatcher(
     public async Task<AdaptiveSearchStep?> PlanAdaptiveStepAsync(
         int jobId,
         int quality,
+        WorkerCapabilities worker,
         CancellationToken cancellationToken)
     {
-        var work = await LoadWorkAsync(jobId, cancellationToken);
+        // Loaded for the worker that will run it, never for this machine. Resolving the encoder
+        // from this server's probe would plan the search on the wrong encoder entirely — the exact
+        // mistake moving the search was meant to end — and on a server whose probe offers nothing
+        // for the target codec it throws instead, which is how a test caught it.
+        JobWork? work;
+        try
+        {
+            work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            // No encoder this worker can use for the target codec. The caller refuses the job,
+            // which leaves it to be searched and encoded here.
+            return null;
+        }
+
         if (work is not { } loaded
             || loaded.Spec.VideoCodec is null
             || loaded.VideoEncoder is null
@@ -1455,13 +1470,25 @@ public sealed class QueueDispatcher(
             return RemoteWorkPlan.Refused("Only video re-encodes are offered to remote workers.");
         }
 
-        // Adaptive selection runs sample encodes on this machine's encoder, and a quality chosen
-        // for one encoder means nothing on another. Until selection can run on the worker, an
-        // adaptive library's jobs stay local rather than silently encoding at the fixed quality.
+        // Adaptive selection runs sample encodes on an encoder, and a quality proven on one means
+        // nothing on another — which is exactly why the search now travels with the job rather than
+        // being done here first. The worker measures the candidates this machine chooses, on the
+        // encoder that will do the real encode.
+        AdaptiveSearchStep? search = null;
         if (work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
-            return RemoteWorkPlan.Refused(
-                "Adaptive quality selection has not run for this job and cannot run on a remote worker.");
+            search = work.VideoQuality is { } baseline
+                ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken)
+                : null;
+
+            // A search that cannot be expressed as commands — no quality gate, no readable source
+            // picture, no windows — keeps the job here, where the local search can still run. That
+            // is the behaviour this feature replaced, kept as its fallback.
+            if (search is null)
+            {
+                return RemoteWorkPlan.Refused(
+                    "A per-title quality search could not be planned for this job, so it stays on this server.");
+            }
         }
 
         var (width, height) = work.SourcePicture is { } picture
@@ -1502,7 +1529,8 @@ public sealed class QueueDispatcher(
             QualityScoreCommandBuilder.ModelVersionFor(width, height),
             quality,
             work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
-            work.Spec.AudioEncoder));
+            work.Spec.AudioEncoder,
+            search));
     }
 
     /// <summary>

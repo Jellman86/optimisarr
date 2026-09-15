@@ -35,7 +35,13 @@ internal sealed record AssignmentDto(
     int RenewWithinSeconds,
     IReadOnlyList<string> Arguments,
     string OutputExtension,
-    QualityRequirementDto Quality);
+    QualityRequirementDto Quality,
+    /// <summary>
+    /// The first candidate of a per-title quality search, when this job needs one. The worker
+    /// measures it, reports, and is told what to measure next until it is given a quality to encode
+    /// at. Null when the quality is already settled and the encode can start immediately.
+    /// </summary>
+    AdaptiveSearchStep? Search = null);
 
 /// <summary>
 /// What the worker's VMAF evidence will be held to. The thresholds and model are stated so the
@@ -301,6 +307,12 @@ internal static class WorkerLeaseEndpoints
                     HardwareDecoder = assignment.HardwareDecoder,
                     // What the worker was asked to measure, fixed now so the evidence it returns is
                     // judged against this, not against a policy that may have changed since.
+                    // The first candidate to measure, and how. Held on the lease so a report can be
+                    // checked against the question that was actually asked.
+                    AdaptiveAskedQuality = assignment.Search?.Quality,
+                    AdaptiveContractJson = assignment.Search is null
+                        ? null
+                        : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
                     QualityContractJson = assignment.Quality is null
                         ? null
                         : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
@@ -348,7 +360,8 @@ internal static class WorkerLeaseEndpoints
                         policy.MinimumVmafHarmonicMean,
                         policy.MinimumVmafMin,
                         assignment.Quality?.Commands ?? [],
-                        assignment.Quality?.Sampling ?? "None")));
+                        assignment.Quality?.Sampling ?? "None"),
+                    assignment.Search));
             }
 
             return Results.NoContent();
@@ -486,13 +499,16 @@ internal static class WorkerLeaseEndpoints
                     "This lease was not asked to search for a quality.");
             }
 
-            var contract = lease.QualityContractJson is { } contractJson
+            // The search's own contract, not the one the finished candidate will be verified
+            // against: a sample is a clip judged from its own first frame, while the final
+            // measurement cuts windows out of a whole file.
+            var contract = lease.AdaptiveContractJson is { } contractJson
                 ? JsonSerializer.Deserialize<RemoteQualityContract>(contractJson, EvidenceJson)
                 : null;
             if (contract is null)
             {
-                return ApiErrors.Conflict("worker.quality.notRequested",
-                    "This lease asked for no quality measurement, so none can be reported.");
+                return ApiErrors.Conflict("worker.search.notRequested",
+                    "This lease asked for no quality search, so no measurement can be reported.");
             }
 
             // Judged and centred exactly as a local search would be. Both facts come from the
@@ -540,8 +556,10 @@ internal static class WorkerLeaseEndpoints
                     null, progress.Decision.SelectedQuality, progress.Decision.Reason));
             }
 
+            // Planned for this worker, so every candidate is measured on the encoder that will do
+            // the real encode — which is the whole reason the search travels with the job.
             var next = await dispatcher.PlanAdaptiveStepAsync(
-                lease.JobId, progress.Decision.NextQuality!.Value, cancellationToken);
+                lease.JobId, progress.Decision.NextQuality!.Value, worker.ToCapabilities(), cancellationToken);
             if (next is null)
             {
                 // The search cannot be expressed any further, so it ends where it stands rather
@@ -560,7 +578,7 @@ internal static class WorkerLeaseEndpoints
             }
 
             lease.AdaptiveAskedQuality = next.Quality;
-            lease.QualityContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
+            lease.AdaptiveContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new AdaptiveProbeDirectionDto(next, null, progress.Decision.Reason));
@@ -846,10 +864,11 @@ internal static class WorkerLeaseEndpoints
             return false;
         }
 
-        if (library?.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && job.AdaptiveVideoQuality is null)
-        {
-            return false;
-        }
+        // A job whose per-title quality is still unchosen used to be refused here, because the
+        // search could only run on the server. It now travels with the job, so this is no longer a
+        // reason to keep the work local. Whether a search can actually be expressed as commands
+        // needs the source's picture and duration, which this cheap pre-filter does not load —
+        // PrepareRemoteWorkAsync decides that, and refuses the job there if it cannot.
 
         var targetCodec = LibraryRuleResolution.Resolve(library).TargetVideoCodec;
         return targetCodec is not null

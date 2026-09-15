@@ -17,6 +17,12 @@ namespace Optimisarr.Data.Migrations
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
+                name: "AdaptiveContractJson",
+                table: "JobLeases",
+                type: "TEXT",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
                 name: "AdaptiveProbesJson",
                 table: "JobLeases",
                 type: "TEXT",
@@ -28,6 +34,10 @@ namespace Optimisarr.Data.Migrations
         {
             migrationBuilder.DropColumn(
                 name: "AdaptiveAskedQuality",
+                table: "JobLeases");
+
+            migrationBuilder.DropColumn(
+                name: "AdaptiveContractJson",
                 table: "JobLeases");
 
             migrationBuilder.DropColumn(

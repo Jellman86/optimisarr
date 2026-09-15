@@ -11,7 +11,7 @@ using Optimisarr.Data;
 namespace Optimisarr.Data.Migrations
 {
     [DbContext(typeof(OptimisarrDbContext))]
-    [Migration("20260915064244_LeaseAdaptiveSearchState")]
+    [Migration("20260915064753_LeaseAdaptiveSearchState")]
     partial class LeaseAdaptiveSearchState
     {
         /// <inheritdoc />
@@ -313,6 +313,9 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<int?>("AdaptiveAskedQuality")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("AdaptiveContractJson")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("AdaptiveProbesJson")
                         .HasColumnType("TEXT");

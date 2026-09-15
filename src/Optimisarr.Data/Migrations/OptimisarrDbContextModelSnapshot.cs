@@ -311,6 +311,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<int?>("AdaptiveAskedQuality")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AdaptiveContractJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("AdaptiveProbesJson")
                         .HasColumnType("TEXT");
 

@@ -20,7 +20,12 @@ public sealed record RemoteAssignment(
     /// <summary>The hardware decoder the command uses, which the worker must have proved; null for software.</summary>
     string? HardwareDecoder = null,
     /// <summary>The audio encoder the command names, which the worker must have proved; null when audio is copied.</summary>
-    string? AudioEncoder = null);
+    string? AudioEncoder = null,
+    /// <summary>
+    /// The first candidate of a per-title quality search, when this job needs one. Null when the
+    /// quality is already settled, in which case the worker encodes straight away.
+    /// </summary>
+    AdaptiveSearchStep? Search = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the
