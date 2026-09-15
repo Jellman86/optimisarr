@@ -64,7 +64,24 @@ public sealed record QualityMeasurementContext(
     double? DistortedContainerLeadSeconds = null,
     // A remote worker measures the candidate's lead itself once it has encoded, so the server
     // hands it this token to substitute rather than a number.
-    string? DistortedShiftToken = null);
+    string? DistortedShiftToken = null,
+    // True when the distorted stream is a clip cut out of the source rather than an encode of the
+    // whole of it — the sample a per-title quality search measures.
+    //
+    // It changes where the reference's cadence filter goes, and that is not a detail. `fps` resamples
+    // onto a fixed grid, and a source whose frame timestamps are not perfectly regular gains
+    // duplicated frames or loses frames as it does so. Running it before the window is cut therefore
+    // changes *which* source frames fall inside the window, while the clip it is being compared
+    // against was cut by a plain seek that did no such thing — so the reference window ends up
+    // holding frames the encoder never saw. Measured on a real episode, that scored a 40-second
+    // sample at a harmonic mean of 6.45 whose true score was 95.52: every candidate a search tried
+    // "missed" the gate, and every search fell back to the library's own quality having learned
+    // nothing. Cutting the window first and normalising the cadence afterwards scores it at 95.52,
+    // frame for frame identical to comparing two identically cut clips.
+    //
+    // A whole-file candidate is not affected: there both streams are seeked and trimmed the same
+    // way, so whatever the cadence filter does to one it does to the other.
+    bool DistortedIsCutClip = false);
 
 /// <summary>A complete, shell-free FFmpeg VMAF invocation and its selected measurement policy.</summary>
 public sealed record QualityScoreCommand(
@@ -174,13 +191,15 @@ public static class QualityScoreCommandBuilder
             distortedInputStart,
             context.MeasureDurationSeconds,
             context.ReferenceFrameRate,
-            DistortedShift(context));
+            DistortedShift(context),
+            context.DistortedIsCutClip);
         var referenceTimeline = TimelinePreparation(
             context.ReferenceStartSeconds,
             referenceInputStart,
             context.MeasureDurationSeconds,
             context.ReferenceFrameRate,
-            shift: null);
+            shift: null,
+            context.DistortedIsCutClip);
         var normalise = $"{scale},format={pixelFormat}";
         var referencePreparation = context.ReferenceIsHdr && context.HdrConvertedToSdr
             ? $"{HdrToneMap.Filter},{normalise}"
@@ -353,7 +372,8 @@ public static class QualityScoreCommandBuilder
         double? inputStartSeconds,
         int? windowDurationSeconds,
         double? referenceFrameRate,
-        string? shift)
+        string? shift,
+        bool cutClip)
     {
         // An input seek leaves each decoder's first retained PTS relative to the common
         // pre-roll target. Different GOP layouts can therefore begin at different positive PTS
@@ -377,8 +397,17 @@ public static class QualityScoreCommandBuilder
         var alignment = windowStartSeconds is { } start && windowDurationSeconds is > 0
             ? $"trim=start={FormatSeconds(start - (inputStartSeconds ?? 0))}:duration={windowDurationSeconds.Value},"
             : string.Empty;
-        return cadence.Length == 0 && alignment.Length == 0
-            ? origin
+        if (cadence.Length == 0 && alignment.Length == 0)
+        {
+            return origin;
+        }
+
+        // Against an independently cut clip the window is taken first and the cadence normalised
+        // afterwards. See QualityMeasurementContext.DistortedIsCutClip: resampling before the cut
+        // moves which source frames the window holds, and the clip on the other side was produced
+        // by a plain seek that moved nothing.
+        return cutClip && alignment.Length > 0
+            ? $"{inputTimeline},{lead}{alignment}{origin},{cadence.TrimEnd(',')}"
             : $"{inputTimeline},{lead}{cadence}{alignment}{origin}";
     }
 
