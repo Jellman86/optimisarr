@@ -45,7 +45,8 @@ public sealed class SidecarSessionTests
         ICredentialStore store,
         Action<SessionStatus>? report = null,
         MachineLoad? load = null,
-        int stopAfterBeats = 1)
+        int stopAfterBeats = 1,
+        Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null)
     {
         var beats = 0;
         return new SidecarSession(
@@ -58,8 +59,15 @@ public sealed class SidecarSessionTests
             delay: (_, _) => ++beats >= stopAfterBeats
                 ? throw new OperationCanceledException()
                 : Task.CompletedTask,
-            report: report);
+            report: report,
+            runJob: runJob);
     }
+
+    /// Enough of a job runner that the loop will actually ask for work. Without one the claim is
+    /// never made, which is easy to miss: the queued reply meant for the claim is then swallowed by
+    /// the next heartbeat and the test passes for the wrong reason.
+    private static Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>> TakesAnyJob() =>
+        (_, assignment, _) => Task.FromResult(new JobOutcome(assignment.JobId, Delivered: true, "done"));
 
     [Fact]
     public async Task Pairing_stores_the_credential_before_anything_else_can_go_wrong()
@@ -141,5 +149,56 @@ public sealed class SidecarSessionTests
         Assert.Equal(SidecarState.Connected, session.Status.State);
         Assert.Contains(reported, status => status.Detail.Contains("taking no more"));
         Assert.NotNull(store.Load());
+    }
+
+    [Fact]
+    public async Task An_assignment_it_cannot_read_faults_the_round_and_not_the_service()
+    {
+        // What PICARD did for a day. The server began sending a measurement command as a list of
+        // lists; that build expected a list of strings; the claim threw a JsonException on the way
+        // in. Nothing caught it, the host is configured to stop when a background service throws,
+        // and the service was gone within a second of every boot — so the fleet showed a worker
+        // that was simply never online, with no failure anywhere to look at.
+        var store = new InMemoryCredentialStore(
+            new StoredPairing("https://optimisarr.example.com", "good", 7));
+        var reported = new List<SessionStatus>();
+        var handler = new QueuedHandler(
+            (HttpStatusCode.OK, Beat),
+            // The claim, in a shape this build cannot read.
+            (HttpStatusCode.OK, """{"leaseId":"not-a-guid-shaped-thing","jobId":"twelve"}"""),
+            (HttpStatusCode.OK, Beat),
+            // And then nothing to do, which is what the server says most of the time.
+            (HttpStatusCode.NoContent, ""));
+        var session = Session(handler, store, reported.Add, stopAfterBeats: 3, runJob: TakesAnyJob());
+
+        await session.RunAsync(CancellationToken.None);
+
+        // It carried on: three rounds asked for, three rounds made.
+        Assert.True(handler.Calls >= 3, $"expected the loop to keep checking in, it made {handler.Calls} calls");
+        // And it said something a person can act on rather than disappearing.
+        Assert.Contains(reported, status => status.State == SidecarState.Faulted);
+        Assert.NotNull(store.Load());
+    }
+
+    [Fact]
+    public async Task A_fault_is_not_reported_as_the_server_being_unreachable()
+    {
+        // The two need telling apart: unreachable says nothing is wrong here and the server will
+        // come back, while a fault says this machine could not do something and an operator may
+        // have to look at it. Collapsing them is how a broken worker hides among restarting ones.
+        var store = new InMemoryCredentialStore(
+            new StoredPairing("https://optimisarr.example.com", "good", 7));
+        var reported = new List<SessionStatus>();
+        var handler = new QueuedHandler(
+            (HttpStatusCode.OK, Beat),
+            (HttpStatusCode.OK, """{"leaseId":"x","jobId":"twelve"}"""));
+        // Ends at the first wait, so what is recorded is exactly the round that faulted.
+        var session = Session(handler, store, reported.Add, stopAfterBeats: 1, runJob: TakesAnyJob());
+
+        await session.RunAsync(CancellationToken.None);
+
+        Assert.Equal(
+            [SidecarState.Connected, SidecarState.Faulted],
+            reported.Select(status => status.State));
     }
 }
