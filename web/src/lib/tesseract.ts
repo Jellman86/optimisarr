@@ -18,21 +18,27 @@ export type TesseractState = {
   spill: number
   /** Silhouette thickness in pixels. Only the outline is drawn heavy. */
   weight: number
+  /** Whether the bars cast shadows through the light. Eased, so it is a number, not a flag. */
+  occlude: number
+  /** How much of the light one bar takes. Low fills the lattice and spills out of it. */
+  absorb: number
 }
 
 /**
  * The mark's two looks. Which one it wears is the server's state, not a preference: it wakes
  * when there is work and settles when the queue goes quiet.
  */
-export const WORKING: TesseractState = { speed: 2.5, core: 0.3, shaft: 0.9, bloom: 0.3, spill: 0.7, weight: 3 }
-export const RESTING: TesseractState = { speed: 0.3, core: 0, shaft: 0.45, bloom: 0, spill: 0.1, weight: 3 }
+export const WORKING: TesseractState =
+  { speed: 2.5, core: 0.3, shaft: 0.9, bloom: 0.3, spill: 0.7, weight: 3, occlude: 1, absorb: 0.45 }
+export const RESTING: TesseractState =
+  { speed: 0.3, core: 0.06, shaft: 0.7, bloom: 0.14, spill: 0.1, weight: 3, occlude: 1, absorb: 0.45 }
 
 /** Resting is slow, not stopped: a server that is up with nothing queued is not frozen. */
 export const BASE_RATE = 0.038
 /** How long the two states take to cross. Long enough to notice, short enough not to wait for. */
 export const CROSS_MS = 1400
 
-export const EASED_KEYS = ['speed', 'core', 'shaft', 'bloom', 'spill', 'weight'] as const
+export const EASED_KEYS = ['speed', 'core', 'shaft', 'bloom', 'spill', 'weight', 'occlude', 'absorb'] as const
 
 const easeInOut = (u: number) => (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2)
 
@@ -370,29 +376,7 @@ export function drawTesseract(g: PixelGrid, t: number, cfg: TesseractState, dark
     }
   }
 
-  // Pass 2 · shafts, cast toward the inner cube's corners so they tumble with the solid.
-  if (cfg.shaft > 0) {
-    const inner = simple ? p : p.filter((_, i) => !((i >> 3) & 1))
-    const len = n * (simple ? 0.3 : 0.46) * cfg.shaft
-    for (const q of inner) {
-      let dx = q.x - cx
-      let dy = q.y - cy
-      const m = Math.hypot(dx, dy)
-      if (m < 0.001) continue
-      dx /= m
-      dy /= m
-      for (let r = coreR * 0.7; r < len; r += 0.45) {
-        const f = Math.pow(1 - r / len, 2)
-        const x = Math.round(cx + dx * r)
-        const y = Math.round(cy + dy * r)
-        if (!g.inside(x, y)) break
-        if (!dither(x, y, f * 1.25)) continue
-        g.px(x, y, Math.min(C0 + 7, C0 + 1 + Math.round(f * 5)), -9e7 + r * 1e-4)
-      }
-    }
-  }
-
-  // Pass 3 · wireframe, far to near so the depth buffer resolves crossings cleanly. Depth runs
+  // Pass 2 · wireframe, far to near so the depth buffer resolves crossings cleanly. Depth runs
   // toward whichever end of the ramp contrasts with the ground: read the wrong way round, a
   // light background made the far edges look solid and the near ones fade.
   const far = dark ? (n < 24 ? S0 + 8 : n < 40 ? S0 + 4 : S0) : S1 - 2
@@ -423,6 +407,91 @@ export function drawTesseract(g: PixelGrid, t: number, cfg: TesseractState, dark
   if (n >= 48) {
     const bump = dark ? 2 : -2
     for (const q of p) g.px(q.x, q.y, Math.max(S0, Math.min(S1, shade(q.z) + bump)), q.d + 0.002)
+  }
+
+  // Pass 3 · light through the solid.
+  //
+  // Every bar absorbs. Not a chosen shell: picking eight of the sixteen vertices as "the outer
+  // cube" and blocking with those alone flips twice a turn — at the crossover the smaller cube
+  // wins the comparison, the real outer bars stop blocking, and the light floods out. Some bars
+  // blocking while others did not was exactly that.
+  //
+  // So this counts CROSSINGS: for every angle and radius, how many bars the light passed through
+  // to get there. Brightness is exp(-absorb · crossings), which is absorption — deep in the
+  // lattice where rays cross several bars it is dim, out through a gap it is bright, and nothing
+  // depends on deciding which cube is inside the other, so nothing can flip.
+  //
+  // It has to run after the wireframe, because the wireframe is what it reads as the blockers.
+  if (cfg.shaft > 0) {
+    const ANG = 360
+    const RAD = 72
+    const maxR = Math.hypot(n, n) / 2
+    const crossings = new Uint8Array(ANG * RAD)
+    const bucketOf = (a: number) => {
+      const b = Math.floor(((a + Math.PI) / (Math.PI * 2)) * ANG) % ANG
+      return b < 0 ? b + ANG : b
+    }
+
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const c = g.col[y * n + x]
+        if (c < S0 || c > S1) continue
+        const dx = x - cx
+        const dy = y - cy
+        const d = Math.hypot(dx, dy)
+        if (d < 1) continue
+        const bin = Math.min(RAD - 1, Math.floor((d / maxR) * RAD))
+        const spread = Math.max(1, Math.ceil((Math.atan2(1, d) / (Math.PI * 2)) * ANG))
+        const b0 = bucketOf(Math.atan2(dy, dx))
+        // One bar counts once per cell, however many of its pixels land there.
+        for (let k = -spread; k <= spread; k++) crossings[((b0 + k + ANG) % ANG) * RAD + bin] = 1
+      }
+    }
+    // Running total outward: how many bars the light met on the way to each radius.
+    for (let a = 0; a < ANG; a++) {
+      let run = 0
+      for (let r = 0; r < RAD; r++) {
+        run += crossings[a * RAD + r]
+        crossings[a * RAD + r] = Math.min(255, run)
+      }
+    }
+
+    const reach = n * 0.66 * cfg.shaft
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const i = y * n + x
+        const c = g.col[i]
+        if (c >= S0 && c <= S1) continue // struts keep their own colour
+        const dx = x - cx
+        const dy = y - cy
+        const d = Math.hypot(dx, dy)
+        if (d > reach || d < 1) continue
+
+        // Sampled across a spread of angles. A single lookup makes every pixel either lit or
+        // shadowed, so the boundary is a straight line and the lit region reads as a flat slab.
+        // Averaging is what a penumbra is: near a shadow edge some samples clear the bar and
+        // some do not, so the light falls away instead of stopping.
+        let shade = 1
+        if (cfg.occlude > 0) {
+          const bin = Math.min(RAD - 1, Math.floor((d / maxR) * RAD))
+          const b0 = bucketOf(Math.atan2(dy, dx))
+          const SAMPLES = 7
+          const SPAN = 5
+          let sum = 0
+          for (let k = 0; k < SAMPLES; k++) {
+            const off = Math.round((k / (SAMPLES - 1) - 0.5) * 2 * SPAN)
+            sum += Math.exp(-cfg.absorb * crossings[((b0 + off + ANG) % ANG) * RAD + bin])
+          }
+          // Blended rather than switched, so a crossing that eases occlude opens the shadows
+          // gradually instead of snapping them on at the halfway point.
+          shade = 1 + (sum / SAMPLES - 1) * Math.min(1, cfg.occlude)
+        }
+
+        const f = Math.pow(1 - d / reach, 1.6) * shade
+        if (!dither(x, y, f * 2.6)) continue
+        g.px(x, y, Math.min(C0 + 8, C0 + 1 + Math.round(f * 7)), -9e7 + (reach - d) * 1e-4)
+      }
+    }
   }
 
   // Pass 4 · spill. Remaps structural pixels onto the cyan-tinted ramp at matching brightness.
