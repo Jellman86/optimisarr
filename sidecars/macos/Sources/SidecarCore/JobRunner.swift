@@ -35,12 +35,105 @@ public protocol TranscodeRunner: Sendable {
 public struct ProcessTranscodeRunner: TranscodeRunner {
     public init() {}
 
+    /// How long the pipes are given to hand over their last bytes once the process itself has
+    /// gone. Reached only when something other than the child still holds a write end; ordinarily
+    /// both reach end-of-file within a scheduling tick of the exit.
+    static let drainGrace: TimeInterval = 2
+
     /// Process and its pipes are thread-safe Foundation objects that the compiler cannot see as
-    /// such; the box lets the cancellation handler reach the process to terminate it.
+    /// such; the box lets the cancellation handler reach the process to terminate it, and holds
+    /// the one question — is this run answered yet — that several callbacks race to decide.
+    ///
+    /// The answer is given when the process has exited *and* either both pipes have reached
+    /// end-of-file or the grace has run out. The exit is the authority. Waiting for the pipes
+    /// instead is what wedged a Mac in "Measuring" for thirty-six minutes with no FFmpeg running
+    /// at all, its lease renewing perfectly underneath it, because a descriptor for the stdout
+    /// pipe had left with some other child and end-of-file was never coming.
     private final class RunningProcess: @unchecked Sendable {
+        typealias Answer = (Result<(exitCode: Int32, stderr: String), Error>) -> Void
+
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
+
+        private let gate = NSLock()
+        private var tail = Data()
+        private var partialLine = ""
+        private var openPipes = 2
+        private var exitStatus: Int32?
+        private var graceElapsed = false
+        private var answer: Answer?
+        private var answered = false
+
+        /// Splits FFmpeg's `-progress` stream into lines across reads, since a read boundary falls
+        /// wherever the pipe happens to fill.
+        func progressSeconds(in data: Data) -> [Double] {
+            gate.lock()
+            partialLine += String(decoding: data, as: UTF8.self)
+            var seconds: [Double] = []
+            while let newline = partialLine.firstIndex(of: "\n") {
+                let line = String(partialLine[partialLine.startIndex..<newline])
+                partialLine = String(partialLine[partialLine.index(after: newline)...])
+                if let value = FfmpegProgressLine.encodedSeconds(line) { seconds.append(value) }
+            }
+            // A `-progress` line is a short `key=value`. Anything that arrives with no newline at
+            // all is not that, and must not be allowed to grow for the length of an encode.
+            if partialLine.count > 64 * 1024 { partialLine = "" }
+            gate.unlock()
+            return seconds
+        }
+
+        /// Keeps the end of FFmpeg's diagnostics. The whole of it runs to megabytes on a long
+        /// encode, and only the end of it ever says why one failed.
+        func keep(_ data: Data) {
+            gate.lock()
+            tail.append(data)
+            if tail.count > 64 * 1024 { tail.removeFirst(tail.count - 64 * 1024) }
+            gate.unlock()
+        }
+
+        func pipeReachedEnd() {
+            gate.lock(); openPipes -= 1; gate.unlock()
+            answerIfReady()
+        }
+
+        func exited(_ status: Int32) {
+            gate.lock(); exitStatus = status; gate.unlock()
+            answerIfReady()
+        }
+
+        func graceRanOut() {
+            gate.lock(); graceElapsed = true; gate.unlock()
+            answerIfReady()
+        }
+
+        func waitFor(_ answer: @escaping Answer) {
+            gate.lock(); self.answer = answer; gate.unlock()
+            answerIfReady()
+        }
+
+        /// Lets go of the pipes when there will be no process to read from. Without this a
+        /// command that would not launch leaves two readability handlers holding this object,
+        /// and its four descriptors, for the life of the app.
+        func abandon() {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+        }
+
+        private func answerIfReady() {
+            gate.lock()
+            guard !answered, let status = exitStatus, let answer,
+                  openPipes == 0 || graceElapsed
+            else { gate.unlock(); return }
+            answered = true
+            self.answer = nil
+            let text = String(decoding: tail.suffix(4_096), as: UTF8.self)
+            gate.unlock()
+
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            answer(.success((status, text)))
+        }
     }
 
     public func run(
@@ -53,23 +146,52 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
         running.process.arguments = arguments
         running.process.standardOutput = running.stdout
         running.process.standardError = running.stderr
+        running.stdout.sealFromOtherChildren()
+        running.stderr.sealFromOtherChildren()
 
-        try running.process.run()
+        // Read as it arrives rather than to end-of-file, so neither pipe can decide when the job
+        // is over.
+        running.stdout.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                running.pipeReachedEnd()
+                return
+            }
+            for seconds in running.progressSeconds(in: data) { progress(seconds) }
+        }
+        running.stderr.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                running.pipeReachedEnd()
+                return
+            }
+            running.keep(data)
+        }
+
+        // Set before the process starts: a command that fails immediately can be gone before
+        // there is anything listening for it.
+        running.process.terminationHandler = { process in
+            running.exited(process.terminationStatus)
+            // The pipes are given a moment to hand over what they still hold, because the tail of
+            // stderr is the only account of why an encode failed. They are not given a veto.
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.drainGrace) {
+                running.graceRanOut()
+            }
+        }
+
+        do {
+            try running.process.run()
+        } catch {
+            running.abandon()
+            throw error
+        }
 
         return try await withTaskCancellationHandler {
-            let stderrTask = Task.detached {
-                running.stderr.fileHandleForReading.readDataToEndOfFile()
+            try await withCheckedThrowingContinuation { continuation in
+                running.waitFor { continuation.resume(with: $0) }
             }
-            for try await line in running.stdout.fileHandleForReading.bytes.lines {
-                if let seconds = FfmpegProgressLine.encodedSeconds(line) {
-                    progress(seconds)
-                }
-            }
-            let errorOutput = await stderrTask.value
-            running.process.waitUntilExit()
-            return (
-                running.process.terminationStatus,
-                String(decoding: errorOutput.suffix(4_096), as: UTF8.self))
         } onCancel: {
             running.process.terminate()
         }

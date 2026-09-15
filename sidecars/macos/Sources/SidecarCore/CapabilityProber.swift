@@ -16,6 +16,7 @@ public struct ProcessCommandRunner: CommandRunner {
         process.arguments = arguments
 
         let pipe = Pipe()
+        pipe.sealFromOtherChildren()
         process.standardOutput = pipe
         process.standardError = pipe
 
