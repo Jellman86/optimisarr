@@ -31,7 +31,7 @@ public sealed class JobRunner(
 
         var source = Path.Combine(scratch, "source");
         var candidatePrefix = Path.Combine(scratch, "candidate");
-        var candidate = candidatePrefix + assignment.OutputExtension;
+        var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
 
         try
         {
@@ -61,14 +61,13 @@ public sealed class JobRunner(
             {
                 var settled = await SearchAsync(
                     pairing, assignment, firstStep, scratch, source, cancellationToken);
-                if (settled is null)
+                if (settled.Arguments is not { Count: > 0 } chosen)
                 {
                     await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
-                    return new JobOutcome(assignment.JobId, false,
-                        "A sample encode or its measurement could not be completed, so no quality was chosen.");
+                    return new JobOutcome(assignment.JobId, false, settled.Reason ?? "The search chose no quality.");
                 }
 
-                encodeArguments = settled;
+                encodeArguments = chosen;
             }
 
             report?.Invoke($"Job {assignment.JobId}: encoding with {assignment.VideoEncoder}");
@@ -131,7 +130,15 @@ public sealed class JobRunner(
     /// title at the library's baseline, discard everything the search measured, and look like a
     /// perfectly successful job — the worst kind of wrong.</para>
     /// </summary>
-    private async Task<IReadOnlyList<string>?> SearchAsync(
+    /// <summary>What the search settled on, or why it did not.</summary>
+    private readonly record struct SearchOutcome(IReadOnlyList<string>? Arguments, string? Reason)
+    {
+        public static SearchOutcome Failed(string reason) => new(null, reason);
+
+        public static SearchOutcome Settled(IReadOnlyList<string> arguments) => new(arguments, null);
+    }
+
+    private async Task<SearchOutcome> SearchAsync(
         StoredPairing pairing,
         Assignment assignment,
         AdaptiveSearchStep first,
@@ -151,9 +158,8 @@ public sealed class JobRunner(
         {
             if (attempt >= MaximumCandidates)
             {
-                report?.Invoke(
-                    $"Job {assignment.JobId}: the search did not settle after {MaximumCandidates} candidates");
-                return null;
+                return SearchOutcome.Failed(
+                    $"The search did not settle after {MaximumCandidates} candidates.");
             }
 
             report?.Invoke($"Job {assignment.JobId}: measuring quality {step.Quality}");
@@ -161,9 +167,9 @@ public sealed class JobRunner(
             var measured = await WhileRenewing(
                 pairing, assignment, RemoteStage.Measuring, null, cancellationToken,
                 token => MeasureCandidateAsync(step, assignment, scratch, source, token));
-            if (measured is null)
+            if (!measured.Measured)
             {
-                return null;
+                return SearchOutcome.Failed(measured.Reason!);
             }
 
             AdaptiveSearchDirection direction;
@@ -171,11 +177,12 @@ public sealed class JobRunner(
             {
                 direction = await client.ReportAdaptiveProbeAsync(
                     pairing, assignment.LeaseId, step.Quality,
-                    measured.Value.Bytes, measured.Value.Logs, cancellationToken);
+                    measured.Bytes, measured.Logs!, cancellationToken);
             }
-            catch (SidecarException)
+            catch (SidecarException exception)
             {
-                return null;
+                return SearchOutcome.Failed(
+                    $"The measurement of quality {step.Quality} could not be reported: {exception.Message}");
             }
 
             if (direction.NextStep is { } next)
@@ -188,8 +195,12 @@ public sealed class JobRunner(
                 $"Job {assignment.JobId}: search chose quality {direction.SelectedQuality?.ToString() ?? "?"}");
 
             // The arguments that come back name the chosen quality. Without them there is nothing
-            // safe to encode: the assignment's own were fixed before the search ran.
-            return direction.Arguments is { Count: > 0 } ? direction.Arguments : null;
+            // safe to encode: the assignment's own were fixed before the search ran, so using them
+            // would run the whole title at the library's value and discard the search.
+            return direction.Arguments is { Count: > 0 } chosen
+                ? SearchOutcome.Settled(chosen)
+                : SearchOutcome.Failed(
+                    "The server chose a quality but sent no command to encode it with.");
         }
     }
 
@@ -200,7 +211,27 @@ public sealed class JobRunner(
     /// pools the windows into a single score, so a missing window is a different measurement rather
     /// than a smaller one.</para>
     /// </summary>
-    private async Task<(long Bytes, IReadOnlyList<string> Logs)?> MeasureCandidateAsync(
+    /// <summary>
+    /// What measuring one candidate produced, or why it produced nothing.
+    ///
+    /// <para><see cref="Reason"/> is the whole point. Every failure below used to return a bare
+    /// null, which the search turned into "a sample encode or its measurement could not be
+    /// completed" — five different problems wearing one sentence, and none of them naming the
+    /// window, the quality, or a word of what FFmpeg said. PICARD handed back every job it was
+    /// ever offered with exactly that line and nothing else to go on.</para>
+    /// </summary>
+    private readonly record struct CandidateMeasurement(
+        long Bytes, IReadOnlyList<string>? Logs, string? Reason)
+    {
+        public static CandidateMeasurement Failed(string reason) => new(0, null, reason);
+
+        public static CandidateMeasurement Ok(long bytes, IReadOnlyList<string> logs) =>
+            new(bytes, logs, null);
+
+        public bool Measured => Reason is null;
+    }
+
+    private async Task<CandidateMeasurement> MeasureCandidateAsync(
         AdaptiveSearchStep step,
         Assignment assignment,
         string scratch,
@@ -209,7 +240,9 @@ public sealed class JobRunner(
     {
         if (step.SampleCommands.Count != step.Measurement.Commands.Count)
         {
-            return null;
+            return CandidateMeasurement.Failed(
+                $"The server sent {step.SampleCommands.Count} sample encode(s) and "
+                + $"{step.Measurement.Commands.Count} command(s) to score them with.");
         }
 
         long bytes = 0;
@@ -218,7 +251,7 @@ public sealed class JobRunner(
         for (var index = 0; index < step.SampleCommands.Count; index++)
         {
             var samplePrefix = Path.Combine(scratch, $"sample-q{step.Quality}-{index}");
-            var sample = samplePrefix + assignment.OutputExtension;
+            var sample = CandidatePath.For(samplePrefix, assignment.OutputExtension);
             var log = Path.Combine(scratch, $"sample-vmaf-q{step.Quality}-{index}.json");
 
             var encode = await transcoder.RunAsync(
@@ -226,9 +259,17 @@ public sealed class JobRunner(
                 AssignmentPlaceholders.Resolve(step.SampleCommands[index], source, samplePrefix),
                 null,
                 cancellationToken);
-            if (!encode.Succeeded || !File.Exists(sample) || new FileInfo(sample).Length <= 0)
+            if (!encode.Succeeded)
             {
-                return null;
+                return CandidateMeasurement.Failed(
+                    $"Sample {index + 1} at quality {step.Quality} would not encode "
+                    + $"(FFmpeg exit {encode.ExitCode}): {encode.ErrorTail}");
+            }
+
+            if (!File.Exists(sample) || new FileInfo(sample).Length <= 0)
+            {
+                return CandidateMeasurement.Failed(
+                    $"Sample {index + 1} at quality {step.Quality} encoded to nothing at all.");
             }
 
             bytes += new FileInfo(sample).Length;
@@ -241,9 +282,17 @@ public sealed class JobRunner(
                     step.Measurement.Commands[index], sample, source, log),
                 null,
                 cancellationToken);
-            if (!scored.Succeeded || !File.Exists(log))
+            if (!scored.Succeeded)
             {
-                return null;
+                return CandidateMeasurement.Failed(
+                    $"Sample {index + 1} at quality {step.Quality} would not score "
+                    + $"(FFmpeg exit {scored.ExitCode}): {scored.ErrorTail}");
+            }
+
+            if (!File.Exists(log))
+            {
+                return CandidateMeasurement.Failed(
+                    $"Scoring sample {index + 1} at quality {step.Quality} wrote no libvmaf log.");
             }
 
             logs.Add(await File.ReadAllTextAsync(log, cancellationToken));
@@ -254,7 +303,7 @@ public sealed class JobRunner(
             TryDeleteFile(log);
         }
 
-        return (bytes, logs);
+        return CandidateMeasurement.Ok(bytes, logs);
     }
 
     private static void TryDeleteFile(string path)
