@@ -7,9 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales && npm run test:setup",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && npm run check:locales && npm run test:unit",
     "check:locales": "node scripts/check-locales.mjs",
-    "test:setup": "node --test src/lib/setup-library-readiness.test.ts",
+    "test:unit": "node --test 'src/lib/**/*.test.ts'",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

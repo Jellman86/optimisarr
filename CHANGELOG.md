@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Changed
+
+- **The dashboard says what is happening, and why it is not.** The page drew the same screen
+  whether the queue was racing or wedged: every figure on it was a count and none of them was a
+  state, so "0 running, 1,418 queued" was what you got when the optimise window was shut, when
+  media was streaming, when the operator had paused, and when nothing was eligible. A status bar
+  now names the state, and when the state is not encoding it names the gate in the server's own
+  words. Below it the three things you previously had to open two other pages to learn: what is
+  being worked on, which machines are doing it, and what is waiting on a decision from you.
+  Failures are grouped by cause rather than counted, because "144 failed" says nothing you can
+  act on. The live CPU and GPU graph is gone — it was a copy of the one on Queue, two flat lines
+  on an idle server, and the fleet list now carries the same figure per machine, which the single
+  graph could not once workers existed. The lifetime savings figure stays, demoted from a hero to
+  one cell of four.
+- **The navigation carries the numbers.** Each entry shows its own count, so "is there anything
+  in quarantine?" no longer means opening quarantine to find out. A count that has not been
+  fetched shows nothing rather than zero. The mark above them was a third of the rail spent on
+  telling you which application you already had open, and is now a compact lockup.
+
+### Fixed
+
+- **The dashboard no longer downloads the entire job history to find the three jobs that are
+  running.** It asked for every job and sifted the result in the browser; on the library this was
+  checked against that is 1,773 records, re-fetched every fifteen seconds. It now asks the server
+  for the jobs with work outstanding.
+- **A worker holding one job says "1 job".** It said "1 jobs", and the version that followed it
+  lost the space before its separator.
+
+
 ### Fixed
 
 - **A library that prefers a worker now actually sends it work.** Setting every library to prefer a

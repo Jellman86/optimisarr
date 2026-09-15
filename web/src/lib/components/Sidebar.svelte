@@ -1,6 +1,7 @@
 <script lang="ts">
   import { theme, layout, router } from '../stores/ui.svelte'
   import { activity } from '../stores/activity.svelte'
+  import { counts } from '../stores/counts.svelte'
   import { api } from '../api'
   import { i18n, t } from '../i18n/i18n.svelte'
   import BrandMark from './BrandMark.svelte'
@@ -17,6 +18,20 @@
   })
   // "0.2.0.0" -> "v0.2.0" for display.
   let versionLabel = $derived(version ? `v${version.split('.').slice(0, 3).join('.')}` : null)
+
+  $effect(() => counts.start())
+
+  // A number a person would otherwise have to open the page to find out. Null while unknown —
+  // an unanswered poll must not read as zero.
+  function badge(path: string): string | null {
+    const value =
+      path === '/libraries' ? counts.libraries
+      : path === '/inventory' ? counts.files
+      : path === '/quarantine' ? counts.quarantine
+      : path === '/queue' ? counts.queued
+      : null
+    return value == null ? null : value.toLocaleString()
+  }
 
   type NavItem = { path: string; label: string; icon: string; enabled: boolean }
 
@@ -59,23 +74,21 @@
     ? 'translate-x-0'
     : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
-  <!-- Brand: large centered mark that scales between collapsed and expanded. -->
+  <!-- Brand: a compact lockup. The mark used to be 144px of logo above the navigation, which
+       spent a third of the rail on something the user already knows — what application this is. -->
   <button
-    class="flex flex-col items-center gap-3 border-b border-slate-200 p-4 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700"
+    class="flex items-center gap-2.5 border-b border-slate-200 px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700 {railCollapsed ? 'justify-center px-2' : ''}"
     onclick={() => {
       router.go('/')
       layout.closeMobile()
     }}
   >
     <BrandMark
-      sizes={railCollapsed ? '48px' : '144px'}
-      class="flex-shrink-0 drop-shadow-[0_0_18px_rgba(34,211,238,0.32)] transition-all duration-200 {railCollapsed ? 'h-12 w-12' : 'h-36 w-36'}"
+      sizes={railCollapsed ? '32px' : '32px'}
+      class="h-8 w-8 flex-shrink-0 drop-shadow-[0_0_10px_rgba(34,211,238,0.28)]"
     />
     {#if !railCollapsed}
-      <div class="leading-tight">
-        <div class="font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400">{i18n.m.app.tagline}</div>
-      </div>
+      <span class="truncate text-[15px] font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</span>
     {/if}
   </button>
 
@@ -100,19 +113,23 @@
           <path stroke-linecap="round" stroke-linejoin="round" d={item.icon} />
         </svg>
         {#if !railCollapsed}
-          <span class="flex-1">{item.label}</span>
+          <span class="truncate">{item.label}</span>
           {#if !item.enabled}
-            <span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.nav.soon}</span>
+            <span class="badge ml-auto bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.nav.soon}</span>
+          {:else if !showActivity && badge(item.path)}
+            <span class="nav-count">{badge(item.path)}</span>
+          {:else if !showActivity && isActive(item.path)}
+            <span class="ml-auto"><span class="nav-lamp"></span></span>
           {/if}
           {#if showActivity}
             <!-- A throbbing GPU chip means the GPU is doing the work; a snail means it's grinding
                  on the CPU. The count shows how many jobs are running. -->
             <span
-              class="flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-cyan-500' : 'text-amber-500'}"
+              class="ml-auto flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-cyan-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}"
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
-              <span class="text-xs tabular-nums">{activity.activeJobs}</span>
+              <span class="font-mono text-[10.5px] tabular-nums">{activity.activeJobs}{#if badge('/queue')} / {badge('/queue')}{/if}</span>
             </span>
           {/if}
         {:else if showActivity}
