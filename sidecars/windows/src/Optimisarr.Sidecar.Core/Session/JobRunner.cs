@@ -31,7 +31,7 @@ public sealed class JobRunner(
 
         var source = Path.Combine(scratch, "source");
         var candidatePrefix = Path.Combine(scratch, "candidate");
-        var candidate = candidatePrefix + assignment.OutputExtension;
+        var candidate = CandidatePath.For(candidatePrefix, assignment.OutputExtension);
 
         try
         {
@@ -251,7 +251,7 @@ public sealed class JobRunner(
         for (var index = 0; index < step.SampleCommands.Count; index++)
         {
             var samplePrefix = Path.Combine(scratch, $"sample-q{step.Quality}-{index}");
-            var sample = samplePrefix + assignment.OutputExtension;
+            var sample = CandidatePath.For(samplePrefix, assignment.OutputExtension);
             var log = Path.Combine(scratch, $"sample-vmaf-q{step.Quality}-{index}.json");
 
             var encode = await transcoder.RunAsync(
