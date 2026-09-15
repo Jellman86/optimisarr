@@ -36,6 +36,15 @@
       },
       "AdaptiveProbeDirectionDto": {
         "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "nextStep": {
             "oneOf": [
               {

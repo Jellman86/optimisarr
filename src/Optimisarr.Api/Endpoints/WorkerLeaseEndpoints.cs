@@ -86,7 +86,15 @@ internal sealed record AdaptiveProbeRequest(
 internal sealed record AdaptiveProbeDirectionDto(
     AdaptiveSearchStep? NextStep,
     int? SelectedQuality,
-    string Reason);
+    string Reason,
+    /// <summary>
+    /// The encode to run once the search is over, replacing the arguments the assignment carried.
+    ///
+    /// <para>Those were built before a quality existed, so they name the library's value. Encoding
+    /// with them would run the whole title at the baseline and quietly discard everything the
+    /// search just measured.</para>
+    /// </summary>
+    IReadOnlyList<string>? Arguments = null);
 
 /// <summary>The pooled scores the server read from those logs.</summary>
 internal sealed record QualityEvidenceAcceptedDto(
@@ -552,8 +560,17 @@ internal static class WorkerLeaseEndpoints
                     searched.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
+
+                // Rebuilt now the quality exists, for this worker's encoder. The assignment's
+                // arguments were fixed before the search and name the library's value.
+                var settled = await dispatcher.PrepareRemoteWorkAsync(
+                    lease.JobId, worker.ToCapabilities(), cancellationToken);
+
                 return Results.Ok(new AdaptiveProbeDirectionDto(
-                    null, progress.Decision.SelectedQuality, progress.Decision.Reason));
+                    null,
+                    progress.Decision.SelectedQuality,
+                    progress.Decision.Reason,
+                    settled.Assignment?.Arguments));
             }
 
             // Planned for this worker, so every candidate is measured on the encoder that will do
@@ -571,10 +588,13 @@ internal static class WorkerLeaseEndpoints
                     stalled.UpdatedAt = DateTimeOffset.UtcNow;
                 }
                 await db.SaveChangesAsync(cancellationToken);
+                var fallback = await dispatcher.PrepareRemoteWorkAsync(
+                    lease.JobId, worker.ToCapabilities(), cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,
-                    "No further candidate could be planned; encoding at the selected quality."));
+                    "No further candidate could be planned; encoding at the selected quality.",
+                    fallback.Assignment?.Arguments));
             }
 
             lease.AdaptiveAskedQuality = next.Quality;
