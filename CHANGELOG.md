@@ -53,6 +53,16 @@
   and re-sent every byte. It now says it could not ask, and is retried like everything else. The
   bound is unchanged and stays where it belongs: the lease's own renewal loop gives the job up once
   no renewal has landed for as long as the server granted the lease for.
+- **A repeated message is not a decode error.** Twenty-four good encodes were thrown away on a
+  line that describes no fault at all. FFmpeg collapses consecutive identical messages into
+  `Last message repeated N times`, and the decode-health gate counted that notice as a corrupt
+  frame. The cruelty of it is which message was being repeated: the muxer's "non monotonically
+  increasing dts" remark, which this gate already knows to ignore, and which hardware encoders emit
+  routinely. So the ignored line was printed, FFmpeg noted it had repeated, and the note — not the
+  line — failed the job: `1 decode error(s): Last message repeated 1 times`. The notice is now read
+  as what it is, an account of how many of the previous message there were: a repeat of an ignored
+  line is ignored with it, a repeat of a real error counts as the errors it stands for rather than
+  as one, and a repeat with nothing before it counts nothing.
 - **The dashboard no longer downloads the entire job history to find the three jobs that are
   running.** It asked for every job and sifted the result in the browser; on the library this was
   checked against that is 1,773 records, re-fetched every fifteen seconds. It now asks the server
