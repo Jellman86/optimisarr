@@ -132,7 +132,13 @@ struct SidecarMenu: View {
             // it is what the check-in reports, and it answers "why has this taken nothing on?" —
             // and keeping it here stops the panel collapsing to a single line the moment a job
             // ends, which is half of why the gap above was so obvious.
-            loadCard
+            //
+            // Only once there is a reading, though: the card is a pair of meters with a footnote
+            // under them, and without the meters the footnote is a sentence about an encode that
+            // is not running, sitting in a box on its own.
+            if session.cpu != nil || session.gpu != nil {
+                loadCard
+            }
 
             connectionCard
             concurrencyPicker
