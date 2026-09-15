@@ -39,7 +39,12 @@ public sealed record HeartbeatResult(
 /// </summary>
 public sealed class SidecarClient(HttpClient http)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    /// <summary>
+    /// The options every request and response is read with. Internal so a test can decode a real
+    /// server payload exactly as this client would, which is the check that was missing when a
+    /// well-formed quality search was dropped on the other sidecar and nobody noticed for a week.
+    /// </summary>
+    internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>
     /// Redeems a PIN and returns the credential. The PIN is single-use: a failure here generally

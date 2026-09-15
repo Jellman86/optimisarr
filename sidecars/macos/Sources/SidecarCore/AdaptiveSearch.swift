@@ -29,7 +29,7 @@ public struct AdaptiveSearchStep: Sendable, Equatable {
             let quality = (json["quality"] as? NSNumber)?.intValue,
             let samples = json["sampleCommands"] as? [[String]],
             let measurementJson = json["measurement"] as? [String: Any],
-            let measurement = QualityRequirement(json: measurementJson)
+            let measurement = QualityRequirement(measurementJson: measurementJson)
         else { return nil }
         self.init(quality: quality, sampleCommands: samples, measurement: measurement)
     }

@@ -41,7 +41,54 @@ internal sealed record AssignmentDto(
     /// measures it, reports, and is told what to measure next until it is given a quality to encode
     /// at. Null when the quality is already settled and the encode can start immediately.
     /// </summary>
-    AdaptiveSearchStep? Search = null);
+    AdaptiveSearchStepDto? Search = null);
+
+/// <summary>
+/// One candidate of the per-title quality search, on the wire.
+///
+/// <para>Its measurement is the same <see cref="QualityRequirementDto"/> the assignment's own
+/// quality gate uses, and that is the point. The planner's
+/// <see cref="Optimisarr.Core.Workers.RemoteQualityContract"/> carries only the five facts the
+/// server needs to keep on the lease, and sending that shape instead meant a sidecar holding one
+/// type for "how to measure quality" met two different shapes: the macOS decoder required the
+/// three missing fields and gave up, leaving `search` silently null, so every searched job was
+/// encoded at the library's baseline with no probe ever reported. One shape on the wire is what
+/// stops that happening again.</para>
+/// </summary>
+internal sealed record AdaptiveSearchStepDto(
+    int Quality,
+    IReadOnlyList<IReadOnlyList<string>> SampleCommands,
+    QualityRequirementDto Measurement);
+
+/// <summary>
+/// Puts a planned search on the wire in the shape a worker already understands.
+///
+/// <para>The values come from the contract that was stored on the lease, not from the policy: a
+/// report is validated against what the lease holds, so telling the worker a different model or a
+/// different threshold than the one it will be judged by would be an invitation to measure the
+/// wrong thing. Only the two facts the contract does not carry — how far the commands subsample,
+/// and whether they score a clip — are read from the policy the commands were built from.</para>
+/// </summary>
+internal static class AdaptiveSearchWire
+{
+    public static AdaptiveSearchStepDto? From(AdaptiveSearchStep? step, VerificationPolicy policy) =>
+        step is null
+            ? null
+            : new AdaptiveSearchStepDto(
+                step.Quality,
+                step.SampleCommands,
+                new QualityRequirementDto(
+                    // A search exists only where there is a gate to search against, so this is
+                    // always true; it is sent because the worker's measurement reads it.
+                    Measure: true,
+                    step.Measurement.Model,
+                    policy.VmafFrameSubsample,
+                    policy.ClipVmafEnabled,
+                    step.Measurement.MinimumHarmonicMean,
+                    step.Measurement.MinimumMinimum,
+                    step.Measurement.Commands,
+                    step.Measurement.Sampling));
+}
 
 /// <summary>
 /// What the worker's VMAF evidence will be held to. The thresholds and model are stated so the
@@ -84,7 +131,7 @@ internal sealed record AdaptiveProbeRequest(
 /// Measure this next, or stop searching and encode at this quality. Never both.
 /// </summary>
 internal sealed record AdaptiveProbeDirectionDto(
-    AdaptiveSearchStep? NextStep,
+    AdaptiveSearchStepDto? NextStep,
     int? SelectedQuality,
     string Reason,
     /// <summary>
@@ -369,7 +416,7 @@ internal static class WorkerLeaseEndpoints
                         policy.MinimumVmafMin,
                         assignment.Quality?.Commands ?? [],
                         assignment.Quality?.Sampling ?? "None"),
-                    assignment.Search));
+                    AdaptiveSearchWire.From(assignment.Search, policy)));
             }
 
             return Results.NoContent();
@@ -601,7 +648,8 @@ internal static class WorkerLeaseEndpoints
             lease.AdaptiveContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
             await db.SaveChangesAsync(cancellationToken);
 
-            return Results.Ok(new AdaptiveProbeDirectionDto(next, null, progress.Decision.Reason));
+            return Results.Ok(new AdaptiveProbeDirectionDto(
+                AdaptiveSearchWire.From(next, policy), null, progress.Decision.Reason));
         })
         .WithName("ReportAdaptiveProbe")
         .Produces<AdaptiveProbeDirectionDto>()

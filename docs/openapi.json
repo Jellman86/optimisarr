@@ -51,7 +51,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AdaptiveSearchStep"
+                "$ref": "#/components/schemas/AdaptiveSearchStepDto"
               }
             ]
           },
@@ -107,10 +107,10 @@
         ],
         "type": "object"
       },
-      "AdaptiveSearchStep": {
+      "AdaptiveSearchStepDto": {
         "properties": {
           "measurement": {
-            "$ref": "#/components/schemas/RemoteQualityContract"
+            "$ref": "#/components/schemas/QualityRequirementDto"
           },
           "quality": {
             "format": "int32",
@@ -227,7 +227,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AdaptiveSearchStep"
+                "$ref": "#/components/schemas/AdaptiveSearchStepDto"
               }
             ]
           },
@@ -1618,57 +1618,6 @@
           "freeDiskBytes",
           "workRoot",
           "waitingReason"
-        ],
-        "type": "object"
-      },
-      "RemoteQualityContract": {
-        "properties": {
-          "commands": {
-            "items": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "type": "array"
-          },
-          "minimumHarmonicMean": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "minimumMinimum": {
-            "format": "double",
-            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
-            "type": [
-              "number",
-              "string"
-            ]
-          },
-          "model": {
-            "type": "string"
-          },
-          "sampling": {
-            "type": "string"
-          },
-          "windowCount": {
-            "format": "int32",
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ]
-          }
-        },
-        "required": [
-          "model",
-          "sampling",
-          "minimumHarmonicMean",
-          "minimumMinimum",
-          "commands"
         ],
         "type": "object"
       },
