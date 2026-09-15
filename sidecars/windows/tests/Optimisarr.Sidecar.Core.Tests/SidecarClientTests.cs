@@ -178,3 +178,111 @@ public sealed class SidecarClientTests
         Assert.Throws<SidecarException>(() => SidecarClient.Endpoint("   ", "/api/workers/pair"));
     }
 }
+
+/// <summary>
+/// The shapes the server actually sends. A model that cannot hold one of them is not a cosmetic
+/// problem: the claim throws, the job never starts, and the lease lapses in silence two minutes
+/// later — which looks from the server like a worker that went quiet rather than one that refused.
+/// </summary>
+public sealed class AssignmentShapeTests
+{
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public void An_assignment_carrying_measurement_commands_can_be_read()
+    {
+        // Each command is a full argument list, so the field is a list of lists. It was a flat list
+        // of strings until the quality search needed to run them, and any job whose library had a
+        // VMAF gate could not be deserialised at all.
+        const string json = """
+        {
+          "leaseId": "8b1e2c3d-0000-4000-8000-000000000001",
+          "jobId": 12,
+          "title": "The Dinosaurs",
+          "sourceBytes": 4096,
+          "videoEncoder": "hevc_nvenc",
+          "vmaf": "Cpu",
+          "expiresUtc": "2026-09-15T09:00:00Z",
+          "renewWithinSeconds": 120,
+          "arguments": ["-i", "{{input}}", "{{output}}.mkv"],
+          "outputExtension": ".mkv",
+          "quality": {
+            "measure": true,
+            "model": "vmaf_v0.6.1",
+            "frameSubsample": 1,
+            "clipVmaf": true,
+            "minimumHarmonicMean": 93,
+            "minimumMinimum": 80,
+            "commands": [
+              ["-i", "{{distorted}}", "-i", "{{reference}}", "-lavfi", "libvmaf=log_path={{log}}", "-f", "null", "-"],
+              ["-i", "{{distorted}}", "-i", "{{reference}}", "-lavfi", "libvmaf=log_path={{log}}", "-f", "null", "-"]
+            ]
+          }
+        }
+        """;
+
+        var assignment = JsonSerializer.Deserialize<Assignment>(json, Web);
+
+        Assert.NotNull(assignment);
+        Assert.Equal(2, assignment!.Quality.Commands.Count);
+        Assert.Contains("{{distorted}}", assignment.Quality.Commands[0]);
+    }
+
+    [Fact]
+    public void An_assignment_carrying_a_quality_search_can_be_read()
+    {
+        const string json = """
+        {
+          "leaseId": "8b1e2c3d-0000-4000-8000-000000000001",
+          "jobId": 12,
+          "title": "The Dinosaurs",
+          "sourceBytes": 4096,
+          "videoEncoder": "hevc_nvenc",
+          "vmaf": "Cpu",
+          "expiresUtc": "2026-09-15T09:00:00Z",
+          "renewWithinSeconds": 120,
+          "arguments": ["-i", "{{input}}", "{{output}}.mkv"],
+          "outputExtension": ".mkv",
+          "quality": {
+            "measure": false, "model": "", "frameSubsample": 1, "clipVmaf": false,
+            "minimumHarmonicMean": 0, "minimumMinimum": 0, "commands": []
+          },
+          "search": {
+            "quality": 24,
+            "sampleCommands": [["-i", "{{input}}", "{{output}}.mkv"]],
+            "measurement": {
+              "measure": true, "model": "vmaf_v0.6.1", "frameSubsample": 1, "clipVmaf": true,
+              "minimumHarmonicMean": 93, "minimumMinimum": 80,
+              "commands": [["-i", "{{distorted}}", "-f", "null", "-"]]
+            }
+          }
+        }
+        """;
+
+        var assignment = JsonSerializer.Deserialize<Assignment>(json, Web);
+
+        Assert.Equal(24, assignment!.Search!.Quality);
+        Assert.Single(assignment.Search.SampleCommands);
+        Assert.Single(assignment.Search.Measurement.Commands);
+    }
+
+    [Fact]
+    public void An_assignment_without_a_search_still_reads_as_one_to_encode_straight_away()
+    {
+        // What every settled job sends, and what a server predating the search sends.
+        const string json = """
+        {
+          "leaseId": "8b1e2c3d-0000-4000-8000-000000000001", "jobId": 12, "title": "x",
+          "sourceBytes": 4096, "videoEncoder": "hevc_nvenc", "vmaf": "None",
+          "expiresUtc": "2026-09-15T09:00:00Z", "renewWithinSeconds": 120,
+          "arguments": ["-i", "{{input}}", "{{output}}.mkv"], "outputExtension": ".mkv",
+          "quality": {
+            "measure": false, "model": "", "frameSubsample": 1, "clipVmaf": false,
+            "minimumHarmonicMean": 0, "minimumMinimum": 0, "commands": []
+          }
+        }
+        """;
+
+        Assert.Null(JsonSerializer.Deserialize<Assignment>(json, Web)!.Search);
+    }
+}

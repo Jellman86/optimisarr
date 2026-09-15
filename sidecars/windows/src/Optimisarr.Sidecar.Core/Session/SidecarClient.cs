@@ -256,6 +256,51 @@ public sealed class SidecarClient(HttpClient http)
             recoverable: false);
     }
 
+    /// <summary>
+    /// Reports what this machine measured for one candidate, and returns what to do next.
+    ///
+    /// <para>No verdict is sent, only the evidence: whether a candidate met the target needs the
+    /// library's policy and the pooling rules, and both live on the control plane. This machine
+    /// encodes, scores, and says what it saw.</para>
+    /// </summary>
+    public async Task<AdaptiveSearchDirection> ReportAdaptiveProbeAsync(
+        StoredPairing pairing,
+        Guid leaseId,
+        int quality,
+        long encodedBytes,
+        IReadOnlyList<string> logs,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/quality-probe"))
+        {
+            Content = JsonContent.Create(
+                new { quality, encodedBytes, logs }, options: Json),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            return await response.Content.ReadFromJsonAsync<AdaptiveSearchDirection>(Json, cancellationToken)
+                ?? throw new SidecarException(
+                    "The server answered the measurement in a form this sidecar could not read.",
+                    recoverable: false);
+        }
+
+        throw new SidecarException(
+            response.StatusCode switch
+            {
+                // The lease is gone and the search with it: the evidence is bound to this machine's
+                // encoder, so the next holder starts again rather than inheriting half a search.
+                HttpStatusCode.Conflict => "That lease is no longer held, so the search cannot continue.",
+                HttpStatusCode.Forbidden => "That lease belongs to another worker.",
+                _ => $"Reporting a measurement failed (HTTP {(int)response.StatusCode}).",
+            },
+            recoverable: false);
+    }
+
     /// <summary>Gives a job back, so it returns to the queue at once rather than waiting to lapse.</summary>
     public async Task ReleaseAsync(
         StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default)

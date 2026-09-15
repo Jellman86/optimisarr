@@ -488,8 +488,19 @@ public struct JobRunner: WorkExecutor {
         progress: @escaping @Sendable (JobProgress) -> Void
     ) async -> SearchOutcome {
         var step = first
+        // The server bounds its own search at four candidates, but this machine should not depend
+        // on that to stop: a bound only the other end enforces is not a bound. Twice the expected
+        // number leaves ordinary searches untouched and still ends a conversation that has stopped
+        // making sense.
+        let maximumCandidates = 8
+        var measured = 0
 
         while true {
+            measured += 1
+            guard measured <= maximumCandidates else {
+                return .failed(reason:
+                    "The search did not settle after \(maximumCandidates) candidates, so no quality was chosen.")
+            }
             latest.set(.measuring)
             progress(.measuring)
             SidecarLog.job.info(

@@ -53,8 +53,26 @@ public sealed class JobRunner(
                 }
             }
 
+            // The per-title quality search, when the server sent one. It runs here, on the encoder
+            // that will do the real encode, because a quality proven by measuring one encoder means
+            // nothing on another. The server names every candidate; this machine measures them.
+            var encodeArguments = assignment.Arguments;
+            if (assignment.Search is { } firstStep)
+            {
+                var settled = await SearchAsync(
+                    pairing, assignment, firstStep, scratch, source, cancellationToken);
+                if (settled is null)
+                {
+                    await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                    return new JobOutcome(assignment.JobId, false,
+                        "A sample encode or its measurement could not be completed, so no quality was chosen.");
+                }
+
+                encodeArguments = settled;
+            }
+
             report?.Invoke($"Job {assignment.JobId}: encoding with {assignment.VideoEncoder}");
-            var arguments = AssignmentPlaceholders.Resolve(assignment.Arguments, source, candidatePrefix);
+            var arguments = AssignmentPlaceholders.Resolve(encodeArguments, source, candidatePrefix);
 
             var encoded = 0d;
             var result = await WhileRenewing(
@@ -100,6 +118,156 @@ public sealed class JobRunner(
             // Never left behind. A worker that kept every source it was ever sent would fill a disk
             // in a weekend, and nothing here is of any use once the job has ended.
             TryDelete(scratch);
+        }
+    }
+
+    /// <summary>
+    /// Measures each candidate the server asks for, until it stops asking, and returns the encode
+    /// it settled on.
+    ///
+    /// <para>Bounded by the server, which sends at most four candidates and then names one. Null
+    /// when a measurement could not be made: the job goes back rather than being encoded at a
+    /// quality nobody chose. Falling through to the assignment's own arguments would run the whole
+    /// title at the library's baseline, discard everything the search measured, and look like a
+    /// perfectly successful job — the worst kind of wrong.</para>
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> SearchAsync(
+        StoredPairing pairing,
+        Assignment assignment,
+        AdaptiveSearchStep first,
+        string scratch,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        var step = first;
+
+        // The server bounds its own search at four candidates, but this machine should not depend
+        // on that to stop: a bound only the other end enforces is not a bound. Twice the expected
+        // number leaves ordinary searches untouched and still ends a conversation that has stopped
+        // making sense.
+        const int MaximumCandidates = 8;
+
+        for (var attempt = 0; ; attempt++)
+        {
+            if (attempt >= MaximumCandidates)
+            {
+                report?.Invoke(
+                    $"Job {assignment.JobId}: the search did not settle after {MaximumCandidates} candidates");
+                return null;
+            }
+
+            report?.Invoke($"Job {assignment.JobId}: measuring quality {step.Quality}");
+
+            var measured = await WhileRenewing(
+                pairing, assignment, RemoteStage.Measuring, null, cancellationToken,
+                token => MeasureCandidateAsync(step, assignment, scratch, source, token));
+            if (measured is null)
+            {
+                return null;
+            }
+
+            AdaptiveSearchDirection direction;
+            try
+            {
+                direction = await client.ReportAdaptiveProbeAsync(
+                    pairing, assignment.LeaseId, step.Quality,
+                    measured.Value.Bytes, measured.Value.Logs, cancellationToken);
+            }
+            catch (SidecarException)
+            {
+                return null;
+            }
+
+            if (direction.NextStep is { } next)
+            {
+                step = next;
+                continue;
+            }
+
+            report?.Invoke(
+                $"Job {assignment.JobId}: search chose quality {direction.SelectedQuality?.ToString() ?? "?"}");
+
+            // The arguments that come back name the chosen quality. Without them there is nothing
+            // safe to encode: the assignment's own were fixed before the search ran.
+            return direction.Arguments is { Count: > 0 } ? direction.Arguments : null;
+        }
+    }
+
+    /// <summary>
+    /// Encodes one candidate's sample windows and scores each, returning the bytes and raw logs.
+    ///
+    /// <para>Null when any part could not be done. A partial answer is worse than none: the server
+    /// pools the windows into a single score, so a missing window is a different measurement rather
+    /// than a smaller one.</para>
+    /// </summary>
+    private async Task<(long Bytes, IReadOnlyList<string> Logs)?> MeasureCandidateAsync(
+        AdaptiveSearchStep step,
+        Assignment assignment,
+        string scratch,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        if (step.SampleCommands.Count != step.Measurement.Commands.Count)
+        {
+            return null;
+        }
+
+        long bytes = 0;
+        var logs = new List<string>(step.SampleCommands.Count);
+
+        for (var index = 0; index < step.SampleCommands.Count; index++)
+        {
+            var samplePrefix = Path.Combine(scratch, $"sample-q{step.Quality}-{index}");
+            var sample = samplePrefix + assignment.OutputExtension;
+            var log = Path.Combine(scratch, $"sample-vmaf-q{step.Quality}-{index}.json");
+
+            var encode = await transcoder.RunAsync(
+                ffmpegPath,
+                AssignmentPlaceholders.Resolve(step.SampleCommands[index], source, samplePrefix),
+                null,
+                cancellationToken);
+            if (!encode.Succeeded || !File.Exists(sample) || new FileInfo(sample).Length <= 0)
+            {
+                return null;
+            }
+
+            bytes += new FileInfo(sample).Length;
+
+            // A sample begins at its own first picture, so there is no lead to remove — unlike a
+            // finished candidate, where the measured window is a slice of a whole file.
+            var scored = await transcoder.RunAsync(
+                ffmpegPath,
+                MeasurementPlaceholders.Resolve(
+                    step.Measurement.Commands[index], sample, source, log),
+                null,
+                cancellationToken);
+            if (!scored.Succeeded || !File.Exists(log))
+            {
+                return null;
+            }
+
+            logs.Add(await File.ReadAllTextAsync(log, cancellationToken));
+
+            // Removed as they are measured. Four candidates across three windows is a dozen sample
+            // encodes, and keeping them would need as much scratch again as the job itself.
+            TryDeleteFile(sample);
+            TryDeleteFile(log);
+        }
+
+        return (bytes, logs);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
         }
     }
 
