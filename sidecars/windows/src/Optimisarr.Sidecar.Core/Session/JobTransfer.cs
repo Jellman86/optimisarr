@@ -113,7 +113,8 @@ public sealed class JobTransfer(HttpClient http)
     {
         candidateSha256 ??= await HashAsync(candidatePath, cancellationToken);
         var total = new FileInfo(candidatePath).Length;
-        var offset = await HeldBytesAsync(pairing, leaseId, cancellationToken);
+        var offset = await RetryingAsync(
+            () => HeldBytesAsync(pairing, leaseId, cancellationToken), cancellationToken);
 
         await using (var file = File.OpenRead(candidatePath))
         {
@@ -128,31 +129,45 @@ public sealed class JobTransfer(HttpClient http)
                     break;
                 }
 
-                using var chunk = new HttpRequestMessage(
-                    HttpMethod.Patch,
-                    SidecarClient.Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/result"))
-                {
-                    Content = new ByteArrayContent(buffer, 0, read),
-                };
-                chunk.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
-                chunk.Headers.Add(OffsetHeader, offset.ToString());
+                var status = await RetryingAsync(
+                    async () =>
+                    {
+                        using var chunk = new HttpRequestMessage(
+                            HttpMethod.Patch,
+                            SidecarClient.Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/result"))
+                        {
+                            Content = new ByteArrayContent(buffer, 0, read),
+                        };
+                        chunk.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+                        chunk.Headers.Add(OffsetHeader, offset.ToString());
 
-                using var response = await http.SendAsync(chunk, cancellationToken);
-                if (response.StatusCode == HttpStatusCode.Conflict)
+                        using var response = await http.SendAsync(chunk, cancellationToken);
+                        if (!response.IsSuccessStatusCode && WorthAnotherAttempt(response.StatusCode))
+                        {
+                            throw new SidecarException(
+                                $"Delivering the candidate failed (HTTP {(int)response.StatusCode}).",
+                                recoverable: true);
+                        }
+
+                        return response.StatusCode;
+                    },
+                    cancellationToken);
+
+                if (status == HttpStatusCode.Conflict)
                 {
                     // The server and this machine disagree about how much arrived, and the server
                     // wins. It says what it actually holds, so seek there and carry on rather than
                     // failing the whole delivery over a resumable disagreement.
-                    offset = await HeldBytesAsync(pairing, leaseId, cancellationToken);
+                    offset = await RetryingAsync(
+                        () => HeldBytesAsync(pairing, leaseId, cancellationToken), cancellationToken);
                     file.Seek(offset, SeekOrigin.Begin);
                     continue;
                 }
 
-                if (!response.IsSuccessStatusCode)
+                if (!IsSuccess(status))
                 {
                     throw new SidecarException(
-                        $"Delivering the candidate failed (HTTP {(int)response.StatusCode}).",
-                        recoverable: response.StatusCode is not (HttpStatusCode.Conflict or HttpStatusCode.Forbidden));
+                        $"Delivering the candidate failed (HTTP {(int)status}).", recoverable: false);
                 }
 
                 offset += read;
@@ -160,19 +175,71 @@ public sealed class JobTransfer(HttpClient http)
             }
         }
 
-        using var complete = new HttpRequestMessage(
-            HttpMethod.Post,
-            SidecarClient.Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/result/complete"));
-        complete.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
-        complete.Headers.Add(SourceHashHeader, sourceSha256);
-        complete.Headers.Add(CandidateHashHeader, candidateSha256);
+        await RetryingAsync(
+            async () =>
+            {
+                using var complete = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    SidecarClient.Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/result/complete"));
+                complete.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+                complete.Headers.Add(SourceHashHeader, sourceSha256);
+                complete.Headers.Add(CandidateHashHeader, candidateSha256);
 
-        using var finished = await http.SendAsync(complete, cancellationToken);
-        if (!finished.IsSuccessStatusCode)
+                using var finished = await http.SendAsync(complete, cancellationToken);
+                if (finished.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+
+                // The last call of the whole job, and the one worth retrying most: every byte is
+                // already on the server and only the word that says so is missing.
+                throw new SidecarException(
+                    $"The server refused the delivered candidate (HTTP {(int)finished.StatusCode}).",
+                    recoverable: WorthAnotherAttempt(finished.StatusCode));
+            },
+            cancellationToken);
+    }
+
+    private static bool IsSuccess(HttpStatusCode status) =>
+        (int)status is >= 200 and <= 299;
+
+    /// <summary>How long to wait before offering a restarting server the same bytes again.</summary>
+    private static readonly TimeSpan RetryPause = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Repeats one step of the delivery until it succeeds, is refused for a reason worth
+    /// respecting, or the job is cancelled.
+    ///
+    /// <para>Cancellation is the bound, and it comes from the lease's renewal loop: once no
+    /// renewal has landed for as long as the server granted the lease for, the stage is cancelled
+    /// and this stops with it. There is one rule about how long work may go unwitnessed and it
+    /// lives there, not here.</para>
+    /// </summary>
+    private static async Task<T> RetryingAsync<T>(
+        Func<Task<T>> step, CancellationToken cancellationToken)
+    {
+        while (true)
         {
-            throw new SidecarException(
-                $"The server refused the delivered candidate (HTTP {(int)finished.StatusCode}).",
-                recoverable: false);
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return await step();
+            }
+            catch (SidecarException problem) when (problem.Recoverable)
+            {
+                await Task.Delay(RetryPause, cancellationToken);
+            }
+            catch (HttpRequestException)
+            {
+                // The server is not answering at all, which is what a restart looks like from here
+                // before the proxy starts returning 502s.
+                await Task.Delay(RetryPause, cancellationToken);
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A per-request timeout, not the job being cancelled.
+                await Task.Delay(RetryPause, cancellationToken);
+            }
         }
     }
 
@@ -185,15 +252,47 @@ public sealed class JobTransfer(HttpClient http)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
 
         using var response = await http.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            // An older server offers no resumable delivery at all, so it holds nothing and the
+            // whole file goes up. That is the one honest zero.
+            return 0;
+        }
+
         if (!response.IsSuccessStatusCode)
         {
-            return 0;
+            // Every other refusal means this machine could not ask, which is not the same as being
+            // told nothing is held. Answering zero here would restart a delivery from the
+            // beginning — tens of gigabytes, over a question that was never answered.
+            throw new SidecarException(
+                $"The server would not say how much of the candidate it holds (HTTP {(int)response.StatusCode}).",
+                recoverable: true);
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         using var document = System.Text.Json.JsonDocument.Parse(body);
         return document.RootElement.TryGetProperty("bytes", out var bytes) ? bytes.GetInt64() : 0;
     }
+
+    /// <summary>
+    /// Whether a failed delivery attempt is worth making again against the same lease.
+    ///
+    /// <para>A restarting container answers 502 through its proxy for a few seconds. Delivery is
+    /// resumable — the server says how much it holds — so a blink costs a pause and nothing else.
+    /// It used to cost the whole encode: PICARD finished a candidate, measured it, had the evidence
+    /// accepted, and then lost the lot to "Delivering the candidate failed (HTTP 502)".</para>
+    ///
+    /// <para>Nothing bounds the retrying here on purpose. The delivery runs inside the lease's
+    /// renewal loop, which gives the lease up once no renewal has landed for as long as the server
+    /// granted it for, and cancels this with it. One rule about how long work may go unwitnessed,
+    /// in one place.</para>
+    /// </summary>
+    private static bool WorthAnotherAttempt(HttpStatusCode status) =>
+        status is not (HttpStatusCode.Conflict
+            or HttpStatusCode.Forbidden
+            or HttpStatusCode.Unauthorized
+            or HttpStatusCode.NotFound
+            or HttpStatusCode.BadRequest);
 
     private static string? DeclaredHash(HttpResponseMessage response) =>
         response.Headers.TryGetValues(SourceHashHeader, out var values)

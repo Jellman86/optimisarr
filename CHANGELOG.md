@@ -41,6 +41,18 @@
 
 ### Fixed
 
+- **A finished candidate is no longer thrown away because the server is restarting.** A worker
+  that had encoded a file, measured it and had its evidence accepted lost the lot to
+  `Delivering the candidate failed (HTTP 502)` — a deployment had restarted the container while the
+  bytes were going up, and the job went back on the queue to be done again from nothing. Delivery
+  has always been resumable, since the server reports how much of the candidate it holds, so a
+  blink should cost a pause; but only a narrow set of errors was being retried, and a 502 from a
+  proxy in front of a restarting container was not among them. Worse on Windows, where the question
+  "how much do you hold?" answered **zero** when it could not be asked at all — the same answer as
+  a server that genuinely holds nothing — which would have sent a delivery back to the beginning
+  and re-sent every byte. It now says it could not ask, and is retried like everything else. The
+  bound is unchanged and stays where it belongs: the lease's own renewal loop gives the job up once
+  no renewal has landed for as long as the server granted the lease for.
 - **The dashboard no longer downloads the entire job history to find the three jobs that are
   running.** It asked for every job and sifted the result in the browser; on the library this was
   checked against that is 1,773 records, re-fetched every fifteen seconds. It now asks the server

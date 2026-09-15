@@ -598,20 +598,45 @@ public struct JobRunner: WorkExecutor {
             } catch let SidecarError.uploadOffsetMismatch(serverHolds) {
                 // The server is the authority on what arrived; carry on from its number.
                 offset = serverHolds
-            } catch SidecarError.transferFailed {
+            } catch let problem as SidecarError where problem.endsTheLease {
+                throw problem
+            } catch {
+                // Anything that is not the server saying this lease is finished with. It used to
+                // be only `transferFailed`, so a 502 from a proxy in front of a restarting
+                // container arrived as `unexpectedResponse`, went uncaught, and threw away a
+                // complete encode that had already been measured and accepted. Delivery is
+                // resumable — the server says how much it holds — so a blink costs a pause.
                 failures += 1
                 guard failures <= Self.maxChunkFailures else {
                     throw SidecarError.transferFailed(reason: "The candidate upload failed \(failures) times.")
                 }
                 try await sleep(min(30, Double(failures) * 2))
-                offset = try await client.uploadOffset(
-                    serverAddress: pairing.serverAddress, credential: pairing.credential, leaseId: assignment.leaseId) ?? offset
+                // Asked again rather than assumed: the server is the authority on what arrived,
+                // and starting from the wrong number sends gigabytes twice or leaves a hole.
+                if let held = try? await client.uploadOffset(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    leaseId: assignment.leaseId) {
+                    offset = held ?? offset
+                }
             }
         }
 
-        return try await client.completeUpload(
-            serverAddress: pairing.serverAddress, credential: pairing.credential,
-            leaseId: assignment.leaseId, sourceSha256: sourceSha256, candidateSha256: candidateSha256)
+        // The last call of the whole job, and the one worth repeating most: every byte is already
+        // on the server and only the word that says so is missing.
+        while true {
+            try Task.checkCancellation()
+            do {
+                return try await client.completeUpload(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    leaseId: assignment.leaseId, sourceSha256: sourceSha256, candidateSha256: candidateSha256)
+            } catch let problem as SidecarError where problem.endsTheLease || problem.isRefusal {
+                throw problem
+            } catch {
+                failures += 1
+                guard failures <= Self.maxChunkFailures else { throw error }
+                try await sleep(min(30, Double(failures) * 2))
+            }
+        }
     }
 
     /// What a completed search left behind: the encode to run, or why there is none.
