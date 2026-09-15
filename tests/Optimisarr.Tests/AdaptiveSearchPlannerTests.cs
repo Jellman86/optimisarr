@@ -89,8 +89,12 @@ public sealed class AdaptiveSearchPlannerTests
             // window: accurate seeking on a long-GOP source needs both.
             var coarse = double.Parse(command[command.IndexOf("-ss") + 1]);
             var fine = double.Parse(command[command.LastIndexOf("-ss") + 1]);
-            Assert.Equal((double)Windows[index].StartSeconds, coarse + fine, 3);
-            Assert.Equal(Windows[index].DurationSeconds.ToString(), command[command.IndexOf("-t") + 1]);
+            // These windows are always bounded — VmafWindow.Full, the whole-file case, is never
+            // used for a search — so the values are read rather than defaulted.
+            Assert.Equal((double)Windows[index].StartSeconds!.Value, coarse + fine, 3);
+            Assert.Equal(
+                Windows[index].DurationSeconds!.Value.ToString(),
+                command[command.IndexOf("-t") + 1]);
             // Video only, by mapping the picture rather than excluding everything else: copied
             // audio would swamp the byte comparison the search selects on.
             Assert.Contains("0:v:0", command);
