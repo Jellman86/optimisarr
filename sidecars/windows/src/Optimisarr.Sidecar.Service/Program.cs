@@ -75,6 +75,11 @@ public static class Program
         // service with no console, and the Event Log is the one place an operator will think to
         // look on a Windows box.
         builder.Logging.AddEventLog(settings => settings.SourceName = ServiceControl.ServiceName);
+        // The Event Log provider keeps Warning and above by default, so without this the sidecar
+        // would say everything it does into a sink that drops all of it — which is how the first
+        // attempt at giving this service a voice appeared to work and wrote nothing at all.
+        builder.Logging.AddFilter<Microsoft.Extensions.Logging.EventLog.EventLogLoggerProvider>(
+            null, LogLevel.Information);
 
         builder.Services.AddSingleton(services =>
         {
@@ -232,8 +237,22 @@ public static class Program
     /// a warning because it usually comes back on its own, and everything else is ordinary
     /// progress — so a machine can be triaged by severity rather than by reading every line.
     /// </summary>
+    /// <summary>The last status written, so an unchanged one is not written again.</summary>
+    private static SessionStatus? _lastLogged;
+
     private static void Log(ILogger logger, SessionStatus status)
     {
+        // Only when it changes. The loop reports a status every check-in, which is every thirty
+        // seconds for ever — nearly three thousand identical "connected" entries a day, in the one
+        // place an operator goes to find out what went wrong. A repeated status carries no
+        // information; a changed one carries all of it.
+        if (_lastLogged == status)
+        {
+            return;
+        }
+
+        _lastLogged = status;
+
         switch (status.State)
         {
             case SidecarState.Faulted or SidecarState.Stopped:
