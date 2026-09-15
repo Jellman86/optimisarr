@@ -26,18 +26,72 @@ public static class DecodeIntegrityParser
             return new DecodeIntegrity(0, null);
         }
 
-        var errors = stderr
-            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(IsDecodeError)
-            .ToArray();
+        var count = 0;
+        string? first = null;
+        // What FFmpeg last printed, so a repeat notice can be attributed to it. Null once the last
+        // line was one this gate ignores, which is what stops a notice standing for nothing.
+        string? lastCounted = null;
 
-        return errors.Length == 0
-            ? new DecodeIntegrity(0, null)
-            : new DecodeIntegrity(errors.Length, errors[0]);
+        foreach (var line in stderr.Split(
+            '\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (RepeatCount(line) is { } repeats)
+            {
+                // Only ever as many as the message it stands for. A repeat of a line this gate
+                // ignores is ignored with it, and a repeat with nothing before it counts nothing.
+                if (lastCounted is not null)
+                {
+                    count += repeats;
+                }
+
+                continue;
+            }
+
+            if (!IsDecodeError(line))
+            {
+                lastCounted = null;
+                continue;
+            }
+
+            count++;
+            first ??= line;
+            lastCounted = line;
+        }
+
+        return count == 0 ? new DecodeIntegrity(0, null) : new DecodeIntegrity(count, first);
     }
 
     // A non-strictly-increasing DTS handed to the null muxer is a timestamp remark, not corruption;
     // it is the dominant false positive for hardware-encoded output and is filtered out here.
     private static bool IsDecodeError(string line) =>
         line.IndexOf("non monotonically increasing dts", StringComparison.OrdinalIgnoreCase) < 0;
+
+    /// <summary>
+    /// How many further occurrences FFmpeg's own deduplication notice stands for, or null when the
+    /// line is not one.
+    ///
+    /// <para>FFmpeg collapses consecutive identical messages into "Last message repeated N times".
+    /// Counted as a line in its own right, it turned a file whose only remark was the muxer DTS
+    /// note — already ignored here — into "1 decode error(s): Last message repeated 1 times", and
+    /// twenty-four good encodes were thrown away on it. It is not an error; it is an account of
+    /// how many of the previous one there were.</para>
+    /// </summary>
+    private static int? RepeatCount(string line)
+    {
+        const string prefix = "Last message repeated ";
+        var start = line.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        var rest = line[(start + prefix.Length)..].AsSpan();
+        var digits = 0;
+        while (digits < rest.Length && char.IsAsciiDigit(rest[digits]))
+        {
+            digits++;
+        }
+
+        return digits > 0 && int.TryParse(rest[..digits], out var repeats) ? repeats : null;
+    }
 }
