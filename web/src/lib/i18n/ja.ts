@@ -225,21 +225,23 @@ export const ja: Messages = {
     free_on: "{path} の空き",
 
     // In flight
-    in_flight: "実行中",
-    in_flight_counts: "実行 {running} 件 · 待機 {queued} 件",
-    in_flight_none: "現在エンコード中のものはありません。",
+    in_flight: "処理中",
+    in_flight_counts: "処理中 {running} 件 · 待機 {queued} 件",
+    in_flight_none: "現在処理中のものはありません。",
     in_flight_idle: "待機も実行もありません。対象はすべて完了しています。",
+    in_flight_more: "他 {count} 件が処理中 →",
     unnamed_file: "名称未設定のファイル",
     this_server: "このサーバー",
     retry_count: "再試行 {count}",
+    no_percentage: "処理中",
     local_stage: {
       Queued: "待機中",
       Probing: "ソースを調査中",
-      SelectingQuality: "品質を選択中",
       Transcoding: "エンコード中",
       Verifying: "検証中",
+      AwaitingVerification: "検証待ち",
       ReadyToReplace: "置換の準備完了",
-      Replacing: "置換中",
+      Leased: "ワーカーで実行中",
     },
     remote_stage: {
       Claimed: "取得済み",
@@ -247,6 +249,12 @@ export const ja: Messages = {
       Encoding: "エンコード中",
       Verifying: "検証中",
       Delivering: "転送中",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "アダプティブ VMAF",
+      Bitrate: "ビットレート",
+      Vmaf: "固定 VMAF",
     },
 
     // Fleet
@@ -273,15 +281,8 @@ export const ja: Messages = {
     // Telemetry rail
     saved_detail: "{count} ファイル · 平均 {percent}% 縮小",
     empty_short: "まだ何も最適化されていません。",
-    remaining: "残り",
-    remaining_detail: "うち {queued} 件が現在待機中",
-    remaining_none: "検出されたものはすべて最適化済みです。",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "アダプティブ VMAF",
-      Bitrate: "ビットレート",
-      Vmaf: "固定 VMAF",
-    },
+    in_the_queue: "待機中",
+    queue_detail: "処理中 {running} 件 · 失敗 {failed} 件",
     health: "健全性",
     health_ok: "正常",
   },

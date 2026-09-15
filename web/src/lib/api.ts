@@ -1162,6 +1162,8 @@ export const api = {
     request<ConnectionTestResult>('/api/connect/test', { method: 'POST', body: JSON.stringify(body) }),
 
   jobs: () => request<Job[]>('/api/jobs'),
+  /** Only jobs with work outstanding. The unfiltered call returns the entire job history. */
+  liveJobs: () => request<Job[]>('/api/jobs?live=true'),
   jobFailures: () => request<FailureGroup[]>('/api/jobs/failures'),
   // The captured ffmpeg log is plain text, and 404s when a job has none — return null rather than throw.
   jobLog: async (id: number): Promise<string | null> => {

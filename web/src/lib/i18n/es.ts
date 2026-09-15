@@ -231,20 +231,22 @@ language: {
 
     // In flight
     in_flight: "En curso",
-    in_flight_counts: "{running} en ejecución · {queued} en cola",
-    in_flight_none: "Ahora mismo no se está codificando nada.",
+    in_flight_counts: "{running} en curso · {queued} en cola",
+    in_flight_none: "Ahora mismo no se está trabajando en nada.",
     in_flight_idle: "Nada en cola y nada en ejecución. Todo lo elegible está hecho.",
+    in_flight_more: "{count} más en curso →",
     unnamed_file: "Archivo sin nombre",
     this_server: "Este servidor",
     retry_count: "reintento {count}",
+    no_percentage: "en curso",
     local_stage: {
       Queued: "En cola",
       Probing: "Analizando el origen",
-      SelectingQuality: "Seleccionando calidad",
       Transcoding: "Codificando",
       Verifying: "Verificando",
+      AwaitingVerification: "Esperando verificación",
       ReadyToReplace: "Listo para reemplazar",
-      Replacing: "Reemplazando",
+      Leased: "En un worker",
     },
     remote_stage: {
       Claimed: "Reclamado",
@@ -252,6 +254,12 @@ language: {
       Encoding: "Codificando",
       Verifying: "Verificando",
       Delivering: "Entregando",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "VMAF adaptativo",
+      Bitrate: "Tasa de bits",
+      Vmaf: "VMAF fijo",
     },
 
     // Fleet
@@ -278,15 +286,8 @@ language: {
     // Telemetry rail
     saved_detail: "{count} archivos · {percent}% más pequeños de media",
     empty_short: "Todavía no se ha optimizado nada.",
-    remaining: "Pendientes",
-    remaining_detail: "{queued} de ellos en cola ahora mismo",
-    remaining_none: "Todo lo encontrado se ha optimizado.",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "VMAF adaptativo",
-      Bitrate: "Tasa de bits",
-      Vmaf: "VMAF fijo",
-    },
+    in_the_queue: "En la cola",
+    queue_detail: "{running} en curso · {failed} fallidos",
     health: "Estado",
     health_ok: "Correcto",
   },

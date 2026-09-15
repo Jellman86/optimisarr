@@ -62,6 +62,24 @@ public static class JobQueries
         (await QueryAsync(db, new JobQuery { Status = status }, cancellationToken)).Items;
 
     /// <summary>
+    /// The statuses a job passes through while work on it is outstanding.
+    ///
+    /// <see cref="JobStatus.Queued"/> is excluded on purpose: a queued job is waiting for a slot,
+    /// not in progress, and on a real library there are thousands of them. Terminal states
+    /// (<see cref="JobStatus.Completed"/>, <see cref="JobStatus.Failed"/>,
+    /// <see cref="JobStatus.Cancelled"/>) and <see cref="JobStatus.ReadyToReplace"/> — which is
+    /// finished work awaiting a decision, not work underway — are excluded for the same reason.
+    /// </summary>
+    private static readonly JobStatus[] InProgressStatuses =
+    [
+        JobStatus.Probing,
+        JobStatus.Transcoding,
+        JobStatus.Verifying,
+        JobStatus.Leased,
+        JobStatus.AwaitingVerification
+    ];
+
+    /// <summary>
     /// Filtered, optionally paged job query for the queue feed and diagnostics. SQL-translatable
     /// filters (status, library, failure category) run in the database; the date filter, ordering, and
     /// paging run in memory because SQLite cannot translate an ORDER BY or comparison over a
@@ -85,6 +103,11 @@ public static class JobQueries
             .AsNoTracking()
             // Previews are throwaway settings comparisons, surfaced in their own UI, not the queue.
             .Where(job => job.Type == JobType.Normal);
+
+        if (filter.Live)
+        {
+            query = query.Where(job => InProgressStatuses.Contains(job.Status));
+        }
 
         if (filter.Status is { } status)
         {
@@ -351,6 +374,13 @@ public sealed record FailureGroupDto(
 public sealed record JobQuery
 {
     public JobStatus? Status { get; init; }
+
+    /// <summary>
+    /// Restrict to jobs with work outstanding — see <c>JobQueries.InProgressStatuses</c>. Combines
+    /// with the other filters rather than replacing them.
+    /// </summary>
+    public bool Live { get; init; }
+
     public int? LibraryId { get; init; }
     public FailureCategory? Category { get; init; }
     public DateTimeOffset? Since { get; init; }

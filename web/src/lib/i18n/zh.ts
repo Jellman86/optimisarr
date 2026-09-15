@@ -226,20 +226,22 @@ export const zh: Messages = {
 
     // In flight
     in_flight: "进行中",
-    in_flight_counts: "{running} 个运行中 · {queued} 个排队",
-    in_flight_none: "当前没有正在编码的任务。",
+    in_flight_counts: "{running} 个进行中 · {queued} 个排队",
+    in_flight_none: "当前没有正在处理的任务。",
     in_flight_idle: "没有排队也没有运行。所有符合条件的文件都已处理完毕。",
+    in_flight_more: "另有 {count} 个进行中 →",
     unnamed_file: "未命名文件",
     this_server: "本服务器",
     retry_count: "第 {count} 次重试",
+    no_percentage: "进行中",
     local_stage: {
       Queued: "排队中",
       Probing: "正在探测源文件",
-      SelectingQuality: "正在选择质量",
       Transcoding: "正在编码",
       Verifying: "正在验证",
+      AwaitingVerification: "等待验证",
       ReadyToReplace: "可以替换",
-      Replacing: "正在替换",
+      Leased: "在工作机上",
     },
     remote_stage: {
       Claimed: "已认领",
@@ -247,6 +249,12 @@ export const zh: Messages = {
       Encoding: "正在编码",
       Verifying: "正在验证",
       Delivering: "正在传输",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "自适应 VMAF",
+      Bitrate: "码率",
+      Vmaf: "固定 VMAF",
     },
 
     // Fleet
@@ -273,15 +281,8 @@ export const zh: Messages = {
     // Telemetry rail
     saved_detail: "{count} 个文件 · 平均缩小 {percent}%",
     empty_short: "尚未优化任何文件。",
-    remaining: "剩余",
-    remaining_detail: "其中 {queued} 个正在排队",
-    remaining_none: "已发现的文件都已优化。",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "自适应 VMAF",
-      Bitrate: "码率",
-      Vmaf: "固定 VMAF",
-    },
+    in_the_queue: "队列中",
+    queue_detail: "{running} 个进行中 · {failed} 个失败",
     health: "健康",
     health_ok: "健康",
   },

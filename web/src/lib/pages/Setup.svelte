@@ -305,7 +305,7 @@
 
 <div class="min-h-dvh bg-slate-100 px-4 py-5 text-slate-800 sm:px-6 sm:py-8 dark:bg-slate-950 dark:text-slate-200">
   <div class="mx-auto mb-5 flex max-w-5xl items-center gap-3">
-    <BrandMark sizes="36px" class="h-9 w-9" />
+    <BrandMark class="h-9 w-9" />
     <div>
       <div class="font-bold tracking-tight text-slate-900 dark:text-slate-100">Optimisarr</div>
       <div class="text-xs text-slate-500 dark:text-slate-400">{i18n.m.app.tagline}</div>

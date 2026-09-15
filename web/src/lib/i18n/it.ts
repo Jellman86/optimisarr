@@ -226,20 +226,22 @@ dashboard: {
 
     // In flight
     in_flight: "In corso",
-    in_flight_counts: "{running} in esecuzione · {queued} in coda",
-    in_flight_none: "Al momento non si sta codificando nulla.",
+    in_flight_counts: "{running} in corso · {queued} in coda",
+    in_flight_none: "Al momento non si sta lavorando a nulla.",
     in_flight_idle: "Niente in coda e niente in esecuzione. Tutto il possibile è fatto.",
+    in_flight_more: "altri {count} in corso →",
     unnamed_file: "File senza nome",
     this_server: "Questo server",
     retry_count: "tentativo {count}",
+    no_percentage: "in corso",
     local_stage: {
       Queued: "In coda",
       Probing: "Analisi della sorgente",
-      SelectingQuality: "Selezione della qualità",
       Transcoding: "Codifica",
       Verifying: "Verifica",
+      AwaitingVerification: "In attesa di verifica",
       ReadyToReplace: "Pronto alla sostituzione",
-      Replacing: "Sostituzione",
+      Leased: "Su un worker",
     },
     remote_stage: {
       Claimed: "Preso in carico",
@@ -247,6 +249,12 @@ dashboard: {
       Encoding: "Codifica",
       Verifying: "Verifica",
       Delivering: "Consegna",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "VMAF adattivo",
+      Bitrate: "Bitrate",
+      Vmaf: "VMAF fisso",
     },
 
     // Fleet
@@ -273,15 +281,8 @@ dashboard: {
     // Telemetry rail
     saved_detail: "{count} file · {percent}% più piccoli in media",
     empty_short: "Ancora nulla di ottimizzato.",
-    remaining: "Rimanenti",
-    remaining_detail: "{queued} di questi ora in coda",
-    remaining_none: "Tutto ciò che è stato trovato è stato ottimizzato.",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "VMAF adattivo",
-      Bitrate: "Bitrate",
-      Vmaf: "VMAF fisso",
-    },
+    in_the_queue: "In coda",
+    queue_detail: "{running} in corso · {failed} falliti",
     health: "Salute",
     health_ok: "In salute",
 },

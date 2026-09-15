@@ -26,17 +26,24 @@
 
   // Verification is the stage where a pass is worth colouring differently from work in progress.
   function verifying(job: Job): boolean {
-    return job.status === 'Verifying' || job.remoteStage === 'Verifying'
+    return job.status === 'Verifying' || job.status === 'AwaitingVerification' || job.remoteStage === 'Verifying'
   }
 
-  let percent = (job: Job) => Math.max(0, Math.min(100, Math.round(job.progress * 100)))
-
-  // The server sends the mode as its enum name. Read it out in words rather than in PascalCase.
+  // The server sends the mode as its enum name. Read it out in words, not in PascalCase.
   function qualityMode(mode: string | null): string | null {
     if (!mode) return null
     const modes = i18n.m.dashboard.quality_mode as Record<string, string>
     return modes[mode] ?? mode
   }
+
+  let percent = (job: Job) => Math.max(0, Math.min(100, Math.round(job.progress * 100)))
+
+  // A dashboard answers a question at a glance, so the list is capped and says what it is
+  // hiding. Real servers routinely carry a dozen or more outstanding jobs — thirteen the day
+  // this was written — which would push everything below it off the screen.
+  const MAX_ROWS = 6
+  let shown = $derived(jobs.slice(0, MAX_ROWS))
+  let hidden = $derived(Math.max(0, jobs.length - MAX_ROWS))
 </script>
 
 <div class="card mb-4">
@@ -44,16 +51,16 @@
     <span class="label mb-0">{i18n.m.dashboard.in_flight}</span>
     <span class="ml-auto font-mono text-xs text-slate-500 dark:text-slate-400">
       {t(i18n.m.dashboard.in_flight_counts, {
-        running: (queueState?.running ?? 0).toLocaleString(),
+        running: jobs.length.toLocaleString(),
         queued: (queueState?.queued ?? 0).toLocaleString(),
       })}
     </span>
   </div>
 
   {#if jobs.length === 0}
-    <!-- An empty list is not an error, and it is not the same as an idle server. The status
-         bar has already said which; this repeats the consequence in the place a reader is
-         looking for work, rather than leaving a blank panel. -->
+    <!-- An empty list is not an error, and it is not the same as an idle server. The status bar
+         has already said which; this repeats the consequence where a reader is looking for work,
+         rather than leaving a blank panel. -->
     <p class="px-4 py-5 text-sm text-slate-500 dark:text-slate-400">
       {#if queueState?.kind === 'idle'}
         {i18n.m.dashboard.in_flight_idle}
@@ -65,7 +72,7 @@
     </p>
   {:else}
     <ul class="m-0 list-none p-0">
-      {#each jobs as job (job.id)}
+      {#each shown as job (job.id)}
         <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 md:grid-cols-[1fr_200px_140px] md:items-center">
           <div class="min-w-0">
             <button
@@ -76,7 +83,7 @@
             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               {#if job.videoEncoder}<span class="badge border border-slate-300 font-mono font-normal dark:border-slate-600">{job.videoEncoder}</span>{/if}
               {#if job.effectiveVideoQuality != null}<span class="badge border border-slate-300 font-mono font-normal dark:border-slate-600">CRF {job.effectiveVideoQuality}</span>{/if}
-              <span>{job.workerName ?? i18n.m.dashboard.this_server}</span>
+              <span class="truncate">{job.workerName ?? i18n.m.dashboard.this_server}</span>
             </div>
           </div>
 
@@ -85,9 +92,17 @@
               {stageLabel(job)}
             </div>
             <div class="progress-track">
-              <div class="progress-fill {verifying(job) ? '!bg-emerald-600' : ''}" style="width: {percent(job)}%"></div>
+              {#if job.progress > 0}
+                <div class="progress-fill {verifying(job) ? '!bg-emerald-600' : ''}" style="width: {percent(job)}%"></div>
+              {:else}
+                <!-- A stage with no percentage of its own gets the indeterminate sweep rather than
+                     a bar frozen at zero, which reads as stalled. -->
+                <div class="progress-indeterminate"></div>
+              {/if}
             </div>
-            <div class="mt-1.5 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">{percent(job)}%</div>
+            <div class="mt-1.5 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
+              {job.progress > 0 ? `${percent(job)}%` : i18n.m.dashboard.no_percentage}
+            </div>
           </div>
 
           <div class="font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400 md:text-right">
@@ -99,5 +114,11 @@
         </li>
       {/each}
     </ul>
+    {#if hidden > 0}
+      <button
+        class="w-full border-t border-slate-200 px-4 py-2.5 text-left text-xs text-slate-500 transition-colors hover:text-cyan-700 dark:border-slate-700 dark:text-slate-400 dark:hover:text-cyan-400"
+        onclick={() => router.go('/queue')}
+      >{t(i18n.m.dashboard.in_flight_more, { count: hidden.toLocaleString() })}</button>
+    {/if}
   {/if}
 </div>

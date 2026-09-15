@@ -11,7 +11,6 @@
   } from '../api'
   import { dashboardState } from '../dashboard-state'
   import { i18n, t } from '../i18n/i18n.svelte'
-  import { activity } from '../stores/activity.svelte'
   import Banner from '../components/Banner.svelte'
   import DashboardStatusBar from '../components/DashboardStatusBar.svelte'
   import FleetPanel from '../components/FleetPanel.svelte'
@@ -42,23 +41,25 @@
   })
 
   async function load() {
-    error = null
     try {
-      // The queue's own answer drives the whole page, so a failure here is a real error.
-      // The rest degrade: a missing failure breakdown costs a subtitle, not the screen.
+      // These five answer the page. A failure in any of them is a real error worth a banner,
+      // because the status bar would otherwise sit there stating a stale state confidently.
       const [healthResult, toolsResult, statsResult, queueResult, jobsResult] = await Promise.all([
         api.health(),
         api.tools(),
         api.stats(),
         api.queueStatus(),
-        api.jobs(),
+        api.liveJobs(),
       ])
       health = healthResult
       tools = toolsResult
       stats = statsResult
       queue = queueResult
       jobs = jobsResult
+      error = null
 
+      // These two only enrich: a missing failure breakdown costs a subtitle, and an
+      // unreachable worker list costs the sidecar rows. Neither is worth losing the page over.
       failures = await api.jobFailures().catch(() => [])
       await loadFleet()
     } catch (err) {
@@ -67,8 +68,8 @@
   }
 
   // Remote workers are opt-in and only exist when the server was started with the experimental
-  // switch on. Every worker route answers 403 otherwise, so the Fleet panel asks the settings
-  // first and simply shows this server alone when the answer is no.
+  // switch on. Every worker route answers 403 otherwise, so the page asks the settings first and
+  // simply shows this server alone when the answer is no.
   async function loadFleet() {
     try {
       const settings = await api.settings()
@@ -102,12 +103,10 @@
     }),
   )
 
-  // Jobs the server considers live. The queue's running count is authoritative for the status
-  // bar; this list is what those jobs actually are.
-  let runningJobs = $derived(
-    jobs.filter((job) => job.startedAt !== null && job.finishedAt === null && job.status !== 'Failed'),
-  )
-  let runningLocally = $derived(runningJobs.filter((job) => !job.workerName).length)
+  // The server decides what counts as in progress and this page does not re-derive it. An
+  // earlier attempt to infer it from startedAt/finishedAt disagreed with the server on real
+  // data — it found one job where the server counted twenty-four.
+  let runningLocally = $derived(jobs.filter((job) => !job.workerName).length)
 
   let queueState = $derived(
     queue
@@ -122,9 +121,6 @@
         })
       : null,
   )
-
-  // Kept so the sidebar's live indicator and the Queue view stay in step with this page.
-  let _live = $derived(activity.activeJobs)
 </script>
 
 <header class="mb-6">
@@ -143,18 +139,11 @@
   maxConcurrent={queue?.maxConcurrentJobs ?? null}
 />
 
-<InFlightPanel jobs={runningJobs} state={queueState} />
+<InFlightPanel {jobs} state={queueState} />
 
 <div class="mb-4 grid gap-4 lg:grid-cols-2">
   <FleetPanel {workers} {workersAvailable} {runningLocally} />
   <NeedsYouPanel {stats} {failures} />
 </div>
 
-<TelemetryRail
-  {stats}
-  {healthy}
-  {healthDetail}
-  bind:confirmingReset
-  {resetting}
-  onreset={resetSavings}
-/>
+<TelemetryRail {stats} {healthy} {healthDetail} bind:confirmingReset {resetting} onreset={resetSavings} />

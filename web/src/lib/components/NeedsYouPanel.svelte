@@ -7,8 +7,8 @@
 
   let { stats, failures = [] }: { stats: Stats | null; failures?: FailureGroup[] } = $props()
 
-  // "11 failed" says nothing a person can act on. The categories say where to look, so the
-  // summary line names the causes in order of how many jobs each one accounts for.
+  // "144 failed" says nothing a person can act on. The categories say where to look, so the
+  // summary names the causes in order of how many jobs each accounts for.
   let failureSummary = $derived(
     [...failures]
       .sort((a, b) => b.count - a.count)
@@ -70,9 +70,7 @@
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.dashboard.failed_heading}</div>
-            <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {failureSummary || i18n.m.dashboard.failed_nothing_replaced}
-            </div>
+            <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{failureSummary || i18n.m.dashboard.failed_nothing_replaced}</div>
           </div>
           <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_inspect}</button>
         </li>

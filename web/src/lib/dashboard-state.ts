@@ -75,35 +75,3 @@ export function dashboardState(input: DashboardStateInput): DashboardState {
   const { kind, detail } = classify(input)
   return { kind, severity: SEVERITY[kind], detail, running: input.runningJobs, queued: input.queued }
 }
-
-export type RemainingWorkInput = {
-  discoveredFiles: number
-  filesOptimised: number
-  queued: number
-}
-
-export type RemainingWork = {
-  /** Files discovered but not yet optimised. Never negative. */
-  files: number
-  /** How many of those are in the queue right now. */
-  queued: number
-}
-
-/**
- * What is left to do, as a count.
- *
- * Deliberately not a projection of bytes still to save. Scaling the average saving per
- * optimised file by the files remaining is arithmetic the data does not support — the files
- * left are not a sample of the ones already done — and in practice it produced an estimate
- * larger than the entire library. A dashboard that overstates what it can win is exactly the
- * kind of thing this application is supposed not to do.
- *
- * `filesOptimised` is a lifetime tally and `discoveredFiles` is what is on disk now, so a file
- * optimised and later deleted makes the difference negative. That is zero remaining, not less.
- */
-export function remainingWork(input: RemainingWorkInput): RemainingWork {
-  return {
-    files: Math.max(0, input.discoveredFiles - input.filesOptimised),
-    queued: input.queued,
-  }
-}

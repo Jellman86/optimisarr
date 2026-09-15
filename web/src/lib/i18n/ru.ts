@@ -226,20 +226,22 @@ export const ru: Messages = {
 
     // In flight
     in_flight: "В работе",
-    in_flight_counts: "{running} выполняется · {queued} в очереди",
-    in_flight_none: "Сейчас ничего не кодируется.",
+    in_flight_counts: "в работе: {running} · в очереди: {queued}",
+    in_flight_none: "Сейчас ничего не обрабатывается.",
     in_flight_idle: "В очереди и в работе ничего нет. Всё подходящее обработано.",
+    in_flight_more: "ещё в работе: {count} →",
     unnamed_file: "Файл без имени",
     this_server: "Этот сервер",
     retry_count: "попытка {count}",
+    no_percentage: "в работе",
     local_stage: {
       Queued: "В очереди",
       Probing: "Анализ источника",
-      SelectingQuality: "Подбор качества",
       Transcoding: "Кодирование",
       Verifying: "Проверка",
+      AwaitingVerification: "Ожидает проверки",
       ReadyToReplace: "Готово к замене",
-      Replacing: "Замена",
+      Leased: "На рабочей машине",
     },
     remote_stage: {
       Claimed: "Принято",
@@ -247,6 +249,12 @@ export const ru: Messages = {
       Encoding: "Кодирование",
       Verifying: "Проверка",
       Delivering: "Передача",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "Адаптивный VMAF",
+      Bitrate: "Битрейт",
+      Vmaf: "Фиксированный VMAF",
     },
 
     // Fleet
@@ -273,15 +281,8 @@ export const ru: Messages = {
     // Telemetry rail
     saved_detail: "файлов: {count} · в среднем на {percent}% меньше",
     empty_short: "Пока ничего не оптимизировано.",
-    remaining: "Осталось",
-    remaining_detail: "из них в очереди сейчас: {queued}",
-    remaining_none: "Всё найденное оптимизировано.",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "Адаптивный VMAF",
-      Bitrate: "Битрейт",
-      Vmaf: "Фиксированный VMAF",
-    },
+    in_the_queue: "В очереди",
+    queue_detail: "в работе: {running} · с ошибкой: {failed}",
     health: "Состояние",
     health_ok: "В норме",
   },

@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { Stats } from '../api'
   import { formatSize } from '../format'
-  import { i18n, plural, t } from '../i18n/i18n.svelte'
-  import { remainingWork } from '../dashboard-state'
+  import { i18n, t } from '../i18n/i18n.svelte'
   import Icon from './Icon.svelte'
 
   let {
@@ -21,9 +20,11 @@
     onreset: () => void
   } = $props()
 
-  // A count, not a projected size. See remainingWork() for why there is no estimated
-  // bytes-still-to-save figure here.
-  let remaining = $derived(stats ? remainingWork(stats) : null)
+  // Every figure in this rail is a field the server sent. Nothing here is derived by subtracting
+  // one of its fields from another: filesOptimised is a lifetime tally and discoveredFiles is the
+  // inventory as it stands, so their difference is not "work left to do" — checked against a live
+  // server it read 5,129 against a queue of 14, because most of the difference is simply not
+  // eligible. A dashboard that overstates what it can win is what this application exists not to be.
 </script>
 
 <div class="card grid grid-cols-1 divide-y divide-slate-200 dark:divide-slate-700 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">
@@ -62,16 +63,15 @@
   </div>
 
   <div class="p-4">
-    <div class="label mb-0">{i18n.m.dashboard.remaining}</div>
+    <div class="label mb-0">{i18n.m.dashboard.in_the_queue}</div>
     <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-      {remaining ? remaining.files.toLocaleString() : '—'}
+      {(stats?.queued ?? 0).toLocaleString()}
     </div>
     <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-      {#if remaining && remaining.files > 0}
-        {t(i18n.m.dashboard.remaining_detail, { queued: remaining.queued.toLocaleString() })}
-      {:else}
-        {i18n.m.dashboard.remaining_none}
-      {/if}
+      {t(i18n.m.dashboard.queue_detail, {
+        running: (stats?.running ?? 0).toLocaleString(),
+        failed: (stats?.failed ?? 0).toLocaleString(),
+      })}
     </div>
   </div>
 
@@ -88,8 +88,8 @@
     </div>
   </div>
 
-  <!-- Health earns attention only when it changes. A status that is true almost always does
-       not deserve a card of its own; it deserves a cell that goes red and says what is missing. -->
+  <!-- Health earns attention only when it changes. A status that is true almost always does not
+       deserve a card of its own; it deserves a cell that goes amber and says what is missing. -->
   <div class="p-4">
     <div class="label mb-0">{i18n.m.dashboard.health}</div>
     <div class="mt-1.5 flex items-center gap-2 font-mono text-xl font-semibold {healthy ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}">

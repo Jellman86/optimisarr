@@ -2,6 +2,57 @@
 
 ## Unreleased
 
+### Changed
+
+- **The application mark is drawn, and it reports the server's state.** The logo was a static
+  picture that told you which application you already had open. It is now a four-dimensional
+  hypercube rasterised onto a pixel grid — sixteen vertices and thirty-two edges, turned by real
+  rotation matrices and projected through two perspective divides, with a depth buffer so near
+  edges occlude far ones. It turns quickly with a lit core while work is running and settles to
+  a slow, dim drift when the queue goes quiet, crossing between the two over about a second and
+  a half, so the icon slowing down is itself the signal that the queue emptied. The favicon is
+  the same mark, so a background tab answers "is it still going?" without being opened. It is
+  drawn for the theme it is sitting on, keeps a transparent background, and holds its resting
+  pose for anyone who has asked for reduced motion. It sits above the wordmark at the size the
+  old logo was, with the name riding up over its foot — the mark's lower corner is empty space,
+  so the overlap closes a gap the bounding box left rather than covering anything.
+
+- **The dashboard says what is happening, and why it is not.** The page drew the same screen
+  whether the queue was racing or wedged: every figure on it was a count and none of them was a
+  state, so "0 running, 1,418 queued" was what you got when the optimise window was shut, when
+  media was streaming, when the operator had paused, and when nothing was eligible. A status bar
+  now names the state, and when the state is not encoding it names the gate in the server's own
+  words. Below it the three things you previously had to open two other pages to learn: what is
+  being worked on, which machines are doing it, and what is waiting on a decision from you.
+  Failures are grouped by cause rather than counted, because "144 failed" says nothing you can
+  act on. The live CPU and GPU graph is gone — it was a copy of the one on Queue, two flat lines
+  on an idle server, and the fleet list now carries the same figure per machine, which the single
+  graph could not once workers existed. The lifetime savings figure stays, demoted from a hero to
+  one cell of four.
+- **The navigation carries a number where a number is worth carrying.** The queue while it has
+  work, and quarantine while originals are waiting on a decision — nothing else. A count beside
+  every entry is seven figures competing for attention and five that never change, which leaves
+  a reader no wiser about which one they were meant to look at. A figure that is zero, or that
+  has not been fetched yet, is absent rather than shown as a nought. The rows are roomier, the
+  entry you are on is a soft filled key, and the three strips that used to sit stacked at the
+  foot — each with its own rule across the rail — are one. The running version and the build it
+  came from stay where they were: they are the first thing anyone is asked for when something
+  looks wrong.
+
+### Fixed
+
+- **The dashboard no longer downloads the entire job history to find the three jobs that are
+  running.** It asked for every job and sifted the result in the browser; on the library this was
+  checked against that is 1,773 records, re-fetched every fifteen seconds. It now asks the server
+  for the jobs with work outstanding.
+- **A worker holding one job says "1 job".** It said "1 jobs", and the version that followed it
+  lost the space before its separator. The same missing space was in the navigation's
+  running/queued figure, which read "3/ 14".
+- **The in-flight list no longer runs off the page.** It drew every outstanding job, and a real
+  server carries a dozen or more — thirteen on the one this was checked against — which pushed
+  everything below it off the screen. It shows the first six and says how many more there are.
+
+
 ### Fixed
 
 - **An encode keeps every frame the source had.** Whole seasons were failing verification with

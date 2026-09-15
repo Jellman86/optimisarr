@@ -226,20 +226,22 @@ export const pt: Messages = {
 
     // In flight
     in_flight: "Em curso",
-    in_flight_counts: "{running} em execução · {queued} em fila",
-    in_flight_none: "Nada está a ser codificado neste momento.",
+    in_flight_counts: "{running} em curso · {queued} em fila",
+    in_flight_none: "Nada está a ser processado neste momento.",
     in_flight_idle: "Nada em fila e nada em execução. Tudo o que é elegível está feito.",
+    in_flight_more: "mais {count} em curso →",
     unnamed_file: "Ficheiro sem nome",
     this_server: "Este servidor",
     retry_count: "tentativa {count}",
+    no_percentage: "em curso",
     local_stage: {
       Queued: "Em fila",
       Probing: "A analisar a origem",
-      SelectingQuality: "A escolher a qualidade",
       Transcoding: "A codificar",
       Verifying: "A verificar",
+      AwaitingVerification: "A aguardar verificação",
       ReadyToReplace: "Pronto a substituir",
-      Replacing: "A substituir",
+      Leased: "Num worker",
     },
     remote_stage: {
       Claimed: "Reclamado",
@@ -247,6 +249,12 @@ export const pt: Messages = {
       Encoding: "A codificar",
       Verifying: "A verificar",
       Delivering: "A entregar",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "VMAF adaptativo",
+      Bitrate: "Taxa de bits",
+      Vmaf: "VMAF fixo",
     },
 
     // Fleet
@@ -273,15 +281,8 @@ export const pt: Messages = {
     // Telemetry rail
     saved_detail: "{count} ficheiros · {percent}% mais pequenos em média",
     empty_short: "Ainda nada otimizado.",
-    remaining: "Restantes",
-    remaining_detail: "{queued} deles em fila neste momento",
-    remaining_none: "Tudo o que foi encontrado já foi otimizado.",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "VMAF adaptativo",
-      Bitrate: "Taxa de bits",
-      Vmaf: "VMAF fixo",
-    },
+    in_the_queue: "Na fila",
+    queue_detail: "{running} em curso · {failed} falhados",
     health: "Saúde",
     health_ok: "Saudável",
   },

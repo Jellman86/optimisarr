@@ -26,10 +26,22 @@
       : null,
   )
 
-  let active = $derived(workers.filter((w) => !w.revokedAt))
-  // This server is a machine in this list, so it counts in the tally above it. Counting only
-  // the sidecars made a three-row panel say "1 of 2".
-  let online = $derived(active.filter((w) => w.online).length + 1)
+  // Built here rather than in the template: Svelte trims the leading space out of an inline
+  // {#if} block, which silently rendered "1 job· 0.1.4".
+  function workerSubtitle(worker: Worker): string {
+    const jobs = plural(
+      worker.heldLeases,
+      i18n.m.dashboard.fleet_jobs_one,
+      i18n.m.dashboard.fleet_jobs_other,
+      worker.heldLeases.toLocaleString(),
+    )
+    return worker.sidecarVersion ? `${jobs} · ${worker.sidecarVersion}` : jobs
+  }
+
+  let active = $derived(workers.filter((worker) => !worker.revokedAt))
+  // This server is a machine in this list, so it counts in the tally above it. Counting only the
+  // sidecars made a three-row panel say "1 of 2".
+  let online = $derived(active.filter((worker) => worker.online).length + 1)
   let total = $derived(active.length + 1)
 </script>
 
@@ -44,9 +56,9 @@
   </div>
 
   <ul class="m-0 list-none p-0">
-    <!-- This server is a row in the same list, with the same fields. Once a sidecar can take
-         work, the container is one machine among several rather than the subject of the page. -->
-    <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 sm:grid-cols-[1fr_150px_110px] sm:items-center">
+    <!-- This server is a row in the same list, with the same fields. Once a sidecar can take work,
+         the container is one machine among several rather than the subject of the page. -->
+    <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 sm:grid-cols-[1fr_150px_100px] sm:items-center">
       <div class="min-w-0">
         <div class="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
           <span class="h-1.5 w-1.5 flex-none rounded-full bg-emerald-600 dark:bg-emerald-400" aria-hidden="true"></span>
@@ -59,13 +71,13 @@
       <div class="font-mono text-[10px] text-slate-600 dark:text-slate-300">
         <div class="mb-1 flex items-center gap-2">
           <span class="w-7">CPU</span>
-          <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full bg-slate-500 dark:bg-slate-400" style="width: {localCpu ?? 0}%"></span></span>
+          <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full rounded-full bg-slate-500 dark:bg-slate-400" style="width: {localCpu ?? 0}%"></span></span>
           <span class="w-8 text-right tabular-nums">{localCpu != null ? `${localCpu}%` : '—'}</span>
         </div>
         {#if localGpu != null}
           <div class="flex items-center gap-2">
             <span class="w-7">GPU</span>
-            <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full bg-slate-500 dark:bg-slate-400" style="width: {localGpu}%"></span></span>
+            <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full rounded-full bg-slate-500 dark:bg-slate-400" style="width: {localGpu}%"></span></span>
             <span class="w-8 text-right tabular-nums">{localGpu}%</span>
           </div>
         {:else}
@@ -78,7 +90,7 @@
     {#each active as worker (worker.id)}
       {@const cpu = fraction(worker.cpuBusyFraction)}
       {@const gpu = fraction(worker.gpuBusyFraction)}
-      <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 sm:grid-cols-[1fr_150px_110px] sm:items-center">
+      <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 sm:grid-cols-[1fr_150px_100px] sm:items-center">
         <div class="min-w-0">
           <div class="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
             <span
@@ -88,11 +100,7 @@
             <span class="truncate">{worker.name}</span>
           </div>
           <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">
-            {#if worker.online}
-              {plural(worker.heldLeases, i18n.m.dashboard.fleet_jobs_one, i18n.m.dashboard.fleet_jobs_other, worker.heldLeases.toLocaleString())}{#if worker.sidecarVersion} · {worker.sidecarVersion}{/if}
-            {:else}
-              {i18n.m.dashboard.fleet_offline}
-            {/if}
+            {worker.online ? workerSubtitle(worker) : i18n.m.dashboard.fleet_offline}
           </div>
           {#if worker.lastProblem}
             <!-- The server's most recent objection to this worker. Without it, a machine quietly
@@ -104,14 +112,14 @@
           {#if cpu != null}
             <div class="mb-1 flex items-center gap-2">
               <span class="w-7">CPU</span>
-              <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full bg-slate-500 dark:bg-slate-400" style="width: {cpu}%"></span></span>
+              <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full rounded-full bg-slate-500 dark:bg-slate-400" style="width: {cpu}%"></span></span>
               <span class="w-8 text-right tabular-nums">{cpu}%</span>
             </div>
           {/if}
           {#if gpu != null}
             <div class="flex items-center gap-2">
               <span class="w-7">GPU</span>
-              <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full bg-slate-500 dark:bg-slate-400" style="width: {gpu}%"></span></span>
+              <span class="h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><span class="block h-full rounded-full bg-slate-500 dark:bg-slate-400" style="width: {gpu}%"></span></span>
               <span class="w-8 text-right tabular-nums">{gpu}%</span>
             </div>
           {:else if cpu == null}
@@ -127,7 +135,7 @@
     {/each}
   </ul>
 
-  {#if workersAvailable && workers.length === 0}
+  {#if workersAvailable && active.length === 0}
     <div class="border-t border-slate-200 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
       {i18n.m.dashboard.fleet_no_workers}
       <button class="text-cyan-700 hover:underline dark:text-cyan-400" onclick={() => router.go('/workers')}>{i18n.m.dashboard.fleet_pair}</button>

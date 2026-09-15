@@ -224,7 +224,7 @@ export const de: Messages = {
     // Status bar
     state: "Zustand",
     state_reason: "Grund",
-    state_encoding: "VERSCHLÜSSELT",
+    state_encoding: "KODIERT",
     state_paused: "PAUSIERT",
     state_blocked: "ANGEHALTEN",
     state_waiting: "WARTET",
@@ -235,20 +235,22 @@ export const de: Messages = {
 
     // In flight
     in_flight: "In Arbeit",
-    in_flight_counts: "{running} laufend · {queued} in Warteschlange",
-    in_flight_none: "Derzeit wird nichts kodiert.",
+    in_flight_counts: "{running} in Arbeit · {queued} in Warteschlange",
+    in_flight_none: "Derzeit wird an nichts gearbeitet.",
     in_flight_idle: "Nichts in der Warteschlange, nichts läuft. Alles Infrage kommende ist erledigt.",
+    in_flight_more: "{count} weitere in Arbeit →",
     unnamed_file: "Unbenannte Datei",
     this_server: "Dieser Server",
     retry_count: "Versuch {count}",
+    no_percentage: "in Arbeit",
     local_stage: {
       Queued: "In Warteschlange",
       Probing: "Quelle wird geprüft",
-      SelectingQuality: "Qualität wird gewählt",
       Transcoding: "Kodierung",
       Verifying: "Überprüfung",
+      AwaitingVerification: "Wartet auf Überprüfung",
       ReadyToReplace: "Bereit zum Ersetzen",
-      Replacing: "Wird ersetzt",
+      Leased: "Auf einem Worker",
     },
     remote_stage: {
       Claimed: "Übernommen",
@@ -256,6 +258,12 @@ export const de: Messages = {
       Encoding: "Kodierung",
       Verifying: "Überprüfung",
       Delivering: "Übertragung",
+    },
+    quality_mode: {
+      Crf: "CRF",
+      AdaptiveVmaf: "Adaptives VMAF",
+      Bitrate: "Bitrate",
+      Vmaf: "Festes VMAF",
     },
 
     // Fleet
@@ -282,15 +290,8 @@ export const de: Messages = {
     // Telemetry rail
     saved_detail: "{count} Dateien · durchschnittlich {percent}% kleiner",
     empty_short: "Noch nichts optimiert.",
-    remaining: "Verbleibend",
-    remaining_detail: "davon {queued} derzeit in der Warteschlange",
-    remaining_none: "Alles Gefundene wurde optimiert.",
-    quality_mode: {
-      Crf: "CRF",
-      AdaptiveVmaf: "Adaptives VMAF",
-      Bitrate: "Bitrate",
-      Vmaf: "Festes VMAF",
-    },
+    in_the_queue: "In der Warteschlange",
+    queue_detail: "{running} in Arbeit · {failed} fehlgeschlagen",
     health: "Zustand",
     health_ok: "Gesund",
   },
