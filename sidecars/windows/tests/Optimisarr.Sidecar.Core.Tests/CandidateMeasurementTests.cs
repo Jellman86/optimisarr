@@ -114,17 +114,22 @@ public sealed class CandidateMeasurementTests : IDisposable
     }
 
     [Fact]
-    public async Task The_candidates_extra_lead_over_the_source_is_measured_and_substituted()
+    public async Task The_alignment_is_measured_against_the_files_and_substituted()
     {
         var (_, runner, transcoder) = Build();
 
         await runner.RunAsync(Pairing(), Measured(), CancellationToken.None);
 
-        // Both files probed, source and candidate, because the shift is the difference between them.
-        Assert.Equal(2, transcoder.Probes.Count);
+        // Tried, not derived: one short probe per candidate offset, against the two real files.
+        // The arithmetic this replaced read the video stream's start less the container's, which
+        // is zero in every real container, so the correction was never once applied.
+        var probes = transcoder.AllRuns.Count(run =>
+            run.Any(a => a.Contains("scale=320:240", StringComparison.Ordinal)));
+        Assert.Equal(TimelineAlignment.FramesToTry.Count, probes);
+
         var scoring = transcoder.AllRuns.Last(run => run.Any(a => a.Contains("libvmaf", StringComparison.Ordinal)));
         var filter = scoring.Single(a => a.Contains("libvmaf", StringComparison.Ordinal));
-        // The token is gone, replaced by the measured difference — here zero, both files sharing a lead.
+        // The token is gone, replaced by what the probes chose — here zero, the files being in step.
         Assert.DoesNotContain("{{distortedShift}}", filter, StringComparison.Ordinal);
         Assert.Contains("setpts=PTS-0*1000000", filter, StringComparison.Ordinal);
     }
@@ -145,11 +150,11 @@ public sealed class CandidateMeasurementTests : IDisposable
     }
 
     [Fact]
-    public async Task A_lead_that_cannot_be_measured_delivers_anyway_and_offers_nothing()
+    public async Task An_alignment_that_cannot_be_measured_delivers_anyway_and_offers_nothing()
     {
         // The failure mode that matters. A guessed shift would misalign the comparison it exists to
         // align, so saying nothing is right — but saying nothing must not cost the encode.
-        var (server, runner, _) = Build(probeOutput: null);
+        var (server, runner, _) = Build(writeLogs: false);
 
         var outcome = await runner.RunAsync(Pairing(), Measured(), CancellationToken.None);
 

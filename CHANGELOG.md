@@ -51,6 +51,19 @@
   A spacer beneath the content could not fix that, because the stack is sized to its own content
   and never sees the spare height; the panel now fills whatever height the window has and stays at
   the top of it.
+- **The candidate is lined up against the source by measuring, not by arithmetic.** Encodes that
+  were perfectly good were being failed at a harmonic mean of 0.21 when they actually score 92.
+  A sampled comparison pairs pictures by time, so the candidate's offset from the source has to be
+  removed first — and that offset was derived from the containers' own headers, as the video
+  stream's start less the container's. Those two are equal in every real container, so the
+  correction computed as zero for every file either sidecar has ever measured and was never once
+  applied. It could not have helped anyway: two episodes of the same show, encoded by the same
+  command on the same machine, are identical in every header field and need opposite answers —
+  one scores 0.21 without a one-frame correction and 92.32 with it, the other 89.88 without and
+  0.31 with. The difference is that frames are still occasionally lost in an encode, so whether a
+  window lines up depends on how many went missing before it, which no header can say. All three
+  machines now try the candidate a frame either way against a two-second window and keep whichever
+  matched, which costs about a second and is the same probe on the server and both sidecars.
 - **A finished candidate is no longer thrown away because the server is restarting.** A worker
   that had encoded a file, measured it and had its evidence accepted lost the lot to
   `Delivering the candidate failed (HTTP 502)` — a deployment had restarted the container while the

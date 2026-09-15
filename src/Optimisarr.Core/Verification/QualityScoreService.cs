@@ -50,6 +50,9 @@ public sealed class QualityScoreService(
             return QualityResult.Failed($"Output file does not exist: {distortedPath}");
         }
 
+        string executableFor(VmafAcceleration acceleration) =>
+            acceleration == VmafAcceleration.Cuda ? _cudaFfmpeg : _ffmpeg;
+
         // A unique log path with no special characters keeps the filtergraph valid.
         var logPath = Path.Combine(Path.GetTempPath(), $"optimisarr-vmaf-{Guid.NewGuid():N}.json");
         try
@@ -68,15 +71,29 @@ public sealed class QualityScoreService(
             }
 
             var effectiveContext = context with { Acceleration = requestedAcceleration };
+
+            // Measured rather than derived, and measured here because only this side holds both
+            // files. The shift the builder would otherwise compute comes from the containers'
+            // headers, which say the same thing for a pair that needs a correction and a pair that
+            // is destroyed by one. A worker that supplied its own token has already done this.
+            if (effectiveContext.DistortedShiftToken is null or { Length: 0 })
+            {
+                var chosen = await ChooseAlignmentAsync(
+                    executableFor(requestedAcceleration), referencePath, distortedPath,
+                    effectiveContext, cancellationToken);
+                if (chosen is not null)
+                {
+                    effectiveContext = effectiveContext with { DistortedShiftToken = chosen };
+                }
+            }
+
             var command = BuildCommand(
                 distortedPath,
                 referencePath,
                 logPath,
                 effectiveContext,
                 threads);
-            var executable = requestedAcceleration == VmafAcceleration.Cuda
-                ? _cudaFfmpeg
-                : _ffmpeg;
+            var executable = executableFor(requestedAcceleration);
             var result = await RunMeasurementAsync(
                 executable,
                 command,
@@ -210,6 +227,75 @@ public sealed class QualityScoreService(
         return scores is null
             ? QualityResult.Failed("libvmaf log contained no comparable video frames or usable VMAF score.")
             : QualityResult.Ok(scores) with { Acceleration = context.Acceleration };
+    }
+
+    /// <summary>
+    /// Tries the candidate against the reference at each offset and returns the one that matched
+    /// best, or null when none could be scored — in which case the builder falls back to what the
+    /// containers claim, which is what it always did.
+    /// </summary>
+    private static async Task<string?> ChooseAlignmentAsync(
+        string executable,
+        string referencePath,
+        string distortedPath,
+        QualityMeasurementContext context,
+        CancellationToken cancellationToken)
+    {
+        if (TimelineAlignmentProbe.FrameSeconds(context.ReferenceFrameRate) is not { } frameSeconds)
+        {
+            return null;
+        }
+
+        double? bestShift = null;
+        var bestScore = double.NegativeInfinity;
+
+        foreach (var frames in TimelineAlignmentProbe.FramesToTry)
+        {
+            var shift = frames * frameSeconds;
+            var log = Path.Combine(Path.GetTempPath(), $"optimisarr-align-{Guid.NewGuid():N}.json");
+            try
+            {
+                using var process = CreateProcess(
+                    executable,
+                    TimelineAlignmentProbe.Arguments(referencePath, distortedPath, shift, log));
+                process.Start();
+                var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+                try
+                {
+                    await process.WaitForExitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    KillQuietly(process);
+                    throw;
+                }
+
+                await stderr;
+                if (process.ExitCode != 0 || !File.Exists(log))
+                {
+                    continue;
+                }
+
+                var score = TimelineAlignmentProbe.MeanScore(
+                    await File.ReadAllTextAsync(log, cancellationToken));
+                if (score is { } value && value > bestScore)
+                {
+                    bestScore = value;
+                    bestShift = shift;
+                }
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+            {
+                // An alignment that cannot be probed is not a verification that cannot be run.
+                return null;
+            }
+            finally
+            {
+                DeleteQuietly(log);
+            }
+        }
+
+        return bestShift is { } chosen ? TimelineAlignmentProbe.Format(chosen) : null;
     }
 
     private static async Task<bool> HasFilterAsync(
