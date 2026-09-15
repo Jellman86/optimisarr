@@ -1179,19 +1179,28 @@ struct MeasurementFlowTests {
         #expect(outcome == .delivered(jobId: 12, bytes: 15))
         let report = try #require(server.qualityReport)
         #expect((report["logs"] as? [String])?.count == 1)
-        let measurement = try #require(recorder.all.first { $0.contains("-lavfi") })
-        // The candidate's picture sits 41 ms into its container, the source's 21 ms: 20 ms to remove.
-        #expect(measurement[13].contains("setpts=PTS-0.02*1000000,fps="))
+        // Tried, not derived: one short probe per candidate offset, against the two real files.
+        // The arithmetic this replaced read the video stream's start less the container's, which
+        // is zero in every real container, so the correction was never once applied.
+        let probes = recorder.all.filter { $0.contains { $0.contains("scale=320:240") } }
+        #expect(probes.count == TimelineAlignment.framesToTry.count)
+
+        let measurement = try #require(
+            recorder.all.last { $0.contains("-lavfi") && !$0.contains { $0.contains("scale=320:240") } })
+        // Every offset scores alike against this fake, so the one that changes nothing wins.
+        #expect(measurement[13].contains("setpts=PTS-0*1000000,fps="))
     }
 
-    @Test("a sampled measurement with no ffprobe to measure the lead reports nothing")
-    func noProbeNoEvidence() async throws {
+    @Test("a sampled measurement whose alignment cannot be scored reports nothing")
+    func noAlignmentNoEvidence() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
         let runner = JobRunner(
             client: SidecarClient(transport: server),
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
             ffprobe: nil,
-            runner: FakeTranscodeRunner(),
+            // Every probe fails, so no offset can be chosen — and a guessed one would misalign the
+            // comparison it exists to align.
+            runner: FakeTranscodeRunner(measurementExitCode: 1),
             scratchRoot: scratch(),
             sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
 

@@ -154,7 +154,16 @@ internal sealed class FakeMeasuringTranscoder(
 
         if (WriteVmafLogs && LogPathIn(arguments) is { } log)
         {
-            File.WriteAllText(log, """{"pooled_metrics":{"vmaf":{"harmonic_mean":95.0}}}""");
+            // Frames as well as the pooled figure, because a real libvmaf log carries both and
+            // two different readers depend on it: the server pools the frames, and the alignment
+            // probe scores them. A log with only the pooled figure made every candidate offset
+            // unscoreable, so the alignment silently found nothing.
+            File.WriteAllText(
+                log,
+                """
+                {"frames":[{"metrics":{"vmaf":95.0}},{"metrics":{"vmaf":95.0}}],
+                 "pooled_metrics":{"vmaf":{"harmonic_mean":95.0}}}
+                """);
             return Task.FromResult(new TranscodeResult(0, ""));
         }
 

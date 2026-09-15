@@ -278,18 +278,22 @@ public sealed class JobRunner(
         if (commands.Any(command => command.Any(argument =>
                 argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal))))
         {
-            var sourceLead = await ProbeLeadAsync(source, cancellationToken);
-            var candidateLead = await ProbeLeadAsync(candidate, cancellationToken);
-            if (sourceLead is not { } reference || candidateLead is not { } distorted)
+            // Measured rather than derived. The old arithmetic over container metadata answered
+            // zero for every file it was ever given, and could not have done better: two episodes
+            // of the same show, identical in every header field, need different corrections
+            // because different numbers of frames went missing in their encodes.
+            var frameSeconds = await ProbeFrameSecondsAsync(source, cancellationToken) ?? 1d / 25;
+            var measured = await TimelineAlignment.MeasureAsync(
+                transcoder, ffmpegPath, source, candidate, frameSeconds, scratch, cancellationToken);
+            if (measured is null)
             {
                 report?.Invoke(
-                    $"Job {assignment.JobId}: the timeline lead could not be measured"
-                    + $" ({(FfprobeBeside(ffmpegPath) is null ? "no ffprobe beside " + ffmpegPath : "ffprobe answered nothing usable")}),"
+                    $"Job {assignment.JobId}: the candidate could not be aligned against the source,"
                     + " so the server will score this itself");
                 return null;
             }
 
-            distortedShift = TimelineLead.Shift(distorted, reference);
+            distortedShift = measured;
         }
 
         report?.Invoke(
@@ -346,7 +350,8 @@ public sealed class JobRunner(
     }
 
     /// <summary>The video's start relative to its container, from ffprobe beside this FFmpeg.</summary>
-    private async Task<double?> ProbeLeadAsync(string file, CancellationToken cancellationToken)
+    /// <summary>How long one picture of this file lasts, or null when ffprobe cannot say.</summary>
+    private async Task<double?> ProbeFrameSecondsAsync(string file, CancellationToken cancellationToken)
     {
         var probe = FfprobeBeside(ffmpegPath);
         if (probe is null)
@@ -355,9 +360,10 @@ public sealed class JobRunner(
         }
 
         var result = await transcoder.ProbeAsync(
-            probe, [.. TimelineLead.ProbeArguments, file], cancellationToken);
-        return result.ExitCode == 0 ? TimelineLead.Parse(result.Output) : null;
+            probe, TimelineAlignment.FrameRateArguments(file), cancellationToken);
+        return result.ExitCode == 0 ? TimelineAlignment.FrameSeconds(result.Output) : null;
     }
+
 
     /// <summary>
     /// ffprobe next to the FFmpeg this machine was told to use, or nothing.

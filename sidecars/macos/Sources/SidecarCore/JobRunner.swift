@@ -913,11 +913,17 @@ public struct JobRunner: WorkExecutor {
         // lead over the source removed first. Only this machine has both files to measure it from.
         var distortedShift: String?
         if commands.contains(where: \.needsDistortedShift) {
-            guard let ffprobe,
-                  let sourceLead = await TimelineLead.measure(ffprobe: ffprobe, file: source, runner: leadProbe),
-                  let candidateLead = await TimelineLead.measure(ffprobe: ffprobe, file: candidate, runner: leadProbe)
+            // Measured rather than derived. The old arithmetic over container metadata answered
+            // zero for every file it was ever given, and could not have done better: two episodes
+            // of the same show, identical in every header field, need different corrections
+            // because different numbers of frames went missing in their encodes.
+            guard let measured = await TimelineAlignment.measure(
+                ffmpeg: ffmpeg, source: source, candidate: candidate,
+                frameSeconds: TimelineAlignment.frameSeconds(
+                    ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0),
+                scratch: scratch, runner: runner)
             else { return nil }
-            distortedShift = TimelineLead.shift(candidate: candidateLead, source: sourceLead)
+            distortedShift = measured
         }
         // Logged because a measurement that comes back wrong is otherwise undiagnosable after the
         // fact: the scratch directory is deleted on every exit path, so the command, the files it
