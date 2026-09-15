@@ -506,9 +506,26 @@ public struct JobRunner: WorkExecutor {
             SidecarLog.job.info(
                 "Job \(assignment.jobId): measuring quality \(step.quality, privacy: .public)")
 
-            guard let measured = await measureCandidate(
-                step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch)
-            else {
+            // Renewed throughout, like every other stage. It was not, and a search is the longest
+            // thing this machine does before it has anything to show: several sample encodes and a
+            // VMAF pass each, minutes of them, while the server heard nothing. The lease lapsed,
+            // the job went back on the queue, and the next holder started the search again from
+            // the beginning — which is what the expired lease on the first search ever run here
+            // records.
+            let candidate: (bytes: Int64, logs: [String])?
+            do {
+                candidate = try await whileRenewingLease(
+                    assignment, pairing: pairing, progress: latest.get
+                ) { [step] in
+                    await self.measureCandidate(
+                        step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch)
+                }
+            } catch {
+                return .failed(reason:
+                    "The lease could not be renewed while a candidate was being measured.")
+            }
+
+            guard let measured = candidate else {
                 return .failed(reason:
                     "A sample encode or its measurement could not be completed, so no quality was chosen.")
             }

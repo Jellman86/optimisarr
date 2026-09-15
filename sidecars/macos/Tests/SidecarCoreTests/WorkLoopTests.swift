@@ -148,6 +148,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     /// What the search answers, in order: the worker is told what to measure next until told to stop.
     var probeAnswers: [[String: Any]] = []
     private(set) var probeReports: [[String: Any]] = []
+    private(set) var renewalsWhenProbed: [Int] = []
     private(set) var qualityReportedBeforeDelivery = false
     /// Whether the server offers resumable delivery; off means an older server, whole-file only.
     var resumable = false
@@ -224,6 +225,10 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             if path.hasSuffix("/quality-probe") {
                 let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
                 probeReports.append(body ?? [:])
+                // How many renewals had arrived by the time this candidate was reported. A total
+                // taken at the end of the job cannot tell a search that renewed from one that did
+                // not, because the encode that follows renews either way.
+                renewalsWhenProbed.append(renewals)
                 let answer = probeAnswers.isEmpty
                     ? [String: Any]()
                     : probeAnswers.removeFirst()
@@ -1244,5 +1249,53 @@ struct AdaptiveSearchWorkLoopTests {
         #expect(server.released)
         #expect(server.deliveredFile == nil)
         if case .released = outcome {} else { Issue.record("expected the job to be handed back") }
+    }
+
+    @Test("the lease is renewed while a candidate is being measured")
+    func renewsWhileMeasuring() async throws {
+        // A search is the longest thing this machine does before it has anything to show: several
+        // sample encodes and a VMAF pass each. It ran outside the renewal loop, so the server heard
+        // nothing throughout and the lease lapsed — which is exactly what the expired lease on the
+        // first search ever run against real hardware records.
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
+        server.probeAnswers = [["selectedQuality": 24, "arguments": settledCommand]]
+
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            // Long enough that several renewal ticks fall inside the measurement.
+            runner: FakeTranscodeRunner(delay: 0.3),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        _ = await runner.execute(
+            Self.searching(Self.step(quality: 24)), pairing: pairing) { _ in }
+
+        // Counted when the candidate was reported, not at the end: the encode that follows a search
+        // renews either way, so a total taken afterwards cannot tell the two apart.
+        #expect(server.probeReports.count == 1)
+        #expect(server.renewalsWhenProbed.first ?? 0 > 0)
+    }
+
+    @Test("a lease lost while measuring stops the search rather than measuring on")
+    func lostLeaseStopsTheSearch() async throws {
+        // Every later candidate is derived from this one, so a search carried on under a dead lease
+        // is work nobody will accept the answer to.
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
+        server.renewStatus = 409
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(delay: 5),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let started = Date()
+        let outcome = await runner.execute(
+            Self.searching(Self.step(quality: 24)), pairing: pairing) { _ in }
+
+        #expect(Date().timeIntervalSince(started) < 4)
+        #expect(server.deliveredFile == nil)
+        if case .released = outcome {} else { Issue.record("expected the job to be handed back, got \(outcome)") }
     }
 }
