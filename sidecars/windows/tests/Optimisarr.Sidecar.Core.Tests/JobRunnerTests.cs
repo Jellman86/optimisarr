@@ -30,6 +30,34 @@ public sealed class JobRunnerTests : IDisposable
     private static StoredPairing Pairing() => new("https://server.example.com", "secret", 7);
 
     [Fact]
+    public async Task A_command_naming_a_file_on_this_machine_is_refused_and_the_job_handed_back()
+    {
+        // The contract reaching the runner, not merely existing. As LocalSystem this would have
+        // read whatever it was pointed at; the source is fetched and then the command is checked,
+        // so the refusal costs a download and nothing else.
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        var http = new HttpClient(server);
+        var transcoder = new FakeMeasuringTranscoder();
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http), transcoder,
+            "ffmpeg.exe", _scratch, () => null);
+
+        var assignment = Assignment() with
+        {
+            Arguments = ["-i", @"C:\Windows\System32\config\SAM", "-c:v:0", "hevc_nvenc", "{{output}}.mkv"],
+        };
+
+        var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        Assert.False(outcome.Delivered);
+        Assert.Contains("refused", outcome.Detail, StringComparison.OrdinalIgnoreCase);
+        // Never started. An encode that ran and was then judged would already have done the damage.
+        Assert.DoesNotContain(transcoder.AllRuns, run => run.Contains("hevc_nvenc"));
+        Assert.False(server.Completed);
+    }
+
+    [Fact]
     public async Task A_job_is_fetched_encoded_and_delivered()
     {
         var source = Encoding.UTF8.GetBytes("source-bytes");
