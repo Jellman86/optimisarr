@@ -879,13 +879,10 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     [Fact]
     public async Task A_job_whose_quality_search_cannot_be_planned_stays_on_this_server()
     {
-        // The fallback, and the behaviour this fixture can actually reach: its source is a handful
-        // of bytes rather than a video, so no sample windows can be planned against it. When a
-        // search cannot be expressed as commands the job is not offered at all, and the local
-        // search — which this replaced — still runs it here.
-        //
-        // The opposite case, an adaptive job offered *with* a search, needs a real source to probe
-        // and is proven against one rather than pretended at here.
+        // The fallback. A search picks its quality by measuring candidates against VMAF, so a
+        // library that judges nothing has no search to express: the job is not offered at all, and
+        // the local search — which this replaced — still runs it here. The opposite case is the
+        // test below, which differs from this one only in turning the gate on.
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker("Claimer");
         await QueueAJob(videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf);
@@ -895,16 +892,23 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
     }
 
-    [Fact(Skip = "Needs a real source to probe; proven end to end against a live worker instead.")]
+    [Fact]
     public async Task A_job_from_an_adaptive_library_is_offered_with_a_search_to_run()
     {
         // This job used to stay on the server, because the search ran here and a quality proven on
         // one encoder means nothing on another. That reasoning is why the search now travels with
         // the job rather than why the job stays: the worker measures the candidates this machine
         // chooses, on the encoder that will do the real encode.
+        //
+        // This was skipped as needing a real source to probe. It did not: the dispatcher asked the
+        // container for the concrete probe rather than the interface the fixture substitutes, so
+        // the one half of the feature that could not be proven was the half that mattered.
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker("Claimer");
-        await QueueAJob(videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf);
+        // With the gate on: a search measures candidates against VMAF, so a library that judges
+        // nothing has no search to plan.
+        await QueueAJob(
+            videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
 
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
