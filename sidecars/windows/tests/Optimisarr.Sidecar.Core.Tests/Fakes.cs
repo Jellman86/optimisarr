@@ -24,12 +24,22 @@ internal sealed class FakeWorkerServer(byte[] source, string sourceHash) : HttpM
     public HttpStatusCode QualityStatus = HttpStatusCode.OK;
     /// <summary>Whether the source response carries the hash header. An older server sends none.</summary>
     public bool DeclareSourceHash = true;
+    /// <summary>What the server answers a lease renewal with. 503 is a restarting container.</summary>
+    public HttpStatusCode RenewStatus = HttpStatusCode.OK;
+    /// <summary>How many renewals were asked for.</summary>
+    public int RenewCalls;
 
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var path = request.RequestUri!.AbsolutePath;
         Calls.Add($"{request.Method} {path}");
+
+        if (path.EndsWith("/renew", StringComparison.Ordinal))
+        {
+            Interlocked.Increment(ref RenewCalls);
+            return Task.FromResult(new HttpResponseMessage(RenewStatus));
+        }
 
         if (path.EndsWith("/source", StringComparison.Ordinal))
         {
@@ -108,6 +118,9 @@ internal sealed class FakeMeasuringTranscoder(
     /// <summary>Exits cleanly having written nothing, as a broken encoder does.</summary>
     public bool ProducesNothing { get; init; }
 
+    /// <summary>How long an encode takes, so a test can outlast a lease renewal interval.</summary>
+    public TimeSpan EncodeTakes { get; init; }
+
     public Task<TranscodeResult> RunAsync(
         string ffmpeg, IReadOnlyList<string> arguments,
         IProgress<double>? encodedSeconds, CancellationToken cancellationToken)
@@ -115,6 +128,13 @@ internal sealed class FakeMeasuringTranscoder(
         Arguments = arguments;
         AllRuns.Add(arguments);
         encodedSeconds?.Report(12.5);
+
+        if (EncodeTakes > TimeSpan.Zero)
+        {
+            // Cooperative, like the real one: a lease that is genuinely lost stops the encode
+            // rather than waiting for it.
+            Task.Delay(EncodeTakes, cancellationToken).GetAwaiter().GetResult();
+        }
 
         if (WriteVmafLogs && LogPathIn(arguments) is { } log)
         {
