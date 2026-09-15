@@ -119,9 +119,7 @@ struct SidecarMenu: View {
                         jobCard(jobId: jobId, progress: progress)
                     }
                 }
-                if let gpu = session.gpu {
-                    gpuCard(gpu)
-                }
+                loadCard
             }
 
             connectionCard
@@ -206,27 +204,42 @@ struct SidecarMenu: View {
         return formatter.string(fromByteCount: Int64(bytesPerSecond)) + "/s"
     }
 
-    /// The GPU figure, with the caveat stated rather than left for someone to discover.
-    private func gpuCard(_ gpu: GpuUsage) -> some View {
+    /// What this Mac is doing while it works.
+    ///
+    /// CPU and GPU together, because either alone misleads: a software encode is all CPU and reads
+    /// as an idle GPU, while a VideoToolbox encode runs on the media engine and reads as *both*
+    /// being quiet. Neither number is wrong; shown apart, each invites the wrong conclusion.
+    private var loadCard: some View {
         Card {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Image(systemName: "cpu")
-                        .font(.caption)
-                        .foregroundStyle(.purple)
-                        .frame(width: 13)
-                    Text("GPU").font(.system(size: 11, weight: .medium))
-                    Spacer(minLength: 4)
-                    Text("\(Int((gpu.device * 100).rounded()))%")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                if let cpu = session.cpu {
+                    meterRow("CPU", symbol: "cpu", value: cpu, tint: .teal)
                 }
-                Meter(value: gpu.device, tint: .purple)
-                Text("VideoToolbox encodes on the media engine, which macOS does not report. This covers the GPU only.")
+                if let gpu = session.gpu {
+                    meterRow("GPU", symbol: "display", value: gpu.device, tint: .purple)
+                }
+                Text("A VideoToolbox encode runs on the media engine, which macOS reports as neither — so both can read low while this Mac is busy.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private func meterRow(_ label: String, symbol: String, value: Double, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.caption)
+                    .foregroundStyle(tint)
+                    .frame(width: 13)
+                Text(label).font(.system(size: 11, weight: .medium))
+                Spacer(minLength: 4)
+                Text("\(Int((value * 100).rounded()))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Meter(value: value, tint: tint)
         }
     }
 

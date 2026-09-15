@@ -414,3 +414,34 @@ private final class BlockingCredentialStore: CredentialStore, @unchecked Sendabl
     func save(_ pairing: StoredPairing) throws { lock.withLock { stored = pairing } }
     func clear() throws { lock.withLock { stored = nil } }
 }
+
+@Suite("What the menu is shown")
+@MainActor
+struct MenuVisibilityTests {
+    /// The bug this pins shipped in every build: load was sampled beside a preview frame, and the
+    /// app constructed its job runner without wiring the preview gate — so no frames were ever
+    /// extracted, and the GPU figure that depended on them was therefore never drawn either. One
+    /// mistake, two features invisible.
+    @Test("closing the menu stops frame extraction without taking the load figures with it")
+    func closingTheMenuKeepsLoad() {
+        let session = SidecarSession(
+            client: SidecarClient(transport: ScriptedTransport([])),
+            store: InMemoryCredentialStore(),
+            capabilities: .provenToday(name: "Test"),
+            prober: nil,
+            persistConcurrency: { _ in },
+            sleep: { _ in })
+
+        session.filmStrips[1] = FilmStrip()
+        session.cpu = 0.42
+        session.gpu = GpuUsage(device: 0.57, memoryInUse: 0)
+
+        session.setPreviewsWanted(false)
+
+        // Frames cost an ffmpeg invocation each, so those stop when nobody is looking.
+        #expect(session.filmStrips.isEmpty)
+        // Load does not: it is cheap, and it drives the menu bar mark as well as the menu.
+        #expect(session.cpu == 0.42)
+        #expect(session.gpu?.device == 0.57)
+    }
+}

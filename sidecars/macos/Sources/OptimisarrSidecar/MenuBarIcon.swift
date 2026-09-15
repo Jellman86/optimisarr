@@ -18,10 +18,16 @@ enum MenuBarIcon {
     /// Menu bar content is 16pt tall by convention; a touch smaller leaves optical breathing room.
     private static let size = NSSize(width: 18, height: 18)
 
-    static func image(for status: SidecarStatus) -> NSImage {
+    /// One weight for the whole mark, outline and inner edges alike, and light enough to sit
+    /// beside Apple's own icons rather than out-weigh them.
+    private static let strokeWidth: CGFloat = 1.0
+
+    /// - Parameter spin: turns of the cube about its body diagonal, for showing that work is
+    ///   happening. Zero when nothing is running.
+    static func image(for status: SidecarStatus, spin: Double = 0) -> NSImage {
         let image = NSImage(size: size, flipped: false) { rect in
             let badge = badge(for: status)
-            drawCube(in: rect, badged: badge != nil)
+            drawCube(in: rect, badged: badge != nil, spin: spin)
             if let badge {
                 draw(badge: badge, in: rect)
             }
@@ -34,7 +40,7 @@ enum MenuBarIcon {
         return image
     }
 
-    private static func drawCube(in rect: NSRect, badged: Bool) {
+    private static func drawCube(in rect: NSRect, badged: Bool, spin: Double) {
         // Shifted up and left when badged so the dot gets its own corner. Overlapping the mark
         // instead means punching a hole through an edge, which reads as a broken cube rather than
         // a cube with a status dot.
@@ -47,34 +53,36 @@ enum MenuBarIcon {
                 height: inset.height - 2.5)
         }
         let centre = NSPoint(x: inset.midX, y: inset.midY)
-        let radius = min(inset.width, inset.height) / 2
+        let radius = Double(min(inset.width, inset.height)) / 2
 
         // A cube in isometric projection is a regular hexagon with three spokes to alternating
-        // vertices. Starting at 90° puts a vertex at the top, which is how the app icon sits.
-        var vertices: [NSPoint] = []
-        for step in 0..<6 {
-            let angle = CGFloat.pi / 2 + CGFloat(step) * (CGFloat.pi / 3)
-            vertices.append(NSPoint(
-                x: centre.x + radius * cos(angle),
-                y: centre.y + radius * sin(angle)))
-        }
+        // vertices. Starting at 90° puts a vertex at the top, which is how the app icon sits, and
+        // the arithmetic — including where a spoke has to stop so it ends on the outline rather
+        // than through it — lives in `CubeMark`, where it can be checked without a window.
+        let mark = CubeMark(centre: centre, circumradius: radius, spin: spin)
 
         let path = NSBezierPath()
-        path.lineWidth = 1.4
+        path.lineWidth = Self.strokeWidth
         path.lineJoinStyle = .round
         path.lineCapStyle = .round
 
-        path.move(to: vertices[0])
-        for vertex in vertices.dropFirst() {
+        path.move(to: mark.outline[0])
+        for vertex in mark.outline.dropFirst() {
             path.line(to: vertex)
         }
         path.close()
 
         // The three visible front edges, meeting at the centre — what makes it read as a solid
         // rather than a flat hexagon.
-        for index in stride(from: 1, to: 6, by: 2) {
-            path.move(to: centre)
-            path.line(to: vertices[index])
+        //
+        // Spinning turns only these, never the silhouette, and that is not a shortcut: a cube
+        // rotated about the body diagonal pointing at the viewer keeps exactly this hexagonal
+        // outline, and the three visible edges sweep round inside it. So the busy mark is the same
+        // cube turning rather than a different icon swapped in — which is what stops a spinning
+        // menu bar from reading as "something is wrong".
+        for end in mark.spokes {
+            path.move(to: mark.centre)
+            path.line(to: end)
         }
 
         NSColor.black.setStroke()
@@ -121,7 +129,7 @@ enum MenuBarIcon {
         case .solid:
             path.fill()
         case .hollow:
-            path.lineWidth = 1.4
+            path.lineWidth = strokeWidth
             path.stroke()
         }
     }
