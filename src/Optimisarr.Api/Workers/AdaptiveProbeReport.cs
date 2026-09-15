@@ -23,11 +23,18 @@ internal static class AdaptiveProbeReport
             return "no scores recorded";
         }
 
+        // Each figure beside the threshold that actually judges it. They are not the ones you
+        // would guess: the *fifth percentile* is held to MinimumVmafMin, and the lowest frame is
+        // held to the catastrophic floor, which is far lower. Pairing the lowest frame with
+        // MinimumVmafMin — as this line did when it was written — printed
+        // "lowest 62.07 of 70 ... met the VMAF target" on a candidate that had passed perfectly
+        // well, and left the number that was actually deciding with no threshold beside it at all.
+        // See VmafSoftwareConfirmation.MeetsGate.
         return string.Create(
             CultureInfo.InvariantCulture,
             $"harmonic {Number(scores.VmafHarmonicMean)} of {Number(policy.MinimumVmafHarmonicMean)}, "
-            + $"fifth percentile {Number(scores.VmafFifthPercentile)}, "
-            + $"lowest {Number(scores.VmafMin)} of {Number(policy.MinimumVmafMin)}, "
+            + $"fifth percentile {Number(scores.VmafFifthPercentile ?? scores.VmafMin)} of {Number(policy.MinimumVmafMin)}, "
+            + $"lowest {Number(scores.VmafMin)} of {Number(policy.MinimumVmafCatastrophicMin)}, "
             + $"mean {Number(scores.VmafMean)}, {Number(scores.FrameCount)} frames");
     }
 
