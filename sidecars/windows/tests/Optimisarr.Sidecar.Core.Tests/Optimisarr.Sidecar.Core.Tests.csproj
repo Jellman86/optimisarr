@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Optimisarr.Sidecar.Core\Optimisarr.Sidecar.Core.csproj" />
+    <ProjectReference Include="..\..\src\Optimisarr.Sidecar.Service\Optimisarr.Sidecar.Service.csproj" />
   </ItemGroup>
 
 </Project>

@@ -60,6 +60,36 @@ command on the strength of this answer alone, so it is scored for real.
 See [Setting up a Windows test host](docs/test-host-setup.md): remote access, tooling, the scratch
 folder, and optionally WSL with Docker for testing the server image against an NVIDIA GPU.
 
+## Installing it on a machine
+
+The build produces a managed assembly and **no executable of its own**, so everything runs through
+`dotnet`:
+
+```powershell
+dotnet publish src\Optimisarr.Sidecar.Service\Optimisarr.Sidecar.Service.csproj -c Release -o C:\OptimisarrSidecar
+
+# Pair first: the code is read from standard input, never from the command line.
+"123456" | dotnet C:\OptimisarrSidecar\Optimisarr.Sidecar.Service.dll --pair https://optimisarr.example.com
+
+# Then install and start the service.
+dotnet C:\OptimisarrSidecar\Optimisarr.Sidecar.Service.dll --install
+sc.exe start OptimisarrSidecar
+```
+
+**Why there is no .exe.** Smart App Control is on by default on Windows 11 and judges an executable
+by its reputation. A freshly built, unsigned apphost has none, so the service is refused outright —
+it will not start, and the system log says only `%%4551`. Every rebuild produces a new unknown file,
+so it is not something that settles down with use. Signing would solve it and needs a certificate
+this project does not have. `dotnet` is Microsoft-signed and trusted, and the managed assembly it
+loads is not held to the same test.
+
+The cost is that **the .NET runtime is a prerequisite** — the sidecar cannot carry its own. Install
+the ASP.NET Core or .NET runtime for `net10.0` before installing the service. The installer looks
+for `dotnet.exe` beside the running process, then under `DOTNET_ROOT`, then in
+`%ProgramFiles%\dotnet`, and refuses to register a service it knows cannot start rather than
+leaving a machine looking installed and doing nothing. It deliberately does not search the `PATH`:
+that belongs to whoever ran the install, and the service runs as LocalSystem.
+
 ## Building and testing
 
 ```bash
