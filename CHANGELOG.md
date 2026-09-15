@@ -42,8 +42,25 @@
   came from stay where they were: they are the first thing anyone is asked for when something
   looks wrong.
 
+- **The macOS sidecar's panel is a readout.** It was a stack of rounded cards that happened to
+  carry figures, with the hierarchy coming from fill and radius rather than from the content. The
+  panel now states the machine's identity and its state opposite each other in a bar across the
+  top, runs everything it knows about itself down one column of monospaced, tabular figures that
+  can be compared vertically, and puts the controls along the bottom where they cannot be mistaken
+  for readings. Progress is lit segments rather than a filled bar, so a glance takes a level off it
+  without reading the figure beside it — and during an encode there is no bar at all, because the
+  worker knows how many seconds it has done and not how many it owes, and a bar that guessed would
+  be a lie in the one place the panel exists to be honest. Every colour now comes from the web
+  interface's own tokens: Tailwind slate for the neutrals and cyan for the single accent, in both
+  appearances, so a fault on this panel is the same colour as the same fault on the dashboard.
+
 ### Fixed
 
+- **The menu-bar mark no longer turns on an idle Mac.** The timer behind it also feeds the load
+  meters, which were made to run whenever the panel is open so an idle machine still shows what it
+  is doing — and that set the mark turning with them. It looked busy for exactly as long as
+  somebody was looking at it, which is the one moment the mark has to be honest. It now turns only
+  while a job is actually running.
 - **The macOS sidecar's panel stays against the menu bar.** Once a Mac had run a job and gone
   quiet, its panel hung below the menu bar with a gap above it, the size of the film strip that was
   no longer there. A menu-bar window keeps the height its tallest content needed, and SwiftUI

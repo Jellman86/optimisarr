@@ -20,21 +20,23 @@ struct SidecarMenu: View {
     @State private var isPairing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
+        VStack(alignment: .leading, spacing: 0) {
+            statusBar
 
-            switch session.status {
-            case .unpaired, .pairingFailed:
-                pairingForm
-            default:
-                pairedDetail
+            VStack(alignment: .leading, spacing: 11) {
+                switch session.status {
+                case .unpaired, .pairingFailed:
+                    pairingForm
+                default:
+                    pairedDetail
+                }
             }
+            .padding(13)
 
-            Divider()
             footer
         }
-        .padding(14)
         .frame(width: 340)
+        .background(Instrument.ground)
         // A menu-bar panel does not always shrink back when its content does. After a job
         // finishes, the window keeps the height the film strip needed — and SwiftUI centres a
         // shorter view inside it, so the panel hangs away from the menu bar with a gap above it
@@ -53,54 +55,64 @@ struct SidecarMenu: View {
         .onDisappear { session.setPreviewsWanted(false) }
     }
 
-    // MARK: - Header
+    // MARK: - Status bar
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
-            Circle()
-                .fill(session.status.tint)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Optimisarr Sidecar")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(session.status.summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                // The reason matters more than the state name — "Pairing failed" is not
-                // actionable, but "that code has expired" is.
-                if let detail = session.status.detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(session.status.tint == .red ? .red : .secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                }
+    /// Which machine this is and what it is doing, in the two places you look first.
+    ///
+    /// The identity matters because a fleet has several of these and they all look alike; the
+    /// state sits opposite it so the pair can be read in one movement rather than hunted for.
+    private var statusBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Instrument.label(Self.machineName)
+                Spacer(minLength: 8)
+                Circle()
+                    .fill(session.status.lamp)
+                    .frame(width: 5, height: 5)
+                    .accessibilityHidden(true)
+                Text(session.status.readout)
+                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .tracking(0.9)
+                    .foregroundStyle(session.status.lamp)
             }
-            Spacer(minLength: 0)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+
+            // The reason matters more than the state name — "Pairing failed" is not actionable,
+            // but "that code has expired" is. It sits inside the bar so a fault reads as part of
+            // the machine's state rather than as a notice pinned over the top of it.
+            if let detail = session.status.detail {
+                Text(detail)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(session.status.lamp)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 13)
+                    .padding(.bottom, 9)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+    }
+
+    /// This Mac, as the fleet knows it.
+    private static var machineName: String {
+        let name = Host.current().localizedName ?? "This Mac"
+        return "SIDECAR · \(name)"
     }
 
     // MARK: - Pairing
 
     private var pairingForm: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             Text("Enter the address of your Optimisarr server and the pairing code it shows under Settings → Workers.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10.5))
+                .foregroundStyle(Instrument.dim)
                 .fixedSize(horizontal: false, vertical: true)
 
-            TextField("optimisarr.local:8787", text: $serverAddress)
-                .textFieldStyle(.roundedBorder)
-                .disableAutocorrection(true)
+            field("optimisarr.local:8787", text: $serverAddress)
+            field("Pairing code", text: $pin)
 
-            TextField("Pairing code", text: $pin)
-                .textFieldStyle(.roundedBorder)
-                .disableAutocorrection(true)
-
-            Button(isPairing ? "Pairing…" : "Pair") {
+            Button {
                 Task {
                     isPairing = true
                     await session.pair(serverAddress: serverAddress, pin: pin)
@@ -109,206 +121,220 @@ struct SidecarMenu: View {
                     // a typo instead of retyping the whole thing.
                     if case .connected = session.status { pin = "" }
                 }
+            } label: {
+                Text(isPairing ? "Pairing…" : "Pair")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(canPair ? Instrument.ground : Instrument.dim)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(canPair ? Instrument.phosphor : Instrument.cell))
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isPairing || serverAddress.isEmpty || pin.isEmpty)
+            .buttonStyle(.plain)
+            .disabled(!canPair)
         }
+    }
+
+    private var canPair: Bool {
+        !isPairing && !serverAddress.isEmpty && !pin.isEmpty
+    }
+
+    /// A field on the instrument's face rather than the system's: a rounded-border text field
+    /// draws itself for a light window and disappears into this ground.
+    private func field(_ prompt: String, text: Binding<String>) -> some View {
+        TextField("", text: text, prompt:
+            Text(prompt).foregroundStyle(Instrument.dim))
+            .textFieldStyle(.plain)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(Instrument.ink)
+            .disableAutocorrection(true)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Instrument.cell))
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Instrument.rule, lineWidth: 1))
     }
 
     // MARK: - Paired
 
     private var pairedDetail: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 11) {
             if session.activeJobs.isEmpty {
-                idleCard
+                idleHead
             } else {
                 ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
                     if let progress = session.activeJobs[jobId] {
-                        jobCard(jobId: jobId, progress: progress)
+                        jobHead(jobId: jobId, progress: progress)
                     }
                 }
             }
-            // Shown whether or not a job is running. An idle Mac still has a figure worth seeing —
-            // it is what the check-in reports, and it answers "why has this taken nothing on?" —
-            // and keeping it here stops the panel collapsing to a single line the moment a job
-            // ends, which is half of why the gap above was so obvious.
-            //
-            // Only once there is a reading, though: the card is a pair of meters with a footnote
-            // under them, and without the meters the footnote is a sentence about an encode that
-            // is not running, sitting in a box on its own.
-            if session.cpu != nil || session.gpu != nil {
-                loadCard
-            }
 
-            connectionCard
-            concurrencyPicker
-
-            if let outcome = session.lastOutcome {
-                Text(outcome.label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            readout
+            cells
 
             // Said plainly: a delivered candidate is a proposal. Optimisarr verifies it against
             // the original before anything is replaced, and this machine never sees that decision.
-            Label(
-                "Encodes go to Optimisarr for verification. Nothing is replaced from here.",
-                systemImage: "checkmark.shield")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Text("Encodes go to Optimisarr for verification. Nothing is replaced from here.")
+                .font(.system(size: 9.5))
+                .foregroundStyle(Instrument.dim)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var idleCard: some View {
-        Card {
-            HStack(spacing: 8) {
-                Image(systemName: "moon.zzz")
-                    .foregroundStyle(.secondary)
-                Text("Waiting for work")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    /// One running job: what it is, what is being done to it, and how it is getting on.
+    /// What the machine is not doing, and the last thing it did.
     ///
-    /// The name comes first because that is the question someone opening this menu is asking —
+    /// An idle instrument still reports. "No job held" is the state; the line under it is the
+    /// evidence that the machine was working recently and is not quietly broken.
+    private var idleHead: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("No job held")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Instrument.ink)
+            Text(session.lastOutcome.map(Self.lastLine) ?? "NOTHING RUN ON THIS MACHINE YET")
+                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                .tracking(0.9)
+                .foregroundStyle(Instrument.dim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One running job: what it is, what is being done to it, and how far in it is.
+    ///
+    /// The name comes first because that is the question someone opening this panel is asking —
     /// "what is my Mac chewing on?" — and a job number answers it for nobody.
-    private func jobCard(jobId: Int, progress: JobProgress) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 7) {
-                if let strip = session.filmStrips[jobId], !strip.isEmpty {
-                    FilmStripView(strip: strip)
+    private func jobHead(jobId: Int, progress: JobProgress) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            // The frames going through the encoder, flush to the panel's edges rather than inset
+            // in a card. On an instrument a picture is a monitor, not an illustration.
+            if let strip = session.filmStrips[jobId], !strip.isEmpty {
+                FilmStripView(strip: strip)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Instrument.rule, lineWidth: 1))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.jobTitles[jobId].flatMap { $0.isEmpty ? nil : $0 } ?? "Job #\(jobId)")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Instrument.ink)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(Self.subline(jobId: jobId, progress: progress, session: session))
+                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .tracking(0.9)
+                    .foregroundStyle(Instrument.dim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            SegmentMeter(fraction: progress.fraction)
+
+            HStack(spacing: 8) {
+                Instrument.label(progress.label)
+                Spacer(minLength: 8)
+                if let fraction = progress.fraction {
+                    Text("\(Int((fraction * 100).rounded()))%")
+                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(Instrument.phosphor)
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.jobTitles[jobId].flatMap { $0.isEmpty ? nil : $0 } ?? "Job #\(jobId)")
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 5) {
-                        Image(systemName: progress.symbol)
-                            .font(.caption2)
-                            .foregroundStyle(progress.tint)
-                        Text(progress.label)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 4)
-                        // Only where bytes are actually moving; an encode has no speed to show.
-                        if let rate = session.transferRates[jobId], rate > 0 {
-                            Text(Self.rate(rate))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Meter(value: progress.fraction, tint: progress.tint)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "42.1 MB/s". Per second rather than per bit, matching the byte counts beside it.
-    private static func rate(_ bytesPerSecond: Double) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.allowedUnits = [.useMB, .useGB, .useKB]
-        return formatter.string(fromByteCount: Int64(bytesPerSecond)) + "/s"
+    /// The stage and what it is working with, on one line under the title.
+    private static func subline(
+        jobId: Int, progress: JobProgress, session: SidecarSession
+    ) -> String {
+        var parts = ["JOB \(jobId)"]
+        if let rate = session.transferRates[jobId], rate > 0 {
+            parts.append(rate2(rate))
+        }
+        return parts.joined(separator: " · ")
     }
 
-    /// What this Mac is doing while it works.
+    /// Everything the machine knows about itself, in one column that can be read down.
+    private var readout: some View {
+        VStack(spacing: 0) {
+            ReadoutRow(name: "Server", value: session.serverAddress)
+            if case let .connected(workerId, lastCheckIn) = session.status {
+                ReadoutRow(name: "Worker", value: "#\(workerId)")
+                ReadoutRow(
+                    name: "Check-in",
+                    value: lastCheckIn.formatted(date: .omitted, time: .standard))
+            }
+            ReadoutRow(name: "Concurrency", value: "\(session.jobConcurrency) of \(SidecarSession.concurrencyRange.upperBound)")
+            if !session.activeJobs.isEmpty, let outcome = session.lastOutcome {
+                ReadoutRow(name: "Last", value: Self.lastValue(outcome))
+            }
+        }
+        .overlay(alignment: .top) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+    }
+
+    /// The three figures worth a glance rather than a read.
     ///
     /// CPU and GPU together, because either alone misleads: a software encode is all CPU and reads
     /// as an idle GPU, while a VideoToolbox encode runs on the media engine and reads as *both*
-    /// being quiet. Neither number is wrong; shown apart, each invites the wrong conclusion.
-    private var loadCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 6) {
-                if let cpu = session.cpu {
-                    meterRow("CPU", symbol: "cpu", value: cpu, tint: .teal)
-                }
-                if let gpu = session.gpu {
-                    meterRow("GPU", symbol: "display", value: gpu.device, tint: .purple)
-                }
-                Text("A VideoToolbox encode runs on the media engine, which macOS reports as neither — so both can read low while this Mac is busy.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+    /// being quiet. Neither number is wrong; shown apart, each invites the wrong conclusion, which
+    /// is why the note under them stays even when the panel is otherwise terse.
+    private var cells: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                ReadoutCell(figure: session.cpu.map(Self.percent) ?? "—", unit: "CPU %")
+                ReadoutCell(figure: session.gpu.map { Self.percent($0.device) } ?? "—", unit: "GPU %")
+                ReadoutCell(figure: "\(session.activeJobs.count)", unit: "HELD")
             }
+            Text("A VideoToolbox encode runs on the media engine, which macOS reports as neither — so both can read low while this Mac is busy.")
+                .font(.system(size: 9.5))
+                .foregroundStyle(Instrument.dim)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func meterRow(_ label: String, symbol: String, value: Double, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .font(.caption)
-                    .foregroundStyle(tint)
-                    .frame(width: 13)
-                Text(label).font(.system(size: 11, weight: .medium))
-                Spacer(minLength: 4)
-                Text("\(Int((value * 100).rounded()))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            Meter(value: value, tint: tint)
-        }
+    private static func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))"
     }
 
-    private var connectionCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 3) {
-                detailRow("Server", session.serverAddress)
-                if case let .connected(workerId, lastCheckIn) = session.status {
-                    detailRow("Worker", "#\(workerId)")
-                    detailRow("Last check-in", lastCheckIn.formatted(date: .omitted, time: .standard))
-                }
-            }
-        }
+    /// "42.1 MB/s". Per second rather than per bit, matching the byte counts beside it.
+    private static func rate2(_ bytesPerSecond: Double) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useMB, .useGB, .useKB]
+        return (formatter.string(fromByteCount: Int64(bytesPerSecond)) + "/s").uppercased()
     }
 
-    private func detailRow(_ name: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(name)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.caption.monospacedDigit())
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
+    private static func lastLine(_ outcome: JobOutcome) -> String {
+        outcome.label.uppercased()
     }
 
-    private var concurrencyPicker: some View {
-        // Takes effect on the next check-in; a running job is never stopped to fit.
-        HStack(spacing: 8) {
-            Text("Jobs at once")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Picker("", selection: Binding(
-                get: { session.jobConcurrency },
-                set: { session.setJobConcurrency($0) })) {
-                ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { count in
-                    Text("\(count)").tag(count)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+    private static func lastValue(_ outcome: JobOutcome) -> String {
+        switch outcome {
+        case let .delivered(jobId, bytes):
+            return "#\(jobId) · " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        case let .released(jobId, _), let .leaseLost(jobId, _):
+            return "#\(jobId) · handed back"
         }
     }
 
     // MARK: - Footer
 
+    /// The face's controls, along the bottom where they cannot be mistaken for readings.
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle("Start at login", isOn: Binding(
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Instrument.label("Jobs at once")
+                Spacer(minLength: 8)
+                // Takes effect on the next check-in; a running job is never stopped to fit.
+                HStack(spacing: 3) {
+                    ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { count in
+                        concurrencyKey(count)
+                    }
+                }
+            }
+
+            Toggle(isOn: Binding(
                 get: { startAtLogin },
                 set: { wanted in
                     do {
@@ -319,48 +345,56 @@ struct SidecarMenu: View {
                         startAtLogin = LoginItem.isEnabled
                         loginItemError = "Could not change the login item: \(error.localizedDescription)"
                     }
-                }))
-                .font(.caption)
+                })) {
+                    Text("Start at login")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Instrument.value)
+                }
                 .toggleStyle(.checkbox)
 
             if let loginItemError {
                 Text(loginItemError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Instrument.alarm)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 8) {
-                Button("Options…") { onShowOptions?() }
-                    .controlSize(.small)
+            HStack(spacing: 6) {
+                InstrumentButton(title: "Options") { onShowOptions?() }
                 if case .unpaired = session.status {} else {
-                    Button("Forget this pairing") {
+                    InstrumentButton(title: "Unpair") {
                         session.unpair()
                         pin = ""
                     }
-                    .controlSize(.small)
                 }
-                Spacer(minLength: 0)
-                Button("Quit") { NSApplication.shared.terminate(nil) }
-                    .controlSize(.small)
-                    .keyboardShortcut("q")
+                InstrumentButton(title: "Quit", emphasis: Instrument.dim) {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
             }
         }
+        .padding(13)
+        .overlay(alignment: .top) { Rectangle().fill(Instrument.rule).frame(height: 1) }
     }
-}
 
-/// A grouped panel. Menu-bar windows have no chrome of their own, so without something to sit in,
-/// every row reads at the same weight and the eye has nowhere to land.
-private struct Card<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        content
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.primary.opacity(0.05)))
+    /// One position of the concurrency control. A key rather than a segmented picker: the panel
+    /// has four choices and a system picker would bring its own appearance onto this face.
+    private func concurrencyKey(_ count: Int) -> some View {
+        let chosen = session.jobConcurrency == count
+        return Button {
+            session.setJobConcurrency(count)
+        } label: {
+            Text("\(count)")
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(chosen ? Instrument.ground : Instrument.value)
+                .frame(width: 22, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(chosen ? Instrument.phosphor : Instrument.cell))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Instrument.rule, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(count) job\(count == 1 ? "" : "s") at once")
     }
 }
 
@@ -376,24 +410,6 @@ private extension JobProgress {
             return "Measuring quality"
         case let .delivering(sent, total):
             return Self.transferred(sent, total)
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .fetchingSource: return "arrow.down.circle"
-        case .encoding: return "wand.and.stars"
-        case .measuring: return "waveform.badge.magnifyingglass"
-        case .delivering: return "arrow.up.circle"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .fetchingSource: return .teal
-        case .encoding: return .blue
-        case .measuring: return .orange
-        case .delivering: return .green
         }
     }
 
@@ -434,14 +450,31 @@ private extension JobOutcome {
 }
 
 private extension SidecarStatus {
-    /// One colour for the whole menu's sense of health, used by the dot and by error text.
-    var tint: Color {
+    /// One colour for the whole panel's sense of health, used by the lamp and by fault text.
+    ///
+    /// Three colours and no more: lit means the machine is doing what it should, amber means it is
+    /// held up by something that may pass, and alarm means somebody has to do something. A fourth
+    /// would have to mean something, and there is nothing else for it to mean.
+    var lamp: Color {
         switch self {
-        case .working: return .blue
-        case .connected: return .green
-        case .unreachable, .disabledOnServer: return .orange
-        case .pairingFailed, .revoked: return .red
-        default: return .secondary
+        case .working, .connected: return Instrument.phosphor
+        case .unreachable, .disabledOnServer: return Instrument.amber
+        case .pairingFailed, .revoked: return Instrument.alarm
+        default: return Instrument.dim
+        }
+    }
+
+    /// The state in the one word the bar has room for.
+    var readout: String {
+        switch self {
+        case .working: return "WORKING"
+        case .connected: return "IDLE"
+        case .unreachable: return "NO LINK"
+        case .disabledOnServer: return "STOOD DOWN"
+        case .pairingFailed: return "PAIRING FAILED"
+        case .revoked: return "REVOKED"
+        case .unpaired: return "UNPAIRED"
+        case .pairing: return "PAIRING"
         }
     }
 
