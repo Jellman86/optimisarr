@@ -34,7 +34,23 @@ public sealed record AdaptiveQualityDecision(int? NextQuality, int SelectedQuali
 public static class AdaptiveQualitySearch
 {
     public const int MaximumProbes = 4;
-    public const int MaximumOffset = 6;
+
+    /// <summary>
+    /// How far from the library's quality the search first looks, in either direction.
+    ///
+    /// <para>A starting width, not a ceiling. It used to be both, and the difference was the whole
+    /// value of the feature: when the far end of the bracket <em>passed</em>, the search concluded
+    /// there rather than going further, so every job settled at exactly baseline + 6. Measured
+    /// across seven episodes on an RTX 4070, that end was clearing a gate of 85 with a harmonic
+    /// mean of 96 and less than half the bytes — eleven points of headroom, unclaimed, every time.
+    /// The bound was deciding the answer.</para>
+    /// </summary>
+    public const int InitialOffset = 6;
+
+    /// <summary>
+    /// Kept for anything still reading the old name. The bracket no longer stops here.
+    /// </summary>
+    public const int MaximumOffset = InitialOffset;
 
     public static AdaptiveQualityDecision Decide(
         int baselineQuality,
@@ -64,13 +80,16 @@ public static class AdaptiveQualitySearch
             return Next(baseline, baseline, "Measure the library quality first.");
         }
 
-        var lower = Math.Max(0, baseline - MaximumOffset);
-        var upper = Math.Min(51, baseline + MaximumOffset);
+        var lower = Math.Max(0, baseline - InitialOffset);
         if (baselineProbe.MeetsTarget)
         {
-            if (!Contains(distinct, upper))
+            // Step outward while the far end keeps passing, doubling the reach each time. A bracket
+            // whose end clears the gate has not found the edge; it has only proved that everything
+            // inside it is acceptable, and stopping there reports the width of the bracket rather
+            // than anything about the title.
+            if (NextOutward(distinct, baseline) is { } outward)
             {
-                return Next(upper, baseline, "Bracket the most space-efficient passing quality.");
+                return Next(outward, baseline, "Reach further out while the target is still being cleared.");
             }
         }
         else if (!Contains(distinct, lower))
@@ -110,6 +129,60 @@ public static class AdaptiveQualitySearch
         }
 
         return Next(midpoint, highestPass, "Narrow the passing/failing quality bracket.");
+    }
+
+    /// <summary>
+    /// The next quality to try beyond everything measured so far, or nothing when there is no
+    /// further out to go.
+    ///
+    /// <para>The reach doubles: the first step out is <see cref="InitialOffset"/> from the
+    /// library's value, the next twice that, and so on. Exponential rather than linear because the
+    /// probe budget is four and a linear walk would spend all of it creeping. Doubling finds the
+    /// edge of what a title tolerates in two or three samples and leaves the rest for bisecting
+    /// back to it.</para>
+    ///
+    /// <para>Only ever called when every measured quality passed, so there is always a passing
+    /// anchor to come back to: a step out that fails costs one sample and gives the bisection its
+    /// upper bound.</para>
+    /// </summary>
+    private static int? NextOutward(IReadOnlyList<AdaptiveQualityProbe> probes, int baseline)
+    {
+        var furthestProbe = probes.MaxBy(probe => probe.Quality)!;
+        var furthest = furthestProbe.Quality;
+
+        // Only from a passing anchor. The caller reaches here whenever the *baseline* passed, which
+        // is not the same as everything having passed: with a failure already out there the bracket
+        // is found and the next move is to bisect back into it, not to step past it. Stepping out
+        // from a failure asked for 51 where the answer was 32.
+        if (!furthestProbe.MeetsTarget)
+        {
+            return null;
+        }
+
+        if (furthest < baseline + InitialOffset)
+        {
+            var first = Math.Min(51, baseline + InitialOffset);
+            return first > furthest ? first : null;
+        }
+
+        // Only while going further out is still winning. A larger quality value usually means a
+        // smaller file, but only usually — this whole search exists because the encoder's own size
+        // ordering cannot be assumed. When the step out passed and came back no smaller, the title
+        // is not responding to the number in the expected direction and another step is a sample
+        // encode spent to learn nothing.
+        var smallestBelow = probes
+            .Where(probe => probe.MeetsTarget && probe.Quality < furthest)
+            .Select(probe => (long?)probe.EncodedBytes)
+            .Min();
+        if (smallestBelow is { } best && furthestProbe.EncodedBytes >= best)
+        {
+            return null;
+        }
+
+        // How far the last step reached, doubled. Measured from the baseline so the sequence is
+        // 6, 18, 42… rather than drifting with wherever a bisection happened to land.
+        var next = Math.Min(51, baseline + ((furthest - baseline) * 2));
+        return next > furthest ? next : null;
     }
 
     private static bool HasNonMonotonicEvidence(IReadOnlyList<AdaptiveQualityProbe> probes)
