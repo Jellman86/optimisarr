@@ -41,6 +41,13 @@
 
 ### Fixed
 
+- **The macOS sidecar's panel stays against the menu bar.** Once a Mac had run a job and gone
+  quiet, its panel hung below the menu bar with a gap above it, the size of the film strip that was
+  no longer there. A menu-bar window keeps the height its tallest content needed, and SwiftUI
+  centres a shorter view inside it — so the panel drifted down by half the space it had given back.
+  A spacer beneath the content could not fix that, because the stack is sized to its own content
+  and never sees the spare height; the panel now fills whatever height the window has and stays at
+  the top of it.
 - **A finished candidate is no longer thrown away because the server is restarting.** A worker
   that had encoded a file, measured it and had its evidence accepted lost the lot to
   `Delivering the candidate failed (HTTP 502)` — a deployment had restarted the container while the

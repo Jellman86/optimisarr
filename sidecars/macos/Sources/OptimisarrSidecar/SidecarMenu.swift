@@ -32,17 +32,17 @@ struct SidecarMenu: View {
 
             Divider()
             footer
-
-            // A menu-bar panel does not always shrink back when its content does. After a job
-            // finishes, the window keeps the height the film strip and the job card needed, and
-            // the content settles at the bottom of it — so the panel appears to hang away from
-            // the menu bar, with a gap above it exactly the size of the frames that are no longer
-            // there. This takes up whatever height the window has left, at the bottom, where it
-            // cannot be mistaken for part of the panel.
-            Spacer(minLength: 0)
         }
         .padding(14)
         .frame(width: 340)
+        // A menu-bar panel does not always shrink back when its content does. After a job
+        // finishes, the window keeps the height the film strip needed — and SwiftUI centres a
+        // shorter view inside it, so the panel hangs away from the menu bar with a gap above it
+        // exactly the size of the frames that are no longer there. A spacer inside the stack
+        // cannot fix that: the stack is sized to its content and never sees the spare height.
+        // This does, by filling whatever height the window has and keeping the panel at the top
+        // of it.
+        .frame(maxHeight: .infinity, alignment: .top)
         .onAppear {
             session.restore()
             if serverAddress.isEmpty { serverAddress = session.serverAddress }
