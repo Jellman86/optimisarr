@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 
 /// A line of FFmpeg's `-progress pipe:1` protocol, reduced to the one number the menu shows.
 ///
@@ -485,7 +486,8 @@ public struct JobRunner: WorkExecutor {
         source: URL,
         scratch: URL,
         latest: LatestProgress,
-        progress: @escaping @Sendable (JobProgress) -> Void
+        progress: @escaping @Sendable (JobProgress) -> Void,
+        preview: @escaping @Sendable (Data) -> Void
     ) async -> SearchOutcome {
         var step = first
         // The server bounds its own search at four candidates, but this machine should not depend
@@ -512,22 +514,25 @@ public struct JobRunner: WorkExecutor {
             // the job went back on the queue, and the next holder started the search again from
             // the beginning — which is what the expired lease on the first search ever run here
             // records.
-            let candidate: (bytes: Int64, logs: [String])?
+            let candidate: CandidateMeasurement
             do {
                 candidate = try await whileRenewingLease(
                     assignment, pairing: pairing, progress: latest.get
                 ) { [step] in
                     await self.measureCandidate(
-                        step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch)
+                        step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch,
+                        preview: preview)
                 }
             } catch {
                 return .failed(reason:
                     "The lease could not be renewed while a candidate was being measured.")
             }
 
-            guard let measured = candidate else {
-                return .failed(reason:
-                    "A sample encode or its measurement could not be completed, so no quality was chosen.")
+            guard case let .measured(bytes, logs) = candidate else {
+                guard case let .failed(reason) = candidate else { return .failed(reason: "unreachable") }
+                SidecarLog.job.error(
+                    "Job \(assignment.jobId): \(reason, privacy: .public)")
+                return .failed(reason: "The quality search stopped: \(reason).")
             }
 
             let direction: AdaptiveSearchDirection
@@ -535,7 +540,7 @@ public struct JobRunner: WorkExecutor {
                 direction = try await client.reportAdaptiveProbe(
                     serverAddress: pairing.serverAddress, credential: pairing.credential,
                     leaseId: assignment.leaseId,
-                    quality: step.quality, encodedBytes: measured.bytes, logs: measured.logs)
+                    quality: step.quality, encodedBytes: bytes, logs: logs)
             } catch {
                 return .failed(reason: "The measurement could not be reported: \(error).")
             }
@@ -568,22 +573,75 @@ public struct JobRunner: WorkExecutor {
     /// Nil when any part of it could not be done. A partial answer would be worse than none: the
     /// server pools the windows into one score, and a missing window is a different measurement
     /// rather than a smaller one.
+    /// What measuring one candidate produced, or why it produced nothing.
+    ///
+    /// The reason is the point. Every failure below used to be a bare `nil`, which the search
+    /// turned into "a sample encode or its measurement could not be completed" — one sentence for
+    /// a refused command, an ffmpeg that would not start, one that failed, a sample that encoded
+    /// to nothing, and a missing log. None of them named the window, the quality, or a word of
+    /// what ffmpeg said, and the scratch directory is deleted on the way out, so afterwards there
+    /// is nothing left to look at.
+    enum CandidateMeasurement {
+        case measured(bytes: Int64, logs: [String])
+        case failed(String)
+    }
+
+    /// The last few distinct lines of ffmpeg's error output, which is where it says what it
+    /// actually objected to. Distinct because a filter error repeats the same line per stream.
+    static func tail(_ errorTail: String, lines: Int = 4) -> String {
+        var seen: [String] = []
+        for line in errorTail.split(whereSeparator: \.isNewline).reversed() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || seen.contains(trimmed) { continue }
+            seen.append(trimmed)
+            if seen.count == lines { break }
+        }
+        return seen.reversed().joined(separator: " ")
+    }
+
     private func measureCandidate(
         _ step: AdaptiveSearchStep,
         _ assignment: Assignment,
         ffmpeg: URL,
         source: URL,
-        scratch: URL
-    ) async -> (bytes: Int64, logs: [String])? {
-        let commands = step.sampleCommands.compactMap {
-            try? AssignmentCommand.validate($0, outputExtension: assignment.outputExtension)
+        scratch: URL,
+        preview: @escaping @Sendable (Data) -> Void
+    ) async -> CandidateMeasurement {
+        // Each refusal named, not counted. Both of these were `compactMap` into a count check, so
+        // a command the server sent that this machine would not run became "a sample encode or its
+        // measurement could not be completed" — one sentence for five different problems, none of
+        // them saying which command, which window, or a word of what ffmpeg said. The Mac spent an
+        // afternoon handing every job back with that line while the answer sat in a filter graph
+        // nobody could see.
+        var commands: [AssignmentCommand] = []
+        for (index, argv) in step.sampleCommands.enumerated() {
+            do {
+                commands.append(
+                    try AssignmentCommand.validate(argv, outputExtension: assignment.outputExtension))
+            } catch {
+                return .failed("""
+                    the sample encode for window \(index) at quality \(step.quality) was refused: \(error)
+                    """)
+            }
         }
-        guard commands.count == step.sampleCommands.count else { return nil }
 
-        let measurements = step.measurement.commands.compactMap { try? MeasurementCommand.validate($0) }
-        guard measurements.count == step.measurement.commands.count,
-              measurements.count == commands.count
-        else { return nil }
+        var measurements: [MeasurementCommand] = []
+        for (index, argv) in step.measurement.commands.enumerated() {
+            do {
+                measurements.append(try MeasurementCommand.validate(argv))
+            } catch {
+                return .failed("""
+                    the command to score window \(index) at quality \(step.quality) was refused: \(error)
+                    """)
+            }
+        }
+
+        guard measurements.count == commands.count else {
+            return .failed("""
+                the server sent \(commands.count) sample encode(s) and \(measurements.count) \
+                command(s) to score them with
+                """)
+        }
 
         var bytes: Int64 = 0
         var logs: [String] = []
@@ -595,12 +653,40 @@ public struct JobRunner: WorkExecutor {
                 .appendingPathComponent("sample-q\(step.quality)-\(index)", isDirectory: false)
                 .appendingPathExtension(assignment.outputExtension)
 
+            // A picture from each window as it is sampled. The search is now most of what a job
+            // spends its time on — four candidates across three windows — and the film strip sat
+            // empty for all of it, because frames were only ever grabbed during the final encode.
+            // The window's own start is used rather than the encoder's position: a sample is forty
+            // seconds cut from the middle of a title, so its own clock says nothing about where in
+            // the film it came from.
+            let windowStart = step.measurement.sampling
             guard let run = try? await runner.run(
-                ffmpeg, sample.materialise(input: source, output: encoded), progress: { _ in }),
-                run.exitCode == 0,
-                let size = try? FileManager.default.attributesOfItem(atPath: encoded.path)[.size] as? Int64,
-                size > 0
-            else { return nil }
+                ffmpeg, sample.materialise(input: source, output: encoded),
+                progress: { [previewSampler, wantsPreviews] _ in
+                    guard let previewSampler, wantsPreviews() else { return }
+                    Task {
+                        if let frame = await previewSampler.frame(
+                            from: source, atSeconds: Self.seconds(intoWindow: index, of: windowStart)) {
+                            preview(frame)
+                        }
+                    }
+                })
+            else {
+                return .failed("sample \(index + 1) at quality \(step.quality) could not be started")
+            }
+
+            guard run.exitCode == 0 else {
+                return .failed("""
+                    sample \(index + 1) at quality \(step.quality) would not encode \
+                    (ffmpeg exit \(run.exitCode)): \(Self.tail(run.stderr))
+                    """)
+            }
+
+            guard let size = try? FileManager.default
+                .attributesOfItem(atPath: encoded.path)[.size] as? Int64, size > 0
+            else {
+                return .failed("sample \(index + 1) at quality \(step.quality) encoded to nothing at all")
+            }
 
             bytes += size
 
@@ -611,10 +697,23 @@ public struct JobRunner: WorkExecutor {
                 ffmpeg,
                 measurements[index].materialise(
                     distorted: encoded, reference: source, log: log, distortedShift: nil),
-                progress: { _ in }),
-                scored.exitCode == 0,
-                let text = try? String(contentsOf: log, encoding: .utf8)
-            else { return nil }
+                progress: { _ in })
+            else {
+                return .failed("scoring sample \(index + 1) at quality \(step.quality) could not be started")
+            }
+
+            guard scored.exitCode == 0 else {
+                return .failed("""
+                    sample \(index + 1) at quality \(step.quality) would not score \
+                    (ffmpeg exit \(scored.exitCode)): \(Self.tail(scored.stderr))
+                    """)
+            }
+
+            guard let text = try? String(contentsOf: log, encoding: .utf8), !text.isEmpty else {
+                return .failed("""
+                    scoring sample \(index + 1) at quality \(step.quality) wrote no libvmaf log
+                    """)
+            }
 
             logs.append(text)
 
@@ -624,7 +723,7 @@ public struct JobRunner: WorkExecutor {
             try? FileManager.default.removeItem(at: log)
         }
 
-        return (bytes, logs)
+        return .measured(bytes: bytes, logs: logs)
     }
 
     /// Runs each of the server's measurement commands and reads back its log. Nil means the
@@ -673,6 +772,31 @@ public struct JobRunner: WorkExecutor {
             logs.append(contents)
         }
         return logs
+    }
+
+    /// Roughly where in the title a sample window sits, for the preview to seek to.
+    ///
+    /// The server names the windows only in prose — "Adaptive sample at quality 24" — so this
+    /// spreads the grabs across the title rather than pretending to know. It is a picture for a
+    /// person to look at, not a measurement, and three stills from three different parts of a film
+    /// is exactly what it should show.
+    static func seconds(intoWindow index: Int, of sampling: String) -> Double {
+        Double(120 + (index * 600))
+    }
+
+    /// Says once, per reason, why no picture is appearing.
+    ///
+    /// Previews were entirely silent: the film strip stayed empty and there was no way to tell a
+    /// build with no ffmpeg from a menu nobody had open from a grab that was failing. Once per
+    /// reason rather than per frame, because this fires several times a second for the length of
+    /// an encode.
+    private static let previewSilence = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    static func notePreviewsOff(jobId: Int, because reason: String) {
+        let key = "\(jobId):\(reason)"
+        let isNew = previewSilence.withLock { seen in seen.insert(key).inserted }
+        guard isNew else { return }
+        SidecarLog.job.info("Job \(jobId): no frame previews — \(reason, privacy: .public)")
     }
 
     private func run(
@@ -737,7 +861,8 @@ public struct JobRunner: WorkExecutor {
         if let first = assignment.search {
             switch await runSearch(
                 first, assignment, pairing: pairing, ffmpeg: ffmpeg,
-                source: source, scratch: scratch, latest: latest, progress: progress)
+                source: source, scratch: scratch, latest: latest, progress: progress,
+                preview: preview)
             {
             case .settled(let settled):
                 encodeCommand = settled
@@ -756,7 +881,14 @@ public struct JobRunner: WorkExecutor {
                 progress(.encoding(encodedSeconds: seconds))
                 // Only while someone has the menu open, and never faster than the sampler's own
                 // interval: a frame grab is a whole process, and the encode is the job here.
-                guard let previewSampler, wantsPreviews() else { return }
+                guard let previewSampler else {
+                    Self.notePreviewsOff(jobId: assignment.jobId, because: "this build has no ffmpeg to grab one with")
+                    return
+                }
+                guard wantsPreviews() else {
+                    Self.notePreviewsOff(jobId: assignment.jobId, because: "nothing is watching")
+                    return
+                }
                 Task {
                     if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
                         preview(frame)
