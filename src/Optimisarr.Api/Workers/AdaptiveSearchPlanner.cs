@@ -99,7 +99,10 @@ internal static class AdaptiveSearchPlanner
                 ReferenceCrop: crop,
                 ReferenceDecimation: decimation,
                 ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
-                DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder);
+                DistortedShiftToken: RemoteQualityContract.DistortedShiftPlaceholder,
+                // The distorted stream here is a 40-second clip the worker cuts and encodes, not
+                // an encode of the whole title.
+                DistortedIsCutClip: true);
 
             measurements.Add(QualityScoreCommandBuilder.Build(
                 RemoteQualityContract.DistortedPlaceholder,

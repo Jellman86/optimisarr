@@ -169,6 +169,24 @@ the replacement workflow is trustworthy.
         NVENC session-limit error (low risk — concurrency defaults to 1), and a single transient-retry
         of the encode on known-transient NVENC/QSV errors. (Tdarr #613/#729, IPCamTalk.)
 
+   - **Open: does the whole-file measurement mis-seat its reference on an irregular source?**
+     The per-title search was found on 2026-09-15 to be scoring every candidate against frames the
+     encoder never saw, because its reference had `fps` applied before the window was cut: on a
+     source whose frame timestamps are not perfectly regular, that filter duplicates frames and so
+     moves which frames the window then holds. Measured on a real episode, a sample scored a
+     harmonic mean of 6.45 where its true score was 95.52, and every search fell back to the
+     library's own quality as a result. Fixed for samples by cutting the window first.
+
+     The same ordering remains in the whole-file measurement that gates every replacement, and the
+     same reasoning suggests it could mis-seat the reference there too — a full candidate is a
+     regular stream while the source it is judged against may not be. It was deliberately left
+     alone: it demonstrably works on real jobs (job 5915 scored 91.5 on the evidence that replaced
+     it), and that ordering was chosen against a real half-frame rounding tie which the comments in
+     `QualityScoreCommandBuilder` describe in detail. Needs its own investigation with the same
+     method — encode a candidate, cut a lossless reference identically, and compare the graph's own
+     reference branch against it — rather than a speculative change to the path that guards every
+     replacement.
+
 2. **Gold-standard first-run setup wizard: complete** — turn a new, empty installation into safe,
    understandable libraries without hiding Docker-level mistakes or weakening Optimisarr's
    fail-closed defaults. This is the next independently actionable product item while the hardware
