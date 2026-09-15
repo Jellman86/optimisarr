@@ -122,13 +122,17 @@ public static class MeasurementPlaceholders
     /// Substitutes this machine's three paths, and nothing else. The filter graph, the model and
     /// the thresholds are the server's: a score taken under different settings is evidence about
     /// something else.
+    ///
+    /// <para>The two inputs are ordinary arguments and go in as they are. The log is named inside
+    /// the filter description, where a Windows path is not a path at all until it is escaped — see
+    /// <see cref="FilterPath"/>.</para>
     /// </summary>
     public static IReadOnlyList<string> Resolve(
         IReadOnlyList<string> command, string distorted, string reference, string log) =>
         [.. command.Select(argument => argument
             .Replace(Distorted, distorted, StringComparison.Ordinal)
             .Replace(Reference, reference, StringComparison.Ordinal)
-            .Replace(Log, log, StringComparison.Ordinal))];
+            .Replace(Log, FilterPath.ForFilterOption(log), StringComparison.Ordinal))];
 }
 
 public static class AssignmentPlaceholders
