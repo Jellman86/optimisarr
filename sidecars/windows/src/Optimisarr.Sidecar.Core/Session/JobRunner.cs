@@ -70,6 +70,16 @@ public sealed class JobRunner(
                 encodeArguments = chosen;
             }
 
+            // Checked before it is run, never after. The server decides what to encode; it does
+            // not get to name files on this machine, which runs as LocalSystem. A command outside
+            // the contract is refused whole and the job handed back — a repaired command is one
+            // nobody wrote. See AssignmentCommand.
+            if (AssignmentCommand.Refuse(encodeArguments, assignment.OutputExtension) is { } refused)
+            {
+                await client.ReleaseAsync(pairing, assignment.LeaseId, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false, $"The encode command was refused. {refused.Reason}");
+            }
+
             report?.Invoke($"Job {assignment.JobId}: encoding with {assignment.VideoEncoder}");
             var arguments = AssignmentPlaceholders.Resolve(encodeArguments, source, candidatePrefix);
 
@@ -288,6 +298,13 @@ public sealed class JobRunner(
         var logs = new List<string>(commands.Count);
         for (var index = 0; index < commands.Count; index++)
         {
+            if (MeasurementCommand.Refuse(commands[index]) is { } refused)
+            {
+                report?.Invoke(
+                    $"Job {assignment.JobId}: the command to measure window {index} was refused. {refused.Reason}");
+                return null;
+            }
+
             var log = Path.Combine(scratch, $"vmaf-{index}.json");
             var scored = await transcoder.RunAsync(
                 ffmpegPath,
@@ -397,6 +414,15 @@ public sealed class JobRunner(
             var sample = CandidatePath.For(samplePrefix, assignment.OutputExtension);
             var log = Path.Combine(scratch, $"sample-vmaf-q{step.Quality}-{index}.json");
 
+            // A sample encode is the same contract as the real one — same placeholders, same
+            // machine — and there are a dozen of them per job, so it is the larger surface of the
+            // two rather than the smaller.
+            if (AssignmentCommand.Refuse(step.SampleCommands[index], assignment.OutputExtension) is { } refused)
+            {
+                return CandidateMeasurement.Failed(
+                    $"The sample encode for quality {step.Quality} was refused. {refused.Reason}");
+            }
+
             var encode = await transcoder.RunAsync(
                 ffmpegPath,
                 AssignmentPlaceholders.Resolve(step.SampleCommands[index], source, samplePrefix),
@@ -419,6 +445,12 @@ public sealed class JobRunner(
 
             // A sample begins at its own first picture, so there is no lead to remove — unlike a
             // finished candidate, where the measured window is a slice of a whole file.
+            if (MeasurementCommand.Refuse(step.Measurement.Commands[index]) is { } refusedScore)
+            {
+                return CandidateMeasurement.Failed(
+                    $"The command to score sample {index + 1} was refused. {refusedScore.Reason}");
+            }
+
             var scored = await transcoder.RunAsync(
                 ffmpegPath,
                 MeasurementPlaceholders.Resolve(
