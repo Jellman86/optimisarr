@@ -2106,7 +2106,8 @@ public sealed class QueueDispatcher(
             if (!policy.QualityGateEnabled)
             {
                 return await FinishAdaptiveSelectionAsync(
-                    jobId, work, baseline, fellBack: true, "the VMAF target is disabled", cancellationToken);
+                    jobId, work, baseline, fellBack: true, "the VMAF target is disabled", cancellationToken,
+                    expected: true);
             }
 
             var windows = VmafWindowPlanner.PlanAdaptive(samplingDuration.Value);
@@ -2351,7 +2352,10 @@ public sealed class QueueDispatcher(
         int selectedQuality,
         bool fellBack,
         string reason,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // True only where falling back is the configured answer rather than a failure to learn
+        // anything: a library with no quality gate has nothing for a search to measure against.
+        bool expected = false)
     {
         await WithJobAsync(jobId, job =>
         {
@@ -2360,10 +2364,19 @@ public sealed class QueueDispatcher(
             job.AdaptiveVideoQuality = selectedQuality;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
-        logger.LogInformation(
+        // A fall-back is a warning, not news. The search running and learning nothing is the
+        // feature not working, and logged at the same level as a success it is indistinguishable
+        // from one: a hundred and seven jobs fell back over a fortnight, encoded at the library's
+        // quality, came out larger than their sources and failed the size gate, and the line saying
+        // so scrolled past among the ordinary ones.
+        //
+        // A library with no quality gate is the exception. There is nothing to search against and
+        // nothing wrong, so that stays ordinary information.
+        logger.Log(
+            AdaptiveSelectionOutcome.SeverityOf(fellBack, expected),
             "Job {JobId}: adaptive quality {Outcome}; full encode will use {Mode} {Quality}. {Reason}",
             jobId,
-            fellBack ? "fell back to the library setting" : "selected a per-title value",
+            AdaptiveSelectionOutcome.Describe(fellBack, expected),
             work.VideoQuality?.Mode,
             selectedQuality,
             reason);
