@@ -89,6 +89,9 @@ public final class SidecarSession: ObservableObject {
     /// when the machine is idle.
     private var uiTicker: Task<Void, Never>?
     private let uiLoad = MachineLoadSampler()
+    /// The figures the menu is showing, which outlive the readings that could not be taken. See
+    /// `MachineLoadDisplay`.
+    private var uiDisplay = MachineLoadDisplay()
     /// One meter per job, reset when the job changes stage so a download's rate never colours an
     /// upload's.
     private var rateMeters: [Int: RateMeter] = [:]
@@ -480,6 +483,9 @@ public final class SidecarSession: ObservableObject {
         }
     }
 
+    /// How often the menu bar mark is redrawn while work is running.
+    private static let spinTicksPerSecond = 6.0
+
     /// Starts or stops the short timer behind the menu bar's spin and the load figures.
     ///
     /// Only while a job is running. A timer redrawing a menu bar icon on a laptop for hours is a
@@ -491,6 +497,7 @@ public final class SidecarSession: ObservableObject {
         guard running else {
             uiTicker?.cancel()
             uiTicker = nil
+            uiDisplay.clear()
             cpu = nil
             gpu = nil
             spin = 0
@@ -498,18 +505,28 @@ public final class SidecarSession: ObservableObject {
         }
 
         uiTicker = Task { [weak self] in
+            // The spin wants a smooth cadence; the load figures want a coarse one. A busy fraction
+            // is measured between two readings of the kernel's tick counters, and six times a
+            // second is often too little time for them to move at all — which is precisely the
+            // interval that cannot be answered, so the meters spent their lives blanking. Sampling
+            // once a second gives the counters something to say and costs six times less.
+            let ticksPerSample = Int(Self.spinTicksPerSecond)
+            var tick = 0
             while !Task.isCancelled {
                 guard let self else { return }
-                let reading = self.uiLoad.sample()
-                self.cpu = reading?.cpu
-                if let device = reading?.gpu {
-                    self.gpu = GpuUsage(device: device, memoryInUse: self.gpu?.memoryInUse ?? 0)
+                if tick % ticksPerSample == 0 {
+                    self.uiDisplay.observe(self.uiLoad.sample())
+                    self.cpu = self.uiDisplay.cpu
+                    if let device = self.uiDisplay.gpu {
+                        self.gpu = GpuUsage(device: device, memoryInUse: self.gpu?.memoryInUse ?? 0)
+                    }
                 }
                 // A third of a turn per second. The cube has three-fold symmetry about the axis it
                 // spins on, so a third of a turn is a whole revolution as far as the eye is
                 // concerned — fast enough to read as motion, slow enough not to nag.
-                self.spin += 1.0 / 18.0
-                try? await Task.sleep(for: .milliseconds(Int(1000.0 / 6.0)))
+                self.spin += 1.0 / (3 * Self.spinTicksPerSecond)
+                tick &+= 1
+                try? await Task.sleep(for: .milliseconds(Int(1000.0 / Self.spinTicksPerSecond)))
             }
         }
     }

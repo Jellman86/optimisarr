@@ -18,6 +18,10 @@ enum MenuBarIcon {
     /// Menu bar content is 16pt tall by convention; a touch smaller leaves optical breathing room.
     private static let size = NSSize(width: 18, height: 18)
 
+    /// One weight for the whole mark, outline and inner edges alike, and light enough to sit
+    /// beside Apple's own icons rather than out-weigh them.
+    private static let strokeWidth: CGFloat = 1.0
+
     /// - Parameter spin: turns of the cube about its body diagonal, for showing that work is
     ///   happening. Zero when nothing is running.
     static func image(for status: SidecarStatus, spin: Double = 0) -> NSImage {
@@ -49,25 +53,21 @@ enum MenuBarIcon {
                 height: inset.height - 2.5)
         }
         let centre = NSPoint(x: inset.midX, y: inset.midY)
-        let radius = min(inset.width, inset.height) / 2
+        let radius = Double(min(inset.width, inset.height)) / 2
 
         // A cube in isometric projection is a regular hexagon with three spokes to alternating
-        // vertices. Starting at 90° puts a vertex at the top, which is how the app icon sits.
-        var vertices: [NSPoint] = []
-        for step in 0..<6 {
-            let angle = CGFloat.pi / 2 + CGFloat(step) * (CGFloat.pi / 3)
-            vertices.append(NSPoint(
-                x: centre.x + radius * cos(angle),
-                y: centre.y + radius * sin(angle)))
-        }
+        // vertices. Starting at 90° puts a vertex at the top, which is how the app icon sits, and
+        // the arithmetic — including where a spoke has to stop so it ends on the outline rather
+        // than through it — lives in `CubeMark`, where it can be checked without a window.
+        let mark = CubeMark(centre: centre, circumradius: radius, spin: spin)
 
         let path = NSBezierPath()
-        path.lineWidth = 1.4
+        path.lineWidth = Self.strokeWidth
         path.lineJoinStyle = .round
         path.lineCapStyle = .round
 
-        path.move(to: vertices[0])
-        for vertex in vertices.dropFirst() {
+        path.move(to: mark.outline[0])
+        for vertex in mark.outline.dropFirst() {
             path.line(to: vertex)
         }
         path.close()
@@ -80,16 +80,9 @@ enum MenuBarIcon {
         // outline, and the three visible edges sweep round inside it. So the busy mark is the same
         // cube turning rather than a different icon swapped in — which is what stops a spinning
         // menu bar from reading as "something is wrong".
-        //
-        // Three-fold symmetry about that axis means a third of a turn is a whole revolution as far
-        // as anyone watching is concerned.
-        let sweep = CGFloat(spin.truncatingRemainder(dividingBy: 1)) * (2 * .pi / 3)
-        for index in stride(from: 1, to: 6, by: 2) {
-            let angle = CGFloat.pi / 2 + CGFloat(index) * (CGFloat.pi / 3) + sweep
-            path.move(to: centre)
-            path.line(to: NSPoint(
-                x: centre.x + radius * cos(angle),
-                y: centre.y + radius * sin(angle)))
+        for end in mark.spokes {
+            path.move(to: mark.centre)
+            path.line(to: end)
         }
 
         NSColor.black.setStroke()
@@ -136,7 +129,7 @@ enum MenuBarIcon {
         case .solid:
             path.fill()
         case .hollow:
-            path.lineWidth = 1.4
+            path.lineWidth = strokeWidth
             path.stroke()
         }
     }
