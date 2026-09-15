@@ -128,6 +128,32 @@ public struct QualityRequirement: Sendable, Equatable {
             commands: json["commands"] as? [[String]] ?? [],
             sampling: json["sampling"] as? String ?? "None")
     }
+
+    /// The same contract as it arrives inside a search step, where three of the fields are not
+    /// facts about the measurement at all.
+    ///
+    /// `measure` is implied — a candidate is sent precisely to be measured — and `frameSubsample`
+    /// and `clipVmaf` are already baked into the commands by the time they reach this machine.
+    /// Requiring them cost a fortnight of searched jobs: a server sent the planner's own five-field
+    /// contract, the strict decoder above returned nil, and the step it belonged to became "no
+    /// search at all" rather than an error anybody could see. The server now sends one shape for
+    /// both, and this stays lenient so a mismatch can never again disable a search in silence.
+    init?(measurementJson json: [String: Any]) {
+        guard
+            let model = json["model"] as? String,
+            let harmonic = (json["minimumHarmonicMean"] as? NSNumber)?.doubleValue,
+            let minimum = (json["minimumMinimum"] as? NSNumber)?.doubleValue,
+            let commands = json["commands"] as? [[String]]
+        else { return nil }
+        self.init(
+            measure: json["measure"] as? Bool ?? true,
+            model: model,
+            frameSubsample: (json["frameSubsample"] as? NSNumber)?.intValue ?? 1,
+            clipVmaf: json["clipVmaf"] as? Bool ?? false,
+            minimumHarmonicMean: harmonic, minimumMinimum: minimum,
+            commands: commands,
+            sampling: json["sampling"] as? String ?? "None")
+    }
 }
 
 /// One job the server has handed this worker, mirroring the server's `AssignmentDto`.
@@ -195,6 +221,21 @@ public struct Assignment: Sendable, Equatable {
             // Absent from a server that predates the search, and from every job whose quality is
             // already settled — both mean "encode straight away", which is what this app did
             // before the field existed.
-            search: (json["search"] as? [String: Any]).flatMap(AdaptiveSearchStep.init(json:)))
+            search: Assignment.search(from: json))
+    }
+
+    /// Says so when a search arrives that cannot be read.
+    ///
+    /// Nil has two meanings here and only one of them is ordinary: no search was sent, or one was
+    /// sent and could not be understood. They looked identical, and the second is the one that
+    /// quietly encodes a whole title at the library's baseline.
+    private static func search(from json: [String: Any]) -> AdaptiveSearchStep? {
+        guard let searchJson = json["search"] as? [String: Any] else { return nil }
+        guard let step = AdaptiveSearchStep(json: searchJson) else {
+            SidecarLog.job.error(
+                "A quality search was offered but could not be read, so this job would encode at the library's quality. Keys: \(searchJson.keys.sorted().joined(separator: ", "), privacy: .public)")
+            return nil
+        }
+        return step
     }
 }

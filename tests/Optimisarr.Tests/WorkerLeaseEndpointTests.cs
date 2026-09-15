@@ -934,6 +934,39 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_search_measurement_is_the_same_shape_as_the_quality_gate_it_answers_to()
+    {
+        // The defect this pins: the search's measurement went out as the planner's own contract,
+        // which carries five fields, while the assignment's quality gate carries eight. A sidecar
+        // holding one type for "how to measure quality" therefore met two shapes. The macOS
+        // decoder required the three that were missing, gave up, and left `search` silently null —
+        // so every searched job was encoded at the library's baseline and no probe was ever
+        // reported, with green tests and a lease that recorded the search as asked for.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob(
+            videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf, qualityGate: true);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+
+        var gate = Fields(assignment.GetProperty("quality"));
+        var measurement = Fields(assignment.GetProperty("search").GetProperty("measurement"));
+        Assert.Equal(gate, measurement);
+
+        // And the three the planner's contract does not carry are really there, with the values a
+        // measurement needs rather than a deserialiser's defaults.
+        var search = assignment.GetProperty("search").GetProperty("measurement");
+        Assert.True(search.GetProperty("measure").GetBoolean());
+        Assert.True(search.GetProperty("frameSubsample").GetInt32() > 0);
+        Assert.Equal(JsonValueKind.False, search.GetProperty("clipVmaf").ValueKind);
+    }
+
+    private static IReadOnlyList<string> Fields(JsonElement element) =>
+        element.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToList();
+
+    [Fact]
     public async Task A_library_kept_on_this_server_is_never_offered_to_a_worker()
     {
         // The operator said this library's encodes stay here — perhaps this machine's encoder is
