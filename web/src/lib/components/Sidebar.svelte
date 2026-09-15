@@ -87,20 +87,41 @@
        started reporting the server's state: it earns the room, and a tesseract cannot resolve
        at sixteen pixels a side. The collapsed rail still gets the small one. -->
   <button
-    class="flex flex-col items-center gap-2 border-b border-slate-200 px-3 py-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700 {railCollapsed ? 'px-2 py-3' : ''}"
+    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-inset {railCollapsed ? 'px-2 py-3' : 'pt-5 pb-4'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
       layout.closeMobile()
     }}
   >
-    <BrandMark
-      grid={railCollapsed ? 32 : 64}
-      class="flex-shrink-0 drop-shadow-[0_0_14px_rgba(34,211,238,0.30)] {railCollapsed ? 'h-8 w-8' : 'h-16 w-16'}"
-    />
     {#if !railCollapsed}
-      <span class="truncate text-[15px] font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</span>
+      <!-- Ambient light behind the mark, so the glow reads as coming off the core rather than
+           being painted on it. Blurred and very low alpha: it should be felt, not seen. -->
+      <span
+        class="pointer-events-none absolute left-1/2 top-7 h-32 w-32 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-2xl dark:bg-cyan-400/20"
+        aria-hidden="true"
+      ></span>
     {/if}
+
+    <BrandMark
+      grid={railCollapsed ? 40 : 144}
+      class="relative flex-shrink-0 drop-shadow-[0_0_22px_rgba(34,211,238,0.30)] {railCollapsed ? 'h-10 w-10' : 'h-36 w-36'}"
+    />
+
+    {#if !railCollapsed}
+      <!-- The wordmark rides up over the foot of the mark. The tesseract's lower corner is mostly
+           empty space, so the overlap closes the gap the bounding box leaves rather than covering
+           anything; the shadow keeps the letters legible where they cross a strut. -->
+      <span
+        class="relative -mt-8 text-[18px] font-bold tracking-tight text-slate-900 [text-shadow:0_1px_10px_rgb(248_250_252/0.95)] dark:text-slate-50 dark:[text-shadow:0_1px_10px_rgb(2_6_24/0.95)]"
+      >Optimisarr</span>
+    {/if}
+
+    <!-- A hairline that fades at both ends, rather than a rule butting into the rail's edges. -->
+    <span
+      class="pointer-events-none absolute inset-x-3 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent dark:via-slate-700"
+      aria-hidden="true"
+    ></span>
   </button>
 
   <!-- Nav -->

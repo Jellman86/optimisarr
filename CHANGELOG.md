@@ -13,7 +13,9 @@
   a half, so the icon slowing down is itself the signal that the queue emptied. The favicon is
   the same mark, so a background tab answers "is it still going?" without being opened. It is
   drawn for the theme it is sitting on, keeps a transparent background, and holds its resting
-  pose for anyone who has asked for reduced motion.
+  pose for anyone who has asked for reduced motion. It sits above the wordmark at the size the
+  old logo was, with the name riding up over its foot — the mark's lower corner is empty space,
+  so the overlap closes a gap the bounding box left rather than covering anything.
 
 - **The dashboard says what is happening, and why it is not.** The page drew the same screen
   whether the queue was racing or wedged: every figure on it was a count and none of them was a
