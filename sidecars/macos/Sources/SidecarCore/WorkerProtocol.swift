@@ -151,11 +151,14 @@ public struct Assignment: Sendable, Equatable {
     public let arguments: [String]
     public let outputExtension: String
     public let quality: QualityRequirement
+    /// The first candidate of a per-title quality search, when this job needs one. Nil when the
+    /// quality is already settled and the encode can start immediately.
+    public let search: AdaptiveSearchStep?
 
     public init(
         leaseId: String, jobId: Int, title: String = "", sourceBytes: Int64, videoEncoder: String,
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
-        quality: QualityRequirement
+        quality: QualityRequirement, search: AdaptiveSearchStep? = nil
     ) {
         self.leaseId = leaseId
         self.jobId = jobId
@@ -166,6 +169,7 @@ public struct Assignment: Sendable, Equatable {
         self.arguments = arguments
         self.outputExtension = outputExtension
         self.quality = quality
+        self.search = search
     }
 
     init?(json: [String: Any]) {
@@ -187,6 +191,10 @@ public struct Assignment: Sendable, Equatable {
             title: json["title"] as? String ?? "",
             sourceBytes: sourceBytes, videoEncoder: encoder,
             renewWithinSeconds: renew, arguments: arguments, outputExtension: outputExtension,
-            quality: quality)
+            quality: quality,
+            // Absent from a server that predates the search, and from every job whose quality is
+            // already settled — both mean "encode straight away", which is what this app did
+            // before the field existed.
+            search: (json["search"] as? [String: Any]).flatMap(AdaptiveSearchStep.init(json:)))
     }
 }

@@ -590,17 +590,16 @@ public sealed class QueueDispatcher(
         }
         PruneFirstRunnable(queued);
 
-        // A worker cannot be offered a job whose per-title quality has not been chosen yet, and
-        // that choice is made here, by this machine. Holding such a job for a worker is a wait for
-        // something that cannot happen: the claim route refuses it, and this machine has promised
-        // not to start it. Every library set to adaptive quality and "prefer a worker" stalled for
-        // the length of the hold and was then run locally anyway — so the preference never once
-        // did what it says.
+        // Every job a worker could take is now held for one, including those whose per-title
+        // quality is still unchosen: the search travels with the job, so a worker can be offered it
+        // before a quality exists. That was not true yesterday, and the exception carved out for it
+        // then would now hand every adaptive job straight back to this machine — the exact stall it
+        // was written to cure, inverted.
         var runnable = SelectLocallyRunnable(
             withinWindow,
             _firstRunnableAt,
             remoteWorkersOn,
-            job => aWorkerCouldTakeWork && !AwaitsLocalQualityChoice(job, adaptiveLibraryIds),
+            _ => aWorkerCouldTakeWork,
             nowUtc);
 
         var toStart = JobScheduler.SelectJobsToStart(
@@ -937,6 +936,102 @@ public sealed class QueueDispatcher(
     /// nothing was listening would be worse than ignoring the preference, so an absent, drained or
     /// incapable fleet means this machine simply carries on.</para>
     /// </summary>
+    /// <summary>
+    /// Expresses one candidate quality as commands the worker holding this job can run.
+    ///
+    /// <para>Built here rather than in the endpoint because it needs the job's spec, its encoder and
+    /// the source's picture — the same facts <see cref="PrepareRemoteWorkAsync"/> assembles to build
+    /// an assignment. The endpoint asks for a candidate and gets commands; it never learns what a
+    /// sample encode looks like.</para>
+    ///
+    /// <para>Null when the search cannot be expressed at all: no quality gate, no readable source
+    /// picture, no windows. The caller then leaves the job to be searched locally, which is the
+    /// behaviour that existed before any of this.</para>
+    /// </summary>
+    public async Task<AdaptiveSearchStep?> PlanAdaptiveStepAsync(
+        int jobId,
+        int quality,
+        WorkerCapabilities worker,
+        CancellationToken cancellationToken)
+    {
+        // Loaded for the worker that will run it, never for this machine. Resolving the encoder
+        // from this server's probe would plan the search on the wrong encoder entirely — the exact
+        // mistake moving the search was meant to end — and on a server whose probe offers nothing
+        // for the target codec it throws instead, which is how a test caught it.
+        JobWork? work;
+        try
+        {
+            work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            // No encoder this worker can use for the target codec. The caller refuses the job,
+            // which leaves it to be searched and encoded here.
+            return null;
+        }
+
+        if (work is not { } loaded
+            || loaded.Spec.VideoCodec is null
+            || loaded.VideoEncoder is null
+            || loaded.SourcePicture is not { } source)
+        {
+            return null;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var sourceProbe = await scope.ServiceProvider
+            .GetRequiredService<MediaProbeService>()
+            .ProbeAsync(loaded.Original.Path, cancellationToken);
+
+        // The primary picture timeline, not the container's. A subtitle or attachment stream can
+        // extend a container well past the programme, and a window planned on that can land after
+        // the last frame and produce an empty, unscorable sample.
+        var samplingDuration = MediaTimelineDuration.Resolve(
+            MediaKind.Video,
+            sourceProbe.VideoDurationSeconds,
+            loaded.DurationSeconds);
+        if (samplingDuration is not > 0)
+        {
+            return null;
+        }
+
+        return AdaptiveSearchPlanner.Plan(
+            quality,
+            loaded.Spec,
+            loaded.VideoEncoder,
+            Path.GetExtension(loaded.Spec.OutputPath),
+            VmafWindowPlanner.PlanAdaptive(samplingDuration.Value),
+            loaded.VerificationPolicy,
+            source.Width,
+            source.Height,
+            loaded.Original.IsHdr,
+            loaded.Original.HdrConvertedToSdr,
+            samplingDuration,
+            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate,
+            ContainerLeadSeconds(sourceProbe),
+            loaded.Spec.CropTo,
+            loaded.Spec.FrameRate);
+    }
+
+    /// <summary>
+    /// The two facts an exchange of the quality search needs about a job: what its evidence is
+    /// judged by, and which quality the search brackets around.
+    ///
+    /// <para>Both come from the job's own work, so a search that runs on a worker is judged and
+    /// centred exactly as one that runs here. Rebuilding an approximate policy from the contract's
+    /// two thresholds would leave out the catastrophic floor and quietly judge a remote search more
+    /// leniently; taking the baseline from the job's requested quality rather than its effective
+    /// one would bracket around a different number than a local search would.</para>
+    /// </summary>
+    public async Task<(VerificationPolicy Policy, int Baseline)?> GetSearchContextAsync(
+        int jobId, CancellationToken cancellationToken)
+    {
+        var work = await LoadWorkAsync(jobId, cancellationToken);
+        return work is { VideoQuality: { } quality }
+            ? (work.Value.VerificationPolicy, quality.Effective)
+            : null;
+    }
+
     private async Task<bool> ShouldHandToWorkerAsync(int jobId, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -950,18 +1045,27 @@ public sealed class QueueDispatcher(
             DateTimeOffset.UtcNow,
             cancellationToken);
 
-        if (!availability.RemoteWorkersOn || !availability.AWorkerCouldTakeWork)
+        var placement = await JobPlacementLookup.ForJobAsync(db, jobId, cancellationToken);
+
+        var handOver = availability.RemoteWorkersOn
+            && availability.AWorkerCouldTakeWork
+            && placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
+
+        // Says which of the three it was. This decision was silent, and a library set to prefer a
+        // worker that never handed one anything looked identical whether the fleet was offline, the
+        // feature was off, or the placement had not been read at all. It is written once per job
+        // that searched its quality here, not once per poll.
+        if (!handOver)
         {
-            return false;
+            logger.LogInformation(
+                "Job {JobId}: keeping the encode here — remote workers {Remote}, a worker could take it: {Fleet}, placement {Placement}",
+                jobId,
+                availability.RemoteWorkersOn ? "on" : "off",
+                availability.AWorkerCouldTakeWork,
+                placement?.ToString() ?? "unresolved");
         }
 
-        var placement = await db.Jobs
-            .AsNoTracking()
-            .Where(job => job.Id == jobId && job.Type == JobType.Normal)
-            .Select(job => job.MediaFile!.Library!.WorkPlacement)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
+        return handOver;
     }
 
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
@@ -1375,13 +1479,25 @@ public sealed class QueueDispatcher(
             return RemoteWorkPlan.Refused("Only video re-encodes are offered to remote workers.");
         }
 
-        // Adaptive selection runs sample encodes on this machine's encoder, and a quality chosen
-        // for one encoder means nothing on another. Until selection can run on the worker, an
-        // adaptive library's jobs stay local rather than silently encoding at the fixed quality.
+        // Adaptive selection runs sample encodes on an encoder, and a quality proven on one means
+        // nothing on another — which is exactly why the search now travels with the job rather than
+        // being done here first. The worker measures the candidates this machine chooses, on the
+        // encoder that will do the real encode.
+        AdaptiveSearchStep? search = null;
         if (work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
-            return RemoteWorkPlan.Refused(
-                "Adaptive quality selection has not run for this job and cannot run on a remote worker.");
+            search = work.VideoQuality is { } baseline
+                ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken)
+                : null;
+
+            // A search that cannot be expressed as commands — no quality gate, no readable source
+            // picture, no windows — keeps the job here, where the local search can still run. That
+            // is the behaviour this feature replaced, kept as its fallback.
+            if (search is null)
+            {
+                return RemoteWorkPlan.Refused(
+                    "A per-title quality search could not be planned for this job, so it stays on this server.");
+            }
         }
 
         var (width, height) = work.SourcePicture is { } picture
@@ -1422,7 +1538,8 @@ public sealed class QueueDispatcher(
             QualityScoreCommandBuilder.ModelVersionFor(width, height),
             quality,
             work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
-            work.Spec.AudioEncoder));
+            work.Spec.AudioEncoder,
+            search));
     }
 
     /// <summary>

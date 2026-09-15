@@ -353,6 +353,42 @@ public struct SidecarClient: Sendable {
     /// before the candidate is delivered. The server parses and pools them; nothing is computed
     /// here. A refusal is reported as `deliveryRefused` so the caller can carry on and deliver:
     /// the server will simply measure for itself.
+    /// Reports what this machine measured for one candidate, and returns what to do next.
+    ///
+    /// The verdict is not sent, only the evidence: whether a candidate met the target needs the
+    /// library's policy and the pooling rules, and both live on the server. This machine encodes,
+    /// scores, and says what it saw.
+    public func reportAdaptiveProbe(
+        serverAddress: String, credential: String, leaseId: String,
+        quality: Int, encodedBytes: Int64, logs: [String]
+    ) async throws -> AdaptiveSearchDirection {
+        var request = try authorised(
+            serverAddress, "/api/workers/leases/\(leaseId)/quality-probe",
+            credential: credential, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "quality": quality,
+            "encodedBytes": encodedBytes,
+            "logs": logs,
+        ])
+
+        let (data, response) = try await perform(request)
+        switch response.statusCode {
+        case 200:
+            guard
+                let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let direction = AdaptiveSearchDirection(json: body)
+            else { throw SidecarError.unexpectedResponse(status: 200) }
+            return direction
+        case 409:
+            // The lease has gone, so the search has gone with it: the evidence is bound to this
+            // machine's encoder and the next holder starts again.
+            throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer held.")
+        case let status:
+            throw SidecarError.unexpectedResponse(status: status)
+        }
+    }
+
     public func reportQuality(
         serverAddress: String, credential: String, leaseId: String,
         sourceSha256: String, candidateSha256: String, logs: [String]

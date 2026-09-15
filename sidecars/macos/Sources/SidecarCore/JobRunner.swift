@@ -464,6 +464,152 @@ public struct JobRunner: WorkExecutor {
             leaseId: assignment.leaseId, sourceSha256: sourceSha256, candidateSha256: candidateSha256)
     }
 
+    /// What a completed search left behind: the encode to run, or why there is none.
+    private enum SearchOutcome {
+        case settled(AssignmentCommand)
+        case failed(reason: String)
+    }
+
+    /// Measures each candidate the server asks for, until it stops asking.
+    ///
+    /// <br>Bounded by the server: it sends at most four candidates and then names one. This loop
+    /// ends when it is told to, or when a measurement cannot be made — in which case the job goes
+    /// back rather than being encoded at a quality nobody chose. Encoding at the assignment's
+    /// baseline instead would silently discard the search and produce a file the library did not
+    /// ask for.
+    private func runSearch(
+        _ first: AdaptiveSearchStep,
+        _ assignment: Assignment,
+        pairing: StoredPairing,
+        ffmpeg: URL,
+        source: URL,
+        scratch: URL,
+        latest: LatestProgress,
+        progress: @escaping @Sendable (JobProgress) -> Void
+    ) async -> SearchOutcome {
+        var step = first
+        // The server bounds its own search at four candidates, but this machine should not depend
+        // on that to stop: a bound only the other end enforces is not a bound. Twice the expected
+        // number leaves ordinary searches untouched and still ends a conversation that has stopped
+        // making sense.
+        let maximumCandidates = 8
+        var measured = 0
+
+        while true {
+            measured += 1
+            guard measured <= maximumCandidates else {
+                return .failed(reason:
+                    "The search did not settle after \(maximumCandidates) candidates, so no quality was chosen.")
+            }
+            latest.set(.measuring)
+            progress(.measuring)
+            SidecarLog.job.info(
+                "Job \(assignment.jobId): measuring quality \(step.quality, privacy: .public)")
+
+            guard let measured = await measureCandidate(
+                step, assignment, ffmpeg: ffmpeg, source: source, scratch: scratch)
+            else {
+                return .failed(reason:
+                    "A sample encode or its measurement could not be completed, so no quality was chosen.")
+            }
+
+            let direction: AdaptiveSearchDirection
+            do {
+                direction = try await client.reportAdaptiveProbe(
+                    serverAddress: pairing.serverAddress, credential: pairing.credential,
+                    leaseId: assignment.leaseId,
+                    quality: step.quality, encodedBytes: measured.bytes, logs: measured.logs)
+            } catch {
+                return .failed(reason: "The measurement could not be reported: \(error).")
+            }
+
+            if let next = direction.nextStep {
+                step = next
+                continue
+            }
+
+            // The search is over. The arguments that come back name the chosen quality; the ones
+            // the assignment arrived with were built before any quality existed.
+            guard let settled = direction.arguments,
+                  let rebuilt = try? AssignmentCommand.validate(
+                      settled, outputExtension: assignment.outputExtension)
+            else {
+                return .failed(reason:
+                    "The server chose a quality but sent no usable command to encode with.")
+            }
+
+            SidecarLog.job.info("""
+                Job \(assignment.jobId): search chose quality \
+                \(direction.selectedQuality.map(String.init) ?? "?", privacy: .public)
+                """)
+            return .settled(rebuilt)
+        }
+    }
+
+    /// Encodes one candidate's sample windows and scores each, returning the bytes and raw logs.
+    ///
+    /// Nil when any part of it could not be done. A partial answer would be worse than none: the
+    /// server pools the windows into one score, and a missing window is a different measurement
+    /// rather than a smaller one.
+    private func measureCandidate(
+        _ step: AdaptiveSearchStep,
+        _ assignment: Assignment,
+        ffmpeg: URL,
+        source: URL,
+        scratch: URL
+    ) async -> (bytes: Int64, logs: [String])? {
+        let commands = step.sampleCommands.compactMap {
+            try? AssignmentCommand.validate($0, outputExtension: assignment.outputExtension)
+        }
+        guard commands.count == step.sampleCommands.count else { return nil }
+
+        let measurements = step.measurement.commands.compactMap { try? MeasurementCommand.validate($0) }
+        guard measurements.count == step.measurement.commands.count,
+              measurements.count == commands.count
+        else { return nil }
+
+        var bytes: Int64 = 0
+        var logs: [String] = []
+
+        for (index, sample) in commands.enumerated() {
+            // Named with the contract's extension, as the encode's own output is: the extension
+            // chooses the muxer, so it is part of the command rather than a local convention.
+            let encoded = scratch
+                .appendingPathComponent("sample-q\(step.quality)-\(index)", isDirectory: false)
+                .appendingPathExtension(assignment.outputExtension)
+
+            guard let run = try? await runner.run(
+                ffmpeg, sample.materialise(input: source, output: encoded), progress: { _ in }),
+                run.exitCode == 0,
+                let size = try? FileManager.default.attributesOfItem(atPath: encoded.path)[.size] as? Int64,
+                size > 0
+            else { return nil }
+
+            bytes += size
+
+            // A sample begins at its own first picture, so there is no lead to remove — unlike a
+            // finished candidate, where the window is a slice of a whole file.
+            let log = scratch.appendingPathComponent("sample-vmaf-q\(step.quality)-\(index).json", isDirectory: false)
+            guard let scored = try? await runner.run(
+                ffmpeg,
+                measurements[index].materialise(
+                    distorted: encoded, reference: source, log: log, distortedShift: nil),
+                progress: { _ in }),
+                scored.exitCode == 0,
+                let text = try? String(contentsOf: log, encoding: .utf8)
+            else { return nil }
+
+            logs.append(text)
+
+            // Removed as it goes: four candidates across three windows is a dozen sample encodes,
+            // and keeping them all would need as much scratch again as the job itself.
+            try? FileManager.default.removeItem(at: encoded)
+            try? FileManager.default.removeItem(at: log)
+        }
+
+        return (bytes, logs)
+    }
+
     /// Runs each of the server's measurement commands and reads back its log. Nil means the
     /// measurement could not be made in full — a refused command, a failed ffmpeg, a missing log —
     /// and nothing is reported, so the server never sees half an answer.
@@ -567,7 +713,23 @@ public struct JobRunner: WorkExecutor {
                 reason: "The source did not arrive intact (hash mismatch), so it was not encoded.")
         }
 
-        let arguments = command.materialise(input: source, output: candidate)
+        // The per-title quality search, when the server sent one. It runs here, on the encoder that
+        // will do the real encode, because a quality proven by measuring one encoder means nothing
+        // on another. The server chooses every candidate; this machine measures them.
+        var encodeCommand = command
+        if let first = assignment.search {
+            switch await runSearch(
+                first, assignment, pairing: pairing, ffmpeg: ffmpeg,
+                source: source, scratch: scratch, latest: latest, progress: progress)
+            {
+            case .settled(let settled):
+                encodeCommand = settled
+            case .failed(let reason):
+                return await release(assignment, pairing: pairing, reason: reason)
+            }
+        }
+
+        let arguments = encodeCommand.materialise(input: source, output: candidate)
         latest.set(.encoding(encodedSeconds: 0))
         let encode = try await whileRenewingLease(
             assignment, pairing: pairing, progress: latest.get

@@ -877,11 +877,15 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_job_from_an_adaptive_library_stays_local_until_its_quality_has_been_chosen()
+    public async Task A_job_whose_quality_search_cannot_be_planned_stays_on_this_server()
     {
-        // Adaptive selection runs sample encodes on this machine's encoder; a quality chosen for
-        // one encoder means nothing on another. Offering the job at the fixed quality instead
-        // would silently change what the library asked for, so it is not offered at all.
+        // The fallback, and the behaviour this fixture can actually reach: its source is a handful
+        // of bytes rather than a video, so no sample windows can be planned against it. When a
+        // search cannot be expressed as commands the job is not offered at all, and the local
+        // search — which this replaced — still runs it here.
+        //
+        // The opposite case, an adaptive job offered *with* a search, needs a real source to probe
+        // and is proven against one rather than pretended at here.
         await EnableRemoteWorkers();
         var worker = await PairCapableWorker("Claimer");
         await QueueAJob(videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf);
@@ -889,6 +893,40 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
 
         Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+    }
+
+    [Fact(Skip = "Needs a real source to probe; proven end to end against a live worker instead.")]
+    public async Task A_job_from_an_adaptive_library_is_offered_with_a_search_to_run()
+    {
+        // This job used to stay on the server, because the search ran here and a quality proven on
+        // one encoder means nothing on another. That reasoning is why the search now travels with
+        // the job rather than why the job stays: the worker measures the candidates this machine
+        // chooses, on the encoder that will do the real encode.
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Claimer");
+        await QueueAJob(videoEncoder: null, strategy: VideoQualityStrategy.AdaptiveVmaf);
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+
+        var search = assignment.GetProperty("search");
+        Assert.NotEqual(JsonValueKind.Null, search.ValueKind);
+        // A sample encode per measurement window, and a libvmaf command for each.
+        var samples = search.GetProperty("sampleCommands").EnumerateArray().ToList();
+        Assert.NotEmpty(samples);
+        Assert.Equal(
+            samples.Count,
+            search.GetProperty("measurement").GetProperty("commands").GetArrayLength());
+
+        // Nothing in them names a path on this machine.
+        foreach (var command in samples)
+        {
+            var arguments = command.EnumerateArray().Select(element => element.GetString()!).ToList();
+            Assert.Contains("{{input}}", arguments);
+            Assert.DoesNotContain(arguments, argument => argument.StartsWith('/'));
+        }
     }
 
     [Fact]

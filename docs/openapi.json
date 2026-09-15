@@ -34,6 +34,109 @@
         ],
         "type": "object"
       },
+      "AdaptiveProbeDirectionDto": {
+        "properties": {
+          "arguments": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "nextStep": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdaptiveSearchStep"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "selectedQuality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "nextStep",
+          "selectedQuality",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "AdaptiveProbeRequest": {
+        "properties": {
+          "encodedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "quality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "quality",
+          "encodedBytes",
+          "logs"
+        ],
+        "type": "object"
+      },
+      "AdaptiveSearchStep": {
+        "properties": {
+          "measurement": {
+            "$ref": "#/components/schemas/RemoteQualityContract"
+          },
+          "quality": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "sampleCommands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "quality",
+          "sampleCommands",
+          "measurement"
+        ],
+        "type": "object"
+      },
       "ApiError": {
         "properties": {
           "args": {},
@@ -116,6 +219,16 @@
             "type": [
               "integer",
               "string"
+            ]
+          },
+          "search": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AdaptiveSearchStep"
+              }
             ]
           },
           "sourceBytes": {
@@ -1505,6 +1618,57 @@
           "freeDiskBytes",
           "workRoot",
           "waitingReason"
+        ],
+        "type": "object"
+      },
+      "RemoteQualityContract": {
+        "properties": {
+          "commands": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "minimumHarmonicMean": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "minimumMinimum": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "sampling": {
+            "type": "string"
+          },
+          "windowCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "model",
+          "sampling",
+          "minimumHarmonicMean",
+          "minimumMinimum",
+          "commands"
         ],
         "type": "object"
       },
@@ -5320,6 +5484,97 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/quality-probe": {
+      "post": {
+        "operationId": "ReportAdaptiveProbe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdaptiveProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdaptiveProbeDirectionDto"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "409": {
             "content": {
