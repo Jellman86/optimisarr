@@ -29,10 +29,15 @@
   on an idle server, and the fleet list now carries the same figure per machine, which the single
   graph could not once workers existed. The lifetime savings figure stays, demoted from a hero to
   one cell of four.
-- **The navigation carries the numbers.** Each entry shows its own count, so "is there anything
-  in quarantine?" no longer means opening quarantine to find out. A count that has not been
-  fetched shows nothing rather than zero. The mark above them was a third of the rail spent on
-  telling you which application you already had open, and is now a compact lockup.
+- **The navigation carries a number where a number is worth carrying.** The queue while it has
+  work, and quarantine while originals are waiting on a decision — nothing else. A count beside
+  every entry is seven figures competing for attention and five that never change, which leaves
+  a reader no wiser about which one they were meant to look at. A figure that is zero, or that
+  has not been fetched yet, is absent rather than shown as a nought. The rows are roomier, the
+  entry you are on is a soft filled key, and the three strips that used to sit stacked at the
+  foot — each with its own rule across the rail — are one. The running version and the build it
+  came from stay where they were: they are the first thing anyone is asked for when something
+  looks wrong.
 
 ### Fixed
 

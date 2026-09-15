@@ -258,14 +258,28 @@ test('resetting the lifetime total asks first, and the bindable confirm reaches 
   await expect(page.getByRole('button', { name: 'Reset the lifetime space-saved total' })).toBeVisible()
 })
 
-test('the sidebar carries live counts so a page need not be opened to see them', async ({ page }) => {
+test('only the entries that need a decision carry a figure', async ({ page }) => {
+  // A count on every row is seven numbers competing and five that never change. The queue and
+  // quarantine can ask something of you; the rest are just places to go.
   await mockDashboard(page)
 
   await page.goto('/#/')
 
   const sidebar = page.locator('aside')
-  await expect(sidebar.getByText('7,014')).toBeVisible()
   await expect(sidebar.getByText('64', { exact: true })).toBeVisible()
+  await expect(sidebar.getByText('14', { exact: true })).toBeVisible()
+  // The inventory count is deliberately absent.
+  await expect(sidebar.getByText('7,014')).toBeHidden()
+})
+
+test('a figure that is zero is absent rather than shown as nothing to do', async ({ page }) => {
+  await mockDashboard(page, { stats: { queued: 0, inQuarantine: 0 } })
+
+  await page.goto('/#/')
+
+  const sidebar = page.locator('aside')
+  await expect(sidebar.getByRole('button', { name: /Queue/ })).toBeVisible()
+  await expect(sidebar.getByText('0', { exact: true })).toBeHidden()
 })
 
 test('a long in-flight list is capped and says what it is hiding', async ({ page }) => {

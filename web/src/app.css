@@ -33,19 +33,20 @@ body {
    of control primitives: one focus ring, one accent (cyan) reserved for the
    primary action and "on" states, slate for everything else. */
 @layer components {
+  /* Roomier than a dense list wants to be, on purpose: this is the one surface that is on
+     screen on every page, and a 40px row is also a target a thumb can find. */
   .nav-button {
-    @apply flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950;
+    @apply flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950;
   }
+  /* A soft filled key. Not a coloured rail down one edge: that reads as decoration bolted to
+     the row rather than as the row being the one you are on. */
   .nav-button-active {
-    @apply bg-slate-100 font-semibold text-slate-900 shadow-[inset_0_0_0_1px_var(--color-slate-200)] dark:bg-slate-950 dark:text-slate-50 dark:shadow-[inset_0_1px_0_var(--color-slate-600),inset_0_0_0_1px_var(--color-slate-800)];
+    @apply bg-slate-100 font-semibold text-slate-900 dark:bg-slate-800/70 dark:text-slate-50;
   }
-  /* The lit lamp: the one place the accent appears in the navigation. */
-  .nav-lamp {
-    @apply h-1.5 w-1.5 flex-none rounded-full bg-cyan-600 shadow-[0_0_6px_rgba(0,184,219,0.7)] dark:bg-cyan-400;
-  }
-  /* Live figures beside each entry. Tabular so they do not jitter as they change. */
-  .nav-count {
-    @apply ml-auto font-mono text-[10.5px] tabular-nums text-slate-400 dark:text-slate-500;
+  /* Carried only by the entries that can ask something of you. Tabular so a changing figure
+     does not make the row twitch. */
+  .nav-badge {
+    @apply ml-auto min-w-[1.5rem] rounded-full bg-slate-200 px-2 py-0.5 text-center font-mono text-[10.5px] tabular-nums text-slate-600 dark:bg-slate-700/70 dark:text-slate-300;
   }
   .nav-button-inactive {
     @apply text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800;
