@@ -511,8 +511,10 @@ internal static class WorkerLeaseEndpoints
             SettingsStore settings,
             OptimisarrDbContext db,
             QueueDispatcher dispatcher,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
+            var logger = loggerFactory.CreateLogger("Optimisarr.Api.Workers.AdaptiveSearch");
             if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
             {
                 return refused;
@@ -593,6 +595,18 @@ internal static class WorkerLeaseEndpoints
             }
 
             lease.AdaptiveProbesJson = JsonSerializer.Serialize(progress.Probes, EvidenceJson);
+
+            // Worded as the local search words it, because the two are the same search and a
+            // reader should not have to know which machine ran it to read the outcome.
+            var probe = progress.Probes.Last();
+            logger.LogInformation(
+                "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target on {Worker} with {EncodedBytes} encoded video bytes ({Scores})",
+                lease.JobId,
+                probe.Quality,
+                probe.MeetsTarget ? "met" : "missed",
+                worker.Name,
+                probe.EncodedBytes,
+                AdaptiveProbeReport.Describe(probe, policy));
 
             if (progress.Decision.Complete)
             {

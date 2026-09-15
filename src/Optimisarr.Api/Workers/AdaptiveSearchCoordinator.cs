@@ -78,7 +78,8 @@ internal static class AdaptiveSearchCoordinator
             .Append(new AdaptiveQualityProbe(
                 report.Quality,
                 VmafSoftwareConfirmation.MeetsGate(pooled.Scores, policy),
-                report.EncodedBytes))
+                report.EncodedBytes,
+                pooled.Scores))
             .ToList();
 
         return new AdaptiveSearchProgress(probes, AdaptiveQualitySearch.Decide(baselineQuality, probes));

@@ -1,7 +1,22 @@
+using Optimisarr.Core.Verification;
+
 namespace Optimisarr.Core.Queue;
 
-/// <summary>A measured candidate from the bounded adaptive-quality search.</summary>
-public sealed record AdaptiveQualityProbe(int Quality, bool MeetsTarget, long EncodedBytes);
+/// <summary>
+/// A measured candidate from the bounded adaptive-quality search.
+///
+/// <para><see cref="Scores"/> is what the verdict was reached on, kept rather than discarded. The
+/// search used to record only whether a candidate met the gate, so a run that rejected every
+/// candidate and fell back to the library's quality left nothing behind saying how far off they
+/// were — and the first search ever watched end to end did exactly that, on a file whose finished
+/// encode at the same quality then scored 91.5. Optional because probes recorded before this
+/// existed are still read back from the lease.</para>
+/// </summary>
+public sealed record AdaptiveQualityProbe(
+    int Quality,
+    bool MeetsTarget,
+    long EncodedBytes,
+    QualityScores? Scores = null);
 
 /// <summary>The next candidate to measure, or the final quality selected by the search.</summary>
 public sealed record AdaptiveQualityDecision(int? NextQuality, int SelectedQuality, bool FellBack, string Reason)

@@ -2157,11 +2157,12 @@ public sealed class QueueDispatcher(
 
                 measured.Add(candidate);
                 logger.LogInformation(
-                    "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target with {EncodedBytes} encoded video bytes",
+                    "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target with {EncodedBytes} encoded video bytes ({Scores})",
                     jobId,
                     candidate.Quality,
                     candidate.MeetsTarget ? "met" : "missed",
-                    candidate.EncodedBytes);
+                    candidate.EncodedBytes,
+                    AdaptiveProbeReport.Describe(candidate, policy));
             }
         }
         catch (OperationCanceledException)
@@ -2336,7 +2337,8 @@ public sealed class QueueDispatcher(
             ? new AdaptiveQualityProbe(
                 qualityValue,
                 VmafSoftwareConfirmation.MeetsGate(scores, policy),
-                encodedBytes)
+                encodedBytes,
+                scores)
             : null;
     }
 
