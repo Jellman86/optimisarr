@@ -122,7 +122,7 @@
 
 {#if minimized}
   <!-- Collapsed: a small floating widget, so the rest of the UI is usable while the preview runs. -->
-  <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+  <div class="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-line bg-white p-3 shadow-lg dark:bg-slate-900">
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
         <div class="truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={title}>{title}</div>
@@ -228,10 +228,10 @@
       <!-- Stats comparison -->
       <div class="card mb-4 overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          <thead class="border-b border-line text-left text-xs uppercase text-slate-500 dark:text-slate-400">
             <tr><th class="px-4 py-2"></th><th class="px-4 py-2">{i18n.m.shared.original}</th><th class="px-4 py-2">{i18n.m.shared.encoded}</th></tr>
           </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody class="divide-y divide-line-soft">
             <tr>
               <td class="px-4 py-2 text-slate-500">{i18n.m.shared.col_size}</td>
               <td class="px-4 py-2">{preview.original?.sizeBytes != null ? formatSize(preview.original.sizeBytes) : '—'}</td>

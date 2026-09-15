@@ -86,26 +86,83 @@ test('global settings use the same logical section flow as library configuration
   await mockSettings(page)
   await page.goto('/#/settings')
 
-  const expectedSections = new Map([
-    ['General', ['Queue', 'Replacement and cleanup']],
-    ['Connections', ['Media servers', 'Download managers']],
+  // Each room owns its own sections, and opening one is a URL rather than tab state.
+  const expectedRooms = new Map([
+    ['Encoding', ['Queue']],
+    ['Files & safety', ['Replacement and cleanup']],
+    ['Media servers', ['Media servers']],
+    ['Download managers', ['Download managers']],
     ['Notifications', ['Notifications']],
-    ['Tools', ['Tools', 'Hardware acceleration', 'Encoders']],
-    ['Backup', ['Backup & restore', 'First-run setup']],
+    ['System', ['Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
   ])
 
-  for (const [tab, headings] of expectedSections) {
-    await page.getByRole('tab', { name: tab }).click()
-    const sections = page.locator('[role="tabpanel"] [data-config-section]')
+  for (const [room, headings] of expectedRooms) {
+    await page.getByRole('button', { name: new RegExp(`^${room}`) }).click()
+    const sections = page.locator('[data-config-section]')
     await expect(sections.getByRole('heading', { level: 2 })).toHaveText(headings)
+    await page.getByRole('button', { name: 'All settings' }).click()
   }
 
+  await page.getByRole('button', { name: /^System/ }).click()
   await expect(page.getByRole('button', { name: 'Run setup again' })).toBeVisible()
+})
 
-  await page.getByRole('tab', { name: 'General' }).click()
-  await page.keyboard.press('ArrowRight')
-  await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'settings-tab-connections')
+test('an edit survives walking to another room and back', async ({ page }) => {
+  // The whole risk of splitting settings into rooms: if navigating between them quietly
+  // drops a draft, rooms are worse than the single page they replaced.
+  await mockSettings(page)
+  await page.goto('/#/settings')
+
+  await page.getByRole('button', { name: /^Encoding/ }).click()
+  const jobs = page.locator('#max-jobs')
+  await jobs.fill('3')
+
+  await page.getByRole('button', { name: 'All settings' }).click()
+  await page.getByRole('button', { name: /^Files & safety/ }).click()
+  await page.getByRole('button', { name: 'All settings' }).click()
+  await page.getByRole('button', { name: /^Encoding/ }).click()
+
+  await expect(jobs).toHaveValue('3')
+  // And the page is still offering to write it, from wherever you are.
+  await expect(page.getByText('1 unsaved change')).toBeVisible()
+})
+
+test('leaving settings with an unsaved edit asks first, but moving between rooms does not', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings')
+
+  await page.getByRole('button', { name: /^Encoding/ }).click()
+  await page.locator('#max-jobs').fill('7')
+
+  // Walking to another room must never prompt — the draft is meant to survive it.
+  let prompts = 0
+  page.on('dialog', (dialog) => {
+    prompts += 1
+    void dialog.dismiss()
+  })
+  await page.getByRole('button', { name: 'All settings' }).click()
+  await page.getByRole('button', { name: /^Files & safety/ }).click()
+  expect(prompts).toBe(0)
+
+  // Leaving Settings altogether must prompt, and dismissing it keeps you where you are.
+  await page.locator('nav').getByRole('button', { name: 'Dashboard' }).click()
+  await expect.poll(() => prompts).toBe(1)
+  await expect(page).toHaveURL(/#\/settings/)
+})
+
+test('a changed value says what it was and can be put back', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings')
+
+  await page.getByRole('button', { name: /^Encoding/ }).click()
+  const jobs = page.locator('#max-jobs')
+  const before = await jobs.inputValue()
+  await jobs.fill('4')
+
+  await expect(page.getByText(`was ${before}`)).toBeVisible()
+  await page.getByRole('button', { name: 'put back' }).click()
+  await expect(jobs).toHaveValue(before)
+  await expect(page.getByText('unsaved change')).toHaveCount(0)
 })
 
 test('settings and tool capability cards stay within a small mobile viewport', async ({ page }) => {
@@ -116,9 +173,12 @@ test('settings and tool capability cards stay within a small mobile viewport', a
   await page.locator('html').evaluate((element) => {
     element.style.fontSize = '125%'
   })
-  const toolsTab = page.getByRole('tab', { name: 'Tools' })
-  await toolsTab.click()
-  await expect(toolsTab).toBeInViewport()
+  // Seven cards are taller than a phone, so the last one is reached by scrolling — what
+  // matters is that it is reachable and fully inside the column, not that it starts on screen.
+  const systemCard = page.getByRole('button', { name: /^System/ })
+  await systemCard.scrollIntoViewIfNeeded()
+  await expect(systemCard).toBeInViewport()
+  await systemCard.click()
 
   const fit = await page.locator('main').evaluate((main) => ({
     scrollWidth: main.scrollWidth,
@@ -150,18 +210,28 @@ test('settings and tool capability cards stay within a small mobile viewport', a
   expect(refreshBox?.height).toBeGreaterThanOrEqual(44)
 })
 
-test('every settings tab reflows without horizontal page overflow', async ({ page }) => {
+test('every settings room reflows without horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 812, height: 375 })
   await mockSettings(page)
   await page.goto('/#/settings')
 
-  for (const tab of ['General', 'Connections', 'Notifications', 'Tools', 'Backup']) {
-    await page.getByRole('tab', { name: tab }).click()
+  const rooms = ['Encoding', 'Files & safety', 'Media servers', 'Download managers', 'Notifications', 'System']
+
+  // The landing grid itself has to fit before any room does.
+  const gridFit = await page.locator('main').evaluate((main) => ({
+    scrollWidth: main.scrollWidth,
+    clientWidth: main.clientWidth,
+  }))
+  expect(gridFit.scrollWidth).toBeLessThanOrEqual(gridFit.clientWidth)
+
+  for (const room of rooms) {
+    await page.getByRole('button', { name: new RegExp(`^${room}`) }).click()
     const fit = await page.locator('main').evaluate((main) => ({
       scrollWidth: main.scrollWidth,
       clientWidth: main.clientWidth,
     }))
     expect(fit.scrollWidth).toBeLessThanOrEqual(fit.clientWidth)
+    await page.getByRole('button', { name: 'All settings' }).click()
   }
 })
 
@@ -179,8 +249,10 @@ test('information tooltips are translated, populated, and readable in every loca
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('lang', locale)
 
-    for (const tabIndex of [0, 1]) {
-      await page.getByRole('tab').nth(tabIndex).click()
+    // The two rooms that carry the bulk of the tipped fields. Addressed by URL rather than
+    // by card position, because the card labels are translated and the order is not the point.
+    for (const room of ['encoding', 'files']) {
+      await page.goto(`/#/settings/${room}`)
       const tooltips = page.locator('main [role="tooltip"]')
       expect(await tooltips.count()).toBeGreaterThan(0)
 

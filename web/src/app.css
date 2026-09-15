@@ -3,7 +3,38 @@
 /* Class-based dark mode: toggled by adding `dark` to <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Surfaces ──────────────────────────────────────────────────────────────
+   A surface is a FILL and an ELEVATION, not a stroke around a box. Drawing a
+   1px line around every panel gives a reader no hierarchy — a card, a header
+   band and a table cell all announce themselves equally loudly — so a surface
+   here is a slightly lifted fill, a soft shadow, and a single hairline of
+   light catching its top edge, the way a raised object actually looks.
+
+   Lines survive only where they divide content *inside* a surface, and they
+   are tints of the ground rather than a hard slate step.
+
+   State is never marked with a coloured edge. The row you are on, the value
+   you have changed and the control that is "on" are all shown by a lit fill.
+
+   These are plain custom properties rather than Tailwind colours because a
+   layered shadow plus a gradient plus an inset highlight is not a thing a
+   utility class can say, and because both themes have to swap as a set. */
 :root {
+  --ground: #eaeff6;
+  --panel: #f9fbfd;
+  --panel-hi: #ffffff;
+  --raised: #e9eff7;
+  --sunken: #e7edf5;
+
+  --divide: rgba(30, 55, 95, 0.12);
+  --divide-soft: rgba(30, 55, 95, 0.065);
+  --edge: rgba(255, 255, 255, 0.92);
+
+  --lift-1: 0 1px 1px rgba(20, 40, 70, 0.05), 0 2px 5px -2px rgba(20, 40, 70, 0.1);
+  --lift-2: 0 1px 2px rgba(20, 40, 70, 0.06), 0 10px 24px -14px rgba(20, 40, 70, 0.26);
+  --lift-3: 0 2px 6px rgba(20, 40, 70, 0.07), 0 26px 60px -28px rgba(20, 40, 70, 0.38);
+  --inset-1: inset 0 1px 2px rgba(20, 40, 70, 0.07), inset 0 0 0 1px var(--divide-soft);
+
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
   font-synthesis: none;
@@ -12,21 +43,61 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.dark {
+  --ground: #020617;
+  --panel: #101a2e;
+  --panel-hi: #16223a;
+  --raised: #1c2b47;
+  --sunken: #0a1120;
+
+  --divide: rgba(148, 176, 214, 0.1);
+  --divide-soft: rgba(148, 176, 214, 0.055);
+  --edge: rgba(190, 215, 255, 0.07);
+
+  --lift-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.45);
+  --lift-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.8);
+  --lift-3: 0 4px 10px rgba(0, 0, 0, 0.35), 0 24px 60px -24px rgba(0, 0, 0, 0.9);
+  --inset-1: inset 0 1px 2px rgba(0, 0, 0, 0.28), inset 0 0 0 1px var(--divide-soft);
+}
+
 /* Paint the document background (not just an inner element) so iOS Safari's
    safe-area insets and rubber-band overscroll never reveal a white strip at the
    top or bottom. color-scheme also gives native form controls and scrollbars the
-   right look in each theme. */
+   right look in each theme.
+
+   The light ground is a touch cooler and darker than slate-50 was, because a
+   white card with no border cannot lift off a near-white page. The separation
+   that used to come from the border now has to come from the contrast between
+   the card and the ground. */
 html {
-  background-color: #f8fafc; /* slate-50 */
+  background-color: var(--ground);
   color-scheme: light;
 }
 html.dark {
-  background-color: #020617; /* slate-950 */
   color-scheme: dark;
 }
 
 body {
   margin: 0;
+}
+
+/* Divider colours as utilities, so `border-b border-line` reads the same way
+   the Tailwind it replaces did, and both themes swap together. */
+@utility border-line {
+  border-color: var(--divide);
+}
+@utility border-line-soft {
+  border-color: var(--divide-soft);
+}
+@utility divide-line {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--divide);
+  }
+}
+@utility divide-line-soft {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--divide-soft);
+  }
 }
 
 /* Operational component classes, shared across the app. A small, consistent set
@@ -38,47 +109,154 @@ body {
   .nav-button {
     @apply flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950;
   }
-  /* A soft filled key. Not a coloured rail down one edge: that reads as decoration bolted to
-     the row rather than as the row being the one you are on. */
+  /* A lit, slightly raised key. Not a coloured rail down one edge: that reads as decoration
+     bolted to the row rather than as the row being the one you are on. */
   .nav-button-active {
-    @apply bg-slate-100 font-semibold text-slate-900 dark:bg-slate-800/70 dark:text-slate-50;
+    @apply font-semibold text-slate-900 dark:text-slate-50;
+    background: var(--raised);
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
   }
   /* Carried only by the entries that can ask something of you. Tabular so a changing figure
      does not make the row twitch. */
   .nav-badge {
-    @apply ml-auto min-w-[1.5rem] rounded-full bg-slate-200 px-2 py-0.5 text-center font-mono text-[10.5px] tabular-nums text-slate-600 dark:bg-slate-700/70 dark:text-slate-300;
+    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center font-mono text-[10.5px] tabular-nums text-slate-600 dark:text-slate-300;
+    background: var(--raised);
+    box-shadow: inset 0 1px 0 var(--edge);
   }
   .nav-button-inactive {
-    @apply text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800;
+    @apply text-slate-600 dark:text-slate-300;
+  }
+  .nav-button-inactive:hover {
+    background: var(--divide-soft);
+    @apply text-slate-900 dark:text-slate-100;
   }
   .nav-button-disabled {
     @apply cursor-not-allowed text-slate-400 dark:text-slate-600;
   }
 
+  /* The card. Fill plus elevation plus one hairline of light on the top edge. */
   .card {
-    @apply min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900;
+    @apply min-w-0 max-w-full rounded-xl;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
+  }
+  /* The navigation rail. It is on screen on every page, so it reads as the wall the
+     content sits against: its own fill, and a shadow along its inner edge instead of
+     a border. */
+  .app-rail {
+    background: linear-gradient(180deg, var(--panel), var(--sunken));
+    box-shadow: 1px 0 0 var(--divide-soft), var(--lift-2);
   }
 
+  /* A card you can open. The lift on hover is the whole affordance — it says
+     "this is a thing, and it will respond" without a border or a cursor hint. */
+  .card-interactive {
+    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150;
+  }
+  .card-interactive:hover {
+    background: linear-gradient(180deg, var(--raised), var(--panel-hi));
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+    transform: translateY(-1px);
+  }
+  .card-interactive:active {
+    transform: translateY(0);
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+
+  /* A recessed well, for content that sits *in* a surface rather than on it. */
+  .surface-sunken {
+    @apply rounded-xl;
+    background: var(--sunken);
+    box-shadow: var(--inset-1);
+  }
+  /* Dividers inside a surface, drawn as an inset shadow so they never add to the
+     box model and never double up against a neighbour's edge. */
+  .hairline-t {
+    box-shadow: inset 0 1px 0 var(--divide-soft);
+  }
+  .hairline-b {
+    box-shadow: inset 0 -1px 0 var(--divide-soft);
+  }
+
+  /* A selectable card — a processing mode, a quality strategy, a codec chip. Choosing
+     one lights its fill rather than drawing a coloured outline round it, which keeps
+     selection reading as "this one is on" rather than "this one has been ringed". */
+  .choice {
+    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  .choice:hover {
+    background: linear-gradient(180deg, var(--raised), var(--panel-hi));
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+    transform: translateY(-1px);
+  }
+  .choice:active {
+    transform: translateY(0);
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  .choice-selected,
+  .choice-selected:hover {
+    @apply text-slate-900 dark:text-slate-50;
+    background: linear-gradient(
+      180deg,
+      --alpha(var(--color-cyan-500) / 16%),
+      --alpha(var(--color-cyan-500) / 7%)
+    );
+    box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
+  }
+
+  /* Buttons are raised: they are the things you press. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-[colors,transform] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-px disabled:pointer-events-none disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus-visible:ring-offset-slate-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border-0 px-3 py-2 text-sm font-medium text-slate-700 transition-[background,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-px disabled:pointer-events-none disabled:opacity-50 dark:text-slate-200 dark:focus-visible:ring-offset-slate-950;
+    background: linear-gradient(180deg, var(--raised), var(--panel));
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  .btn:hover {
+    background: var(--raised);
   }
   .btn-primary {
-    @apply border-cyan-600 bg-cyan-600 text-white shadow-sm hover:bg-cyan-700 dark:border-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700;
+    @apply text-white;
+    background: linear-gradient(180deg, --alpha(var(--color-cyan-500) / 100%), --alpha(var(--color-cyan-600) / 100%));
+    box-shadow: var(--lift-1), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  .btn-primary:hover {
+    background: var(--color-cyan-600);
   }
   .btn-danger {
-    @apply border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950;
+    @apply text-red-700 dark:text-red-400;
   }
-  /* Borderless icon/text button — replaces the !border-0 !bg-transparent hack. */
+  .btn-danger:hover {
+    @apply bg-red-50 dark:bg-red-950;
+  }
+  /* Flat text/icon button: no fill, no lift, until you point at it. */
   .btn-ghost {
-    @apply border-transparent bg-transparent text-slate-500 shadow-none hover:bg-slate-100 hover:text-slate-700 dark:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200;
+    @apply text-slate-500 dark:text-slate-400;
+    background: none;
+    box-shadow: none;
+  }
+  .btn-ghost:hover {
+    @apply text-slate-700 dark:text-slate-200;
+    background: var(--divide-soft);
   }
 
+  /* Inputs are sunken: they are the things you put something into. */
   .input {
-    @apply min-w-0 max-w-full w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:hover:border-slate-500;
+    @apply w-full min-w-0 max-w-full rounded-lg border-0 px-3 py-2 text-sm text-slate-800 outline-none transition-shadow placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500;
+    background: var(--sunken);
+    box-shadow: var(--inset-1);
   }
-
+  .input:hover {
+    box-shadow: inset 0 1px 2px rgba(20, 40, 70, 0.09), inset 0 0 0 1px var(--divide);
+  }
+  .input:focus {
+    box-shadow: var(--inset-1), 0 0 0 3px --alpha(var(--color-cyan-500) / 28%);
+  }
   .input[aria-invalid='true'] {
-    @apply border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-700 dark:focus:border-red-500;
+    box-shadow: var(--inset-1), inset 0 0 0 1px --alpha(var(--color-red-500) / 60%);
+  }
+  .input[aria-invalid='true']:focus {
+    box-shadow: var(--inset-1), 0 0 0 3px --alpha(var(--color-red-500) / 25%);
   }
 
   /* Native selects: strip the OS widget and draw our own chevron. */
@@ -103,9 +281,11 @@ body {
   }
 
   /* Progress bar: a determinate fill for transcoding, an indeterminate sweep for
-     phases without a percentage (probing, verifying). */
+     phases without a percentage (probing, verifying). The track is a well. */
   .progress-track {
-    @apply relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700;
+    @apply relative h-1.5 flex-1 overflow-hidden rounded-full;
+    background: var(--sunken);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
   }
   .progress-fill {
     @apply h-full rounded-full bg-cyan-600 transition-[width] duration-300 ease-out;
@@ -113,6 +293,20 @@ body {
   .progress-indeterminate {
     @apply absolute inset-y-0 w-2/5 rounded-full bg-sky-500/70;
     animation: progress-sweep 1.2s ease-in-out infinite;
+  }
+}
+
+/* Anyone who has asked for less motion gets the lift without the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .choice,
+  .card-interactive {
+    transition: none;
+  }
+  .choice:hover,
+  .card-interactive:hover,
+  .choice:active,
+  .card-interactive:active {
+    transform: none;
   }
 }
 

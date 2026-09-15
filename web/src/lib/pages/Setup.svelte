@@ -312,8 +312,8 @@
     </div>
   </div>
 
-  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-slate-200 bg-white md:grid-cols-[15rem_minmax(0,1fr)] dark:border-slate-800 dark:bg-slate-900">
-    <aside class="border-b border-slate-200 bg-slate-50 px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7 dark:border-slate-800 dark:bg-slate-900/60">
+  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-line bg-white md:grid-cols-[15rem_minmax(0,1fr)] dark:bg-slate-900">
+    <aside class="border-b border-line bg-slate-50 px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7 dark:bg-slate-900/60">
       <p class="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-400">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
       </p>
@@ -377,7 +377,7 @@
           <h1 class="max-w-2xl text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">{i18n.m.setup.welcome_heading}</h1>
           <p class="mt-4 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-300">{i18n.m.setup.welcome_body}</p>
 
-          <dl class="mt-8 max-w-2xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+          <dl class="mt-8 max-w-2xl divide-y divide-line border-y border-line">
             <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-5">
               <dt class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.safety_title}</dt>
               <dd class="text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.safety_body}</dd>
@@ -402,7 +402,7 @@
                 <div class="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap" role="group" aria-label={i18n.m.setup.deployment_label}>
                   {#each ['local', 'compose', 'unraid', 'truenas'] as platform}
                     <button
-                      class="min-h-11 rounded-md border px-2.5 text-xs font-medium transition-colors {selectedPlatform === platform ? 'border-cyan-500 bg-cyan-50 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}"
+                      class="min-h-11 rounded-md border px-2.5 text-xs font-medium transition-colors {selectedPlatform === platform ? 'border-cyan-500 bg-cyan-50 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200' : 'border-line text-slate-600 hover:border-line hover:bg-slate-50 border-line dark:text-slate-300 dark:hover:bg-slate-800'}"
                       type="button"
                       aria-pressed={selectedPlatform === platform}
                       onclick={() => (selectedPlatform = platform as SetupReadiness['platform'])}
@@ -415,7 +415,7 @@
               </div>
             </div>
 
-            <div class="mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div class="mt-4 divide-y divide-line border-y border-line">
             {#each paths as path}
               <article class="py-4">
                 <div class="flex items-start gap-3">
@@ -461,7 +461,7 @@
             <section class="mt-7 max-w-3xl" aria-labelledby="atomic-heading">
               <h2 id="atomic-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.atomic_heading}</h2>
               <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.atomic_body}</p>
-              <div class="mt-3 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+              <div class="mt-3 divide-y divide-line border-y border-line">
                 {#each storageRelationships as relationship (relationship.libraryId)}
                   {@const atomic = relationship.workAtomic === true && relationship.quarantineAtomic === true}
                   <div class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -485,7 +485,7 @@
           <section class="mt-7 max-w-3xl" aria-labelledby="toolchain-heading">
             <h2 id="toolchain-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.toolchain_heading}</h2>
             <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.toolchain_body}</p>
-            <div class="mt-3 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div class="mt-3 divide-y divide-line border-y border-line">
             {#each tools as tool}
               <div class="flex items-start gap-3 py-3">
                 <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {tool.available ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : tool.required ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}">
@@ -521,7 +521,7 @@
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.library_body}</p>
 
           {#if libraries.length > 0}
-            <div class="mt-7 max-w-2xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div class="mt-7 max-w-2xl divide-y divide-line border-y border-line">
               {#each libraries as library (library.id)}
                 {@const access = libraryAccess[library.id]}
                 <article class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" aria-label={library.name}>
@@ -566,7 +566,7 @@
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.safety_step_body}</p>
 
           {#if settings}
-            <div class="mt-7 max-w-2xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div class="mt-7 max-w-2xl divide-y divide-line border-y border-line">
               <label class="flex cursor-pointer items-start gap-3 py-4">
                 <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={settings.dryRunMode} />
                 <span><span class="block font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.dry_run_title}</span><span class="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.dry_run_body}</span></span>
@@ -589,7 +589,7 @@
             <section class="mt-8 max-w-2xl" aria-labelledby="recommendations-heading">
               <h2 id="recommendations-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.recommended_heading}</h2>
               <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.recommended_body}</p>
-              <div class="mt-3 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+              <div class="mt-3 divide-y divide-line border-y border-line">
                 <div class="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div>
                     <div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.encoder_mode}</div>
@@ -634,20 +634,20 @@
           <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.review_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.review_body}</p>
 
-          <dl class="mt-7 max-w-3xl divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+          <dl class="mt-7 max-w-3xl divide-y divide-line border-y border-line">
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.network_title}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.network_body}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.storage_heading}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.encoder_mode}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.encoderMode ?? '—'} · {plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{vmafReviewLabel()}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.nav.schedule}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{applyRecommendedSchedule && recommendation ? `${recommendation.scheduleStart}–${recommendation.scheduleEnd}` : i18n.m.setup.skipped}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.tab_connections}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
           </dl>
         {/if}
       </div>
 
-      <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
+      <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
         <button class="btn min-h-11" onclick={() => (viewStep = Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy}>{i18n.m.setup.back}</button>
         <button class="btn btn-primary min-h-11 px-5" onclick={continueStep} disabled={busy || viewStep === 3 && libraries.length === 0}>
           {busy ? i18n.m.setup.saving : viewStep === 5 ? i18n.m.setup.finish : i18n.m.common.continue}

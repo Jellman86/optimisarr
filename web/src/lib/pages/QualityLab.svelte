@@ -518,7 +518,7 @@
 </svelte:head>
 
 <div class="quality-lab min-h-full">
-  <header class="mb-5 flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between dark:border-slate-800">
+  <header class="mb-5 flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <button class="btn btn-ghost -ml-3 mb-2 min-h-11" onclick={() => router.go(`/libraries/${libraryId}/configure`)}>
         <Icon name="arrow-left" class="h-4 w-4" />
@@ -532,7 +532,7 @@
       </p>
     </div>
     {#if session?.status === 'Comparing'}
-      <div class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" aria-live="polite">
+      <div class="rounded-full border border-line bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm dark:bg-slate-900 dark:text-slate-200" aria-live="polite">
         {t(i18n.m.calibration.sorted_progress, { current: classifiedCount, total: candidateVariants.length })}
       </div>
     {/if}
@@ -551,7 +551,7 @@
         </h2>
         <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{i18n.m.calibration.intro}</p>
         {#if sources.length === 0}
-          <div class="mt-6 rounded-xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
+          <div class="mt-6 rounded-xl border border-dashed border-line p-8 text-center">
             <p class="font-semibold text-slate-800 dark:text-slate-200">{i18n.m.calibration.no_sources}</p>
             <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">{i18n.m.calibration.no_sources_hint}</p>
           </div>
@@ -573,7 +573,7 @@
             <input class="mt-1" type="checkbox" bind:checked={diagnosticsEnabled} />
             <span><strong class="block">{i18n.m.calibration.diag_verify_label}</strong><span class="mt-0.5 block text-xs opacity-80">{i18n.m.calibration.diag_verify_hint}</span></span>
           </label>
-          <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+          <label class="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-slate-50 p-3 text-sm text-slate-900 dark:bg-slate-900 dark:text-slate-100">
             <input class="mt-1" type="checkbox" bind:checked={ignoreActiveStreams} />
             <span><strong class="block">{i18n.m.calibration.ignore_streams_label}</strong><span class="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">{i18n.m.calibration.ignore_streams_hint}</span></span>
           </label>
@@ -592,7 +592,7 @@
       <div class="flex items-center justify-between gap-3"><h2 class="text-lg font-semibold text-slate-900 dark:text-white">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting : i18n.m.calibration.preparing}</h2><span class="font-mono text-sm font-semibold text-cyan-700 dark:text-cyan-300">{Math.round(session.preparationProgress * 100)}%</span></div>
       <div class="mt-5 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div class="h-full rounded-full bg-cyan-500 transition-[width] duration-300" style:width={`${Math.max(1, session.preparationProgress * 100)}%`}></div></div>
       <p class="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{session.preparationState === 'Waiting' ? i18n.m.calibration.waiting_hint : session.mediaKind === 'Audio' ? i18n.m.calibration.preparing_audio_hint : session.mediaKind === 'Image' ? i18n.m.calibration.preparing_image_hint : i18n.m.calibration.preparing_hint}</p>
-      <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+      <div class="mt-6 border-t border-line pt-5">
         <div class="mb-3 flex items-center gap-2">
           <Icon name="gpu" class="h-4 w-4 text-slate-400" />
           <div class="label">{i18n.m.dashboard.live_usage}</div>
@@ -706,7 +706,7 @@
           <div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {#each variants as variant}
               {@const resultVariant = session.result?.variants.find((item) => item.name === variant.name)}
-              <button class="group relative min-h-20 cursor-pointer touch-manipulation rounded-xl border-2 bg-white px-3 py-3 text-left transition-colors active:bg-slate-100 dark:bg-slate-900 dark:active:bg-slate-800" class:border-cyan-500={activeName === variant.name} class:border-slate-200={activeName !== variant.name} class:dark:border-slate-700={activeName !== variant.name} class:bg-cyan-50={variant.isOriginal} class:dark:bg-slate-800={variant.isOriginal} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
+              <button class="choice group relative min-h-20 touch-manipulation rounded-xl px-3 py-3 text-left" class:choice-selected={activeName === variant.name} onclick={() => chooseVariant(variant.name)} aria-label={variant.isOriginal ? i18n.m.calibration.original_reference : variant.name} aria-pressed={activeName === variant.name}>
                 <span class="text-xl font-bold text-slate-900 dark:text-white">{variantLabel(variant.name)}</span>
                 {#if variant.isOriginal}<span class="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.reference_label}</span>{/if}
                 {#if ratings[variant.name]}<span class="mt-1 block truncate text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">{ratingLabel(ratings[variant.name]!)}</span>{/if}
@@ -729,7 +729,7 @@
             {:else}
               <div class="mt-3 space-y-2">
                 {#each ratingOptions as rating}
-                  <button class="min-h-12 w-full rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors" class:border-cyan-500={ratings[activeName] === rating} class:bg-cyan-50={ratings[activeName] === rating} class:text-cyan-800={ratings[activeName] === rating} class:border-slate-200={ratings[activeName] !== rating} class:dark:border-slate-700={ratings[activeName] !== rating} class:dark:bg-cyan-950={ratings[activeName] === rating} class:dark:text-cyan-200={ratings[activeName] === rating} disabled={playbackError} onclick={() => classify(activeName, rating)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
+                  <button class="choice min-h-12 w-full rounded-xl px-3 py-2 text-left text-sm font-semibold" class:choice-selected={ratings[activeName] === rating} disabled={playbackError} onclick={() => classify(activeName, rating)}>{ratingLabel(rating)}<span class="mt-0.5 block text-xs font-normal opacity-70">{ratingHint(rating)}</span></button>
                 {/each}
               </div>
             {/if}
@@ -737,13 +737,13 @@
           </section>
         {:else if session.result}
           <section class="card overflow-hidden">
-            <div class="border-b border-slate-200 p-5 dark:border-slate-700"><p class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-slate-950 dark:text-white">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
-            <div class="divide-y divide-slate-100 dark:divide-slate-800">
+            <div class="border-b border-line p-5"><p class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">{i18n.m.calibration.result_title}</p><h2 class="mt-1 text-xl font-bold text-slate-950 dark:text-white">{session.result.recommendedQuality !== null ? i18n.m.calibration.result_preference : i18n.m.calibration.result_none}</h2></div>
+            <div class="divide-y divide-line-soft">
               {#each session.result.variants as variant}
                 <div class="px-5 py-3" class:bg-emerald-50={variant.recommended} class:dark:bg-emerald-950={variant.recommended}>
                   <div class="flex items-center gap-3"><strong class="w-16 text-slate-900 dark:text-white">{variant.isOriginal ? i18n.m.calibration.original : variant.name}</strong><span class="min-w-0 flex-1 text-sm text-slate-600 dark:text-slate-300">{revealedLabel(variant.name)}</span>{#if !variant.isOriginal}<span class="text-xs text-slate-500">{ratingLabel(variant.classification)}</span>{/if}</div>
                   {#if variant.vmaf}
-                    <div class="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 font-mono text-[11px] tabular-nums dark:border-slate-700 dark:bg-slate-700" title={[variant.vmaf.modelVersion, variant.vmaf.preprocessing, `${variant.vmaf.measuredSamples}/${variant.vmaf.totalSamples} scenes measured`].filter(Boolean).join(' · ')}>
+                    <div class="mt-2 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-slate-200 font-mono text-[11px] tabular-nums dark:bg-slate-700" title={[variant.vmaf.modelVersion, variant.vmaf.preprocessing, `${variant.vmaf.measuredSamples}/${variant.vmaf.totalSamples} scenes measured`].filter(Boolean).join(' · ')}>
                       <span class="bg-slate-50 px-2 py-1.5 text-cyan-700 dark:bg-slate-900 dark:text-cyan-300">VMAF H {vmafScore(variant.vmaf.harmonicMean)}</span>
                       <span class="bg-slate-50 px-2 py-1.5 text-slate-600 dark:bg-slate-900 dark:text-slate-300">P5 {vmafScore(variant.vmaf.fifthPercentile)}</span>
                       <span class="bg-slate-50 px-2 py-1.5 text-slate-600 dark:bg-slate-900 dark:text-slate-300">min {vmafScore(variant.vmaf.minimum)}</span>

@@ -33,6 +33,17 @@
     return Dashboard
   })
 
+  // What identifies "a different page" for the purposes of remounting. It is deliberately
+  // not the raw path: Settings navigates between its own rooms by URL, and it holds an
+  // unsaved draft while you do. Remounting on every path change would throw that draft away
+  // the moment you walked from one room to another, which is the whole reason rooms could be
+  // worse than one long page.
+  let pageKey = $derived.by(() => {
+    const path = router.path
+    if (path.startsWith('/settings') || path.startsWith('/tools')) return '/settings'
+    return path
+  })
+
   let tokenInput = $state('')
 
   // One app-wide connection drives the sidebar activity indicator and the Queue usage graph.
@@ -142,7 +153,7 @@
   <div class="flex min-w-0 flex-1 flex-col">
     <!-- Mobile top bar: hamburger + brand + theme. Hidden once the sidebar is in-flow (md+). -->
     <header
-      class="flex items-center gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden dark:border-slate-700 dark:bg-slate-900/95"
+      class="flex items-center gap-3 border-b border-line bg-white/95 px-4 py-3 backdrop-blur md:hidden dark:bg-slate-900/95"
     >
       <button class="btn btn-ghost px-2" aria-label={i18n.m.nav.open_menu} onclick={() => layout.toggleMobile()}>
         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -167,7 +178,7 @@
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
       <div class:mx-auto={!/^\/libraries\/\d+\/quality-check$/.test(router.path)} class:max-w-6xl={!/^\/libraries\/\d+\/quality-check$/.test(router.path)}>
-        {#key router.path}
+        {#key pageKey}
           {@const Page = page}
           <Page />
         {/key}

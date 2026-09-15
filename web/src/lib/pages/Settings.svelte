@@ -18,7 +18,7 @@
   import { formatSize } from '../format'
   // `t` is aliased to `tr` here because this component already uses `t`/`c`/`w` as local
   // names for notification-target, connection, and watcher records.
-  import { i18n, t as tr } from '../i18n/i18n.svelte'
+  import { i18n, plural, t as tr } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -29,31 +29,44 @@
   import ToolsPanel from '../components/ToolsPanel.svelte'
   import WorkersPanel from '../components/WorkersPanel.svelte'
 
-  // Settings is split into tabs so each concern is found quickly and Tools lives here
-  // rather than in its own sidebar entry. The General tab holds the core settings the
-  // single "Save settings" button persists together; the rest manage their own records.
-  type TabKey = 'general' | 'connections' | 'notifications' | 'tools' | 'workers' | 'backup'
-  // A visit to the old /tools route lands on Settings with the Tools tab open.
-  let activeTab = $state<TabKey>(router.path.startsWith('/tools') ? 'tools' : 'general')
+  // Settings is a set of rooms rather than a strip of tabs. The landing page is a grid of
+  // cards, one per room, and each card reports what that room is currently set to — so
+  // "is Plex still connected?" and "is anything reclaimable?" are answered without opening
+  // anything. Opening a room gives that section the page to itself.
+  //
+  // A tab strip could not do the reporting, and its numbered sections implied a sequence
+  // that never existed: nobody configures their encoder before their notifications because
+  // it happens to be numbered lower.
+  type RoomKey = 'encoding' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
 
-  function selectTab(key: TabKey) {
-    activeTab = key
-    requestAnimationFrame(() => {
-      const tab = document.getElementById(`settings-tab-${key}`)
-      tab?.focus()
-      tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    })
+  const ROOM_PATHS: Record<RoomKey, string> = {
+    encoding: 'encoding',
+    files: 'files',
+    servers: 'media-servers',
+    downloads: 'download-managers',
+    notifications: 'notifications',
+    workers: 'workers',
+    system: 'system',
   }
 
-  function handleTabKeydown(event: KeyboardEvent, index: number) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-    event.preventDefault()
-    const nextIndex = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? tabs.length - 1
-        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-    selectTab(tabs[nextIndex].key)
+  function roomFromPath(path: string): RoomKey | null {
+    // The old /tools route, and anything linking to it, lands in the room that absorbed it.
+    if (path.startsWith('/tools')) return 'system'
+    const tail = path.replace(/^\/settings\/?/, '')
+    if (!tail) return null
+    const match = (Object.entries(ROOM_PATHS) as [RoomKey, string][]).find(([, slug]) => slug === tail)
+    return match ? match[0] : null
+  }
+
+  let openRoom = $derived(roomFromPath(router.path))
+
+  function openRoomAt(key: RoomKey) {
+    router.go(`/settings/${ROOM_PATHS[key]}`)
+    requestAnimationFrame(() => document.getElementById('room-heading')?.focus())
+  }
+
+  function closeRoom() {
+    router.go('/settings')
   }
 
   const notificationTypes: NotificationType[] = ['Webhook', 'Discord', 'Telegram', 'Ntfy', 'Apprise']
@@ -409,20 +422,145 @@
     replacementQuarantineRetentionDays: 0,
   })
 
-  let tabs: { key: TabKey; label: string }[] = $derived([
-    { key: 'general', label: i18n.m.settings.tab_general },
-    { key: 'connections', label: i18n.m.settings.tab_connections },
-    { key: 'notifications', label: i18n.m.settings.tab_notifications },
-    { key: 'tools', label: i18n.m.settings.tab_tools },
+  // The values as the server last confirmed them. Everything the form binds to is a draft
+  // over the top of this, which is what lets a row say "was 14 days", lets one field be put
+  // back on its own, and lets the save bar count what it is about to write.
+  //
+  // It has to be a separate snapshot rather than a re-fetch: walking from Encoding to Files
+  // and back must not lose an edit, and re-reading the server to find out what changed would
+  // do exactly that.
+  let savedSettings = $state<Settings | null>(null)
+  let savedMinFreeDiskGiB = $state('10')
+  let minFreeDiskGiB = $state('10')
+
+  /** Which settings belong to which room, so a card can count its own unsaved edits. */
+  const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
+    encoding: ['maxConcurrentJobs', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
+    files: ['dryRunMode', 'remoteWorkersEnabled', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
+  }
+
+  function sameValue(a: unknown, b: unknown): boolean {
+    // Number inputs hand back strings, so 5 and '5' are the same answer typed twice.
+    if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b)
+    return a === b
+  }
+
+  let changedFields = $derived.by(() => {
+    if (!savedSettings) return new Set<string>()
+    const out = new Set<string>()
+    for (const key of Object.keys(settings) as (keyof Settings)[]) {
+      if (!sameValue(settings[key], savedSettings[key])) out.add(key)
+    }
+    // Free disk is edited in GiB and stored in bytes, so it is compared in the unit it is typed in.
+    if (minFreeDiskGiB !== savedMinFreeDiskGiB) out.add('minFreeDiskBytes')
+    return out
+  })
+
+  let changedCount = $derived(changedFields.size)
+
+  function roomChangedCount(key: RoomKey): number {
+    const fields = ROOM_FIELDS[key]
+    if (!fields) return 0
+    let n = fields.filter((f) => changedFields.has(f)).length
+    if (key === 'files' && changedFields.has('minFreeDiskBytes')) n += 1
+    return n
+  }
+
+  /** True while this field is holding an unsaved edit — the row lights up and offers a way back. */
+  function isChanged(field: keyof Settings | 'minFreeDiskBytes'): boolean {
+    return changedFields.has(field)
+  }
+
+  function revert(field: keyof Settings | 'minFreeDiskBytes') {
+    if (!savedSettings) return
+    if (field === 'minFreeDiskBytes') {
+      minFreeDiskGiB = savedMinFreeDiskGiB
+      return
+    }
+    settings = { ...settings, [field]: savedSettings[field] }
+  }
+
+  function discardAll() {
+    if (!savedSettings) return
+    settings = { ...savedSettings }
+    minFreeDiskGiB = savedMinFreeDiskGiB
+    message = null
+    error = null
+  }
+
+  /** What each card says about its own section without being opened. */
+  let rooms = $derived([
+    {
+      key: 'encoding' as RoomKey,
+      title: i18n.m.settings.room_encoding,
+      description: i18n.m.settings.room_encoding_desc,
+      state: tr(i18n.m.settings.room_encoding_state, {
+        jobs: settings.maxConcurrentJobs,
+        encoder: settings.encoderMode,
+        hours: settings.libraryScanIntervalHours,
+      }),
+      healthy: true,
+    },
+    {
+      key: 'files' as RoomKey,
+      title: i18n.m.settings.room_files,
+      description: i18n.m.settings.room_files_desc,
+      state: settings.dryRunMode
+        ? i18n.m.settings.room_files_state_dry_run
+        : tr(i18n.m.settings.room_files_state, {
+            size: formatSize(gibToBytes(minFreeDiskGiB)),
+            days: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
+          }),
+      healthy: !settings.dryRunMode,
+    },
+    {
+      key: 'servers' as RoomKey,
+      title: i18n.m.settings.room_servers,
+      description: i18n.m.settings.room_servers_desc,
+      state: watchers.length
+        ? watchers.map((w) => w.name).join(', ')
+        : i18n.m.settings.room_none_connected,
+      healthy: watchers.length > 0,
+    },
+    {
+      key: 'downloads' as RoomKey,
+      title: i18n.m.settings.room_downloads,
+      description: i18n.m.settings.room_downloads_desc,
+      state: arrs.length ? arrs.map((c) => c.name).join(', ') : i18n.m.settings.room_none_connected,
+      healthy: arrs.length > 0,
+    },
+    {
+      key: 'notifications' as RoomKey,
+      title: i18n.m.settings.room_notifications,
+      description: i18n.m.settings.room_notifications_desc,
+      state: targets.length
+        ? targets.map((n) => n.name).join(', ')
+        : i18n.m.settings.room_none_configured,
+      healthy: targets.length > 0,
+    },
     // Only once opted in, and only where the server offers the preview at all: a default
     // single-container install should not have to wonder what a remote worker is.
     ...(settings.remoteWorkersAvailable && settings.remoteWorkersEnabled
-      ? [{ key: 'workers' as TabKey, label: i18n.m.settings.tab_workers }]
+      ? [{
+          key: 'workers' as RoomKey,
+          title: i18n.m.settings.room_workers,
+          description: i18n.m.settings.room_workers_desc,
+          state: i18n.m.settings.room_workers_state,
+          healthy: true,
+        }]
       : []),
-    { key: 'backup', label: i18n.m.settings.tab_backup },
+    {
+      key: 'system' as RoomKey,
+      title: i18n.m.settings.room_system,
+      description: i18n.m.settings.room_system_desc,
+      state: i18n.m.settings.room_system_state,
+      healthy: true,
+      readOnly: true,
+    },
   ])
 
-  let minFreeDiskGiB = $state('10')
+  let currentRoom = $derived(openRoom ? rooms.find((r) => r.key === openRoom) ?? null : null)
+
   let loading = $state(true)
   let saving = $state(false)
   let error = $state<string | null>(null)
@@ -440,6 +578,22 @@
     void loadArrs()
   })
 
+  // Rooms are only safe because the draft outlives them. That holds while you stay inside
+  // Settings — but leaving for another page unmounts this component, so an unsaved edit would
+  // vanish without a word. The guard asks first.
+  //
+  // It has to let Settings' own rooms through: all in-app navigation funnels through the hash,
+  // so walking from Encoding to Files looks exactly like leaving unless the destination is
+  // checked. By the time a guard runs the hash already holds where we are going.
+  function confirmLeavingUnsaved(): boolean {
+    if (changedCount === 0) return true
+    const destination = window.location.hash.replace(/^#/, '')
+    if (destination.startsWith('/settings')) return true
+    return confirm(i18n.m.settings.confirm_discard)
+  }
+
+  $effect(() => router.guardLeave(confirmLeavingUnsaved))
+
   async function load() {
     loading = true
     error = null
@@ -454,6 +608,8 @@
       const loaded = await api.settings()
       settings = { ...settings, ...loaded }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
+      savedSettings = { ...settings }
+      savedMinFreeDiskGiB = minFreeDiskGiB
       await loadCleanupPreview()
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.settings.error_load
@@ -477,6 +633,8 @@
       })
       settings = { ...settings, ...saved }
       minFreeDiskGiB = bytesToGiB(settings.minFreeDiskBytes)
+      savedSettings = { ...settings }
+      savedMinFreeDiskGiB = minFreeDiskGiB
       message = i18n.m.settings.saved
       await loadCleanupPreview()
     } catch (err) {
@@ -611,6 +769,17 @@
   }
 </script>
 
+{#snippet wasChanged(field: keyof Settings | 'minFreeDiskBytes', previous: string)}
+  {#if isChanged(field)}
+    <span class="mt-1 block font-mono text-[10.5px] font-normal normal-case tracking-normal text-cyan-700 dark:text-cyan-300">
+      {tr(i18n.m.settings.was_value, { value: previous })}
+      <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
+        {i18n.m.settings.put_back}
+      </button>
+    </span>
+  {/if}
+{/snippet}
+
 <header class="mb-6">
   <div class="min-w-0">
     <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
@@ -625,49 +794,71 @@
 {#if loading}
   <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else}
-  <div
-    class="no-scrollbar mb-5 flex max-w-full gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700"
-    role="tablist"
-    aria-label={i18n.m.nav.settings}
-  >
-    {#each tabs as tab, index}
-      <button
-        id={`settings-tab-${tab.key}`}
-        role="tab"
-        aria-selected={activeTab === tab.key}
-        aria-controls={`settings-panel-${tab.key}`}
-        tabindex={activeTab === tab.key ? 0 : -1}
-        class="-mb-px min-h-11 flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
-          ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-          : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
-        onclick={() => selectTab(tab.key)}
-        onkeydown={(event) => handleTabKeydown(event, index)}
-      >
-        {tab.label}
+  {#if !openRoom}
+    <!-- The landing page. Each card reports what its room is set to, so the common
+         questions are answered without opening anything. -->
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {#each rooms as room (room.key)}
+        <button
+          type="button"
+          class="card card-interactive flex min-h-[7.5rem] flex-col gap-2 p-4 text-left"
+          onclick={() => openRoomAt(room.key)}
+        >
+          <span class="flex items-start justify-between gap-2">
+            <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">{room.title}</span>
+            {#if roomChangedCount(room.key) > 0}
+              <span
+                class="badge flex-none bg-cyan-600 font-mono text-[10px] text-white"
+                title={i18n.m.settings.unsaved_here}
+              >{roomChangedCount(room.key)}</span>
+            {:else if room.readOnly}
+              <span class="badge flex-none bg-slate-200 font-mono text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-700 dark:text-slate-300">{i18n.m.settings.read_only}</span>
+            {/if}
+          </span>
+          <span class="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{room.description}</span>
+          <span class="mt-auto flex items-center gap-2 pt-2 font-mono text-[11px] text-slate-600 hairline-t dark:text-slate-300">
+            <span
+              class="h-1.5 w-1.5 flex-none rounded-full {room.healthy ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-500'}"
+              aria-hidden="true"
+            ></span>
+            <span class="truncate">{room.state}</span>
+          </span>
+        </button>
+      {/each}
+    </div>
+  {:else}
+    <!-- The room says its own name. Without this the first thing you see after opening
+         "Encoding" is a section headed "Queue", and the room you asked for has vanished. -->
+    <div class="mb-5">
+      <button type="button" class="btn btn-ghost -ml-2 mb-2 px-2 text-xs" onclick={closeRoom}>
+        &larr; {i18n.m.settings.all_settings}
       </button>
-    {/each}
-  </div>
+      <h2
+        id="room-heading"
+        tabindex="-1"
+        class="text-lg font-semibold text-slate-900 outline-none dark:text-slate-100"
+      >{currentRoom?.title ?? i18n.m.nav.settings}</h2>
+      {#if currentRoom?.description}
+        <p class="mt-0.5 max-w-3xl text-sm text-slate-500 dark:text-slate-400">{currentRoom.description}</p>
+      {/if}
+    </div>
+  {/if}
 
-  {#if activeTab === 'general'}
-  <div
-    id="settings-panel-general"
-    role="tabpanel"
-    aria-labelledby="settings-tab-general"
-    class="min-w-0 space-y-5"
-  >
+  {#if openRoom === 'encoding'}
+  <div class="min-w-0 space-y-5">
   <ConfigSection
-    step={1}
     id="global-workload"
     title={i18n.m.nav.queue}
     description={i18n.m.settings.queue_desc}
   >
-    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      <div>
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('maxConcurrentJobs') ? 'bg-cyan-500/10' : ''}">
         <label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label>
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
+        {@render wasChanged('maxConcurrentJobs', String(savedSettings?.maxConcurrentJobs ?? ''))}
       </div>
 
-      <div>
+      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('encoderMode') ? 'bg-cyan-500/10' : ''}">
         <label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label>
         <select id="encoder-mode" class="input" bind:value={settings.encoderMode}>
           <option value="Auto">Auto</option>
@@ -676,31 +867,27 @@
           <option value="IntelQsv">Intel QSV</option>
           <option value="Vaapi">VAAPI</option>
         </select>
+        {@render wasChanged('encoderMode', String(savedSettings?.encoderMode ?? ''))}
       </div>
 
-      <div>
+      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('cpuThreadLimit') ? 'bg-cyan-500/10' : ''}">
         <label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
+        {@render wasChanged('cpuThreadLimit', String(savedSettings?.cpuThreadLimit ?? ''))}
       </div>
 
-      <div>
+      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('libraryScanIntervalHours') ? 'bg-cyan-500/10' : ''}">
         <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
         <div class="flex min-w-0 items-center gap-2">
           <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
           <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
         </div>
+        {@render wasChanged('libraryScanIntervalHours', String(savedSettings?.libraryScanIntervalHours ?? ''))}
       </div>
 
-      <div>
-        <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
-        <div class="flex min-w-0 items-center gap-2">
-          <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
-          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
-        </div>
-      </div>
     </div>
 
-    <div class="mt-5 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-800 sm:grid-cols-2">
+    <div class="mt-5 grid gap-5 border-t border-line pt-5 sm:grid-cols-2">
       <Toggle
         bind:checked={settings.hardwareDecode}
         label={i18n.m.settings.hardware_decode}
@@ -721,9 +908,12 @@
       </p>
     </div>
   </ConfigSection>
+  </div>
+  {/if}
 
+  {#if openRoom === 'files'}
+  <div class="min-w-0 space-y-5">
   <ConfigSection
-    step={2}
     id="global-replacement"
     title={i18n.m.settings.replacement_title}
     description={i18n.m.settings.replacement_desc}
@@ -737,7 +927,7 @@
     </div>
     {#if settings.remoteWorkersAvailable}
       <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
-      <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+      <div class="mt-5 max-w-2xl border-t border-line pt-5">
         <Toggle
           bind:checked={settings.remoteWorkersEnabled}
           label={i18n.m.settings.remote_workers}
@@ -745,21 +935,31 @@
         />
       </div>
     {/if}
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 max-w-2xl border-t border-line pt-5">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
         label={i18n.m.settings.cross_fs}
         hint={i18n.m.settings.cross_fs_hint}
       />
     </div>
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 max-w-2xl border-t border-line pt-5">
+      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'bg-cyan-500/10' : ''}">
+        <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
+        <div class="flex min-w-0 items-center gap-2">
+          <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
+          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
+        </div>
+        {@render wasChanged('minFreeDiskBytes', savedMinFreeDiskGiB)}
+      </div>
+    </div>
+    <div class="mt-5 max-w-2xl border-t border-line pt-5">
       <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
       <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
         <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
         <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
       </div>
 
-      <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50" aria-live="polite">
+      <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 dark:bg-slate-900/50" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_reclaimable}</p>
@@ -803,24 +1003,13 @@
     </div>
   </ConfigSection>
 
-  <div class="card flex flex-wrap items-center gap-3 p-4 sm:p-5" data-settings-actions>
-    <button class="btn btn-primary min-h-11" onclick={save} disabled={saving}>{saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}</button>
-    {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
-    <span class="text-xs text-slate-400">{i18n.m.settings.save_note}</span>
-  </div>
   </div>
   {/if}
 
-  {#if activeTab === 'connections'}
-  <div
-    id="settings-panel-connections"
-    role="tabpanel"
-    aria-labelledby="settings-tab-connections"
-    class="min-w-0 space-y-5"
-  >
+  {#if openRoom === 'servers'}
+  <div class="min-w-0 space-y-5">
     <!-- Media servers (Plex/Jellyfin/Emby): playback-aware pause + post-replacement re-scan. -->
     <ConfigSection
-      step={1}
       id="global-media-servers"
       title={i18n.m.settings.media_servers}
       description={i18n.m.settings.media_servers_summary}
@@ -834,7 +1023,7 @@
       {/if}
 
       {#if watchers.length > 0}
-        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="mb-4 divide-y divide-line-soft">
           {#each watchers as w (w.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
               <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
@@ -856,7 +1045,7 @@
         <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.media_servers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="rounded-lg border border-line p-4">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
           {editingId === null ? i18n.m.settings.add_media_server : i18n.m.settings.edit_media_server}
         </h3>
@@ -907,7 +1096,7 @@
               <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
-              <ul class="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+              <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line divide-line">
                 {#each plexServers as server}
                   <li>
                     <button
@@ -959,10 +1148,13 @@
         </div>
       </div>
     </ConfigSection>
+  </div>
+  {/if}
 
+  {#if openRoom === 'downloads'}
+  <div class="min-w-0 space-y-5">
     <!-- Download managers (Sonarr/Radarr): hold files back while an import is in progress. -->
     <ConfigSection
-      step={2}
       id="global-download-managers"
       title={i18n.m.settings.download_managers}
       description={i18n.m.settings.download_managers_summary}
@@ -976,7 +1168,7 @@
       {/if}
 
       {#if arrs.length > 0}
-        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="mb-4 divide-y divide-line-soft">
           {#each arrs as c (c.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
               <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
@@ -997,7 +1189,7 @@
         <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.download_managers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="rounded-lg border border-line p-4">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
           {editingArrId === null ? i18n.m.settings.add_download_manager : i18n.m.settings.edit_download_manager}
         </h3>
@@ -1043,17 +1235,13 @@
   </div>
   {/if}
 
-  {#if activeTab === 'notifications'}
+  {#if openRoom === 'notifications'}
   <div
-    id="settings-panel-notifications"
-    role="tabpanel"
-    aria-labelledby="settings-tab-notifications"
     class="min-w-0"
   >
   <ConfigSection
-    step={1}
     id="global-notifications"
-    title={i18n.m.settings.tab_notifications}
+    title={i18n.m.settings.room_notifications}
     description={i18n.m.settings.notifications_desc}
   >
 
@@ -1065,7 +1253,7 @@
     {/if}
 
     {#if targets.length > 0}
-      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+      <ul class="mb-4 divide-y divide-line-soft">
         {#each targets as t (t.id)}
           <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
             <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t.type}</span>
@@ -1091,7 +1279,7 @@
       <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.targets_empty}</p>
     {/if}
 
-    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+    <div class="rounded-lg border border-line p-4">
       <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
         {editingTargetId === null ? i18n.m.settings.add_target : i18n.m.settings.edit_target}
       </h3>
@@ -1157,37 +1345,27 @@
   </div>
   {/if}
 
-  {#if activeTab === 'tools'}
+  {#if openRoom === 'system'}
     <div
-      id="settings-panel-tools"
-      role="tabpanel"
-      aria-labelledby="settings-tab-tools"
-      class="min-w-0"
+        class="min-w-0"
     >
       <ToolsPanel />
     </div>
   {/if}
 
-  {#if activeTab === 'workers'}
+  {#if openRoom === 'workers'}
     <div
-      id="settings-panel-workers"
-      role="tabpanel"
-      aria-labelledby="settings-tab-workers"
-      class="min-w-0"
+        class="min-w-0"
     >
       <WorkersPanel />
     </div>
   {/if}
 
-  {#if activeTab === 'backup'}
+  {#if openRoom === 'system'}
   <div
-    id="settings-panel-backup"
-    role="tabpanel"
-    aria-labelledby="settings-tab-backup"
     class="min-w-0 space-y-5"
   >
   <ConfigSection
-    step={1}
     id="global-backup"
     title={i18n.m.settings.backup_title}
     description={i18n.m.settings.backup_summary}
@@ -1214,7 +1392,6 @@
   </ConfigSection>
 
   <ConfigSection
-    step={2}
     id="global-first-run"
     title={i18n.m.settings.restart_setup_title}
     description={i18n.m.settings.restart_setup_desc}
@@ -1225,5 +1402,28 @@
     </button>
   </ConfigSection>
   </div>
+  {/if}
+
+  {#if changedCount > 0 || message}
+    <div
+      class="card sticky bottom-0 z-10 mt-5 flex flex-wrap items-center gap-3 p-4"
+      data-settings-actions
+    >
+      {#if changedCount > 0}
+        <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {plural(changedCount, i18n.m.settings.unsaved_changes_one, i18n.m.settings.unsaved_changes_other)}
+        </span>
+      {/if}
+      {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
+      <span class="flex-1"></span>
+      {#if changedCount > 0}
+        <button class="btn btn-ghost min-h-11" onclick={discardAll} disabled={saving}>
+          {i18n.m.settings.discard}
+        </button>
+        <button class="btn btn-primary min-h-11" onclick={save} disabled={saving}>
+          {saving ? i18n.m.settings.saving : i18n.m.settings.save_settings}
+        </button>
+      {/if}
+    </div>
   {/if}
 {/if}

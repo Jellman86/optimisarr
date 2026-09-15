@@ -498,20 +498,20 @@
 
 <!-- Queue | Failures: live work and the diagnostics view for failed jobs live together, so the
      sidebar stays lean and job views are in one place. -->
-<div class="mb-5 flex gap-1 border-b border-slate-200 dark:border-slate-700">
+<div class="mb-5 flex gap-1 border-b border-line">
   <button
     class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'queue'
-      ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+ ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+ : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
     onclick={() => (activeTab = 'queue')}
   >
     {i18n.m.nav.queue}{#if activeCount > 0} ({activeCount}){/if}
   </button>
   <button
     class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'failures'
-      ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-      : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}
-      {counts.failed > 0 && activeTab !== 'failures' ? '!text-red-600 dark:!text-red-400' : ''}"
+ ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+ : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}
+ {counts.failed > 0 && activeTab !== 'failures' ? '!text-red-600 dark:!text-red-400' : ''}"
     onclick={() => (activeTab = 'failures')}
   >
     {i18n.m.queue.tab_failures}{#if counts.failed > 0} ({counts.failed}){/if}
@@ -696,9 +696,9 @@
     {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed], ['verified', i18n.m.queue.filter_verified], ['verifyFailed', i18n.m.queue.filter_verify_failed]] as [key, label]}
       <button
         class="badge cursor-pointer border {filter === key
-          ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
-          : 'border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}
-          {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-red-600 dark:!text-red-400' : ''}"
+ ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
+ : 'border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}
+ {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-red-600 dark:!text-red-400' : ''}"
         onclick={() => selectFilter(key as typeof filter)}
       >
         {label} · {counts[key as keyof typeof counts]}
@@ -763,7 +763,7 @@
       style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;"
     >
     <table class="w-full text-sm">
-      <thead class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+      <thead class="sticky top-0 z-10 border-b border-line bg-white text-left text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
         <tr>
           <th class="px-4 py-3">{i18n.m.queue.col_status}</th>
           <th class="px-4 py-3">{i18n.m.queue.col_file}</th>
@@ -773,7 +773,7 @@
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+      <tbody class="divide-y divide-line-soft">
         {#each pagedJobs as job (job.id)}
           {@const checks = parseReport(job)}
           <tr
@@ -1066,7 +1066,7 @@
       <!-- Verification report, when one exists -->
       {#if parseReport(selectedJob)}
         {@const checks = parseReport(selectedJob)}
-        <div class="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div class="mt-4 border-t border-line-soft pt-4 border-line">
           {#if checks}<VerificationChecks {checks} />{/if}
         </div>
       {/if}

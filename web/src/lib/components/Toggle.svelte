@@ -21,8 +21,8 @@
 
 <label
   class="flex items-center justify-between gap-4 {disabled
-    ? 'cursor-not-allowed opacity-60'
-    : 'cursor-pointer'}"
+ ? 'cursor-not-allowed opacity-60'
+ : 'cursor-pointer'}"
 >
   <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
     <span class="min-w-0 break-words">{label}</span>

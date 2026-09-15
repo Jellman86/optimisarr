@@ -79,9 +79,9 @@
 <!-- Off-canvas drawer below md (fixed, slides in over a backdrop); a static in-flow rail
      at md+ that can collapse to icons. -->
 <aside
-  class="fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col border-r border-slate-200 bg-white/95 backdrop-blur transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-700 dark:bg-slate-900/95 {layout.mobileOpen
-    ? 'translate-x-0'
-    : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] {layout.mobileOpen
+ ? 'translate-x-0'
+ : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
   <!-- Brand: the mark above the wordmark, and large enough to read. It was briefly a small
        inline lockup, on the grounds that a logo should not spend a third of the rail telling
