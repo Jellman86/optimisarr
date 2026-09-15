@@ -1045,18 +1045,27 @@ public sealed class QueueDispatcher(
             DateTimeOffset.UtcNow,
             cancellationToken);
 
-        if (!availability.RemoteWorkersOn || !availability.AWorkerCouldTakeWork)
+        var placement = await JobPlacementLookup.ForJobAsync(db, jobId, cancellationToken);
+
+        var handOver = availability.RemoteWorkersOn
+            && availability.AWorkerCouldTakeWork
+            && placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
+
+        // Says which of the three it was. This decision was silent, and a library set to prefer a
+        // worker that never handed one anything looked identical whether the fleet was offline, the
+        // feature was off, or the placement had not been read at all. It is written once per job
+        // that searched its quality here, not once per poll.
+        if (!handOver)
         {
-            return false;
+            logger.LogInformation(
+                "Job {JobId}: keeping the encode here — remote workers {Remote}, a worker could take it: {Fleet}, placement {Placement}",
+                jobId,
+                availability.RemoteWorkersOn ? "on" : "off",
+                availability.AWorkerCouldTakeWork,
+                placement?.ToString() ?? "unresolved");
         }
 
-        var placement = await db.Jobs
-            .AsNoTracking()
-            .Where(job => job.Id == jobId && job.Type == JobType.Normal)
-            .Select(job => job.MediaFile!.Library!.WorkPlacement)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
+        return handOver;
     }
 
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
