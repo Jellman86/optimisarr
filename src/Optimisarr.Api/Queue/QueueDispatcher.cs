@@ -979,8 +979,11 @@ public sealed class QueueDispatcher(
         }
 
         await using var scope = scopeFactory.CreateAsyncScope();
+        // The interface, not the concrete service. Both resolve to the same singleton in the
+        // running app; asking for the abstraction is what lets the offered search be proven in a
+        // test, which is the half of this feature that was left unproven because it could not be.
         var sourceProbe = await scope.ServiceProvider
-            .GetRequiredService<MediaProbeService>()
+            .GetRequiredService<IMediaProbeService>()
             .ProbeAsync(loaded.Original.Path, cancellationToken);
 
         // The primary picture timeline, not the container's. A subtitle or attachment stream can
