@@ -142,7 +142,7 @@
   <div class="flex min-w-0 flex-1 flex-col">
     <!-- Mobile top bar: hamburger + brand + theme. Hidden once the sidebar is in-flow (md+). -->
     <header
-      class="flex items-center gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden dark:border-slate-700 dark:bg-slate-900/95"
+      class="flex items-center gap-3 border-b border-line bg-white/95 px-4 py-3 backdrop-blur md:hidden dark:bg-slate-900/95"
     >
       <button class="btn btn-ghost px-2" aria-label={i18n.m.nav.open_menu} onclick={() => layout.toggleMobile()}>
         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

@@ -46,7 +46,7 @@
 </script>
 
 <div class="card">
-  <div class="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2.5 dark:border-slate-700">
+  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.fleet}</span>
     {#if workersAvailable}
       <span class="ml-auto font-mono text-xs text-slate-500 dark:text-slate-400">
@@ -58,7 +58,7 @@
   <ul class="m-0 list-none p-0">
     <!-- This server is a row in the same list, with the same fields. Once a sidecar can take work,
          the container is one machine among several rather than the subject of the page. -->
-    <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 sm:grid-cols-[1fr_150px_100px] sm:items-center">
+    <li class="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_150px_100px] sm:items-center">
       <div class="min-w-0">
         <div class="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
           <span class="h-1.5 w-1.5 flex-none rounded-full bg-emerald-600 dark:bg-emerald-400" aria-hidden="true"></span>
@@ -90,7 +90,7 @@
     {#each active as worker (worker.id)}
       {@const cpu = fraction(worker.cpuBusyFraction)}
       {@const gpu = fraction(worker.gpuBusyFraction)}
-      <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 sm:grid-cols-[1fr_150px_100px] sm:items-center">
+      <li class="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_150px_100px] sm:items-center">
         <div class="min-w-0">
           <div class="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
             <span
@@ -136,7 +136,7 @@
   </ul>
 
   {#if workersAvailable && active.length === 0}
-    <div class="border-t border-slate-200 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+    <div class="border-t border-line px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
       {i18n.m.dashboard.fleet_no_workers}
       <button class="text-cyan-700 hover:underline dark:text-cyan-400" onclick={() => router.go('/workers')}>{i18n.m.dashboard.fleet_pair}</button>
     </div>

@@ -20,6 +20,8 @@ function gitHash(): string {
   }
 }
 
+const apiTarget = process.env.OPTIMISARR_API ?? 'http://localhost:8787'
+
 const hash = gitHash()
 const appVersion = `${pkg.version}+${hash}`
 
@@ -36,8 +38,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8787',
-      '/hubs': { target: 'http://localhost:8787', ws: true },
+      // Defaults to a server running alongside this checkout. Point it somewhere else to
+      // develop the UI against a populated instance — an empty local database shows every
+      // page in its empty state, which is not where the layout problems are:
+      //   OPTIMISARR_API=https://optimisarr.example npm run dev
+      '/api': { target: apiTarget, changeOrigin: true },
+      '/hubs': { target: apiTarget, changeOrigin: true, ws: true },
     },
   },
 })

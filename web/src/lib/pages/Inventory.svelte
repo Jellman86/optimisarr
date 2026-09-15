@@ -257,7 +257,7 @@
     >
       <table class="w-full text-sm">
         <thead
-          class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+          class="sticky top-0 z-10 border-b border-line bg-white text-left text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400"
         >
           <tr>
             <th class="px-4 py-3">{i18n.m.inventory.col_optimise}</th>
@@ -268,14 +268,14 @@
             <th class="hidden px-4 py-3 sm:table-cell">{i18n.m.inventory.col_resolution}</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+        <tbody class="divide-y divide-line-soft">
           {#each paged as file (file.id)}
             {@const verdict = verdicts[file.id]}
             <tr
               class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedFile?.id ===
-              file.id
-                ? 'bg-sky-50 dark:bg-sky-950/30'
-                : ''}"
+ file.id
+ ? 'bg-sky-50 dark:bg-sky-950/30'
+ : ''}"
               onclick={() => selectRow(file.id)}
             >
               <td class="px-4 py-2">
@@ -391,7 +391,7 @@
           </div>
         </dl>
 
-        <div class="mt-4 border-t border-slate-100 pt-4 text-sm dark:border-slate-800">
+        <div class="mt-4 border-t border-line-soft pt-4 text-sm border-line">
           <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{i18n.m.inventory.rule_verdict}</p>
           <p class="mt-2 text-slate-600 dark:text-slate-300">
             {selectedVerdict?.reason ?? i18n.m.inventory.verdict_probe_hint}

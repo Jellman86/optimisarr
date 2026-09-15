@@ -4,6 +4,19 @@
 
 ### Changed
 
+- **The interface is built from surfaces now, not from boxes with lines round them.** Every
+  panel in the app wore the same one-pixel border, which gave a reader nothing to go on: a
+  card, a header band and a table row all announced themselves equally loudly. A surface is
+  now a soft gradient fill, a layered shadow and a single hairline of light along its top
+  edge — the way a raised object actually looks — and lines survive only where they divide
+  content inside a surface. Controls follow the same logic: buttons are raised because you
+  press them, inputs and progress tracks are recessed because you put something into them.
+  Cards you can open lift slightly under the pointer. The light theme's page colour moved a
+  shade deeper to make room for it, because a white card cannot lift off a white page.
+  Selecting a processing mode, a quality strategy or a codec now lights that card's fill
+  rather than drawing a coloured ring around it, which keeps selection reading as "this one
+  is on" rather than "this one has been ringed".
+
 - **The application mark is drawn, and it reports the server's state.** The logo was a static
   picture that told you which application you already had open. It is now a four-dimensional
   hypercube rasterised onto a pixel grid — sixteen vertices and thirty-two edges, turned by real

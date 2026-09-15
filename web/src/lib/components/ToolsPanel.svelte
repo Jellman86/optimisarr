@@ -73,10 +73,10 @@
             </div>
             <span
               class="badge w-fit max-w-full {tool.available
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                : tool.required
-                  ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
-                  : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}"
+ ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+ : tool.required
+ ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+ : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}"
             >
               {tool.available ? i18n.m.shared.available : i18n.m.shared.missing}
             </span>
@@ -142,7 +142,7 @@
             <h3 class="mb-3 font-semibold text-slate-800 dark:text-slate-100">{mode}</h3>
             <div class="grid min-w-0 gap-2 sm:grid-cols-3">
               {#each encoders as encoder}
-                <div class="min-w-0 rounded border border-slate-200 p-3 text-xs dark:border-slate-800">
+                <div class="min-w-0 rounded border border-line p-3 text-xs">
                   <div class="break-all font-mono text-slate-700 dark:text-slate-200">{encoder.name}</div>
                   <div class="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
                     <span class="uppercase text-slate-400">{encoder.codec}</span>

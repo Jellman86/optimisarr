@@ -237,7 +237,7 @@
   <div class="card overflow-hidden">
     <div bind:this={tableScrollEl} class="overflow-auto" style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;">
       <table class="w-full text-sm">
-        <thead class="sticky top-0 z-10 border-b border-slate-200 bg-white text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+        <thead class="sticky top-0 z-10 border-b border-line bg-white text-left text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
           <tr>
             <th class="px-4 py-3">{i18n.m.quarantine.col_status}</th>
             <th class="px-4 py-3">{i18n.m.quarantine.col_replaced_file}</th>
@@ -245,7 +245,7 @@
             <th class="hidden px-4 py-3 md:table-cell">{i18n.m.quarantine.col_replaced}</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+        <tbody class="divide-y divide-line-soft">
           {#each replacements as r (r.id)}
             <tr
               class="text-slate-700 dark:text-slate-300 {r.status === 'Replaced' ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''} {selectedId === r.id ? 'bg-cyan-50 dark:bg-cyan-900/20' : ''}"

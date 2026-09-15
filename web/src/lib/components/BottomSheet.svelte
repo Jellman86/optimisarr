@@ -64,7 +64,7 @@
   bind:this={sheetEl}
 >
   <div
-    class="relative overflow-hidden border-t border-slate-200 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.1)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]"
+    class="relative overflow-hidden border-t border-line bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.1)] dark:bg-slate-900 dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]"
   >
     {#if backdrop}
       <!-- Ambient backdrop behind the entire sheet; pointer-transparent and clipped to the panel. -->
@@ -99,7 +99,7 @@
     <!-- Content: only rendered when open and expanded; the ResizeObserver picks up the size
          change automatically so a parent's table max-height adjusts without extra logic. -->
     {#if open && expanded}
-      <div class="relative z-10 max-h-[60vh] overflow-y-auto border-t border-slate-100 px-5 py-4 dark:border-slate-800">
+      <div class="relative z-10 max-h-[60vh] overflow-y-auto border-t border-line-soft px-5 py-4 border-line">
         {@render children()}
       </div>
     {/if}

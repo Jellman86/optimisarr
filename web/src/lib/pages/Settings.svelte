@@ -626,7 +626,7 @@
   <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
 {:else}
   <div
-    class="no-scrollbar mb-5 flex max-w-full gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700"
+    class="no-scrollbar mb-5 flex max-w-full gap-1 overflow-x-auto border-b border-line"
     role="tablist"
     aria-label={i18n.m.nav.settings}
   >
@@ -638,8 +638,8 @@
         aria-controls={`settings-panel-${tab.key}`}
         tabindex={activeTab === tab.key ? 0 : -1}
         class="-mb-px min-h-11 flex-shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.key
-          ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
-          : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+ ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
+ : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
         onclick={() => selectTab(tab.key)}
         onkeydown={(event) => handleTabKeydown(event, index)}
       >
@@ -700,7 +700,7 @@
       </div>
     </div>
 
-    <div class="mt-5 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-800 sm:grid-cols-2">
+    <div class="mt-5 grid gap-5 border-t border-line pt-5 sm:grid-cols-2">
       <Toggle
         bind:checked={settings.hardwareDecode}
         label={i18n.m.settings.hardware_decode}
@@ -737,7 +737,7 @@
     </div>
     {#if settings.remoteWorkersAvailable}
       <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
-      <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+      <div class="mt-5 max-w-2xl border-t border-line pt-5">
         <Toggle
           bind:checked={settings.remoteWorkersEnabled}
           label={i18n.m.settings.remote_workers}
@@ -745,21 +745,21 @@
         />
       </div>
     {/if}
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 max-w-2xl border-t border-line pt-5">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
         label={i18n.m.settings.cross_fs}
         hint={i18n.m.settings.cross_fs_hint}
       />
     </div>
-    <div class="mt-5 max-w-2xl border-t border-slate-200 pt-5 dark:border-slate-800">
+    <div class="mt-5 max-w-2xl border-t border-line pt-5">
       <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
       <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
         <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
         <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
       </div>
 
-      <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50" aria-live="polite">
+      <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 dark:bg-slate-900/50" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_reclaimable}</p>
@@ -834,7 +834,7 @@
       {/if}
 
       {#if watchers.length > 0}
-        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="mb-4 divide-y divide-line-soft">
           {#each watchers as w (w.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
               <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
@@ -856,7 +856,7 @@
         <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.media_servers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="rounded-lg border border-line p-4">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
           {editingId === null ? i18n.m.settings.add_media_server : i18n.m.settings.edit_media_server}
         </h3>
@@ -907,7 +907,7 @@
               <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
-              <ul class="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+              <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line divide-line">
                 {#each plexServers as server}
                   <li>
                     <button
@@ -976,7 +976,7 @@
       {/if}
 
       {#if arrs.length > 0}
-        <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+        <ul class="mb-4 divide-y divide-line-soft">
           {#each arrs as c (c.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
               <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
@@ -997,7 +997,7 @@
         <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.download_managers_empty}</p>
       {/if}
 
-      <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <div class="rounded-lg border border-line p-4">
         <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
           {editingArrId === null ? i18n.m.settings.add_download_manager : i18n.m.settings.edit_download_manager}
         </h3>
@@ -1065,7 +1065,7 @@
     {/if}
 
     {#if targets.length > 0}
-      <ul class="mb-4 divide-y divide-slate-100 dark:divide-slate-800">
+      <ul class="mb-4 divide-y divide-line-soft">
         {#each targets as t (t.id)}
           <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
             <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t.type}</span>
@@ -1091,7 +1091,7 @@
       <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.targets_empty}</p>
     {/if}
 
-    <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+    <div class="rounded-lg border border-line p-4">
       <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
         {editingTargetId === null ? i18n.m.settings.add_target : i18n.m.settings.edit_target}
       </h3>

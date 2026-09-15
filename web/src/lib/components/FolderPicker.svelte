@@ -46,14 +46,14 @@
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => e.stopPropagation()}
   >
-    <div class="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
+    <div class="flex items-center justify-between border-b border-line p-4">
       <h2 class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.shared.choose_folder}</h2>
       <button class="btn btn-ghost min-h-11 min-w-11 px-2" onclick={onClose} aria-label={i18n.m.shared.close}>
         <Icon name="x" class="h-5 w-5" />
       </button>
     </div>
 
-    <div class="border-b border-slate-200 p-3 dark:border-slate-700">
+    <div class="border-b border-line p-3">
       <div class="flex items-center gap-2">
         <button
           class="btn min-h-11 px-3 text-xs"
@@ -92,7 +92,7 @@
       {/if}
     </div>
 
-    <div class="flex items-center justify-between gap-2 border-t border-slate-200 p-3 dark:border-slate-700">
+    <div class="flex items-center justify-between gap-2 border-t border-line p-3">
       <span class="truncate text-xs text-slate-500 dark:text-slate-400">{i18n.m.shared.select_highlighted}</span>
       <div class="flex gap-2">
         <button class="btn min-h-11" onclick={onClose}>{i18n.m.common.cancel}</button>

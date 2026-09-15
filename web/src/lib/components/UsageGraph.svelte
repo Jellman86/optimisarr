@@ -30,7 +30,7 @@
   let area = $derived(line ? `${line} L${W} ${H} L0 ${H} Z` : '')
 </script>
 
-<div class="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+<div class="rounded-lg border border-line p-3">
   <div class="flex items-baseline justify-between gap-2">
     <span class="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</span>
     {#if !unavailable}

@@ -39,7 +39,7 @@
   )
 </script>
 
-<div class="card mb-4 flex flex-wrap items-stretch divide-slate-200 overflow-hidden p-0 dark:divide-slate-700 sm:divide-x">
+<div class="card mb-4 flex flex-wrap items-stretch divide-line overflow-hidden p-0 sm:divide-x">
   <div class="flex items-center gap-2.5 px-4 py-3">
     {#if queueState?.severity === 'live'}
       <span class="h-2 w-2 flex-none animate-pulse rounded-full bg-cyan-600 dark:bg-cyan-400" aria-hidden="true"></span>

@@ -59,7 +59,7 @@
 
   <div class="card overflow-x-auto">
     <table class="w-full text-sm">
-      <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
+      <thead class="border-b border-line text-left text-xs uppercase text-slate-500 dark:text-slate-400">
         <tr>
           <th class="px-4 py-3">{i18n.m.shared.col_status}</th>
           <th class="px-4 py-3">{i18n.m.shared.col_file}</th>
@@ -71,7 +71,7 @@
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+      <tbody class="divide-y divide-line-soft">
         {#each pagedVisible as candidate (candidate.mediaFileId)}
           <tr class="text-slate-700 dark:text-slate-300">
             <td class="px-4 py-2">

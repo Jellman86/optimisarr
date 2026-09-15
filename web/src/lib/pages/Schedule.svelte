@@ -122,7 +122,7 @@
     {#if autoOptimiseLibraries.length > 0}
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="border-b border-slate-200 text-left text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          <thead class="border-b border-line text-left text-xs uppercase text-slate-500 dark:text-slate-400">
             <tr>
               <th class="pb-2 pr-6">{i18n.m.schedule.col_library}</th>
               <th class="pb-2 pr-6">{i18n.m.schedule.col_window}</th>
@@ -131,7 +131,7 @@
               <th class="pb-2">{i18n.m.schedule.col_last_enqueued}</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody class="divide-y divide-line-soft">
             {#each autoOptimiseLibraries as lib (lib.id)}
               {@const active = inWindow(lib.autoEnqueueWindowStart, lib.autoEnqueueWindowEnd)}
               {@const overnight = isOvernightWindow(lib.autoEnqueueWindowStart, lib.autoEnqueueWindowEnd)}

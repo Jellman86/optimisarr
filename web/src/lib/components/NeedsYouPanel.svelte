@@ -24,7 +24,7 @@
 </script>
 
 <div class="card">
-  <div class="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2.5 dark:border-slate-700">
+  <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.needs_you}</span>
   </div>
 
@@ -33,7 +33,7 @@
   {:else}
     <ul class="m-0 list-none p-0">
       {#if ready > 0}
-        <li class="flex items-center gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700">
+        <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-emerald-700 dark:text-emerald-400">
             <Icon name="check" class="h-4 w-4" />
             <span class="font-mono text-lg font-medium tabular-nums">{ready.toLocaleString()}</span>
@@ -47,7 +47,7 @@
       {/if}
 
       {#if quarantined > 0}
-        <li class="flex items-center gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700">
+        <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-slate-600 dark:text-slate-300">
             <Icon name="clock" class="h-4 w-4" />
             <span class="font-mono text-lg font-medium tabular-nums">{quarantined.toLocaleString()}</span>
@@ -63,7 +63,7 @@
       {/if}
 
       {#if failed > 0}
-        <li class="flex items-center gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700">
+        <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
           <span class="flex w-16 flex-none items-center gap-2 text-red-600 dark:text-red-400">
             <Icon name="warning" class="h-4 w-4" />
             <span class="font-mono text-lg font-medium tabular-nums">{failed.toLocaleString()}</span>

@@ -27,7 +27,7 @@
   // eligible. A dashboard that overstates what it can win is what this application exists not to be.
 </script>
 
-<div class="card grid grid-cols-1 divide-y divide-slate-200 dark:divide-slate-700 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">
+<div class="card grid grid-cols-1 divide-y divide-line sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">
   <div class="p-4">
     <div class="flex items-start justify-between gap-2">
       <span class="label mb-0">{i18n.m.dashboard.total_saved}</span>

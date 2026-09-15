@@ -1127,7 +1127,7 @@
     </button>
   </header>
 {:else}
-  <header class="mb-5 border-b border-slate-200 pb-4 dark:border-slate-800">
+  <header class="mb-5 border-b border-line pb-4">
     <button class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-cyan-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500 dark:text-slate-400 dark:hover:text-cyan-300" onclick={cancelEdit}>
       <Icon name="arrow-left" class="h-4 w-4" />
       {i18n.m.nav.libraries}
@@ -1298,7 +1298,7 @@
           { value: 'remux', label: i18n.m.libraries.remux_label, hint: i18n.m.libraries.remux_hint },
           { value: 'track-cleanup', label: i18n.m.libraries.track_cleanup_label, hint: i18n.m.libraries.track_cleanup_hint },
         ] as mode}
-          <label class="min-h-24 cursor-pointer rounded-lg border p-3 transition-colors {processingMode === mode.value ? 'border-cyan-500 bg-cyan-50/70 ring-1 ring-cyan-500 dark:bg-cyan-950/20' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'}">
+          <label class="choice min-h-24 rounded-lg p-3 {processingMode === mode.value ? 'choice-selected' : ''}">
             <span class="flex items-start gap-2">
               <input
                 type="radio"
@@ -1381,7 +1381,7 @@
 
       {#if isCustom}
         <!-- Neutral, not amber: a custom config is a deliberate choice, not a warning. -->
-        <div class="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
+        <div class="mt-2 rounded-md border border-line bg-slate-50 p-2 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-300">
           {#if presetOverridden}
             <span>{t(i18n.m.libraries.custom_overridden, { summary: overrideSummary(), verb: form.targetVideoCodec && form.targetContainer ? i18n.m.libraries.custom_overridden_are : i18n.m.libraries.custom_overridden_is })}</span>
           {:else}
@@ -1423,7 +1423,7 @@
       <!-- For Music, audio is the primary optimisation choice rather than an expert override.
            Keep the codec and bitrate in the normal flow so the section never becomes a dead-end
            explanation that requires opening Advanced to do the actual work. -->
-      <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/25">
+      <div class="rounded-lg border border-line bg-slate-50/60 p-4 dark:bg-slate-800/25">
         <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.audio}</h3>
         <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.music_note}</p>
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -1460,7 +1460,7 @@
     {/if}
 
     {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
-      <div class="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+      <div class="mt-4 rounded-lg border border-line p-3">
         <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <!-- Same name as the action button: one feature, one term. -->
@@ -1479,7 +1479,7 @@
     {/if}
 
   {#if showVideoOptions && !isNoEncodeProfile}
-    <div class="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+    <div class="mt-6 border-t border-line pt-5">
       <fieldset>
         <legend class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {i18n.m.libraries.quality_strategy}
@@ -1490,7 +1490,7 @@
 
         <div class="mt-3 grid w-full gap-3 md:grid-cols-2" data-testid="video-quality-strategies">
           <label
-            class="relative flex min-h-44 cursor-pointer flex-col rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+            class="relative choice flex min-h-44 flex-col rounded-xl p-4 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'AdaptiveVmaf' ? 'choice-selected' : ''}"
           >
             <div class="flex items-start gap-3">
               <input
@@ -1523,7 +1523,7 @@
           </label>
 
           <label
-            class="relative flex min-h-44 cursor-pointer flex-col rounded-xl border p-4 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+            class="relative choice flex min-h-44 flex-col rounded-xl p-4 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.videoQualityStrategy === 'Fixed' ? 'choice-selected' : ''}"
           >
             <div class="flex items-start gap-3">
               <input
@@ -1559,7 +1559,7 @@
       </fieldset>
 
       <div class="w-full">
-        <div class="mt-5 border-t border-slate-200 pt-5 dark:border-slate-700">
+        <div class="mt-5 border-t border-line pt-5">
           <label class="label" for="lib-vmaf-policy">
             {i18n.m.settings.vmaf_label}
             <InfoTip text={i18n.m.settings.vmaf_hint} />
@@ -1594,7 +1594,7 @@
       </div>
 
       {#if vmafMode === 'custom'}
-        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3 dark:border-slate-700">
+        <div class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-3">
           <div>
             <label class="label" for="lib-vmaf-harmonic">{i18n.m.settings.vmaf_harmonic}</label>
             <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafHarmonicMean} />
@@ -1611,7 +1611,7 @@
       {/if}
 
       {#if vmafMode !== 'off'}
-        <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-700">
+        <div class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-vmaf-sampling">{i18n.m.settings.vmaf_clip_label}</label>
             <select id="lib-vmaf-sampling" class="input" value={form.clipVmafEnabled ? 'samples' : 'full'} onchange={(event) => (form.clipVmafEnabled = event.currentTarget.value === 'samples')}>
@@ -1644,7 +1644,7 @@
     description={i18n.m.libraries.verification_intro}
   >
     <div class="grid gap-4 xl:grid-cols-2">
-      <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+      <fieldset class="min-w-0 rounded-lg border border-line bg-white p-4 dark:bg-slate-900/40">
         <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
           {i18n.m.settings.always_on}
         </legend>
@@ -1671,7 +1671,7 @@
           </div>
         {/if}
 
-        <div class="grid gap-3 {showVideoOptions || showAudioOptions ? 'border-t border-slate-200 pt-4 dark:border-slate-800' : ''}">
+        <div class="grid gap-3 {showVideoOptions || showAudioOptions ? 'border-t border-line pt-4 border-line' : ''}">
           {#if showVideoOptions || showAudioOptions}
             <Toggle bind:checked={form.requireAudioRetained} label={i18n.m.settings.require_audio} />
           {/if}
@@ -1683,7 +1683,7 @@
       </fieldset>
 
       {#if showVideoOptions || showAudioOptions}
-        <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+        <fieldset class="min-w-0 rounded-lg border border-line bg-white p-4 dark:bg-slate-900/40">
           <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
             {i18n.m.libraries.audio}
           </legend>
@@ -1712,7 +1712,7 @@
             </div>
           {/if}
 
-          <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div class="mt-5 border-t border-line pt-4">
             <Toggle
               bind:checked={form.audioClippingGateEnabled}
               label={i18n.m.settings.clipping_label}
@@ -1743,7 +1743,7 @@
       {/if}
 
       {#if showImageOptions}
-        <fieldset class="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+        <fieldset class="min-w-0 rounded-lg border border-line bg-white p-4 dark:bg-slate-900/40">
           <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
             {i18n.m.libraries.images}
           </legend>
@@ -1773,7 +1773,7 @@
             </div>
           {/if}
 
-          <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div class="mt-5 border-t border-line pt-4">
             <Toggle
               bind:checked={form.imageMetadataGateEnabled}
               label={i18n.m.settings.exif_label}
@@ -1830,7 +1830,7 @@
       hint={i18n.m.libraries.auto_replace_hint}
     />
 
-      <section class="border-t border-slate-200 pt-5 dark:border-slate-700">
+      <section class="border-t border-line pt-5">
         <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.completed_output}</h3>
         <p class="mt-1 mb-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
         <Toggle
@@ -1863,7 +1863,7 @@
   <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. The header and
        body form one tinted, bordered "drawer" so the Advanced zone is clearly set apart from the
        simple controls above. -->
-  <div class="mt-6 overflow-hidden rounded-xl border {showAdvanced ? 'border-slate-300 dark:border-slate-600' : 'border-slate-200 dark:border-slate-700'}">
+  <div class="mt-6 overflow-hidden rounded-xl border {showAdvanced ? 'border-line' : 'border-line'}">
     <button
       type="button"
       class="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60 {showAdvanced ? 'bg-slate-100/80 dark:bg-slate-800/70' : ''}"
@@ -1878,7 +1878,7 @@
 
   {#if showAdvanced}
     <!-- divide-y draws a separator between whichever sections are shown for this media type. -->
-    <div class="border-t border-slate-200 bg-slate-50/60 px-4 divide-y divide-slate-200 dark:border-slate-700 dark:bg-slate-900/30 dark:divide-slate-800">
+    <div class="border-t border-line bg-slate-50/60 px-4 divide-y divide-line dark:bg-slate-900/30">
 
       {#if showVideoOptions}
       <!-- VIDEO — scoped to Film/TV/Other libraries. -->
@@ -1965,7 +1965,7 @@
           />
           <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.crop_bars_hint}</p>
           {#if form.cropBlackBars}
-            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+            <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
               {i18n.m.libraries.crop_bars_on_detail}
             </div>
           {/if}
@@ -2039,7 +2039,7 @@
             </div>
 
             {#if hasEncoderTuning}
-              <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
                 {i18n.m.libraries.encoder_tuning_support}
               </div>
             {/if}
@@ -2223,7 +2223,7 @@
 
         <!-- Downscale: optional dimension reduction. Aspect ratio is always kept and images are
              never enlarged; an intentional downscale is allowed past verification. -->
-        <div class="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+        <div class="mt-5 border-t border-line pt-4">
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
               <label class="label" for="lib-image-downscale">{i18n.m.libraries.downscale} <InfoTip text={i18n.m.libraries.downscale_tip} /></label>
@@ -2334,7 +2334,7 @@
           />
           <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.hardlinks_hint}</p>
           {#if form.excludeHardLinkedFiles}
-            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+            <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
               {i18n.m.libraries.hardlinks_on_detail}
             </div>
           {/if}
@@ -2351,7 +2351,7 @@
             <div class="grid gap-2 md:grid-cols-2" role="radiogroup" aria-label={i18n.m.libraries.placement_label}>
               {#each placements as placement (placement)}
                 <label
-                  class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.workPlacement === placement ? 'border-cyan-500 bg-cyan-50/70 dark:border-cyan-500 dark:bg-cyan-950/25' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900/20 dark:hover:border-slate-600'}"
+                  class="choice flex items-start gap-3 rounded-xl p-3 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-slate-900 {form.workPlacement === placement ? 'choice-selected' : ''}"
                 >
                   <input
                     type="radio"
@@ -2369,7 +2369,7 @@
               {/each}
             </div>
             {#if form.videoQualityStrategy === 'AdaptiveVmaf' && form.workPlacement !== 'LocalOnly'}
-              <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+              <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
                 {i18n.m.libraries.placement_adaptive_note}
               </div>
             {/if}
@@ -2394,14 +2394,14 @@
                 type="button"
                 aria-pressed={skippedCodecs.includes(codec)}
                 onclick={() => toggleSkippedCodec(codec)}
-                class="rounded-full border px-3 py-1 font-mono text-xs transition-colors {skippedCodecs.includes(codec)
-                  ? 'border-cyan-500 bg-cyan-600/15 text-cyan-700 dark:text-cyan-300'
-                  : 'border-slate-300 text-slate-600 hover:border-slate-400 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500'}"
+                class="choice rounded-full px-3 py-1 font-mono text-xs {skippedCodecs.includes(codec)
+ ? 'choice-selected'
+ : 'text-slate-600 dark:text-slate-300'}"
               >{codec}</button>
             {/each}
           </div>
           {#if skippedCodecs.length > 0}
-            <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+            <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
               {i18n.m.libraries.skip_codecs_on_detail}
             </div>
           {/if}
@@ -2417,7 +2417,7 @@
        action bar cannot consume most of the editor. -->
   <div
     data-library-actions
-    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} z-10 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-6"
+    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} z-10 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white px-4 py-3 shadow-sm dark:bg-slate-900 sm:px-6"
   >
     <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave}>
       <Icon name="check" class="h-4 w-4" />
@@ -2435,7 +2435,7 @@
 
 {#if editingId !== null}
   {#if editingId !== 0 && !embedded}
-    <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-700" aria-label={i18n.m.libraries.configure}>
+    <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-line" aria-label={i18n.m.libraries.configure}>
       <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-amber-500">●</span>{/if}</button>
       <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
       <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'excluded' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
@@ -2460,9 +2460,9 @@
     {#if editorExclusionsLoading}
       <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
     {:else if editorExclusions.length === 0}
-      <div class="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400 dark:border-slate-700">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
+      <div class="rounded-lg border border-dashed border-line p-8 text-center text-sm text-slate-400">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
     {:else}
-      <div class="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+      <div class="divide-y divide-line-soft rounded-lg border border-line divide-line">
         {#each editorExclusions as ex (ex.id)}
           {@const auto = ex.source === 'RepeatedFailures'}
           <div class="flex items-center justify-between gap-3 px-3 py-2">
@@ -2554,7 +2554,7 @@
           </div>
         {/if}
 
-        <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+        <div class="flex items-center justify-between gap-3 border-t border-line-soft pt-3 border-line">
           <button class="btn btn-primary min-h-11" onclick={() => scan(library)} disabled={busy || !library.enabled}>
             <Icon name={busy ? 'rotate' : 'search'} class="h-4 w-4 {busy ? 'animate-spin' : ''}" />
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}

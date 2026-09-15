@@ -106,7 +106,7 @@
       id="language-options"
       role="listbox"
       aria-label={i18n.m.language.label}
-      class="absolute left-6 right-0 z-50 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      class="absolute left-6 right-0 z-50 max-h-72 overflow-y-auto rounded-lg border border-line bg-white p-1 shadow-lg dark:bg-slate-900"
       class:bottom-full={opensUp}
       class:mb-1={opensUp}
       class:top-full={!opensUp}
