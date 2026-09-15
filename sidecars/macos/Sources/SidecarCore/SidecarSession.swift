@@ -174,6 +174,18 @@ public final class SidecarSession: ObservableObject {
         // reach for the Keychain and overwrite the very state being looked at.
         guard !isPosed else { return }
         guard pairing == nil else { return }
+
+        // Before anything is claimed, which is the one moment this process is certain to hold no
+        // lease. A job removes its own working directory in a `defer` — that covers every way a
+        // job can end and none of the ways a process can, so a force quit or a crash leaves
+        // gigabytes behind with nothing that would ever remove them. Left alone while still being
+        // written to, in case another copy of the app is mid-job. See `OrphanedScratch`.
+        let reclaimed = OrphanedScratch.sweep(in: JobRunner.defaultScratchRoot())
+        if reclaimed > 0 {
+            SidecarLog.storage.notice(
+                "Removed \(reclaimed) working director\(reclaimed == 1 ? "y" : "ies") left by an earlier run")
+        }
+
         // The menu calls this every time it opens, and the load below is now asynchronous — without
         // this, opening the menu twice in quick succession would start a second read of the same
         // item while the first was still outstanding.
