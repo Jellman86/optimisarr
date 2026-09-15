@@ -145,6 +145,9 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var released = false
     private(set) var renewals = 0
     private(set) var qualityReport: [String: Any]?
+    /// What the search answers, in order: the worker is told what to measure next until told to stop.
+    var probeAnswers: [[String: Any]] = []
+    private(set) var probeReports: [[String: Any]] = []
     private(set) var qualityReportedBeforeDelivery = false
     /// Whether the server offers resumable delivery; off means an older server, whole-file only.
     var resumable = false
@@ -217,6 +220,14 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
                     ? Data(#"{"jobId":12,"bytes":\#(staged.count),"candidateSha256":"x"}"#.utf8)
                     : Data(#"{"error":"The uploaded candidate does not match the hash the worker declared."}"#.utf8)
                 return (body, response(request, deliverStatus))
+            }
+            if path.hasSuffix("/quality-probe") {
+                let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
+                probeReports.append(body ?? [:])
+                let answer = probeAnswers.isEmpty
+                    ? [String: Any]()
+                    : probeAnswers.removeFirst()
+                return (try JSONSerialization.data(withJSONObject: answer), response(request, 200))
             }
             if path.hasSuffix("/quality") {
                 qualityReport = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
@@ -1147,5 +1158,91 @@ struct ResumableDeliveryTests {
         #expect(outcome == .delivered(jobId: 12, bytes: 200))
         #expect(!server.completedViaChunks)
         #expect(server.deliveredFile == Data(repeating: 9, count: 200))
+    }
+}
+
+/// The command the search settles on: the same shape, at the quality it chose rather than the
+/// library's. Distinct from `serverCommand` so a test can tell which one was actually run.
+private let settledCommand: [String] = serverCommand.map { $0 == "60" ? "48" : $0 }
+
+@Suite("Per-title quality search")
+struct AdaptiveSearchWorkLoopTests {
+    /// The server names every candidate; this machine measures them and reports.
+    private static func step(quality: Int) -> AdaptiveSearchStep {
+        AdaptiveSearchStep(
+            quality: quality,
+            sampleCommands: [serverCommand],
+            measurement: QualityRequirement(
+                measure: true, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: true,
+                minimumHarmonicMean: 93, minimumMinimum: 80,
+                commands: [measurementCommand], sampling: "Adaptive sample at quality \(quality)"))
+    }
+
+    private static func searching(_ first: AdaptiveSearchStep) -> Assignment {
+        Assignment(
+            leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: 4_096,
+            videoEncoder: "hevc_videotoolbox", renewWithinSeconds: 30,
+            arguments: serverCommand, outputExtension: "mp4",
+            quality: QualityRequirement(
+                measure: false, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
+                minimumHarmonicMean: 93, minimumMinimum: 80, commands: [], sampling: "Full file"),
+            search: first)
+    }
+
+    @Test("every candidate the server names is measured, and the encode uses what it chose")
+    func measuresUntilToldToStop() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
+        // Measure one more, then stop — and hand back a different command to encode with.
+        server.probeAnswers = [
+            ["nextStep": [
+                "quality": 30,
+                "sampleCommands": [serverCommand],
+                "measurement": [
+                    "measure": true, "model": "vmaf_v0.6.1", "frameSubsample": 1, "clipVmaf": true,
+                    "minimumHarmonicMean": 93.0, "minimumMinimum": 80.0,
+                    "commands": [measurementCommand], "sampling": "Adaptive sample at quality 30",
+                ],
+            ]],
+            ["selectedQuality": 27, "arguments": settledCommand],
+        ]
+
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            Self.searching(Self.step(quality: 24)), pairing: pairing) { _ in }
+
+        // Two candidates measured, each reported with the quality it was asked for.
+        #expect(server.probeReports.count == 2)
+        #expect(server.probeReports.map { $0["quality"] as? Int } == [24, 30])
+        // Bytes come from the samples this machine actually encoded, never invented.
+        #expect(server.probeReports.allSatisfy { ($0["encodedBytes"] as? Int ?? 0) > 0 })
+        // And the job still completes, encoded with the command the search settled on rather than
+        // the one the assignment arrived carrying.
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+    }
+
+    @Test("a search that cannot be measured hands the job back rather than guessing a quality")
+    func failedMeasurementReleases() async throws {
+        // Encoding at the assignment's baseline instead would discard the search and produce a
+        // file at a quality nobody chose, which would look like a perfectly successful job.
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 3, count: 64))
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(exitCode: 1),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            Self.searching(Self.step(quality: 24)), pairing: pairing) { _ in }
+
+        #expect(server.released)
+        #expect(server.deliveredFile == nil)
+        if case .released = outcome {} else { Issue.record("expected the job to be handed back") }
     }
 }
