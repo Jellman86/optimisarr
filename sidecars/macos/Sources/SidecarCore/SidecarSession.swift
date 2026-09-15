@@ -490,10 +490,19 @@ public final class SidecarSession: ObservableObject {
     /// sampled beside a preview frame, and previews were never switched on in a shipped build.
     public func setPreviewsWanted(_ wanted: Bool) {
         previewGate.set(wanted)
+        menuIsOpen = wanted
         if !wanted {
             filmStrips = [:]
         }
+        // An idle Mac has a load worth showing while someone is looking at it. The ticker ran only
+        // while a job did, so the meters were empty in the one state where "is this machine
+        // actually free?" is the question being asked.
+        setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
     }
+
+    /// Whether the menu is on screen. The load figures cost a reading of the kernel's counters
+    /// every second, which is not worth doing for a window nobody has open.
+    private var menuIsOpen = false
 
     /// How often the menu bar mark is redrawn while work is running.
     private static let spinTicksPerSecond = 6.0
@@ -548,7 +557,7 @@ public final class SidecarSession: ObservableObject {
     private func refreshWorkingStatus() {
         // Driven from the one place that knows whether anything is running, so the menu bar stops
         // spinning the moment the last job ends rather than whenever someone next opens the menu.
-        setTickerRunning(!activeJobs.isEmpty)
+        setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
         guard let first = activeJobs.keys.min(), let progress = activeJobs[first] else { return }
         status = .working(jobId: first, progress: progress)
     }
@@ -557,7 +566,7 @@ public final class SidecarSession: ObservableObject {
         lastOutcome = outcome
         jobTasks[jobId] = nil
         activeJobs[jobId] = nil
-        setTickerRunning(!activeJobs.isEmpty)
+        setTickerRunning(!activeJobs.isEmpty || menuIsOpen)
         jobTitles[jobId] = nil
         transferRates[jobId] = nil
         rateMeters[jobId] = nil
