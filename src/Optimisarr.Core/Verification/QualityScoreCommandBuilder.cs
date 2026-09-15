@@ -406,9 +406,18 @@ public static class QualityScoreCommandBuilder
         // afterwards. See QualityMeasurementContext.DistortedIsCutClip: resampling before the cut
         // moves which source frames the window holds, and the clip on the other side was produced
         // by a plain seek that moved nothing.
-        return cutClip && alignment.Length > 0
-            ? $"{inputTimeline},{lead}{alignment}{origin},{cadence.TrimEnd(',')}"
-            : $"{inputTimeline},{lead}{cadence}{alignment}{origin}";
+        if (!cutClip || alignment.Length == 0)
+        {
+            return $"{inputTimeline},{lead}{cadence}{alignment}{origin}";
+        }
+
+        // The cadence goes last here, and only when there is one. Appending it unconditionally
+        // left a trailing comma on every source whose frame rate the probe did not report, which
+        // became an empty element once the caller joined the next filter on: FFmpeg answers
+        // "No such filter: ''" and refuses the whole graph, so every per-title search on such a
+        // source failed at its first scoring pass.
+        var cut = $"{inputTimeline},{lead}{alignment}{origin}";
+        return cadence.Length == 0 ? cut : $"{cut},{cadence.TrimEnd(',')}";
     }
 
     private static string DescribePreprocessing(

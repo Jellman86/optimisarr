@@ -78,6 +78,48 @@ public sealed class SampleMeasurementAlignmentTests
     }
 
     [Fact]
+    public void A_source_with_no_known_frame_rate_still_produces_a_filter_ffmpeg_can_parse()
+    {
+        // The cadence is dropped when the probe reported no frame rate, and appending it anyway
+        // left a trailing comma — an empty element once the next filter was joined on. FFmpeg
+        // answers "No such filter: ''" and refuses the graph, so every search on such a source
+        // failed at its first scoring pass. Seen in a real lease as "STARTPTS,,scale".
+        var context = Sample(cutClip: true) with { ReferenceFrameRate = null };
+
+        var graph = QualityScoreCommandBuilder
+            .Build("distorted.mkv", "reference.mkv", "log.json", context, threads: 8)
+            .FilterGraph;
+
+        Assert.DoesNotContain(",,", graph, StringComparison.Ordinal);
+        Assert.Contains("trim=", graph, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void No_branch_of_any_graph_ever_carries_an_empty_element(bool cutClip, bool knownFrameRate)
+    {
+        // The general form of the same mistake. Every one of these pieces is optional, and each is
+        // glued to the next with a comma, so any of them being absent can leave one too many.
+        var context = Sample(cutClip) with
+        {
+            ReferenceFrameRate = knownFrameRate ? 24000.0 / 1001.0 : null,
+        };
+
+        foreach (var branch in QualityScoreCommandBuilder
+                     .Build("distorted.mkv", "reference.mkv", "log.json", context, threads: 8)
+                     .FilterGraph
+                     .Split(';'))
+        {
+            Assert.DoesNotContain(",,", branch, StringComparison.Ordinal);
+            Assert.DoesNotContain(",[", branch, StringComparison.Ordinal);
+            Assert.False(branch.TrimEnd(']').EndsWith(',') , $"branch ends with a comma: {branch}");
+        }
+    }
+
+    [Fact]
     public void Nothing_changes_for_a_measurement_with_no_window_to_cut()
     {
         // A whole-file comparison has no trim at all, so there is no ordering to get wrong and the
