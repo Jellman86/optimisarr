@@ -13,14 +13,15 @@ namespace Optimisarr.Sidecar.Service;
 public static class ServiceControl
 {
     public const string ServiceName = "OptimisarrSidecar";
+
+    /// <summary>The managed assembly Windows is pointed at. There is no executable of our own.</summary>
+    internal const string AssemblyFileName = "Optimisarr.Sidecar.Service.dll";
     private const string DisplayName = "Optimisarr Sidecar";
 
     public static int Install()
     {
-        var executable = Environment.ProcessPath;
-        if (executable is null)
+        if (LaunchCommand() is not { } launch)
         {
-            Console.Error.WriteLine("Could not determine this executable's path.");
             return 1;
         }
 
@@ -28,7 +29,7 @@ public static class ServiceControl
         // the credential is sealed — DPAPI at machine scope — so the service can read on first start
         // what a pairing wrote earlier from an administrator's shell.
         var arguments =
-            $"create {ServiceName} binPath= \"\\\"{executable}\\\"\" start= auto " +
+            $"create {ServiceName} binPath= \"{launch.Replace("\"", "\\\"")}\" start= auto " +
             $"obj= LocalSystem DisplayName= \"{DisplayName}\"";
 
         if (Run("sc.exe", arguments) is var created && created != 0)
@@ -44,6 +45,95 @@ public static class ServiceControl
 
         Console.WriteLine($"Installed {ServiceName}. Start it with: sc.exe start {ServiceName}");
         return 0;
+    }
+
+    /// <summary>
+    /// How Windows should start this service: <c>dotnet</c>, then this assembly.
+    ///
+    /// <para>There is no executable of our own to point at. Smart App Control is on by default on
+    /// Windows 11 and judges an executable by reputation, so a freshly built unsigned apphost is
+    /// refused and the service will not start — with only <c>%%4551</c> in the system log to say
+    /// why, and a new unknown file on every rebuild. `dotnet` is Microsoft-signed and trusted, and
+    /// the managed assembly it loads is not held to the same test.</para>
+    ///
+    /// <para>Null, with the reason said out loud, when no runtime can be found. Registering a
+    /// service that cannot start would leave a machine looking installed and doing nothing, which
+    /// is the failure this whole sidecar has spent a day learning to avoid.</para>
+    /// </summary>
+    internal static string? LaunchCommand() => LaunchCommand(
+        AppContext.BaseDirectory,
+        Environment.ProcessPath,
+        Environment.GetEnvironmentVariable("DOTNET_ROOT"),
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        File.Exists,
+        Console.Error);
+
+    /// <summary>
+    /// The same decision with its surroundings handed in, so it can be checked on any machine
+    /// rather than only on one that happens to be set up correctly.
+    /// </summary>
+    internal static string? LaunchCommand(
+        string baseDirectory,
+        string? processPath,
+        string? dotnetRoot,
+        string? programFiles,
+        Func<string, bool> fileExists,
+        TextWriter errors)
+    {
+        var assembly = Path.Combine(baseDirectory, AssemblyFileName);
+        if (!fileExists(assembly))
+        {
+            errors.WriteLine($"Could not find {assembly} to install.");
+            return null;
+        }
+
+        if (FindDotnet(processPath, dotnetRoot, programFiles, fileExists) is not { } dotnet)
+        {
+            errors.WriteLine(
+                "Could not find dotnet.exe. Install the .NET runtime, or set DOTNET_ROOT to where it lives.");
+            return null;
+        }
+
+        return $"\"{dotnet}\" \"{assembly}\"";
+    }
+
+    /// <summary>
+    /// Where the runtime is, by the three answers that can be trusted on a service's behalf.
+    ///
+    /// <para>The running process first: with no apphost this <em>is</em> dotnet, so it is the same
+    /// runtime that got this far. Then DOTNET_ROOT, which is how a machine says it keeps the
+    /// runtime somewhere else. Then the default location.</para>
+    ///
+    /// <para>The PATH is deliberately not consulted. It belongs to whoever ran the install, and the
+    /// service runs as LocalSystem — a runtime found only on one administrator's PATH is one the
+    /// service cannot see, and registering against it would produce a machine that looks installed
+    /// and does nothing.</para>
+    /// </summary>
+    private static string? FindDotnet(
+        string? processPath, string? dotnetRoot, string? programFiles, Func<string, bool> fileExists)
+    {
+        if (processPath is { Length: > 0 }
+            && Path.GetFileNameWithoutExtension(processPath)
+                .Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            return processPath;
+        }
+
+        foreach (var directory in new[] { dotnetRoot, programFiles is { Length: > 0 } ? Path.Combine(programFiles, "dotnet") : null })
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                continue;
+            }
+
+            var candidate = Path.Combine(directory, "dotnet.exe");
+            if (fileExists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     public static int Uninstall()
