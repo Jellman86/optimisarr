@@ -30,6 +30,7 @@ public struct RamDisk: Sendable {
     private static func run(_ path: String, _ arguments: [String]) -> String? {
         let process = Process()
         let pipe = Pipe()
+        pipe.sealFromOtherChildren()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         process.standardOutput = pipe

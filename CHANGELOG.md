@@ -55,6 +55,55 @@
 
 ### Fixed
 
+- **An encode keeps every frame the source had.** Whole seasons were failing verification with
+  harmonic means in single figures and a fifth percentile of zero, and the encodes were fine: FFmpeg
+  was silently dropping frames. Its default frame-rate handling drops frames whose timestamps
+  collide, and it does that on sources ffprobe is perfectly happy to call constant — a VC-1 WEBRip
+  declaring 25/1 for both its average and real frame rates lost eight frames in its first two
+  hundred seconds, about fifty an episode, gone from the library without a word. It also made the
+  encode unmeasurable, which is how it was found: once the candidate holds fewer frames than the
+  source, frame N of one is no longer frame N of the other and every windowed comparison comes
+  apart. The same pair scored a harmonic mean of 9.4 against the source and 81 against a reference
+  cut the same lossy way. The rule already existed for sources ffprobe had positively identified as
+  variable; the dangerous source is the one that looks regular and is not, so it can no longer be
+  conditional on having noticed. A frame-rate cap still takes over the cadence, and a remux still
+  copies the stream untouched.
+- **A job on the macOS sidecar ends when its process does.** A Mac sat in "Measuring" for fifty-two
+  minutes with no FFmpeg running at all — lease renewing perfectly, menu bar animating, check-in
+  loop answering every ten seconds, and the job never moving. The transcode runner treated
+  end-of-file on the child's standard output as the child ending, but a pipe is only at its end when
+  the last handle on its write side closes, and a pipe macOS creates is inherited by anything the
+  app spawns while it is open: a load probe, a preview frame, another job's FFmpeg. Nothing could
+  recover from it, because every part that might have noticed was working correctly. The pipes are
+  now kept out of other children, and the process's exit — not the pipe — decides when a job is
+  over. The same call was in the capability prober and the frame grabber, which would have hung the
+  same way.
+- **The Windows sidecar no longer waits on a pipe either.** It waited for the exit, which was right,
+  and then read the tail of FFmpeg's diagnostics to the end, which could outlive it for the same
+  reason. The exit is now the authority there too; the pipes are given two seconds to hand over
+  what they still hold and no vote on whether the job is finished.
+- **A moment's silence from the server no longer throws away an encode.** Both sidecars renew their
+  lease every few seconds while a job runs, and a single refused renewal ended the loop and
+  abandoned the work — so restarting the container, which happens on every deployment, discarded
+  every encode running at that moment, minutes in, and the job went back to the queue to start
+  again. Worse, every renewal failure was treated as final, including a 502 from a proxy in front of
+  a container that was still coming up. A lease is now only given up when the server says it is gone
+  — it lapsed, it belongs to another worker, the credential was refused — or when no renewal has
+  landed for as long as the server granted the lease for. A lease the server really has reassigned
+  still stops the encode at once.
+- **The macOS sidecar's panel no longer hangs away from the menu bar.** Once a Mac had run a job
+  and gone quiet, its panel sat detached below the menu bar with a gap above it — roughly the
+  height of the film strip that was no longer there, which is exactly what it was: the window keeps
+  the height its tallest content needed and the content settles at the bottom of it. The panel now
+  takes the top of whatever height the window has. The machine-load card also stays on when idle
+  rather than vanishing with the job, because an idle Mac still has a figure worth seeing and the
+  panel no longer collapses to a single line the moment a job ends.
+- **A worker that is plainly working is no longer marked offline.** Liveness was judged on check-ins
+  alone, so a machine in the middle of a long job could be declared offline while it was renewing
+  its lease every few seconds. Any authenticated request now counts as proof of life.
+- **The Windows sidecar checks in while it works.** Jobs ran inside the check-in loop, so the server
+  heard nothing from a busy worker until whatever it was doing finished. They now run beside it, and
+  a stopping service drains them rather than cutting them off.
 - **A library that prefers a worker now actually sends it work.** Setting every library to prefer a
   sidecar changed nothing, for a reason no setting made visible: a worker cannot be offered a job
   until a per-title quality has been chosen for it, that search runs on the server, and the server

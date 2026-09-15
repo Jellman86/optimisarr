@@ -30,6 +30,34 @@ public sealed class JobRunnerTests : IDisposable
     private static StoredPairing Pairing() => new("https://server.example.com", "secret", 7);
 
     [Fact]
+    public async Task A_command_naming_a_file_on_this_machine_is_refused_and_the_job_handed_back()
+    {
+        // The contract reaching the runner, not merely existing. As LocalSystem this would have
+        // read whatever it was pointed at; the source is fetched and then the command is checked,
+        // so the refusal costs a download and nothing else.
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        var http = new HttpClient(server);
+        var transcoder = new FakeMeasuringTranscoder();
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http), transcoder,
+            "ffmpeg.exe", _scratch, () => null);
+
+        var assignment = Assignment() with
+        {
+            Arguments = ["-i", @"C:\Windows\System32\config\SAM", "-c:v:0", "hevc_nvenc", "{{output}}.mkv"],
+        };
+
+        var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        Assert.False(outcome.Delivered);
+        Assert.Contains("refused", outcome.Detail, StringComparison.OrdinalIgnoreCase);
+        // Never started. An encode that ran and was then judged would already have done the damage.
+        Assert.DoesNotContain(transcoder.AllRuns, run => run.Contains("hevc_nvenc"));
+        Assert.False(server.Completed);
+    }
+
+    [Fact]
     public async Task A_job_is_fetched_encoded_and_delivered()
     {
         var source = Encoding.UTF8.GetBytes("source-bytes");
@@ -134,6 +162,60 @@ public sealed class JobRunnerTests : IDisposable
         Assert.Contains("-c:v", transcoder.Arguments!);
         Assert.Contains("hevc_nvenc", transcoder.Arguments!);
         Assert.DoesNotContain(transcoder.Arguments!, argument => argument.Contains("{{"));
+    }
+
+    [Fact]
+    public async Task A_server_that_blinks_does_not_throw_away_the_encode()
+    {
+        // A deployment restarts the container, the proxy answers 503 for a few seconds, and every
+        // encode running at that moment used to be abandoned mid-way. The lease is only really
+        // gone when the server says so or when it has been out of touch for longer than the
+        // window it was granted for; a refused renewal on its own says neither.
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source)) { RenewStatus = HttpStatusCode.ServiceUnavailable };
+        var http = new HttpClient(server);
+        var assignment = Assignment() with { RenewWithinSeconds = 10 };
+        var candidate = Path.Combine(_scratch, $"job-{assignment.JobId}", "candidate.mkv");
+
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http),
+            // Long enough to outlast a renewal attempt, short enough to stay inside the window.
+            new FakeMeasuringTranscoder(0, candidate) { EncodeTakes = TimeSpan.FromSeconds(7) },
+            "ffmpeg.exe", _scratch, () => null);
+
+        var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        Assert.True(server.RenewCalls > 0, "the test proves nothing if no renewal was attempted");
+        Assert.True(outcome.Delivered, outcome.Detail);
+        Assert.True(server.Completed);
+    }
+
+    [Fact]
+    public async Task A_lease_the_server_says_is_gone_stops_the_encode_at_once()
+    {
+        // The other half of the same rule, and the one that must not be softened by it: a 409 is
+        // the server saying this job belongs to someone else now, and finishing the encode would
+        // burn a machine's evening on something nobody will accept.
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source)) { RenewStatus = HttpStatusCode.Conflict };
+        var http = new HttpClient(server);
+        var assignment = Assignment() with { RenewWithinSeconds = 10 };
+        var candidate = Path.Combine(_scratch, $"job-{assignment.JobId}", "candidate.mkv");
+
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http),
+            // Far longer than the window: if the encode is allowed to finish, this test hangs
+            // around for a minute and fails on the assertion below rather than on a timeout.
+            new FakeMeasuringTranscoder(0, candidate) { EncodeTakes = TimeSpan.FromSeconds(60) },
+            "ffmpeg.exe", _scratch, () => null);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+        clock.Stop();
+
+        Assert.False(outcome.Delivered);
+        Assert.False(server.Completed);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), $"the encode ran on regardless: {clock.Elapsed}");
     }
 
     private static string Hash(byte[] data) =>

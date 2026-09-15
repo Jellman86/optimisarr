@@ -726,6 +726,58 @@ struct JobRunnerTests {
         #expect(server.released)
     }
 
+    @Test("a server that blinks mid-encode does not throw away the encode")
+    func serverBlinkKeepsTheEncode() async throws {
+        // A deployment restarts the container and the proxy answers 503 for a few seconds. Every
+        // encode running at that moment used to be abandoned, because one refused renewal ended
+        // the renewal loop and took the job with it. A refused renewal says nothing about whether
+        // the lease survives; only how long it has been since one landed does.
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 1, count: 64))
+        server.renewStatus = 503
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(delay: 1),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 50_000_000) })
+
+        // A ten-second window against a one-second encode: the server is unreachable throughout
+        // and the lease still has not been out of touch for long enough to be given up.
+        let outcome = await runner.execute(assignment(renewWithinSeconds: 10), pairing: pairing) { _ in }
+
+        #expect(server.renewals > 0, "the test proves nothing if no renewal was attempted")
+        guard case .delivered = outcome else {
+            Issue.record("expected the candidate to be delivered, got \(outcome)")
+            return
+        }
+    }
+
+    @Test("a server that stays away for longer than the lease window gives the job up")
+    func serverAwayTooLongEndsTheJob() async throws {
+        // The other end of the same rule. Tolerating a blink must not become encoding for an hour
+        // against a lease that lapsed in the first minute, so the tolerance is exactly the window
+        // the lease was granted for and not a second more.
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 1, count: 64))
+        server.renewStatus = 503
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(delay: 5),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 50_000_000) })
+
+        let started = Date()
+        let outcome = await runner.execute(assignment(renewWithinSeconds: 1), pairing: pairing) { _ in }
+
+        guard case .leaseLost = outcome else {
+            Issue.record("expected the lease to be given up, got \(outcome)")
+            return
+        }
+        // Given up on the window, not on the encode finishing.
+        #expect(Date().timeIntervalSince(started) < 4)
+        #expect(server.deliveredFile == nil)
+    }
+
     @Test("losing the lease mid-encode stops the work rather than finishing it for nobody")
     func lostLeaseCancelsEncode() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 1, count: 64))

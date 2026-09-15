@@ -88,7 +88,9 @@ public sealed class ProcessTranscoder : ITranscoder
             throw;
         }
 
-        return new TranscodeResult(process.ExitCode, (await errorTail).Trim());
+        // The exit is the authority; the pipe gets a moment to hand over the rest of the tail.
+        return new TranscodeResult(
+            process.ExitCode, (await ChildOutput.WithinGraceAsync(errorTail)).Trim());
     }
 
     public async Task<ProbeResult> ProbeAsync(
@@ -128,8 +130,8 @@ public sealed class ProcessTranscoder : ITranscoder
             throw;
         }
 
-        _ = await error;
-        return new ProbeResult(process.ExitCode, await output);
+        _ = await ChildOutput.WithinGraceAsync(error);
+        return new ProbeResult(process.ExitCode, await ChildOutput.WithinGraceAsync(output));
     }
 
     /// <summary>

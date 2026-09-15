@@ -378,17 +378,37 @@ public static class FfmpegCommandBuilder
             args.AddRange(EncoderTuningPolicy.Resolve(encoder, tuning));
         }
 
-        // Preserve a source that ffprobe positively identified as VFR. MP4 supports variable frame
-        // durations; forcing CFR duplicates/drops frames and changes motion cadence. Demux timebase
-        // keeps encoder timestamps anchored to the source. CFR and unknown sources need no override.
+        // Every frame the source has, unless a frame-rate cap is deliberately changing the cadence.
+        //
+        // FFmpeg's default frame-rate handling drops frames whose timestamps collide, and it does
+        // that on sources ffprobe is perfectly happy to call constant. A VC-1 WEBRip declaring
+        // 25/1 for both avg_frame_rate and r_frame_rate lost eight frames in its first two hundred
+        // seconds — about fifty over an episode, gone from the library without a word.
+        //
+        // It also made the encode unmeasurable. Once the candidate has fewer frames than the
+        // source, frame N of one stops being frame N of the other and every windowed comparison
+        // comes apart: the same pair scored a harmonic mean of 9.4 against the source and 81
+        // against a reference cut the same lossy way. Whole seasons failed verification on quality
+        // that was never the problem.
+        //
+        // This used to apply only where ffprobe had positively identified a variable frame rate,
+        // which is the one case where the damage is obvious enough to have been noticed. The
+        // dangerous case is the source that looks regular and is not.
+        //
         // A frame-rate target replaces the source cadence with a regular one through the fps
         // filter; asking the encoder to also preserve the original timing would contradict it.
-        if (spec.SourceIsVariableFrameRate && spec.TargetFrameRate is null)
+        if (encoder is not null && spec.TargetFrameRate is null)
         {
             args.Add("-fps_mode");
-            args.Add("vfr");
-            args.Add("-enc_time_base:v:0");
-            args.Add("demux");
+            args.Add("passthrough");
+
+            // Keeps the encoder's timestamps anchored to the source's own timebase rather than a
+            // rounded one, which is what makes passthrough exact rather than merely close.
+            if (spec.SourceIsVariableFrameRate)
+            {
+                args.Add("-enc_time_base:v:0");
+                args.Add("demux");
+            }
         }
 
         // Audio is copied untouched unless the library opted into re-encoding it. MP4/MOV

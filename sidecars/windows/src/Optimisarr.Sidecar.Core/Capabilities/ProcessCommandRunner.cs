@@ -58,6 +58,10 @@ public sealed class ProcessCommandRunner(TimeSpan? timeout = null) : ICommandRun
             return (-1, string.Empty);
         }
 
-        return (process.ExitCode, await stdout + "\n" + await stderr);
+        // The deadline above covers a process that will not exit. This covers a pipe that will
+        // not end after it has: the listing is worth two seconds, never a stalled service start.
+        return (
+            process.ExitCode,
+            await ChildOutput.WithinGraceAsync(stdout) + "\n" + await ChildOutput.WithinGraceAsync(stderr));
     }
 }

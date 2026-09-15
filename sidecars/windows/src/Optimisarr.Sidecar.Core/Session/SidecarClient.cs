@@ -254,11 +254,15 @@ public sealed class SidecarClient(HttpClient http)
             {
                 HttpStatusCode.Conflict => "That lease has lapsed and the job may have been reassigned.",
                 HttpStatusCode.Forbidden => "That lease belongs to another worker.",
+                HttpStatusCode.Unauthorized => "This worker's credential was rejected.",
                 _ => $"Renewing the lease failed (HTTP {(int)response.StatusCode}).",
             },
-            // None of these are worth retrying against the same lease: the work this machine is
-            // doing is already void, and carrying on only burns electricity.
-            recoverable: false);
+            // Only the answers that say the lease is no longer this worker's are final: the work
+            // is void and carrying on would only burn electricity. Everything else is the server
+            // having a moment — a 502 from the proxy while the container restarts is the common
+            // one, and it used to throw away whatever encode was running at the time.
+            recoverable: response.StatusCode is not (
+                HttpStatusCode.Conflict or HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized));
     }
 
     /// <summary>

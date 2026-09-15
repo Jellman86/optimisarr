@@ -41,6 +41,20 @@ public enum SidecarError: Error, Equatable, Sendable {
     case deliveryRefused(reason: String)
 }
 
+public extension SidecarError {
+    /// Whether the server has said this worker's lease or credential is finished with.
+    ///
+    /// Everything else — unreachable, a 502 from a proxy while the container restarts, a status
+    /// this build does not recognise — is the server having a moment, and says nothing about
+    /// whether the lease is still this worker's.
+    var endsTheLease: Bool {
+        switch self {
+        case .leaseLost, .credentialRejected: return true
+        default: return false
+        }
+    }
+}
+
 /// The server's acknowledgement of a delivered candidate: accepted for verification, not yet judged.
 public struct DeliveryReceipt: Sendable, Equatable {
     public let jobId: Int

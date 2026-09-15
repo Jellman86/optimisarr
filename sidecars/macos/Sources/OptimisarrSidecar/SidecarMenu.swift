@@ -32,6 +32,14 @@ struct SidecarMenu: View {
 
             Divider()
             footer
+
+            // A menu-bar panel does not always shrink back when its content does. After a job
+            // finishes, the window keeps the height the film strip and the job card needed, and
+            // the content settles at the bottom of it — so the panel appears to hang away from
+            // the menu bar, with a gap above it exactly the size of the frames that are no longer
+            // there. This takes up whatever height the window has left, at the bottom, where it
+            // cannot be mistaken for part of the panel.
+            Spacer(minLength: 0)
         }
         .padding(14)
         .frame(width: 340)
@@ -119,8 +127,12 @@ struct SidecarMenu: View {
                         jobCard(jobId: jobId, progress: progress)
                     }
                 }
-                loadCard
             }
+            // Shown whether or not a job is running. An idle Mac still has a figure worth seeing —
+            // it is what the check-in reports, and it answers "why has this taken nothing on?" —
+            // and keeping it here stops the panel collapsing to a single line the moment a job
+            // ends, which is half of why the gap above was so obvious.
+            loadCard
 
             connectionCard
             concurrencyPicker
