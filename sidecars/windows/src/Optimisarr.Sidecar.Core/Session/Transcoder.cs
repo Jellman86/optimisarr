@@ -9,6 +9,9 @@ public sealed record TranscodeResult(int ExitCode, string ErrorTail)
     public bool Succeeded => ExitCode == 0;
 }
 
+/// <summary>What a probe said on its standard output.</summary>
+public sealed record ProbeResult(int ExitCode, string Output);
+
 /// <summary>Runs the encode the server asked for, and says how far through it is.</summary>
 public interface ITranscoder
 {
@@ -16,6 +19,18 @@ public interface ITranscoder
         string ffmpeg,
         IReadOnlyList<string> arguments,
         IProgress<double>? encodedSeconds,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs ffprobe and hands back what it printed.
+    ///
+    /// <para>Separate from <see cref="RunAsync"/> because that one appends FFmpeg's own progress
+    /// options and keeps stderr; ffprobe would refuse the first and answers on stdout. Reusing it
+    /// would have failed every probe and left the caller believing it could not read a timeline.</para>
+    /// </summary>
+    Task<ProbeResult> ProbeAsync(
+        string ffprobe,
+        IReadOnlyList<string> arguments,
         CancellationToken cancellationToken);
 }
 
@@ -74,6 +89,47 @@ public sealed class ProcessTranscoder : ITranscoder
         }
 
         return new TranscodeResult(process.ExitCode, (await errorTail).Trim());
+    }
+
+    public async Task<ProbeResult> ProbeAsync(
+        string ffprobe,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        var startInfo = new ProcessStartInfo(ffprobe)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        if (!process.Start())
+        {
+            return new ProbeResult(-1, string.Empty);
+        }
+
+        // Read before waiting: a probe whose output fills the pipe buffer would otherwise deadlock
+        // against a process that cannot exit until something drains it.
+        var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = process.StandardError.ReadToEndAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            Kill(process);
+            throw;
+        }
+
+        _ = await error;
+        return new ProbeResult(process.ExitCode, await output);
     }
 
     /// <summary>

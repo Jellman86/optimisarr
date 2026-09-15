@@ -119,6 +119,12 @@ public static class MeasurementPlaceholders
     public const string Log = "{{log}}";
 
     /// <summary>
+    /// Where the candidate's extra lead over the source goes, inside the filter. The server cannot
+    /// fill this in: only the machine holding both files can measure it. See <see cref="TimelineLead"/>.
+    /// </summary>
+    public const string DistortedShift = "{{distortedShift}}";
+
+    /// <summary>
     /// Substitutes this machine's three paths, and nothing else. The filter graph, the model and
     /// the thresholds are the server's: a score taken under different settings is evidence about
     /// something else.
@@ -128,11 +134,24 @@ public static class MeasurementPlaceholders
     /// <see cref="FilterPath"/>.</para>
     /// </summary>
     public static IReadOnlyList<string> Resolve(
-        IReadOnlyList<string> command, string distorted, string reference, string log) =>
-        [.. command.Select(argument => argument
-            .Replace(Distorted, distorted, StringComparison.Ordinal)
-            .Replace(Reference, reference, StringComparison.Ordinal)
-            .Replace(Log, FilterPath.ForFilterOption(log), StringComparison.Ordinal))];
+        IReadOnlyList<string> command,
+        string distorted,
+        string reference,
+        string log,
+        string? distortedShift = null) =>
+        [.. command.Select(argument =>
+        {
+            var resolved = argument
+                .Replace(Distorted, distorted, StringComparison.Ordinal)
+                .Replace(Reference, reference, StringComparison.Ordinal)
+                .Replace(Log, FilterPath.ForFilterOption(log), StringComparison.Ordinal);
+            // Left in place when there is nothing to substitute, so a command that needed a shift
+            // and did not get one fails loudly in FFmpeg rather than silently measuring two
+            // timelines that do not line up.
+            return distortedShift is null
+                ? resolved
+                : resolved.Replace(DistortedShift, distortedShift, StringComparison.Ordinal);
+        })];
 }
 
 public static class AssignmentPlaceholders

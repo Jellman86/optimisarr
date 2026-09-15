@@ -306,6 +306,34 @@ public sealed class SidecarClient(HttpClient http)
             recoverable: false);
     }
 
+    /// <summary>
+    /// Offers the server this machine's measurement of the finished candidate, bound to both
+    /// hashes so it can only ever be read as evidence about these exact bytes.
+    ///
+    /// <para>An offer, not a claim. A refusal is not a job failure: the server simply measures for
+    /// itself, which is what it did before any worker could measure at all. So this reports the
+    /// outcome rather than throwing — a candidate that encoded perfectly well must not be handed
+    /// back because the server would not take a score for it.</para>
+    /// </summary>
+    public async Task<bool> ReportQualityAsync(
+        StoredPairing pairing,
+        Guid leaseId,
+        string sourceSha256,
+        string candidateSha256,
+        IReadOnlyList<string> logs,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post, Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/quality"))
+        {
+            Content = JsonContent.Create(new { sourceSha256, candidateSha256, logs }, options: Json),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+
+        using var response = await http.SendAsync(request, cancellationToken);
+        return response.StatusCode == HttpStatusCode.OK;
+    }
+
     /// <summary>Gives a job back, so it returns to the queue at once rather than waiting to lapse.</summary>
     public async Task ReleaseAsync(
         StoredPairing pairing, Guid leaseId, CancellationToken cancellationToken = default)

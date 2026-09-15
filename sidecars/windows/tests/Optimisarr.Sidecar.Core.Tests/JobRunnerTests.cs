@@ -14,74 +14,6 @@ public sealed class JobRunnerTests : IDisposable
     private readonly string _scratch = Path.Combine(
         Path.GetTempPath(), "optimisarr-jobtests", Guid.NewGuid().ToString("N"));
 
-    private sealed class FakeServer(byte[] source, string sourceHash) : HttpMessageHandler
-    {
-        public readonly List<string> Calls = [];
-        public byte[] Delivered = [];
-        public bool Completed;
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri!.AbsolutePath;
-            Calls.Add($"{request.Method} {path}");
-
-            if (path.EndsWith("/source", StringComparison.Ordinal))
-            {
-                var response = new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new ByteArrayContent(source),
-                };
-                response.Headers.Add("X-Optimisarr-Source-Sha256", sourceHash);
-                return Task.FromResult(response);
-            }
-
-            if (path.EndsWith("/result/offset", StringComparison.Ordinal))
-            {
-                return Json($$"""{"bytes":{{Delivered.Length}}}""");
-            }
-
-            if (path.EndsWith("/result/complete", StringComparison.Ordinal))
-            {
-                Completed = true;
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
-            }
-
-            if (path.EndsWith("/result", StringComparison.Ordinal))
-            {
-                var body = request.Content!.ReadAsByteArrayAsync(cancellationToken).Result;
-                Delivered = [.. Delivered, .. body];
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
-            }
-
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
-        }
-
-        private static Task<HttpResponseMessage> Json(string body) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json"),
-            });
-    }
-
-    private sealed class FakeTranscoder(int exitCode, string? writeCandidate, string errorTail = "") : ITranscoder
-    {
-        public IReadOnlyList<string>? Arguments { get; private set; }
-
-        public Task<TranscodeResult> RunAsync(
-            string ffmpeg, IReadOnlyList<string> arguments,
-            IProgress<double>? encodedSeconds, CancellationToken cancellationToken)
-        {
-            Arguments = arguments;
-            encodedSeconds?.Report(12.5);
-            if (writeCandidate is not null)
-            {
-                File.WriteAllText(writeCandidate, "encoded-bytes");
-            }
-            return Task.FromResult(new TranscodeResult(exitCode, errorTail));
-        }
-    }
-
     private static Assignment Assignment() => new(
         LeaseId: Guid.NewGuid(),
         JobId: 5888,
@@ -102,14 +34,14 @@ public sealed class JobRunnerTests : IDisposable
     {
         var source = Encoding.UTF8.GetBytes("source-bytes");
         var hash = Hash(source);
-        var server = new FakeServer(source, hash);
+        var server = new FakeWorkerServer(source, hash);
         var http = new HttpClient(server);
         var assignment = Assignment();
         var candidate = Path.Combine(_scratch, $"job-{assignment.JobId}", "candidate.mkv");
 
         var runner = new JobRunner(
             new SidecarClient(http), new JobTransfer(http),
-            new FakeTranscoder(0, candidate), "ffmpeg.exe", _scratch, () => null);
+            new FakeMeasuringTranscoder(0, candidate), "ffmpeg.exe", _scratch, () => null);
 
         var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
 
@@ -125,9 +57,9 @@ public sealed class JobRunnerTests : IDisposable
     {
         // The server declares a hash that will not match what it actually sent. Encoding anyway
         // would spend an hour producing a candidate the server refuses for the wrong source.
-        var server = new FakeServer(Encoding.UTF8.GetBytes("truncated"), Hash(Encoding.UTF8.GetBytes("whole")));
+        var server = new FakeWorkerServer(Encoding.UTF8.GetBytes("truncated"), Hash(Encoding.UTF8.GetBytes("whole")));
         var http = new HttpClient(server);
-        var transcoder = new FakeTranscoder(0, null);
+        var transcoder = new FakeMeasuringTranscoder(0, null);
 
         var runner = new JobRunner(
             new SidecarClient(http), new JobTransfer(http),
@@ -145,12 +77,12 @@ public sealed class JobRunnerTests : IDisposable
     public async Task A_failed_encode_gives_the_job_back_with_the_reason()
     {
         var source = Encoding.UTF8.GetBytes("source-bytes");
-        var server = new FakeServer(source, Hash(source));
+        var server = new FakeWorkerServer(source, Hash(source));
         var http = new HttpClient(server);
 
         var runner = new JobRunner(
             new SidecarClient(http), new JobTransfer(http),
-            new FakeTranscoder(1, null, "Error while opening encoder for output stream"),
+            new FakeMeasuringTranscoder(1, null, "Error while opening encoder for output stream"),
             "ffmpeg.exe", _scratch, () => null);
 
         var outcome = await runner.RunAsync(Pairing(), Assignment(), CancellationToken.None);
@@ -167,12 +99,13 @@ public sealed class JobRunnerTests : IDisposable
         // Exit code zero is not proof of a file. Delivering nothing would leave the server waiting
         // on an upload that never comes.
         var source = Encoding.UTF8.GetBytes("source-bytes");
-        var server = new FakeServer(source, Hash(source));
+        var server = new FakeWorkerServer(source, Hash(source));
         var http = new HttpClient(server);
 
         var runner = new JobRunner(
             new SidecarClient(http), new JobTransfer(http),
-            new FakeTranscoder(0, null), "ffmpeg.exe", _scratch, () => null);
+            new FakeMeasuringTranscoder(0) { ProducesNothing = true },
+            "ffmpeg.exe", _scratch, () => null);
 
         var outcome = await runner.RunAsync(Pairing(), Assignment(), CancellationToken.None);
 
@@ -185,11 +118,11 @@ public sealed class JobRunnerTests : IDisposable
     public async Task The_server_chose_the_encode_and_only_the_paths_are_this_machines()
     {
         var source = Encoding.UTF8.GetBytes("source-bytes");
-        var server = new FakeServer(source, Hash(source));
+        var server = new FakeWorkerServer(source, Hash(source));
         var http = new HttpClient(server);
         var assignment = Assignment();
         var candidate = Path.Combine(_scratch, $"job-{assignment.JobId}", "candidate.mkv");
-        var transcoder = new FakeTranscoder(0, candidate);
+        var transcoder = new FakeMeasuringTranscoder(0, candidate);
 
         var runner = new JobRunner(
             new SidecarClient(http), new JobTransfer(http),

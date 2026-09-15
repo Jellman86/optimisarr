@@ -106,9 +106,12 @@ public sealed class JobTransfer(HttpClient http)
         string candidatePath,
         string sourceSha256,
         IProgress<(long Sent, long Total)>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        // Already known when the candidate was measured. Hashing a forty-gigabyte file twice for
+        // one delivery is a whole second read of the disk for a number the caller is holding.
+        string? candidateSha256 = null)
     {
-        var candidateSha256 = await HashAsync(candidatePath, cancellationToken);
+        candidateSha256 ??= await HashAsync(candidatePath, cancellationToken);
         var total = new FileInfo(candidatePath).Length;
         var offset = await HeldBytesAsync(pairing, leaseId, cancellationToken);
 
