@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BASE_RATE,
+  C0,
+  C1,
   CROSS_MS,
   CUBE,
   PixelGrid,
@@ -192,4 +194,95 @@ test('a 3D cube is used below the detail floor and a 4D one above it', () => {
   assert.equal(CUBE.edges.length, 12)
   assert.equal(TESSERACT.verts.length, 16)
   assert.equal(TESSERACT.edges.length, 32)
+})
+
+/** Pixels carrying light rather than structure. */
+function litPixels(t: number, cfg = WORKING, n = 128): number {
+  const g = new PixelGrid(n)
+  g.clear()
+  drawTesseract(g, t, cfg, true)
+  let lit = 0
+  for (const c of g.col) if (c >= C0 && c <= C1) lit++
+  return lit
+}
+
+test('the light behaves the same way at every point in the turn', () => {
+  // The bug this guards: shadows were cast by whichever vertex set had the larger mean radius,
+  // and that comparison flipped twice a turn. At the crossover it chose the SMALLER cube, the
+  // real outer bars stopped blocking, and the light flooded out — invisible at t=0, obvious a
+  // third of the way round. Counting crossings has no such branch, so nothing can flip.
+  const samples: number[] = []
+  for (let k = 0; k < 24; k++) samples.push(litPixels(k / 24))
+
+  const mean = samples.reduce((a, b) => a + b, 0) / samples.length
+  const spread = Math.sqrt(samples.reduce((a, b) => a + (b - mean) ** 2, 0) / samples.length) / mean
+
+  assert.ok(mean > 200, `the mark is barely lit: mean ${Math.round(mean)} pixels`)
+  assert.ok(spread < 0.45, `light varies too much across the turn (${spread.toFixed(2)}) — something is flipping`)
+  assert.ok(Math.max(...samples) < mean * 2.6, 'one frame floods with light compared with the rest')
+})
+
+test('bars take light out of the picture', () => {
+  // The unshadowed figure is a uniformly lit disc with no geometry in it at all, so most of it
+  // being removed is the point rather than a worry — measured, the bars take roughly nine tenths.
+  // What matters is that they do substantial work and still leave a mark you can see, and the
+  // amount left is asserted absolutely by the tests above rather than as a share of this.
+  const shadowed = litPixels(0.17, WORKING)
+  const unshadowed = litPixels(0.17, { ...WORKING, occlude: 0 })
+
+  assert.ok(shadowed < unshadowed * 0.5, 'the bars barely dimmed anything')
+  assert.ok(shadowed > unshadowed * 0.03, 'the bars extinguished the light entirely')
+  assert.ok(shadowed > 300, `too little light survives: ${shadowed} pixels`)
+})
+
+test('more absorption means less light, always', () => {
+  // Absorption is exp(-k · crossings), so raising k can only ever darken. A non-monotonic
+  // result would mean the crossing count itself is unstable.
+  const weak = litPixels(0.17, { ...WORKING, absorb: 0.2 })
+  const mid = litPixels(0.17, { ...WORKING, absorb: 0.6 })
+  const strong = litPixels(0.17, { ...WORKING, absorb: 1.2 })
+
+  assert.ok(weak > mid, `absorb 0.2 (${weak}) should out-light 0.6 (${mid})`)
+  assert.ok(mid > strong, `absorb 0.6 (${mid}) should out-light 1.2 (${strong})`)
+})
+
+test('light reaches past the bars without hazing the whole frame', () => {
+  // Both halves matter: a total shadow lets nothing out — the outer shell projects to a closed
+  // loop, so in flat two dimensions every ray must cross it — and a constant residue behind
+  // every bar plateaus into a field of dots across the entire canvas.
+  const n = 128
+  const g = new PixelGrid(n)
+  g.clear()
+  drawTesseract(g, 0.17, WORKING, true)
+
+  let beyond = 0
+  let farCorners = 0
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const c = g.col[y * n + x]
+      if (c < C0 || c > C1) continue
+      const d = Math.hypot(x - n / 2, y - n / 2)
+      if (d > n * 0.30) beyond++
+      if (d > n * 0.46) farCorners++
+    }
+  }
+  assert.ok(beyond > 0, 'no light escaped the shell at all')
+  assert.ok(farCorners < 40, `light hazed the far corners (${farCorners} pixels)`)
+})
+
+test('the resting state still carries visible light', () => {
+  // Resting once fell to ten lit pixels at a 192 grid: present in the arithmetic and invisible
+  // in fact. It is the pose the mark holds most of the time.
+  assert.ok(litPixels(0, RESTING) > 120, 'the resting mark is too dark to read')
+})
+
+test('the light pass does not disturb the loop', () => {
+  const g0 = new PixelGrid(96)
+  g0.clear()
+  drawTesseract(g0, 0, WORKING, true)
+  const g1 = new PixelGrid(96)
+  g1.clear()
+  drawTesseract(g1, 1, WORKING, true)
+
+  assert.deepEqual(Array.from(g1.col), Array.from(g0.col))
 })

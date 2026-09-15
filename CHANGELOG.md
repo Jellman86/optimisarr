@@ -8,8 +8,11 @@
   picture that told you which application you already had open. It is now a four-dimensional
   hypercube rasterised onto a pixel grid — sixteen vertices and thirty-two edges, turned by real
   rotation matrices and projected through two perspective divides, with a depth buffer so near
-  edges occlude far ones. It turns quickly with a lit core while work is running and settles to
-  a slow, dim drift when the queue goes quiet, crossing between the two over about a second and
+  edges occlude far ones. The light is volumetric rather than a lamp the structure ignores: it
+  fills the lattice from the centre, and every bar it crosses on the way out takes a share of
+  it, so the cube prints its own shadows and the light carries past the shell only where the
+  frame left a gap. It turns quickly with a lit core while work is running and settles to a
+  slow, dim drift when the queue goes quiet, crossing between the two over about a second and
   a half, so the icon slowing down is itself the signal that the queue emptied. The favicon is
   the same mark, so a background tab answers "is it still going?" without being opened. It is
   drawn for the theme it is sitting on, keeps a transparent background, and holds its resting
