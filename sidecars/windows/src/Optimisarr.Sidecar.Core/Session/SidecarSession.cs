@@ -16,6 +16,16 @@ public enum SidecarState
     Unreachable,
 
     /// <summary>
+    /// The last round failed for a reason this machine did not expect — an assignment it could not
+    /// read, a file it could not write. It keeps checking in.
+    ///
+    /// <para>Distinct from <see cref="Unreachable"/> on purpose: that one means the server could not
+    /// be reached and says nothing is wrong here. This one means something here is wrong, and an
+    /// operator looking at the machine should be able to tell those apart at a glance.</para>
+    /// </summary>
+    Faulted,
+
+    /// <summary>
     /// The server refused the credential, or the feature is off in a way only a person can undo.
     /// Retrying cannot help, so the loop stops rather than spending the night on it.
     /// </summary>
@@ -121,6 +131,26 @@ public sealed class SidecarSession(
                 // The server is down, or restarting, or the feature is off for a moment. The
                 // credential is still believed good, so this recovers by itself.
                 Set(SidecarState.Unreachable, exception.Message);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                // Anything at all that was not foreseen. It keeps checking in rather than ending
+                // the loop, because ending it stops the whole service: the host is configured to
+                // stop when a background service throws, and nothing restarts it until a person
+                // does. PICARD spent a day like that — the server began sending a measurement
+                // command as a list of lists, that build expected a list of strings, and the claim
+                // threw a JsonException on the way in. The service stopped inside a second of every
+                // boot, and the fleet simply showed a worker that was never online.
+                //
+                // One assignment this machine cannot read says nothing about the next one, and a
+                // machine that is up and complaining is worth far more than one that is silently
+                // gone. The delay below still applies, so a persistent fault costs one check-in
+                // interval a time rather than a hot loop.
+                Set(SidecarState.Faulted, exception.Message);
             }
 
             try
