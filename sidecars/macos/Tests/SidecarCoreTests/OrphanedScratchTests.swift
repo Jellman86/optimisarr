@@ -11,6 +11,11 @@ import Testing
 struct OrphanedScratchTests {
     private let root = URL(fileURLWithPath: "/work")
     private let now = Date(timeIntervalSinceReferenceDate: 1_000_000)
+    // Named with their type rather than written out at each call. The compiler on the build
+    // machine will not read `20 * 60` as a TimeInterval inside a tuple literal, so the whole
+    // macOS job failed to build on tests that compile perfectly well on a development Mac.
+    private let twentyMinutes: TimeInterval = 20 * 60
+    private let anHour: TimeInterval = 60 * 60
 
     private func abandoned(_ entries: [(String, TimeInterval)]) -> [URL] {
         let urls = entries.map { root.appendingPathComponent($0.0, isDirectory: true) }
@@ -24,7 +29,7 @@ struct OrphanedScratchTests {
 
     @Test("a directory nothing has touched in a quarter of an hour is abandoned")
     func staleIsSwept() {
-        let swept = abandoned([("lease-a", 20 * 60)])
+        let swept = abandoned([("lease-a", twentyMinutes)])
         #expect(swept.map(\.lastPathComponent) == ["lease-a"])
     }
 
@@ -42,9 +47,9 @@ struct OrphanedScratchTests {
         // The work root is shared with whatever else the app keeps there, and a sweep that took
         // anything old would eventually take something that mattered.
         let swept = abandoned([
-            ("lease-old", 60 * 60),
-            ("credentials", 60 * 60),
-            ("settings.json", 60 * 60),
+            ("lease-old", anHour),
+            ("credentials", anHour),
+            ("settings.json", anHour),
         ])
 
         #expect(swept.map(\.lastPathComponent) == ["lease-old"])
