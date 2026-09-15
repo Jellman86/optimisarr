@@ -264,9 +264,11 @@ internal static class WorkerLeaseEndpoints
                 .Where(lease => shortlist.Contains(lease.JobId) && lease.State == LeaseState.Released)
                 .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
                 .ToListAsync(cancellationToken);
-            var handbackCount = handbacks
+            // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
+            // refusing the same job three times is one machine's opinion.
+            var refusingWorkers = handbacks
                 .GroupBy(h => h.JobId)
-                .ToDictionary(g => g.Key, g => g.Count());
+                .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
             var lastHandbackHere = handbacks
                 .Where(h => h.WorkerId == worker.Id)
                 .GroupBy(h => h.JobId)
@@ -297,13 +299,13 @@ internal static class WorkerLeaseEndpoints
                 // A job this worker already gave back, or that too many workers have given back.
                 // Offering it again straight away is a loop that re-downloads the source each time.
                 lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
-                handbackCount.TryGetValue(job.Id, out var handedBackByAnyone);
-                if (!HandbackPolicy.MayOffer(handedBackHere, handedBackByAnyone, now))
+                refusingWorkers.TryGetValue(job.Id, out var refusedBy);
+                if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
                 {
                     logger.LogInformation(
                         "Job {JobId} not offered to worker {Worker}: {Reason}",
                         job.Id, worker.Name,
-                        HandbackPolicy.Explain(handedBackHere, handedBackByAnyone, now));
+                        HandbackPolicy.Explain(handedBackHere, refusedBy, now));
                     continue;
                 }
 
