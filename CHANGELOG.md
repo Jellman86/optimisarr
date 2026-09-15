@@ -4,6 +4,22 @@
 
 ### Changed
 
+- **Settings is a set of rooms instead of a strip of tabs.** The page had inherited the setup
+  wizard's furniture: numbered sections that implied an order nobody follows, a save button
+  that covered some of the page with a caption explaining which parts it missed, and no way to
+  tell which of forty-odd controls you had moved off its default. It now opens on a grid of
+  cards, one per section, and each card reports what that section is currently set to — which
+  media servers are connected, what the encoder resolves to, how long originals are kept — so
+  the common questions are answered without opening anything. Opening a card gives that section
+  the page to itself at its own URL, so `/settings/encoding` is a link you can send someone.
+  Everything you change is a draft until you press Save: changed values light up, say what they
+  were, and can be put back one at a time, and the save bar counts what it is about to write.
+  The draft follows you between rooms, and leaving Settings with unsaved work asks first.
+  Read-only diagnostics stop pretending to be settings — tools, hardware acceleration, encoder
+  probes and configuration backup are gathered into a System room that is marked read-only.
+  Minimum free disk moved from the queue section to Files & safety, where the rest of the
+  refuses-to-start rules live.
+
 - **The interface is built from surfaces now, not from boxes with lines round them.** Every
   panel in the app wore the same one-pixel border, which gave a reader nothing to go on: a
   card, a header band and a table row all announced themselves equally loudly. A surface is

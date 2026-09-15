@@ -51,7 +51,7 @@
   <ConfigSection
     step={1}
     id="global-tools"
-    title={i18n.m.settings.tab_tools}
+    title={i18n.m.settings.tools_section}
     description={i18n.m.shared.tools_intro}
   >
     <div class="mb-4 flex justify-end">

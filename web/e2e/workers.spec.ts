@@ -89,7 +89,7 @@ async function mockWorkers(page: Page, rows = workers) {
 test('each paired sidecar is a card that says what it can do, what it is doing, and what went wrong', async ({ page }) => {
   await mockWorkers(page)
   await page.goto('/#/settings')
-  await page.getByRole('tab', { name: 'Workers' }).click()
+  await page.getByRole('button', { name: /^Remote workers/ }).click()
 
   const cards = page.locator('[data-testid="worker-card"]')
   await expect(cards).toHaveCount(3)
@@ -122,7 +122,7 @@ test('an offline sidecar can be removed from the list, a working one cannot', as
   // the same machine paired twice — needs clearing, and there was no way to do it.
   await mockWorkers(page)
   await page.goto('/#/settings')
-  await page.getByRole('tab', { name: 'Workers' }).click()
+  await page.getByRole('button', { name: /^Remote workers/ }).click()
 
   const cards = page.locator('[data-testid="worker-card"]')
   // Mac Studio is online and mid-job: removal is not offered.
@@ -134,7 +134,7 @@ test('an offline sidecar can be removed from the list, a working one cannot', as
 test('drain and resume act on one card and show what the server recorded', async ({ page }) => {
   await mockWorkers(page)
   await page.goto('/#/settings')
-  await page.getByRole('tab', { name: 'Workers' }).click()
+  await page.getByRole('button', { name: /^Remote workers/ }).click()
 
   const studio = page.locator('[data-testid="worker-card"]').nth(0)
   await studio.getByRole('button', { name: 'Drain after this job' }).click()
@@ -168,7 +168,7 @@ test('a sidecar that redeems the code appears on the page without a reload', asy
   })
 
   await page.goto('/#/settings')
-  await page.getByRole('tab', { name: 'Workers' }).click()
+  await page.getByRole('button', { name: /^Remote workers/ }).click()
   await expect(page.getByText('No sidecars are paired.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Pair a sidecar' }).click()

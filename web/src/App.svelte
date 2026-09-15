@@ -33,6 +33,17 @@
     return Dashboard
   })
 
+  // What identifies "a different page" for the purposes of remounting. It is deliberately
+  // not the raw path: Settings navigates between its own rooms by URL, and it holds an
+  // unsaved draft while you do. Remounting on every path change would throw that draft away
+  // the moment you walked from one room to another, which is the whole reason rooms could be
+  // worse than one long page.
+  let pageKey = $derived.by(() => {
+    const path = router.path
+    if (path.startsWith('/settings') || path.startsWith('/tools')) return '/settings'
+    return path
+  })
+
   let tokenInput = $state('')
 
   // One app-wide connection drives the sidebar activity indicator and the Queue usage graph.
@@ -167,7 +178,7 @@
       style="padding-right: max(1rem, env(safe-area-inset-right));"
     >
       <div class:mx-auto={!/^\/libraries\/\d+\/quality-check$/.test(router.path)} class:max-w-6xl={!/^\/libraries\/\d+\/quality-check$/.test(router.path)}>
-        {#key router.path}
+        {#key pageKey}
           {@const Page = page}
           <Page />
         {/key}
