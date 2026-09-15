@@ -328,6 +328,16 @@ public sealed class JobRunner(
                 return null;
             }
 
+            // Said per window, because a measurement that comes back wrong is otherwise
+            // undiagnosable after the fact: the scratch directory goes on every exit path, so the
+            // log this score came from exists nowhere once the job ends. A window full of
+            // zero-scoring frames beside a respectable average is the signature of two timelines
+            // misaligned rather than of a bad encode, and knowing which window is the diagnosis.
+            if (VmafLogSummary.Of(contents) is { } summary)
+            {
+                report?.Invoke($"Job {assignment.JobId}: window {index} {summary}");
+            }
+
             logs.Add(contents);
             TryDeleteFile(log);
         }
@@ -470,7 +480,17 @@ public sealed class JobRunner(
                     $"Scoring sample {index + 1} at quality {step.Quality} wrote no libvmaf log.");
             }
 
-            logs.Add(await File.ReadAllTextAsync(log, cancellationToken));
+            var sampleLog = await File.ReadAllTextAsync(log, cancellationToken);
+            // The search is most of what a job spends its time on, and a sample window that scores
+            // near zero is why a search settles somewhere absurd. Said here as well as for the
+            // final measurement, so the two can be compared.
+            if (VmafLogSummary.Of(sampleLog) is { } summary)
+            {
+                report?.Invoke(
+                    $"Job {assignment.JobId}: quality {step.Quality} window {index} {summary}");
+            }
+
+            logs.Add(sampleLog);
 
             // Removed as they are measured. Four candidates across three windows is a dozen sample
             // encodes, and keeping them would need as much scratch again as the job itself.

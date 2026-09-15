@@ -55,6 +55,14 @@
 
 ### Fixed
 
+- **The Windows sidecar says what each measured window scored.** A candidate measured on PICARD
+  came back with a mean of 80.6 and a harmonic mean of 37.1 — a window full of zero-scoring frames
+  beside a respectable average, which is the signature of two timelines misaligned rather than of a
+  bad encode — and nothing in the log said which of its three windows had gone wrong. It now
+  reports the frame count, mean, harmonic mean, lowest frame and how many scored near zero for
+  every window, during the quality search as well as the final measurement, in the same words the
+  macOS sidecar has used since that bug was first found there. The scratch directory goes on every
+  exit path, so this is the only account of a measurement that survives the job.
 - **An encode keeps every frame the source had.** Whole seasons were failing verification with
   harmonic means in single figures and a fifth percentile of zero, and the encodes were fine: FFmpeg
   was silently dropping frames. Its default frame-rate handling drops frames whose timestamps
