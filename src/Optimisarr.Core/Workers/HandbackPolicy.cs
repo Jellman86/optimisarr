@@ -25,18 +25,30 @@ public static class HandbackPolicy
     public static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// How many handbacks a job may collect before workers stop being offered it. Three separate
-    /// refusals is no longer bad luck.
+    /// How many <em>different</em> workers may refuse a job before none are offered it. Three
+    /// separate machines refusing is no longer bad luck; three refusals from one machine is that
+    /// machine's problem and says nothing about the job.
+    ///
+    /// <para>Counted per worker rather than per refusal because the difference is not academic. A
+    /// single sidecar that could not read its assignment spent an afternoon claiming and returning
+    /// everything it was offered, three times each, and permanently barred the head of the queue
+    /// from every worker including a healthy one sitting beside it. The count is taken from
+    /// released leases and never decays, so nothing undid it.</para>
+    ///
+    /// <para>A job that really cannot be encoded anywhere still stops being offered once three
+    /// machines have said so. With a smaller fleet it keeps being retried at the cooldown instead —
+    /// which is the right answer, because a barred job is only barred from <em>workers</em>: this
+    /// server still runs it once the placement hold lapses.</para>
     /// </summary>
-    public const int MaxHandbacks = 3;
+    public const int MaxRefusingWorkers = 3;
 
     /// <summary>
     /// Whether this worker may be offered this job now, given when it last handed it back and how
-    /// many times the job has been handed back by anyone.
+    /// many different workers have refused it.
     /// </summary>
-    public static bool MayOffer(DateTimeOffset? lastHandbackByThisWorker, int handbacksByAnyone, DateTimeOffset now)
+    public static bool MayOffer(DateTimeOffset? lastHandbackByThisWorker, int workersWhoRefused, DateTimeOffset now)
     {
-        if (handbacksByAnyone >= MaxHandbacks)
+        if (workersWhoRefused >= MaxRefusingWorkers)
         {
             return false;
         }
@@ -45,11 +57,11 @@ public static class HandbackPolicy
     }
 
     /// <summary>Why the job is being held back, for the log and the worker's card.</summary>
-    public static string Explain(DateTimeOffset? lastHandbackByThisWorker, int handbacksByAnyone, DateTimeOffset now)
+    public static string Explain(DateTimeOffset? lastHandbackByThisWorker, int workersWhoRefused, DateTimeOffset now)
     {
-        if (handbacksByAnyone >= MaxHandbacks)
+        if (workersWhoRefused >= MaxRefusingWorkers)
         {
-            return $"It has been handed back {handbacksByAnyone} times and is no longer offered to workers.";
+            return $"{workersWhoRefused} different workers have handed it back, so it is no longer offered to any.";
         }
 
         if (lastHandbackByThisWorker is { } handback)
