@@ -3650,6 +3650,13 @@
           },
           {
             "in": "query",
+            "name": "live",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "libraryId",
             "schema": {
               "format": "int32",

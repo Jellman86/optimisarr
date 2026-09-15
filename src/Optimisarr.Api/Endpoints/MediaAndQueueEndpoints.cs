@@ -241,6 +241,7 @@ internal static class MediaAndQueueEndpoints
         // unaffected); the pre-paging total is returned in the X-Total-Count header.
         app.MapGet("/api/jobs", async (
             string? status,
+            bool? live,
             int? libraryId,
             string? category,
             DateTimeOffset? since,
@@ -283,6 +284,7 @@ internal static class MediaAndQueueEndpoints
             var result = await JobQueries.QueryAsync(db, new JobQuery
             {
                 Status = wantedStatus,
+                Live = live ?? false,
                 LibraryId = libraryId,
                 Category = wantedCategory,
                 Since = since,
