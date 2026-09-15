@@ -9,6 +9,9 @@ public enum SidecarState
     /// <summary>Paired and checking in successfully.</summary>
     Connected,
 
+    /// <summary>Running a job the server handed over.</summary>
+    Working,
+
     /// <summary>Paired, but the last check-in did not get through. Recovers on its own.</summary>
     Unreachable,
 
@@ -34,7 +37,8 @@ public sealed class SidecarSession(
     Func<CancellationToken, Task<Capabilities.SidecarCapabilities>> probe,
     Func<MachineLoad?> load,
     Func<TimeSpan, CancellationToken, Task> delay,
-    Action<SessionStatus>? report = null)
+    Action<SessionStatus>? report = null,
+    Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null)
 {
     public SessionStatus Status { get; private set; } = new(SidecarState.Unpaired, "Not paired");
 
@@ -83,6 +87,26 @@ public sealed class SidecarSession(
                     beat.Draining
                         ? $"Worker {beat.WorkerId}: finishing current work, taking no more"
                         : $"Worker {beat.WorkerId}: connected");
+
+                // Asking is free and almost always answered with "nothing". Draining is the server
+                // saying it wants this machine to stop taking work, so it is not even asked.
+                if (runJob is not null && !beat.Draining && capabilities.MaxConcurrency > 0)
+                {
+                    var assignment = await client.ClaimAsync(pairing, cancellationToken);
+                    if (assignment is not null)
+                    {
+                        Set(SidecarState.Working, $"Job {assignment.JobId}: {assignment.Title}");
+                        var outcome = await runJob(pairing, assignment, cancellationToken);
+                        Set(
+                            SidecarState.Connected,
+                            $"Job {outcome.JobId}: {outcome.Detail}");
+
+                        // Straight round again rather than waiting out a check-in interval: a
+                        // machine that has just proved it can take work should be asked for more
+                        // while the queue is still busy.
+                        continue;
+                    }
+                }
             }
             catch (SidecarException exception) when (!exception.Recoverable)
             {
