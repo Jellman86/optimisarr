@@ -12,8 +12,11 @@ public sealed class FilterPathTests
     {
         // What FFmpeg saw before this: backslashes eaten as escapes, the drive colon ending the
         // option, and a graph it refused outright. Every quality search on this platform died here.
+        // Two backslashes, not one: the description is unescaped twice on the way in, and a single
+        // backslash is eaten by the first pass. Proven against the real FFmpeg on the machine —
+        // one backslash fails exactly as the raw path does.
         Assert.Equal(
-            @"C\:/OptimisarrWork/job-1/sample-vmaf-q20-0.json",
+            @"C\\:/OptimisarrWork/job-1/sample-vmaf-q20-0.json",
             FilterPath.ForFilterOption(@"C:\OptimisarrWork\job-1\sample-vmaf-q20-0.json"));
     }
 
@@ -27,7 +30,7 @@ public sealed class FilterPathTests
         Assert.DoesNotContain(@"\v", escaped, StringComparison.Ordinal);
         // The only colon left is an escaped one.
         Assert.Equal(1, escaped.Split(':').Length - 1);
-        Assert.Contains(@"\:", escaped, StringComparison.Ordinal);
+        Assert.Contains(@"\\:", escaped, StringComparison.Ordinal);
         // A space needs no escaping: the whole graph is one argv element, so nothing splits on it.
         Assert.Contains("Optimisarr Work", escaped, StringComparison.Ordinal);
     }
@@ -47,7 +50,7 @@ public sealed class FilterPathTests
         // A quote inside a filter description starts one, and the rest of the graph would be
         // swallowed into it. Rare on a scratch path, fatal when it happens.
         Assert.Equal(
-            "C\\:/Users/Scott\\'s Work/vmaf.json",
+            @"C\\:/Users/Scott\\'s Work/vmaf.json",
             FilterPath.ForFilterOption(@"C:\Users\Scott's Work\vmaf.json"));
     }
 
@@ -64,6 +67,6 @@ public sealed class FilterPathTests
 
         Assert.Equal(@"C:\work\candidate.mkv", resolved[1]);
         Assert.Equal(@"C:\work\source.mkv", resolved[3]);
-        Assert.Equal(@"[a][b]libvmaf=log_path=C\:/work/vmaf.json:shortest=1", resolved[5]);
+        Assert.Equal(@"[a][b]libvmaf=log_path=C\\:/work/vmaf.json:shortest=1", resolved[5]);
     }
 }

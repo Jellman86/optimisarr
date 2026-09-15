@@ -16,14 +16,22 @@ namespace Optimisarr.Sidecar.Core.Session;
 /// </code>
 ///
 /// <para>Every quality search on this platform failed there, and the sidecar reported only that a
-/// sample "could not be measured". FFmpeg accepts forward slashes on Windows, which cannot be
-/// mistaken for escapes, and the drive's colon is escaped explicitly.</para>
+/// sample "could not be measured".</para>
+///
+/// <para>Forward slashes, which FFmpeg accepts on Windows and which cannot be mistaken for
+/// escapes. Then <b>two</b> backslashes before the colon, not one: the description is unescaped
+/// twice on its way in — once by the filtergraph parser and again by the filter's own option
+/// parser — so a single backslash is consumed by the first and the colon still ends the option at
+/// the second. Run against the real FFmpeg on the machine, of five spellings only
+/// <c>C\\:/path</c> and <c>'C\:/path'</c> produce a log; <c>C\:/path</c>, <c>C:/path</c> and
+/// <c>'C:/path'</c> all fail. The unquoted form is used here because there is no quote to
+/// balance around a path that may contain anything else.</para>
 /// </summary>
 public static class FilterPath
 {
     public static string ForFilterOption(string path) =>
         path
             .Replace('\\', '/')
-            .Replace("'", @"\'", StringComparison.Ordinal)
-            .Replace(":", @"\:", StringComparison.Ordinal);
+            .Replace("'", @"\\'", StringComparison.Ordinal)
+            .Replace(":", @"\\:", StringComparison.Ordinal);
 }
