@@ -93,13 +93,45 @@ public sealed class JobRunner(
                     "FFmpeg reported success but produced no candidate file.");
             }
 
+            // The server's own measurement, run here and returned as the raw logs. Measuring is the
+            // one part of verification a worker may contribute, and it is only an offer: if it
+            // cannot be made the candidate is still delivered and the server measures for itself.
+            // A candidate that encoded perfectly well must never be handed back because its score
+            // could not be taken.
+            //
+            // Only when the server told us what the source hashes to. Evidence is bound to that
+            // hash, so without it the measurement could never be believed and running one would be
+            // a second decode of the whole file for a number certain to be thrown away.
+            string? candidateHash = null;
+            if (assignment.Quality.Measure
+                && assignment.Quality.Commands.Count > 0
+                && declaredHash is { Length: > 0 } boundTo)
+            {
+                var logs = await WhileRenewing(
+                    pairing, assignment, RemoteStage.Measuring, null, cancellationToken,
+                    token => MeasureCandidateForVerificationAsync(assignment, scratch, source, candidate, token));
+
+                if (logs is { Count: > 0 })
+                {
+                    candidateHash = await JobTransfer.HashAsync(candidate, cancellationToken);
+                    var offered = await client.ReportQualityAsync(
+                        pairing, assignment.LeaseId, boundTo, candidateHash, logs, cancellationToken);
+                    report?.Invoke(offered
+                        ? $"Job {assignment.JobId}: quality evidence accepted, so the server need not measure"
+                        : $"Job {assignment.JobId}: quality evidence was not accepted; the server will measure");
+                }
+            }
+
             report?.Invoke($"Job {assignment.JobId}: delivering");
             await WhileRenewing(
                 pairing, assignment, RemoteStage.Delivering, null, cancellationToken,
                 async token =>
                 {
                     await transfer.DeliverAsync(
-                        pairing, assignment.LeaseId, candidate, declaredHash ?? string.Empty, null, token);
+                        pairing, assignment.LeaseId, candidate, declaredHash ?? string.Empty, null, token,
+                        // Hashed already if the candidate was measured; the file can be tens of
+                        // gigabytes and reading it twice buys nothing.
+                        candidateHash);
                     return true;
                 });
 
@@ -211,6 +243,117 @@ public sealed class JobRunner(
     /// pools the windows into a single score, so a missing window is a different measurement rather
     /// than a smaller one.</para>
     /// </summary>
+    /// <summary>
+    /// Scores the finished candidate against the source, with the server's own commands, and hands
+    /// back the raw libvmaf logs.
+    ///
+    /// <para>Null when it could not be done. That is not a job failure — the caller delivers
+    /// anyway and the server measures for itself — so the reasons are logged rather than returned.
+    /// The scratch directory is deleted on every exit path, so a measurement that comes back wrong
+    /// is undiagnosable afterwards unless the command, the shift applied and the score are written
+    /// down as they happen.</para>
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> MeasureCandidateForVerificationAsync(
+        Assignment assignment,
+        string scratch,
+        string source,
+        string candidate,
+        CancellationToken cancellationToken)
+    {
+        var commands = assignment.Quality.Commands;
+
+        // A sampled window pairs pictures by timestamp, so the server wants the candidate's extra
+        // lead over the source taken off first. Only this machine holds both files.
+        string? distortedShift = null;
+        if (commands.Any(command => command.Any(argument =>
+                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal))))
+        {
+            var sourceLead = await ProbeLeadAsync(source, cancellationToken);
+            var candidateLead = await ProbeLeadAsync(candidate, cancellationToken);
+            if (sourceLead is not { } reference || candidateLead is not { } distorted)
+            {
+                report?.Invoke(
+                    $"Job {assignment.JobId}: the timeline lead could not be measured"
+                    + $" ({(FfprobeBeside(ffmpegPath) is null ? "no ffprobe beside " + ffmpegPath : "ffprobe answered nothing usable")}),"
+                    + " so the server will score this itself");
+                return null;
+            }
+
+            distortedShift = TimelineLead.Shift(distorted, reference);
+        }
+
+        report?.Invoke(
+            $"Job {assignment.JobId}: measuring {commands.Count} window(s), distorted shift {distortedShift ?? "none"}");
+
+        var logs = new List<string>(commands.Count);
+        for (var index = 0; index < commands.Count; index++)
+        {
+            var log = Path.Combine(scratch, $"vmaf-{index}.json");
+            var scored = await transcoder.RunAsync(
+                ffmpegPath,
+                MeasurementPlaceholders.Resolve(
+                    commands[index], candidate, source, log, distortedShift),
+                null,
+                cancellationToken);
+
+            if (!scored.Succeeded || !File.Exists(log))
+            {
+                report?.Invoke(
+                    $"Job {assignment.JobId}: window {index} could not be measured "
+                    + $"(FFmpeg exit {scored.ExitCode}): {scored.ErrorTail}");
+                return null;
+            }
+
+            var contents = await File.ReadAllTextAsync(log, cancellationToken);
+            if (contents.Length == 0)
+            {
+                report?.Invoke($"Job {assignment.JobId}: window {index} produced an empty libvmaf log");
+                return null;
+            }
+
+            logs.Add(contents);
+            TryDeleteFile(log);
+        }
+
+        return logs;
+    }
+
+    /// <summary>The video's start relative to its container, from ffprobe beside this FFmpeg.</summary>
+    private async Task<double?> ProbeLeadAsync(string file, CancellationToken cancellationToken)
+    {
+        var probe = FfprobeBeside(ffmpegPath);
+        if (probe is null)
+        {
+            return null;
+        }
+
+        var result = await transcoder.ProbeAsync(
+            probe, [.. TimelineLead.ProbeArguments, file], cancellationToken);
+        return result.ExitCode == 0 ? TimelineLead.Parse(result.Output) : null;
+    }
+
+    /// <summary>
+    /// ffprobe next to the FFmpeg this machine was told to use, or nothing.
+    ///
+    /// <para>Next to it rather than from the PATH: a sidecar with a bundled FFmpeg and a different
+    /// FFmpeg on the PATH would otherwise probe with one and encode with the other, and the whole
+    /// point of the lead is that it describes these two files as this FFmpeg reads them.</para>
+    /// </summary>
+    internal static string? FfprobeBeside(string ffmpeg)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(ffmpeg));
+        if (string.IsNullOrEmpty(directory))
+        {
+            return null;
+        }
+
+        var name = Path.GetFileName(ffmpeg);
+        var probe = Path.Combine(
+            directory,
+            name.Replace("ffmpeg", "ffprobe", StringComparison.OrdinalIgnoreCase));
+        return File.Exists(probe) ? probe : null;
+    }
+
     /// <summary>
     /// What measuring one candidate produced, or why it produced nothing.
     ///
