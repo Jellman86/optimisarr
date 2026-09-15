@@ -33,6 +33,7 @@ public struct ProcessBinaryCommandRunner: BinaryCommandRunner {
         await withCheckedContinuation { continuation in
             let process = Process()
             let pipe = Pipe()
+            pipe.sealFromOtherChildren()
             process.executableURL = executable
             process.arguments = arguments
             process.standardOutput = pipe
