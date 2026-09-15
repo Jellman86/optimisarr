@@ -187,6 +187,29 @@ the replacement workflow is trustworthy.
      reference branch against it — rather than a speculative change to the path that guards every
      replacement.
 
+   - **Sampled-VMAF frame alignment: measured, not derived (2026-09-15).** Whole seasons were
+     failing the quality gate with harmonic means in single figures while the encodes themselves
+     were sound. Two causes, both now fixed and both recorded in full at
+     [`docs/engineering/hardware-validation/2026-09-15-sampled-vmaf-frame-alignment.md`](engineering/hardware-validation/2026-09-15-sampled-vmaf-frame-alignment.md).
+
+     FFmpeg's default frame-rate handling was dropping frames on sources ffprobe calls constant —
+     about fifty an episode on a VC-1 WEBRip — which both damaged the library and made every
+     windowed comparison meaningless, because frame N of the candidate stopped being frame N of the
+     source. `-fps_mode passthrough` on any re-encode with no frame-rate cap now keeps them.
+
+     Underneath that, the `distortedShift` correction was derived from the containers' headers as
+     the video stream's start less the container's. Those two are equal in every real container, so
+     it computed as zero for every file either sidecar had ever measured and **never once fired**.
+     It could not have worked either way: two episodes of the same show, identical in every header
+     field, need opposite corrections because different numbers of frames went missing in their
+     encodes. All three machines now try the candidate a frame either way against a two-second
+     window and keep whichever matched — the same probe and offsets on the server and both
+     sidecars, so a worker and the control plane cannot disagree about the same pair of files.
+
+     **Still open:** passthrough reduces frame loss without eliminating it — one frame lost in one
+     fixture, six in another. The measurement is now honest about a candidate that lost frames; it
+     does not stop them being lost.
+
    - **Open: a path inside a filter description is not a path.** FFmpeg unescapes a filter
      description twice on the way in — once by the filtergraph parser, again by the filter's own
      option parser — so a bare colon ends the option and a bare backslash is eaten as an escape.
@@ -200,7 +223,9 @@ the replacement workflow is trustworthy.
      - the macOS sidecar, whose scratch lives under `~/Library/Application Support` — safe until a
        home directory contains an apostrophe, which opens a quoted section and swallows the rest of
        the graph. Worth fixing to the same rule; it was left alone on 2026-09-15 only because the
-       Swift toolchain was unusable that day and the Mac was the one sidecar working.
+       Swift toolchain was unusable that day and the Mac was the one sidecar working. The alignment
+       probe added later that day does escape its own log path, so the remaining exposure is the
+       server's measurement commands rather than anything the Mac writes itself.
      - the server itself, whose log path is always `Path.GetTempPath()/optimisarr-vmaf-<guid>.json`
        and so contains nothing that needs escaping. It would break if `TMPDIR` ever pointed
        somewhere with a colon or an apostrophe in it.

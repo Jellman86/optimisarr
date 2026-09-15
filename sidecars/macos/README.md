@@ -79,6 +79,31 @@ itself would have jobs scheduled onto it that could only fail.
 Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file. A sidecar
 never can, by design, and nothing in this app is capable of touching media.
 
+## The panel
+
+The menu-bar panel is a readout, not a settings sheet that happens to carry numbers. Nothing is
+hidden behind a disclosure, because the thing you want is usually the thing you did not think to
+open: the machine's identity and state sit opposite each other in a bar across the top, everything
+it knows about itself runs down one column of monospaced, tabular figures that can be compared
+vertically, and the controls live along the bottom where they cannot be mistaken for readings.
+
+Two rules are worth keeping when changing it.
+
+**A level is only drawn when there is an honest one.** Progress is lit segments rather than a
+filled bar, so a glance takes a level off it without reading the figure beside it — and during an
+encode there is no bar at all, because the worker knows how many seconds it has done and not how
+many it owes. A bar that guessed would be a lie in the one place the panel exists to be honest.
+
+**The palette is Optimisarr's, not this app's.** Every colour comes from the web interface's own
+tokens in [`web/src/app.css`](../../web/src/app.css) — Tailwind slate for the neutrals, cyan for the
+single accent, amber and red for the two kinds of trouble — with the Tailwind step named beside each
+value in `Instrument.swift`. Both appearances are supported, because the web interface has both. A
+fault on this panel is the same colour as the same fault on the dashboard, which is the point.
+
+The menu-bar mark turns only while a job is actually running. The timer behind it also feeds the
+load meters whenever the panel is open, and letting that turn the mark made an idle Mac look busy
+for exactly as long as somebody was looking at it.
+
 ## Codecs
 
 Encoding, all proved with a real test encode at launch rather than taken from FFmpeg's listing:
