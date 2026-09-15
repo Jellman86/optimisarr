@@ -26,6 +26,10 @@ internal sealed class FakeWorkerServer(byte[] source, string sourceHash) : HttpM
     public bool DeclareSourceHash = true;
     /// <summary>What the server answers a lease renewal with. 503 is a restarting container.</summary>
     public HttpStatusCode RenewStatus = HttpStatusCode.OK;
+    /// <summary>Answer this many delivery-related calls with 502 before behaving, as a restart does.</summary>
+    public int DeliveryFailuresRemaining;
+    /// <summary>How many delivery-related calls were refused that way.</summary>
+    public int DeliveryRefusals;
     /// <summary>How many renewals were asked for.</summary>
     public int RenewCalls;
 
@@ -67,23 +71,35 @@ internal sealed class FakeWorkerServer(byte[] source, string sourceHash) : HttpM
 
         if (path.EndsWith("/result/offset", StringComparison.Ordinal))
         {
+            if (Blink()) { return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway)); }
             return Json($$"""{"bytes":{{Delivered.Length}}}""");
         }
 
         if (path.EndsWith("/result/complete", StringComparison.Ordinal))
         {
+            if (Blink()) { return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway)); }
             Completed = true;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         }
 
         if (path.EndsWith("/result", StringComparison.Ordinal))
         {
+            if (Blink()) { return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway)); }
             var body = request.Content!.ReadAsByteArrayAsync(cancellationToken).Result;
             Delivered = [.. Delivered, .. body];
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
         }
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+    }
+
+    /// <summary>A restarting container, one refusal at a time.</summary>
+    private bool Blink()
+    {
+        if (DeliveryFailuresRemaining <= 0) { return false; }
+        DeliveryFailuresRemaining--;
+        DeliveryRefusals++;
+        return true;
     }
 
     private static Task<HttpResponseMessage> Json(string body) =>

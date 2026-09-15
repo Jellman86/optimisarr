@@ -154,6 +154,9 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     var resumable = false
     /// Drop the chunk that starts at this offset once, as a failed connection would.
     var dropChunkAt: Int64? = nil
+    /// Answer this many delivery calls with 502 before behaving, as a restarting container does.
+    var deliveryBlinks = 0
+    private(set) var deliveryRefusals = 0
     private var staged = Data()
     private(set) var chunkOffsets: [Int64] = []
     private(set) var completedViaChunks = false
@@ -167,6 +170,14 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var sourceDownloadCompleted = false
     var deliveryDelay: TimeInterval = 0
     private(set) var deliveryCompleted = false
+
+    /// A restarting container, one refusal at a time. Called with the lock already held.
+    private func blink() -> Bool {
+        guard deliveryBlinks > 0 else { return false }
+        deliveryBlinks -= 1
+        deliveryRefusals += 1
+        return true
+    }
 
     init(sourceBytes: Data, claimJSON: [String: Any]? = nil) {
         self.sourceBytes = sourceBytes
@@ -199,6 +210,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             }
             if path.hasSuffix("/result"), request.httpMethod == "PATCH" {
                 guard resumable else { return (Data(), response(request, 404)) }
+                if blink() { return (Data(), response(request, 502)) }
                 let offset = Int64(request.value(forHTTPHeaderField: "X-Optimisarr-Offset") ?? "-1") ?? -1
                 chunkOffsets.append(offset)
                 if let drop = dropChunkAt, drop == offset {
@@ -213,6 +225,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
                 return (Data("{\"bytes\":\(staged.count)}".utf8), response(request, 200))
             }
             if path.hasSuffix("/result/complete") {
+                if blink() { return (Data(), response(request, 502)) }
                 guard resumable else { return (Data(), response(request, 404)) }
                 deliveredFile = staged
                 deliveredHeaders = request.allHTTPHeaderFields ?? [:]
@@ -776,6 +789,33 @@ struct JobRunnerTests {
         // Given up on the window, not on the encode finishing.
         #expect(Date().timeIntervalSince(started) < 4)
         #expect(server.deliveredFile == nil)
+    }
+
+    @Test("a finished candidate is not thrown away because the server is restarting")
+    func deliveryOutlastsARestart() async throws {
+        // The Mac's own words on the evening this was found: "handed back — The server replied
+        // unexpectedly (HTTP 502)". A complete encode, measured and accepted, binned because a
+        // deployment restarted the container while its bytes were going up. Only `transferFailed`
+        // was being retried, so a 502 arrived as `unexpectedResponse` and went uncaught.
+        let bytes = Data((0..<200).map(UInt8.init))
+        let server = FakeWorkerServer(sourceBytes: bytes)
+        server.resumable = true
+        server.deliveryBlinks = 3
+        let runner = JobRunner(
+            client: SidecarClient(transport: server, downloadChunkBytes: 64),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(sourceBytes: 200), pairing: pairing) { _ in }
+
+        #expect(server.deliveryRefusals == 3, "the test proves nothing if the server never blinked")
+        guard case .delivered = outcome else {
+            Issue.record("expected the candidate to be delivered, got \(outcome)")
+            return
+        }
+        #expect(server.deliveredFile != nil)
     }
 
     @Test("losing the lease mid-encode stops the work rather than finishing it for nobody")

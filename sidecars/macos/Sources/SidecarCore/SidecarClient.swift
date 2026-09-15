@@ -53,6 +53,13 @@ public extension SidecarError {
         default: return false
         }
     }
+
+    /// Whether the server has looked at what this worker delivered and said no. A judgement, not a
+    /// failure to reach anyone, so offering the same bytes again would only get the same answer.
+    var isRefusal: Bool {
+        if case .deliveryRefused = self { return true }
+        return false
+    }
 }
 
 /// The server's acknowledgement of a delivered candidate: accepted for verification, not yet judged.

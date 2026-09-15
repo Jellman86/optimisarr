@@ -218,6 +218,37 @@ public sealed class JobRunnerTests : IDisposable
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), $"the encode ran on regardless: {clock.Elapsed}");
     }
 
+    [Fact]
+    public async Task A_finished_candidate_is_not_thrown_away_because_the_server_is_restarting()
+    {
+        // PICARD's own words, from the evening this was found:
+        //
+        //     Job 5960: quality evidence accepted, so the server need not measure
+        //     Job 5960: delivering
+        //     Job 5960: Delivering the candidate failed (HTTP 502).
+        //
+        // A complete encode, measured, accepted, and binned — because a deployment restarted the
+        // container while the bytes were going up. Delivery is resumable; a blink should cost a
+        // pause.
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source)) { DeliveryFailuresRemaining = 4 };
+        var http = new HttpClient(server);
+        var assignment = Assignment();
+        var candidate = Path.Combine(_scratch, $"job-{assignment.JobId}", "candidate.mkv");
+
+        var runner = new JobRunner(
+            new SidecarClient(http), new JobTransfer(http),
+            new FakeMeasuringTranscoder(0, candidate), "ffmpeg.exe", _scratch, () => null);
+
+        var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        Assert.True(server.DeliveryRefusals > 0, "the test proves nothing if the server never blinked");
+        Assert.True(outcome.Delivered, outcome.Detail);
+        Assert.True(server.Completed);
+        // Every byte, once. A resumed delivery that restarted from zero would deliver more.
+        Assert.Equal("encoded-bytes", Encoding.UTF8.GetString(server.Delivered));
+    }
+
     private static string Hash(byte[] data) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
 
