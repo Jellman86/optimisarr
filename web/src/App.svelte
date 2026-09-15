@@ -3,6 +3,7 @@
   import { i18n } from './lib/i18n/i18n.svelte'
   import { router, layout, theme } from './lib/stores/ui.svelte'
   import { activity } from './lib/stores/activity.svelte'
+  import { favicon } from './lib/stores/favicon.svelte'
   import { auth } from './lib/stores/auth.svelte'
   import { setup } from './lib/stores/setup.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
@@ -42,7 +43,7 @@
   $effect(() => {
     if (auth.canUseApp) {
       if (!setup.checked && !setup.loading) void setup.load()
-      else if (setup.checked && !setup.required) activity.start()
+      else if (setup.checked && !setup.required) { activity.start(); favicon.start() }
     }
   })
 
@@ -63,7 +64,7 @@
     style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
   >
     <div class="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-      <BrandMark sizes="32px" class="h-8 w-8" />
+      <BrandMark class="h-8 w-8" />
       <span class="text-sm font-semibold">{i18n.m.common.loading}</span>
     </div>
   </div>
@@ -74,7 +75,7 @@
   >
     <form class="card w-full max-w-sm p-6" onsubmit={submitToken}>
       <div class="mb-6 flex items-center gap-3">
-        <BrandMark sizes="36px" class="h-9 w-9" />
+        <BrandMark class="h-9 w-9" />
         <div>
           <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">Optimisarr</h1>
           <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.auth.token_required}</p>
@@ -104,7 +105,7 @@
 {:else if !setup.checked || setup.loading && setup.state === null}
   <div class="flex h-dvh items-center justify-center bg-slate-50 p-4 text-slate-800 dark:bg-slate-950 dark:text-slate-200">
     <div class="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-      <BrandMark sizes="32px" class="h-8 w-8" />
+      <BrandMark class="h-8 w-8" />
       <span class="text-sm font-semibold">{i18n.m.setup.loading}</span>
     </div>
   </div>
@@ -149,7 +150,7 @@
         </svg>
       </button>
       <button class="flex items-center gap-2" onclick={() => router.go('/')}>
-        <BrandMark sizes="28px" class="h-7 w-7" />
+        <BrandMark class="h-7 w-7" />
         <span class="font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</span>
       </button>
       <button class="btn btn-ghost ml-auto px-2" aria-label={i18n.m.nav.toggle_theme} onclick={() => theme.toggle()}>

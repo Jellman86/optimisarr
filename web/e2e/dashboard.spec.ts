@@ -283,3 +283,46 @@ test('a long in-flight list is capped and says what it is hiding', async ({ page
   await expect(page.getByText('Episode.6.mkv')).toBeHidden()
   await expect(page.getByRole('button', { name: '7 more in flight →' })).toBeVisible()
 })
+
+test('the application mark is drawn, not fetched, and reports the server state', async ({ page }) => {
+  // The mark is a canvas rather than an <img>: it turns while work is running and settles when
+  // the queue goes quiet, so the icon answers "is it still going?" on its own.
+  await mockDashboard(page, { queue: { runningJobs: 2 }, jobs: [liveJob()] })
+
+  await page.goto('/#/')
+
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toBeVisible()
+  // Decorative: every placement sits beside the word "Optimisarr", so the mark must not repeat it.
+  await expect(mark).toHaveAttribute('aria-hidden', 'true')
+
+  // Something is actually rasterised onto it, and it keeps its alpha channel.
+  const painted = await mark.evaluate((el: HTMLCanvasElement) => {
+    const d = el.getContext('2d')!.getImageData(0, 0, el.width, el.height).data
+    let lit = 0
+    let clear = 0
+    for (let i = 0; i < d.length; i += 4) (d[i + 3] > 0 ? lit++ : clear++)
+    return { lit, clear }
+  })
+  expect(painted.lit).toBeGreaterThan(50)
+  expect(painted.clear).toBeGreaterThan(painted.lit)
+})
+
+test('the collapsed rail keeps a name on the brand button', async ({ page }) => {
+  // The wordmark is hidden on the icon rail, and the mark itself is decorative, so the button
+  // is the only thing left that can carry the name.
+  await mockDashboard(page)
+
+  await page.goto('/#/')
+
+  await expect(page.locator('aside').getByRole('button', { name: 'Dashboard', exact: true }).first()).toBeVisible()
+})
+
+test('the favicon is replaced by the drawn mark', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+
+  await page.goto('/#/')
+
+  const href = page.locator('link[rel~="icon"]').first()
+  await expect(href).toHaveAttribute('href', /^data:image\/png/, { timeout: 10_000 })
+})

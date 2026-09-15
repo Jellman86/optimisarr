@@ -81,18 +81,22 @@
     ? 'translate-x-0'
     : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
-  <!-- Brand: a compact lockup. The mark used to be 144px of logo above the navigation, which
-       spent a third of the rail on something the user already knows — what application this is. -->
+  <!-- Brand: the mark above the wordmark, and large enough to read. It was briefly a small
+       inline lockup, on the grounds that a logo should not spend a third of the rail telling
+       you which application you already have open. That stopped being true when the mark
+       started reporting the server's state: it earns the room, and a tesseract cannot resolve
+       at sixteen pixels a side. The collapsed rail still gets the small one. -->
   <button
-    class="flex items-center gap-2.5 border-b border-slate-200 px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700 {railCollapsed ? 'justify-center px-2' : ''}"
+    class="flex flex-col items-center gap-2 border-b border-slate-200 px-3 py-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 dark:border-slate-700 {railCollapsed ? 'px-2 py-3' : ''}"
+    aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
       layout.closeMobile()
     }}
   >
     <BrandMark
-      sizes="32px"
-      class="h-8 w-8 flex-shrink-0 drop-shadow-[0_0_10px_rgba(34,211,238,0.28)]"
+      grid={railCollapsed ? 32 : 64}
+      class="flex-shrink-0 drop-shadow-[0_0_14px_rgba(34,211,238,0.30)] {railCollapsed ? 'h-8 w-8' : 'h-16 w-16'}"
     />
     {#if !railCollapsed}
       <span class="truncate text-[15px] font-bold tracking-tight text-slate-800 dark:text-slate-100">Optimisarr</span>

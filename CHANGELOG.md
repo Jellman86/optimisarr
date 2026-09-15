@@ -4,6 +4,17 @@
 
 ### Changed
 
+- **The application mark is drawn, and it reports the server's state.** The logo was a static
+  picture that told you which application you already had open. It is now a four-dimensional
+  hypercube rasterised onto a pixel grid — sixteen vertices and thirty-two edges, turned by real
+  rotation matrices and projected through two perspective divides, with a depth buffer so near
+  edges occlude far ones. It turns quickly with a lit core while work is running and settles to
+  a slow, dim drift when the queue goes quiet, crossing between the two over about a second and
+  a half, so the icon slowing down is itself the signal that the queue emptied. The favicon is
+  the same mark, so a background tab answers "is it still going?" without being opened. It is
+  drawn for the theme it is sitting on, keeps a transparent background, and holds its resting
+  pose for anyone who has asked for reduced motion.
+
 - **The dashboard says what is happening, and why it is not.** The page drew the same screen
   whether the queue was racing or wedged: every figure on it was a count and none of them was a
   state, so "0 running, 1,418 queued" was what you got when the optimise window was shut, when
