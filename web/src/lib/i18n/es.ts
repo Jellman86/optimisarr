@@ -234,6 +234,7 @@ language: {
     in_flight_counts: "{running} en curso · {queued} en cola",
     in_flight_none: "Ahora mismo no se está trabajando en nada.",
     in_flight_idle: "Nada en cola y nada en ejecución. Todo lo elegible está hecho.",
+    in_flight_more: "{count} más en curso →",
     unnamed_file: "Archivo sin nombre",
     this_server: "Este servidor",
     retry_count: "reintento {count}",

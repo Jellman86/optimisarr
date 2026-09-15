@@ -28,7 +28,11 @@
   checked against that is 1,773 records, re-fetched every fifteen seconds. It now asks the server
   for the jobs with work outstanding.
 - **A worker holding one job says "1 job".** It said "1 jobs", and the version that followed it
-  lost the space before its separator.
+  lost the space before its separator. The same missing space was in the navigation's
+  running/queued figure, which read "3/ 14".
+- **The in-flight list no longer runs off the page.** It drew every outstanding job, and a real
+  server carries a dozen or more — thirteen on the one this was checked against — which pushed
+  everything below it off the screen. It shows the first six and says how many more there are.
 
 
 ### Fixed

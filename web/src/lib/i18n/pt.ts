@@ -229,6 +229,7 @@ export const pt: Messages = {
     in_flight_counts: "{running} em curso · {queued} em fila",
     in_flight_none: "Nada está a ser processado neste momento.",
     in_flight_idle: "Nada em fila e nada em execução. Tudo o que é elegível está feito.",
+    in_flight_more: "mais {count} em curso →",
     unnamed_file: "Ficheiro sem nome",
     this_server: "Este servidor",
     retry_count: "tentativa {count}",

@@ -229,6 +229,7 @@ dashboard: {
     in_flight_counts: "{running} in corso · {queued} in coda",
     in_flight_none: "Al momento non si sta lavorando a nulla.",
     in_flight_idle: "Niente in coda e niente in esecuzione. Tutto il possibile è fatto.",
+    in_flight_more: "altri {count} in corso →",
     unnamed_file: "File senza nome",
     this_server: "Questo server",
     retry_count: "tentativo {count}",

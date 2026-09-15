@@ -238,6 +238,7 @@ export const de: Messages = {
     in_flight_counts: "{running} in Arbeit · {queued} in Warteschlange",
     in_flight_none: "Derzeit wird an nichts gearbeitet.",
     in_flight_idle: "Nichts in der Warteschlange, nichts läuft. Alles Infrage kommende ist erledigt.",
+    in_flight_more: "{count} weitere in Arbeit →",
     unnamed_file: "Unbenannte Datei",
     this_server: "Dieser Server",
     retry_count: "Versuch {count}",

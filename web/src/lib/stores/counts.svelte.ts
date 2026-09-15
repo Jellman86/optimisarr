@@ -15,6 +15,7 @@ function createCounts() {
   let running = $state<number | null>(null)
   let quarantine = $state<number | null>(null)
   let started = false
+  let timer: ReturnType<typeof setInterval> | null = null
 
   async function refresh() {
     try {
@@ -34,11 +35,19 @@ function createCounts() {
     if (started) return
     started = true
     void refresh()
-    setInterval(() => void refresh(), INTERVAL_MS)
+    timer = setInterval(() => void refresh(), INTERVAL_MS)
+  }
+
+  /** Stops the poll. Every other timer in this app is cleaned up; this one can be too. */
+  function stop() {
+    if (timer !== null) clearInterval(timer)
+    timer = null
+    started = false
   }
 
   return {
     start,
+    stop,
     refresh,
     get libraries() { return libraries },
     get files() { return files },

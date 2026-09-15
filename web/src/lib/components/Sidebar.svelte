@@ -33,6 +33,13 @@
     return value == null ? null : value.toLocaleString()
   }
 
+  // Built here rather than in the template: Svelte trims the leading space out of an inline
+  // {#if} block, which renders "3/ 14".
+  function queueActivityLabel(): string {
+    const queued = badge('/queue')
+    return queued ? `${activity.activeJobs} / ${queued}` : `${activity.activeJobs}`
+  }
+
   type NavItem = { path: string; label: string; icon: string; enabled: boolean }
 
   // Active items route; disabled items mark roadmap phases not yet built. Labels are
@@ -84,7 +91,7 @@
     }}
   >
     <BrandMark
-      sizes={railCollapsed ? '32px' : '32px'}
+      sizes="32px"
       class="h-8 w-8 flex-shrink-0 drop-shadow-[0_0_10px_rgba(34,211,238,0.28)]"
     />
     {#if !railCollapsed}
@@ -116,10 +123,11 @@
           <span class="truncate">{item.label}</span>
           {#if !item.enabled}
             <span class="badge ml-auto bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.nav.soon}</span>
-          {:else if !showActivity && badge(item.path)}
-            <span class="nav-count">{badge(item.path)}</span>
-          {:else if !showActivity && isActive(item.path)}
-            <span class="ml-auto"><span class="nav-lamp"></span></span>
+          {:else if !showActivity}
+            <!-- The count, then the lamp. An active entry keeps its lamp whether or not it also
+                 carries a figure, so the active cue is the same on every row. -->
+            <span class="nav-count">{badge(item.path) ?? ''}</span>
+            {#if isActive(item.path)}<span class="nav-lamp ml-1.5"></span>{/if}
           {/if}
           {#if showActivity}
             <!-- A throbbing GPU chip means the GPU is doing the work; a snail means it's grinding
@@ -129,7 +137,7 @@
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
-              <span class="font-mono text-[10.5px] tabular-nums">{activity.activeJobs}{#if badge('/queue')} / {badge('/queue')}{/if}</span>
+              <span class="font-mono text-[10.5px] tabular-nums">{queueActivityLabel()}</span>
             </span>
           {/if}
         {:else if showActivity}

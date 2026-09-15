@@ -374,6 +374,7 @@ export const en = {
     in_flight_counts: "{running} in progress · {queued} queued",
     in_flight_none: "Nothing is being worked on right now.",
     in_flight_idle: "Nothing queued and nothing running. Everything eligible is done.",
+    in_flight_more: "{count} more in flight →",
     unnamed_file: "Unnamed file",
     this_server: "This server",
     retry_count: "retry {count}",

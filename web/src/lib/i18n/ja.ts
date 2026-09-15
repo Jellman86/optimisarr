@@ -229,6 +229,7 @@ export const ja: Messages = {
     in_flight_counts: "処理中 {running} 件 · 待機 {queued} 件",
     in_flight_none: "現在処理中のものはありません。",
     in_flight_idle: "待機も実行もありません。対象はすべて完了しています。",
+    in_flight_more: "他 {count} 件が処理中 →",
     unnamed_file: "名称未設定のファイル",
     this_server: "このサーバー",
     retry_count: "再試行 {count}",

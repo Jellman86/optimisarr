@@ -229,6 +229,7 @@ export const zh: Messages = {
     in_flight_counts: "{running} 个进行中 · {queued} 个排队",
     in_flight_none: "当前没有正在处理的任务。",
     in_flight_idle: "没有排队也没有运行。所有符合条件的文件都已处理完毕。",
+    in_flight_more: "另有 {count} 个进行中 →",
     unnamed_file: "未命名文件",
     this_server: "本服务器",
     retry_count: "第 {count} 次重试",

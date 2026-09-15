@@ -37,6 +37,13 @@
   }
 
   let percent = (job: Job) => Math.max(0, Math.min(100, Math.round(job.progress * 100)))
+
+  // A dashboard answers a question at a glance, so the list is capped and says what it is
+  // hiding. Real servers routinely carry a dozen or more outstanding jobs — thirteen the day
+  // this was written — which would push everything below it off the screen.
+  const MAX_ROWS = 6
+  let shown = $derived(jobs.slice(0, MAX_ROWS))
+  let hidden = $derived(Math.max(0, jobs.length - MAX_ROWS))
 </script>
 
 <div class="card mb-4">
@@ -65,7 +72,7 @@
     </p>
   {:else}
     <ul class="m-0 list-none p-0">
-      {#each jobs as job (job.id)}
+      {#each shown as job (job.id)}
         <li class="grid gap-3 border-b border-slate-200 px-4 py-3 last:border-b-0 dark:border-slate-700 md:grid-cols-[1fr_200px_140px] md:items-center">
           <div class="min-w-0">
             <button
@@ -107,5 +114,11 @@
         </li>
       {/each}
     </ul>
+    {#if hidden > 0}
+      <button
+        class="w-full border-t border-slate-200 px-4 py-2.5 text-left text-xs text-slate-500 transition-colors hover:text-cyan-700 dark:border-slate-700 dark:text-slate-400 dark:hover:text-cyan-400"
+        onclick={() => router.go('/queue')}
+      >{t(i18n.m.dashboard.in_flight_more, { count: hidden.toLocaleString() })}</button>
+    {/if}
   {/if}
 </div>

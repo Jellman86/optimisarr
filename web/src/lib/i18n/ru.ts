@@ -229,6 +229,7 @@ export const ru: Messages = {
     in_flight_counts: "в работе: {running} · в очереди: {queued}",
     in_flight_none: "Сейчас ничего не обрабатывается.",
     in_flight_idle: "В очереди и в работе ничего нет. Всё подходящее обработано.",
+    in_flight_more: "ещё в работе: {count} →",
     unnamed_file: "Файл без имени",
     this_server: "Этот сервер",
     retry_count: "попытка {count}",

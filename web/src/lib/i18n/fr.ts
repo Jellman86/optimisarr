@@ -231,6 +231,7 @@ language: {
     in_flight_counts: "{running} en cours · {queued} en file",
     in_flight_none: "Rien n’est en cours de traitement.",
     in_flight_idle: "Rien en file et rien en cours. Tout ce qui est éligible est fait.",
+    in_flight_more: "{count} autres en cours →",
     unnamed_file: "Fichier sans nom",
     this_server: "Ce serveur",
     retry_count: "essai {count}",

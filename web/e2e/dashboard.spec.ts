@@ -267,3 +267,19 @@ test('the sidebar carries live counts so a page need not be opened to see them',
   await expect(sidebar.getByText('7,014')).toBeVisible()
   await expect(sidebar.getByText('64', { exact: true })).toBeVisible()
 })
+
+test('a long in-flight list is capped and says what it is hiding', async ({ page }) => {
+  // Real servers carry a dozen or more outstanding jobs; an uncapped list pushes the rest of
+  // the page off the screen.
+  const many = Array.from({ length: 13 }, (_, index) =>
+    liveJob({ id: 6000 + index, relativePath: `TV/Show/S01/Episode.${index}.mkv` }),
+  )
+  await mockDashboard(page, { queue: { runningJobs: 13 }, jobs: many })
+
+  await page.goto('/#/')
+
+  await expect(page.getByText('Episode.0.mkv')).toBeVisible()
+  await expect(page.getByText('Episode.5.mkv')).toBeVisible()
+  await expect(page.getByText('Episode.6.mkv')).toBeHidden()
+  await expect(page.getByRole('button', { name: '7 more in flight →' })).toBeVisible()
+})
