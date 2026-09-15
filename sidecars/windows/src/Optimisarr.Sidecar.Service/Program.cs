@@ -76,9 +76,17 @@ public static class Program
         // look on a Windows box.
         builder.Logging.AddEventLog(settings => settings.SourceName = ServiceControl.ServiceName);
 
-        builder.Services.AddSingleton(_ =>
+        builder.Services.AddSingleton(services =>
         {
-            var session = Build(out Func<CancellationToken, Task<SidecarCapabilities>> _);
+            // Wired here rather than in Build: pairing runs before there is a host, and a console
+            // is the right place for its output. Everything else runs headless and has to leave a
+            // record somewhere, or a machine that hands every job straight back looks identical to
+            // one that is simply never offered any.
+            var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Optimisarr.Sidecar");
+            var session = Build(
+                out Func<CancellationToken, Task<SidecarCapabilities>> _,
+                report: status => Log(logger, status),
+                reportJob: line => logger.LogInformation("{Line}", line));
             return session;
         });
         builder.Services.AddHostedService<SidecarWorker>();
@@ -219,8 +227,31 @@ public static class Program
         return null;
     }
 
+    /// <summary>
+    /// How a status reaches the Event Log. A fault or a stop is an error, an unreachable server is
+    /// a warning because it usually comes back on its own, and everything else is ordinary
+    /// progress — so a machine can be triaged by severity rather than by reading every line.
+    /// </summary>
+    private static void Log(ILogger logger, SessionStatus status)
+    {
+        switch (status.State)
+        {
+            case SidecarState.Faulted or SidecarState.Stopped:
+                logger.LogError("{State}: {Detail}", status.State, status.Detail);
+                break;
+            case SidecarState.Unreachable:
+                logger.LogWarning("{State}: {Detail}", status.State, status.Detail);
+                break;
+            default:
+                logger.LogInformation("{State}: {Detail}", status.State, status.Detail);
+                break;
+        }
+    }
+
     private static SidecarSession Build(
-        out Func<CancellationToken, Task<SidecarCapabilities>> probe)
+        out Func<CancellationToken, Task<SidecarCapabilities>> probe,
+        Action<SessionStatus>? report = null,
+        Action<string>? reportJob = null)
     {
         var prober = new CapabilityProber(new ProcessCommandRunner());
         var scratch = ScratchDirectory();
@@ -251,7 +282,8 @@ public static class Program
             new ProcessTranscoder(),
             FindFfmpeg() ?? "ffmpeg.exe",
             scratch,
-            loadSampler.Sample);
+            loadSampler.Sample,
+            reportJob);
 
         return new SidecarSession(
             client,
@@ -259,9 +291,7 @@ public static class Program
             capture,
             load: loadSampler.Sample,
             delay: Task.Delay,
-            // Left to the caller: under a service there is no console to write to, and the
-            // hosted worker routes this to the Event Log instead.
-            report: null,
+            report: report,
             runJob: (pairing, assignment, token) => runner.RunAsync(pairing, assignment, token));
     }
 }
