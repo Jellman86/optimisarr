@@ -87,8 +87,33 @@ public sealed class AssignmentDecodingTests
     public void A_claim_with_no_search_is_an_ordinary_claim()
     {
         // Every job whose quality is already settled arrives this way, so an absent search must
-        // stay an ordinary thing rather than becoming an error.
-        var withoutSearch = ClaimJson[..ClaimJson.LastIndexOf(",\n  \"search\"", StringComparison.Ordinal)] + "\n}";
+        // stay an ordinary thing rather than becoming an error. Written out rather than cut from
+        // the payload above: the first attempt searched that string for a newline, which passed on
+        // macOS and threw on the Windows runner — a test measuring its own line endings.
+        const string withoutSearch = """
+            {
+              "leaseId": "6f1f0b0e-4a1e-4f6f-9f31-2a4a5a6b7c8d",
+              "jobId": 5911,
+              "title": "Curious George - S14E05 - Monkey Hill",
+              "sourceBytes": 520582476,
+              "videoEncoder": "hevc_nvenc",
+              "vmaf": "Cpu",
+              "expiresUtc": "2026-09-15T09:00:00+00:00",
+              "renewWithinSeconds": 30,
+              "arguments": ["-i", "{{input}}", "-c:v", "hevc_nvenc", "{{output}}.mkv"],
+              "outputExtension": "mkv",
+              "quality": {
+                "measure": false,
+                "model": "vmaf_v0.6.1",
+                "frameSubsample": 1,
+                "clipVmaf": false,
+                "minimumHarmonicMean": 0,
+                "minimumMinimum": 0,
+                "commands": [],
+                "sampling": "None"
+              }
+            }
+            """;
 
         var assignment = JsonSerializer.Deserialize<Assignment>(withoutSearch, SidecarClient.Json);
 
