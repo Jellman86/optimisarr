@@ -48,7 +48,30 @@ internal static class WorkerAuth
         // Belt and braces: the row was found by exact fingerprint, so this can only agree, but the
         // constant-time comparison keeps one verification path shared with AdminTokenAuth rather
         // than trusting the query alone.
-        return WorkerCredential.Matches(credential, worker.CredentialFingerprint) ? worker : null;
+        if (!WorkerCredential.Matches(credential, worker.CredentialFingerprint))
+        {
+            return null;
+        }
+
+        // Any authenticated request is this worker being seen, not only a check-in.
+        //
+        // It used to be only the check-in, and the Windows sidecar runs its job inside its
+        // check-in loop — so it stops checking in for as long as a job takes, and anything over
+        // two minutes made a machine that was busily encoding look offline. Its renewals kept
+        // working, because those do not test liveness, so the job finished; but an offline worker
+        // is not one the queue will hold work for, and the placement preference quietly stopped
+        // preferring it while it was doing exactly what it was asked to.
+        //
+        // Stamped from the server's clock, never from the request, so a sidecar with a wrong or
+        // dishonest clock cannot claim to have been alive.
+        //
+        // Saved here rather than left to the caller. Half the routes answer before they save —
+        // a renewal for a lease that has gone returns 404 and writes nothing — and those are
+        // exactly the requests a struggling worker makes most. One narrow update against a row
+        // this request has already loaded, on a path that was already writing one every check-in.
+        worker.LastSeenAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return worker;
     }
 
     private static string? BearerCredential(HttpRequest request)
