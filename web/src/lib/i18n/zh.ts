@@ -374,6 +374,9 @@ export const zh: Messages = {
     action_note: "批准立即删除隔离的原始文件；那么回滚就不再可能了。"
   },
   inventory: {
+    col_format: '格式',
+    empty_filter: '没有符合此筛选条件的文件。',
+    probe_complete: '元数据已刷新。',
     subtitle: "发现媒体以及规则如何处理它。单击一行进行检查。",
     library_label: "媒体库",
     all_libraries: "所有媒体库",

@@ -3,16 +3,24 @@
   // media server) for film/TV, embedded cover art for music, and a down-scaled still for an image.
   // A fixed box so it never shifts layout, with a clean placeholder when nothing resolves — artwork
   // is a recognition aid here, never a state signal, so a missing image is silent.
-  let { mediaFileId, alt = '', size = 'sm' }: { mediaFileId: number; alt?: string; size?: 'sm' | 'md' | 'lg' } =
+  let { mediaFileId, alt = '', size = 'sm', shape = 'portrait' }: { mediaFileId: number; alt?: string; size?: 'sm' | 'md' | 'lg' | 'poster'; shape?: 'portrait' | 'square' } =
     $props()
 
   let loaded = $state(false)
   let failed = $state(false)
 
-  const box = $derived(size === 'lg' ? 'h-36 w-24' : size === 'md' ? 'h-16 w-11' : 'h-12 w-8')
+  $effect(() => {
+    mediaFileId
+    loaded = false
+    failed = false
+  })
+
+  const box = $derived(size === 'poster' ? (shape === 'square' ? 'h-32 w-32' : 'h-48 w-32') : size === 'lg' ? 'h-36 w-24' : size === 'md' ? 'h-16 w-11' : 'h-12 w-8')
 </script>
 
+{#key mediaFileId}
 <div
+  data-thumbnail data-shape={shape}
   class="relative shrink-0 overflow-hidden rounded bg-raised ring-1 ring-line {box}"
 >
   {#if !failed}
@@ -36,3 +44,5 @@
     </div>
   {/if}
 </div>
+
+{/key}

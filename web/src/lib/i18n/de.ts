@@ -393,6 +393,9 @@ export const de: Messages = {
     action_note: 'Freigeben löscht das in Quarantäne befindliche Original jetzt; ein Rückgängigmachen ist danach nicht mehr möglich.',
   },
   inventory: {
+    col_format: 'Format',
+    empty_filter: 'Keine Dateien entsprechen diesem Filter.',
+    probe_complete: 'Metadaten aktualisiert.',
     subtitle: 'Erkannte Medien und was die Regeln damit tun würden. Klicken Sie auf eine Zeile, um sie zu prüfen.',
     library_label: 'Bibliothek',
     all_libraries: 'Alle Bibliotheken',

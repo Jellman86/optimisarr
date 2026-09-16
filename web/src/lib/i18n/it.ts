@@ -384,6 +384,9 @@ quarantine: {
     action_note: 'Approvando viene ora eliminato l’originale in quarantena; poi non sarà più possibile annullare.',
   },
   inventory: {
+    col_format: 'Formato',
+    empty_filter: 'Nessun file corrisponde a questo filtro.',
+    probe_complete: 'Metadati aggiornati.',
     subtitle: 'Media scoperti e cosa ne farebbero le regole. Clicca su una riga per ispezionarla.',
     library_label: 'Libreria',
     all_libraries: 'Tutte le librerie',

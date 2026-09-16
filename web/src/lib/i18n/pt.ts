@@ -374,6 +374,9 @@ export const pt: Messages = {
     action_note: "Aprovar exclui o original em quarentena agora; a reversão não será mais possível."
   },
   inventory: {
+    col_format: 'Formato',
+    empty_filter: 'Nenhum ficheiro corresponde a este filtro.',
+    probe_complete: 'Metadados atualizados.',
     subtitle: "Mídia descoberta e o que as regras fariam com ela. Clique em uma linha para inspecioná-la.",
     library_label: "Biblioteca de mídia",
     all_libraries: "Todas as bibliotecas de mídia",

@@ -24,7 +24,7 @@ function sources(dir: string): string[] {
 const handPaired = /\bdark:(hover:|focus:|group-hover:)?(text|bg|border|ring|via|from|to|divide)-(slate|gray|zinc|white|black|cyan|sky|red|amber|emerald|green|violet)\b/g
 const lightOnly = /(^|[\s"'`{])(hover:|focus:)?(text|bg)-(slate|gray|zinc)-\d{2,3}\b/g
 
-const overlays = new Set(['lib/components/PreviewCompare.svelte', 'lib/components/MediaCompare.svelte'])
+const overlays = new Set(['lib/components/MediaCompare.svelte'])
 
 test('components take their colours from the theme tokens, not from per-scheme pairs', () => {
   const offenders: string[] = []

@@ -529,6 +529,9 @@ export const en = {
     action_note: 'Approve deletes the quarantined original now; rolling back is then no longer possible.',
   },
   inventory: {
+    col_format: 'Format',
+    empty_filter: 'No files match this filter.',
+    probe_complete: 'Metadata refreshed.',
     subtitle: 'Discovered media and what the rules would do with it. Click a row to inspect it.',
     library_label: 'Library',
     all_libraries: 'All libraries',

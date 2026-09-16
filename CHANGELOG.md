@@ -4,6 +4,18 @@
 
 ### Changed
 
+- **Inventory now uses the Index layout.** A calmer file list puts artwork, size, format
+  and the rule verdict together. Opening a file shows a poster-led dialog with its library,
+  metadata, full path and eligibility reason, plus reachable Probe and Preview actions.
+  Missing artwork falls back quietly; phone layouts keep the details scrollable.
+- Preview comparisons now use the application theme and native modal focus handling.
+  Minimising lets you continue browsing; opening another file's preview replaces the previous
+  comparison. Closing a preview before it finishes starting now cleans up the late job too.
+- Rapid inventory filter changes no longer allow an older response to replace the current
+  results. Empty filters stay usable, and probe errors appear alongside the selected file.
+- Sidebar footer controls remain reachable in short windows while a job is active, and
+  artwork recovers when a job without a poster is followed by one with artwork.
+
 - **Settings now uses the Control rooms layout.** Processing and protection sit above
   connections and system tools, with clearer room icons, complete state summaries and more
   breathing room. Encoding controls have aligned labels and short explanations; drafts stay

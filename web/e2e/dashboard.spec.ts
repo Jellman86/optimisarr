@@ -553,3 +553,31 @@ test('idle geometry advances substantially more slowly than working geometry', a
   const activeTravel = ((await pose()) - activeStart + 48) % 48
   expect(activeTravel).toBeGreaterThan(idleTravel * 2)
 })
+
+
+test('a working sidebar keeps its footer reachable in a short window', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  await page.setViewportSize({ width: 1280, height: 600 })
+  await page.goto('/#/')
+  const rail = page.locator('aside')
+  await expect(rail.getByRole('button', { name: 'Language: English' })).toBeInViewport()
+  await expect(rail.getByRole('button', { name: 'Toggle theme' })).toBeInViewport()
+  await rail.getByRole('button', { name: 'Language: English' }).click()
+  await expect(page.getByRole('option', { name: '简体中文' })).toBeInViewport()
+})
+
+
+test('the sidebar recovers artwork when the next job follows one without a poster', async ({ page }) => {
+  const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob({ mediaFileId: 7 })] }
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.route('**/api/media/7/thumbnail', route => route.fulfill({ status: 404 }))
+  await page.route('**/api/media/8/thumbnail', route => route.fulfill({ contentType: 'image/png', path: 'public/favicon-192.png' }))
+  await page.goto('/#/')
+  await expect(page.locator('aside [data-thumbnail]')).toBeVisible()
+  await expect(page.locator('aside [data-thumbnail] img')).toHaveCount(0)
+  fixture.jobs = [liveJob({ id: 8, mediaFileId: 8, relativePath: 'New film.mkv' })]
+  notify()
+  await expect(page.locator('aside [data-thumbnail] img')).toHaveJSProperty('naturalWidth', 192)
+  await expect(page.locator('aside [data-thumbnail] img')).toHaveCSS('opacity', '1')
+})

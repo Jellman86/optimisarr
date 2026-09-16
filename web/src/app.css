@@ -643,3 +643,20 @@ p {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+
+/* Native dialogs sit above the application and keep focus out of the background. */
+.app-modal {
+  padding: 0;
+  margin: auto;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  border: 1px solid var(--edge);
+  border-radius: 1.125rem;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--lift-3);
+  overflow: hidden;
+}
+.app-modal[open] { display: grid; }
+.app-modal::backdrop { background: rgb(3 8 17 / .65); backdrop-filter: blur(5px); }

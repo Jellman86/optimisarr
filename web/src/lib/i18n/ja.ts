@@ -374,6 +374,9 @@ export const ja: Messages = {
     action_note: "承認すると、隔離されたオリジナルがすぐに削除されます。ロールバックは不可能になります。"
   },
   inventory: {
+    col_format: '形式',
+    empty_filter: 'このフィルターに一致するファイルはありません。',
+    probe_complete: 'メタデータを更新しました。',
     subtitle: "発見されたメディアとそれに対するルールの扱い。行をクリックして調べます。",
     library_label: "メディアライブラリ",
     all_libraries: "すべてのメディア ライブラリ",
