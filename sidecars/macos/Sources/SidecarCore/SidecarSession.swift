@@ -542,10 +542,15 @@ public final class SidecarSession: ObservableObject {
                         self.gpu = GpuUsage(device: device, memoryInUse: self.gpu?.memoryInUse ?? 0)
                     }
                 }
-                // A third of a turn per second. The cube has three-fold symmetry about the axis it
-                // spins on, so a third of a turn is a whole revolution as far as the eye is
-                // concerned — fast enough to read as motion, slow enough not to nag.
-                self.spin += 1.0 / (3 * Self.spinTicksPerSecond)
+                // A third of a turn per second, and only while something is actually running. The
+                // ticker also runs for the load meters whenever the menu is open, and turning the
+                // mark from that made an idle Mac look busy for exactly as long as somebody was
+                // looking at it — which is the one moment the mark has to be honest.
+                if self.activeJobs.isEmpty {
+                    self.spin = 0
+                } else {
+                    self.spin += 1.0 / (3 * Self.spinTicksPerSecond)
+                }
                 tick &+= 1
                 try? await Task.sleep(for: .milliseconds(Int(1000.0 / Self.spinTicksPerSecond)))
             }
