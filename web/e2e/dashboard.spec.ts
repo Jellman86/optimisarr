@@ -114,12 +114,37 @@ test('the status bar names the state, and the job list says what is being worked
 
   await page.goto('/#/')
 
-  await expect(page.getByText('ENCODING', { exact: true })).toBeVisible()
-  await expect(page.getByText('Harborlight.S02E07.mkv')).toBeVisible()
-  await expect(page.getByText('hevc_qsv')).toBeVisible()
-  await expect(page.getByText('68%')).toBeVisible()
+  // Scoped to the page: the sidebar's encoding card names the same file, encoder and figure.
+  const main = page.locator('main')
+  await expect(main.getByText('ENCODING', { exact: true })).toBeVisible()
+  await expect(main.getByText('Harborlight.S02E07.mkv')).toBeVisible()
+  await expect(main.getByText('hevc_qsv')).toBeVisible()
+  await expect(main.getByText('68%')).toBeVisible()
   // The enum name is read out in words rather than printed as PascalCase.
-  await expect(page.getByText('Adaptive VMAF')).toBeVisible()
+  await expect(main.getByText('Adaptive VMAF')).toBeVisible()
+})
+
+test('the sidebar shows what is encoding, whichever page is open', async ({ page }) => {
+  // The mark already turns while work runs; the card beneath the navigation says what the work
+  // is, so a reader on Settings or Libraries does not have to go to the Queue to find out.
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+
+  await page.goto('/#/settings')
+
+  const card = page.locator('aside').getByRole('link', { name: /Now encoding/ })
+  await expect(card).toBeVisible()
+  await expect(card).toContainText('Harborlight.S02E07')
+  await expect(card).toContainText('hevc_qsv')
+  await expect(card).toContainText('68%')
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '68')
+})
+
+test('an idle server carries no encoding card', async ({ page }) => {
+  await mockDashboard(page)
+
+  await page.goto('/#/')
+
+  await expect(page.locator('aside').getByText('Now encoding')).toBeHidden()
 })
 
 test('the dashboard asks only for jobs still being worked on', async ({ page }) => {

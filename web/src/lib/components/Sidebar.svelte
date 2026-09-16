@@ -7,6 +7,7 @@
   import BrandMark from './BrandMark.svelte'
   import Icon from './Icon.svelte'
   import LanguageSelect from './LanguageSelect.svelte'
+  import NowEncoding from './NowEncoding.svelte'
 
   const gitHash = typeof __GIT_HASH__ === 'string' ? __GIT_HASH__ : 'unknown'
 
@@ -76,20 +77,20 @@
   }
 </script>
 
-<!-- Off-canvas drawer below md (fixed, slides in over a backdrop); a static in-flow rail
-     at md+ that can collapse to icons. -->
+<!-- Off-canvas drawer below md (fixed, slides in over a backdrop). At md+ it is an island: a
+     raised card floating on the ground beside the page's tray, its own height, with the
+     collapse-to-icons rail still available. -->
 <aside
-  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] {layout.mobileOpen
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-2xl md:transition-[width] {layout.mobileOpen
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
-  <!-- Brand: the mark above the wordmark, and large enough to read. It was briefly a small
-       inline lockup, on the grounds that a logo should not spend a third of the rail telling
-       you which application you already have open. That stopped being true when the mark
-       started reporting the server's state: it earns the room, and a tesseract cannot resolve
-       at sixteen pixels a side. The collapsed rail still gets the small one. -->
+  <!-- Brand: the mark above the wordmark, and large enough to read. It earns the room because
+       it reports the server's state — it turns while work runs — and a tesseract cannot resolve
+       at sixteen pixels a side. Nothing is drawn behind it but its own light. The collapsed rail
+       still gets the small one. -->
   <button
-    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 py-3' : 'pt-5 pb-4'}"
+    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 py-3' : 'pt-4 pb-1'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
@@ -100,7 +101,7 @@
       <!-- Ambient light behind the mark, so the glow reads as coming off the core rather than
            being painted on it. Blurred and very low alpha: it should be felt, not seen. -->
       <span
-        class="pointer-events-none absolute left-1/2 top-7 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/15 blur-2xl"
+        class="pointer-events-none absolute left-1/2 top-6 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/15 blur-2xl"
         aria-hidden="true"
       ></span>
     {/if}
@@ -118,16 +119,22 @@
         class="relative -mt-8 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
       >Optimisarr</span>
     {/if}
-
-    <!-- A hairline that fades at both ends, rather than a rule butting into the rail's edges. -->
-    <span
-      class="pointer-events-none absolute inset-x-3 bottom-0 h-px bg-gradient-to-r from-transparent via-line to-transparent"
-      aria-hidden="true"
-    ></span>
   </button>
 
+  {#if !railCollapsed}
+    <!-- The running version and the build it came from, under the name rather than in the foot:
+         they are the first thing anyone is asked for when something looks wrong. -->
+    <a
+      href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="mx-auto mb-1 rounded px-1 text-center font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
+      title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
+    >{versionLabel ? `${versionLabel} · ${gitHash}` : `build ${gitHash}`}</a>
+  {/if}
+
   <!-- Nav -->
-  <nav class="flex-1 space-y-1 overflow-y-auto p-2">
+  <nav class="space-y-1 p-2 pt-3">
     {#each navItems as item}
       {@const showActivity = item.path === '/queue' && activity.activeJobs > 0}
       <button
@@ -168,41 +175,19 @@
           <!-- Collapsed rail: a small throbbing dot, GPU-cyan or CPU-amber. -->
           <span
             class="absolute right-1 top-1 h-2 w-2 animate-pulse rounded-full {activity.hardwareActive ? 'bg-cyan-500' : 'bg-amber-500'}"
-            title={activity.hardwareActive ? 'Encoding on GPU' : 'Encoding on CPU'}
+            title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
           ></span>
         {/if}
       </button>
     {/each}
   </nav>
 
-  <!-- One foot instead of three stacked strips, each with its own rule across the rail. The
-       running version and the build it came from stay — they are the first thing anyone is
-       asked for when something looks wrong. -->
-  <div class="relative px-2 pb-2 pt-2.5">
-    <span
-      class="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-line to-transparent"
-      aria-hidden="true"
-    ></span>
-    <a
-      href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="block px-1 text-center font-mono text-[10px] text-ink-4 transition-colors hover:text-accent"
-      title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
-    >
-      {railCollapsed
-        ? (versionLabel ?? gitHash.slice(0, 4))
-        : versionLabel
-          ? `${versionLabel} · ${gitHash}`
-          : `build ${gitHash}`}
-    </a>
+  <!-- Whatever is left between the navigation and the foot belongs to the work in progress. -->
+  <div class="min-h-0 flex-1"></div>
+  <NowEncoding collapsed={railCollapsed} />
 
-    {#if !railCollapsed}
-      <div class="mt-2"><LanguageSelect /></div>
-    {/if}
-  </div>
-
-  <div class="flex items-center gap-1 px-2 pb-2 {railCollapsed ? 'flex-col' : 'justify-between'}">
+  <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
+  <div class="flex items-center gap-1 p-2 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme}>
       {#if theme.isDark}
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
@@ -210,6 +195,7 @@
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.4 15.4A9 9 0 018.6 3.6 9 9 0 1020.4 15.4z" /></svg>
       {/if}
     </button>
+    <LanguageSelect compact opensUp />
     <button class="btn btn-ghost hidden px-2 md:inline-flex" onclick={() => layout.toggle()} title={i18n.m.nav.collapse_sidebar} aria-label={i18n.m.nav.collapse_sidebar}>
       <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d={collapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7m8 14l-7-7 7-7'} />

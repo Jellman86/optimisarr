@@ -171,6 +171,10 @@ export const it: Messages = {
     encoding_on_cpu: 'Codifica su CPU',
     version_build: 'Optimisarr {version} · build {hash}',
     build: 'build {hash}',
+    now_encoding: 'In codifica',
+    time_left: 'mancano {time}',
+    queued_count: '{count} in coda',
+    finishing: 'completamento',
   },
 language: {
   label: 'Lingua',

@@ -176,6 +176,10 @@ export const es: Messages = {
     encoding_on_cpu: 'Codificando en CPU',
     version_build: 'Optimisarr {version} · compilación {hash}',
     build: 'compilación {hash}',
+    now_encoding: 'Codificando ahora',
+    time_left: 'faltan {time}',
+    queued_count: '{count} en cola',
+    finishing: 'finalizando',
   },
 language: {
     label: 'Idioma',

@@ -170,7 +170,11 @@ export const ja: Messages = {
     encoding_on_gpu: "GPU でのエンコード",
     encoding_on_cpu: "CPU でのエンコード",
     version_build: "Optimisarr {version} · {hash} をビルドする",
-    build: "ビルド {hash}"
+    build: "ビルド {hash}",
+    now_encoding: 'エンコード中',
+    time_left: '残り {time}',
+    queued_count: '待機中 {count}',
+    finishing: '仕上げ中',
   },
   language: {
     label: "言語"

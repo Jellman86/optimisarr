@@ -4,6 +4,17 @@
 
 ### Changed
 
+- **The sidebar is an island, and it says what is encoding.** The rail no longer runs the
+  full height of the window as a wall the page leans against: at desktop widths it is a raised
+  card floating on the ground, and the page sits in a recessed tray beside it, so the two are
+  read as objects on a surface rather than as regions of one. Beneath the navigation, while
+  work is running, a card names the job being encoded — artwork, title, where it is running,
+  the encoder, a progress bar, the percentage, the speed, how long is left and how many are
+  queued behind it — and opens the Queue. The mark above it already turned while work ran;
+  now the rail says what the work is, whichever page is open. The version and build move up
+  under the name, and the foot becomes three buttons: theme, language and collapse. On a
+  phone the rail is still a drawer and the page still takes the whole screen.
+
 - **The theme lives in one place, and both colour schemes are drawn from it.** Every
   component used to spell out its own light and dark colours side by side — around fifteen
   hundred hand-paired classes — so a palette change meant touching all of them, and the two

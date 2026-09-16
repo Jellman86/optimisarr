@@ -316,6 +316,10 @@ export const en = {
     encoding_on_cpu: 'Encoding on CPU',
     version_build: 'Optimisarr {version} · build {hash}',
     build: 'build {hash}',
+    now_encoding: 'Now encoding',
+    time_left: '{time} left',
+    queued_count: '{count} queued',
+    finishing: 'finishing',
   },
   language: {
     label: 'Language',

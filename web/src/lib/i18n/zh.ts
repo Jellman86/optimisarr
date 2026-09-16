@@ -170,7 +170,11 @@ export const zh: Messages = {
     encoding_on_gpu: "GPU 上的编码",
     encoding_on_cpu: "CPU 上的编码",
     version_build: "Optimisarr {version} · 构建 {hash}",
-    build: "构建 {hash}"
+    build: "构建 {hash}",
+    now_encoding: '正在编码',
+    time_left: '剩余 {time}',
+    queued_count: '排队 {count}',
+    finishing: '即将完成',
   },
   language: {
     label: "语言"

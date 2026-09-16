@@ -180,6 +180,10 @@ export const de: Messages = {
     encoding_on_cpu: 'Kodierung auf CPU',
     version_build: 'Optimisarr {version} · Build {hash}',
     build: 'Build {hash}',
+    now_encoding: 'Wird kodiert',
+    time_left: 'noch {time}',
+    queued_count: '{count} in Warteschlange',
+    finishing: 'wird abgeschlossen',
   },
   language: {
     label: 'Sprache',

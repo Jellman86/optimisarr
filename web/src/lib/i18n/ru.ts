@@ -170,7 +170,11 @@ export const ru: Messages = {
     encoding_on_gpu: "Кодировка на GPU",
     encoding_on_cpu: "Кодировка на CPU",
     version_build: "Optimisarr {version} · сборка {hash}",
-    build: "сборка {hash}"
+    build: "сборка {hash}",
+    now_encoding: 'Кодируется',
+    time_left: 'осталось {time}',
+    queued_count: 'в очереди: {count}',
+    finishing: 'завершение',
   },
   language: {
     label: "Язык"
