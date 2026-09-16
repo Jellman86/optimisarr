@@ -81,7 +81,7 @@
      raised card floating on the ground beside the page's tray, its own height, with the
      collapse-to-icons rail still available. -->
 <aside
-  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-2xl md:transition-[width] {layout.mobileOpen
+  class="app-rail fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col transition-transform duration-200 md:static md:z-auto md:h-auto md:translate-x-0 md:rounded-[18px] md:transition-[width] {layout.mobileOpen
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
@@ -90,7 +90,7 @@
        at sixteen pixels a side. Nothing is drawn behind it but its own light. The collapsed rail
        still gets the small one. -->
   <button
-    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 py-3' : 'pt-4 pb-1'}"
+    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 pt-5 pb-3' : 'pt-7 pb-1'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
@@ -101,7 +101,7 @@
       <!-- Ambient light behind the mark, so the glow reads as coming off the core rather than
            being painted on it. Blurred and very low alpha: it should be felt, not seen. -->
       <span
-        class="pointer-events-none absolute left-1/2 top-6 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/15 blur-2xl"
+        class="pointer-events-none absolute left-1/2 top-9 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/15 blur-2xl"
         aria-hidden="true"
       ></span>
     {/if}
@@ -128,13 +128,13 @@
       href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
       target="_blank"
       rel="noopener noreferrer"
-      class="mx-auto mb-1 rounded px-1 text-center font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
+      class="mx-auto mb-2 rounded px-1 text-center font-mono text-[10.5px] text-ink-4 transition-colors hover:text-accent focus-ring"
       title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
     >{versionLabel ? `${versionLabel} · ${gitHash}` : `build ${gitHash}`}</a>
   {/if}
 
   <!-- Nav -->
-  <nav class="space-y-1 p-2 pt-3">
+  <nav class="space-y-1 px-2.5 pt-3 pb-2">
     {#each navItems as item}
       {@const showActivity = item.path === '/queue' && activity.activeJobs > 0}
       <button
@@ -187,7 +187,7 @@
   <NowEncoding collapsed={railCollapsed} />
 
   <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
-  <div class="flex items-center gap-1 p-2 {railCollapsed ? 'flex-col' : 'justify-between'}">
+  <div class="flex items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme}>
       {#if theme.isDark}
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>

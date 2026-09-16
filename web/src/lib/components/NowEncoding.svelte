@@ -35,7 +35,7 @@
     <!-- The icon rail: the artwork alone, with the bar beneath it, and the whole story in the title. -->
     <a
       href="#/queue"
-      class="mx-auto mb-1 flex w-10 flex-col gap-1.5 rounded-lg focus-ring"
+      class="mx-auto mb-2 flex w-10 flex-col gap-1.5 rounded-lg focus-ring"
       title={`${i18n.m.app.now_encoding} · ${title} · ${percent}%`}
       onclick={() => layout.closeMobile()}
     >
@@ -47,7 +47,7 @@
   {:else}
     <a
       href="#/queue"
-      class="surface-sunken mx-2 flex flex-col gap-2.5 p-3 no-underline transition-colors hover:text-ink focus-ring"
+      class="surface-sunken mx-2.5 flex flex-col gap-2.5 p-3 no-underline transition-colors hover:text-ink focus-ring"
       aria-label={`${i18n.m.app.now_encoding}: ${title}`}
       onclick={() => layout.closeMobile()}
     >
