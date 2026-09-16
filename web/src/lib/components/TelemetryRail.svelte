@@ -39,7 +39,7 @@
           </span>
         {:else}
           <button
-            class="text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
+            class="text-ink-4 transition hover:text-ink-2"
             title={i18n.m.dashboard.reset_title}
             aria-label={i18n.m.dashboard.reset_title}
             onclick={() => (confirmingReset = true)}
@@ -47,10 +47,10 @@
         {/if}
       {/if}
     </div>
-    <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+    <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-ok">
       {stats ? formatSize(stats.bytesSaved) : '—'}
     </div>
-    <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+    <div class="mt-1 text-xs text-ink-3">
       {#if stats && stats.filesOptimised > 0}
         {t(i18n.m.dashboard.saved_detail, {
           count: stats.filesOptimised.toLocaleString(),
@@ -64,10 +64,10 @@
 
   <div class="p-4">
     <div class="label mb-0">{i18n.m.dashboard.in_the_queue}</div>
-    <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+    <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-ink">
       {(stats?.queued ?? 0).toLocaleString()}
     </div>
-    <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+    <div class="mt-1 text-xs text-ink-3">
       {t(i18n.m.dashboard.queue_detail, {
         running: (stats?.running ?? 0).toLocaleString(),
         failed: (stats?.failed ?? 0).toLocaleString(),
@@ -77,10 +77,10 @@
 
   <div class="p-4">
     <div class="label mb-0">{i18n.m.nav.libraries}</div>
-    <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+    <div class="mt-1.5 font-mono text-xl font-semibold tabular-nums text-ink">
       {(stats?.libraries ?? 0).toLocaleString()}
     </div>
-    <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+    <div class="mt-1 text-xs text-ink-3">
       {t(i18n.m.dashboard.libraries_detail, {
         enabled: (stats?.enabledLibraries ?? 0).toLocaleString(),
         files: (stats?.discoveredFiles ?? 0).toLocaleString(),
@@ -92,10 +92,10 @@
        deserve a card of its own; it deserves a cell that goes amber and says what is missing. -->
   <div class="p-4">
     <div class="label mb-0">{i18n.m.dashboard.health}</div>
-    <div class="mt-1.5 flex items-center gap-2 font-mono text-xl font-semibold {healthy ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}">
+    <div class="mt-1.5 flex items-center gap-2 font-mono text-xl font-semibold {healthy ? 'text-ok' : 'text-warn'}">
       <Icon name={healthy ? 'check' : 'warning'} class="h-4 w-4" />
       {healthy ? i18n.m.dashboard.health_ok : i18n.m.dashboard.needs_attention}
     </div>
-    <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">{healthDetail}</div>
+    <div class="mt-1 text-xs text-ink-3">{healthDetail}</div>
   </div>
 </div>

@@ -364,16 +364,16 @@
       case 'Probing':
       case 'Verifying':
       case 'Leased':
-        return 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
+        return 'tone-info'
       case 'ReadyToReplace':
       case 'Completed':
-        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+        return 'tone-ok'
       case 'Failed':
-        return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+        return 'tone-bad'
       case 'Cancelled':
-        return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+        return 'bg-raised text-ink-3'
       default:
-        return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+        return 'tone-warn'
     }
   }
 
@@ -476,10 +476,10 @@
 
 <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.queue}</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">
+    <h1 class="page-title">{i18n.m.nav.queue}</h1>
+    <p class="text-sm text-ink-3">
       {i18n.m.queue.subtitle}
-      {#if activeCount > 0}<span class="text-slate-400">{t(i18n.m.queue.active_suffix, { count: activeCount })}</span>{/if}
+      {#if activeCount > 0}<span class="text-ink-4">{t(i18n.m.queue.active_suffix, { count: activeCount })}</span>{/if}
     </p>
   </div>
   {#if queueStatus}
@@ -501,17 +501,17 @@
 <div class="mb-5 flex gap-1 border-b border-line">
   <button
     class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'queue'
- ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
- : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}"
+ ? 'border-cyan-500 text-accent'
+ : 'border-transparent text-ink-3 hover:text-ink-2'}"
     onclick={() => (activeTab = 'queue')}
   >
     {i18n.m.nav.queue}{#if activeCount > 0} ({activeCount}){/if}
   </button>
   <button
     class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === 'failures'
- ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300'
- : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}
- {counts.failed > 0 && activeTab !== 'failures' ? '!text-red-600 dark:!text-red-400' : ''}"
+ ? 'border-cyan-500 text-accent'
+ : 'border-transparent text-ink-3 hover:text-ink-2'}
+ {counts.failed > 0 && activeTab !== 'failures' ? '!text-bad' : ''}"
     onclick={() => (activeTab = 'failures')}
   >
     {i18n.m.queue.tab_failures}{#if counts.failed > 0} ({counts.failed}){/if}
@@ -545,7 +545,7 @@
               onerror={() => (artworkLoaded[job.id] = false)}
             />
             {#if art}
-              <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/80 to-white/40 dark:from-slate-900 dark:via-slate-900/80 dark:to-slate-900/40"></div>
+              <div class="pointer-events-none absolute inset-0 bg-gradient-to-r from-panel via-panel/80 to-panel/40"></div>
             {/if}
             <div class="relative p-4">
           <div>
@@ -554,11 +554,11 @@
                 <!-- A suspended encode is stopped, not encoding — say so where the stage label sits.
                      Verification is never suspended (it finishes naturally), so it keeps its label. -->
                 {#if queueStatus?.runningEncodesSuspended && job.status === 'Transcoding'}
-                  <div class="text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-warn">
                     {i18n.m.queue.now_paused}
                   </div>
                 {:else}
-                  <div class="text-[11px] font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                  <div class="text-[11px] font-semibold uppercase tracking-wide text-accent">
                     {#if job.status === 'Leased'}
                       {t(i18n.m.queue.now_remote, { worker: job.workerName ?? '?' })}
                     {:else if job.status === 'AwaitingVerification'}
@@ -568,18 +568,18 @@
                     {/if}
                   </div>
                 {/if}
-                <div class="truncate font-medium text-slate-800 dark:text-slate-100" title={job.relativePath ?? ''}>
+                <div class="truncate font-medium text-ink" title={job.relativePath ?? ''}>
                   {heroTitle(job.relativePath) ?? jobName(job)}
                 </div>
                 {#if heroFolder(job.relativePath)}
-                  <div class="truncate text-xs text-slate-400 dark:text-slate-500">{heroFolder(job.relativePath)}</div>
+                  <div class="truncate text-xs text-ink-4">{heroFolder(job.relativePath)}</div>
                 {/if}
                 {#if job.enqueueReason}
-                  <div class="truncate text-xs text-slate-400 dark:text-slate-500" title={job.enqueueReason}>{job.enqueueReason}</div>
+                  <div class="truncate text-xs text-ink-4" title={job.enqueueReason}>{job.enqueueReason}</div>
                 {/if}
               </div>
               {#if job.videoEncoder}
-                <span class="badge {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
+                <span class="badge {gpu ? 'tone-ok' : 'bg-raised text-ink-3'}">
                   {gpu ? 'GPU' : 'CPU'} · {job.videoEncoder}
                 </span>
               {/if}
@@ -588,10 +588,10 @@
             {#if job.status === 'Transcoding'}
               <div class="mt-3 flex items-center gap-3">
                 <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {transcodePercent(job.progress)}%"></div></div>
-                <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{transcodePercent(job.progress)}%</span>
+                <span class="w-12 text-right text-sm font-semibold tabular-nums text-ink-2">{transcodePercent(job.progress)}%</span>
               </div>
               {#if telemetry}
-                <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-slate-400">
+                <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-ink-4">
                   {#if telemetry.fps != null}<span>{telemetry.fps.toFixed(0)} fps</span>{/if}
                   {#if telemetry.speed != null}<span>{speedLabel(telemetry.speed)}</span>{/if}
                   {#if telemetry.finishing}<span>{i18n.m.queue.finishing}</span>
@@ -615,15 +615,15 @@
               {#if job.remoteStage === 'Encoding'}
                 <div class="mt-3 flex items-center gap-3">
                   <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
-                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
+                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-ink-2">{Math.round(job.progress * 100)}%</span>
                 </div>
               {:else}
                 <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
               {/if}
-              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{remoteStageLabel(job)}</div>
+              <div class="mt-1.5 text-xs text-info">{remoteStageLabel(job)}</div>
             {:else if job.status === 'AwaitingVerification'}
               <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
-              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">{i18n.m.queue.returned_waiting}</div>
+              <div class="mt-1.5 text-xs text-info">{i18n.m.queue.returned_waiting}</div>
             {:else}
               <!-- Probing reports real progress too: the adaptive quality search encodes and scores
                    sample windows, which is minutes of work, and a bar that only slides about says
@@ -631,12 +631,12 @@
               {#if (job.status === 'Verifying' || job.status === 'Probing') && job.progress > 0}
                 <div class="mt-3 flex items-center gap-3">
                   <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
-                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(job.progress * 100)}%</span>
+                  <span class="w-12 text-right text-sm font-semibold tabular-nums text-ink-2">{Math.round(job.progress * 100)}%</span>
                 </div>
               {:else}
                 <div class="mt-3 progress-track"><div class="progress-indeterminate"></div></div>
               {/if}
-              <div class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">
+              <div class="mt-1.5 text-xs text-info">
                 {#if job.status === 'Probing'}
                   <!-- Once it is measuring candidates it is choosing a quality, not reading the
                        source, and saying "probing source" then is simply the wrong sentence. -->
@@ -661,8 +661,8 @@
   </div>
 {:else if !loading && jobs.length > 0}
   <div class="card mb-4 p-4">
-    <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-      <Icon name="pause" class="h-4 w-4 text-slate-400" />
+    <div class="flex items-center gap-2 text-sm text-ink-3">
+      <Icon name="pause" class="h-4 w-4 text-ink-4" />
       <span>{i18n.m.queue.nothing_processing}{#if queuedCount > 0}{plural(queuedCount, i18n.m.queue.queued_waiting_one, i18n.m.queue.queued_waiting_other, queuedCount.toLocaleString())}{/if}</span>
     </div>
     <!-- The waiting-window reason is shown once, by the dispatch-state card below; don't repeat it here. -->
@@ -675,18 +675,18 @@
   <!-- The manual pause suspends running encodes, unlike the automatic gates below, which let
        them finish — so it gets its own banner rather than the dispatch_paused wording. The
        reason from the backend states exactly what pausing did on this platform. -->
-  <div class="card mb-4 flex flex-wrap items-center gap-2 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+  <div class="card tone-warn mb-4 flex flex-wrap items-center gap-2 p-3 text-sm">
     <Icon name="pause" class="h-4 w-4 shrink-0" />
     <span>
       {queueStatus.blockedReason}{#if queueStatus.manualPauseMode === 'suspended'}{' '}{i18n.m.queue.paused_manually_hint}{/if}
     </span>
   </div>
 {:else if queueStatus && !queueStatus.canStart}
-  <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+  <div class="card tone-warn mb-4 p-3 text-sm">
     {t(i18n.m.queue.dispatch_paused, { reason: queueStatus.blockedReason ?? '' })}
   </div>
 {:else if queueStatus?.waitingReason}
-  <div class="card mb-4 border-amber-300 p-3 text-sm text-amber-800 dark:border-amber-800 dark:text-amber-300">
+  <div class="card tone-warn mb-4 p-3 text-sm">
     {t(i18n.m.queue.waiting_window, { reason: queueStatus.waitingReason })}
   </div>
 {/if}
@@ -695,10 +695,10 @@
   <div class="mb-4 flex flex-wrap items-center gap-2">
     {#each [['all', i18n.m.queue.filter_all], ['active', i18n.m.queue.filter_active], ['completed', i18n.m.queue.filter_completed], ['failed', i18n.m.queue.filter_failed], ['verified', i18n.m.queue.filter_verified], ['verifyFailed', i18n.m.queue.filter_verify_failed]] as [key, label]}
       <button
-        class="badge cursor-pointer border {filter === key
- ? 'border-cyan-300 bg-cyan-100 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300'
- : 'border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}
- {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-red-600 dark:!text-red-400' : ''}"
+        class="badge cursor-pointer transition-colors {filter === key
+ ? 'tone-accent'
+ : 'tone-muted hover:text-ink'}
+ {key === 'failed' && counts.failed > 0 && filter !== 'failed' ? '!text-bad' : ''}"
         onclick={() => selectFilter(key as typeof filter)}
       >
         {label} · {counts[key as keyof typeof counts]}
@@ -754,7 +754,7 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else if visibleJobs.length > 0}
   <div class="card overflow-hidden">
     <div
@@ -763,7 +763,7 @@
       style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;"
     >
     <table class="w-full text-sm">
-      <thead class="sticky top-0 z-10 border-b border-line bg-white text-left text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+      <thead class="table-head">
         <tr>
           <th class="px-4 py-3">{i18n.m.queue.col_status}</th>
           <th class="px-4 py-3">{i18n.m.queue.col_file}</th>
@@ -777,19 +777,19 @@
         {#each pagedJobs as job (job.id)}
           {@const checks = parseReport(job)}
           <tr
-            class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedJobId === job.id ? 'bg-slate-50 dark:bg-slate-900/40' : ''}"
+            class="cursor-pointer text-ink-2 hover:bg-lit {selectedJobId === job.id ? 'bg-accent-soft' : ''}"
             onclick={() => selectRow(job.id)}
           >
             <td class="px-4 py-2"><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span></td>
             <td class="max-w-[40vw] px-4 py-2 sm:max-w-xs">
               <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>{job.relativePath ?? '—'}</div>
               {#if job.enqueueReason}
-                <div class="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500" title={job.enqueueReason}>{job.enqueueReason}</div>
+                <div class="mt-0.5 truncate text-xs text-ink-4" title={job.enqueueReason}>{job.enqueueReason}</div>
               {/if}
               {#if job.videoEncoder}
                 {@const gpu = isGpuEncoder(job.videoEncoder)}
                 <span
-                  class="badge mt-1 {gpu ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}"
+                  class="badge mt-1 {gpu ? 'tone-ok' : 'bg-raised text-ink-3'}"
                   title={i18n.m.queue.encoder_title}
                 >{gpu ? 'GPU' : 'CPU'} · {job.videoEncoder}</span>
               {/if}
@@ -801,10 +801,10 @@
                     <div class="progress-track">
                       <div class="progress-fill" style="width: {transcodePercent(job.progress)}%"></div>
                     </div>
-                    <span class="w-9 text-right text-xs tabular-nums text-slate-500">{transcodePercent(job.progress)}%</span>
+                    <span class="w-9 text-right text-xs tabular-nums text-ink-3">{transcodePercent(job.progress)}%</span>
                   </div>
                   {#if telemetryLabel(live[job.id])}
-                    <div class="text-[11px] tabular-nums text-slate-400">{telemetryLabel(live[job.id])}</div>
+                    <div class="text-[11px] tabular-nums text-ink-4">{telemetryLabel(live[job.id])}</div>
                   {/if}
                 </div>
               {:else if job.status === 'Probing' || job.status === 'Verifying'}
@@ -812,12 +812,12 @@
                   {#if (job.status === 'Verifying' || job.status === 'Probing') && job.progress > 0}
                     <div class="flex items-center gap-2">
                       <div class="progress-track"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
-                      <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
+                      <span class="w-9 text-right text-xs tabular-nums text-ink-3">{Math.round(job.progress * 100)}%</span>
                     </div>
                   {:else}
                     <div class="progress-track"><div class="progress-indeterminate"></div></div>
                   {/if}
-                  <div class="text-[11px] text-sky-600 dark:text-sky-400">
+                  <div class="text-[11px] text-info">
                     {#if job.status === 'Probing'}
                       {job.progress > 0 ? i18n.m.queue.selecting_quality_short : i18n.m.queue.stage_probing}
                     {:else if job.workerName}
@@ -832,40 +832,40 @@
                   {#if job.remoteStage === 'Encoding'}
                     <div class="flex items-center gap-2">
                       <div class="progress-track"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
-                      <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(job.progress * 100)}%</span>
+                      <span class="w-9 text-right text-xs tabular-nums text-ink-3">{Math.round(job.progress * 100)}%</span>
                     </div>
                   {:else}
                     <div class="progress-track"><div class="progress-indeterminate"></div></div>
                   {/if}
-                  <div class="text-[11px] text-sky-600 dark:text-sky-400">{remoteStageLabel(job)}</div>
+                  <div class="text-[11px] text-info">{remoteStageLabel(job)}</div>
                 </div>
               {:else if job.status === 'AwaitingVerification'}
-                <span class="text-[11px] text-sky-600 dark:text-sky-400">{t(i18n.m.queue.returned_from, { worker: job.workerName ?? '?' })}</span>
+                <span class="text-[11px] text-info">{t(i18n.m.queue.returned_from, { worker: job.workerName ?? '?' })}</span>
               {:else if job.status === 'Queued' && job.waitingForWorker}
-                <span class="text-xs text-amber-600 dark:text-amber-400" title={i18n.m.queue.waiting_for_worker_title}>{i18n.m.queue.waiting_for_worker}</span>
+                <span class="text-xs text-warn" title={i18n.m.queue.waiting_for_worker_title}>{i18n.m.queue.waiting_for_worker}</span>
               {:else if job.status === 'Queued'}
-                <span class="text-xs text-slate-400">{i18n.m.queue.stage_waiting}</span>
+                <span class="text-xs text-ink-4">{i18n.m.queue.stage_waiting}</span>
               {:else if job.status === 'Failed'}
-                <div class="flex items-start gap-1 text-xs text-red-600 dark:text-red-400" title={jobFailureDescription(job.failureCategory, i18n.m)}>
+                <div class="flex items-start gap-1 text-xs text-bad" title={jobFailureDescription(job.failureCategory, i18n.m)}>
                   <Icon name="warning" class="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
                   <span class="line-clamp-2">{jobFailureDescription(job.failureCategory, i18n.m)}</span>
                 </div>
               {:else}
-                <span class="text-xs text-slate-400">—</span>
+                <span class="text-xs text-ink-4">—</span>
               {/if}
             </td>
             <td class="hidden px-4 py-2 md:table-cell">
               {#if checks}
                 <button
-                  class="text-xs font-medium hover:underline {job.verificationPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}"
+                  class="text-xs font-medium hover:underline {job.verificationPassed ? 'text-ok' : 'text-bad'}"
                   onclick={(e) => { e.stopPropagation(); toggle(job) }}
                 >
                   {job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}
-                  {#if job.outputSizeBytes}<span class="text-slate-400"> · {formatSize(job.outputSizeBytes)}</span>{/if}
-                  <span class="text-slate-400">{expandedId === job.id ? ' ▾' : ' ▸'}</span>
+                  {#if job.outputSizeBytes}<span class="text-ink-4"> · {formatSize(job.outputSizeBytes)}</span>{/if}
+                  <span class="text-ink-4">{expandedId === job.id ? ' ▾' : ' ▸'}</span>
                 </button>
               {:else}
-                <span class="text-xs text-slate-400">—</span>
+                <span class="text-xs text-ink-4">—</span>
               {/if}
             </td>
             <td class="hidden px-4 py-2 text-xs lg:table-cell">{job.priority}</td>
@@ -906,7 +906,7 @@
             </td>
           </tr>
           {#if expandedId === job.id && checks}
-            <tr class="bg-slate-50 dark:bg-slate-900/40">
+            <tr class="bg-sunken">
               <td colspan="6" class="px-4 py-3">
                 <VerificationChecks {checks} />
               </td>
@@ -917,7 +917,7 @@
     </table>
     </div>
   </div>
-  <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+  <div class="mt-2 flex items-center justify-between text-xs text-ink-4">
     <span>
       {t(i18n.m.queue.range, {
         start: (queuePageStart + 1).toLocaleString(),
@@ -934,7 +934,7 @@
     {/if}
   </div>
 {:else}
-  <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
+  <div class="card p-8 text-center text-ink-3">
     {i18n.m.queue.empty}
   </div>
 {/if}
@@ -946,7 +946,7 @@
     {#if selectedJob}
       <div class="flex min-w-0 items-center gap-2">
         <span class="badge flex-shrink-0 {badgeClass(selectedJob.status)}">{statusLabel(selectedJob.status)}</span>
-        <p class="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={selectedJob.relativePath ?? ''}>
+        <p class="min-w-0 flex-1 truncate font-mono text-xs text-ink-2" title={selectedJob.relativePath ?? ''}>
           {selectedJob.relativePath ?? '—'}
         </p>
       </div>
@@ -962,10 +962,10 @@
         {#if selectedJob.status === 'Transcoding'}
           <div class="flex items-center gap-3">
             <div class="progress-track h-2 flex-1"><div class="progress-fill" style="width: {Math.round(selectedJob.progress * 100)}%"></div></div>
-            <span class="w-12 text-right text-sm font-semibold tabular-nums text-slate-600 dark:text-slate-300">{Math.round(selectedJob.progress * 100)}%</span>
+            <span class="w-12 text-right text-sm font-semibold tabular-nums text-ink-2">{Math.round(selectedJob.progress * 100)}%</span>
           </div>
           {#if telemetry}
-            <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-slate-400">
+            <div class="mt-1.5 flex gap-4 text-xs tabular-nums text-ink-4">
               {#if telemetry.fps != null}<span>{telemetry.fps.toFixed(0)} fps</span>{/if}
               {#if telemetry.speed != null}<span>{speedLabel(telemetry.speed)}</span>{/if}
               {#if telemetry.etaSeconds != null}<span>{etaLabel(telemetry.etaSeconds)}</span>{/if}
@@ -975,12 +975,12 @@
           {#if selectedJob.progress > 0}
             <div class="flex items-center gap-2">
               <div class="progress-track"><div class="progress-fill" style="width: {Math.round(selectedJob.progress * 100)}%"></div></div>
-              <span class="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(selectedJob.progress * 100)}%</span>
+              <span class="w-9 text-right text-xs tabular-nums text-ink-3">{Math.round(selectedJob.progress * 100)}%</span>
             </div>
           {:else}
             <div class="progress-track"><div class="progress-indeterminate"></div></div>
           {/if}
-          <p class="mt-1.5 text-xs text-sky-600 dark:text-sky-400">
+          <p class="mt-1.5 text-xs text-info">
             {#if selectedJob.status === 'Probing'}
               {selectedJob.progress > 0 ? i18n.m.queue.selecting_quality : i18n.m.queue.stage_probing_full}
             {:else}
@@ -988,22 +988,22 @@
             {/if}
           </p>
         {:else if selectedJob.status === 'Failed'}
-          <p class="text-sm text-red-600 dark:text-red-400">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
+          <p class="text-sm text-bad">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
           {#if selectedJob.errorMessage}
-            <details class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            <details class="mt-2 text-xs text-ink-3">
               <summary class="cursor-pointer">{i18n.m.queue.technical_error}</summary>
-              <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-red-600 dark:text-red-400">{selectedJob.errorMessage}</p>
+              <p class="mt-1 whitespace-pre-line break-words font-mono text-[11px] text-bad">{selectedJob.errorMessage}</p>
             </details>
           {/if}
         {:else}
-          <p class="text-sm text-slate-500 dark:text-slate-400">{statusLabel(selectedJob.status)}</p>
+          <p class="text-sm text-ink-3">{statusLabel(selectedJob.status)}</p>
         {/if}
       </div>
 
       <!-- The hero panel above already shows this job's live CPU/GPU usage while it encodes, so
            the graph isn't repeated here; the sheet shows the technical detail (command) instead. -->
       {#if selectedJob.status === 'Transcoding'}
-        <p class="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
+        <p class="mb-4 flex items-center gap-1.5 text-xs text-ink-4">
           <Icon name="chevron" class="h-3.5 w-3.5 rotate-180" />
           {i18n.m.queue.usage_above}
         </p>
@@ -1016,39 +1016,39 @@
       <!-- Details -->
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <div class="flex justify-between gap-4">
-          <dt class="text-slate-500">{i18n.m.queue.detail_encoder}</dt>
-          <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-slate-400">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
+          <dt class="text-ink-3">{i18n.m.queue.detail_encoder}</dt>
+          <dd class="text-right">{selectedJob.videoEncoder ?? '—'}{#if selectedJob.videoEncoder}<span class="ml-1 text-ink-4">({isGpuEncoder(selectedJob.videoEncoder) ? 'GPU' : 'CPU'})</span>{/if}</dd>
         </div>
         <div class="flex justify-between gap-4">
-          <dt class="text-slate-500">{i18n.m.queue.detail_quality}</dt>
+          <dt class="text-ink-3">{i18n.m.queue.detail_quality}</dt>
           <dd class="text-right">
             {#if selectedJob.videoQualityMode && selectedJob.effectiveVideoQuality != null}
               {selectedJob.videoQualityMode} {selectedJob.effectiveVideoQuality}
               {#if selectedJob.requestedVideoQuality != null && selectedJob.requestedVideoQuality !== selectedJob.effectiveVideoQuality}
-                <span class="text-slate-400">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
+                <span class="text-ink-4">({t(i18n.m.queue.quality_requested, { value: selectedJob.requestedVideoQuality })})</span>
               {/if}
             {:else}—{/if}
           </dd>
         </div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
-        <div class="flex justify-between gap-4"><dt class="text-slate-500">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_output_size}</dt><dd>{selectedJob.outputSizeBytes ? formatSize(selectedJob.outputSizeBytes) : '—'}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_priority}</dt><dd>{selectedJob.priority}</dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-ink-3">{i18n.m.queue.detail_verified}</dt><dd class="text-right">{selectedJob.verifiedAt ? new Date(selectedJob.verifiedAt).toLocaleString() : '—'}</dd></div>
       </dl>
 
       {#if report?.context?.vmafSampling}
-        <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+        <p class="mt-3 text-xs text-ink-3">
           <span class="font-medium">{i18n.m.queue.detail_vmaf_sampling}:</span>
           {vmafSamplingLabel(report.context.vmafSampling)}
         </p>
       {/if}
 
       {#if selectedJob.status === 'Failed' && isVmafOnlyFailure(selectedJob)}
-        <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" role="status" aria-live="polite">
+        <div class="callout tone-warn mt-4 p-4" role="status" aria-live="polite">
           <div class="flex items-start gap-2">
-            <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+            <Icon name="warning" class="mt-0.5 h-4 w-4 flex-shrink-0 text-warn" />
             <div>
               <p class="font-semibold">{i18n.m.queue.vmaf_recovery_title}</p>
-              <p class="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200">{i18n.m.queue.vmaf_recovery_desc}</p>
+              <p class="mt-1 text-xs leading-relaxed text-warn-strong">{i18n.m.queue.vmaf_recovery_desc}</p>
             </div>
           </div>
         </div>
@@ -1058,8 +1058,8 @@
            hero's live status. Useful while encoding and for diagnosing a failed job. -->
       {#if selectedJob.ffmpegArguments}
         <div class="mt-4">
-          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">{i18n.m.queue.ffmpeg_command}</div>
-          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">ffmpeg {selectedJob.ffmpegArguments}</pre>
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-ink-4">{i18n.m.queue.ffmpeg_command}</div>
+          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-3 font-mono text-[11px] leading-relaxed text-ink-2">ffmpeg {selectedJob.ffmpegArguments}</pre>
         </div>
       {/if}
 

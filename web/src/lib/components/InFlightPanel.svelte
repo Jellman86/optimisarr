@@ -49,7 +49,7 @@
 <div class="card mb-4">
   <div class="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
     <span class="label mb-0">{i18n.m.dashboard.in_flight}</span>
-    <span class="ml-auto font-mono text-xs text-slate-500 dark:text-slate-400">
+    <span class="ml-auto font-mono text-xs text-ink-3">
       {t(i18n.m.dashboard.in_flight_counts, {
         running: jobs.length.toLocaleString(),
         queued: (queueState?.queued ?? 0).toLocaleString(),
@@ -61,7 +61,7 @@
     <!-- An empty list is not an error, and it is not the same as an idle server. The status bar
          has already said which; this repeats the consequence where a reader is looking for work,
          rather than leaving a blank panel. -->
-    <p class="px-4 py-5 text-sm text-slate-500 dark:text-slate-400">
+    <p class="px-4 py-5 text-sm text-ink-3">
       {#if queueState?.kind === 'idle'}
         {i18n.m.dashboard.in_flight_idle}
       {:else if queueState?.detail}
@@ -76,11 +76,11 @@
         <li class="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 md:grid-cols-[1fr_200px_140px] md:items-center">
           <div class="min-w-0">
             <button
-              class="block w-full truncate text-left font-mono text-sm text-slate-800 hover:underline dark:text-slate-100"
+              class="block w-full truncate text-left font-mono text-sm text-ink hover:underline"
               onclick={() => router.go('/queue')}
               title={job.relativePath ?? undefined}
             >{fileName(job.relativePath)}</button>
-            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-3">
               {#if job.videoEncoder}<span class="badge border border-line font-mono font-normal">{job.videoEncoder}</span>{/if}
               {#if job.effectiveVideoQuality != null}<span class="badge border border-line font-mono font-normal">CRF {job.effectiveVideoQuality}</span>{/if}
               <span class="truncate">{job.workerName ?? i18n.m.dashboard.this_server}</span>
@@ -88,7 +88,7 @@
           </div>
 
           <div>
-            <div class="mb-1.5 font-mono text-[10px] uppercase tracking-wider {verifying(job) ? 'text-emerald-700 dark:text-emerald-400' : 'text-cyan-700 dark:text-cyan-400'}">
+            <div class="mb-1.5 font-mono text-[10px] uppercase tracking-wider {verifying(job) ? 'text-ok' : 'text-accent'}">
               {stageLabel(job)}
             </div>
             <div class="progress-track">
@@ -100,15 +100,15 @@
                 <div class="progress-indeterminate"></div>
               {/if}
             </div>
-            <div class="mt-1.5 font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
+            <div class="mt-1.5 font-mono text-xs tabular-nums text-ink-3">
               {job.progress > 0 ? `${percent(job)}%` : i18n.m.dashboard.no_percentage}
             </div>
           </div>
 
-          <div class="font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400 md:text-right">
+          <div class="font-mono text-xs tabular-nums text-ink-3 md:text-right">
             {#if qualityMode(job.videoQualityMode)}<div>{qualityMode(job.videoQualityMode)}</div>{/if}
             {#if job.qualityRetryCount > 0}
-              <div class="text-amber-700 dark:text-amber-400">{t(i18n.m.dashboard.retry_count, { count: job.qualityRetryCount.toLocaleString() })}</div>
+              <div class="text-warn">{t(i18n.m.dashboard.retry_count, { count: job.qualityRetryCount.toLocaleString() })}</div>
             {/if}
           </div>
         </li>
@@ -116,7 +116,7 @@
     </ul>
     {#if hidden > 0}
       <button
-        class="w-full border-t border-line px-4 py-2.5 text-left text-xs text-slate-500 transition-colors hover:text-cyan-700 dark:text-slate-400 dark:hover:text-cyan-400"
+        class="w-full border-t border-line px-4 py-2.5 text-left text-xs text-ink-3 transition-colors hover:text-accent"
         onclick={() => router.go('/queue')}
       >{t(i18n.m.dashboard.in_flight_more, { count: hidden.toLocaleString() })}</button>
     {/if}

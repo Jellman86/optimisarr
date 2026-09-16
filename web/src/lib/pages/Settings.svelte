@@ -771,7 +771,7 @@
 
 {#snippet wasChanged(field: keyof Settings | 'minFreeDiskBytes', previous: string)}
   {#if isChanged(field)}
-    <span class="mt-1 block font-mono text-[10.5px] font-normal normal-case tracking-normal text-cyan-700 dark:text-cyan-300">
+    <span class="mt-1 block font-mono text-[10.5px] font-normal normal-case tracking-normal text-accent">
       {tr(i18n.m.settings.was_value, { value: previous })}
       <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => revert(field)}>
         {i18n.m.settings.put_back}
@@ -782,8 +782,8 @@
 
 <header class="mb-6">
   <div class="min-w-0">
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.settings}</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.subtitle}</p>
+    <h1 class="page-title">{i18n.m.nav.settings}</h1>
+    <p class="page-subtitle">{i18n.m.settings.subtitle}</p>
   </div>
 </header>
 
@@ -792,7 +792,7 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else}
   {#if !openRoom}
     <!-- The landing page. Each card reports what its room is set to, so the common
@@ -805,20 +805,20 @@
           onclick={() => openRoomAt(room.key)}
         >
           <span class="flex items-start justify-between gap-2">
-            <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">{room.title}</span>
+            <span class="text-sm font-semibold text-ink">{room.title}</span>
             {#if roomChangedCount(room.key) > 0}
               <span
                 class="badge flex-none bg-cyan-600 font-mono text-[10px] text-white"
                 title={i18n.m.settings.unsaved_here}
               >{roomChangedCount(room.key)}</span>
             {:else if room.readOnly}
-              <span class="badge flex-none bg-slate-200 font-mono text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-700 dark:text-slate-300">{i18n.m.settings.read_only}</span>
+              <span class="badge flex-none tone-muted font-mono text-[10px] font-medium uppercase tracking-wide">{i18n.m.settings.read_only}</span>
             {/if}
           </span>
-          <span class="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{room.description}</span>
-          <span class="mt-auto flex items-center gap-2 pt-2 font-mono text-[11px] text-slate-600 hairline-t dark:text-slate-300">
+          <span class="text-xs leading-relaxed text-ink-3">{room.description}</span>
+          <span class="mt-auto flex items-center gap-2 pt-2 font-mono text-[11px] text-ink-2 hairline-t">
             <span
-              class="h-1.5 w-1.5 flex-none rounded-full {room.healthy ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-500'}"
+              class="h-1.5 w-1.5 flex-none rounded-full {room.healthy ? 'bg-emerald-500' : 'bg-ink-4'}"
               aria-hidden="true"
             ></span>
             <span class="truncate">{room.state}</span>
@@ -836,10 +836,10 @@
       <h2
         id="room-heading"
         tabindex="-1"
-        class="text-lg font-semibold text-slate-900 outline-none dark:text-slate-100"
+        class="text-lg font-semibold text-ink outline-none"
       >{currentRoom?.title ?? i18n.m.nav.settings}</h2>
       {#if currentRoom?.description}
-        <p class="mt-0.5 max-w-3xl text-sm text-slate-500 dark:text-slate-400">{currentRoom.description}</p>
+        <p class="mt-0.5 max-w-3xl text-sm text-ink-3">{currentRoom.description}</p>
       {/if}
     </div>
   {/if}
@@ -880,7 +880,7 @@
         <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
         <div class="flex min-w-0 items-center gap-2">
           <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
-          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.hours}</span>
+          <span class="flex-none text-sm text-ink-3">{i18n.m.settings.hours}</span>
         </div>
         {@render wasChanged('libraryScanIntervalHours', String(savedSettings?.libraryScanIntervalHours ?? ''))}
       </div>
@@ -903,8 +903,8 @@
           <option value="Hardware">{i18n.m.settings.hdr_tone_map_hardware}</option>
         </select>
       </div>
-      <p class="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-        {i18n.m.settings.auto_run_before}<button class="text-cyan-600 hover:underline dark:text-cyan-400" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
+      <p class="text-xs text-ink-3 sm:col-span-2">
+        {i18n.m.settings.auto_run_before}<button class="text-accent hover:underline" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
     </div>
   </ConfigSection>
@@ -947,7 +947,7 @@
         <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
         <div class="flex min-w-0 items-center gap-2">
           <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
-          <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.gib}</span>
+          <span class="flex-none text-sm text-ink-3">{i18n.m.settings.gib}</span>
         </div>
         {@render wasChanged('minFreeDiskBytes', savedMinFreeDiskGiB)}
       </div>
@@ -956,18 +956,18 @@
       <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
       <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
         <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />
-        <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.days}</span>
+        <span class="flex-none text-sm text-ink-3">{i18n.m.settings.days}</span>
       </div>
 
-      <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 dark:bg-slate-900/50" aria-live="polite">
+      <div class="mt-3 rounded-lg border border-line bg-sunken p-3" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_reclaimable}</p>
+            <p class="text-xs font-medium text-ink-3">{i18n.m.settings.cleanup_reclaimable}</p>
             {#if cleanupLoading}
-              <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_calculating}</p>
+              <p class="mt-1 text-sm text-ink-3">{i18n.m.settings.cleanup_calculating}</p>
             {:else if cleanupPreview}
-              <p class="mt-0.5 text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{formatSize(cleanupPreview.totalBytes)}</p>
-              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p class="mt-0.5 text-xl font-semibold tabular-nums text-ink">{formatSize(cleanupPreview.totalBytes)}</p>
+              <p class="mt-1 text-xs text-ink-3">
                 {tr(i18n.m.settings.cleanup_breakdown, {
                   failedCount: cleanupPreview.failedOutputCount,
                   failedSpace: formatSize(cleanupPreview.failedOutputBytes),
@@ -987,18 +987,18 @@
         </div>
 
         {#if cleanupPreview?.retentionDays === 0}
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_indefinite}</p>
+          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_indefinite}</p>
         {:else if cleanupPreview && cleanupPreview.totalCount === 0}
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_none}</p>
+          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_none}</p>
         {/if}
         {#if cleanupPolicyHasUnsavedChanges()}
-          <p class="mt-2 text-xs text-amber-700 dark:text-amber-300">{i18n.m.settings.cleanup_save_first}</p>
+          <p class="mt-2 text-xs text-warn">{i18n.m.settings.cleanup_save_first}</p>
         {/if}
         {#if cleanupPreview?.dryRunMode}
-          <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.cleanup_dry_run}</p>
+          <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.cleanup_dry_run}</p>
         {/if}
-        {#if cleanupError}<p class="mt-2 text-xs text-red-600 dark:text-red-400">{cleanupError}</p>{/if}
-        {#if cleanupMessage}<p class="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{cleanupMessage}</p>{/if}
+        {#if cleanupError}<p class="mt-2 text-xs text-bad">{cleanupError}</p>{/if}
+        {#if cleanupMessage}<p class="mt-2 text-xs text-ok">{cleanupMessage}</p>{/if}
       </div>
     </div>
   </ConfigSection>
@@ -1014,39 +1014,39 @@
       title={i18n.m.settings.media_servers}
       description={i18n.m.settings.media_servers_summary}
     >
-      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-ink-3">
         {i18n.m.settings.media_servers_desc}
       </p>
 
       {#if watcherError}
-        <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{watcherError}</div>
+        <div class="callout tone-bad mb-3">{watcherError}</div>
       {/if}
 
       {#if watchers.length > 0}
         <ul class="mb-4 divide-y divide-line-soft">
           {#each watchers as w (w.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{w.type}</span>
+              <span class="badge tone-neutral">{w.type}</span>
               <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</div>
-                <div class="truncate font-mono text-[11px] text-slate-400" title={w.baseUrl}>{w.baseUrl}</div>
+                <div class="truncate text-sm font-medium text-ink-2">{w.name}</div>
+                <div class="truncate font-mono text-[11px] text-ink-4" title={w.baseUrl}>{w.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                {#if !w.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
-                {#if w.refreshOnReplace}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
-                {#if !w.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
+                {#if !w.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+                {#if w.refreshOnReplace}<span class="badge tone-ok" title={i18n.m.settings.badge_refresh_title}>{i18n.m.settings.badge_refresh}</span>{/if}
+                {#if !w.hasToken}<span class="badge tone-warn" title={i18n.m.settings.badge_no_token_title}>{i18n.m.settings.badge_no_token}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEdit(w)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteWatcher(w)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.media_servers_empty}</p>
+        <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.media_servers_empty}</p>
       {/if}
 
       <div class="rounded-lg border border-line p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <h3 class="mb-3 text-sm font-semibold text-ink-2">
           {editingId === null ? i18n.m.settings.add_media_server : i18n.m.settings.edit_media_server}
         </h3>
         <div class="grid gap-3 sm:grid-cols-2">
@@ -1064,7 +1064,7 @@
             <label class="label" for="watcher-url">{i18n.m.settings.base_url}</label>
             <input id="watcher-url" class="input" placeholder="http://192.168.1.10:32400" bind:value={watcherDraft.baseUrl} />
             {#if watcherDraft.type === 'Plex'}
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.settings.plex_pick_hint}</p>
+              <p class="mt-2 text-xs text-ink-3">{i18n.m.settings.plex_pick_hint}</p>
             {/if}
           </div>
           <div>
@@ -1090,24 +1090,24 @@
               {/if}
             </div>
             {#if connectMessage}
-              <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{connectMessage}</p>
+              <p class="mt-2 text-xs text-ink-3">{connectMessage}</p>
             {/if}
             {#if jellyfinCode}
-              <p class="mt-1 font-mono text-lg tracking-widest text-cyan-600 dark:text-cyan-400">{jellyfinCode}</p>
+              <p class="mt-1 font-mono text-lg tracking-widest text-accent">{jellyfinCode}</p>
             {/if}
             {#if plexServers && plexServers.length}
               <ul class="mt-2 divide-y divide-line-soft rounded-md border border-line divide-line">
                 {#each plexServers as server}
                   <li>
                     <button
-                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-lit"
                       onclick={() => selectPlexServer(server)}
                     >
                       <span class="min-w-0">
-                        <span class="font-medium text-slate-700 dark:text-slate-200">{server.name}</span>
-                        <span class="block truncate font-mono text-[11px] text-slate-400">{server.uri}</span>
+                        <span class="font-medium text-ink-2">{server.name}</span>
+                        <span class="block truncate font-mono text-[11px] text-ink-4">{server.uri}</span>
                       </span>
-                      <span class="badge flex-shrink-0 {server.local ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}">
+                      <span class="badge flex-shrink-0 {server.local ? 'tone-ok' : 'bg-raised text-ink-3'}">
                         {server.local ? i18n.m.settings.badge_local : i18n.m.settings.badge_remote}
                       </span>
                     </button>
@@ -1122,7 +1122,7 @@
           <Toggle bind:checked={watcherDraft.refreshOnReplace} label={i18n.m.settings.refresh_replace} hint={i18n.m.settings.refresh_replace_hint} />
         </div>
         {#if testResult}
-          <p class="mt-3 text-sm {testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}">
+          <p class="mt-3 text-sm {testResult.ok ? 'text-ok' : 'text-bad'}">
             {#if testResult.ok}
               {tr(i18n.m.settings.test_ok, { name: testResult.serverName ?? '' })}{testResult.version ? tr(i18n.m.settings.test_ok_version, { version: testResult.version }) : ''}
             {:else}
@@ -1159,38 +1159,38 @@
       title={i18n.m.settings.download_managers}
       description={i18n.m.settings.download_managers_summary}
     >
-      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      <p class="mb-4 max-w-4xl text-sm leading-relaxed text-ink-3">
         {i18n.m.settings.download_managers_desc}
       </p>
 
       {#if arrError}
-        <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{arrError}</div>
+        <div class="callout tone-bad mb-3">{arrError}</div>
       {/if}
 
       {#if arrs.length > 0}
         <ul class="mb-4 divide-y divide-line-soft">
           {#each arrs as c (c.id)}
             <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c.type}</span>
+              <span class="badge tone-neutral">{c.type}</span>
               <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</div>
-                <div class="truncate font-mono text-[11px] text-slate-400" title={c.baseUrl}>{c.baseUrl}</div>
+                <div class="truncate text-sm font-medium text-ink-2">{c.name}</div>
+                <div class="truncate font-mono text-[11px] text-ink-4" title={c.baseUrl}>{c.baseUrl}</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                {#if !c.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
-                {#if !c.hasApiKey}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
+                {#if !c.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+                {#if !c.hasApiKey}<span class="badge tone-warn" title={i18n.m.settings.badge_no_key_title}>{i18n.m.settings.badge_no_key}</span>{/if}
                 <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditArr(c)}>{i18n.m.settings.edit}</button>
-                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
+                <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteArr(c)}>{i18n.m.settings.remove}</button>
               </div>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.download_managers_empty}</p>
+        <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.download_managers_empty}</p>
       {/if}
 
       <div class="rounded-lg border border-line p-4">
-        <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <h3 class="mb-3 text-sm font-semibold text-ink-2">
           {editingArrId === null ? i18n.m.settings.add_download_manager : i18n.m.settings.edit_download_manager}
         </h3>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1246,41 +1246,41 @@
   >
 
     {#if targetError}
-      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{targetError}</div>
+      <div class="callout tone-bad mb-3">{targetError}</div>
     {/if}
     {#if targetMessage}
-      <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400" aria-live="polite">{targetMessage}</div>
+      <div class="callout tone-ok mb-3" aria-live="polite">{targetMessage}</div>
     {/if}
 
     {#if targets.length > 0}
       <ul class="mb-4 divide-y divide-line-soft">
         {#each targets as t (t.id)}
           <li class="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t.type}</span>
+            <span class="badge tone-neutral">{t.type}</span>
             <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{t.name}</div>
-              <div class="truncate font-mono text-[11px] text-slate-400" title={t.url}>{t.url}</div>
+              <div class="truncate text-sm font-medium text-ink-2">{t.name}</div>
+              <div class="truncate font-mono text-[11px] text-ink-4" title={t.url}>{t.url}</div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              {#if !t.enabled}<span class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.settings.disabled}</span>{/if}
-              {#if t.type === 'Telegram' && !t.hasToken}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_no_token}</span>{/if}
-              {#if t.notifyOnReplacement}<span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.settings.badge_replaced}</span>{/if}
-              {#if t.notifyOnFailure}<span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{i18n.m.settings.badge_failed}</span>{/if}
+              {#if !t.enabled}<span class="badge tone-muted">{i18n.m.settings.disabled}</span>{/if}
+              {#if t.type === 'Telegram' && !t.hasToken}<span class="badge tone-warn">{i18n.m.settings.badge_no_token}</span>{/if}
+              {#if t.notifyOnReplacement}<span class="badge tone-ok">{i18n.m.settings.badge_replaced}</span>{/if}
+              {#if t.notifyOnFailure}<span class="badge tone-warn">{i18n.m.settings.badge_failed}</span>{/if}
               <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => testTarget(t)} disabled={testingTargetId !== null}>
                 {testingTargetId === t.id ? i18n.m.settings.testing : i18n.m.settings.send_test}
               </button>
               <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs sm:min-h-0" onclick={() => startEditTarget(t)}>{i18n.m.settings.edit}</button>
-              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-red-600 sm:min-h-0 dark:text-red-400" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
+              <button class="btn btn-ghost min-h-11 px-2 py-1 text-xs text-bad sm:min-h-0" onclick={() => deleteTarget(t)}>{i18n.m.settings.remove}</button>
             </div>
           </li>
         {/each}
       </ul>
     {:else}
-      <p class="mb-4 text-sm text-slate-400">{i18n.m.settings.targets_empty}</p>
+      <p class="mb-4 text-sm text-ink-4">{i18n.m.settings.targets_empty}</p>
     {/if}
 
     <div class="rounded-lg border border-line p-4">
-      <h3 class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+      <h3 class="mb-3 text-sm font-semibold text-ink-2">
         {editingTargetId === null ? i18n.m.settings.add_target : i18n.m.settings.edit_target}
       </h3>
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1307,15 +1307,15 @@
             bind:value={targetDraft.url}
           />
           {#if targetDraft.type === 'Discord'}
-            <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.discord_hint}</p>
+            <p class="mt-1 text-[11px] text-ink-4">{i18n.m.settings.discord_hint}</p>
           {:else if targetDraft.type === 'Telegram'}
-            <p class="mt-1 text-[11px] text-slate-400">{i18n.m.settings.telegram_hint}</p>
+            <p class="mt-1 text-[11px] text-ink-4">{i18n.m.settings.telegram_hint}</p>
           {/if}
         </div>
         <div>
           <label class="label" for="target-token">
             {targetDraft.type === 'Telegram' ? i18n.m.settings.bot_token : i18n.m.settings.token}
-            {#if targetDraft.type !== 'Telegram'}<span class="text-slate-400">{i18n.m.settings.optional}</span>{/if}
+            {#if targetDraft.type !== 'Telegram'}<span class="text-ink-4">{i18n.m.settings.optional}</span>{/if}
           </label>
           <input
             id="target-token"
@@ -1370,15 +1370,15 @@
     title={i18n.m.settings.backup_title}
     description={i18n.m.settings.backup_summary}
   >
-    <p class="mb-4 max-w-4xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+    <p class="mb-4 max-w-4xl text-sm leading-relaxed text-ink-3">
       {i18n.m.settings.backup_desc}
     </p>
 
     {#if backupError}
-      <div class="mb-3 rounded border border-red-300 p-2 text-sm text-red-700 dark:border-red-800 dark:text-red-400">{backupError}</div>
+      <div class="callout tone-bad mb-3">{backupError}</div>
     {/if}
     {#if backupMessage}
-      <div class="mb-3 rounded border border-emerald-300 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:text-emerald-400">{backupMessage}</div>
+      <div class="callout tone-ok mb-3">{backupMessage}</div>
     {/if}
 
     <div class="flex flex-wrap items-center gap-3">
@@ -1410,11 +1410,11 @@
       data-settings-actions
     >
       {#if changedCount > 0}
-        <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        <span class="text-sm font-semibold text-ink">
           {plural(changedCount, i18n.m.settings.unsaved_changes_one, i18n.m.settings.unsaved_changes_other)}
         </span>
       {/if}
-      {#if message}<span class="text-sm text-emerald-600 dark:text-emerald-400">{message}</span>{/if}
+      {#if message}<span class="text-sm text-ok">{message}</span>{/if}
       <span class="flex-1"></span>
       {#if changedCount > 0}
         <button class="btn btn-ghost min-h-11" onclick={discardAll} disabled={saving}>
