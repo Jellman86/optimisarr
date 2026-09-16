@@ -4,15 +4,37 @@
 
 ### Changed
 
+- **Inventory now uses the Index layout.** A calmer file list puts artwork, size, format
+  and the rule verdict together. Opening a file shows a poster-led dialog with its library,
+  metadata, full path and eligibility reason, plus reachable Probe and Preview actions.
+  Missing artwork falls back quietly; phone layouts keep the details scrollable.
+- Preview comparisons now use the application theme and native modal focus handling.
+  Minimising lets you continue browsing; opening another file's preview replaces the previous
+  comparison. Closing a preview before it finishes starting now cleans up the late job too.
+- Rapid inventory filter changes no longer allow an older response to replace the current
+  results. Empty filters stay usable, and probe errors appear alongside the selected file.
+- Sidebar footer controls remain reachable in short windows while a job is active, and
+  artwork recovers when a job without a poster is followed by one with artwork.
+
+- **Settings now uses the Control rooms layout.** Processing and protection sit above
+  connections and system tools, with clearer room icons, complete state summaries and more
+  breathing room. Encoding controls have aligned labels and short explanations; drafts stay
+  intact between rooms, and returning to the overview restores keyboard focus. System
+  sections have consistent spacing, and encoder tiles reflow without squeezing together.
+- The sidebar language menu now keeps its full width instead of collapsing to the globe
+  button’s width. It stays within the viewport in both expanded and collapsed sidebars.
+
 - The desktop sidebar and page tray now have 16 px of space above and below them. Mobile
   safe-area padding previously overrode the desktop spacing and left both flush with the
   window; the mobile drawer still fills the screen.
 
 - **The application icon now holds a point of light inside a tesseract.** Smooth, supersampled
   edges replace the pixel grid. During local or remote work, the light shafts rotate, catch
-  the frame and cast moving shadows; idle or fully suspended work settles to a still. The
+  the frame and cast moving shadows. While idle or fully suspended, the geometry continues
+  a quieter 36-second turn; work accelerates it to a six-second cycle. The
   animation is baked ahead of time and loaded only when needed, with no live WebGL rendering
-  and no animation timers while idle, hidden or offscreen. Reduced-motion mode uses a brighter
+  and no animation timers while hidden or offscreen. Idle playback is limited to 12 fps and
+  working playback to 24 fps. Reduced-motion mode uses a brighter
   still, and the browser tab changes between steady and working icons without animating.
 
 - **The sidebar is an island, and it says what is encoding.** The rail no longer runs the

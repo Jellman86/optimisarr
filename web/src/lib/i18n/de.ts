@@ -393,6 +393,9 @@ export const de: Messages = {
     action_note: 'Freigeben löscht das in Quarantäne befindliche Original jetzt; ein Rückgängigmachen ist danach nicht mehr möglich.',
   },
   inventory: {
+    col_format: 'Format',
+    empty_filter: 'Keine Dateien entsprechen diesem Filter.',
+    probe_complete: 'Metadaten aktualisiert.',
     subtitle: 'Erkannte Medien und was die Regeln damit tun würden. Klicken Sie auf eine Zeile, um sie zu prüfen.',
     library_label: 'Bibliothek',
     all_libraries: 'Alle Bibliotheken',
@@ -594,6 +597,12 @@ export const de: Messages = {
     action_removing_ellipsis: 'Wird entfernt …',
   },
   settings: {
+    concurrency_hint: 'Maximal gleichzeitig laufende Aufgaben auf diesem Server.',
+    encoder_hint: 'Automatisch auswählen lassen oder einen Encoder festlegen.',
+    threads_hint: 'Bei 0 bestimmt der Encoder die Anzahl der Threads.',
+    scan_hint: 'Wie oft Bibliotheken auf Änderungen geprüft werden.',
+    group_processing: 'Verarbeitung & Schutz',
+    group_connections: 'Verbindungen & System',
     subtitle: 'Globale Optionen, die für jede Bibliothek gelten.',
     remote_workers: 'Remote-Worker',
     remote_workers_hint: 'Sidecar-Apps auf anderen Rechnern freie Encoding-Kapazität beisteuern lassen. Standardmäßig aus – ein Container genügt für den normalen Betrieb. Optimisarr ersetzt weiterhin selbst.',

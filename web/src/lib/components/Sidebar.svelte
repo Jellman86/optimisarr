@@ -85,6 +85,8 @@
  ? 'translate-x-0'
  : '-translate-x-full'} {collapsed ? 'md:w-16' : 'md:w-60'}"
 >
+  <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+  <div class="flex min-h-full flex-col">
   <!-- Brand: the mark above the wordmark, and large enough to read. It earns the room because
        it reports the server's state — it turns while work runs — and a tesseract cannot resolve
        at sixteen pixels a side. Nothing is drawn behind it but its own light. The collapsed rail
@@ -183,8 +185,11 @@
   <div class="min-h-0 flex-1"></div>
   <NowEncoding collapsed={railCollapsed} />
 
+  </div>
+  </div>
+
   <!-- One foot: theme, language, collapse. Three ghost buttons, no strips, no rules. -->
-  <div class="flex items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
+  <div class="flex shrink-0 items-center gap-1 px-2.5 pt-2 pb-3.5 {railCollapsed ? 'flex-col' : 'justify-between'}">
     <button class="btn btn-ghost px-2" onclick={() => theme.toggle()} title={i18n.m.nav.toggle_theme} aria-label={i18n.m.nav.toggle_theme}>
       {#if theme.isDark}
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.7 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>

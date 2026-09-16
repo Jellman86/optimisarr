@@ -529,6 +529,9 @@ export const en = {
     action_note: 'Approve deletes the quarantined original now; rolling back is then no longer possible.',
   },
   inventory: {
+    col_format: 'Format',
+    empty_filter: 'No files match this filter.',
+    probe_complete: 'Metadata refreshed.',
     subtitle: 'Discovered media and what the rules would do with it. Click a row to inspect it.',
     library_label: 'Library',
     all_libraries: 'All libraries',
@@ -731,6 +734,12 @@ export const en = {
     action_removing_ellipsis: 'Removing…',
   },
   settings: {
+    concurrency_hint: 'Maximum work running on this server.',
+    encoder_hint: 'Use automatic selection or choose an encoder.',
+    threads_hint: '0 lets the encoder choose its thread count.',
+    scan_hint: 'How often libraries are checked for changes.',
+    group_processing: 'Processing & protection',
+    group_connections: 'Connections & system',
     subtitle: 'Global options that apply across every library.',
     remote_workers: 'Remote workers',
     remote_workers_hint: 'Let sidecar apps on other machines contribute spare encoding capacity. Off by default — one container is enough for normal use. Optimisarr still does all replacing itself.',

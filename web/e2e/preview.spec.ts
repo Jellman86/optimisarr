@@ -242,3 +242,71 @@ test('adaptive preparation names its real work instead of appearing stuck at zer
 
   await expect(page.getByText('Selecting quality… 1%', { exact: true })).toBeVisible()
 })
+
+test('Escape minimises the preview, restores file browsing, and closing returns to details', async ({ page }) => {
+  await openCompletedPreview(page)
+  await expect(page.getByRole('dialog', { name: /Preview optimisation/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByText('Preview · Ready')).toBeVisible()
+  await page.getByRole('button', { name: /Example Film.mkv/ }).click()
+  await expect(page.getByRole('dialog', { name: 'Example Film' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Expand', exact: true }).click()
+  const deleted = page.waitForRequest(r => r.method() === 'DELETE' && r.url().endsWith('/api/preview/41'))
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await deleted
+  await expect(page.getByRole('dialog', { name: 'Example Film' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: /Example Film.mkv/ })).toBeFocused()
+})
+
+test('closing before preview creation finishes deletes the late job exactly once', async ({ page }) => {
+  await mockPreview(page)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const deletes: string[] = []
+  const polls: string[] = []
+  page.on('request', r => {
+    if (r.url().endsWith('/api/preview/41')) {
+      if (r.method() === 'DELETE') deletes.push(r.url())
+      if (r.method() === 'GET') polls.push(r.url())
+    }
+  })
+  await page.route('**/api/media/7/preview', async route => {
+    await gate
+    return json(route, { jobId: 41 })
+  })
+  await page.goto('/#/inventory')
+  await page.getByText('Example Film.mkv', { exact: true }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  release()
+  await expect.poll(() => deletes.length).toBe(1)
+  await page.waitForTimeout(150)
+  expect(polls).toHaveLength(0)
+  expect(deletes).toHaveLength(1)
+})
+
+test('previewing another file while minimised replaces the old comparison and discards its job', async ({ page }) => {
+  await mockPreview(page)
+  await page.route('**/api/inventory?**', route => json(route, {
+    items: [media, { ...media, id: 8, relativePath: 'Second Film.mkv' }].map(file => ({ file, eligible: true, reason: 'Ready to optimise' })),
+    total: 2, counts: { all: 2, eligible: 2, skipped: 0, unprobed: 0 },
+  }))
+  await page.route('**/api/media/8/preview', route => json(route, { jobId: 42 }))
+  await page.route('**/api/preview/42', route => route.request().method() === 'DELETE' ? route.fulfill({ status: 204 }) : json(route, { ...completedPreview, jobId: 42, mediaFileId: 8 }))
+  await page.goto('/#/inventory')
+  await page.getByRole('button', { name: /Example Film.mkv/ }).click()
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await expect(page.getByText('Encoded (sample)', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Minimise', exact: true }).click()
+  await page.getByRole('button', { name: /Second Film.mkv/ }).click()
+  const discarded = page.waitForRequest(r => r.method() === 'DELETE' && r.url().endsWith('/api/preview/41'))
+  const created = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/api/media/8/preview'))
+  await page.getByRole('button', { name: 'Preview', exact: true }).click()
+  await Promise.all([discarded, created])
+  await expect(page.getByRole('dialog', { name: /Second Film/ })).toBeVisible()
+  await expect(page.locator('video').nth(0)).toHaveAttribute('src', '/api/media/8/content')
+  await expect(page.locator('video').nth(1)).toHaveAttribute('src', '/api/preview/42/content')
+})

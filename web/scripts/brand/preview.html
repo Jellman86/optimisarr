@@ -37,7 +37,7 @@ function update(){
   document.querySelector('#excited').setAttribute('aria-pressed',String(working))
   document.querySelector('#theme').textContent=dark?'Light background':'Dark background'
   document.querySelector('#favicon').src=`/brand/favicon-${working?'excited':'steady'}.png`
-  document.querySelector('#state').textContent=working?'Working: the light field rotates. Highlights travel along the frame and its bars cast shadows through the shafts.':'Steady: a quiet point source. The icon holds still and the player stops scheduling frames.'
+  document.querySelector('#state').textContent=working?'Working: the light field rotates. Highlights travel along the frame and its bars cast shadows through the shafts.':'Steady: a quieter light field, drifting through a 36-second cycle. Working increases the brightness and speed.'
 }
 document.querySelector('#steady').onclick=()=>{working=false;update()}
 document.querySelector('#excited').onclick=()=>{working=true;update()}

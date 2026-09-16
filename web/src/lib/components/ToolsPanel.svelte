@@ -1,7 +1,7 @@
 <script lang="ts">
   // The hardware & tools panel: FFmpeg/ffprobe availability, hardware acceleration, and
-  // detected encoders. Loads its own data so it can be dropped into the Settings "Tools"
-  // tab (or anywhere) without the host wiring anything up.
+  // detected encoders. Loads its own data so it can be dropped into the Settings System
+  // room (or anywhere) without the host wiring anything up.
   import { api, type EncoderCapability, type HardwareCapability, type ToolCheck } from '../api'
   import Banner from './Banner.svelte'
   import ConfigSection from './ConfigSection.svelte'
@@ -49,7 +49,6 @@
 
 <div class="min-w-0 space-y-5">
   <ConfigSection
-    step={1}
     id="global-tools"
     title={i18n.m.settings.tools_section}
     description={i18n.m.shared.tools_intro}
@@ -94,7 +93,6 @@
 
   {#if hardware}
     <ConfigSection
-      step={2}
       id="global-hardware"
       title={i18n.m.shared.hardware_acceleration}
       description={i18n.m.shared.hardware_acceleration_desc}
@@ -131,7 +129,6 @@
     </ConfigSection>
 
     <ConfigSection
-      step={3}
       id="global-encoders"
       title={i18n.m.shared.encoders}
       description={i18n.m.shared.encoders_desc}
@@ -140,7 +137,7 @@
         {#each encoderGroups as [mode, encoders]}
           <article class="card min-w-0 p-4">
             <h3 class="mb-3 font-semibold text-ink">{mode}</h3>
-            <div class="grid min-w-0 gap-2 sm:grid-cols-3">
+            <div class="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2">
               {#each encoders as encoder}
                 <div class="min-w-0 rounded border border-line p-3 text-xs">
                   <div class="break-all font-mono text-ink-2">{encoder.name}</div>
