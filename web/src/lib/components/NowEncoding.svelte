@@ -8,12 +8,13 @@
   import { layout } from '../stores/ui.svelte'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { formatDuration } from '../format'
+  import { jobPercent } from '../job-presentation'
   import Thumbnail from './Thumbnail.svelte'
 
   let { collapsed = false }: { collapsed?: boolean } = $props()
 
   let job = $derived(activity.leadJob)
-  let percent = $derived(job ? Math.max(0, Math.min(100, Math.round(job.progress * 100))) : 0)
+  let percent = $derived(job ? jobPercent(job) : null)
   let eta = $derived(activity.leadProgress?.etaSeconds ?? null)
   let speed = $derived(activity.leadProgress?.speed ?? null)
   let finishing = $derived(activity.leadProgress?.finishing === true)
@@ -36,12 +37,13 @@
     <a
       href="#/queue"
       class="mx-auto mb-2 flex w-10 flex-col gap-1.5 rounded-lg focus-ring"
-      title={`${i18n.m.app.now_encoding} · ${title} · ${percent}%`}
+      title={`${i18n.m.app.now_encoding} · ${title}${percent === null ? '' : ` · ${percent}%`}`}
       onclick={() => layout.closeMobile()}
     >
       <Thumbnail mediaFileId={job.mediaFileId} size="sm" />
-      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100">
-        <span class="progress-fill block" style="width: {percent}%"></span>
+      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-valuenow={percent ?? undefined} aria-valuemin="0" aria-valuemax="100">
+        {#if percent !== null}<span class="progress-fill block" style="width: {percent}%"></span>
+        {:else}<span class="progress-indeterminate block"></span>{/if}
       </span>
     </a>
   {:else}
@@ -74,8 +76,8 @@
         </span>
       </span>
 
-      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100">
-        {#if job.progress > 0}
+      <span class="progress-track block h-1 w-full flex-none" role="progressbar" aria-valuenow={percent ?? undefined} aria-valuemin="0" aria-valuemax="100">
+        {#if percent !== null}
           <span class="progress-fill block" style="width: {percent}%"></span>
         {:else}
           <span class="progress-indeterminate block"></span>
@@ -83,7 +85,7 @@
       </span>
 
       <span class="flex items-center gap-3 font-mono text-[10.5px] text-ink-3">
-        {#if job.progress > 0}<span class="font-semibold text-ink">{percent}%</span>{/if}
+        {#if percent !== null}<span class="font-semibold text-ink">{percent}%</span>{/if}
         {#if speed != null}<span>{speed.toFixed(1)}×</span>{/if}
         {#if queued > 0}<span class="ml-auto">{t(i18n.m.app.queued_count, { count: queued.toLocaleString() })}</span>{/if}
       </span>

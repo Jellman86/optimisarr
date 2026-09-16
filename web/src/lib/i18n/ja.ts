@@ -419,6 +419,21 @@ export const ja: Messages = {
     preview: "プレビュー"
   },
   queue: {
+    working_now: "処理中",
+    next_recent: "次のジョブと最近の履歴",
+    view_job: "ジョブを表示",
+    job_details: "ジョブの詳細",
+    close_details: "詳細を閉じる",
+    job_stages: "ジョブの段階",
+    step_probe: "解析",
+    step_encode: "エンコード",
+    step_verify: "検証",
+    step_replace: "置換",
+    host_usage: "ホスト使用率",
+    remote_job: "{worker} で処理中",
+    no_matches: "このフィルターに一致するジョブはありません。",
+    manage_queue: "キューを管理",
+
     subtitle: "トランスコード処理タスク。出力は準備完了とマークされる前に検証されます。オリジナルには一切手を加えません。",
     active_suffix: "· {count} アクティブ",
     tab_failures: "失敗",

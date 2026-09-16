@@ -9,7 +9,9 @@
   let loaded = $state(false)
   let failed = $state(false)
 
-  $effect(() => {
+  // Reset before the keyed image mounts: a cached image can load before a
+  // post-render effect and otherwise have its successful load state erased.
+  $effect.pre(() => {
     mediaFileId
     loaded = false
     failed = false

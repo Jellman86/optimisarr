@@ -4,6 +4,19 @@
 
 ### Changed
 
+- **Queue now separates working jobs from what is next.** A poster-led working card shows
+  progress and processing stages; other running jobs remain visible beneath it. Job details
+  open inline with verification evidence, captured commands and the existing job actions.
+  Filtering recent and waiting jobs keeps running work visible, including remote workers.
+- Settings rooms and their child pages now use the same content width as Libraries. Cards
+  regain the shared surface gradient and colour, with hover lift and a deeper drop shadow
+  on the room links. System sections keep their spacing at smaller widths.
+- Queue refreshes no longer overwrite newer progress received during the request. Confirmed
+  local suspension is distinguished from remote work, and unfinished encodes stay below
+  100% in both the Queue and sidebar. Job action failures remain visible across refreshes.
+- Cached posters initialise before rendering so a successful image load is not hidden by
+  a later reset of the loading state.
+
 - **Inventory now uses the Index layout.** A calmer file list puts artwork, size, format
   and the rule verdict together. Opening a file shows a poster-led dialog with its library,
   metadata, full path and eligibility reason, plus reachable Probe and Preview actions.

@@ -147,6 +147,14 @@ test('an idle server carries no encoding card', async ({ page }) => {
   await expect(page.locator('aside').getByText('Now encoding')).toBeHidden()
 })
 
+test('the sidebar does not call an unfinished encode complete', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob({ progress: 0.9999 })] })
+  await page.goto('/#/settings')
+  const card = page.locator('aside').getByRole('link', { name: /Now encoding/ })
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '99')
+  await expect(card).toContainText('99%')
+})
+
 test('the dashboard asks only for jobs still being worked on', async ({ page }) => {
   // Regression: the unfiltered list is the entire job history — 1,773 rows on the server this
   // was checked against — and the dashboard re-reads it every fifteen seconds.
