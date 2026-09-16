@@ -323,9 +323,8 @@ test('a long in-flight list is capped and says what it is hiding', async ({ page
   await expect(page.getByRole('button', { name: '7 more in flight →' })).toBeVisible()
 })
 
-test('the application mark is drawn, not fetched, and reports the server state', async ({ page }) => {
-  // The mark is a canvas rather than an <img>: it turns while work is running and settles when
-  // the queue goes quiet, so the icon answers "is it still going?" on its own.
+test('the application mark keeps transparency and reports the server state', async ({ page }) => {
+  // A transparent light field turns while work runs, without an opaque square in the rail.
   await mockDashboard(page, { queue: { runningJobs: 2 }, jobs: [liveJob()] })
 
   await page.goto('/#/')
@@ -344,7 +343,7 @@ test('the application mark is drawn, not fetched, and reports the server state',
     return { lit, clear }
   })
   expect(painted.lit).toBeGreaterThan(50)
-  expect(painted.clear).toBeGreaterThan(painted.lit)
+  expect(painted.clear).toBeGreaterThan(288 * 288 * 0.3)
 })
 
 test('the collapsed rail keeps a name on the brand button', async ({ page }) => {
@@ -357,11 +356,165 @@ test('the collapsed rail keeps a name on the brand button', async ({ page }) => 
   await expect(page.locator('aside').getByRole('button', { name: 'Dashboard', exact: true }).first()).toBeVisible()
 })
 
-test('the favicon is replaced by the drawn mark', async ({ page }) => {
+test('the favicon reports activity with the brighter still', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
 
   await page.goto('/#/')
 
   const href = page.locator('link[rel~="icon"]').first()
-  await expect(href).toHaveAttribute('href', /^data:image\/png/, { timeout: 10_000 })
+  await expect(href).toHaveAttribute('href', '/brand/favicon-excited.png', { timeout: 10_000 })
+})
+
+test('the light icon is smooth and stops rendering when idle', async ({ page }) => {
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toHaveAttribute('data-light-state', 'steady')
+  await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => {
+    const pixels = el.getContext('2d')!.getImageData(0, 0, el.width, el.height).data
+    let partial = 0
+    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0 && pixels[i] < 255) partial++
+    return partial
+  })).toBeGreaterThan(100)
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.width)).toBeGreaterThanOrEqual(288)
+  expect(await mark.evaluate(el => getComputedStyle(el).imageRendering)).toBe('auto')
+  const still = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await page.waitForTimeout(400)
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(still)
+})
+
+test('remote work animates the light; reduced motion holds a brighter still', async ({ page }) => {
+  await mockDashboard(page, { jobs: [liveJob({ status: 'Leased', workerName: 'Mac mini' })] })
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toHaveAttribute('data-light-state', 'excited')
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  const before = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(before)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  const held = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await page.waitForTimeout(400)
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(held)
+})
+
+async function mockJobsHub(page: Page) {
+  let notify = () => {}
+  await page.route('**/hubs/jobs/negotiate?*', route => json(route, {
+    negotiateVersion: 1, connectionId: 'brand-test', connectionToken: 'brand-test',
+    availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
+  }))
+  await page.routeWebSocket('**/hubs/jobs?*', socket => {
+    socket.onMessage(message => {
+      if (String(message).includes('"protocol"')) socket.send('{}\u001e')
+    })
+    notify = () => socket.send(JSON.stringify({ type: 1, target: 'jobsChanged', arguments: [] }) + '\u001e')
+  })
+  return () => notify()
+}
+
+test('job events settle and wake the icon, and a suspended encode stays still', async ({ page }) => {
+  const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  fixture.queue = { runningJobs: 1, suspendedEncodeCount: 1, runningEncodesSuspended: true }
+  notify()
+  await expect(mark).toHaveAttribute('data-light-state', 'steady')
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  await page.waitForTimeout(550)
+  const paused = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await page.waitForTimeout(200)
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(paused)
+  fixture.queue = { runningJobs: 1 }
+  notify()
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  fixture.queue = { runningJobs: 0 }
+  fixture.jobs = []
+  notify()
+  await expect(mark).toHaveAttribute('data-light-state', 'steady')
+  await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute('href', '/brand/favicon-steady.png')
+})
+
+test('a missing animation leaves a complete still and the app usable', async ({ page }) => {
+  await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
+  await page.route('**/brand/active*.webp', route => route.abort())
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toHaveAttribute('data-light-state', 'excited')
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL().length)).toBeGreaterThan(1000)
+  await expect(page.locator('main').getByText('ENCODING', { exact: true })).toBeVisible()
+})
+
+test('idle and reduced-motion sessions never download an animation atlas', async ({ page }) => {
+  const atlases: string[] = []
+  page.on('request', request => { if (/\/brand\/active.*\.webp/.test(request.url())) atlases.push(request.url()) })
+  const fixture: Fixture = {}
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'steady')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  fixture.queue = { runningJobs: 1 }
+  fixture.jobs = [liveJob()]
+  notify()
+  await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
+  expect(atlases).toEqual([])
+})
+
+test('the icon stops scheduling paints while offscreen and after work finishes', async ({ page }) => {
+  await page.addInitScript(() => {
+    const target = window as Window & { brandPaints: number }
+    target.brandPaints = 0
+    const clear = CanvasRenderingContext2D.prototype.clearRect
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.closest('aside')) target.brandPaints++
+      return clear.apply(this, args)
+    }
+  })
+  const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  const paints = () => page.evaluate(() => (window as Window & { brandPaints: number }).brandPaints)
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  const moving = await paints()
+  await expect.poll(paints).toBeGreaterThan(moving)
+  await page.locator('aside').evaluate(el => { el.style.transform = 'translateX(-2000px)' })
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  const hidden = await paints()
+  await page.waitForTimeout(250)
+  expect(await paints()).toBe(hidden)
+  await page.locator('aside').evaluate(el => { el.style.transform = '' })
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  fixture.queue = { runningJobs: 0 }
+  fixture.jobs = []
+  notify()
+  await expect(mark).toHaveAttribute('data-light-state', 'steady')
+  await page.waitForTimeout(550)
+  const idle = await paints()
+  await page.waitForTimeout(250)
+  expect(await paints()).toBe(idle)
+})
+
+test('the desktop sidebar has breathing room above and below in both widths', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const rail = page.locator('aside')
+  for (const collapsed of [false, true]) {
+    if (collapsed) await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
+    const box = await rail.boundingBox()
+    expect(box!.y).toBeGreaterThanOrEqual(16)
+    expect(900 - box!.y - box!.height).toBeGreaterThanOrEqual(16)
+  }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click()
+  const drawer = await rail.boundingBox()
+  expect(drawer!.y).toBe(0)
+  expect(drawer!.height).toBe(812)
 })

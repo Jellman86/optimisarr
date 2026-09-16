@@ -107,16 +107,13 @@
     {/if}
 
     <BrandMark
-      grid={railCollapsed ? 40 : 144}
-      class="relative flex-shrink-0 drop-shadow-[0_0_22px_rgba(34,211,238,0.30)] {railCollapsed ? 'h-10 w-10' : 'h-36 w-36'}"
+      class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-36 w-36'}"
     />
 
     {#if !railCollapsed}
-      <!-- The wordmark rides up over the foot of the mark. The tesseract's lower corner is mostly
-           empty space, so the overlap closes the gap the bounding box leaves rather than covering
-           anything; the shadow keeps the letters legible where they cross a strut. -->
+      <!-- Leave the lower light shafts clear of the wordmark. -->
       <span
-        class="relative -mt-8 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
+        class="relative -mt-3 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
       >Optimisarr</span>
     {/if}
   </button>

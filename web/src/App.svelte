@@ -72,7 +72,7 @@
 {#if !auth.checked}
   <div
     class="flex h-dvh items-center justify-center bg-ground p-4 text-ink"
-    style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+    style="padding-top: max(var(--shell-inset, 0px), env(safe-area-inset-top)); padding-bottom: max(var(--shell-inset, 0px), env(safe-area-inset-bottom));"
   >
     <div class="flex items-center gap-3 text-ink-3">
       <BrandMark class="h-8 w-8" />
@@ -82,7 +82,7 @@
 {:else if auth.required && !auth.token}
   <div
     class="flex h-dvh items-center justify-center bg-ground p-4 text-ink"
-    style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+    style="padding-top: max(var(--shell-inset, 0px), env(safe-area-inset-top)); padding-bottom: max(var(--shell-inset, 0px), env(safe-area-inset-bottom));"
   >
     <form class="card w-full max-w-sm p-6" onsubmit={submitToken}>
       <div class="mb-6 flex items-center gap-3">
@@ -136,8 +136,8 @@
   <!-- At md+ the shell is two islands on the ground: the rail, a raised card, and the page in a
        recessed tray beside it. On a phone the rail is a drawer and the page takes the screen. -->
   <div
-    class="flex h-dvh bg-ground text-ink md:gap-3.5 md:p-3.5"
-    style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
+    class="flex h-dvh bg-ground text-ink md:gap-3.5 md:p-3.5 md:[--shell-inset:1rem]"
+    style="padding-top: max(var(--shell-inset, 0px), env(safe-area-inset-top)); padding-bottom: max(var(--shell-inset, 0px), env(safe-area-inset-bottom));"
   >
   <!-- Backdrop behind the mobile drawer; tap to dismiss. Desktop never shows it. -->
   {#if layout.mobileOpen}
