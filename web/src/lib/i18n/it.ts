@@ -585,6 +585,12 @@ quarantine: {
     action_removing_ellipsis: 'Rimozione…',
   },
   settings: {
+    concurrency_hint: 'Numero massimo di attività simultanee su questo server.',
+    encoder_hint: 'Usa la selezione automatica o scegli un codificatore.',
+    threads_hint: 'Con 0, il codificatore decide quanti thread usare.',
+    scan_hint: 'Frequenza di controllo delle modifiche nelle librerie.',
+    group_processing: 'Elaborazione e protezione',
+    group_connections: 'Connessioni e sistema',
     subtitle: 'Opzioni globali applicate a tutte le librerie.',
     remote_workers: 'Worker remoti',
     remote_workers_hint: 'Consenti alle app sidecar su altre macchine di contribuire con capacità di codifica libera. Disattivato per impostazione predefinita: un contenitore basta per l’uso normale. Optimisarr continua a eseguire da sé tutte le sostituzioni.',

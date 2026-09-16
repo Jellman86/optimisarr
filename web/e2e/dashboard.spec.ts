@@ -365,7 +365,7 @@ test('the favicon reports activity with the brighter still', async ({ page }) =>
   await expect(href).toHaveAttribute('href', '/brand/favicon-excited.png', { timeout: 10_000 })
 })
 
-test('the light icon is smooth and stops rendering when idle', async ({ page }) => {
+test('the light icon is smooth and keeps moving when idle', async ({ page }) => {
   await mockDashboard(page)
   await page.goto('/#/')
   const mark = page.locator('aside canvas').first()
@@ -378,9 +378,9 @@ test('the light icon is smooth and stops rendering when idle', async ({ page }) 
   })).toBeGreaterThan(100)
   expect(await mark.evaluate((el: HTMLCanvasElement) => el.width)).toBeGreaterThanOrEqual(288)
   expect(await mark.evaluate(el => getComputedStyle(el).imageRendering)).toBe('auto')
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   const still = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
-  await page.waitForTimeout(400)
-  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(still)
+  await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(still)
 })
 
 test('remote work animates the light; reduced motion holds a brighter still', async ({ page }) => {
@@ -413,7 +413,7 @@ async function mockJobsHub(page: Page) {
   return () => notify()
 }
 
-test('job events settle and wake the icon, and a suspended encode stays still', async ({ page }) => {
+test('job events change the light state while suspended work keeps a slow drift', async ({ page }) => {
   const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
   await mockDashboard(page, fixture)
   const notify = await mockJobsHub(page)
@@ -423,11 +423,11 @@ test('job events settle and wake the icon, and a suspended encode stays still', 
   fixture.queue = { runningJobs: 1, suspendedEncodeCount: 1, runningEncodesSuspended: true }
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
-  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   await page.waitForTimeout(550)
   const paused = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
   await page.waitForTimeout(200)
-  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(paused)
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(paused)
   fixture.queue = { runningJobs: 1 }
   notify()
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
@@ -449,10 +449,11 @@ test('a missing animation leaves a complete still and the app usable', async ({ 
   await expect(page.locator('main').getByText('ENCODING', { exact: true })).toBeVisible()
 })
 
-test('idle and reduced-motion sessions never download an animation atlas', async ({ page }) => {
+test('reduced-motion sessions never download an animation atlas', async ({ page }) => {
   const atlases: string[] = []
   page.on('request', request => { if (/\/brand\/active.*\.webp/.test(request.url())) atlases.push(request.url()) })
   const fixture: Fixture = {}
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await mockDashboard(page, fixture)
   const notify = await mockJobsHub(page)
   await page.goto('/#/')
@@ -465,7 +466,7 @@ test('idle and reduced-motion sessions never download an animation atlas', async
   expect(atlases).toEqual([])
 })
 
-test('the icon stops scheduling paints while offscreen and after work finishes', async ({ page }) => {
+test('the icon stops scheduling paints offscreen and resumes a slow drift when idle', async ({ page }) => {
   await page.addInitScript(() => {
     const target = window as Window & { brandPaints: number }
     target.brandPaints = 0
@@ -498,7 +499,7 @@ test('the icon stops scheduling paints while offscreen and after work finishes',
   await page.waitForTimeout(550)
   const idle = await paints()
   await page.waitForTimeout(250)
-  expect(await paints()).toBe(idle)
+  expect(await paints()).toBeGreaterThan(idle)
 })
 
 test('the desktop sidebar has breathing room above and below in both widths', async ({ page }) => {
@@ -517,4 +518,38 @@ test('the desktop sidebar has breathing room above and below in both widths', as
   const drawer = await rail.boundingBox()
   expect(drawer!.y).toBe(0)
   expect(drawer!.height).toBe(812)
+})
+
+test('idle geometry advances substantially more slowly than working geometry', async ({ page }) => {
+  await page.addInitScript(() => {
+    const target = window as Window & { brandPose: number }
+    target.brandPose = 0
+    const draw = CanvasRenderingContext2D.prototype.drawImage
+    CanvasRenderingContext2D.prototype.drawImage = function (...args: Parameters<typeof draw>) {
+      if (this.canvas.closest('aside') && args[0] instanceof HTMLImageElement && args[0].src.endsWith('/brand/active.webp')) {
+        target.brandPose = Math.round(Number(args[2]) / 288) * 8 + Math.round(Number(args[1]) / 288)
+      }
+      return draw.apply(this, args)
+    }
+  })
+  const fixture: Fixture = {}
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  const pose = () => page.evaluate(() => (window as Window & { brandPose: number }).brandPose)
+  const idleStart = await pose()
+  await page.waitForTimeout(1200)
+  const idleTravel = ((await pose()) - idleStart + 48) % 48
+  expect(idleTravel).toBeGreaterThan(0)
+  fixture.queue = { runningJobs: 1 }
+  fixture.jobs = [liveJob()]
+  notify()
+  await expect(mark).toHaveAttribute('data-light-state', 'excited')
+  await page.waitForTimeout(550)
+  const activeStart = await pose()
+  await page.waitForTimeout(1200)
+  const activeTravel = ((await pose()) - activeStart + 48) % 48
+  expect(activeTravel).toBeGreaterThan(idleTravel * 2)
 })

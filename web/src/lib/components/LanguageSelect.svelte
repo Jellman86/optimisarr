@@ -13,6 +13,8 @@
   let root: HTMLDivElement
   let trigger: HTMLButtonElement
   let menu = $state<HTMLDivElement>()
+  let menuLeft = $state(0)
+  let menuMaxHeight = $state(288)
 
   const selectedName = $derived(
     AVAILABLE_LOCALES.find((locale) => locale.code === i18n.locale)?.name ?? i18n.locale,
@@ -42,12 +44,17 @@
   })
 
   function positionMenu() {
-    if (forceUp) return
     if (!trigger || !menu) return
     const triggerRect = trigger.getBoundingClientRect()
     const spaceBelow = window.innerHeight - triggerRect.bottom
     const spaceAbove = triggerRect.top
-    measuredUp = spaceBelow < menu.offsetHeight + 8 && spaceAbove > spaceBelow
+    measuredUp = spaceBelow < Math.min(menu.scrollHeight, 288) + 8 && spaceAbove > spaceBelow
+    menuMaxHeight = Math.max(0, Math.min(288, (forceUp || measuredUp ? spaceAbove : spaceBelow) - 8))
+    if (compact) {
+      const width = menu.offsetWidth
+      const left = Math.max(8, Math.min(triggerRect.left + (triggerRect.width - width) / 2, window.innerWidth - width - 8))
+      menuLeft = left - root.getBoundingClientRect().left
+    }
   }
 
   async function toggle() {
@@ -122,7 +129,9 @@
       id="language-options"
       role="listbox"
       aria-label={i18n.m.language.label}
-      class="card absolute z-50 max-h-72 overflow-y-auto p-1 {compact ? 'left-0 w-44' : 'left-6 right-0'}"
+      class="card absolute z-50 max-h-72 overflow-y-auto p-1 {compact ? 'w-44 max-w-none' : 'left-6 right-0'}"
+      style:left={compact ? `${menuLeft}px` : undefined}
+      style:max-height={`${menuMaxHeight}px`}
       class:bottom-full={opensUp}
       class:mb-1={opensUp}
       class:top-full={!opensUp}
@@ -134,7 +143,7 @@
           role="option"
           aria-selected={locale.code === i18n.locale}
           data-locale={locale.code}
-          class="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-raised focus:bg-raised focus:outline-none"
+          class="flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-md px-2 py-1.5 text-left text-xs hover:bg-raised focus:bg-raised focus:outline-none"
           class:text-accent={locale.code === i18n.locale}
           onclick={() => selectLocale(locale.code)}
           onkeydown={(event) => moveFocus(event, index)}

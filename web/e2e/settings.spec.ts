@@ -279,3 +279,85 @@ test('information tooltips are translated, populated, and readable in every loca
     }
   }
 })
+
+test('control rooms separate processing from connections and keep complete state summaries', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings')
+  const processing = page.getByRole('region', { name: 'Processing & protection', exact: true })
+  const connections = page.getByRole('region', { name: 'Connections & system', exact: true })
+  await expect(processing.getByRole('button', { name: /^Encoding/ })).toBeVisible()
+  await expect(processing.getByRole('button', { name: /^Files & safety/ })).toBeVisible()
+  await expect(connections.getByRole('button', { name: /^Media servers/ })).toBeVisible()
+  await expect(connections.getByRole('button', { name: /^System/ })).toBeVisible()
+  await processing.getByRole('button', { name: /^Encoding/ }).click()
+  await page.locator('#max-jobs').fill('3')
+  await page.getByRole('button', { name: 'All settings' }).click()
+  const encoding = processing.getByRole('button', { name: /^Encoding/ })
+  await expect(encoding).toContainText('3 at a time')
+  await expect(encoding.locator('[data-room-changes]')).toHaveText('1')
+  await encoding.click()
+  await expect(page.locator('#max-jobs')).toHaveValue('3')
+})
+
+test('returning from a room restores keyboard focus to its card', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings')
+  await page.getByRole('button', { name: /^Files & safety/ }).click()
+  await page.getByRole('button', { name: 'All settings' }).click()
+  await expect(page.getByRole('button', { name: /^Files & safety/ })).toBeFocused()
+})
+
+test('sidebar language menu fits its labels in expanded and collapsed rails', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/system')
+  for (const collapsed of [false, true]) {
+    if (collapsed) await page.getByRole('button', { name: 'Collapse sidebar' }).click()
+    await page.getByRole('button', { name: 'Language: English' }).click()
+    const menu = page.getByRole('listbox', { name: 'Language' })
+    await expect(menu).toBeVisible()
+    const bounds = await menu.boundingBox()
+    expect(bounds!.width).toBeGreaterThanOrEqual(170)
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+    expect(await menu.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    expect(await menu.getByRole('option').first().evaluate(el => {
+      const rect = el.getBoundingClientRect()
+      return el.contains(document.elementFromPoint(rect.right - 12, rect.top + rect.height / 2))
+    })).toBe(true)
+    await page.keyboard.press('End')
+    await expect(menu.getByRole('option').last()).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: 'Language: English' })).toBeFocused()
+  }
+})
+
+test('system panels keep a consistent gap before backup and first-run setup', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/system')
+  await expect(page.locator('#global-encoders')).toBeVisible()
+  const gaps = await page.locator('[data-config-section]').evaluateAll(sections =>
+    sections.slice(1).map((section, i) => section.getBoundingClientRect().top - sections[i].getBoundingClientRect().bottom),
+  )
+  for (const gap of gaps) expect(gap).toBeGreaterThanOrEqual(20)
+})
+
+test('system cards and encoder tiles remain separated and contained at every width', async ({ page }) => {
+  await mockSettings(page)
+  await page.goto('/#/settings/system')
+  await expect(page.locator('#global-encoders')).toBeVisible()
+  for (const width of [1920, 1280, 768, 375]) {
+    await page.setViewportSize({ width, height: 980 })
+    const issues = await page.locator('.settings-detail .grid').evaluateAll(grids => grids.flatMap(grid => {
+      const parent = grid.getBoundingClientRect()
+      const children = [...grid.children].map(child => child.getBoundingClientRect())
+      return children.flatMap((rect, i) => {
+        const outside = rect.left < parent.left - 1 || rect.right > parent.right + 1
+        const overlap = children.slice(i + 1).some(other =>
+          Math.min(rect.right, other.right) - Math.max(rect.left, other.left) > 1 &&
+          Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top) > 1)
+        return outside || overlap ? [{ outside, overlap }] : []
+      })
+    }))
+    expect(issues, `Card layout at ${width}px`).toEqual([])
+  }
+})

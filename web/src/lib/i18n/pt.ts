@@ -563,6 +563,12 @@ export const pt: Messages = {
     action_removing_ellipsis: "Removendo…"
   },
   settings: {
+    concurrency_hint: 'Número máximo de tarefas em simultâneo neste servidor.',
+    encoder_hint: 'Use a seleção automática ou escolha um codificador.',
+    threads_hint: 'Com 0, o codificador escolhe o número de threads.',
+    scan_hint: 'Frequência de verificação de alterações nas bibliotecas.',
+    group_processing: 'Processamento e proteção',
+    group_connections: 'Ligações e sistema',
     subtitle: "Opções globais que se aplicam a todas as bibliotecas de mídia.",
     remote_workers: "Workers remotos",
     remote_workers_hint: "Permite que aplicações sidecar noutras máquinas contribuam com capacidade de codificação livre. Desativado por predefinição: um contentor chega para uso normal. O Optimisarr continua a fazer todas as substituições.",

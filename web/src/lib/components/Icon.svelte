@@ -3,6 +3,11 @@
   // so icons inherit text colour and size from their button or label.
   export const icons: Record<string, string> = {
     check: 'M5 13l4 4L19 7',
+    'arrow-up-right': 'M7 17 17 7M7 7h10v10',
+    'shield-check': 'M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7zM8 12l3 3 5-6',
+    tv: 'M4 7h16v13H4zM8 3l4 4 4-4',
+    bell: 'M18 8a6 6 0 00-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
+    server: 'M3 3h18v7H3zM3 14h18v7H3zM7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6',
     x: 'M6 6l12 12M18 6L6 18',
     retry: 'M4 4v6h6M20 20v-6h-6M5.5 9a7 7 0 0111.9-2.6L20 9M18.5 15a7 7 0 01-11.9 2.6L4 15',
     replace: 'M7 4l-3 3 3 3M4 7h11M17 20l3-3-3-3M20 17H9',

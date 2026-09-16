@@ -563,6 +563,12 @@ export const ja: Messages = {
     action_removing_ellipsis: "削除中…"
   },
   settings: {
+    concurrency_hint: 'このサーバーで同時に実行するタスクの上限。',
+    encoder_hint: '自動選択を使うか、エンコーダーを指定します。',
+    threads_hint: '0 にするとエンコーダーがスレッド数を決めます。',
+    scan_hint: 'ライブラリの変更を確認する間隔。',
+    group_processing: '処理と保護',
+    group_connections: '接続とシステム',
     subtitle: "すべてのメディア ライブラリに適用されるグローバル オプション。",
     remote_workers: "リモートワーカー",
     remote_workers_hint: "他のマシンのサイドカーアプリが空いているエンコード能力を提供できるようにします。既定はオフで、通常の利用にはコンテナ1つで十分です。置換は引き続き Optimisarr 自身が行います。",

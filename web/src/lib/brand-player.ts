@@ -1,8 +1,9 @@
 // The expensive light transport is baked offline. All visible marks share decoded WebP assets;
-// the runtime only copies a tile, at 24 fps, while real work is happening and motion is welcome.
+// the runtime copies tiles at 12 fps while idle and 24 fps during work, when motion is welcome.
 const FRAMES = 48
 const COLUMNS = 8
-const FRAME_MS = 1000 / 24
+const IDLE_FRAME_MS = 1000 / 12
+const WORKING_FRAME_MS = 1000 / 24
 const FADE_MS = 450
 const images = new Map<string, Promise<HTMLImageElement>>()
 
@@ -29,6 +30,7 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
   let disposed = false
   let size = 0
   let frame = 0
+  let lastPaint = 0
   let timer = 0
   let fadeStart = 0
   let fading = false
@@ -41,12 +43,14 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
   function stop() {
     window.clearTimeout(timer)
     timer = 0
+    lastPaint = 0
   }
 
   function paint() {
-    stop()
+    window.clearTimeout(timer)
+    timer = 0
     if (disposed || !visible || document.hidden || !size || !still) return
-    const playing = working && !reduced.matches && Boolean(atlas)
+    const playing = !reduced.matches && Boolean(atlas)
     canvas.dataset.lightMotion = playing ? 'playing' : 'still'
     canvas.dataset.lightState = working ? 'excited' : 'steady'
     ctx.clearRect(0, 0, size, size)
@@ -55,21 +59,27 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
     // The same spectral field needs more contrast against the light theme's pale surfaces.
     ctx.filter = dark ? 'none' : 'brightness(0.64) saturate(1.4)'
     if (playing && atlas) {
+      const now = performance.now()
+      const elapsed = lastPaint ? Math.min(200, now - lastPaint) : 0
+      lastPaint = now
+      // One circuit in 36 seconds at rest, six seconds while working. Elapsed time keeps
+      // the speed independent of frame rate; hidden/offscreen periods never advance the pose.
+      frame = (frame + elapsed * FRAMES / (working ? 6000 : 36000)) % FRAMES
+      const brightness = working ? 1 : 0.78
       const first = Math.floor(frame)
       const mix = frame - first
-      ctx.globalAlpha = 1 - mix
+      ctx.globalAlpha = (1 - mix) * brightness
       ctx.drawImage(atlas, (first % COLUMNS) * atlasSize, Math.floor(first / COLUMNS) * atlasSize,
         atlasSize, atlasSize, 0, 0, size, size)
-      // Interpolation gives 24 display frames from 8 baked poses per second. Add premultiplied
+      // Interpolate between baked poses at either playback speed. Add premultiplied
       // contributions so overlapping transparent shafts retain their original brightness.
       const second = (first + 1) % FRAMES
-      ctx.globalAlpha = mix
+      ctx.globalAlpha = mix * brightness
       ctx.globalCompositeOperation = 'lighter'
       ctx.drawImage(atlas, (second % COLUMNS) * atlasSize, Math.floor(second / COLUMNS) * atlasSize,
         atlasSize, atlasSize, 0, 0, size, size)
       ctx.globalCompositeOperation = 'source-over'
       ctx.globalAlpha = 1
-      frame = (frame + 1 / 3) % FRAMES
     } else {
       const inset = size <= 80 ? still.width * 60 / 576 : 0
       ctx.drawImage(still, inset, inset, still.width - inset * 2, still.height - inset * 2, 0, 0, size, size)
@@ -91,13 +101,13 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
         ctx.globalAlpha = 1
       } else fading = false
     }
-    if (playing || fading) timer = window.setTimeout(paint, FRAME_MS)
+    if (playing || fading) timer = window.setTimeout(paint, working || fading ? WORKING_FRAME_MS : IDLE_FRAME_MS)
   }
 
   async function prepare() {
     if (disposed || !visible || document.hidden || !size) return
     const desiredAtlasSize = size > 80 ? 288 : 80
-    const animated = working && !reduced.matches
+    const animated = !reduced.matches
     const key = `${working}:${animated}:${desiredAtlasSize}`
     if (loadedState === key) { paint(); return }
     const request = ++pending
@@ -106,7 +116,7 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
       if (disposed || request !== pending) return
       still = nextStill
       atlas = undefined
-      // Show a complete icon while the animation loads. Idle/reduced-motion never fetch an atlas.
+      // Show a complete icon while the animation loads. Reduced motion never fetches an atlas.
       paint()
       const nextAtlas = animated ? await loadImage(`/brand/active${desiredAtlasSize === 80 ? '-small' : ''}.webp`) : undefined
       if (disposed || request !== pending) return

@@ -563,6 +563,12 @@ export const zh: Messages = {
     action_removing_ellipsis: "正在删除..."
   },
   settings: {
+    concurrency_hint: '此服务器同时运行的最大任务数。',
+    encoder_hint: '自动选择或指定编码器。',
+    threads_hint: '设为 0 时，由编码器决定线程数。',
+    scan_hint: '检查媒体库变更的频率。',
+    group_processing: '处理与保护',
+    group_connections: '连接与系统',
     subtitle: "适用于每个媒体库的全局选项。",
     remote_workers: "远程工作节点",
     remote_workers_hint: "允许其他机器上的边车应用贡献空闲的编码算力。默认关闭——日常使用一个容器就够了。替换操作仍全部由 Optimisarr 自己完成。",

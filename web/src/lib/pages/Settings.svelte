@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import {
     api,
     type Settings,
@@ -39,6 +40,11 @@
   // it happens to be numbered lower.
   type RoomKey = 'encoding' | 'files' | 'servers' | 'downloads' | 'notifications' | 'workers' | 'system'
 
+  const ROOM_ICONS: Record<RoomKey, string> = {
+    encoding: 'gpu', files: 'shield-check', servers: 'tv', downloads: 'download',
+    notifications: 'bell', workers: 'server', system: 'sliders',
+  }
+
   const ROOM_PATHS: Record<RoomKey, string> = {
     encoding: 'encoding',
     files: 'files',
@@ -60,12 +66,25 @@
 
   let openRoom = $derived(roomFromPath(router.path))
 
+  let focusAfterNavigation = $state<string | null>(null)
+
+  $effect(() => {
+    const room = openRoom
+    const target = focusAfterNavigation
+    if (!target || (target === 'room-heading' ? !room : room !== null)) return
+    void tick().then(() => {
+      document.getElementById(target)?.focus()
+      focusAfterNavigation = null
+    })
+  })
+
   function openRoomAt(key: RoomKey) {
+    focusAfterNavigation = 'room-heading'
     router.go(`/settings/${ROOM_PATHS[key]}`)
-    requestAnimationFrame(() => document.getElementById('room-heading')?.focus())
   }
 
   function closeRoom() {
+    focusAfterNavigation = openRoom ? `settings-room-${openRoom}` : null
     router.go('/settings')
   }
 
@@ -499,7 +518,6 @@
         encoder: settings.encoderMode,
         hours: settings.libraryScanIntervalHours,
       }),
-      healthy: true,
     },
     {
       key: 'files' as RoomKey,
@@ -511,7 +529,6 @@
             size: formatSize(gibToBytes(minFreeDiskGiB)),
             days: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
           }),
-      healthy: !settings.dryRunMode,
     },
     {
       key: 'servers' as RoomKey,
@@ -520,14 +537,12 @@
       state: watchers.length
         ? watchers.map((w) => w.name).join(', ')
         : i18n.m.settings.room_none_connected,
-      healthy: watchers.length > 0,
     },
     {
       key: 'downloads' as RoomKey,
       title: i18n.m.settings.room_downloads,
       description: i18n.m.settings.room_downloads_desc,
       state: arrs.length ? arrs.map((c) => c.name).join(', ') : i18n.m.settings.room_none_connected,
-      healthy: arrs.length > 0,
     },
     {
       key: 'notifications' as RoomKey,
@@ -536,7 +551,6 @@
       state: targets.length
         ? targets.map((n) => n.name).join(', ')
         : i18n.m.settings.room_none_configured,
-      healthy: targets.length > 0,
     },
     // Only once opted in, and only where the server offers the preview at all: a default
     // single-container install should not have to wonder what a remote worker is.
@@ -546,7 +560,6 @@
           title: i18n.m.settings.room_workers,
           description: i18n.m.settings.room_workers_desc,
           state: i18n.m.settings.room_workers_state,
-          healthy: true,
         }]
       : []),
     {
@@ -554,9 +567,12 @@
       title: i18n.m.settings.room_system,
       description: i18n.m.settings.room_system_desc,
       state: i18n.m.settings.room_system_state,
-      healthy: true,
-      readOnly: true,
     },
+  ])
+
+  const roomGroups = $derived([
+    { id: 'processing', title: i18n.m.settings.group_processing, rooms: rooms.filter(r => r.key === 'encoding' || r.key === 'files') },
+    { id: 'connections', title: i18n.m.settings.group_connections, rooms: rooms.filter(r => r.key !== 'encoding' && r.key !== 'files') },
   ])
 
   let currentRoom = $derived(openRoom ? rooms.find((r) => r.key === openRoom) ?? null : null)
@@ -780,7 +796,8 @@
   {/if}
 {/snippet}
 
-<header class="mb-6">
+<div class="settings-layout">
+<header class="settings-page-header">
   <div class="min-w-0">
     <h1 class="page-title">{i18n.m.nav.settings}</h1>
     <p class="page-subtitle">{i18n.m.settings.subtitle}</p>
@@ -795,54 +812,59 @@
   <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else}
   {#if !openRoom}
-    <!-- The landing page. Each card reports what its room is set to, so the common
-         questions are answered without opening anything. -->
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {#each rooms as room (room.key)}
-        <button
-          type="button"
-          class="card card-interactive flex min-h-[7.5rem] flex-col gap-2 p-4 text-left"
-          onclick={() => openRoomAt(room.key)}
-        >
-          <span class="flex items-start justify-between gap-2">
-            <span class="text-sm font-semibold text-ink">{room.title}</span>
-            {#if roomChangedCount(room.key) > 0}
-              <span
-                class="badge flex-none bg-cyan-600 font-mono text-[10px] text-white"
-                title={i18n.m.settings.unsaved_here}
-              >{roomChangedCount(room.key)}</span>
-            {:else if room.readOnly}
-              <span class="badge flex-none tone-muted font-mono text-[10px] font-medium uppercase tracking-wide">{i18n.m.settings.read_only}</span>
-            {/if}
-          </span>
-          <span class="text-xs leading-relaxed text-ink-3">{room.description}</span>
-          <span class="mt-auto flex items-center gap-2 pt-2 font-mono text-[11px] text-ink-2 hairline-t">
-            <span
-              class="h-1.5 w-1.5 flex-none rounded-full {room.healthy ? 'bg-emerald-500' : 'bg-ink-4'}"
-              aria-hidden="true"
-            ></span>
-            <span class="truncate">{room.state}</span>
-          </span>
-        </button>
+    <div class="settings-overview">
+      {#each roomGroups as group (group.id)}
+        <section aria-labelledby={`settings-${group.id}-heading`}>
+          <h2 id={`settings-${group.id}-heading`} class="settings-group-title">{group.title}</h2>
+          <div class="settings-room-grid">
+            {#each group.rooms as room (room.key)}
+              <button
+                type="button"
+                id={`settings-room-${room.key}`}
+                class="settings-room focus-ring"
+                class:settings-room-feature={room.key === 'encoding'}
+                onclick={() => openRoomAt(room.key)}
+              >
+                <span class="settings-room-symbols" aria-hidden="true">
+                  <Icon name={ROOM_ICONS[room.key]} class="h-5 w-5 text-accent" />
+                  <Icon name="arrow-up-right" class="h-4 w-4 text-ink-4" />
+                </span>
+                <span class="flex items-start justify-between gap-3">
+                  <span class="settings-room-title">{room.title}</span>
+                  {#if roomChangedCount(room.key) > 0}
+                    <span class="badge tone-accent font-mono" data-room-changes title={i18n.m.settings.unsaved_here}>
+                      {roomChangedCount(room.key)}
+                    </span>
+                  {/if}
+                </span>
+                <span class="settings-room-description">{room.description}</span>
+                <span class="settings-room-state">{room.state}</span>
+              </button>
+            {/each}
+          </div>
+        </section>
       {/each}
     </div>
   {:else}
-    <!-- The room says its own name. Without this the first thing you see after opening
-         "Encoding" is a section headed "Queue", and the room you asked for has vanished. -->
-    <div class="mb-5">
-      <button type="button" class="btn btn-ghost -ml-2 mb-2 px-2 text-xs" onclick={closeRoom}>
-        &larr; {i18n.m.settings.all_settings}
+    <div class="settings-room-heading">
+      <button type="button" class="btn btn-ghost -ml-2 mb-5 px-2 text-xs" onclick={closeRoom}>
+        <Icon name="arrow-left" /> {i18n.m.settings.all_settings}
       </button>
-      <h2
-        id="room-heading"
-        tabindex="-1"
-        class="text-lg font-semibold text-ink outline-none"
-      >{currentRoom?.title ?? i18n.m.nav.settings}</h2>
-      {#if currentRoom?.description}
-        <p class="mt-0.5 max-w-3xl text-sm text-ink-3">{currentRoom.description}</p>
-      {/if}
+      <div class="flex items-start gap-3.5">
+        <span class="settings-heading-icon" aria-hidden="true"><Icon name={ROOM_ICONS[openRoom]} class="h-5 w-5" /></span>
+        <div class="min-w-0">
+          <h2 id="room-heading" tabindex="-1" class="text-xl font-semibold tracking-tight text-ink outline-none">
+            {currentRoom?.title ?? i18n.m.nav.settings}
+          </h2>
+          {#if currentRoom?.description}
+            <p class="mt-1 max-w-2xl text-sm leading-relaxed text-ink-3">{currentRoom.description}</p>
+          {/if}
+        </div>
+      </div>
     </div>
   {/if}
+
+  <div class="settings-detail" class:settings-detail-open={openRoom !== null}>
 
   {#if openRoom === 'encoding'}
   <div class="min-w-0 space-y-5">
@@ -851,15 +873,15 @@
     title={i18n.m.nav.queue}
     description={i18n.m.settings.queue_desc}
   >
-    <div class="grid gap-5 sm:grid-cols-2">
-      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('maxConcurrentJobs') ? 'bg-cyan-500/10' : ''}">
-        <label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label>
+    <div class="settings-fields">
+      <div class="settings-field {isChanged('maxConcurrentJobs') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="max-jobs">{i18n.m.settings.max_jobs} <InfoTip text={i18n.m.settings.max_jobs_tip} /></label><p>{i18n.m.settings.concurrency_hint}</p></div>
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
         {@render wasChanged('maxConcurrentJobs', String(savedSettings?.maxConcurrentJobs ?? ''))}
       </div>
 
-      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('encoderMode') ? 'bg-cyan-500/10' : ''}">
-        <label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label>
+      <div class="settings-field {isChanged('encoderMode') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label><p>{i18n.m.settings.encoder_hint}</p></div>
         <select id="encoder-mode" class="input" bind:value={settings.encoderMode}>
           <option value="Auto">Auto</option>
           <option value="Cpu">CPU</option>
@@ -870,14 +892,14 @@
         {@render wasChanged('encoderMode', String(savedSettings?.encoderMode ?? ''))}
       </div>
 
-      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('cpuThreadLimit') ? 'bg-cyan-500/10' : ''}">
-        <label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label>
+      <div class="settings-field {isChanged('cpuThreadLimit') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="cpu-threads">{i18n.m.settings.cpu_threads} <InfoTip text={i18n.m.settings.cpu_threads_tip} /></label><p>{i18n.m.settings.threads_hint}</p></div>
         <input id="cpu-threads" class="input" type="number" min="0" bind:value={settings.cpuThreadLimit} />
         {@render wasChanged('cpuThreadLimit', String(savedSettings?.cpuThreadLimit ?? ''))}
       </div>
 
-      <div class="-m-2 rounded-lg p-2 transition-colors {isChanged('libraryScanIntervalHours') ? 'bg-cyan-500/10' : ''}">
-        <label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label>
+      <div class="settings-field {isChanged('libraryScanIntervalHours') ? 'settings-field-changed' : ''}">
+        <div class="settings-field-label"><label class="label" for="scan-interval">{i18n.m.settings.scan_interval} <InfoTip text={i18n.m.settings.scan_interval_tip} /></label><p>{i18n.m.settings.scan_hint}</p></div>
         <div class="flex min-w-0 items-center gap-2">
           <input id="scan-interval" class="input min-w-0 flex-1" type="number" min="1" step="1" bind:value={settings.libraryScanIntervalHours} />
           <span class="flex-none text-sm text-ink-3">{i18n.m.settings.hours}</span>
@@ -887,7 +909,7 @@
 
     </div>
 
-    <div class="mt-5 grid gap-5 border-t border-line pt-5 sm:grid-cols-2">
+    <div class="settings-video-fields">
       <Toggle
         bind:checked={settings.hardwareDecode}
         label={i18n.m.settings.hardware_decode}
@@ -903,7 +925,7 @@
           <option value="Hardware">{i18n.m.settings.hdr_tone_map_hardware}</option>
         </select>
       </div>
-      <p class="text-xs text-ink-3 sm:col-span-2">
+      <p class="text-xs text-ink-3">
         {i18n.m.settings.auto_run_before}<button class="text-accent hover:underline" onclick={() => router.go('/libraries')}>{i18n.m.nav.libraries}</button>{i18n.m.settings.auto_run_after}
       </p>
     </div>
@@ -943,7 +965,7 @@
       />
     </div>
     <div class="mt-5 max-w-2xl border-t border-line pt-5">
-      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'bg-cyan-500/10' : ''}">
+      <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'settings-field-changed' : ''}">
         <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
         <div class="flex min-w-0 items-center gap-2">
           <input id="free-disk" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={minFreeDiskGiB} />
@@ -1404,9 +1426,11 @@
   </div>
   {/if}
 
+  </div>
+
   {#if changedCount > 0 || message}
     <div
-      class="card sticky bottom-0 z-10 mt-5 flex flex-wrap items-center gap-3 p-4"
+      class="settings-savebar sticky bottom-0 z-10 mt-6 flex flex-wrap items-center gap-3 p-4"
       data-settings-actions
     >
       {#if changedCount > 0}
@@ -1414,7 +1438,7 @@
           {plural(changedCount, i18n.m.settings.unsaved_changes_one, i18n.m.settings.unsaved_changes_other)}
         </span>
       {/if}
-      {#if message}<span class="text-sm text-ok">{message}</span>{/if}
+      {#if message}<span class="text-sm text-ok" role="status">{message}</span>{/if}
       <span class="flex-1"></span>
       {#if changedCount > 0}
         <button class="btn btn-ghost min-h-11" onclick={discardAll} disabled={saving}>
@@ -1427,3 +1451,68 @@
     </div>
   {/if}
 {/if}
+
+</div>
+
+<style>
+  .settings-layout { max-width: 64rem; margin-inline: auto; }
+  .settings-page-header { margin-bottom: 2rem; }
+  .settings-overview { display: grid; gap: 1.75rem; }
+  .settings-group-title {
+    margin-bottom: .875rem; color: var(--ink-3); font-size: .6875rem; font-weight: 600;
+    letter-spacing: .11em; text-transform: uppercase;
+  }
+  .settings-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .settings-room {
+    display: flex; min-width: 0; min-height: 11rem; flex-direction: column; gap: .5rem;
+    padding: 1.375rem; text-align: left; border-radius: .875rem;
+    background: linear-gradient(145deg, var(--raised), var(--panel));
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+    transition: background .18s, box-shadow .18s;
+  }
+  .settings-room:hover { background: var(--raised); box-shadow: var(--lift-2), inset 0 1px 0 var(--edge); }
+  .settings-room-feature { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--raised)), var(--panel)); }
+  .settings-room-symbols { display: flex; align-items: center; justify-content: space-between; margin-bottom: .65rem; }
+  .settings-room-title { color: var(--ink); font-size: .9375rem; font-weight: 600; letter-spacing: -.015em; }
+  .settings-room-description { color: var(--ink-3); font-size: .8125rem; line-height: 1.55; }
+  .settings-room-state { margin-top: auto; padding-top: .875rem; color: var(--ink-2); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+  .settings-room-heading { max-width: 48rem; margin: 0 auto 1.75rem; }
+  .settings-heading-icon {
+    display: flex; flex: none; align-items: center; justify-content: center;
+    width: 2.75rem; height: 2.75rem; border-radius: .75rem; color: var(--accent); background: var(--sunken);
+  }
+  .settings-detail-open { display: grid; gap: 1.25rem; max-width: 48rem; margin-inline: auto; }
+  .settings-detail :global([data-config-section]) { box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); border-radius: .875rem; }
+  .settings-detail :global([data-config-section] > header) { background: var(--raised); }
+  .settings-fields { display: grid; }
+  .settings-field {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); align-items: center;
+    min-width: 0; column-gap: 1.5rem; padding: 1rem 0; border-bottom: 1px solid var(--divide-soft);
+  }
+  .settings-field:first-child { padding-top: 0; }
+  .settings-field:last-child { border-bottom: 0; padding-bottom: 0; }
+  .settings-field > span { grid-column: 2; }
+  .settings-field-label p { margin-top: .3rem; color: var(--ink-3); font-size: .75rem; line-height: 1.5; }
+  .settings-detail :global(.label) { text-transform: none; letter-spacing: 0; font-size: .8125rem; font-weight: 500; color: var(--ink-2); }
+  .settings-detail :global(.input) { min-height: 2.75rem; }
+
+  .settings-field .input { min-height: 2.75rem; }
+  .settings-field :global(.label) { margin-bottom: 0; }
+  .settings-field-changed { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .settings-video-fields {
+    display: grid; gap: 1.5rem;
+    margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--divide);
+  }
+  .settings-video-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); gap: 1.5rem; align-items: center; }
+  .settings-savebar {
+    border-radius: .875rem; background: var(--raised); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+  }
+  @media (max-width: 639px) {
+    .settings-page-header { margin-bottom: 1.5rem; }
+    .settings-room-grid, .settings-field, .settings-video-fields > div { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+    .settings-field > span { grid-column: 1; }
+    .settings-room { min-height: 10rem; padding: 1.125rem; }
+    .settings-room-heading { margin-bottom: 1.25rem; }
+  }
+  @media (prefers-reduced-motion: reduce) { .settings-room { transition: none; } }
+</style>

@@ -4,15 +4,25 @@
 
 ### Changed
 
+- **Settings now uses the Control rooms layout.** Processing and protection sit above
+  connections and system tools, with clearer room icons, complete state summaries and more
+  breathing room. Encoding controls have aligned labels and short explanations; drafts stay
+  intact between rooms, and returning to the overview restores keyboard focus. System
+  sections have consistent spacing, and encoder tiles reflow without squeezing together.
+- The sidebar language menu now keeps its full width instead of collapsing to the globe
+  button’s width. It stays within the viewport in both expanded and collapsed sidebars.
+
 - The desktop sidebar and page tray now have 16 px of space above and below them. Mobile
   safe-area padding previously overrode the desktop spacing and left both flush with the
   window; the mobile drawer still fills the screen.
 
 - **The application icon now holds a point of light inside a tesseract.** Smooth, supersampled
   edges replace the pixel grid. During local or remote work, the light shafts rotate, catch
-  the frame and cast moving shadows; idle or fully suspended work settles to a still. The
+  the frame and cast moving shadows. While idle or fully suspended, the geometry continues
+  a quieter 36-second turn; work accelerates it to a six-second cycle. The
   animation is baked ahead of time and loaded only when needed, with no live WebGL rendering
-  and no animation timers while idle, hidden or offscreen. Reduced-motion mode uses a brighter
+  and no animation timers while hidden or offscreen. Idle playback is limited to 12 fps and
+  working playback to 24 fps. Reduced-motion mode uses a brighter
   still, and the browser tab changes between steady and working icons without animating.
 
 - **The sidebar is an island, and it says what is encoding.** The rail no longer runs the
