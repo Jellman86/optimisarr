@@ -500,3 +500,21 @@ test('the icon stops scheduling paints while offscreen and after work finishes',
   await page.waitForTimeout(250)
   expect(await paints()).toBe(idle)
 })
+
+test('the desktop sidebar has breathing room above and below in both widths', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const rail = page.locator('aside')
+  for (const collapsed of [false, true]) {
+    if (collapsed) await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
+    const box = await rail.boundingBox()
+    expect(box!.y).toBeGreaterThanOrEqual(16)
+    expect(900 - box!.y - box!.height).toBeGreaterThanOrEqual(16)
+  }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.getByRole('button', { name: 'Open menu', exact: true }).click()
+  const drawer = await rail.boundingBox()
+  expect(drawer!.y).toBe(0)
+  expect(drawer!.height).toBe(812)
+})

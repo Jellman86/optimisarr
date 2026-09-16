@@ -66,7 +66,7 @@ Measured on the same local headless Chromium/ANGLE SwiftShader setup on 16 Septe
   viewport. Inspected the enlarged scene for bar highlights, shaft occlusion and smooth edges.
 
 Full validation: zero-warning .NET build; 2,019 backend tests; clean Svelte/TypeScript and
-locale checks; 20 frontend unit tests; 86 browser tests; successful production frontend build.
+locale checks; 20 frontend unit tests; 87 browser tests; successful production frontend build.
 The build retains the existing advisory about the main application bundle exceeding 500 kB.
 
 ## Rebuilding and reviewing

@@ -4,6 +4,10 @@
 
 ### Changed
 
+- The desktop sidebar and page tray now have 16 px of space above and below them. Mobile
+  safe-area padding previously overrode the desktop spacing and left both flush with the
+  window; the mobile drawer still fills the screen.
+
 - **The application icon now holds a point of light inside a tesseract.** Smooth, supersampled
   edges replace the pixel grid. During local or remote work, the light shafts rotate, catch
   the frame and cast moving shadows; idle or fully suspended work settles to a still. The
