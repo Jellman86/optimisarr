@@ -4,6 +4,13 @@
 
 ### Changed
 
+- **The application icon now holds a point of light inside a tesseract.** Smooth, supersampled
+  edges replace the pixel grid. During local or remote work, the light shafts rotate, catch
+  the frame and cast moving shadows; idle or fully suspended work settles to a still. The
+  animation is baked ahead of time and loaded only when needed, with no live WebGL rendering
+  and no animation timers while idle, hidden or offscreen. Reduced-motion mode uses a brighter
+  still, and the browser tab changes between steady and working icons without animating.
+
 - **The sidebar is an island, and it says what is encoding.** The rail no longer runs the
   full height of the window as a wall the page leans against: at desktop widths it is a raised
   card floating on the ground, and the page sits in a recessed tray beside it, so the two are

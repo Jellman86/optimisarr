@@ -4,6 +4,7 @@
 // single SignalR connection started once at app boot, so the sidebar stays live regardless of
 // which page is open.
 import { api, type Job } from '../api'
+import { hasBrandActivity } from '../brand-activity'
 import { pickLeadJob } from '../lead-job'
 import { createJobsConnection, type JobProgress, type SystemMetrics } from '../realtime'
 
@@ -12,6 +13,9 @@ const HISTORY = 60
 
 function createActivity() {
   let activeJobs = $state(0)
+  let suspendedEncodeCount = $state(0)
+  let liveJobs = $state<Job[]>([])
+  const brandWorking = $derived(hasBrandActivity({ runningJobs: activeJobs, suspendedEncodeCount }, liveJobs))
   let hardwareActive = $state(false)
   let metrics = $state<SystemMetrics | null>(null)
   let cpuHistory = $state<number[]>([])
@@ -24,6 +28,7 @@ function createActivity() {
     try {
       const status = await api.queueStatus()
       activeJobs = status.runningJobs
+      suspendedEncodeCount = status.suspendedEncodeCount
       hardwareActive = status.hardwareAccelerated
       // Idle: clear the graph so a later run starts from a clean slate.
       if (status.runningJobs === 0) {
@@ -40,7 +45,8 @@ function createActivity() {
   // finishing is exactly the moment the card's subject changes.
   async function refreshLead() {
     try {
-      const next = pickLeadJob(await api.liveJobs())
+      liveJobs = await api.liveJobs()
+      const next = pickLeadJob(liveJobs)
       if (next?.id !== leadJob?.id) leadProgress = null
       leadJob = next
     } catch {
@@ -69,12 +75,20 @@ function createActivity() {
         gpuHistory = [...gpuHistory, m.gpuSupported && m.gpuPercent != null ? m.gpuPercent : 0].slice(-HISTORY)
       },
     })
+    // Read immediately; a stalled negotiation must not leave the activity indicator idle.
+    void refreshStatus()
+    void refreshLead()
+    window.setInterval(() => {
+      if (!document.hidden && connection.state !== 'Connected') {
+        void refreshStatus()
+        void refreshLead()
+      }
+    }, 15_000)
     connection
       .start()
       .then(() => Promise.all([refreshStatus(), refreshLead()]))
       .catch(() => {
-        // Without the hub there are no change events, so read once so the card is not blank
-        // forever on a server whose websocket is blocked by a proxy.
+        // Reconcile after a failed negotiation; the fallback interval keeps this current.
         void refreshStatus()
         void refreshLead()
       })
@@ -82,6 +96,9 @@ function createActivity() {
 
   return {
     start,
+    get brandWorking() {
+      return brandWorking
+    },
     get activeJobs() {
       return activeJobs
     },
