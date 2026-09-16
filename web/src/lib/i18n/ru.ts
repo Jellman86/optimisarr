@@ -419,6 +419,21 @@ export const ru: Messages = {
     preview: "Предварительный просмотр"
   },
   queue: {
+    working_now: "Сейчас в работе",
+    next_recent: "Следующие и недавние",
+    view_job: "Открыть задание",
+    job_details: "Сведения о задании",
+    close_details: "Закрыть сведения",
+    job_stages: "Этапы задания",
+    step_probe: "Анализ",
+    step_encode: "Кодирование",
+    step_verify: "Проверка",
+    step_replace: "Замена",
+    host_usage: "Нагрузка хоста",
+    remote_job: "Обработка на {worker}",
+    no_matches: "Нет заданий, соответствующих фильтру.",
+    manage_queue: "Управление очередью",
+
     subtitle: "Перекодирование задач обработки. Отпечатки проверяются перед тем, как они помечаются как готовые — ваши оригиналы никогда не трогаются.",
     active_suffix: "· {count} активен",
     tab_failures: "Неудачи",

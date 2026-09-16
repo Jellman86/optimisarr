@@ -419,6 +419,21 @@ export const zh: Messages = {
     preview: "预览"
   },
   queue: {
+    working_now: "正在处理",
+    next_recent: "接下来与最近任务",
+    view_job: "查看任务",
+    job_details: "任务详情",
+    close_details: "关闭详情",
+    job_stages: "任务阶段",
+    step_probe: "探测",
+    step_encode: "编码",
+    step_verify: "验证",
+    step_replace: "替换",
+    host_usage: "主机使用率",
+    remote_job: "正在 {worker} 上处理",
+    no_matches: "没有符合此筛选条件的任务。",
+    manage_queue: "管理队列",
+
     subtitle: "转码处理任务。输出在标记为就绪之前会经过验证 - 您的原件永远不会被触及。",
     active_suffix: "· {count} 主动",
     tab_failures: "失败",

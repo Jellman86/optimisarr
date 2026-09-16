@@ -419,6 +419,21 @@ export const pt: Messages = {
     preview: "Visualização"
   },
   queue: {
+    working_now: "Em processamento",
+    next_recent: "Próximos e recentes",
+    view_job: "Ver tarefa",
+    job_details: "Detalhes da tarefa",
+    close_details: "Fechar detalhes",
+    job_stages: "Etapas da tarefa",
+    step_probe: "Analisar",
+    step_encode: "Codificar",
+    step_verify: "Verificar",
+    step_replace: "Substituir",
+    host_usage: "Utilização do anfitrião",
+    remote_job: "A processar em {worker}",
+    no_matches: "Nenhuma tarefa corresponde a este filtro.",
+    manage_queue: "Gerir fila",
+
     subtitle: "Tarefas de processamento de transcodificação. As saídas são verificadas antes de serem marcadas como prontas — seus originais nunca são tocados.",
     active_suffix: "· {count} ativo",
     tab_failures: "Falhas",

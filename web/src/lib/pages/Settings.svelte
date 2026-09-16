@@ -821,8 +821,7 @@
               <button
                 type="button"
                 id={`settings-room-${room.key}`}
-                class="settings-room focus-ring"
-                class:settings-room-feature={room.key === 'encoding'}
+                class="settings-room card card-interactive focus-ring"
                 onclick={() => openRoomAt(room.key)}
               >
                 <span class="settings-room-symbols" aria-hidden="true">
@@ -1455,7 +1454,7 @@
 </div>
 
 <style>
-  .settings-layout { max-width: 64rem; margin-inline: auto; }
+  .settings-layout { width: 100%; min-width: 0; }
   .settings-page-header { margin-bottom: 2rem; }
   .settings-overview { display: grid; gap: 1.75rem; }
   .settings-group-title {
@@ -1465,25 +1464,18 @@
   .settings-room-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .settings-room {
     display: flex; min-width: 0; min-height: 11rem; flex-direction: column; gap: .5rem;
-    padding: 1.375rem; text-align: left; border-radius: .875rem;
-    background: linear-gradient(145deg, var(--raised), var(--panel));
-    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
-    transition: background .18s, box-shadow .18s;
+    padding: 1.375rem; text-align: left;
   }
-  .settings-room:hover { background: var(--raised); box-shadow: var(--lift-2), inset 0 1px 0 var(--edge); }
-  .settings-room-feature { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--raised)), var(--panel)); }
   .settings-room-symbols { display: flex; align-items: center; justify-content: space-between; margin-bottom: .65rem; }
   .settings-room-title { color: var(--ink); font-size: .9375rem; font-weight: 600; letter-spacing: -.015em; }
   .settings-room-description { color: var(--ink-3); font-size: .8125rem; line-height: 1.55; }
   .settings-room-state { margin-top: auto; padding-top: .875rem; color: var(--ink-2); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
-  .settings-room-heading { max-width: 48rem; margin: 0 auto 1.75rem; }
+  .settings-room-heading { margin-bottom: 1.75rem; }
   .settings-heading-icon {
     display: flex; flex: none; align-items: center; justify-content: center;
     width: 2.75rem; height: 2.75rem; border-radius: .75rem; color: var(--accent); background: var(--sunken);
   }
-  .settings-detail-open { display: grid; gap: 1.25rem; max-width: 48rem; margin-inline: auto; }
-  .settings-detail :global([data-config-section]) { box-shadow: var(--lift-1), inset 0 1px 0 var(--edge); border-radius: .875rem; }
-  .settings-detail :global([data-config-section] > header) { background: var(--raised); }
+  .settings-detail-open { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; width: 100%; }
   .settings-fields { display: grid; }
   .settings-field {
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); align-items: center;

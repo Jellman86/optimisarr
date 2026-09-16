@@ -67,6 +67,8 @@ async function mockSettings(page: Page) {
       version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true,
     })
     if (path === '/api/health') return json(route, { status: 'healthy', service: 'optimisarr', version: 'test' })
+    if (path === '/api/jobs') return json(route, [])
+    if (path === '/api/queue/status') return json(route, { runningJobs: 0, suspendedEncodeCount: 0 })
     if (path === '/api/settings') return json(route, settings)
     if (path === '/api/settings/cleanup') return json(route, {
       retentionDays: 14, dryRunMode: true, failedOutputCount: 2, failedOutputBytes: 2_147_483_648,
@@ -359,5 +361,22 @@ test('system cards and encoder tiles remain separated and contained at every wid
       })
     }))
     expect(issues, `Card layout at ${width}px`).toEqual([])
+  }
+})
+
+test('settings child pages use the same content width as their overview', async ({ page }) => {
+  await mockSettings(page)
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.goto('/#/settings')
+  await expect(page.locator('#settings-room-encoding')).toBeVisible()
+  const main = await page.locator('.settings-layout').evaluate(el => el.parentElement!.clientWidth)
+  for (const room of ['encoding', 'files', 'media-servers', 'download-managers', 'notifications', 'system']) {
+    await page.goto(`/#/settings/${room}`)
+    await expect(page.locator('.settings-detail-open')).toBeVisible()
+    const body = await page.locator('.settings-detail-open').boundingBox()
+    const heading = await page.locator('.settings-room-heading').boundingBox()
+    expect(body!.width, room).toBeGreaterThanOrEqual(main - 2)
+    expect(Math.abs(body!.x - heading!.x), room).toBeLessThan(1)
+    expect(Math.abs(body!.width - heading!.width), room).toBeLessThan(1)
   }
 })
