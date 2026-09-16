@@ -89,7 +89,7 @@
        started reporting the server's state: it earns the room, and a tesseract cannot resolve
        at sixteen pixels a side. The collapsed rail still gets the small one. -->
   <button
-    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-inset {railCollapsed ? 'px-2 py-3' : 'pt-5 pb-4'}"
+    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 py-3' : 'pt-5 pb-4'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
@@ -100,7 +100,7 @@
       <!-- Ambient light behind the mark, so the glow reads as coming off the core rather than
            being painted on it. Blurred and very low alpha: it should be felt, not seen. -->
       <span
-        class="pointer-events-none absolute left-1/2 top-7 h-32 w-32 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-2xl dark:bg-cyan-400/20"
+        class="pointer-events-none absolute left-1/2 top-7 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/15 blur-2xl"
         aria-hidden="true"
       ></span>
     {/if}
@@ -115,13 +115,13 @@
            empty space, so the overlap closes the gap the bounding box leaves rather than covering
            anything; the shadow keeps the letters legible where they cross a strut. -->
       <span
-        class="relative -mt-8 text-[18px] font-bold tracking-tight text-slate-900 [text-shadow:0_1px_10px_rgb(248_250_252/0.95)] dark:text-slate-50 dark:[text-shadow:0_1px_10px_rgb(2_6_24/0.95)]"
+        class="relative -mt-8 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
       >Optimisarr</span>
     {/if}
 
     <!-- A hairline that fades at both ends, rather than a rule butting into the rail's edges. -->
     <span
-      class="pointer-events-none absolute inset-x-3 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent dark:via-slate-700"
+      class="pointer-events-none absolute inset-x-3 bottom-0 h-px bg-gradient-to-r from-transparent via-line to-transparent"
       aria-hidden="true"
     ></span>
   </button>
@@ -149,7 +149,7 @@
         {#if !railCollapsed}
           <span class="truncate">{item.label}</span>
           {#if !item.enabled}
-            <span class="badge ml-auto bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">{i18n.m.nav.soon}</span>
+            <span class="badge ml-auto tone-muted">{i18n.m.nav.soon}</span>
           {:else if !showActivity && badge(item.path)}
             <span class="nav-badge">{badge(item.path)}</span>
           {/if}
@@ -157,7 +157,7 @@
             <!-- A throbbing GPU chip means the GPU is doing the work; a snail means it's grinding
                  on the CPU. The count shows how many jobs are running. -->
             <span
-              class="ml-auto flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-cyan-600 dark:text-cyan-400' : 'text-amber-600 dark:text-amber-400'}"
+              class="ml-auto flex animate-pulse items-center gap-1 {activity.hardwareActive ? 'text-accent' : 'text-warn'}"
               title={activity.hardwareActive ? i18n.m.app.encoding_on_gpu : i18n.m.app.encoding_on_cpu}
             >
               <Icon name={activity.hardwareActive ? 'gpu' : 'snail'} class="h-4 w-4" />
@@ -180,14 +180,14 @@
        asked for when something looks wrong. -->
   <div class="relative px-2 pb-2 pt-2.5">
     <span
-      class="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent dark:via-slate-700"
+      class="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-line to-transparent"
       aria-hidden="true"
     ></span>
     <a
       href="https://github.com/jellman86/optimisarr/commits/{gitHash}"
       target="_blank"
       rel="noopener noreferrer"
-      class="block px-1 text-center font-mono text-[10px] text-slate-400 transition-colors hover:text-cyan-700 dark:text-slate-500 dark:hover:text-cyan-400"
+      class="block px-1 text-center font-mono text-[10px] text-ink-4 transition-colors hover:text-accent"
       title={version ? t(i18n.m.app.version_build, { version, hash: gitHash }) : t(i18n.m.app.build, { hash: gitHash })}
     >
       {railCollapsed

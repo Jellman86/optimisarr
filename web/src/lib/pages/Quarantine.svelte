@@ -198,10 +198,10 @@
 </script>
 
 <header class="mb-6">
-  <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.quarantine}</h1>
-  <p class="text-sm text-slate-500 dark:text-slate-400">
+  <h1 class="page-title">{i18n.m.nav.quarantine}</h1>
+  <p class="text-sm text-ink-3">
     {i18n.m.quarantine.subtitle_1}<strong>{i18n.m.quarantine.approve_word}</strong>{i18n.m.quarantine.subtitle_2}<strong>{i18n.m.quarantine.reject_word}</strong>{i18n.m.quarantine.subtitle_3}
-    {#if activeCount > 0}<span class="text-slate-400">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
+    {#if activeCount > 0}<span class="text-ink-4">{t(i18n.m.quarantine.count_suffix, { count: activeCount })}</span>{/if}
   </p>
 </header>
 
@@ -227,17 +227,17 @@
         {clearing ? i18n.m.quarantine.clearing : t(i18n.m.quarantine.clear_finished, { count: spentCount })}
       </button>
     {/if}
-    <span class="text-xs text-slate-400">{i18n.m.quarantine.bulk_note}</span>
+    <span class="text-xs text-ink-4">{i18n.m.quarantine.bulk_note}</span>
   </div>
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else if replacements.length > 0}
   <div class="card overflow-hidden">
     <div bind:this={tableScrollEl} class="overflow-auto" style="max-height: {tableMaxHeight}; transition: max-height 0.3s ease-out;">
       <table class="w-full text-sm">
-        <thead class="sticky top-0 z-10 border-b border-line bg-white text-left text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+        <thead class="table-head">
           <tr>
             <th class="px-4 py-3">{i18n.m.quarantine.col_status}</th>
             <th class="px-4 py-3">{i18n.m.quarantine.col_replaced_file}</th>
@@ -248,43 +248,43 @@
         <tbody class="divide-y divide-line-soft">
           {#each replacements as r (r.id)}
             <tr
-              class="text-slate-700 dark:text-slate-300 {r.status === 'Replaced' ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''} {selectedId === r.id ? 'bg-cyan-50 dark:bg-cyan-900/20' : ''}"
+              class="text-ink-2 {r.status === 'Replaced' ? 'cursor-pointer hover:bg-lit' : ''} {selectedId === r.id ? 'bg-accent-soft' : ''}"
               onclick={() => selectRow(r)}
             >
               <td class="px-4 py-2">
                 {#if r.status === 'Replaced'}
-                  <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.quarantine.status_replaced}</span>
+                  <span class="badge tone-ok">{i18n.m.quarantine.status_replaced}</span>
                 {:else if r.status === 'Purged'}
-                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" title={i18n.m.quarantine.status_purged_title}>{i18n.m.quarantine.status_purged}</span>
+                  <span class="badge tone-muted" title={i18n.m.quarantine.status_purged_title}>{i18n.m.quarantine.status_purged}</span>
                 {:else}
-                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.quarantine.status_rolled_back}</span>
+                  <span class="badge tone-muted">{i18n.m.quarantine.status_rolled_back}</span>
                 {/if}
                 {#if r.crossFilesystem}
-                  <span class="badge ml-1 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
+                  <span class="badge ml-1 tone-warn" title={i18n.m.quarantine.copied_title}>{i18n.m.quarantine.copied}</span>
                 {/if}
               </td>
               <td class="px-4 py-2">
                 <div class="max-w-md truncate font-mono text-xs" title={r.finalPath}>{r.finalPath}</div>
                 {#if r.status === 'Purged'}
-                  <div class="text-[11px] text-slate-400">{i18n.m.quarantine.original_purged}</div>
+                  <div class="text-[11px] text-ink-4">{i18n.m.quarantine.original_purged}</div>
                 {:else if r.status === 'Replaced'}
-                  <div class="max-w-md truncate font-mono text-[11px] text-slate-400" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
+                  <div class="max-w-md truncate font-mono text-[11px] text-ink-4" title={r.quarantinePath}>{t(i18n.m.quarantine.original_in, { path: r.quarantinePath })}</div>
                 {/if}
               </td>
               <td class="hidden px-4 py-2 text-xs tabular-nums sm:table-cell">
                 {formatSize(r.originalSizeBytes)} → {formatSize(r.newSizeBytes)}
-                <span class="text-emerald-600 dark:text-emerald-400"> (−{savingPercent(r)}%)</span>
+                <span class="text-ok"> (−{savingPercent(r)}%)</span>
               </td>
-              <td class="hidden px-4 py-2 text-xs text-slate-500 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
+              <td class="hidden px-4 py-2 text-xs text-ink-3 md:table-cell">{new Date(r.replacedAt).toLocaleString()}</td>
             </tr>
           {/each}
         </tbody>
       </table>
     </div>
   </div>
-  <p class="mt-2 text-xs text-slate-400">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
+  <p class="mt-2 text-xs text-ink-4">{t(i18n.m.quarantine.replacements_count, { count: replacements.length.toLocaleString() })}</p>
 {:else}
-  <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
+  <div class="card p-8 text-center text-ink-3">
     {i18n.m.quarantine.empty}
   </div>
 {/if}
@@ -293,8 +293,8 @@
   {#snippet header()}
     {#if selected}
       <div class="flex min-w-0 items-center gap-2">
-        <span class="badge flex-shrink-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.quarantine.status_replaced}</span>
-        <p class="min-w-0 flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-200" title={selected.finalPath}>
+        <span class="badge flex-shrink-0 tone-ok">{i18n.m.quarantine.status_replaced}</span>
+        <p class="min-w-0 flex-1 truncate font-mono text-xs text-ink-2" title={selected.finalPath}>
           {selected.finalPath}
         </p>
       </div>
@@ -307,23 +307,23 @@
         <Banner kind="error" class="mb-3">{detailError}</Banner>
       {/if}
       {#if detailLoading && !details[r.id]}
-        <div class="text-center text-sm text-slate-400">{i18n.m.quarantine.loading_comparison}</div>
+        <div class="text-center text-sm text-ink-4">{i18n.m.quarantine.loading_comparison}</div>
       {:else}
         {@const detail = details[r.id]}
         {@const checks = parseChecks(detail)}
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
-            <div class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{i18n.m.quarantine.original_quarantined}</div>
-            <div class="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">{formatSize(r.originalSizeBytes)}</div>
-            <div class="mt-1 break-all font-mono text-[11px] text-slate-400" title={r.quarantinePath}>{r.quarantinePath}</div>
+            <div class="text-xs font-semibold uppercase text-ink-3">{i18n.m.quarantine.original_quarantined}</div>
+            <div class="mt-1 font-mono text-xs text-ink-2">{formatSize(r.originalSizeBytes)}</div>
+            <div class="mt-1 break-all font-mono text-[11px] text-ink-4" title={r.quarantinePath}>{r.quarantinePath}</div>
           </div>
           <div>
-            <div class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{i18n.m.quarantine.replacement_in_place}</div>
-            <div class="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">
+            <div class="text-xs font-semibold uppercase text-ink-3">{i18n.m.quarantine.replacement_in_place}</div>
+            <div class="mt-1 font-mono text-xs text-ink-2">
               {formatSize(r.newSizeBytes)}
-              <span class="text-emerald-600 dark:text-emerald-400">{t(i18n.m.quarantine.saved_detail, { percent: savingPercent(r), size: formatSize(r.originalSizeBytes - r.newSizeBytes) })}</span>
+              <span class="text-ok">{t(i18n.m.quarantine.saved_detail, { percent: savingPercent(r), size: formatSize(r.originalSizeBytes - r.newSizeBytes) })}</span>
             </div>
-            <div class="mt-1 break-all font-mono text-[11px] text-slate-400" title={r.finalPath}>{r.finalPath}</div>
+            <div class="mt-1 break-all font-mono text-[11px] text-ink-4" title={r.finalPath}>{r.finalPath}</div>
           </div>
         </div>
 
@@ -341,17 +341,17 @@
 
         <div class="mt-4">
           <div class="mb-1.5 flex items-center gap-2">
-            <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{i18n.m.quarantine.verification}</span>
+            <span class="text-xs font-semibold uppercase text-ink-3">{i18n.m.quarantine.verification}</span>
             {#if detail?.verificationPassed === true}
-              <span class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{i18n.m.quarantine.passed}</span>
+              <span class="badge tone-ok">{i18n.m.quarantine.passed}</span>
             {:else if detail?.verificationPassed === false}
-              <span class="badge bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">{i18n.m.quarantine.failed}</span>
+              <span class="badge tone-bad">{i18n.m.quarantine.failed}</span>
             {/if}
           </div>
           {#if checks}
             <VerificationChecks {checks} />
           {:else}
-            <p class="text-xs text-slate-400">{i18n.m.quarantine.no_report}</p>
+            <p class="text-xs text-ink-4">{i18n.m.quarantine.no_report}</p>
           {/if}
         </div>
 
@@ -364,7 +364,7 @@
             <Icon name="rotate" class="h-4 w-4" />
             {i18n.m.quarantine.reject_roll_back}
           </button>
-          <span class="text-xs text-slate-400">{i18n.m.quarantine.action_note}</span>
+          <span class="text-xs text-ink-4">{i18n.m.quarantine.action_note}</span>
         </div>
       {/if}
     {/if}

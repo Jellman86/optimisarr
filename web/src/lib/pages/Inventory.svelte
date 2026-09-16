@@ -163,8 +163,8 @@
 
 <header class="mb-4 flex flex-wrap items-end justify-between gap-4">
   <div>
-    <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.inventory}</h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400">
+    <h1 class="page-title">{i18n.m.nav.inventory}</h1>
+    <p class="text-sm text-ink-3">
       {i18n.m.inventory.subtitle}
     </p>
   </div>
@@ -182,7 +182,7 @@
 {/if}
 
 {#if loading}
-  <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+  <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
 {:else if counts.all > 0}
   <!-- Filter tabs and pagination on the same row so both are always visible. -->
   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -218,7 +218,7 @@
     </div>
 
     <!-- Compact pagination: always visible above the table. -->
-    <div class="flex items-center gap-2 text-xs text-slate-400">
+    <div class="flex items-center gap-2 text-xs text-ink-4">
       <span>
         {t(i18n.m.inventory.range, {
           start: total === 0 ? '0' : (pageStart + 1).toLocaleString(),
@@ -257,7 +257,7 @@
     >
       <table class="w-full text-sm">
         <thead
-          class="sticky top-0 z-10 border-b border-line bg-white text-left text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400"
+          class="table-head"
         >
           <tr>
             <th class="px-4 py-3">{i18n.m.inventory.col_optimise}</th>
@@ -272,25 +272,25 @@
           {#each paged as file (file.id)}
             {@const verdict = verdicts[file.id]}
             <tr
-              class="cursor-pointer text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50 {selectedFile?.id ===
+              class="cursor-pointer text-ink-2 hover:bg-lit {selectedFile?.id ===
  file.id
- ? 'bg-sky-50 dark:bg-sky-950/30'
+ ? 'bg-info-soft'
  : ''}"
               onclick={() => selectRow(file.id)}
             >
               <td class="px-4 py-2">
                 {#if verdict?.eligible}
                   <span
-                    class="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                    class="badge tone-ok"
                     >{i18n.m.inventory.badge_eligible}</span
                   >
                 {:else if verdict}
-                  <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                  <span class="badge tone-muted"
                     >{i18n.m.inventory.badge_skipped}</span
                   >
                 {:else}
                   <span
-                    class="badge bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+                    class="badge tone-muted"
                     title={i18n.m.inventory.unprobed_title}>{i18n.m.inventory.badge_unprobed}</span
                   >
                 {/if}
@@ -305,11 +305,11 @@
               </td>
               <td class="hidden px-4 py-2 lg:table-cell">
                 {#if file.mediaKind && file.mediaKind !== 'Unknown'}
-                  <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  <span class="badge tone-neutral"
                     >{file.mediaKind}</span
                   >
                 {:else}
-                  <span class="text-slate-400">—</span>
+                  <span class="text-ink-4">—</span>
                 {/if}
               </td>
               <td class="px-4 py-2">{formatSize(file.sizeBytes)}</td>
@@ -322,7 +322,7 @@
     </div>
   </div>
 {:else}
-  <div class="card p-8 text-center text-slate-500 dark:text-slate-400">
+  <div class="card p-8 text-center text-ink-3">
     {i18n.m.inventory.empty}
   </div>
 {/if}
@@ -340,14 +340,14 @@
       />
       <!-- Readable on the left, where the labels sit; the poster shows through on the right —
            the same directional fade as the Queue hero. -->
-      <div class="absolute inset-0 bg-gradient-to-r from-white/90 via-white/50 to-white/20 dark:from-slate-900/90 dark:via-slate-900/50 dark:to-slate-900/20"></div>
+      <div class="absolute inset-0 bg-gradient-to-r from-panel/90 via-panel/50 to-panel/20"></div>
     {/if}
   {/snippet}
   {#snippet header()}
-    <p class="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={selectedFile?.relativePath ?? ''}>
+    <p class="truncate text-sm font-medium text-ink" title={selectedFile?.relativePath ?? ''}>
       {fileName(selectedFile?.relativePath ?? '')}
     </p>
-    <p class="break-all font-mono text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
+    <p class="break-all font-mono text-[11px] leading-relaxed text-ink-4">
       {selectedFile?.relativePath ?? ''}
     </p>
   {/snippet}
@@ -355,51 +355,51 @@
     {#if selectedFile}
       <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_status}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_status}</dt>
             <dd>{selectedFile.status}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_size}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_size}</dt>
             <dd>{formatSize(selectedFile.sizeBytes)}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_container}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_container}</dt>
             <dd>{selectedFile.container ?? '—'}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_video}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_video}</dt>
             <dd>{selectedFile.videoCodec ?? '—'} {resolution(selectedFile)}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_audio}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_audio}</dt>
             <dd class="text-right">
               {selectedFile.audioCodecs ?? '—'}{selectedFile.audioTrackCount
                 ? t(i18n.m.inventory.audio_tracks, { count: selectedFile.audioTrackCount })
                 : ''}
               {#if selectedFile.audioLanguages}
-                <span class="block text-xs text-slate-400">{selectedFile.audioLanguages}</span>
+                <span class="block text-xs text-ink-4">{selectedFile.audioLanguages}</span>
               {/if}
             </dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_subtitles}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_subtitles}</dt>
             <dd>{selectedFile.subtitleTrackCount ?? '—'}</dd>
           </div>
           <div class="flex justify-between gap-4">
-            <dt class="text-slate-500">{i18n.m.inventory.detail_duration}</dt>
+            <dt class="text-ink-3">{i18n.m.inventory.detail_duration}</dt>
             <dd>{formatDuration(selectedFile.durationSeconds)}</dd>
           </div>
         </dl>
 
         <div class="mt-4 border-t border-line-soft pt-4 text-sm border-line">
-          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{i18n.m.inventory.rule_verdict}</p>
-          <p class="mt-2 text-slate-600 dark:text-slate-300">
+          <p class="text-xs font-semibold uppercase tracking-wide text-ink-4">{i18n.m.inventory.rule_verdict}</p>
+          <p class="mt-2 text-ink-2">
             {selectedVerdict?.reason ?? i18n.m.inventory.verdict_probe_hint}
           </p>
         </div>
 
         {#if selectedFile.probeError}
-          <p class="mt-3 text-xs text-red-600" title={selectedFile.probeError}>
+          <p class="mt-3 text-xs text-bad" title={selectedFile.probeError}>
             {t(i18n.m.inventory.probe_failed, { error: selectedFile.probeError })}
           </p>
         {/if}

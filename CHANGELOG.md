@@ -4,6 +4,22 @@
 
 ### Changed
 
+- **The theme lives in one place, and both colour schemes are drawn from it.** Every
+  component used to spell out its own light and dark colours side by side — around fifteen
+  hundred hand-paired classes — so a palette change meant touching all of them, and the two
+  schemes drifted: dark-only captions were never adjusted, and the login screen, the phone
+  header and the table headers each sat on a colour that no card used. The stylesheet now
+  defines an ink scale (headline to ghost), a surface set (ground, panel, raised, sunken, lit)
+  and five tones (ok, warn, bad, live, info), and components say `text-ink-3` or `tone-warn`
+  and let the scheme decide; a unit test keeps hand-paired colours at zero. Alongside that:
+  the dark ground is lifted a step off pure black with a faint bloom from where the mark is,
+  so a panel's lift can actually be seen; badges, chips, notices and toned cards share one
+  set of tints, so "failed" is the same red wherever it is said; notices lose their coloured
+  borders and the setup checklist its coloured left stripes in favour of tinted fills; every
+  pressable thing gets the same focus ring; switches are a well with a raised knob; tooltips,
+  table headers, scrollbars and text selection are themed; figures are tabular everywhere;
+  and the browser's own chrome takes the page colour and follows the theme toggle.
+
 - **Settings is a set of rooms instead of a strip of tabs.** The page had inherited the setup
   wizard's furniture: numbered sections that implied an order nobody follows, a save button
   that covered some of the page with a caption explaining which parts it missed, and no way to

@@ -1118,8 +1118,8 @@
 {#if editingId === null}
   <header class="mb-6 flex items-start justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{i18n.m.nav.libraries}</h1>
-      <p class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.libraries.subtitle}</p>
+      <h1 class="page-title">{i18n.m.nav.libraries}</h1>
+      <p class="page-subtitle">{i18n.m.libraries.subtitle}</p>
     </div>
     <button class="btn btn-primary" onclick={() => router.go('/libraries/new')}>
       <Icon name="plus" class="h-4 w-4" />
@@ -1128,20 +1128,20 @@
   </header>
 {:else}
   <header class="mb-5 border-b border-line pb-4">
-    <button class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-cyan-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500 dark:text-slate-400 dark:hover:text-cyan-300" onclick={cancelEdit}>
+    <button class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-ink-3 transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500" onclick={cancelEdit}>
       <Icon name="arrow-left" class="h-4 w-4" />
       {i18n.m.nav.libraries}
     </button>
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300">{i18n.m.libraries.configure}</div>
-        <h1 class="text-2xl font-bold text-slate-800 dark:text-slate-100">{editingId === 0 ? i18n.m.libraries.add_library_heading : form.name}</h1>
-        {#if form.path}<p class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{form.path}</p>{/if}
+        <div class="text-xs font-semibold uppercase tracking-wide text-accent">{i18n.m.libraries.configure}</div>
+        <h1 class="page-title">{editingId === 0 ? i18n.m.libraries.add_library_heading : form.name}</h1>
+        {#if form.path}<p class="mt-1 truncate font-mono text-xs text-ink-3">{form.path}</p>{/if}
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2">
         {#if editingId !== 0}
-          <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
-          {#if showVideoOptions}<span class="badge bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">{profileLabel(form.ruleProfile)}</span>{/if}
+          <span class="badge tone-info">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
+          {#if showVideoOptions}<span class="badge tone-info">{profileLabel(form.ruleProfile)}</span>{/if}
         {/if}
         <!-- Save/Cancel live only in the sticky action bar at the foot of the form, so the page
              never shows two competing copies of the same pair. -->
@@ -1202,14 +1202,14 @@
         bind:value={form.keepAudioLanguages}
         onblur={normaliseAudioLanguageInput}
       />
-      <p id="lib-keep-audio-languages-hint" class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_hint}</p>
+      <p id="lib-keep-audio-languages-hint" class="mt-1 text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_hint}</p>
       {#if audioLanguageError}
-        <p id="lib-keep-audio-languages-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{audioLanguageError}</p>
+        <p id="lib-keep-audio-languages-error" class="mt-1 text-xs text-bad" role="alert">{audioLanguageError}</p>
       {:else if audioLanguageInput.codes.length > 0}
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
-          <span class="text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_selected}</span>
+          <span class="text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_selected}</span>
           {#each audioLanguageInput.codes as code (code)}
-            <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
+            <span class="badge tone-accent font-mono uppercase">{code}</span>
           {/each}
         </div>
       {/if}
@@ -1234,14 +1234,14 @@
         bind:value={form.keepSubtitleLanguages}
         onblur={normaliseSubtitleLanguageInput}
       />
-      <p id="lib-keep-subtitle-languages-hint" class="mt-1 text-xs text-slate-400">{i18n.m.libraries.keep_subtitle_langs_hint}</p>
+      <p id="lib-keep-subtitle-languages-hint" class="mt-1 text-xs text-ink-4">{i18n.m.libraries.keep_subtitle_langs_hint}</p>
       {#if subtitleLanguageError}
-        <p id="lib-keep-subtitle-languages-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{subtitleLanguageError}</p>
+        <p id="lib-keep-subtitle-languages-error" class="mt-1 text-xs text-bad" role="alert">{subtitleLanguageError}</p>
       {:else if subtitleLanguageInput.codes.length > 0}
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
-          <span class="text-xs text-slate-400">{i18n.m.libraries.keep_audio_langs_selected}</span>
+          <span class="text-xs text-ink-4">{i18n.m.libraries.keep_audio_langs_selected}</span>
           {#each subtitleLanguageInput.codes as code (code)}
-            <span class="badge bg-cyan-100 font-mono uppercase text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300">{code}</span>
+            <span class="badge tone-accent font-mono uppercase">{code}</span>
           {/each}
         </div>
       {/if}
@@ -1290,7 +1290,7 @@
       <!-- items-start: the three hints differ a lot in length, and a stretched grid left the two
            shorter cards with a block of dead space under their text. -->
       <fieldset class="grid items-start gap-2 sm:grid-cols-3">
-        <legend class="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
+        <legend class="mb-3 text-sm font-semibold text-ink">
           {i18n.m.libraries.processing_mode} <InfoTip text={i18n.m.libraries.preset_tip} />
         </legend>
         {#each [
@@ -1309,8 +1309,8 @@
                 onchange={() => setProcessingMode(mode.value as ProcessingMode)}
               />
               <span>
-                <span class="block text-sm font-medium text-slate-800 dark:text-slate-100">{mode.label}</span>
-                <span class="mt-1 block text-xs font-normal leading-relaxed text-slate-500 dark:text-slate-400">{mode.hint}</span>
+                <span class="block text-sm font-medium text-ink">{mode.label}</span>
+                <span class="mt-1 block text-xs font-normal leading-relaxed text-ink-3">{mode.hint}</span>
               </span>
             </span>
           </label>
@@ -1318,7 +1318,7 @@
       </fieldset>
 
       {#if trackCleanupNeedsLanguages}
-        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">{i18n.m.libraries.track_cleanup_needs_languages}</p>
+        <p class="mt-1 text-xs text-warn">{i18n.m.libraries.track_cleanup_needs_languages}</p>
       {/if}
 
       <!-- The two fields the warning above refers to. Track cleanup does nothing else, so they
@@ -1341,21 +1341,21 @@
         />
         <!-- Every position is explicit: each stop shows the codec it resolves to, with the active
              stop highlighted and its full container/CRF spelled out in the "Selects:" row below. -->
-        <div class="mt-1 flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <div class="mt-1 flex justify-between gap-2 text-xs text-ink-3">
           {#each encodeStopLabels as stop, i}
             {@const active = !isNoEncodeProfile && encodeStop === i}
             <span class="flex flex-col {i === 0 ? 'items-start' : i === encodeStopLabels.length - 1 ? 'items-end text-right' : 'items-center text-center'}">
-              <span class={active ? 'font-semibold text-slate-700 dark:text-slate-200' : ''}>{stop}</span>
+              <span class={active ? 'font-semibold text-ink-2' : ''}>{stop}</span>
               <!-- The Custom stop has no codec of its own until it is selected; leave it blank
                    rather than showing a dash that reads as a missing value. -->
-              <span class="text-[10px] {active ? 'text-cyan-700 dark:text-cyan-300' : 'text-slate-400 dark:text-slate-500'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : ''}</span>
+              <span class="text-[10px] {active ? 'text-accent' : 'text-ink-4'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : ''}</span>
             </span>
           {/each}
         </div>
       </div>
       {/if}
 
-      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+      <p class="mt-2 text-xs text-ink-3">
         {isCustom
           ? i18n.m.libraries.custom_config_summary
           : (presetSummaries[form.ruleProfile] ?? i18n.m.libraries.custom_preset_fallback)}
@@ -1363,25 +1363,25 @@
 
       <!-- Explicit, concrete selection so the slider isn't a mystery. -->
       <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-        <span class="text-slate-400">{i18n.m.libraries.selects}</span>
+        <span class="text-ink-4">{i18n.m.libraries.selects}</span>
         {#if isTrackCleanupProfile}
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{i18n.m.libraries.track_cleanup_badge}</span>
+          <span class="badge tone-neutral">{i18n.m.libraries.track_cleanup_badge}</span>
         {:else}
-        <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.codec}</span>
+        <span class="badge tone-neutral">{effectiveVideoSpec.codec}</span>
         {#if !isRemuxProfile}
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{effectiveVideoSpec.container}</span>
+          <span class="badge tone-neutral">{effectiveVideoSpec.container}</span>
           {#if effectiveVideoSpec.crf != null}
-            <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.crf_badge, { crf: effectiveVideoSpec.crf })}</span>
+            <span class="badge tone-neutral">{t(i18n.m.libraries.crf_badge, { crf: effectiveVideoSpec.crf })}</span>
           {/if}
         {:else}
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.container_badge, { container: effectiveVideoSpec.container })}</span>
+          <span class="badge tone-neutral">{t(i18n.m.libraries.container_badge, { container: effectiveVideoSpec.container })}</span>
         {/if}
         {/if}
       </div>
 
       {#if isCustom}
         <!-- Neutral, not amber: a custom config is a deliberate choice, not a warning. -->
-        <div class="mt-2 rounded-md border border-line bg-slate-50 p-2 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-300">
+        <div class="mt-2 rounded-md border border-line bg-lit p-2 text-xs text-ink-2">
           {#if presetOverridden}
             <span>{t(i18n.m.libraries.custom_overridden, { summary: overrideSummary(), verb: form.targetVideoCodec && form.targetContainer ? i18n.m.libraries.custom_overridden_are : i18n.m.libraries.custom_overridden_is })}</span>
           {:else}
@@ -1403,29 +1403,29 @@
           oninput={(e) => setImageStop(e.currentTarget.value)}
           aria-label={i18n.m.libraries.image_slider_aria}
         />
-        <div class="mt-1 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+        <div class="mt-1 flex justify-between text-xs text-ink-3">
           {#each imageFormats as stop, i}
-            <span class={imageStop === i ? 'font-semibold uppercase text-slate-700 dark:text-slate-200' : 'uppercase'}>{stop}</span>
+            <span class={imageStop === i ? 'font-semibold uppercase text-ink-2' : 'uppercase'}>{stop}</span>
           {/each}
         </div>
-        <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-slate-400">
+        <div class="mt-1 flex justify-between text-[10px] uppercase tracking-wide text-ink-4">
           <span>{i18n.m.libraries.most_compatible}</span>
           <span>{i18n.m.libraries.most_efficient}</span>
         </div>
-        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{imagePresetSummaries[form.targetImageFormat ?? 'jpeg']}</p>
+        <p class="mt-2 text-xs text-ink-3">{imagePresetSummaries[form.targetImageFormat ?? 'jpeg']}</p>
         <div class="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-          <span class="text-slate-400">{i18n.m.libraries.selects}</span>
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{(form.targetImageFormat ?? 'jpeg').toUpperCase()} (.{(form.targetImageFormat ?? 'jpeg') === 'jpeg' ? 'jpg' : form.targetImageFormat})</span>
-          <span class="badge bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t(i18n.m.libraries.quality_badge, { quality: form.imageQuality ?? 80 })}</span>
+          <span class="text-ink-4">{i18n.m.libraries.selects}</span>
+          <span class="badge tone-neutral">{(form.targetImageFormat ?? 'jpeg').toUpperCase()} (.{(form.targetImageFormat ?? 'jpeg') === 'jpeg' ? 'jpg' : form.targetImageFormat})</span>
+          <span class="badge tone-neutral">{t(i18n.m.libraries.quality_badge, { quality: form.imageQuality ?? 80 })}</span>
         </div>
       </div>
     {:else}
       <!-- For Music, audio is the primary optimisation choice rather than an expert override.
            Keep the codec and bitrate in the normal flow so the section never becomes a dead-end
            explanation that requires opening Advanced to do the actual work. -->
-      <div class="rounded-lg border border-line bg-slate-50/60 p-4 dark:bg-slate-800/25">
-        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.audio}</h3>
-        <p class="mt-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.music_note}</p>
+      <div class="rounded-lg border border-line bg-lit p-4">
+        <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.audio}</h3>
+        <p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.music_note}</p>
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
@@ -1451,7 +1451,7 @@
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
           <span>
             {i18n.m.libraries.reencode_lossy_audio}
-            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
               {i18n.m.libraries.reencode_lossy_audio_hint}
             </span>
           </span>
@@ -1464,8 +1464,8 @@
         <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <!-- Same name as the action button: one feature, one term. -->
-            <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.calibration.eyebrow}</p>
-            <p class="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.calibration.intro}</p>
+            <p class="text-sm font-medium text-ink">{i18n.m.calibration.eyebrow}</p>
+            <p class="mt-0.5 text-xs leading-relaxed text-ink-3">{i18n.m.calibration.intro}</p>
           </div>
           <button
             type="button"
@@ -1481,10 +1481,10 @@
   {#if showVideoOptions && !isNoEncodeProfile}
     <div class="mt-6 border-t border-line pt-5">
       <fieldset>
-        <legend class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <legend class="text-xs font-semibold uppercase tracking-wide text-ink-3">
           {i18n.m.libraries.quality_strategy}
         </legend>
-        <p class="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+        <p class="mt-1 max-w-3xl text-sm leading-relaxed text-ink-3">
           {i18n.m.libraries.quality_strategy_intro}
         </p>
 
@@ -1503,22 +1503,22 @@
               />
               <div>
                 <div class="flex flex-wrap items-center gap-2">
-                  <span class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.libraries.quality_strategy_adaptive}</span>
-                  <span class="badge bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">{i18n.m.libraries.experimental}</span>
+                  <span class="font-semibold text-ink">{i18n.m.libraries.quality_strategy_adaptive}</span>
+                  <span class="badge tone-warn">{i18n.m.libraries.experimental}</span>
                 </div>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                <p class="mt-1 text-sm leading-relaxed text-ink-2">
                   {i18n.m.libraries.quality_strategy_adaptive_desc}
                 </p>
               </div>
             </div>
-            <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_sample}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_choose_quality}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_full_encode}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
+            <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-ink-2">
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_sample}</span>
+              <span aria-hidden="true" class="text-ink-4">→</span>
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_choose_quality}</span>
+              <span aria-hidden="true" class="text-ink-4">→</span>
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_full_encode}</span>
+              <span aria-hidden="true" class="text-ink-4">→</span>
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_verify}</span>
             </div>
           </label>
 
@@ -1535,24 +1535,24 @@
                 onchange={() => setVideoQualityStrategy('Fixed')}
               />
               <div>
-                <span class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.libraries.quality_strategy_fixed}</span>
-                <p class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                <span class="font-semibold text-ink">{i18n.m.libraries.quality_strategy_fixed}</span>
+                <p class="mt-1 text-sm leading-relaxed text-ink-2">
                   {i18n.m.libraries.quality_strategy_fixed_desc}
                 </p>
               </div>
             </div>
-            <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_selected_quality}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_full_encode}</span>
-              <span aria-hidden="true" class="text-slate-400">→</span>
-              <span class="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{i18n.m.libraries.path_verify}</span>
+            <div class="mt-auto flex flex-wrap items-center gap-1.5 pl-8 pt-4 text-xs font-medium text-ink-2">
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_selected_quality}</span>
+              <span aria-hidden="true" class="text-ink-4">→</span>
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_full_encode}</span>
+              <span aria-hidden="true" class="text-ink-4">→</span>
+              <span class="rounded-md bg-raised px-2 py-1">{i18n.m.libraries.path_verify}</span>
             </div>
           </label>
         </div>
 
         {#if form.videoQualityStrategy === 'AdaptiveVmaf'}
-          <p class="mt-3 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+          <p class="callout tone-warn mt-3 w-full text-xs">
             {i18n.m.libraries.quality_strategy_adaptive_cost}
           </p>
         {/if}
@@ -1584,11 +1584,11 @@
 
         <div class="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
           {#if vmafMode === 'off'}
-            <span class="text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_off_desc}</span>
+            <span class="text-ink-3">{i18n.m.settings.vmaf_off_desc}</span>
           {:else}
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{i18n.m.settings.vmaf_harmonic} {form.minVmafHarmonicMean}</span>
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{i18n.m.settings.vmaf_min} {form.minVmafMin}</span>
-            <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{i18n.m.settings.vmaf_catastrophic} {form.minVmafCatastrophicMin}</span>
+            <span class="badge tone-neutral">{i18n.m.settings.vmaf_harmonic} {form.minVmafHarmonicMean}</span>
+            <span class="badge tone-neutral">{i18n.m.settings.vmaf_min} {form.minVmafMin}</span>
+            <span class="badge tone-neutral">{i18n.m.settings.vmaf_catastrophic} {form.minVmafCatastrophicMin}</span>
           {/if}
         </div>
       </div>
@@ -1631,7 +1631,7 @@
         </div>
       {/if}
       {#if vmafError}
-        <p id="lib-vmaf-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">{vmafError}</p>
+        <p id="lib-vmaf-error" class="mt-3 text-xs text-bad" role="alert">{vmafError}</p>
       {/if}
     </div>
   {/if}
@@ -1644,8 +1644,8 @@
     description={i18n.m.libraries.verification_intro}
   >
     <div class="grid gap-4 xl:grid-cols-2">
-      <fieldset class="min-w-0 rounded-lg border border-line bg-white p-4 dark:bg-slate-900/40">
-        <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+      <fieldset class="min-w-0 rounded-lg border border-line bg-panel p-4">
+        <legend class="px-1 text-sm font-semibold text-ink-2">
           {i18n.m.settings.always_on}
         </legend>
 
@@ -1666,7 +1666,7 @@
                 aria-describedby="lib-verification-error"
                 bind:value={form.durationTolerancePercent}
               />
-              <span class="flex-none text-sm text-slate-500 dark:text-slate-400">%</span>
+              <span class="flex-none text-sm text-ink-3">%</span>
             </div>
           </div>
         {/if}
@@ -1683,8 +1683,8 @@
       </fieldset>
 
       {#if showVideoOptions || showAudioOptions}
-        <fieldset class="min-w-0 rounded-lg border border-line bg-white p-4 dark:bg-slate-900/40">
-          <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <fieldset class="min-w-0 rounded-lg border border-line bg-panel p-4">
+          <legend class="px-1 text-sm font-semibold text-ink-2">
             {i18n.m.libraries.audio}
           </legend>
 
@@ -1707,7 +1707,7 @@
                   aria-describedby="lib-verification-error"
                   bind:value={form.maxLoudnessDriftLufs}
                 />
-                <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.lu}</span>
+                <span class="flex-none text-sm text-ink-3">{i18n.m.settings.lu}</span>
               </div>
             </div>
           {/if}
@@ -1734,7 +1734,7 @@
                     aria-describedby="lib-verification-error"
                     bind:value={form.maxTruePeakDbtp}
                   />
-                  <span class="flex-none text-sm text-slate-500 dark:text-slate-400">{i18n.m.settings.dbtp}</span>
+                  <span class="flex-none text-sm text-ink-3">{i18n.m.settings.dbtp}</span>
                 </div>
               </div>
             {/if}
@@ -1743,8 +1743,8 @@
       {/if}
 
       {#if showImageOptions}
-        <fieldset class="min-w-0 rounded-lg border border-line bg-white p-4 dark:bg-slate-900/40">
-          <legend class="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+        <fieldset class="min-w-0 rounded-lg border border-line bg-panel p-4">
+          <legend class="px-1 text-sm font-semibold text-ink-2">
             {i18n.m.libraries.images}
           </legend>
 
@@ -1779,14 +1779,14 @@
               label={i18n.m.settings.exif_label}
               hint={i18n.m.settings.exif_hint}
             />
-            <p class="mt-3 text-xs text-slate-400">{i18n.m.settings.exif_note}</p>
+            <p class="mt-3 text-xs text-ink-4">{i18n.m.settings.exif_note}</p>
           </div>
         </fieldset>
       {/if}
     </div>
 
     {#if verificationError}
-      <p id="lib-verification-error" class="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">
+      <p id="lib-verification-error" class="mt-3 text-xs text-bad" role="alert">
         {verificationError}
       </p>
     {/if}
@@ -1818,7 +1818,7 @@
           <label class="label" for="lib-auto-end">{i18n.m.libraries.window_end}</label>
           <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
         </div>
-        <p class="max-w-xs text-xs text-slate-500 dark:text-slate-400">
+        <p class="max-w-xs text-xs text-ink-3">
           {i18n.m.libraries.window_hint}
         </p>
       </div>
@@ -1831,8 +1831,8 @@
     />
 
       <section class="border-t border-line pt-5">
-        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">{i18n.m.libraries.completed_output}</h3>
-        <p class="mt-1 mb-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{i18n.m.libraries.completed_output_desc}</p>
+        <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.completed_output}</h3>
+        <p class="mt-1 mb-3 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.completed_output_desc}</p>
         <Toggle
           bind:checked={form.moveOnComplete}
           label={i18n.m.libraries.move_label}
@@ -1850,7 +1850,7 @@
             <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
             <span>
               {i18n.m.libraries.overwrite_label}
-              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.overwrite_hint}
               </span>
             </span>
@@ -1866,25 +1866,25 @@
   <div class="mt-6 overflow-hidden rounded-xl border {showAdvanced ? 'border-line' : 'border-line'}">
     <button
       type="button"
-      class="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60 {showAdvanced ? 'bg-slate-100/80 dark:bg-slate-800/70' : ''}"
+      class="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-ink-2 transition-colors hover:bg-lit {showAdvanced ? 'bg-raised/80' : ''}"
       onclick={() => (showAdvanced = !showAdvanced)}
       aria-expanded={showAdvanced}
     >
-      <Icon name="sliders" class="h-4 w-4 text-slate-400" />
+      <Icon name="sliders" class="h-4 w-4 text-ink-4" />
       <span>{i18n.m.libraries.advanced}</span>
-      <span class="text-xs font-normal text-slate-400">{i18n.m.libraries.advanced_hint}</span>
-      <Icon name="chevron" class="ml-auto h-4 w-4 text-slate-400 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
+      <span class="text-xs font-normal text-ink-4">{i18n.m.libraries.advanced_hint}</span>
+      <Icon name="chevron" class="ml-auto h-4 w-4 text-ink-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
     </button>
 
   {#if showAdvanced}
     <!-- divide-y draws a separator between whichever sections are shown for this media type. -->
-    <div class="border-t border-line bg-slate-50/60 px-4 divide-y divide-line dark:bg-slate-900/30">
+    <div class="border-t border-line bg-lit px-4 divide-y divide-line">
 
       {#if showVideoOptions}
       <!-- VIDEO — scoped to Film/TV/Other libraries. -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.video}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.video_desc}</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.video}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.video_desc}</p>
 
         {#if !isTrackCleanupProfile}
         <div class="grid gap-4 sm:grid-cols-2">
@@ -1929,7 +1929,7 @@
               {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
             </select>
             {#if encoderEffortError}
-              <p id="lib-encoder-effort-error" class="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{encoderEffortError}</p>
+              <p id="lib-encoder-effort-error" class="mt-1 text-xs text-bad" role="alert">{encoderEffortError}</p>
             {/if}
           </div>
         </div>
@@ -1937,20 +1937,20 @@
         <div class="mt-4">
           <div class="mb-1 flex items-center justify-between">
             <label class="label mb-0" for="lib-crf">{i18n.m.libraries.quality_crf} <InfoTip text={i18n.m.libraries.quality_crf_tip} /></label>
-            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
               <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
               {i18n.m.libraries.customise}
             </label>
           </div>
           {#if form.qualityCrf != null}
             <div class="flex items-center gap-3">
-              <span class="text-xs text-slate-400">{i18n.m.libraries.sharper}</span>
+              <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
               <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
-              <span class="text-xs text-slate-400">{i18n.m.libraries.smaller}</span>
-              <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.qualityCrf}</span>
+              <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
+              <span class="badge w-10 justify-center tone-accent">{form.qualityCrf}</span>
             </div>
           {:else}
-            <p class="text-xs text-slate-400">{i18n.m.libraries.using_preset_quality}</p>
+            <p class="text-xs text-ink-4">{i18n.m.libraries.using_preset_quality}</p>
           {/if}
         </div>
 
@@ -1963,9 +1963,9 @@
             label={i18n.m.libraries.crop_bars_label}
             hint={i18n.m.libraries.crop_bars_tip}
           />
-          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.crop_bars_hint}</p>
+          <p class="mt-1 text-xs text-ink-3">{i18n.m.libraries.crop_bars_hint}</p>
           {#if form.cropBlackBars}
-            <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+            <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
               {i18n.m.libraries.crop_bars_on_detail}
             </div>
           {/if}
@@ -1977,7 +1977,7 @@
              understands, which is why the note below names who honours what rather than implying
              every setting reaches every GPU. -->
         <div class="mt-4">
-          <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+          <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
             <input
               type="checkbox"
               class="checkbox"
@@ -2039,7 +2039,7 @@
             </div>
 
             {#if hasEncoderTuning}
-              <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+              <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
                 {i18n.m.libraries.encoder_tuning_support}
               </div>
             {/if}
@@ -2086,16 +2086,16 @@
             <span>
               {i18n.m.libraries.same_codec_label}
               <InfoTip text={i18n.m.libraries.same_codec_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.same_codec_hint}
               </span>
             </span>
           </label>
           {#if sameCodecGb !== ''}
             <div class="mt-2 flex items-center gap-2 pl-6 text-sm">
-              <span class="text-slate-500 dark:text-slate-400">{i18n.m.libraries.same_codec_when}</span>
+              <span class="text-ink-3">{i18n.m.libraries.same_codec_when}</span>
               <input class="input w-24" type="number" min="1" step="1" bind:value={sameCodecGb} />
-              <span class="text-slate-500 dark:text-slate-400">{i18n.m.libraries.gb}</span>
+              <span class="text-ink-3">{i18n.m.libraries.gb}</span>
             </div>
           {/if}
         </div>
@@ -2108,7 +2108,7 @@
             <span>
               {i18n.m.libraries.skip_efficient_label}
               <InfoTip text={i18n.m.libraries.skip_efficient_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.skip_efficient_hint}
               </span>
             </span>
@@ -2123,7 +2123,7 @@
             <span>
               {i18n.m.libraries.dolby_vision_label}
               <InfoTip text={i18n.m.libraries.dolby_vision_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-slate-400">
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.dolby_vision_hint}
               </span>
             </span>
@@ -2137,8 +2137,8 @@
       <!-- AUDIO — the mixed "Other" library keeps audio-only overrides here. Music exposes the
            same primary choice in the normal Optimisation flow above. -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.audio_desc}</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.audio_desc}</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
@@ -2166,7 +2166,7 @@
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
           <span>
             {i18n.m.libraries.reencode_lossy_audio}
-            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
               {i18n.m.libraries.reencode_lossy_audio_hint}
             </span>
           </span>
@@ -2177,8 +2177,8 @@
       {#if showImageOptions && !isTrackCleanupProfile}
       <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.images}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.images_desc}</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.images}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.images_desc}</p>
 
         <div class="grid gap-4 sm:grid-cols-2">
           {#if !showImagePreset}
@@ -2193,20 +2193,20 @@
           <div>
             <div class="mb-1 flex items-center justify-between">
               <label class="label mb-0" for="lib-image-quality">{i18n.m.libraries.quality} <InfoTip text={i18n.m.libraries.image_quality_tip} /></label>
-              <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+              <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
                 <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
                 {i18n.m.libraries.customise}
               </label>
             </div>
             {#if form.imageQuality != null}
               <div class="flex items-center gap-3">
-                <span class="text-xs text-slate-400">{i18n.m.libraries.smaller}</span>
+                <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
                 <input id="lib-image-quality" class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
-                <span class="text-xs text-slate-400">{i18n.m.libraries.sharper}</span>
-                <span class="badge w-10 justify-center bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400">{form.imageQuality}</span>
+                <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
+                <span class="badge w-10 justify-center tone-accent">{form.imageQuality}</span>
               </div>
             {:else}
-              <p class="text-xs text-slate-400">{i18n.m.libraries.using_default_80}</p>
+              <p class="text-xs text-ink-4">{i18n.m.libraries.using_default_80}</p>
             {/if}
           </div>
         </div>
@@ -2215,7 +2215,7 @@
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyImages} />
           <span>
             {i18n.m.libraries.reencode_lossy_images}
-            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
               {i18n.m.libraries.reencode_lossy_images_hint}
             </span>
           </span>
@@ -2239,13 +2239,13 @@
               <div>
                 <label class="label" for="lib-image-longedge">{i18n.m.libraries.max_long_edge}</label>
                 <input id="lib-image-longedge" class="input" type="number" min="16" max="100000" step="1" bind:value={form.imageDownscaleValue} />
-                <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.max_long_edge_hint}</p>
+                <p class="mt-1 text-xs text-ink-4">{i18n.m.libraries.max_long_edge_hint}</p>
               </div>
             {:else if downscaleChoice === 'percent'}
               <div>
                 <label class="label" for="lib-image-percent">{i18n.m.libraries.scale_to}</label>
                 <input id="lib-image-percent" class="input" type="number" min="1" max="99" step="1" bind:value={form.imageDownscaleValue} />
-                <p class="mt-1 text-xs text-slate-400">{i18n.m.libraries.scale_to_hint}</p>
+                <p class="mt-1 text-xs text-ink-4">{i18n.m.libraries.scale_to_hint}</p>
               </div>
             {/if}
           </div>
@@ -2257,13 +2257,13 @@
       <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
            Photo library, which has no audio. -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.audio_channels}</h3>
-        <p class="mt-0.5 mb-3 text-xs text-slate-400">{i18n.m.libraries.audio_channels_desc}</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio_channels}</h3>
+        <p class="mt-0.5 mb-3 text-xs text-ink-4">{i18n.m.libraries.audio_channels_desc}</p>
         <label class="flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
           <span>
             {i18n.m.libraries.downmix_label}
-            <span class="mt-0.5 block text-xs font-normal text-slate-400">
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
               {i18n.m.libraries.downmix_hint}
             </span>
           </span>
@@ -2273,13 +2273,13 @@
 
       <!-- ELIGIBILITY & QUEUE -->
       <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.libraries.eligibility_queue}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-slate-400">{i18n.m.libraries.eligibility_queue_desc}</p>
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.eligibility_queue}</h3>
+        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.eligibility_queue_desc}</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <div class="mb-1 flex items-center justify-between">
               <label class="label mb-0" for="lib-priority">{i18n.m.libraries.queue_priority} <InfoTip text={i18n.m.libraries.queue_priority_tip} /></label>
-              <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{priorityLabel(form.priority)}</span>
+              <span class="badge tone-neutral">{priorityLabel(form.priority)}</span>
             </div>
             <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
           </div>
@@ -2332,9 +2332,9 @@
             label={i18n.m.libraries.hardlinks_label}
             hint={i18n.m.libraries.hardlinks_tip}
           />
-          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.hardlinks_hint}</p>
+          <p class="mt-1 text-xs text-ink-3">{i18n.m.libraries.hardlinks_hint}</p>
           {#if form.excludeHardLinkedFiles}
-            <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+            <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
               {i18n.m.libraries.hardlinks_on_detail}
             </div>
           {/if}
@@ -2347,7 +2347,7 @@
         {#if showVideoOptions && remoteWorkersOn}
           <div class="mt-4" data-testid="work-placement">
             <span class="label">{i18n.m.libraries.placement_label} <InfoTip text={i18n.m.libraries.placement_tip} /></span>
-            <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.placement_hint}</p>
+            <p class="mb-2 text-xs text-ink-3">{i18n.m.libraries.placement_hint}</p>
             <div class="grid gap-2 md:grid-cols-2" role="radiogroup" aria-label={i18n.m.libraries.placement_label}>
               {#each placements as placement (placement)}
                 <label
@@ -2362,20 +2362,20 @@
                     onchange={() => (form.workPlacement = placement)}
                   />
                   <span>
-                    <span class="block text-sm font-semibold text-slate-900 dark:text-slate-100">{placementName(placement)}</span>
-                    <span class="mt-0.5 block text-xs leading-relaxed text-slate-600 dark:text-slate-300">{placementDescription(placement)}</span>
+                    <span class="block text-sm font-semibold text-ink">{placementName(placement)}</span>
+                    <span class="mt-0.5 block text-xs leading-relaxed text-ink-2">{placementDescription(placement)}</span>
                   </span>
                 </label>
               {/each}
             </div>
             {#if form.videoQualityStrategy === 'AdaptiveVmaf' && form.workPlacement !== 'LocalOnly'}
-              <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+              <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
                 {i18n.m.libraries.placement_adaptive_note}
               </div>
             {/if}
           </div>
         {:else if showVideoOptions && form.workPlacement !== 'Anywhere'}
-          <p class="mt-4 text-xs text-slate-500 dark:text-slate-400">
+          <p class="mt-4 text-xs text-ink-3">
             {t(i18n.m.libraries.placement_kept_but_off, { placement: placementName(form.workPlacement) })}
           </p>
         {/if}
@@ -2387,7 +2387,7 @@
         {#if offeredSourceCodecs.length > 0}
         <div class="mt-4">
           <span class="label">{i18n.m.libraries.skip_codecs} <InfoTip text={i18n.m.libraries.skip_codecs_tip} /></span>
-          <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.skip_codecs_hint}</p>
+          <p class="mb-2 text-xs text-ink-3">{i18n.m.libraries.skip_codecs_hint}</p>
           <div class="flex flex-wrap gap-2">
             {#each offeredSourceCodecs as codec (codec)}
               <button
@@ -2396,12 +2396,12 @@
                 onclick={() => toggleSkippedCodec(codec)}
                 class="choice rounded-full px-3 py-1 font-mono text-xs {skippedCodecs.includes(codec)
  ? 'choice-selected'
- : 'text-slate-600 dark:text-slate-300'}"
+ : 'text-ink-2'}"
               >{codec}</button>
             {/each}
           </div>
           {#if skippedCodecs.length > 0}
-            <div class="mt-3 rounded-lg border border-line bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-900/50 dark:text-slate-300">
+            <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
               {i18n.m.libraries.skip_codecs_on_detail}
             </div>
           {/if}
@@ -2417,7 +2417,7 @@
        action bar cannot consume most of the editor. -->
   <div
     data-library-actions
-    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} z-10 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white px-4 py-3 shadow-sm dark:bg-slate-900 sm:px-6"
+    class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} card z-10 mt-4 flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6"
   >
     <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave}>
       <Icon name="check" class="h-4 w-4" />
@@ -2428,7 +2428,7 @@
       {i18n.m.libraries.cancel}
     </button>
     {#if isDirty}
-      <span class="ml-1 text-xs text-amber-600 dark:text-amber-400">{i18n.m.libraries.unsaved}</span>
+      <span class="ml-1 text-xs text-warn">{i18n.m.libraries.unsaved}</span>
     {/if}
   </div>
 {/snippet}
@@ -2436,9 +2436,9 @@
 {#if editingId !== null}
   {#if editingId !== 0 && !embedded}
     <nav class="mb-4 flex gap-1 overflow-x-auto border-b border-line" aria-label={i18n.m.libraries.configure}>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-amber-500">●</span>{/if}</button>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
-      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'excluded' ? 'border-cyan-500 text-cyan-700 dark:text-cyan-300' : 'border-transparent text-slate-500 dark:text-slate-400'}" onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
+      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'rules' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => (activeTab = 'rules')}>{i18n.m.libraries.tab_rules}{#if isDirty}<span class="ml-1 text-warn">●</span>{/if}</button>
+      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'candidates' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => (activeTab = 'candidates')}>{i18n.m.libraries.tab_candidates}{#if !editorCandidatesLoading} ({editorEligibleCount}){/if}</button>
+      <button class="-mb-px min-h-11 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium {activeTab === 'excluded' ? 'border-cyan-500 text-accent' : 'border-transparent text-ink-3'}" onclick={() => { activeTab = 'excluded'; if (editingId) void loadEditorExclusions(editingId) }}>{i18n.m.libraries.tab_excluded}{#if !editorExclusionsLoading} ({editorExclusions.length}){/if}</button>
     </nav>
   {/if}
 
@@ -2448,27 +2448,27 @@
     </div>
   {:else if activeTab === 'candidates'}
     {#if editorCandidatesError}<Banner kind="error" class="mb-3">{editorCandidatesError}</Banner>{/if}
-    <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.candidates_desc_1}<strong>{i18n.m.libraries.candidates_desc_saved}</strong>{i18n.m.libraries.candidates_desc_2}</p>
+    <p class="mb-3 text-xs text-ink-3">{i18n.m.libraries.candidates_desc_1}<strong>{i18n.m.libraries.candidates_desc_saved}</strong>{i18n.m.libraries.candidates_desc_2}</p>
     {#if editorCandidatesLoading}
-      <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+      <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else}
       <CandidateTable candidates={editorCandidates} scoped />
     {/if}
   {:else}
     {#if editorExclusionsError}<Banner kind="error" class="mb-3">{editorExclusionsError}</Banner>{/if}
-    <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">{i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}</p>
+    <p class="mb-3 text-xs text-ink-3">{i18n.m.libraries.excluded_desc_1}<strong>{i18n.m.libraries.excluded_desc_exclude}</strong>{i18n.m.libraries.excluded_desc_2}</p>
     {#if editorExclusionsLoading}
-      <div class="card p-8 text-center text-slate-400">{i18n.m.common.loading_short}</div>
+      <div class="card p-8 text-center text-ink-4">{i18n.m.common.loading_short}</div>
     {:else if editorExclusions.length === 0}
-      <div class="rounded-lg border border-dashed border-line p-8 text-center text-sm text-slate-400">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
+      <div class="rounded-lg border border-dashed border-line p-8 text-center text-sm text-ink-4">{i18n.m.libraries.excluded_empty_1}<strong>{i18n.m.libraries.excluded_empty_exclude}</strong>{i18n.m.libraries.excluded_empty_2}</div>
     {:else}
       <div class="divide-y divide-line-soft rounded-lg border border-line divide-line">
         {#each editorExclusions as ex (ex.id)}
           {@const auto = ex.source === 'RepeatedFailures'}
           <div class="flex items-center justify-between gap-3 px-3 py-2">
             <div class="min-w-0">
-              <div class="truncate font-mono text-xs text-slate-700 dark:text-slate-200">{ex.relativePath ?? ex.path}</div>
-              <div class="mt-0.5 text-xs text-slate-400"><span class={auto ? 'text-amber-600 dark:text-amber-400' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason} · {ex.reason}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
+              <div class="truncate font-mono text-xs text-ink-2">{ex.relativePath ?? ex.path}</div>
+              <div class="mt-0.5 text-xs text-ink-4"><span class={auto ? 'text-warn' : ''}>{auto ? i18n.m.libraries.excluded_auto : i18n.m.libraries.excluded_manual}</span>{#if ex.reason} · {ex.reason}{/if} · {new Date(ex.createdAt).toLocaleDateString()}</div>
             </div>
             <button class="btn btn-ghost min-h-11 flex-shrink-0 px-3 text-xs" onclick={() => unexclude(ex.id)}>{i18n.m.libraries.remove}</button>
           </div>
@@ -2489,22 +2489,22 @@
       <div class="card flex flex-col gap-3.5 p-5 {library.enabled ? '' : 'opacity-60'}" data-library-card={library.id}>
         <div class="flex items-center justify-between gap-3">
           <div class="flex min-w-0 flex-wrap items-center gap-2">
-            <span class="truncate text-base font-semibold text-slate-800 dark:text-slate-100">{library.name}</span>
-            <span class="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
+            <span class="truncate text-base font-semibold text-ink">{library.name}</span>
+            <span class="badge tone-info">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
             {#if library.priority !== 0}
-              <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
+              <span class="badge tone-warn">{t(i18n.m.libraries.badge_priority, { value: library.priority })}</span>
             {/if}
             {#if !library.enabled}
-              <span class="badge bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{i18n.m.libraries.badge_disabled}</span>
+              <span class="badge tone-muted">{i18n.m.libraries.badge_disabled}</span>
             {/if}
             <!-- Access is only worth a badge when it is a problem; a healthy path says nothing. -->
             {#if a && !a.ok}
               {#if !a.exists}
-                <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
+                <span class="badge tone-bad" title={accessMessage(a)}>{i18n.m.libraries.access_missing}</span>
               {:else if !a.readable}
-                <span class="badge bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
+                <span class="badge tone-bad" title={accessMessage(a)}>{i18n.m.libraries.access_unreadable}</span>
               {:else}
-                <span class="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
+                <span class="badge tone-warn" title={accessMessage(a)}>{i18n.m.libraries.access_unwritable}</span>
               {/if}
             {/if}
           </div>
@@ -2520,17 +2520,17 @@
         </div>
 
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-slate-800 dark:text-slate-100">{library.fileCount.toLocaleString()}</span>
-          <span class="text-sm text-slate-500 dark:text-slate-400">{i18n.m.libraries.files_label}</span>
+          <span class="text-3xl font-bold leading-9 tracking-tight tabular-nums text-ink">{library.fileCount.toLocaleString()}</span>
+          <span class="text-sm text-ink-3">{i18n.m.libraries.files_label}</span>
           {#if summary}
             <!-- The one place the summary lights up: only when something is actually waiting. -->
             {#if summary.eligible > 0}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-cyan-600 dark:text-cyan-400" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-accent" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
                 <Icon name="plus" class="h-3.5 w-3.5" />
                 {t(i18n.m.libraries.ready_to_optimise, { count: summary.eligible.toLocaleString() })}
               </span>
             {:else}
-              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
+              <span class="ml-auto inline-flex items-center gap-1.5 text-xs text-ink-3" title={summary.skipped > 0 ? t(i18n.m.libraries.skipped_hint, { count: summary.skipped.toLocaleString() }) : undefined}>
                 <Icon name="check" class="h-3.5 w-3.5" />
                 {i18n.m.libraries.all_optimal}
               </span>
@@ -2538,7 +2538,7 @@
           {/if}
         </div>
 
-        <div class="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <div class="flex flex-col gap-1.5 text-xs text-ink-3">
           <div class="flex items-center gap-2"><Icon name="folder" class="h-3.5 w-3.5 flex-shrink-0" /><span class="truncate font-mono">{library.path}</span></div>
           <!-- The rule profile is a video preset; it is meaningless for Music/Photo libraries. -->
           {#if isVideoType(library.mediaType)}
@@ -2548,7 +2548,7 @@
         </div>
 
         {#if a && !a.ok}
-          <div class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <div class="flex items-start gap-1.5 text-xs text-warn">
             <Icon name="warning" class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             <span>{accessMessage(a)}</span>
           </div>
@@ -2560,7 +2560,7 @@
             {busy ? i18n.m.libraries.working : i18n.m.libraries.scan}
           </button>
           {#if library.lastAutoEnqueueAt}
-            <span class="text-xs tabular-nums text-slate-400 dark:text-slate-500">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
+            <span class="text-xs tabular-nums text-ink-4">{t(i18n.m.libraries.last_run, { date: new Date(library.lastAutoEnqueueAt).toLocaleString() })}</span>
           {/if}
         </div>
       </div>

@@ -13,7 +13,7 @@
 </script>
 
 <div
-  class="relative shrink-0 overflow-hidden rounded bg-slate-100 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700 {box}"
+  class="relative shrink-0 overflow-hidden rounded bg-raised ring-1 ring-line {box}"
 >
   {#if !failed}
     <img
@@ -28,7 +28,7 @@
     />
   {/if}
   {#if failed || !loaded}
-    <div class="absolute inset-0 grid place-items-center text-slate-300 dark:text-slate-600">
+    <div class="absolute inset-0 grid place-items-center text-ink-5">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M3 9h18M8 4v16" />

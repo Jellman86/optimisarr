@@ -20,7 +20,7 @@
 <span class="group relative -m-[15px] inline-flex align-middle {cls}">
   <button
     type="button"
-    class="inline-flex h-11 w-11 items-center justify-center text-slate-400 transition-colors hover:text-slate-600 focus-visible:text-cyan-600 focus-visible:outline-none dark:text-slate-500 dark:hover:text-slate-300"
+    class="inline-flex h-11 w-11 items-center justify-center text-ink-4 transition-colors hover:text-ink-2 focus-visible:text-accent focus-visible:outline-none"
     aria-label={accessibleLabel}
     aria-describedby={tooltipId}
     onclick={(e) => {
@@ -40,7 +40,7 @@
   <span
     id={tooltipId}
     role="tooltip"
-    class="pointer-events-none fixed inset-x-4 bottom-4 z-50 max-h-[calc(100dvh-2rem)] w-auto max-w-none overflow-y-auto overscroll-contain break-words rounded-md bg-slate-800 px-3 py-2 text-left text-sm font-normal normal-case leading-relaxed tracking-normal text-slate-100 opacity-0 shadow-lg transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 dark:bg-slate-700 sm:inset-x-auto sm:right-4 sm:w-80"
+    class="tooltip pointer-events-none fixed inset-x-4 bottom-4 z-50 max-h-[calc(100dvh-2rem)] w-auto max-w-none overflow-y-auto overscroll-contain break-words opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 sm:inset-x-auto sm:right-4 sm:w-80"
   >
     {text}
   </span>

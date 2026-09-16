@@ -29,18 +29,18 @@
   </div>
 
   {#if nothingWaiting}
-    <p class="px-4 py-5 text-sm text-slate-500 dark:text-slate-400">{i18n.m.dashboard.needs_you_none}</p>
+    <p class="px-4 py-5 text-sm text-ink-3">{i18n.m.dashboard.needs_you_none}</p>
   {:else}
     <ul class="m-0 list-none p-0">
       {#if ready > 0}
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-          <span class="flex w-16 flex-none items-center gap-2 text-emerald-700 dark:text-emerald-400">
+          <span class="flex w-16 flex-none items-center gap-2 text-ok">
             <Icon name="check" class="h-4 w-4" />
             <span class="font-mono text-lg font-medium tabular-nums">{ready.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
-            <div class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.dashboard.ready_to_replace}</div>
-            <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{i18n.m.dashboard.ready_detail}</div>
+            <div class="text-sm font-medium text-ink">{i18n.m.dashboard.ready_to_replace}</div>
+            <div class="mt-0.5 text-xs text-ink-3">{i18n.m.dashboard.ready_detail}</div>
           </div>
           <button class="btn btn-primary flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_replace}</button>
         </li>
@@ -48,13 +48,13 @@
 
       {#if quarantined > 0}
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-          <span class="flex w-16 flex-none items-center gap-2 text-slate-600 dark:text-slate-300">
+          <span class="flex w-16 flex-none items-center gap-2 text-ink-2">
             <Icon name="clock" class="h-4 w-4" />
             <span class="font-mono text-lg font-medium tabular-nums">{quarantined.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
-            <div class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.dashboard.awaiting_review}</div>
-            <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <div class="text-sm font-medium text-ink">{i18n.m.dashboard.awaiting_review}</div>
+            <div class="mt-0.5 text-xs text-ink-3">
               {t(i18n.m.dashboard.reclaim_on_approve, { size: formatSize(stats?.quarantineReclaimableBytes ?? 0) })}
             </div>
           </div>
@@ -64,13 +64,13 @@
 
       {#if failed > 0}
         <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-          <span class="flex w-16 flex-none items-center gap-2 text-red-600 dark:text-red-400">
+          <span class="flex w-16 flex-none items-center gap-2 text-bad">
             <Icon name="warning" class="h-4 w-4" />
             <span class="font-mono text-lg font-medium tabular-nums">{failed.toLocaleString()}</span>
           </span>
           <div class="min-w-0 flex-1">
-            <div class="text-sm font-medium text-slate-800 dark:text-slate-100">{i18n.m.dashboard.failed_heading}</div>
-            <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{failureSummary || i18n.m.dashboard.failed_nothing_replaced}</div>
+            <div class="text-sm font-medium text-ink">{i18n.m.dashboard.failed_heading}</div>
+            <div class="mt-0.5 text-xs text-ink-3">{failureSummary || i18n.m.dashboard.failed_nothing_replaced}</div>
           </div>
           <button class="btn flex-none px-3 py-1.5 text-xs" onclick={() => router.go('/queue')}>{i18n.m.dashboard.action_inspect}</button>
         </li>

@@ -174,9 +174,9 @@
     workers = workers.map((w) => (w.id === updated.id ? updated : w))
   }
 
-  const amber = 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
-  const grey = 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-  const green = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+  const amber = 'tone-warn'
+  const grey = 'bg-raised text-ink-2'
+  const green = 'bg-ok-soft text-ok-strong'
 
   function status(worker: Worker): { label: string; classes: string } {
     if (worker.revokedAt) return { label: i18n.m.workers.status_revoked, classes: grey }
@@ -241,33 +241,33 @@
       <Banner kind="info">{i18n.m.workers.preview_note}</Banner>
 
       {#if pairing && secondsLeft > 0}
-        <div class="rounded-xl border border-cyan-500 bg-cyan-50/70 p-4 dark:border-cyan-500 dark:bg-cyan-950/25">
-          <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+        <div class="rounded-xl border border-accent bg-accent-soft p-4">
+          <h3 class="text-sm font-semibold text-ink">
             {i18n.m.workers.pairing_title}
           </h3>
-          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{i18n.m.workers.pairing_hint}</p>
+          <p class="mt-1 text-sm text-ink-2">{i18n.m.workers.pairing_hint}</p>
 
           <dl class="mt-3 space-y-3">
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <dt class="text-xs font-medium uppercase tracking-wide text-ink-3">
                 {i18n.m.workers.server_address}
               </dt>
-              <dd class="mt-1 break-all font-mono text-sm text-slate-900 dark:text-slate-100">
+              <dd class="mt-1 break-all font-mono text-sm text-ink">
                 {serverAddress}
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <dt class="text-xs font-medium uppercase tracking-wide text-ink-3">
                 {i18n.m.workers.pairing_code}
               </dt>
               <!-- Grouped for reading aloud; the server ignores the spacing on the way back. -->
-              <dd class="mt-1 font-mono text-3xl font-bold tracking-[0.2em] text-slate-900 dark:text-slate-100">
+              <dd class="mt-1 font-mono text-3xl font-bold tracking-[0.2em] text-ink">
                 {pairing.code.slice(0, 4)} {pairing.code.slice(4)}
               </dd>
             </div>
           </dl>
 
-          <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+          <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-2">
             <span>{t(i18n.m.workers.expires_in, { seconds: secondsLeft })}</span>
             <span>{t(i18n.m.workers.attempts_left, { count: pairing.attemptsRemaining })}</span>
             <button class="btn btn-ghost ml-auto" disabled={busy} onclick={cancelCode}>
@@ -288,11 +288,11 @@
 
   <section>
     {#if loading}
-      <p class="px-1 py-6 text-sm text-slate-500 dark:text-slate-400">{i18n.m.common.loading_short}</p>
+      <p class="px-1 py-6 text-sm text-ink-3">{i18n.m.common.loading_short}</p>
     {:else if workers.length === 0}
       <div class="card px-4 py-6">
-        <p class="text-sm font-medium text-slate-700 dark:text-slate-200">{i18n.m.workers.empty}</p>
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.workers.empty_hint}</p>
+        <p class="text-sm font-medium text-ink-2">{i18n.m.workers.empty}</p>
+        <p class="mt-1 text-sm text-ink-3">{i18n.m.workers.empty_hint}</p>
       </div>
     {:else}
       <div class="grid gap-4 lg:grid-cols-2" data-testid="worker-cards">
@@ -300,8 +300,8 @@
           <article class="card flex flex-col gap-3 p-4" data-testid="worker-card">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <h3 class="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{worker.name}</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">
+                <h3 class="truncate text-base font-semibold text-ink">{worker.name}</h3>
+                <p class="text-xs text-ink-3">
                   {t(i18n.m.workers.platform_line, { os: worker.operatingSystem, arch: worker.architecture, version: worker.protocolVersion })}
                   <!-- The build the machine is actually running, which the protocol version above
                        does not tell you. Shown even when absent: a worker that reports no version
@@ -318,18 +318,18 @@
             <!-- What it proved, not what its platform implies: the same list the claim route matches on. -->
             <div class="flex flex-wrap gap-1.5 text-xs">
               {#each worker.videoEncoders as encoder (encoder)}
-                <span class="rounded-md border border-line px-2 py-0.5 font-mono text-slate-700 dark:text-slate-200">{encoder}</span>
+                <span class="rounded-md border border-line px-2 py-0.5 font-mono text-ink-2">{encoder}</span>
               {/each}
               <!-- Audio matters as much as video: a library set to Opus or MP3 is only offered to
                    a worker whose FFmpeg carries that encoder. -->
               {#each worker.audioEncoders ?? [] as encoder (encoder)}
-                <span class="rounded-md border border-line px-2 py-0.5 font-mono text-slate-500 dark:text-slate-400">{encoder}</span>
+                <span class="rounded-md border border-line px-2 py-0.5 font-mono text-ink-3">{encoder}</span>
               {/each}
               {#if worker.hardwareDecoders.length > 0}
-                <span class="rounded-md border border-line px-2 py-0.5 text-slate-700 dark:text-slate-200">{t(i18n.m.workers.hw_decode, { list: worker.hardwareDecoders.join(', ') })}</span>
+                <span class="rounded-md border border-line px-2 py-0.5 text-ink-2">{t(i18n.m.workers.hw_decode, { list: worker.hardwareDecoders.join(', ') })}</span>
               {/if}
               {#if worker.vmaf !== 'None'}
-                <span class="rounded-md border border-line px-2 py-0.5 text-slate-700 dark:text-slate-200">{i18n.m.workers.vmaf_on_worker}</span>
+                <span class="rounded-md border border-line px-2 py-0.5 text-ink-2">{i18n.m.workers.vmaf_on_worker}</span>
               {/if}
             </div>
 
@@ -337,11 +337,11 @@
                  that reports nothing shows nothing, rather than a 0% that would read as an idle
                  Mac and invite someone to send it more work. -->
             {#if worker.cpuBusyFraction != null || worker.gpuBusyFraction != null}
-              <div class="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300" data-testid="worker-load">
+              <div class="flex flex-wrap items-center gap-3 text-xs text-ink-2" data-testid="worker-load">
                 {#if worker.cpuBusyFraction != null}
                   <span class="flex items-center gap-1.5">
-                    <span class="text-slate-500 dark:text-slate-400">{i18n.m.workers.cpu_label}</span>
-                    <span class="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <span class="text-ink-3">{i18n.m.workers.cpu_label}</span>
+                    <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
                       <span class="block h-full rounded-full bg-sky-500" style="width: {Math.round(worker.cpuBusyFraction * 100)}%"></span>
                     </span>
                     <span class="font-mono tabular-nums">{Math.round(worker.cpuBusyFraction * 100)}%</span>
@@ -353,8 +353,8 @@
                        reads low while the Mac is flat out. Better to say so than to let someone
                        conclude the accelerator is idle. -->
                   <span class="flex items-center gap-1.5" title={i18n.m.workers.gpu_hint}>
-                    <span class="text-slate-500 dark:text-slate-400">{i18n.m.workers.gpu_label}</span>
-                    <span class="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <span class="text-ink-3">{i18n.m.workers.gpu_label}</span>
+                    <span class="h-1.5 w-16 overflow-hidden rounded-full bg-sunken">
                       <span class="block h-full rounded-full bg-violet-500" style="width: {Math.round(worker.gpuBusyFraction * 100)}%"></span>
                     </span>
                     <span class="font-mono tabular-nums">{Math.round(worker.gpuBusyFraction * 100)}%</span>
@@ -364,8 +364,8 @@
             {/if}
 
             <dl class="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 text-sm">
-              <dt class="text-slate-500 dark:text-slate-400">{i18n.m.workers.working_on}</dt>
-              <dd class="min-w-0 text-slate-800 dark:text-slate-200">
+              <dt class="text-ink-3">{i18n.m.workers.working_on}</dt>
+              <dd class="min-w-0 text-ink">
                 {#if worker.activeJobs.length === 0}
                   {worker.drainRequestedAt ? i18n.m.workers.idle_draining : i18n.m.workers.idle}
                 {:else}
@@ -375,7 +375,7 @@
                         <div class="truncate font-mono text-xs" title={job.relativePath ?? ''}>{fileName(job.relativePath, job.jobId)}</div>
                         <div class="mt-1 flex items-center gap-2">
                           <div class="progress-track h-1.5 flex-1"><div class="progress-fill" style="width: {Math.round(job.progress * 100)}%"></div></div>
-                          <span class="flex-shrink-0 whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                          <span class="flex-shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-3">
                             {stageLabel(job)}{job.stage === 'Encoding' ? ` ${Math.round(job.progress * 100)}%` : ''}
                           </span>
                         </div>
@@ -385,20 +385,20 @@
                 {/if}
               </dd>
 
-              <dt class="text-slate-500 dark:text-slate-400">{i18n.m.workers.load}</dt>
-              <dd class="text-slate-800 dark:text-slate-200">
+              <dt class="text-ink-3">{i18n.m.workers.load}</dt>
+              <dd class="text-ink">
                 {t(i18n.m.workers.load_value, { held: worker.heldLeases, max: worker.maxConcurrency, scratch: formatSize(worker.freeScratchBytes) })}
               </dd>
 
-              <dt class="text-slate-500 dark:text-slate-400">{i18n.m.workers.last_seen}</dt>
-              <dd class="text-slate-800 dark:text-slate-200">{ago(worker.lastSeenAt)}</dd>
+              <dt class="text-ink-3">{i18n.m.workers.last_seen}</dt>
+              <dd class="text-ink">{ago(worker.lastSeenAt)}</dd>
 
-              <dt class="text-slate-500 dark:text-slate-400">{i18n.m.workers.last_problem}</dt>
-              <dd class="min-w-0 text-slate-800 dark:text-slate-200">
+              <dt class="text-ink-3">{i18n.m.workers.last_problem}</dt>
+              <dd class="min-w-0 text-ink">
                 {#if worker.lastProblem}
-                  <span class="text-xs text-amber-800 dark:text-amber-300">{ago(worker.lastProblemAt)} · {worker.lastProblem}</span>
+                  <span class="text-xs text-warn">{ago(worker.lastProblemAt)} · {worker.lastProblem}</span>
                 {:else}
-                  <span class="font-mono text-xs text-slate-500 dark:text-slate-400">{i18n.m.workers.no_problem}</span>
+                  <span class="font-mono text-xs text-ink-3">{i18n.m.workers.no_problem}</span>
                 {/if}
               </dd>
             </dl>
@@ -414,13 +414,13 @@
                     {worker.heldLeases > 0 ? i18n.m.workers.drain : i18n.m.workers.stop_taking}
                   </button>
                 {/if}
-                <button class="btn btn-ghost text-red-600 dark:text-red-400" disabled={busy} onclick={() => revoke(worker)}>
+                <button class="btn btn-ghost text-bad" disabled={busy} onclick={() => revoke(worker)}>
                   {i18n.m.workers.revoke}
                 </button>
                 <!-- Only for a sidecar that is not coming back. A live one should be revoked, which
                      stops it working while keeping the record of what it did. -->
                 {#if worker.revokedAt || !worker.online}
-                  <button class="btn btn-ghost text-slate-500 dark:text-slate-400" disabled={busy} onclick={() => forget(worker)}>
+                  <button class="btn btn-ghost text-ink-3" disabled={busy} onclick={() => forget(worker)}>
                     {i18n.m.workers.forget}
                   </button>
                 {/if}

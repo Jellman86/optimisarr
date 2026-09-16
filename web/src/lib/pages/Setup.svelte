@@ -303,18 +303,18 @@
   })
 </script>
 
-<div class="min-h-dvh bg-slate-100 px-4 py-5 text-slate-800 sm:px-6 sm:py-8 dark:bg-slate-950 dark:text-slate-200">
+<div class="min-h-dvh bg-raised px-4 py-5 text-ink sm:px-6 sm:py-8">
   <div class="mx-auto mb-5 flex max-w-5xl items-center gap-3">
     <BrandMark class="h-9 w-9" />
     <div>
-      <div class="font-bold tracking-tight text-slate-900 dark:text-slate-100">Optimisarr</div>
-      <div class="text-xs text-slate-500 dark:text-slate-400">{i18n.m.app.tagline}</div>
+      <div class="font-bold tracking-tight text-ink">Optimisarr</div>
+      <div class="text-xs text-ink-3">{i18n.m.app.tagline}</div>
     </div>
   </div>
 
-  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} overflow-hidden rounded-2xl border border-line bg-white md:grid-cols-[15rem_minmax(0,1fr)] dark:bg-slate-900">
-    <aside class="border-b border-line bg-slate-50 px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7 dark:bg-slate-900/60">
-      <p class="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-400">
+  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} card overflow-hidden rounded-2xl md:grid-cols-[15rem_minmax(0,1fr)]">
+    <aside class="border-b border-line bg-sunken px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7">
+      <p class="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
       </p>
       <ol class="grid grid-cols-5 gap-1 md:block" aria-label={i18n.m.setup.progress_label}>
@@ -322,15 +322,15 @@
           {@const number = index + 1}
           <li class="relative md:pb-6">
             {#if number < stepNames.length}
-              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-slate-200 md:block dark:bg-slate-700"></span>
+              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-sunken md:block"></span>
             {/if}
             <div class="relative flex flex-col items-center text-center md:flex-row md:items-start md:gap-3 md:text-left" aria-current={number === viewStep ? 'step' : undefined} aria-label={`${name}: ${stepStatus(number)}`}>
-              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'bg-emerald-600 text-white' : number === viewStep ? 'bg-cyan-600 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}">
+              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'bg-emerald-600 text-white' : number === viewStep ? 'bg-cyan-600 text-white' : 'bg-sunken text-ink-3'}">
                 {number <= (setup.state?.completedStep ?? 0) ? '✓' : number}
               </span>
               <span class="hidden min-w-0 pt-0.5 md:block">
-                <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">{name}</span>
-                <span class="block text-[11px] text-slate-400">{stepStatus(number)}</span>
+                <span class="block text-sm font-semibold text-ink-2">{name}</span>
+                <span class="block text-[11px] text-ink-4">{stepStatus(number)}</span>
               </span>
             </div>
           </li>
@@ -342,11 +342,11 @@
       {#if receipt}
         <div class="flex flex-1 flex-col justify-center" aria-live="polite">
           <div class="max-w-2xl">
-            <span class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            <span class="flex h-12 w-12 items-center justify-center rounded-full tone-ok">
               <Icon name="check" class="h-6 w-6" />
             </span>
-            <h1 class="mt-5 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{i18n.m.setup.receipt_heading}</h1>
-            <p class="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{t(i18n.m.setup.receipt_body, { count: receipt.libraryCount })}</p>
+            <h1 class="mt-5 text-3xl font-bold tracking-tight text-ink">{i18n.m.setup.receipt_heading}</h1>
+            <p class="mt-3 text-sm leading-6 text-ink-2">{t(i18n.m.setup.receipt_body, { count: receipt.libraryCount })}</p>
             <div class="mt-7 flex flex-wrap gap-3">
               <button class="btn btn-primary min-h-11" onclick={() => void leaveReceipt('/inventory')}>
                 {i18n.m.setup.review_candidates}
@@ -365,7 +365,7 @@
         />
       {:else}
       {#if error}
-        <div bind:this={errorSummary} class="mb-5 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200" role="alert" tabindex="-1">
+        <div bind:this={errorSummary} class="callout tone-bad mb-5 px-4 py-3" role="alert" tabindex="-1">
           <div class="font-semibold">{i18n.m.setup.error_heading}</div>
           <div>{error}</div>
         </div>
@@ -373,36 +373,36 @@
 
       <div class="flex-1">
         {#if viewStep === 1}
-          <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-400">{i18n.m.setup.welcome_eyebrow}</p>
-          <h1 class="max-w-2xl text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">{i18n.m.setup.welcome_heading}</h1>
-          <p class="mt-4 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-300">{i18n.m.setup.welcome_body}</p>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent">{i18n.m.setup.welcome_eyebrow}</p>
+          <h1 class="max-w-2xl text-3xl font-bold tracking-tight text-ink sm:text-4xl">{i18n.m.setup.welcome_heading}</h1>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-ink-2">{i18n.m.setup.welcome_body}</p>
 
           <dl class="mt-8 max-w-2xl divide-y divide-line border-y border-line">
             <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-5">
-              <dt class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.safety_title}</dt>
-              <dd class="text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.safety_body}</dd>
+              <dt class="font-semibold text-ink">{i18n.m.setup.safety_title}</dt>
+              <dd class="text-sm leading-6 text-ink-2">{i18n.m.setup.safety_body}</dd>
             </div>
             <div class="grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-5">
-              <dt class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.network_title}</dt>
-              <dd class="text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.network_body}</dd>
+              <dt class="font-semibold text-ink">{i18n.m.setup.network_title}</dt>
+              <dd class="text-sm leading-6 text-ink-2">{i18n.m.setup.network_body}</dd>
             </div>
           </dl>
         {:else if viewStep === 2}
-          <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.readiness_heading}</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.readiness_body}</p>
+          <h1 class="page-title">{i18n.m.setup.readiness_heading}</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.readiness_body}</p>
 
           <section class="mt-7 max-w-3xl" aria-labelledby="storage-heading">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h2 id="storage-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.storage_heading}</h2>
-                <p class="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.storage_body}</p>
+                <h2 id="storage-heading" class="font-semibold text-ink">{i18n.m.setup.storage_heading}</h2>
+                <p class="mt-1 max-w-2xl text-xs leading-5 text-ink-3">{i18n.m.setup.storage_body}</p>
               </div>
               <div class="flex-none">
-                <div class="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">{i18n.m.setup.deployment_label}</div>
+                <div class="mb-1.5 text-xs font-medium text-ink-3">{i18n.m.setup.deployment_label}</div>
                 <div class="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap" role="group" aria-label={i18n.m.setup.deployment_label}>
                   {#each ['local', 'compose', 'unraid', 'truenas'] as platform}
                     <button
-                      class="min-h-11 rounded-md border px-2.5 text-xs font-medium transition-colors {selectedPlatform === platform ? 'border-cyan-500 bg-cyan-50 text-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-200' : 'border-line text-slate-600 hover:border-line hover:bg-slate-50 border-line dark:text-slate-300 dark:hover:bg-slate-800'}"
+                      class="choice min-h-11 rounded-md px-2.5 text-xs font-medium {selectedPlatform === platform ? 'choice-selected' : 'text-ink-2'}"
                       type="button"
                       aria-pressed={selectedPlatform === platform}
                       onclick={() => (selectedPlatform = platform as SetupReadiness['platform'])}
@@ -419,16 +419,16 @@
             {#each paths as path}
               <article class="py-4">
                 <div class="flex items-start gap-3">
-                  <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {path.issue === 'none' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'}">
+                  <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {path.issue === 'none' ? 'tone-ok' : 'tone-bad'}">
                     <Icon name={path.issue === 'none' ? 'check' : 'warning'} class="h-3.5 w-3.5" />
                   </span>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                      <div class="font-semibold text-slate-800 dark:text-slate-100">{path.role === 'library' ? `${i18n.m.setup.step_library}: ${path.name}` : path.name}</div>
-                      <span class="text-xs font-medium {path.issue === 'none' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}">{path.issue === 'none' ? i18n.m.setup.path_ready : i18n.m.setup.path_unavailable}</span>
+                      <div class="font-semibold text-ink">{path.role === 'library' ? `${i18n.m.setup.step_library}: ${path.name}` : path.name}</div>
+                      <span class="text-xs font-medium {path.issue === 'none' ? 'text-ok' : 'text-bad'}">{path.issue === 'none' ? i18n.m.setup.path_ready : i18n.m.setup.path_unavailable}</span>
                     </div>
-                    <div class="mt-0.5 break-all font-mono text-xs text-slate-500 dark:text-slate-400">{path.path}</div>
-                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                    <div class="mt-0.5 break-all font-mono text-xs text-ink-3">{path.path}</div>
+                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
                       {#if path.availableBytes !== null && path.totalBytes !== null}
                         <span>{t(i18n.m.setup.free_space, { free: formatSize(path.availableBytes), total: formatSize(path.totalBytes) })}</span>
                       {:else if path.availableBytes !== null}
@@ -441,13 +441,13 @@
                       {/if}
                     </div>
                     {#if path.issue !== 'none'}
-                      <div class="mt-3 border-l-2 border-red-300 pl-3 dark:border-red-800">
-                        <div class="text-sm font-medium text-red-800 dark:text-red-200">{issueMessage(path)}</div>
+                      <div class="callout tone-bad mt-3">
+                        <div class="text-sm font-medium text-bad-strong">{issueMessage(path)}</div>
                         {#if path.issue === 'lowSpace' && path.requiredFreeBytes !== null}
-                          <p class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{t(i18n.m.setup.space_requirement, { required: formatSize(path.requiredFreeBytes) })}</p>
+                          <p class="mt-1 text-xs leading-5 text-ink-2">{t(i18n.m.setup.space_requirement, { required: formatSize(path.requiredFreeBytes) })}</p>
                         {/if}
-                        <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{i18n.m.setup.recovery_title}</div>
-                        <p class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{recoverySteps()}</p>
+                        <div class="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.setup.recovery_title}</div>
+                        <p class="mt-1 text-xs leading-5 text-ink-2">{recoverySteps()}</p>
                       </div>
                     {/if}
                   </div>
@@ -459,20 +459,20 @@
 
           {#if storageRelationships.length > 0}
             <section class="mt-7 max-w-3xl" aria-labelledby="atomic-heading">
-              <h2 id="atomic-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.atomic_heading}</h2>
-              <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.atomic_body}</p>
+              <h2 id="atomic-heading" class="font-semibold text-ink">{i18n.m.setup.atomic_heading}</h2>
+              <p class="mt-1 text-xs leading-5 text-ink-3">{i18n.m.setup.atomic_body}</p>
               <div class="mt-3 divide-y divide-line border-y border-line">
                 {#each storageRelationships as relationship (relationship.libraryId)}
                   {@const atomic = relationship.workAtomic === true && relationship.quarantineAtomic === true}
                   <div class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <span class="font-medium text-slate-800 dark:text-slate-100">{relationship.libraryName}</span>
-                    <span class="flex items-center gap-2 text-xs font-medium {atomic ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
+                    <span class="font-medium text-ink">{relationship.libraryName}</span>
+                    <span class="flex items-center gap-2 text-xs font-medium {atomic ? 'text-ok' : 'text-warn'}">
                       <Icon name={atomic ? 'check' : 'warning'} class="h-4 w-4" />
                       {relationshipMessage(relationship)}
                     </span>
                   </div>
                   {#if !atomic}
-                    <div class="pb-4 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    <div class="pb-4 text-xs leading-5 text-ink-2">
                       <p>{i18n.m.setup.atomic_fix}</p>
                       <p class="mt-1 font-medium">{settings?.replacementAllowCrossFilesystem ? i18n.m.setup.fallback_enabled : i18n.m.setup.fallback_disabled}</p>
                     </div>
@@ -483,29 +483,29 @@
           {/if}
 
           <section class="mt-7 max-w-3xl" aria-labelledby="toolchain-heading">
-            <h2 id="toolchain-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.toolchain_heading}</h2>
-            <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.toolchain_body}</p>
+            <h2 id="toolchain-heading" class="font-semibold text-ink">{i18n.m.setup.toolchain_heading}</h2>
+            <p class="mt-1 text-xs leading-5 text-ink-3">{i18n.m.setup.toolchain_body}</p>
             <div class="mt-3 divide-y divide-line border-y border-line">
             {#each tools as tool}
               <div class="flex items-start gap-3 py-3">
-                <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {tool.available ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : tool.required ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}">
+                <span class="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full {tool.available ? 'tone-ok' : tool.required ? 'tone-bad' : 'tone-warn'}">
                   <Icon name={tool.available ? 'check' : 'warning'} class="h-3.5 w-3.5" />
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-semibold text-slate-800 dark:text-slate-100">{tool.name}</span>
-                    <span class="text-xs text-slate-400">{tool.required ? i18n.m.setup.required : i18n.m.setup.optional}</span>
+                    <span class="font-semibold text-ink">{tool.name}</span>
+                    <span class="text-xs text-ink-4">{tool.required ? i18n.m.setup.required : i18n.m.setup.optional}</span>
                   </div>
-                  <div class="truncate font-mono text-xs text-slate-500 dark:text-slate-400">{tool.version ?? tool.error ?? tool.command}</div>
+                  <div class="truncate font-mono text-xs text-ink-3">{tool.version ?? tool.error ?? tool.command}</div>
                 </div>
-                <span class="text-xs font-medium {tool.available ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}">{tool.available ? i18n.m.setup.available : i18n.m.setup.unavailable}</span>
+                <span class="text-xs font-medium {tool.available ? 'text-ok' : 'text-ink-3'}">{tool.available ? i18n.m.setup.available : i18n.m.setup.unavailable}</span>
               </div>
             {/each}
             </div>
           </section>
 
           {#if hardware}
-            <p class="mt-4 max-w-3xl text-xs text-slate-500 dark:text-slate-400">
+            <p class="mt-4 max-w-3xl text-xs text-ink-3">
               {t(i18n.m.setup.encoder_summary, { count: hardware.encoders.filter((encoder) => encoder.available).length })}
             </p>
           {/if}
@@ -514,11 +514,11 @@
               <Icon name="retry" class="h-4 w-4 motion-reduce:animate-none {retesting ? 'animate-spin' : ''}" />
               {retesting ? i18n.m.setup.retesting : i18n.m.setup.retest}
             </button>
-            {#if retestMessage}<span class="text-sm text-emerald-700 dark:text-emerald-300">{retestMessage}</span>{/if}
+            {#if retestMessage}<span class="text-sm text-ok">{retestMessage}</span>{/if}
           </div>
         {:else if viewStep === 3}
-          <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.library_heading}</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.library_body}</p>
+          <h1 class="page-title">{i18n.m.setup.library_heading}</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.library_body}</p>
 
           {#if libraries.length > 0}
             <div class="mt-7 max-w-2xl divide-y divide-line border-y border-line">
@@ -527,24 +527,24 @@
                 <article class="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" aria-label={library.name}>
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-semibold text-slate-900 dark:text-slate-100">{library.name}</span>
-                      <span class="badge bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
+                      <span class="font-semibold text-ink">{library.name}</span>
+                      <span class="badge tone-neutral">{mediaTypeLabel(library.mediaType, i18n.m)}</span>
                     </div>
-                    <div class="mt-1 truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={library.path}>{library.path}</div>
-                    <div class="mt-2 text-xs font-medium {access?.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
+                    <div class="mt-1 truncate font-mono text-xs text-ink-3" title={library.path}>{library.path}</div>
+                    <div class="mt-2 text-xs font-medium {access?.ok ? 'text-ok' : 'text-warn'}">
                       {access?.ok ? i18n.m.setup.access_ready : access?.message ?? i18n.m.setup.access_checking}
                     </div>
                     {#if access}
-                      <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                      <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
                         {#if access.availableBytes !== null}<span>{t(i18n.m.setup.free_space_only, { free: formatSize(access.availableBytes) })}</span>{/if}
                         {#if access.fileSystemId && access.mountId}<span class="font-mono">{t(i18n.m.setup.mount_evidence, { type: access.fileSystemType ?? '—', filesystem: access.fileSystemId, mount: access.mountId })}</span>{/if}
                       </div>
-                      <div class="mt-2 flex items-center gap-1.5 text-xs font-medium {access.atomicWithWork === true && access.atomicWithQuarantine === true ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}">
+                      <div class="mt-2 flex items-center gap-1.5 text-xs font-medium {access.atomicWithWork === true && access.atomicWithQuarantine === true ? 'text-ok' : 'text-warn'}">
                         <Icon name={access.atomicWithWork === true && access.atomicWithQuarantine === true ? 'check' : 'warning'} class="h-3.5 w-3.5" />
                         {libraryRelationshipMessage(access)}
                       </div>
                       {#if !access.ok}
-                        <p class="mt-2 border-l-2 border-amber-300 pl-2 text-xs leading-5 text-slate-600 dark:border-amber-800 dark:text-slate-300">{recoverySteps()}</p>
+                        <p class="callout tone-warn mt-2 text-xs leading-5">{recoverySteps()}</p>
                       {/if}
                     {/if}
                   </div>
@@ -556,44 +556,44 @@
               {/each}
             </div>
           {/if}
-          <p class="mt-4 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">{i18n.m.setup.library_safe_defaults}</p>
+          <p class="mt-4 max-w-2xl text-xs leading-5 text-ink-3">{i18n.m.setup.library_safe_defaults}</p>
           <button class="btn {libraries.length === 0 ? 'btn-primary' : ''} mt-4 min-h-11" onclick={() => (configuringLibraryId = 0)}>
             <Icon name="plus" class="h-4 w-4" />
             {libraries.length === 0 ? i18n.m.setup.create_library : i18n.m.setup.add_another_library}
           </button>
         {:else if viewStep === 4}
-          <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.safety_heading}</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.safety_step_body}</p>
+          <h1 class="page-title">{i18n.m.setup.safety_heading}</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.safety_step_body}</p>
 
           {#if settings}
             <div class="mt-7 max-w-2xl divide-y divide-line border-y border-line">
               <label class="flex cursor-pointer items-start gap-3 py-4">
                 <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={settings.dryRunMode} />
-                <span><span class="block font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.dry_run_title}</span><span class="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.dry_run_body}</span></span>
+                <span><span class="block font-semibold text-ink">{i18n.m.setup.dry_run_title}</span><span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.dry_run_body}</span></span>
               </label>
               <div class="grid gap-2 py-4 sm:grid-cols-[1fr_9rem] sm:items-center">
-                <div><div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.concurrent_title}</div><div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{i18n.m.setup.concurrent_body}</div></div>
+                <div><div class="font-semibold text-ink">{i18n.m.setup.concurrent_title}</div><div class="mt-1 text-sm text-ink-3">{i18n.m.setup.concurrent_body}</div></div>
                 <div>
                   <input class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} aria-label={i18n.m.setup.concurrent_title} aria-invalid={concurrencyError ? 'true' : undefined} aria-describedby={concurrencyError ? 'setup-concurrency-error' : undefined} />
-                  {#if concurrencyError}<p id="setup-concurrency-error" class="mt-1 text-xs text-red-700 dark:text-red-300">{concurrencyError}</p>{/if}
+                  {#if concurrencyError}<p id="setup-concurrency-error" class="mt-1 text-xs text-bad">{concurrencyError}</p>{/if}
                 </div>
               </div>
               <div class="py-4">
-                <div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.setup.automation_title}</div>
-                <div class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.automation_body}</div>
+                <div class="font-semibold text-ink">{i18n.m.setup.automation_title}</div>
+                <div class="mt-1 text-sm leading-6 text-ink-3">{i18n.m.setup.automation_body}</div>
               </div>
             </div>
           {/if}
 
           {#if recommendation && settings}
             <section class="mt-8 max-w-2xl" aria-labelledby="recommendations-heading">
-              <h2 id="recommendations-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.setup.recommended_heading}</h2>
-              <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.recommended_body}</p>
+              <h2 id="recommendations-heading" class="font-semibold text-ink">{i18n.m.setup.recommended_heading}</h2>
+              <p class="mt-1 text-sm leading-6 text-ink-3">{i18n.m.setup.recommended_body}</p>
               <div class="mt-3 divide-y divide-line border-y border-line">
                 <div class="grid gap-3 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div>
-                    <div class="font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.encoder_mode}</div>
-                    <div class="mt-1 text-sm text-slate-500 dark:text-slate-400">{recommendation.encoderMode} · {recommendation.hardwareDecode ? i18n.m.settings.hardware_decode : i18n.m.common.off}</div>
+                    <div class="font-semibold text-ink">{i18n.m.settings.encoder_mode}</div>
+                    <div class="mt-1 text-sm text-ink-3">{recommendation.encoderMode} · {recommendation.hardwareDecode ? i18n.m.settings.hardware_decode : i18n.m.common.off}</div>
                   </div>
                   <button class="btn min-h-11" type="button" onclick={acceptEncoderRecommendation} aria-pressed={useRecommendedEncoder}>
                     {useRecommendedEncoder ? i18n.m.setup.recommendation_applied : i18n.m.setup.use_recommendation}
@@ -602,15 +602,15 @@
                 <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
                   <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={applyRecommendedVmaf} />
                   <span>
-                    <span class="block font-semibold text-slate-800 dark:text-slate-100">{i18n.m.settings.vmaf_label}: {recommendation.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</span>
-                    <span class="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_hint}</span>
+                    <span class="block font-semibold text-ink">{i18n.m.settings.vmaf_label}: {recommendation.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</span>
+                    <span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.settings.vmaf_hint}</span>
                   </span>
                 </label>
                 <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
                   <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={applyRecommendedSchedule} />
                   <span>
-                    <span class="block font-semibold text-slate-800 dark:text-slate-100">{i18n.m.nav.schedule}: {recommendation.scheduleStart}–{recommendation.scheduleEnd}</span>
-                    <span class="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.setup.automation_body}</span>
+                    <span class="block font-semibold text-ink">{i18n.m.nav.schedule}: {recommendation.scheduleStart}–{recommendation.scheduleEnd}</span>
+                    <span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.automation_body}</span>
                   </span>
                 </label>
               </div>
@@ -618,31 +618,31 @@
           {/if}
 
           <section class="mt-8 max-w-2xl" aria-labelledby="preview-heading">
-            <h2 id="preview-heading" class="font-semibold text-slate-900 dark:text-slate-100">{i18n.m.shared.preview}</h2>
-            <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{i18n.m.shared.preview_safety}</p>
+            <h2 id="preview-heading" class="font-semibold text-ink">{i18n.m.shared.preview}</h2>
+            <p class="mt-1 text-sm leading-6 text-ink-3">{i18n.m.shared.preview_safety}</p>
             {#if representative}
               <button class="btn mt-3 min-h-11" type="button" onclick={() => (previewing = true)}>
                 <Icon name="play" class="h-4 w-4" />
                 {i18n.m.shared.preview}
               </button>
             {:else}
-              <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">{i18n.m.shared.candidates_empty}</p>
+              <p class="mt-3 text-sm text-ink-3">{i18n.m.shared.candidates_empty}</p>
             {/if}
           </section>
         {:else}
-          <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-400">{i18n.m.setup.review_eyebrow}</p>
-          <h1 class="text-2xl font-bold text-slate-900 dark:text-white">{i18n.m.setup.review_heading}</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">{i18n.m.setup.review_body}</p>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-ok">{i18n.m.setup.review_eyebrow}</p>
+          <h1 class="page-title">{i18n.m.setup.review_heading}</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.review_body}</p>
 
           <dl class="mt-7 max-w-3xl divide-y divide-line border-y border-line">
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.network_title}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.network_body}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.storage_heading}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_library}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.encoder_mode}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.encoderMode ?? '—'} · {plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{vmafReviewLabel()}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.nav.schedule}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{applyRecommendedSchedule && recommendation ? `${recommendation.scheduleStart}–${recommendation.scheduleEnd}` : i18n.m.setup.skipped}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-slate-500 dark:text-slate-400">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-slate-800 dark:text-slate-200">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.network_title}</dt><dd class="text-sm text-ink">{i18n.m.setup.network_body}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.storage_heading}</dt><dd class="text-sm text-ink">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_library}</dt><dd class="text-sm text-ink">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.encoder_mode}</dt><dd class="text-sm text-ink">{settings?.encoderMode ?? '—'} · {plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-ink">{vmafReviewLabel()}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.nav.schedule}</dt><dd class="text-sm text-ink">{applyRecommendedSchedule && recommendation ? `${recommendation.scheduleStart}–${recommendation.scheduleEnd}` : i18n.m.setup.skipped}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-ink">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-ink">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
           </dl>
         {/if}
       </div>

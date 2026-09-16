@@ -12,13 +12,13 @@
   } = $props()
 
   const styles = {
-    error: { icon: 'warning', cls: 'border-red-300 text-red-700 dark:border-red-800 dark:text-red-400' },
-    success: { icon: 'check', cls: 'border-emerald-300 text-emerald-700 dark:border-emerald-800 dark:text-emerald-400' },
-    info: { icon: 'info', cls: 'border-cyan-300 text-cyan-700 dark:border-cyan-800 dark:text-cyan-400' },
+    error: { icon: 'warning', tone: 'tone-bad', ink: 'text-bad' },
+    success: { icon: 'check', tone: 'tone-ok', ink: 'text-ok' },
+    info: { icon: 'info', tone: 'tone-accent', ink: 'text-accent' },
   } as const
 </script>
 
-<div class="card flex items-start gap-2 p-3 text-sm {styles[kind].cls} {className}">
-  <Icon name={styles[kind].icon} class="mt-0.5 h-4 w-4 flex-shrink-0" />
+<div class="card flex items-start gap-2 p-3 text-sm {styles[kind].tone} {className}">
+  <Icon name={styles[kind].icon} class="mt-0.5 h-4 w-4 flex-shrink-0 {styles[kind].ink}" />
   <span class="min-w-0">{@render children()}</span>
 </div>

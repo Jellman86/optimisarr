@@ -26,15 +26,15 @@
   <header class="flex items-start gap-3 px-4 py-4 hairline-b sm:px-6">
     {#if step !== undefined}
       <span
-        class="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-cyan-100 text-xs font-bold text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300"
+        class="flex h-7 w-7 flex-none items-center justify-center rounded-full tone-accent text-xs font-bold"
         aria-hidden="true"
       >
         {step}
       </span>
     {/if}
     <div class="min-w-0">
-      <h2 id={`${id}-heading`} class="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-      <p class="mt-0.5 max-w-3xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
+      <h2 id={`${id}-heading`} class="text-base font-semibold text-ink">{title}</h2>
+      <p class="mt-0.5 max-w-3xl text-sm leading-relaxed text-ink-3">{description}</p>
     </div>
   </header>
   <div class="p-4 sm:p-6">
