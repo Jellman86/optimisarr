@@ -259,6 +259,13 @@ p {
   background: transparent;
 }
 
+/* The page's tray: a well the page's cards float in. A utility rather than a component
+   class so it can be applied from the md breakpoint up, where the shell becomes islands. */
+@utility app-tray {
+  background: var(--sunken);
+  box-shadow: var(--inset-1);
+}
+
 /* One focus ring for everything that can be pressed. An outline rather than a
    box-shadow ring: it follows the corner radius, needs no offset colour to fake
    a gap against whichever surface the control sits on, and never fights a
@@ -318,12 +325,12 @@ p {
     background: linear-gradient(180deg, var(--panel-hi), var(--panel));
     box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
   }
-  /* The navigation rail. It is on screen on every page, so it reads as the wall the
-     content sits against: its own fill, and a shadow along its inner edge instead of
-     a border. */
+  /* The navigation rail is an island: a raised card floating on the ground, the page in a
+     recessed tray beside it. The rail is the object nearest the reader, the tray is the
+     surface the page's own cards float in, and the ground shows all round both. */
   .app-rail {
-    background: linear-gradient(180deg, var(--panel), var(--sunken));
-    box-shadow: 1px 0 0 var(--divide-soft), var(--lift-2);
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }
 
   /* A card you can open. The lift on hover is the whole affordance — it says

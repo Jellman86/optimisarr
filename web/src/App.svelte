@@ -133,8 +133,10 @@
 {:else}
   <!-- h-dvh tracks iOS Safari's dynamic toolbar; the safe-area insets keep the bar
        and content clear of the notch and home indicator. -->
+  <!-- At md+ the shell is two islands on the ground: the rail, a raised card, and the page in a
+       recessed tray beside it. On a phone the rail is a drawer and the page takes the screen. -->
   <div
-    class="flex h-dvh bg-ground text-ink"
+    class="flex h-dvh bg-ground text-ink md:gap-3.5 md:p-3.5"
     style="padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);"
   >
   <!-- Backdrop behind the mobile drawer; tap to dismiss. Desktop never shows it. -->
@@ -150,7 +152,7 @@
 
   <!-- min-w-0 is essential: without it this flex child sizes to its widest content
        (tables, grids) and pushes the page off-screen to the right on small viewports. -->
-  <div class="flex min-w-0 flex-1 flex-col">
+  <div class="flex min-w-0 flex-1 flex-col md:app-tray md:overflow-hidden md:rounded-[18px]">
     <!-- Mobile top bar: hamburger + brand + theme. Hidden once the sidebar is in-flow (md+). -->
     <header
       class="flex items-center gap-3 border-b border-line bg-panel/95 px-4 py-3 backdrop-blur md:hidden"

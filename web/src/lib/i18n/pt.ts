@@ -170,7 +170,11 @@ export const pt: Messages = {
     encoding_on_gpu: "Codificação em GPU",
     encoding_on_cpu: "Codificação em CPU",
     version_build: "Optimisarr {version} · construir {hash}",
-    build: "compilação {hash}"
+    build: "compilação {hash}",
+    now_encoding: 'A codificar',
+    time_left: 'faltam {time}',
+    queued_count: '{count} em fila',
+    finishing: 'a concluir',
   },
   language: {
     label: "Linguagem"

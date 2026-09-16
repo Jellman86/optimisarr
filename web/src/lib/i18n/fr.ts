@@ -173,6 +173,10 @@ export const fr: Messages = {
     encoding_on_cpu: 'Encodage sur CPU',
     version_build: 'Optimisarr {version} · build {hash}',
     build: 'build {hash}',
+    now_encoding: 'Encodage en cours',
+    time_left: 'reste {time}',
+    queued_count: '{count} en attente',
+    finishing: 'finalisation',
   },
 language: {
     label: 'Langue',
