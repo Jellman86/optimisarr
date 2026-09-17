@@ -8,11 +8,15 @@
 
   let loaded = $state(false)
   let failed = $state(false)
+  let displayedMediaFileId: number | undefined
 
   // Reset before the keyed image mounts: a cached image can load before a
   // post-render effect and otherwise have its successful load state erased.
+  // Parent object replacement can invalidate the prop even for the same ID;
+  // that must not hide a loaded image or retry one that already failed.
   $effect.pre(() => {
-    mediaFileId
+    if (mediaFileId === displayedMediaFileId) return
+    displayedMediaFileId = mediaFileId
     loaded = false
     failed = false
   })

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Queue artwork stays visible through live updates and refreshes. Loaded posters and
+  missing-artwork placeholders now retain their state until the media item changes.
 - **The application icon is now a cube balanced on its tip.** Fifteen slices twist in sequence
   while Optimisarr is working, then settle into a seamless cube. At rest, a slowly moving
   light shifts the highlights and shadow. Light and dark themes have matching colours and

@@ -354,3 +354,64 @@ test('job dialog contains keyboard focus and keeps artwork and actions visible i
   }
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
+
+test('loaded queue artwork stays visible across progress updates and queue refreshes', async ({ page }) => {
+  const fixture = { jobs: [
+    { ...job(1, 'Transcoding', null), progress: .3 },
+    { ...job(2, 'Verifying', null), progress: .2 },
+    job(3, 'Queued', null),
+  ] }
+  await mockWorkingQueue(page, fixture)
+  const send = await queueHub(page)
+  await page.route('**/api/media/*/thumbnail', route => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#52748c"/></svg>',
+  }))
+  await page.goto('/#/queue')
+  const posters = page.locator('main [data-thumbnail] img')
+  await expect(posters).toHaveCount(3)
+  for (const poster of await posters.all()) await expect(poster).toHaveCSS('opacity', '1')
+  await page.getByRole('button', { name: 'View job', exact: true }).first().click()
+  await expect(posters).toHaveCount(4)
+  for (const poster of await posters.all()) await expect(poster).toHaveCSS('opacity', '1')
+  const originalImages = await posters.elementHandles()
+  for (let cycle = 1; cycle <= 3; cycle++) {
+    await send('jobProgress', { jobId: 1, progress: .3 + cycle / 10, fps: 24, speed: 2, etaSeconds: 120 })
+    fixture.jobs = fixture.jobs.map(item => ({ ...item, progress: item.id === 1 ? .3 + cycle / 10 : item.progress }))
+    const refreshed = page.waitForResponse('**/api/jobs')
+    await send('jobsChanged')
+    await refreshed
+    await expect(page.getByRole('region', { name: 'Working now' }).getByRole('progressbar').first()).toHaveAttribute('aria-valuenow', String(30 + cycle * 10))
+    for (const poster of await posters.all()) await expect(poster).toHaveCSS('opacity', '1')
+    for (const image of originalImages) expect(await image.evaluate(element => element.isConnected)).toBe(true)
+  }
+})
+
+test('a missing working poster stays settled through refreshes and recovers for the next media item', async ({ page }) => {
+  const fixture = { jobs: [{ ...job(1, 'Transcoding', null), progress: .3 }] }
+  await mockWorkingQueue(page, fixture)
+  const send = await queueHub(page)
+  let missingRequests = 0
+  await page.route('**/api/media/*/thumbnail', route => {
+    if (route.request().url().includes('/media/1/')) {
+      missingRequests++
+      return route.fulfill({ status: 404 })
+    }
+    return route.fulfill({ contentType: 'image/png', path: 'public/favicon-192.png' })
+  })
+  await page.goto('/#/queue')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working.locator('[data-thumbnail]')).toBeVisible()
+  await expect(working.locator('img')).toHaveCount(0)
+  const initialRequests = missingRequests
+  fixture.jobs = [{ ...fixture.jobs[0], progress: .5 }]
+  await send('jobsChanged')
+  await expect(working.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+  await expect(working.locator('img')).toHaveCount(0)
+  expect(missingRequests).toBe(initialRequests)
+  fixture.jobs = [{ ...job(2, 'Transcoding', null), progress: .1 }]
+  await send('jobsChanged')
+  await expect(working.locator('img')).toHaveAttribute('src', '/api/media/2/thumbnail')
+  await expect(working.locator('img')).toHaveJSProperty('naturalWidth', 192)
+  await expect(working.locator('img')).toHaveCSS('opacity', '1')
+})
