@@ -26,6 +26,7 @@ function createSetup() {
     advance: (completedStep: number) => run(() => api.advanceSetup(completedStep)),
     complete: () => run(() => api.completeSetup()),
     restart: () => run(() => api.restartSetup()),
+    accept: (next: SetupState) => { state = next; error = null; checked = true },
     clearError: () => (error = null),
     get state() { return state },
     get checked() { return checked },

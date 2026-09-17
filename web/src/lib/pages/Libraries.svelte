@@ -1486,7 +1486,7 @@
       </div>
     {/if}
 
-    {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
+    {#if !embedded && editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
       <div class="mt-4 rounded-lg border border-line p-3">
         <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>

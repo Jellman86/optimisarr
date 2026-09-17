@@ -63,6 +63,9 @@ export const pt: Messages = {
     token_label: "Token de administrador"
   },
   setup: {
+    vmaf_recommendation_body: "Aplicar esta política a todas as bibliotecas de filmes e TV: Equilibrado usa VMAF adaptativo; Desativado usa qualidade fixa sem verificação VMAF. Deixe por selecionar para manter a política guardada de cada biblioteca.",
+    integrations_later: "Gerir mais tarde nas Definições; as ligações existentes não são alteradas.",
+    concurrent_invalid: "Introduza um número inteiro igual ou superior a 1.",
     loading: "Verificando configuração…", retry: "Tentar novamente", progress_label: "Progresso da configuração",
     step_of: "Passo {current} de {total}", status_current: "Atual", status_completed: "Concluído", status_pending: "Pendente",
     step_welcome: "Boas-vindas", step_readiness: "Verificação do sistema", step_library: "Bibliotecas", step_safety: "Segurança", step_review: "Revisão",
@@ -86,11 +89,11 @@ export const pt: Messages = {
     safety_heading: "Escolha a postura de segurança inicial", safety_step_body: "São valores normais das Configurações, não modos ocultos do assistente. Pode alterá-los depois e nenhum trabalho começa durante a configuração.",
     dry_run_title: "Manter o modo simulação ativo", dry_run_body: "Codifica e verifica normalmente, mas para em Pronto para substituir para poder inspecionar o resultado antes de mover o original.",
     concurrent_title: "Trabalhos simultâneos", concurrent_body: "Comece com um. Aumente só depois de observar CPU, GPU, disco e temperaturas numa codificação real.",
-    automation_title: "A automação permanece desligada", automation_body: "As novas bibliotecas não enfileiram nem substituem automaticamente. Estas opções ficam na página de configuração de cada biblioteca.",
+    automation_title: "Automatização das bibliotecas", automation_body: "A automatização segue as definições guardadas de cada biblioteca. Escolher um horário altera a janela sem ativar ou desativar a fila ou a substituição automáticas.",
     recommended_heading: "Recomendações para este sistema", recommended_body: "Baseiam-se nas capacidades verificadas acima. Nada é aplicado silenciosamente; selecione apenas o que pretende.",
     use_recommendation: "Usar recomendação", recommendation_applied: "Recomendação selecionada",
     settings_required_error: "As configurações estão indisponíveis. Teste o sistema novamente.",
-    review_eyebrow: "Nenhum trabalho foi iniciado", review_heading: "Reveja o ponto de partida", review_body: "Concluir regista a configuração e abre o painel. Não analisa, enfileira, codifica, substitui ou elimina ficheiros.",
+    review_eyebrow: "Nenhum trabalho foi iniciado", review_heading: "Reveja o ponto de partida", review_body: "Ao concluir, as definições revistas são aplicadas e é apresentada uma confirmação. Esta ação não inicia análises, codificações, substituições ou eliminações.",
     review_system: "Sistema", review_ready: "Ferramentas multimédia obrigatórias disponíveis", review_attention: "Precisa de atenção", review_library: "Bibliotecas",
     review_replacement: "Substituição", review_dry_run: "Simulação: rever cada saída verificada", review_live: "Substituição permitida após verificação",
     review_queue: "Fila", review_jobs_one: "{count} trabalho simultâneo", review_jobs_other: "{count} trabalhos simultâneos",
@@ -588,6 +591,11 @@ export const pt: Messages = {
     action_removing_ellipsis: "Removendo…"
   },
   settings: {
+    appearance_title: "Aparência",
+    appearance_desc: "Guardado neste navegador. Aplica-se ao ícone da aplicação e ao favicon.",
+    brand_style: "Ícone da aplicação",
+    brand_stellar: "Cubo estelar (predefinido)",
+    brand_precession: "Cubo de precessão",
     concurrency_hint: 'Número máximo de tarefas em simultâneo neste servidor.',
     encoder_hint: 'Use a seleção automática ou escolha um codificador.',
     threads_hint: 'Com 0, o codificador escolhe o número de threads.',

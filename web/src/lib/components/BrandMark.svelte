@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { untrack } from 'svelte'
   import { createBrandPlayer } from '../brand-player'
   import { activity } from '../stores/activity.svelte'
+  import { brand } from '../stores/brand.svelte'
+  import { brandAsset } from '../brand-style'
   import { theme } from '../stores/ui.svelte'
 
   let { class: className = 'h-9 w-9' }: { class?: string } = $props()
@@ -9,11 +11,13 @@
   let usable = $state(true)
   let player = $state<ReturnType<typeof createBrandPlayer> | null>(null)
 
-  onMount(() => {
+  $effect(() => {
+    const style = brand.style
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) { usable = false; return }
-    const mounted = createBrandPlayer(canvas, ctx)
+    const mounted = createBrandPlayer(canvas, ctx, style)
+    untrack(() => mounted.update(activity.brandWorking, theme.isDark))
     player = mounted
     return () => mounted.destroy()
   })
@@ -23,5 +27,5 @@
 {#if usable}
   <canvas bind:this={canvas} width="288" height="288" class="object-contain {className}" aria-hidden="true"></canvas>
 {:else}
-  <img src={`/brand/favicon-${theme.isDark ? 'dark' : 'light'}-${activity.brandWorking ? 'excited' : 'steady'}.png`} alt="" decoding="async" class="object-contain {className}" />
+  <img src={brandAsset(brand.style, theme.isDark, activity.brandWorking, true)} alt="" decoding="async" class="object-contain {className}" />
 {/if}

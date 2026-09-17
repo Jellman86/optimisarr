@@ -20,6 +20,8 @@
   // `t` is aliased to `tr` here because this component already uses `t`/`c`/`w` as local
   // names for notification-target, connection, and watcher records.
   import { i18n, plural, t as tr } from '../i18n/i18n.svelte'
+  import { brand } from '../stores/brand.svelte'
+  import { parseBrandStyle } from '../brand-style'
   import { router } from '../stores/ui.svelte'
   import { setup } from '../stores/setup.svelte'
   import Toggle from '../components/Toggle.svelte'
@@ -1377,6 +1379,15 @@
   {/if}
 
   {#if openRoom === 'system'}
+    <ConfigSection id="appearance" title={i18n.m.settings.appearance_title} description={i18n.m.settings.appearance_desc}>
+      <div class="max-w-sm">
+        <label for="brand-style" class="label">{i18n.m.settings.brand_style}</label>
+        <select id="brand-style" class="input" value={brand.style} onchange={(event) => brand.set(parseBrandStyle(event.currentTarget.value))}>
+          <option value="stellar">{i18n.m.settings.brand_stellar}</option>
+          <option value="precession">{i18n.m.settings.brand_precession}</option>
+        </select>
+      </div>
+    </ConfigSection>
     <div
         class="min-w-0"
     >

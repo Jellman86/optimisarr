@@ -35,6 +35,25 @@
 
 ### Changed
 
+- **The Stellar cube has softer, consistent lighting.** Its moving shadow now fades
+  naturally instead of appearing as a hard grey platform when Canvas filters are
+  unavailable. Gentler star-field toning, a subtle halo and tighter sidebar spacing
+  carry through light/dark themes, reduced-motion stills and favicons.
+
+- **Setup now follows the current application theme from start to finish.** Theme and
+  language controls are available during onboarding, with clearer status colours,
+  keyboard focus and a mobile-friendly folder picker. Failed checks can be retried,
+  invalid job limits are caught before review, and saved library automation is shown
+  accurately when setup is restarted. Completing setup opens its destination reliably
+  while preserving the reviewed plan across refreshes.
+
+- **Stellar cube is the default application icon.** Three drifting star fields, soft glow,
+  moving light and a projected shadow stay calm at rest; active work adds gentle precession
+  and occasional inward/outward depth changes before smoothly settling. Favicons and
+  reduced-motion stills match the selected theme and activity. The original sliced
+  Precession cube remains available in Settings → System → Appearance; the choice is
+  saved in this browser.
+
 - Quarantine comparisons now open a dedicated review page with breadcrumbs, direct links,
   full-width playback and verification cards. Returning to the list restores its scroll
   position and keyboard focus. Approve and rollback retain their confirmations; finished

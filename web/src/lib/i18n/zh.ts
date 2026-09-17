@@ -63,6 +63,9 @@ export const zh: Messages = {
     token_label: "管理员令牌"
   },
   setup: {
+    vmaf_recommendation_body: "将此策略应用于所有电影和电视剧媒体库：平衡模式使用自适应VMAF；关闭则使用固定质量且不进行VMAF验证。不勾选即可保留各媒体库已保存的策略。",
+    integrations_later: "稍后可在设置中管理；现有连接保持不变。",
+    concurrent_invalid: "请输入不小于1的整数。",
     loading: "正在检查设置…", retry: "重试", progress_label: "设置进度",
     step_of: "第 {current} 步，共 {total} 步", status_current: "当前", status_completed: "已完成", status_pending: "待完成",
     step_welcome: "欢迎", step_readiness: "系统检查", step_library: "媒体库", step_safety: "安全", step_review: "复核",
@@ -86,11 +89,11 @@ export const zh: Messages = {
     safety_heading: "选择初始安全状态", safety_step_body: "这些是普通设置值，不是隐藏的向导模式。之后可以更改，设置过程中不会启动任何任务。",
     dry_run_title: "保持模拟模式开启", dry_run_body: "正常编码和验证，但在“可以替换”处停止，以便在移动原文件前检查结果。",
     concurrent_title: "并发任务", concurrent_body: "从一个开始。观察真实编码时的 CPU、GPU、磁盘和温度后再增加。",
-    automation_title: "自动化保持关闭", automation_body: "新媒体库不会自动排队或替换。这些选项会保留在每个媒体库的配置页中。",
+    automation_title: "媒体库自动化", automation_body: "自动化遵循每个媒体库已保存的设置。选择计划只会更改时间段，不会开启或关闭自动排队或自动替换。",
     recommended_heading: "此系统的建议", recommended_body: "这些建议基于上方已验证的功能。不会静默应用；只选择您需要的建议。",
     use_recommendation: "使用建议", recommendation_applied: "已选择建议",
     settings_required_error: "设置不可用。请重新检查系统。",
-    review_eyebrow: "尚未启动任何任务", review_heading: "复核初始状态", review_body: "完成后会记录设置并打开仪表板。它不会扫描、排队、编码、替换或删除任何文件。",
+    review_eyebrow: "尚未启动任何任务", review_heading: "复核初始状态", review_body: "完成后将应用已确认的设置并显示确认页面。此操作不会启动扫描、编码、替换或删除。",
     review_system: "系统", review_ready: "必需的媒体工具可用", review_attention: "需要处理", review_library: "媒体库",
     review_replacement: "替换", review_dry_run: "模拟模式：复核每个已验证输出", review_live: "验证后允许替换",
     review_queue: "队列", review_jobs_one: "{count} 个并发任务", review_jobs_other: "{count} 个并发任务",
@@ -588,6 +591,11 @@ export const zh: Messages = {
     action_removing_ellipsis: "正在删除..."
   },
   settings: {
+    appearance_title: "外观",
+    appearance_desc: "保存在此浏览器中。应用于应用图标和网站图标。",
+    brand_style: "应用图标",
+    brand_stellar: "星空立方体（默认）",
+    brand_precession: "进动立方体",
     concurrency_hint: '此服务器同时运行的最大任务数。',
     encoder_hint: '自动选择或指定编码器。',
     threads_hint: '设为 0 时，由编码器决定线程数。',
