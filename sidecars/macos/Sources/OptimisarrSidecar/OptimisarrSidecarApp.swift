@@ -36,7 +36,7 @@ struct OptimisarrSidecarApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            SidecarMenu(session: session, onShowOptions: { delegate.showOptionsWindow() })
+            SidecarMenu(session: session)
         } label: {
             // Optimisarr's own mark rather than a stock symbol, drawn as a template so macOS tints
             // it for the menu bar's appearance. State rides along as a badge instead of swapping
@@ -92,7 +92,6 @@ struct OptimisarrSidecarApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
-    private var optionsWindow: NSWindow?
     /// False until the stored pairing has been looked for. Reopen arrives before that answer does.
     private var restoreSettled = false
 
@@ -169,27 +168,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The options panel, kept apart from the menu: the menu is for watching a job, this is for
-    /// deciding how the Mac does the work.
-    func showOptionsWindow() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        if let optionsWindow {
-            optionsWindow.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let hosting = NSHostingController(rootView: OptionsView(settings: AppState.shared.settings))
-        let created = NSWindow(contentViewController: hosting)
-        created.title = "Optimisarr Sidecar Options"
-        created.styleMask = [.titled, .closable]
-        created.isReleasedWhenClosed = false
-        created.center()
-
-        optionsWindow = created
-        created.makeKeyAndOrderFront(nil)
-    }
-
     private func showPairingWindow() {
         // An accessory app is not frontmost, so without activating first the window would open
         // behind whatever the person is actually looking at.
@@ -200,13 +178,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let hosting = NSHostingController(rootView: SidecarMenu(
-            session: AppState.shared.session,
-            onShowOptions: { [weak self] in self?.showOptionsWindow() }))
+        let hosting = NSHostingController(rootView: SidecarMenu(session: AppState.shared.session))
         let created = NSWindow(contentViewController: hosting)
         created.title = "Optimisarr Sidecar"
         created.styleMask = [.titled, .closable]
-        created.setContentSize(NSSize(width: 340, height: 340))
         created.isReleasedWhenClosed = false
         created.center()
 

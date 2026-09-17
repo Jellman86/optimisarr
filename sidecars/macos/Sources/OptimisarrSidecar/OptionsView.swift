@@ -10,7 +10,7 @@ import SwiftUI
 struct OptionsView: View {
     @ObservedObject var settings: SidecarSettings
 
-    @State private var chosenFolder: URL?
+    var embedded = false
 
     private func bytes(_ value: Int64) -> String {
         let formatter = ByteCountFormatter()
@@ -91,8 +91,8 @@ struct OptionsView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(18)
-        .frame(width: 420, height: 340, alignment: .topLeading)
+        .padding(embedded ? 0 : 18)
+        .frame(width: embedded ? nil : 420, alignment: .topLeading)
     }
 
     private func note(_ text: String) -> some View {

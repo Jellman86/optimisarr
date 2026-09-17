@@ -54,6 +54,12 @@ public static class Program
         return await RunHostAsync(args);
     }
 
+    public static async Task PairForTrayAsync(string address, string pin, CancellationToken token)
+    {
+        var session = Build(out _);
+        await session.PairAsync(address, pin, token);
+    }
+
     private static bool Has(string[] args, string flag) =>
         args.Any(argument => string.Equals(argument, flag, StringComparison.OrdinalIgnoreCase));
 
@@ -81,6 +87,8 @@ public static class Program
         builder.Logging.AddFilter<Microsoft.Extensions.Logging.EventLog.EventLogLoggerProvider>(
             null, LogLevel.Information);
 
+        builder.Services.AddSingleton<WorkerMonitor>();
+        builder.Services.AddHostedService<MonitorServer>();
         builder.Services.AddSingleton(services =>
         {
             // Wired here rather than in Build: pairing runs before there is a host, and a console
@@ -91,7 +99,8 @@ public static class Program
             var session = Build(
                 out Func<CancellationToken, Task<SidecarCapabilities>> _,
                 report: status => Log(logger, status),
-                reportJob: line => logger.LogInformation("{Line}", line));
+                reportJob: line => logger.LogInformation("{Line}", line),
+                monitor: services.GetRequiredService<WorkerMonitor>());
             return session;
         });
         builder.Services.AddHostedService<SidecarWorker>();
@@ -153,7 +162,7 @@ public static class Program
     /// Where a job's source and candidate would live. Overridable because the default sits on the
     /// system drive, which is rarely where anyone wants hundreds of gigabytes of scratch video.
     /// </summary>
-    private static string ScratchDirectory() =>
+    internal static string ScratchDirectory() =>
         Environment.GetEnvironmentVariable("OPTIMISARR_SIDECAR_WORK")
         ?? @"C:\OptimisarrWork";
 
@@ -162,7 +171,7 @@ public static class Program
     /// this to decide whether to offer a job at all, so reporting the wrong volume would have it
     /// hand over work this machine has nowhere to put.
     /// </summary>
-    private static long FreeScratchBytes(string scratch)
+    internal static long FreeScratchBytes(string scratch)
     {
         try
         {
@@ -270,7 +279,8 @@ public static class Program
     private static SidecarSession Build(
         out Func<CancellationToken, Task<SidecarCapabilities>> probe,
         Action<SessionStatus>? report = null,
-        Action<string>? reportJob = null)
+        Action<string>? reportJob = null,
+        WorkerMonitor? monitor = null)
     {
         var prober = new CapabilityProber(new ProcessCommandRunner());
         var scratch = ScratchDirectory();
@@ -302,7 +312,8 @@ public static class Program
             FindFfmpeg() ?? "ffmpeg.exe",
             scratch,
             loadSampler.Sample,
-            reportJob);
+            reportJob,
+            observe: monitor is null ? null : monitor.Observe);
 
         return new SidecarSession(
             client,
@@ -311,6 +322,15 @@ public static class Program
             load: loadSampler.Sample,
             delay: Task.Delay,
             report: report,
-            runJob: (pairing, assignment, token) => runner.RunAsync(pairing, assignment, token));
+            runJob: async (pairing, assignment, token) =>
+            {
+                try
+                {
+                    var result = await runner.RunAsync(pairing, assignment, token);
+                    monitor?.Complete(assignment.JobId, result.Detail);
+                    return result;
+                }
+                finally { monitor?.Remove(assignment.JobId); }
+            });
     }
 }

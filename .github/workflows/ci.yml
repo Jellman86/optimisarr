@@ -97,7 +97,14 @@ jobs:
       # The core has no Windows-only dependencies on purpose, but it is built here anyway: this is
       # the platform it ships on, and a Windows-only compile error should fail on a Windows runner
       # rather than on someone's machine.
-      - run: dotnet test Optimisarr.Sidecar.slnx --configuration Release
+      - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
+      - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
+      - name: Render native tray states
+        run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --render-monitor artifacts/ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-sidecar-ui
+          path: sidecars/windows/artifacts/ui/*.png
 
   docker:
     name: Docker image, smoke, and publish

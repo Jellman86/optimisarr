@@ -50,6 +50,12 @@ public sealed class SidecarSession(
     Action<SessionStatus>? report = null,
     Func<StoredPairing, Assignment, CancellationToken, Task<JobOutcome>>? runJob = null)
 {
+    private int _paused;
+    public bool IsPaused => Volatile.Read(ref _paused) != 0;
+    public void SetPaused(bool paused) => Interlocked.Exchange(ref _paused, paused ? 1 : 0);
+
+    public string? ServerAddress { get; private set; }
+
     public SessionStatus Status { get; private set; } = new(SidecarState.Unpaired, "Not paired");
 
     /// <summary>The jobs running beside the check-in loop, by id, so they can be waited for.</summary>
@@ -69,6 +75,7 @@ public sealed class SidecarSession(
         var result = await client.PairAsync(serverAddress, pin, capabilities, cancellationToken);
         var pairing = new StoredPairing(serverAddress, result.Credential, result.WorkerId);
         store.Save(pairing);
+        ServerAddress = pairing.ServerAddress;
         Set(SidecarState.Connected, $"Paired as worker {result.WorkerId}");
         return pairing;
     }
@@ -80,6 +87,7 @@ public sealed class SidecarSession(
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         var pairing = store.Load();
+        ServerAddress = pairing?.ServerAddress;
         if (pairing is null)
         {
             Set(SidecarState.Unpaired, "Not paired. Run with --pair to redeem a pairing code.");
@@ -115,6 +123,7 @@ public sealed class SidecarSession(
                 // however much the machine had spare.
                 while (runJob is not null
                     && !beat.Draining
+                    && !IsPaused
                     && Running < capabilities.MaxConcurrency
                     && !cancellationToken.IsCancellationRequested)
                 {
@@ -124,6 +133,12 @@ public sealed class SidecarSession(
                         break;
                     }
 
+                    // A pause can arrive while the claim request is in flight.
+                    if (IsPaused)
+                    {
+                        await client.ReleaseAsync(pairing, assignment.LeaseId, cancellationToken);
+                        break;
+                    }
                     Start(runJob, pairing, assignment, cancellationToken);
                 }
             }

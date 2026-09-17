@@ -78,6 +78,11 @@ public final class SidecarSession: ObservableObject {
     /// every check-in, and the ceiling the claim loop fills up to.
     @Published public private(set) var jobConcurrency: Int
 
+    @Published public private(set) var isPaused = false
+
+    /// Pausing only gates new claims; lease renewal and work already held continue normally.
+    public func setPaused(_ paused: Bool) { isPaused = paused }
+
     public static let concurrencyRange = 1...4
 
     private let client: SidecarClient
@@ -382,7 +387,7 @@ public final class SidecarSession: ObservableObject {
                 if jobTasks.isEmpty {
                     status = .connected(workerId: beat.workerId, lastCheckIn: Date())
                 }
-                if !beat.draining {
+                if !beat.draining && !isPaused {
                     await claimUpToCapacity(pairing: pairing, workerId: beat.workerId)
                 }
             } catch SidecarError.credentialRejected {
@@ -412,7 +417,7 @@ public final class SidecarSession: ObservableObject {
     private func claimUpToCapacity(pairing: StoredPairing, workerId: Int) async {
         guard let executor, capabilities.maxConcurrency > 0 else { return }
 
-        while jobTasks.count < capabilities.maxConcurrency {
+        while !isPaused && jobTasks.count < capabilities.maxConcurrency {
             let assignment: Assignment?
             do {
                 assignment = try await client.claim(
@@ -423,6 +428,11 @@ public final class SidecarSession: ObservableObject {
                 return
             }
             guard let assignment, jobTasks[assignment.jobId] == nil else { return }
+            if isPaused {
+                try? await client.release(serverAddress: pairing.serverAddress,
+                                          credential: pairing.credential, leaseId: assignment.leaseId)
+                return
+            }
 
             let jobId = assignment.jobId
             activeJobs[jobId] = .fetchingSource(received: 0, total: assignment.sourceBytes)

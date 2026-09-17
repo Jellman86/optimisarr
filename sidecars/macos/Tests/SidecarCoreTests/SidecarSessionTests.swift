@@ -15,6 +15,8 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     private(set) var callCount = 0
     /// How many times work was asked for, whatever the scripted answer was.
     private(set) var claims = 0
+    private(set) var releases = 0
+    var onClaim: (@Sendable () async -> Void)?
     private(set) var heartbeatScratchBytes: [Int64] = []
 
     init(_ replies: [Reply]) {
@@ -22,8 +24,10 @@ final class ScriptedTransport: HTTPTransport, @unchecked Sendable {
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        if request.url?.path.hasSuffix("/claim") == true { await onClaim?() }
         let reply: Reply = lock.withLock {
             callCount += 1
+            if request.url?.path.hasSuffix("/release") == true { releases += 1 }
             if request.url?.path.hasSuffix("/claim") == true { claims += 1 }
             if request.url?.path.hasSuffix("/heartbeat") == true,
                let body = request.httpBody,
@@ -319,6 +323,40 @@ struct SidecarSessionTests {
 
         await session.stopWork(because: "test over")
         #expect(session.activeJobs.isEmpty)
+    }
+
+    @Test("pausing while a claim is in flight returns its lease without starting an encode")
+    func pauseDuringClaim() async throws {
+        let executor = HangingExecutor()
+        let transport = ScriptedTransport([Self.beat, Self.claim, .init(status: 204, json: [:])])
+        let session = SidecarSession(client: SidecarClient(transport: transport),
+            store: InMemoryCredentialStore(stored: StoredPairing(serverAddress: "localhost:8787", credential: "c", workerId: 11)),
+            capabilities: SidecarCapabilities(name: "Test", videoEncoders: ["libx265"], maxConcurrency: 1),
+            prober: nil, executor: executor, jobConcurrency: 1, persistConcurrency: { _ in },
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+        transport.onClaim = { await session.setPaused(true) }
+        session.restore()
+        try await waitFor { transport.claims > 0 }
+        try await Task.sleep(nanoseconds: 10_000_000)
+        #expect(!executor.started)
+        #expect(transport.releases == 1)
+        await session.prepareToQuit()
+    }
+
+    @Test("pausing keeps the active job alive and prevents additional claims")
+    func pauseKeepsCurrentWork() async throws {
+        let executor = HangingExecutor()
+        let (session, transport) = try await workingSessionAndTransport(executor)
+        session.setPaused(true)
+        session.setJobConcurrency(2)
+        let claims = transport.claims
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(session.isPaused)
+        #expect(!executor.cancelled)
+        #expect(transport.claims == claims)
+        session.setPaused(false)
+        #expect(!session.isPaused)
+        await session.prepareToQuit()
     }
 
     @Test("the concurrency choice is clamped, persisted and reported on the next check-in")

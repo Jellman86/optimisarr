@@ -10,9 +10,9 @@ import SwiftUI
 /// own cannot tell a working Mac from a stuck one.
 struct SidecarMenu: View {
     @ObservedObject var session: SidecarSession
-    /// Opening a window is the app delegate's job, not this view's; nil in previews and renders.
-    var onShowOptions: (() -> Void)?
 
+    @State private var page = "activity"
+    @State private var showUnpairConfirmation = false
     @State private var serverAddress = ""
     @State private var pin = ""
     @State private var startAtLogin = LoginItem.isEnabled
@@ -22,34 +22,48 @@ struct SidecarMenu: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             statusBar
-
-            VStack(alignment: .leading, spacing: 11) {
-                switch session.status {
-                case .unpaired, .pairingFailed:
-                    pairingForm
-                default:
-                    pairedDetail
-                }
-            }
-            .padding(13)
-
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if page == "preferences" {
+                        Button { page = "activity" } label: {
+                            Label("Back to activity", systemImage: "chevron.left")
+                        }.buttonStyle(.plain).foregroundStyle(Instrument.phosphor)
+                        Text("Preferences").font(.title3.weight(.semibold))
+                        OptionsView(settings: AppState.shared.settings, embedded: true)
+                        loginControl
+                    } else if page == "diagnostics" {
+                        Button { page = "activity" } label: {
+                            Label("Back to activity", systemImage: "chevron.left")
+                        }.buttonStyle(.plain).foregroundStyle(Instrument.phosphor)
+                        Text("Connection & diagnostics").font(.title3.weight(.semibold))
+                        readout
+                        Text("Version \(SidecarBuild.version)").font(.caption).foregroundStyle(Instrument.dim)
+                        Text("Verification follows the server’s policy. This Mac returns a candidate and evidence; only the server decides whether to replace media.")
+                            .font(.caption).foregroundStyle(Instrument.dim)
+                        if session.isPaired {
+                            Button("Unpair this Mac…") { showUnpairConfirmation = true }
+                                .foregroundStyle(Instrument.alarm)
+                        }
+                    } else {
+                        switch session.status {
+                        case .unpaired, .pairingFailed, .revoked: pairingForm
+                        default: pairedDetail
+                        }
+                    }
+                }.padding(20)
+            }.frame(maxHeight: 560)
             footer
         }
-        .frame(width: 340)
+        .frame(width: 390)
+        .foregroundStyle(Instrument.ink)
         .background(Instrument.ground)
-        // A menu-bar panel does not always shrink back when its content does. After a job
-        // finishes, the window keeps the height the film strip needed — and SwiftUI centres a
-        // shorter view inside it, so the panel hangs away from the menu bar with a gap above it
-        // exactly the size of the frames that are no longer there. A spacer inside the stack
-        // cannot fix that: the stack is sized to its content and never sees the spare height.
-        // This does, by filling whatever height the window has and keeping the panel at the top
-        // of it.
-        .frame(maxHeight: .infinity, alignment: .top)
+        .fixedSize(horizontal: false, vertical: true)
+        .confirmationDialog("Unpair this Mac? Any current jobs will be handed back.", isPresented: $showUnpairConfirmation) {
+            Button("Unpair", role: .destructive) { session.unpair(); pin = ""; page = "activity" }
+        }
         .onAppear {
             session.restore()
             if serverAddress.isEmpty { serverAddress = session.serverAddress }
-            // Frame grabs and GPU readings cost something, so they run only while this is on
-            // screen. A menu-bar window is closed far more of the time than it is open.
             session.setPreviewsWanted(true)
         }
         .onDisappear { session.setPreviewsWanted(false) }
@@ -62,42 +76,29 @@ struct SidecarMenu: View {
     /// The identity matters because a fleet has several of these and they all look alike; the
     /// state sits opposite it so the pair can be read in one movement rather than hunted for.
     private var statusBar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Instrument.label(Self.machineName)
-                Spacer(minLength: 8)
-                Circle()
-                    .fill(session.status.lamp)
-                    .frame(width: 5, height: 5)
-                    .accessibilityHidden(true)
-                Text(session.status.readout)
-                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                    .tracking(0.9)
-                    .foregroundStyle(session.status.lamp)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(nsImage: MenuBarIcon.image(for: session.status, spin: session.spin))
+                    .resizable().scaledToFit().frame(width: 30, height: 30)
+                    .foregroundStyle(Instrument.phosphor).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Optimisarr").font(.system(size: 17, weight: .semibold))
+                    Text(Host.current().localizedName ?? "This Mac")
+                        .font(.caption).foregroundStyle(Instrument.dim).lineLimit(1)
+                }
+                Spacer()
+                Text(session.isPaused ? "PAUSED" : session.status.readout)
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(session.status.lamp)
+                Button { page = page == "preferences" ? "activity" : "preferences" } label: {
+                    Image(systemName: "gearshape").frame(width: 28, height: 28)
+                }.buttonStyle(.plain).help("Preferences").accessibilityLabel("Preferences")
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 9)
-
-            // The reason matters more than the state name — "Pairing failed" is not actionable,
-            // but "that code has expired" is. It sits inside the bar so a fault reads as part of
-            // the machine's state rather than as a notice pinned over the top of it.
             if let detail = session.status.detail {
-                Text(detail)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(session.status.lamp)
+                Text(detail).font(.caption).foregroundStyle(session.status.lamp)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 13)
-                    .padding(.bottom, 9)
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(20)
         .overlay(alignment: .bottom) { Rectangle().fill(Instrument.rule).frame(height: 1) }
-    }
-
-    /// This Mac, as the fleet knows it.
-    private static var machineName: String {
-        let name = Host.current().localizedName ?? "This Mac"
-        return "SIDECAR · \(name)"
     }
 
     // MARK: - Pairing
@@ -158,26 +159,45 @@ struct SidecarMenu: View {
     // MARK: - Paired
 
     private var pairedDetail: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 16) {
             if session.activeJobs.isEmpty {
-                idleHead
+                idleHead.monitorCard()
             } else {
                 ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
                     if let progress = session.activeJobs[jobId] {
-                        jobHead(jobId: jobId, progress: progress)
+                        jobHead(jobId: jobId, progress: progress).monitorCard()
                     }
                 }
             }
-
-            readout
             cells
-
-            // Said plainly: a delivered candidate is a proposal. Optimisarr verifies it against
-            // the original before anything is replaced, and this machine never sees that decision.
-            Text("Encodes go to Optimisarr for verification. Nothing is replaced from here.")
-                .font(.system(size: 9.5))
-                .foregroundStyle(Instrument.dim)
-                .fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup("Processing details") {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
+                        if let progress = session.activeJobs[jobId] {
+                            Text("Job #\(jobId) · \(progress.label)")
+                                .font(.caption).foregroundStyle(Instrument.phosphor)
+                            if let strip = session.filmStrips[jobId], !strip.isEmpty { FilmStripView(strip: strip) }
+                        }
+                    }
+                    Text("Receive → encode → verify when requested → return")
+                        .font(.caption).foregroundStyle(Instrument.dim)
+                    readout
+                    Text("The server decides whether to replace media. No originals are changed from here.")
+                        .font(.caption).foregroundStyle(Instrument.dim)
+                }.padding(.top, 12)
+            }.font(.system(size: 12, weight: .medium)).tint(Instrument.phosphor)
+            HStack {
+                Text("Jobs at once").font(.caption).foregroundStyle(Instrument.dim)
+                Spacer()
+                ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { concurrencyKey($0) }
+            }
+            Button { session.setPaused(!session.isPaused) } label: {
+                Label(session.isPaused ? "Resume accepting jobs" : session.activeJobs.isEmpty ? "Pause new jobs" : "Pause after current jobs",
+                      systemImage: session.isPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 12, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 10)
+            }.buttonStyle(MonitorButtonStyle()).disabled(!session.isPaired)
+            Text(session.isPaused ? "Current work will finish. New jobs are paused until resumed or the app restarts." : "Closing this panel keeps your jobs running.")
+                .font(.caption).foregroundStyle(Instrument.dim).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -185,13 +205,23 @@ struct SidecarMenu: View {
     ///
     /// An idle instrument still reports. "No job held" is the state; the line under it is the
     /// evidence that the machine was working recently and is not quietly broken.
+    private var idleTitle: String {
+        if session.isPaused { return "New jobs paused" }
+        switch session.status {
+        case .unreachable: return "Waiting for the server"
+        case .disabledOnServer: return "Worker disabled on server"
+        case .connected: return "Ready for work"
+        default: return "No active jobs"
+        }
+    }
+
     private var idleHead: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("No job held")
-                .font(.system(size: 12.5, weight: .semibold))
+            Text(idleTitle)
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Instrument.ink)
-            Text(session.lastOutcome.map(Self.lastLine) ?? "NOTHING RUN ON THIS MACHINE YET")
-                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+            Text(session.lastOutcome.map(Self.lastLine) ?? "New jobs will appear here automatically.")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .tracking(0.9)
                 .foregroundStyle(Instrument.dim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -205,37 +235,41 @@ struct SidecarMenu: View {
     /// "what is my Mac chewing on?" — and a job number answers it for nobody.
     private func jobHead(jobId: Int, progress: JobProgress) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            // The frames going through the encoder, flush to the panel's edges rather than inset
-            // in a card. On an instrument a picture is a monitor, not an illustration.
-            if let strip = session.filmStrips[jobId], !strip.isEmpty {
-                FilmStripView(strip: strip)
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Instrument.rule, lineWidth: 1))
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7).fill(Instrument.cell)
+                    if let data = session.filmStrips[jobId]?.frames.last, let image = NSImage(data: data) {
+                        Image(nsImage: image).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "film").foregroundStyle(Instrument.dim)
+                    }
+                }.frame(width: 54, height: 66).clipped().clipShape(RoundedRectangle(cornerRadius: 7))
+                    .accessibilityLabel("Media preview")
+                VStack(alignment: .leading, spacing: 5) {
                 Text(session.jobTitles[jobId].flatMap { $0.isEmpty ? nil : $0 } ?? "Job #\(jobId)")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Instrument.ink)
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(Self.subline(jobId: jobId, progress: progress, session: session))
-                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .tracking(0.9)
                     .foregroundStyle(Instrument.dim)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
-            SegmentMeter(fraction: progress.fraction)
+            }
+            Meter(value: progress.fraction, tint: Instrument.phosphor)
 
             HStack(spacing: 8) {
                 Instrument.label(progress.label)
                 Spacer(minLength: 8)
                 if let fraction = progress.fraction {
                     Text("\(Int((fraction * 100).rounded()))%")
-                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(Instrument.phosphor)
                 }
@@ -286,8 +320,8 @@ struct SidecarMenu: View {
                 ReadoutCell(figure: session.gpu.map { Self.percent($0.device) } ?? "—", unit: "GPU %")
                 ReadoutCell(figure: "\(session.activeJobs.count)", unit: "HELD")
             }
-            Text("A VideoToolbox encode runs on the media engine, which macOS reports as neither — so both can read low while this Mac is busy.")
-                .font(.system(size: 9.5))
+            Text("macOS does not report VideoToolbox media-engine usage.")
+                .font(.system(size: 11))
                 .foregroundStyle(Instrument.dim)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -321,60 +355,42 @@ struct SidecarMenu: View {
     // MARK: - Footer
 
     /// The face's controls, along the bottom where they cannot be mistaken for readings.
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 10) {
-                Instrument.label("Jobs at once")
-                Spacer(minLength: 8)
-                // Takes effect on the next check-in; a running job is never stopped to fit.
-                HStack(spacing: 3) {
-                    ForEach(Array(SidecarSession.concurrencyRange), id: \.self) { count in
-                        concurrencyKey(count)
-                    }
+    private var loginControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Start at login", isOn: Binding(get: { startAtLogin }, set: { wanted in
+                do {
+                    try LoginItem.setEnabled(wanted)
+                    startAtLogin = LoginItem.isEnabled
+                    loginItemError = nil
+                } catch {
+                    startAtLogin = LoginItem.isEnabled
+                    loginItemError = "Could not change the login item: \(error.localizedDescription)"
                 }
-            }
-
-            Toggle(isOn: Binding(
-                get: { startAtLogin },
-                set: { wanted in
-                    do {
-                        try LoginItem.setEnabled(wanted)
-                        startAtLogin = LoginItem.isEnabled
-                        loginItemError = nil
-                    } catch {
-                        startAtLogin = LoginItem.isEnabled
-                        loginItemError = "Could not change the login item: \(error.localizedDescription)"
-                    }
-                })) {
-                    Text("Start at login")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Instrument.value)
-                }
-                .toggleStyle(.checkbox)
-
-            if let loginItemError {
-                Text(loginItemError)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Instrument.alarm)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: 6) {
-                InstrumentButton(title: "Options") { onShowOptions?() }
-                if case .unpaired = session.status {} else {
-                    InstrumentButton(title: "Unpair") {
-                        session.unpair()
-                        pin = ""
-                    }
-                }
-                InstrumentButton(title: "Quit", emphasis: Instrument.dim) {
-                    NSApplication.shared.terminate(nil)
-                }
-                .keyboardShortcut("q")
-            }
+            })).toggleStyle(.checkbox).font(.caption)
+            if let loginItemError { Text(loginItemError).font(.caption).foregroundStyle(Instrument.alarm) }
         }
-        .padding(13)
-        .overlay(alignment: .top) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+    }
+
+    private var footer: some View {
+        HStack {
+            Button { page = page == "diagnostics" ? "activity" : "diagnostics" } label: {
+                Label("Diagnostics", systemImage: "waveform.path.ecg")
+            }.buttonStyle(.plain).help("Connection, version and pairing")
+            Spacer()
+            Menu {
+                if let url = serverURL { Button("Open Optimisarr") { NSWorkspace.shared.open(url) } }
+                Button("Quit sidecar") { NSApplication.shared.terminate(nil) }
+            } label: { Image(systemName: "ellipsis").frame(width: 28, height: 24) }
+                .menuStyle(.borderlessButton).frame(width: 32).help("More actions")
+        }.font(.caption).foregroundStyle(Instrument.dim).padding(.horizontal, 20).padding(.vertical, 13)
+            .overlay(alignment: .top) { Rectangle().fill(Instrument.rule).frame(height: 1) }
+    }
+
+    private var serverURL: URL? {
+        let address = session.serverAddress
+        guard !address.isEmpty, let url = URL(string: address.contains("://") ? address : "http://" + address),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+        return url
     }
 
     /// One position of the concurrency control. A key rather than a segmented picker: the panel
@@ -387,7 +403,7 @@ struct SidecarMenu: View {
             Text("\(count)")
                 .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                 .foregroundStyle(chosen ? Instrument.ground : Instrument.value)
-                .frame(width: 22, height: 18)
+                .frame(width: 28, height: 26)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
                         .fill(chosen ? Instrument.phosphor : Instrument.cell))
@@ -440,7 +456,7 @@ private extension JobOutcome {
         switch self {
         case let .delivered(jobId, bytes):
             let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-            return "Last job #\(jobId): delivered \(size) for verification."
+            return "Last job #\(jobId): returned \(size) to the server."
         case let .released(jobId, reason):
             return "Last job #\(jobId): handed back — \(reason)"
         case let .leaseLost(jobId, reason):

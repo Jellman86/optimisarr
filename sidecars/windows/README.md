@@ -7,7 +7,7 @@ ever replaces, quarantines, moves or deletes a file.
 
 ## Why it is built this way
 
-**A Windows service, not an app.** The macOS sidecar is a menu-bar app, so it only works while
+**A Windows service with a tray companion.** The macOS sidecar is a menu-bar app, so it only works while
 someone is logged in. A desktop that spends the night at the login screen is exactly the machine
 worth lending to a transcode queue, so the work belongs in a service that starts with the machine.
 
@@ -17,7 +17,7 @@ talks to it locally. The tray is a window onto the service, never a requirement 
 
 **FFmpeg is bundled.** Windows has no equivalent of "the FFmpeg everyone has", and builds vary
 enormously in which encoders and which VMAF backends they carry. A pinned build is the only way a
-capability probe means anything, and the only way NVIDIA hardware VMAF can be relied on.
+capability probe means anything, and the only way the advertised capabilities can be relied on. The redistributable bundle uses CPU VMAF.
 
 ## Layout
 
@@ -27,8 +27,10 @@ src/Optimisarr.Sidecar.Core     Protocol, capability probing, job execution. No 
 tests/                          xUnit over that core.
 ```
 
-The service, tray and installer follow. Keeping the core free of Windows types is deliberate: it is
-the part worth testing exhaustively, and it should not need a Windows machine to do so.
+`Optimisarr.Sidecar.Service` hosts the worker; `Optimisarr.Sidecar.Tray` provides the compact
+monitor above the Windows notification area. Preferences and diagnostics stay inside the panel.
+The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
+for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 
 ## Capabilities
 

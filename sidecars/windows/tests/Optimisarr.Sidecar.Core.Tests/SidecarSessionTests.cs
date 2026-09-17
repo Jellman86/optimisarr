@@ -70,6 +70,20 @@ public sealed class SidecarSessionTests
         (_, assignment, _) => Task.FromResult(new JobOutcome(assignment.JobId, Delivered: true, "done"));
 
     [Fact]
+    public async Task Paused_worker_keeps_heartbeats_but_never_claims_work()
+    {
+        var handler = new QueuedHandler((HttpStatusCode.OK, Beat));
+        var session = Session(handler, new InMemoryCredentialStore(
+            new StoredPairing("https://example.com", "secret", 7)), runJob: TakesAnyJob());
+        session.SetPaused(true);
+        await session.RunAsync(CancellationToken.None);
+        Assert.True(session.IsPaused);
+        Assert.Equal(1, handler.Calls);
+        session.SetPaused(false);
+        Assert.False(session.IsPaused);
+    }
+
+    [Fact]
     public async Task Pairing_stores_the_credential_before_anything_else_can_go_wrong()
     {
         var store = new InMemoryCredentialStore();
@@ -229,11 +243,15 @@ public sealed class ConcurrentSidecarSessionTests
         /// samples afterwards is a race it will sometimes lose.
         /// </summary>
         public int BeatsWhileWorking { get; private set; }
+        public Action? BeforeClaimReply { get; set; }
+        public int Releases { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (request.RequestUri!.AbsolutePath.EndsWith("/heartbeat", StringComparison.Ordinal))
+            if (request.RequestUri!.AbsolutePath.EndsWith("/claim", StringComparison.Ordinal)) BeforeClaimReply?.Invoke();
+            if (request.RequestUri.AbsolutePath.EndsWith("/release", StringComparison.Ordinal)) Releases++;
+            if (request.RequestUri.AbsolutePath.EndsWith("/heartbeat", StringComparison.Ordinal))
             {
                 Beats++;
                 if (_handedOverAJob)
@@ -290,6 +308,22 @@ public sealed class ConcurrentSidecarSessionTests
                 ? throw new OperationCanceledException()
                 : Task.CompletedTask,
             runJob: runJob);
+    }
+
+    [Fact]
+    public async Task Pausing_during_a_claim_returns_the_assignment_without_starting_it()
+    {
+        var handler = new Handler((HttpStatusCode.OK, Beat), (HttpStatusCode.OK, Assignment(1)), (HttpStatusCode.NoContent, ""));
+        var ran = false;
+        var session = Session(handler, 1, (_, assignment, _) =>
+        {
+            ran = true;
+            return Task.FromResult(new JobOutcome(assignment.JobId, true, "done"));
+        }, 1);
+        handler.BeforeClaimReply = () => session.SetPaused(true);
+        await session.RunAsync(CancellationToken.None);
+        Assert.False(ran);
+        Assert.Equal(1, handler.Releases);
     }
 
     [Fact]

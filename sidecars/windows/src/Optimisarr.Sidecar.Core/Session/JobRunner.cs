@@ -19,7 +19,8 @@ public sealed class JobRunner(
     string ffmpegPath,
     string scratchRoot,
     Func<MachineLoad?> load,
-    Action<string>? report = null)
+    Action<string>? report = null,
+    Action<MonitorJob>? observe = null)
 {
     public async Task<JobOutcome> RunAsync(
         StoredPairing pairing, Assignment assignment, CancellationToken cancellationToken)
@@ -547,6 +548,7 @@ public sealed class JobRunner(
         CancellationToken cancellationToken,
         Func<CancellationToken, Task<T>> work)
     {
+        observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title, assignment.VideoEncoder, stage, encodedSeconds?.Invoke()));
         using var stageCancelled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Half the window the server allows, bounded: often enough that a slow renewal still lands
         // before the lease lapses, rarely enough not to be chatter.
@@ -565,6 +567,7 @@ public sealed class JobRunner(
                 try
                 {
                     await Task.Delay(interval, stageCancelled.Token);
+                    observe?.Invoke(new MonitorJob(assignment.JobId, assignment.Title, assignment.VideoEncoder, stage, encodedSeconds?.Invoke()));
                     await client.RenewAsync(
                         pairing, assignment.LeaseId, stage, encodedSeconds?.Invoke(), load(),
                         stageCancelled.Token);
