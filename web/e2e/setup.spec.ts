@@ -239,7 +239,7 @@ test('translated setup opens a localised, touch-friendly library editor without 
   await page.goto('/')
 
   await page.getByRole('button', { name: 'Konfigurieren' }).click()
-  await expect(page.locator('[data-config-section]')).toHaveCount(4)
+  await expect(page.locator('[data-config-section]')).toHaveCount(2)
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('de')
 
   const mediaType = page.locator('#lib-type')

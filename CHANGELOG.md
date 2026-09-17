@@ -4,10 +4,22 @@
 
 ### Changed
 
+- **Library configuration follows the processing workflow.** Choose files, Encode, Verify,
+  and Schedule & replace open focused pages with breadcrumbs and browser Back support.
+  Specialist encoding, audio, image, eligibility and verification controls have their own
+  advanced pages; custom settings remain visible in the overview. Drafts are saved together,
+  and validation links return to the setting that needs attention. Named preset choices,
+  explanatory tooltips and the shared card textures, shadows and hover lift keep the editor
+  readable on desktop and mobile. Child pages retain the shared content width and
+  light/dark surfaces, with form labels and control spacing aligned with Settings.
 - **Queue now separates working jobs from what is next.** A poster-led working card shows
   progress and processing stages; other running jobs remain visible beneath it. Job details
-  open inline with verification evidence, captured commands and the existing job actions.
+  open in a poster-led dialog with verification evidence, captured commands and the existing job actions.
   Filtering recent and waiting jobs keeps running work visible, including remote workers.
+- Opening a job anywhere in a long queue now shows its details in the viewport without
+  scrolling the list. The dialog keeps its close button and actions visible while details
+  scroll. Escape, backdrop dismissal and Close return focus to the selected row; live
+  progress and completion continue updating while it is open.
 - Settings rooms and their child pages now use the same content width as Libraries. Cards
   regain the shared surface gradient and colour, with hover lift and a deeper drop shadow
   on the room links. System sections keep their spacing at smaller widths.

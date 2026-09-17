@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import { api, newLibraryDefaults, type Candidate, type Exclusion, type Library, type LibraryAccess, type LibraryOptions, type SaveLibrary, type WorkPlacement } from '../api'
   import { i18n, mediaTypeLabel, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
@@ -137,7 +138,7 @@
   }
 
   // The concrete codec/container/CRF each preset selects, sourced from the backend's
-  // RuleProfileDefaults via /api/library-options so the slider can never drift from what the
+  // RuleProfileDefaults via /api/library-options so the preset choices never drift from what the
   // server actually does. Keyed by RuleProfile name.
   const presetSpecs = $derived.by(() => {
     const map: Record<string, PresetSpec> = {}
@@ -399,9 +400,7 @@
   function normaliseSubtitleLanguageInput() {
     if (!subtitleLanguageError) form.keepSubtitleLanguages = subtitleLanguageInput.normalised
   }
-  // Advanced (encoding/eligibility) settings always start collapsed, for both Add and Edit, so the
-  // simple choice is what a library opens on.
-  let showAdvanced = $state(false)
+
   // Whether work can go to a remote worker at all: the switch on and the preview flag present.
   // Decides whether the placement choice is shown; the choice itself is stored either way.
   let remoteWorkersOn = $state(false)
@@ -482,10 +481,7 @@
     ...(showImageOptions ? imageSourceCodecs : []),
   ])
 
-  // Advanced encoder options are rare enough that three permanently visible controls would be
-  // noise for almost everyone. One line opens them, and it starts open for a library that already
-  // has one set so a saved choice is never hidden from the person who made it.
-  let showEncoderTuning = $state(false)
+  // Non-default tuning remains visible in the advanced-page summary.
 
   const hasEncoderTuning = $derived(
     (form.contentTune != null && form.contentTune !== 'None')
@@ -547,7 +543,7 @@
 
   // Custom mode lets the operator fine-tune codec/container themselves instead of following a
   // preset. It is the honest framing for an override — a deliberate "Custom" config — rather than a
-  // caution that the slider's preset is being ignored. Derived from the Custom slider stop OR any
+  // caution that the slider's preset is being ignored. Derived from the Custom choice OR any
   // codec/container override, so editing those in Advanced reads as Custom with no warning. The
   // slider still sets the baseline that every non-overridden value follows. (resetToPreset is a
   // hoisted function declaration below, so referencing it here is fine.)
@@ -557,13 +553,13 @@
   )
   function selectPresetMode() {
     customSelected = false
-    resetToPreset() // drop overrides so the slider fully describes the config again
+    resetToPreset() // drop overrides so the preset fully describes the config again
   }
   function selectCustomMode() {
     customSelected = true
   }
 
-  // Where the current profile sits on the slider; the Custom stop when the operator is hand-tuning,
+  // Where the current profile sits in the preset choices; the Custom stop when the operator is hand-tuning,
   // else the matching preset (Balanced/HEVC for Remux/unknown).
   const encodeStop = $derived(isCustom ? customStopIndex : Math.max(0, encodeProfiles.indexOf(form.ruleProfile)))
 
@@ -577,7 +573,7 @@
       return
     }
 
-    // Landing on a preset stop is a deliberate choice of that preset, so drop any override and leave
+    // Choosing a preset is a deliberate choice of that preset, so drop any override and leave
     // Custom mode rather than silently keeping a divergent config.
     customSelected = false
     const profile = encodeProfiles[index] ?? 'ConservativeHevc'
@@ -604,7 +600,7 @@
     }
   }
 
-  // The slider only picks a baseline profile; an explicit codec/container override in Advanced
+  // The preset picker selects a baseline profile; an explicit codec/container override in Advanced
   // takes precedence, so the slider can imply a codec that isn't actually used. Surface that
   // divergence instead of hiding it — the slider stays editable (it still sets the baseline the
   // non-overridden values follow).
@@ -629,7 +625,7 @@
 
   // A photo library gets its own compatibility→efficiency slider — the image counterpart of the
   // video preset — mapping a single choice onto JPEG / WebP. It is shown only for Photo
-  // libraries (a mixed "Other" library keeps the video slider and sets the format in Advanced).
+  // libraries (a mixed "Other" library keeps video presets and sets the format on its Images page).
   const imageFormats = ['jpeg', 'webp'] as const
   const showImagePreset = $derived(isImageType(form.mediaType) && !isVideoType(form.mediaType))
   const imageStop = $derived(Math.max(0, imageFormats.indexOf((form.targetImageFormat ?? 'jpeg') as (typeof imageFormats)[number])))
@@ -680,6 +676,84 @@
     }
   }
 
+  type LibraryRoom = 'overview' | 'source' | 'source/advanced' | 'encode' | 'encode/quality' | 'encode/video' | 'encode/video/advanced' | 'encode/audio' | 'encode/audio/advanced' | 'encode/images' | 'encode/images/advanced' | 'verify' | 'verify/advanced' | 'automate'
+  const roomNames = $derived<Record<LibraryRoom, string>>({
+    overview: i18n.m.libraryWorkflow.overview,
+    source: i18n.m.libraryWorkflow.choose,
+    'source/advanced': i18n.m.libraryWorkflow.source_advanced,
+    encode: i18n.m.libraryWorkflow.encode,
+    'encode/quality': i18n.m.libraries.quality_strategy,
+    'encode/video': i18n.m.libraryWorkflow.video,
+    'encode/video/advanced': i18n.m.libraryWorkflow.encoding_advanced,
+    'encode/audio': i18n.m.libraryWorkflow.audio,
+    'encode/audio/advanced': i18n.m.libraries.advanced + ' · ' + i18n.m.libraries.audio,
+    'encode/images': i18n.m.libraries.images,
+    'encode/images/advanced': i18n.m.libraryWorkflow.images_advanced,
+    verify: i18n.m.libraryWorkflow.verify,
+    'verify/advanced': i18n.m.libraryWorkflow.verification_advanced,
+    automate: i18n.m.libraryWorkflow.automate,
+  })
+  let workflowHeading: HTMLHeadingElement | undefined = $state()
+  let saving = $state(false)
+  let embeddedRoom = $state<LibraryRoom>('source')
+  const editorBase = $derived(editingId === 0 ? '/libraries/new' : `/libraries/${editingId}/configure`)
+  const room = $derived.by((): LibraryRoom => {
+    if (embedded) return embeddedRoom
+    const segment = router.path.slice(editorBase.length + 1)
+    if (segment === 'encode/quality' && (!showVideoOptions || isNoEncodeProfile)) return 'encode'
+    if (segment.startsWith('encode/video') && (!showVideoOptions || isTrackCleanupProfile)) return 'encode'
+    if (segment.startsWith('encode/audio') && !showVideoOptions && !showAudioOptions) return 'encode'
+    if (segment === 'encode/audio/advanced' && isNoEncodeProfile && !showAudioOptions) return 'encode/audio'
+    if (segment.startsWith('encode/images') && (!showImageOptions || isTrackCleanupProfile)) return 'encode'
+    return Object.hasOwn(roomNames, segment) ? segment as LibraryRoom : editingId === 0 ? 'source' : 'overview'
+  })
+  const stageRoom = $derived(room.split('/')[0])
+  const editorTitle = $derived(activeTab === 'candidates' ? i18n.m.libraries.tab_candidates : activeTab === 'excluded' ? i18n.m.libraries.tab_excluded : room === 'overview' ? form.name || i18n.m.libraries.add_library : roomNames[room])
+  const roomParents = $derived(room === 'overview' ? [] : room.split('/').slice(0, -1).map((_, index) => room.split('/').slice(0, index + 1).join('/') as LibraryRoom))
+  const workflowStages = $derived([
+    { room: 'source' as const, title: roomNames.source, icon: 'folder' as const, summary: `${mediaTypeLabel(form.mediaType, i18n.m)} · ${i18n.m.libraries.queue_priority}: ${priorityLabel(form.priority)}` },
+    { room: 'encode' as const, title: roomNames.encode, icon: 'sliders' as const, summary: showVideoOptions ? isCustom ? i18n.m.libraries.stop_custom : profileLabel(form.ruleProfile) : showImageOptions ? (form.targetImageFormat ?? 'jpeg').toUpperCase() : (form.audioTargetCodec ?? 'aac').toUpperCase() },
+    { room: 'verify' as const, title: roomNames.verify, icon: 'shield-check' as const, summary: showVideoOptions && !isNoEncodeProfile ? `${i18n.m.settings.vmaf_label}: ${vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}` : showImageOptions ? `${i18n.m.settings.ssim_label}: ${form.imageQualityGateEnabled ? form.minimumImageSsim : i18n.m.common.off}` : i18n.m.settings.always_on },
+    { room: 'automate' as const, title: roomNames.automate, icon: 'clock' as const, summary: scheduleLabel(form as Library) },
+  ])
+  function overrideCount(target: LibraryRoom): number {
+    const defaults = newLibraryDefaults()
+    const fields: Partial<Record<LibraryRoom, (keyof SaveLibrary)[]>> = {
+      'source/advanced': ['skipEfficientSources', 'workPlacement', 'skipSourceCodecs'],
+      'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
+      'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
+      'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
+      'verify/advanced': ['durationTolerancePercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
+    }
+    const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
+    return keys.filter(key => {
+      const baseline = key === 'videoAudioBitrateKbps' ? specFor(form.ruleProfile).videoAudioBitrateKbps : defaults[key]
+      return form[key] != null && form[key] !== baseline
+    }).length
+      + (target.startsWith('source') && sameCodecGb !== '' ? 1 : 0)
+      + (target.startsWith('verify') && vmafMode === 'custom' ? 1 : 0)
+  }
+  function goRoom(next: LibraryRoom) {
+    activeTab = 'rules'
+    if (embedded) embeddedRoom = next
+    else router.go(next === 'overview' && editingId !== 0 ? editorBase : `${editorBase}/${next}`)
+  }
+  function confirmLeavingEditor(): boolean {
+    const next = window.location.hash.replace(/^#/, '')
+    if (!embedded && (next === editorBase || next.startsWith(`${editorBase}/`))) return true
+    return confirmDiscardIfDirty()
+  }
+  // Only the fields unmount between stages. The parent page, form and validation stay alive.
+  $effect(() => {
+    room
+    activeTab = 'rules'
+    if (editingId === null) return
+    void tick().then(() => {
+      workflowHeading?.focus({ preventScroll: true })
+      if (!embedded) document.querySelector('main')?.scrollTo({ top: 0 })
+    })
+  })
+
   $effect(() => {
     void load()
   })
@@ -694,7 +768,7 @@
 
   // Guard in-app navigation away from this page (e.g. clicking another sidebar item) while the
   // editor has unsaved changes — the same confirm as Cancel. Registered once for the page's life.
-  $effect(() => router.guardLeave(confirmDiscardIfDirty))
+  $effect(() => router.guardLeave(confirmLeavingEditor))
 
   function blankForm(): SaveLibrary {
     return newLibraryDefaults()
@@ -725,8 +799,8 @@
 
   function requestedEditorId(): number | null {
     if (embeddedEditorId !== null) return embeddedEditorId
-    if (router.path === '/libraries/new') return 0
-    const match = router.path.match(/^\/libraries\/(\d+)\/configure$/)
+    if (/^\/libraries\/new(?:\/|$)/.test(router.path)) return 0
+    const match = router.path.match(/^\/libraries\/(\d+)\/configure(?:\/|$)/)
     return match ? Number(match[1]) : null
   }
 
@@ -830,7 +904,6 @@
     vmafCustomSelected = false
     minSizeMb = ''
     sameCodecGb = ''
-    showAdvanced = false
     activeTab = 'rules'
     editorCandidates = []
     editingId = 0
@@ -846,7 +919,9 @@
     form = {
       name: library.name,
       path: library.path,
-      mediaType: library.mediaType,
+      // Older clients use TV while the enum API may return Tv. Select the option actually
+      // offered by this server, without changing the media kind or leaving the picker blank.
+      mediaType: options.mediaTypes.find(type => type.toLowerCase() === library.mediaType.toLowerCase()) ?? library.mediaType,
       ruleProfile: library.ruleProfile,
       enabled: library.enabled,
       priority: library.priority,
@@ -935,8 +1010,6 @@
     // (isCustom derives that); the explicit flag starts clear so it doesn't leak between edits.
     customSelected = false
     vmafCustomSelected = false
-    // Advanced always starts collapsed — the simple choice is up front; expand to reveal knobs.
-    showAdvanced = false
     activeTab = 'rules'
     editingId = library.id
     markPristine()
@@ -1010,6 +1083,7 @@
   }
 
   async function save() {
+    if (saving) return
     error = null
     message = null
     if (audioLanguageError
@@ -1017,9 +1091,10 @@
       || encoderEffortError
       || verificationError
       || (!isNoEncodeProfile && vmafError)) return
+    saving = true
     try {
       if (editingId === 0) {
-        // Replace /new with the canonical editor URL so Back returns to the library list. The
+        // Replace the current /new step with the canonical editor URL. The
         // route change remounts this keyed page, so carry the success message across that boundary.
         const created = await api.createLibrary(payload())
         const success = t(i18n.m.libraries.added, { name: form.name })
@@ -1047,6 +1122,8 @@
       if (editingId) await loadEditorCandidates(editingId)
     } catch (err) {
       error = err instanceof Error ? err.message : i18n.m.libraries.error_save
+    } finally {
+      saving = false
     }
   }
 
@@ -1127,27 +1204,28 @@
     </button>
   </header>
 {:else}
-  <header class="mb-5 border-b border-line pb-4">
-    <button class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-ink-3 transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-500" onclick={cancelEdit}>
-      <Icon name="arrow-left" class="h-4 w-4" />
-      {i18n.m.nav.libraries}
-    </button>
-    <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-accent">{i18n.m.libraries.configure}</div>
-        <h1 class="page-title">{editingId === 0 ? i18n.m.libraries.add_library_heading : form.name}</h1>
-        {#if form.path}<p class="mt-1 truncate font-mono text-xs text-ink-3">{form.path}</p>{/if}
+  <header class="mb-6">
+    <nav class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3" aria-label={i18n.m.libraryWorkflow.breadcrumb}>
+      <button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={cancelEdit}>{i18n.m.nav.libraries}</button>
+      <span aria-hidden="true">/</span>
+      {#if room !== 'overview' || activeTab !== 'rules'}
+        <button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={() => goRoom('overview')}>{form.name || i18n.m.libraries.add_library}</button>
+        {#each activeTab === 'rules' ? roomParents : [] as parent}
+          <span aria-hidden="true">/</span><button class="focus-ring min-h-11 min-w-11 rounded px-1 hover:text-accent" onclick={() => goRoom(parent)}>{roomNames[parent]}</button>
+        {/each}
+        <span aria-hidden="true">/</span>
+      {/if}
+      <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
+    </nav>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{editorTitle}</h1>
+        <p class="page-subtitle break-words">{activeTab !== 'rules' ? form.path : room === 'overview' ? i18n.m.libraryWorkflow.overview_intro : room.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : form.path}</p>
       </div>
-      <div class="flex flex-wrap items-center justify-end gap-2">
-        {#if editingId !== 0}
-          <span class="badge tone-info">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
-          {#if showVideoOptions}<span class="badge tone-info">{profileLabel(form.ruleProfile)}</span>{/if}
-        {/if}
-        <!-- Save/Cancel live only in the sticky action bar at the foot of the form, so the page
-             never shows two competing copies of the same pair. -->
-      </div>
+      <span class="badge tone-info">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
     </div>
   </header>
+
 {/if}
 
 {#if error}
@@ -1178,17 +1256,15 @@
   />
 {/if}
 
-  <!-- The keep-language rules. Rendered inside Advanced > Video for encode/remux modes, but
-       hoisted to the top of the form for Track cleanup, whose entire behaviour is these two
-       fields — a collapsed drawer must never hide the only control a mode has. -->
+  <!-- Language selection is shared by the audio page and track-cleanup mode. -->
   {#snippet keepLanguageFields()}
     <!-- Keep-languages track removal applies to copied and re-encoded audio alike; tracks
          with no language tag are never removed, and a file where nothing matches is left
          untouched, so the output always keeps at least one audio track. -->
     <div class="mt-4">
-      <label class="label" for="lib-keep-audio-languages">{i18n.m.libraries.keep_audio_langs} <InfoTip text={i18n.m.libraries.keep_audio_langs_tip} /></label>
+      <label class="label" for="lib-keep-audio-languages">{i18n.m.libraries.keep_audio_langs} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.keep_audio_langs })} text={i18n.m.libraries.keep_audio_langs_tip} /></label>
       <input
-        id="lib-keep-audio-languages"
+        id="lib-keep-audio-languages" aria-label={i18n.m.libraries.keep_audio_langs}
         class="input"
         type="text"
         autocomplete="off"
@@ -1218,9 +1294,9 @@
     <!-- Subtitle removal mirrors the audio rule, with one honest difference: there is no
          keep-at-least-one guard, so a file whose subtitles are all foreign ends with none. -->
     <div class="mt-4">
-      <label class="label" for="lib-keep-subtitle-languages">{i18n.m.libraries.keep_subtitle_langs} <InfoTip text={i18n.m.libraries.keep_subtitle_langs_tip} /></label>
+      <label class="label" for="lib-keep-subtitle-languages">{i18n.m.libraries.keep_subtitle_langs} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.keep_subtitle_langs })} text={i18n.m.libraries.keep_subtitle_langs_tip} /></label>
       <input
-        id="lib-keep-subtitle-languages"
+        id="lib-keep-subtitle-languages" aria-label={i18n.m.libraries.keep_subtitle_langs}
         class="input"
         type="text"
         autocomplete="off"
@@ -1248,40 +1324,48 @@
     </div>
   {/snippet}
 
-{#snippet configForm()}
+{#snippet roomLink(target: LibraryRoom)}
+  <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-20 w-full items-center gap-4 p-5 text-left" aria-label={roomNames[target]} onclick={() => goRoom(target)}>
+    <Icon name={target.includes('advanced') ? 'sliders' : 'arrow-right'} class="h-5 w-5 shrink-0 text-accent" />
+    <span class="min-w-0 flex-1"><span class="flex flex-wrap items-center gap-2 text-sm font-semibold">{roomNames[target]}{#if overrideCount(target)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(target) })}</span>{/if}</span><span class="mt-1 block text-xs leading-relaxed text-ink-3">{target.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : target === 'encode/quality' ? i18n.m.libraryWorkflow.quality_summary : target === 'encode/audio' ? i18n.m.libraryWorkflow.audio_summary : target === 'encode/images' ? i18n.m.libraries.downscale_tip : i18n.m.libraryWorkflow.video_summary}</span></span>
+    <Icon name="arrow-right" class="h-4 w-4 shrink-0 text-ink-3" />
+  </button>
+{/snippet}
+
+{#snippet sourceFields()}
   <ConfigSection
     id="library-details"
-    step={1}
     title={i18n.m.libraries.section_library}
     description={i18n.m.libraries.section_library_intro}
   >
     <div class="grid gap-4 sm:grid-cols-2">
       <div>
-        <label class="label" for="lib-name">{i18n.m.libraries.name}</label>
-        <input id="lib-name" class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
+        <label class="label" for="lib-name">{i18n.m.libraries.name} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.name })} text={i18n.m.libraryWorkflow.name_hint} /></label>
+        <input id="lib-name" aria-label={i18n.m.libraries.name} class="input" placeholder={i18n.m.libraries.name_ph} bind:value={form.name} />
       </div>
       <div>
-        <label class="label" for="lib-path">{i18n.m.libraries.path}</label>
+        <label class="label" for="lib-path">{i18n.m.libraries.path} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.path })} text={i18n.m.libraries.section_library_intro} /></label>
         <div class="flex gap-2">
-          <input id="lib-path" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
+          <input id="lib-path" aria-label={i18n.m.libraries.path} class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.path} />
           <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (pickerOpen = true)}>{i18n.m.libraries.browse}</button>
         </div>
       </div>
       <div>
-        <label class="label" for="lib-type">{i18n.m.libraries.media_type}</label>
-        <select id="lib-type" class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
+        <label class="label" for="lib-type">{i18n.m.libraries.media_type} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.media_type })} text={i18n.m.libraryWorkflow.type_hint} /></label>
+        <select id="lib-type" aria-label={i18n.m.libraries.media_type} class="input" value={form.mediaType} onchange={(event) => setMediaType(event.currentTarget.value)}>
           {#each options.mediaTypes as type}<option value={type}>{mediaTypeLabel(type, i18n.m)}</option>{/each}
         </select>
       </div>
+      <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />
     </div>
   </ConfigSection>
 
-  <!-- Optimisation is the primary media-specific choice. Video uses the
-       compatibility→efficiency axis; Photo uses a format axis; Music exposes its codec and bitrate
-       directly. Deeper video, mixed-media, and eligibility overrides remain under Advanced. -->
+
+{/snippet}
+
+{#snippet encodeFields()}
   <ConfigSection
     id="library-optimisation"
-    step={2}
     title={i18n.m.libraries.preset_label}
     description={i18n.m.libraries.optimisation_intro}
   >
@@ -1291,7 +1375,7 @@
            shorter cards with a block of dead space under their text. -->
       <fieldset class="grid items-start gap-2 sm:grid-cols-3">
         <legend class="mb-3 text-sm font-semibold text-ink">
-          {i18n.m.libraries.processing_mode} <InfoTip text={i18n.m.libraries.preset_tip} />
+          {i18n.m.libraries.processing_mode} <InfoTip text={`${i18n.m.libraries.encode_mode}: ${i18n.m.libraries.encode_mode_hint} ${i18n.m.libraries.remux_label}: ${i18n.m.libraries.remux_hint} ${i18n.m.libraries.track_cleanup_label}: ${i18n.m.libraries.track_cleanup_hint}`} />
         </legend>
         {#each [
           { value: 'encode', label: i18n.m.libraries.encode_mode, hint: i18n.m.libraries.encode_mode_hint },
@@ -1321,38 +1405,18 @@
         <p class="mt-1 text-xs text-warn">{i18n.m.libraries.track_cleanup_needs_languages}</p>
       {/if}
 
-      <!-- The two fields the warning above refers to. Track cleanup does nothing else, so they
-           belong in the main flow rather than behind Advanced. -->
-      {#if isTrackCleanupProfile}
-        {@render keepLanguageFields()}
-      {/if}
-
       {#if !isNoEncodeProfile}
-      <div class="mt-3">
-        <input
-          type="range"
-          min="0"
-          max={encodeStopLabels.length - 1}
-          step="1"
-          class="w-full accent-cyan-600"
-          aria-label={i18n.m.libraries.slider_aria}
-          value={encodeStop}
-          oninput={(e) => setEncodeStop(e.currentTarget.value)}
-        />
-        <!-- Every position is explicit: each stop shows the codec it resolves to, with the active
-             stop highlighted and its full container/CRF spelled out in the "Selects:" row below. -->
-        <div class="mt-1 flex justify-between gap-2 text-xs text-ink-3">
-          {#each encodeStopLabels as stop, i}
-            {@const active = !isNoEncodeProfile && encodeStop === i}
-            <span class="flex flex-col {i === 0 ? 'items-start' : i === encodeStopLabels.length - 1 ? 'items-end text-right' : 'items-center text-center'}">
-              <span class={active ? 'font-semibold text-ink-2' : ''}>{stop}</span>
-              <!-- The Custom stop has no codec of its own until it is selected; leave it blank
-                   rather than showing a dash that reads as a missing value. -->
-              <span class="text-[10px] {active ? 'text-accent' : 'text-ink-4'}">{i < encodeProfiles.length ? specFor(encodeProfiles[i]).codec : active ? effectiveVideoSpec.codec : ''}</span>
-            </span>
+      <fieldset class="mt-4">
+        <legend class="label">{i18n.m.libraries.preset_label} <InfoTip text={i18n.m.libraries.preset_tip} /></legend>
+        <div class="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
+          {#each encodeStopLabels as stop, index}
+            <label class="choice flex min-h-20 cursor-pointer items-start gap-2 rounded-xl p-3 {encodeStop === index ? 'choice-selected' : ''}">
+              <input class="mt-0.5 accent-cyan-600" type="radio" name="library-preset" value={index} checked={encodeStop === index} onchange={() => { setEncodeStop(String(index)); if (index === customStopIndex) goRoom('encode/video/advanced') }} />
+              <span class="min-w-0"><span class="block text-sm font-medium">{stop}</span>{#if index < encodeProfiles.length}<span class="mt-1 block font-mono text-xs text-ink-3">{specFor(encodeProfiles[index]).codec}</span>{/if}</span>
+            </label>
           {/each}
         </div>
-      </div>
+      </fieldset>
       {/if}
 
       <p class="mt-2 text-xs text-ink-3">
@@ -1385,12 +1449,13 @@
           {#if presetOverridden}
             <span>{t(i18n.m.libraries.custom_overridden, { summary: overrideSummary(), verb: form.targetVideoCodec && form.targetContainer ? i18n.m.libraries.custom_overridden_are : i18n.m.libraries.custom_overridden_is })}</span>
           {:else}
-            <span>{i18n.m.libraries.custom_plain}</span>
+            <span>{i18n.m.libraryWorkflow.advanced_intro}</span>
           {/if}
           <button type="button" class="ml-1 font-medium underline" onclick={selectPresetMode}>{i18n.m.libraries.use_preset_instead}</button>
         </div>
       {/if}
     {:else if showImagePreset}
+      <p class="label">{i18n.m.libraries.target_format} <InfoTip text={i18n.m.libraries.target_format_tip} /></p>
       <!-- Image compatibility→efficiency slider (Photo libraries): JPEG → WebP. -->
       <div class="mt-1">
         <input
@@ -1419,44 +1484,6 @@
           <span class="badge tone-neutral">{t(i18n.m.libraries.quality_badge, { quality: form.imageQuality ?? 80 })}</span>
         </div>
       </div>
-    {:else}
-      <!-- For Music, audio is the primary optimisation choice rather than an expert override.
-           Keep the codec and bitrate in the normal flow so the section never becomes a dead-end
-           explanation that requires opening Advanced to do the actual work. -->
-      <div class="rounded-lg border border-line bg-lit p-4">
-        <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.audio}</h3>
-        <p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.music_note}</p>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
-            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
-              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-audio-bitrate">{i18n.m.libraries.bitrate} <InfoTip text={i18n.m.libraries.bitrate_tip} /></label>
-            <input
-              id="lib-audio-bitrate"
-              class="input"
-              type="number"
-              min="32"
-              max="512"
-              placeholder={i18n.m.libraries.bitrate_ph}
-              bind:value={form.audioBitrateKbps}
-            />
-          </div>
-        </div>
-        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
-          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
-          <span>
-            {i18n.m.libraries.reencode_lossy_audio}
-            <span class="mt-0.5 block text-xs font-normal text-ink-4">
-              {i18n.m.libraries.reencode_lossy_audio_hint}
-            </span>
-          </span>
-        </label>
-      </div>
     {/if}
 
     {#if editingId && editingId > 0 && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions || showImageOptions)}
@@ -1478,15 +1505,16 @@
       </div>
     {/if}
 
+  </ConfigSection>
+
+
+{/snippet}
+
+{#snippet qualityFields()}
+<ConfigSection id="library-quality" title={i18n.m.libraries.quality_strategy} description={i18n.m.libraries.quality_strategy_intro}>
   {#if showVideoOptions && !isNoEncodeProfile}
-    <div class="mt-6 border-t border-line pt-5">
-      <fieldset>
-        <legend class="text-xs font-semibold uppercase tracking-wide text-ink-3">
-          {i18n.m.libraries.quality_strategy}
-        </legend>
-        <p class="mt-1 max-w-3xl text-sm leading-relaxed text-ink-3">
-          {i18n.m.libraries.quality_strategy_intro}
-        </p>
+    <div>
+      <fieldset aria-label={i18n.m.libraries.quality_strategy}>
 
         <div class="mt-3 grid w-full gap-3 md:grid-cols-2" data-testid="video-quality-strategies">
           <label
@@ -1562,10 +1590,10 @@
         <div class="mt-5 border-t border-line pt-5">
           <label class="label" for="lib-vmaf-policy">
             {i18n.m.settings.vmaf_label}
-            <InfoTip text={i18n.m.settings.vmaf_hint} />
+            <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.vmaf_label })} text={i18n.m.settings.vmaf_hint} />
           </label>
           <select
-            id="lib-vmaf-policy"
+            id="lib-vmaf-policy" aria-label={i18n.m.settings.vmaf_label}
             class="input"
             value={vmafMode}
             onchange={(event) => setVmafMode(event.currentTarget.value as VmafMode)}
@@ -1594,52 +1622,20 @@
       </div>
 
       {#if vmafMode === 'custom'}
-        <div class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-3">
-          <div>
-            <label class="label" for="lib-vmaf-harmonic">{i18n.m.settings.vmaf_harmonic}</label>
-            <input id="lib-vmaf-harmonic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafHarmonicMean} />
-          </div>
-          <div>
-            <label class="label" for="lib-vmaf-fifth">{i18n.m.settings.vmaf_min}</label>
-            <input id="lib-vmaf-fifth" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafMin} />
-          </div>
-          <div>
-            <label class="label" for="lib-vmaf-catastrophic">{i18n.m.settings.vmaf_catastrophic}</label>
-            <input id="lib-vmaf-catastrophic" class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafCatastrophicMin} />
-          </div>
-        </div>
-      {/if}
-
-      {#if vmafMode !== 'off'}
-        <div class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">
-          <div>
-            <label class="label" for="lib-vmaf-sampling">{i18n.m.settings.vmaf_clip_label}</label>
-            <select id="lib-vmaf-sampling" class="input" value={form.clipVmafEnabled ? 'samples' : 'full'} onchange={(event) => (form.clipVmafEnabled = event.currentTarget.value === 'samples')}>
-              <option value="samples">{i18n.m.queue.vmaf_sampling_three}</option>
-              <option value="full">{i18n.m.queue.vmaf_sampling_full}</option>
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-vmaf-frames">{i18n.m.settings.vmaf_subsample_label}</label>
-            <select id="lib-vmaf-frames" class="input" bind:value={form.vmafFrameSubsample}>
-              <option value={1}>{i18n.m.settings.vmaf_every_frame}</option>
-              {#each [2, 3, 4, 5, 10] as interval}
-                <option value={interval}>{t(i18n.m.settings.vmaf_every_nth_frame, { interval })}</option>
-              {/each}
-            </select>
-          </div>
-        </div>
+        {@render roomLink('verify/advanced')}
       {/if}
       {#if vmafError}
         <p id="lib-vmaf-error" class="mt-3 text-xs text-bad" role="alert">{vmafError}</p>
       {/if}
     </div>
   {/if}
-  </ConfigSection>
 
+</ConfigSection>
+{/snippet}
+
+{#snippet verifyFields()}
   <ConfigSection
     id="library-verification"
-    step={3}
     title={i18n.m.settings.gates_title}
     description={i18n.m.libraries.verification_intro}
   >
@@ -1650,14 +1646,15 @@
         </legend>
 
         {#if showVideoOptions || showAudioOptions}
-          <div class="mb-4 max-w-[16rem]">
+          {#if room === 'verify/advanced'}
+<div class="mb-4 max-w-[16rem]">
             <label class="label" for="lib-duration-tolerance">
               {i18n.m.settings.duration_tolerance}
-              <InfoTip text={i18n.m.settings.duration_tolerance_tip} />
+              <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.duration_tolerance })} text={i18n.m.settings.duration_tolerance_tip} />
             </label>
             <div class="flex min-w-0 items-center gap-2">
               <input
-                id="lib-duration-tolerance"
+                id="lib-duration-tolerance" aria-label={i18n.m.settings.duration_tolerance}
                 class="input min-w-0 flex-1"
                 type="number"
                 min="0"
@@ -1669,16 +1666,17 @@
               <span class="flex-none text-sm text-ink-3">%</span>
             </div>
           </div>
+{/if}
         {/if}
 
         <div class="grid gap-3 {showVideoOptions || showAudioOptions ? 'border-t border-line pt-4 border-line' : ''}">
           {#if showVideoOptions || showAudioOptions}
-            <Toggle bind:checked={form.requireAudioRetained} label={i18n.m.settings.require_audio} />
+            <Toggle bind:checked={form.requireAudioRetained} label={i18n.m.settings.require_audio} hint={i18n.m.libraryWorkflow.retained_hint} />
           {/if}
           {#if showVideoOptions}
-            <Toggle bind:checked={form.requireSubtitlesRetained} label={i18n.m.settings.require_subtitles} />
+            <Toggle bind:checked={form.requireSubtitlesRetained} label={i18n.m.settings.require_subtitles} hint={i18n.m.libraryWorkflow.retained_hint} />
           {/if}
-          <Toggle bind:checked={form.requireSizeReduction} label={i18n.m.settings.require_smaller} />
+          <Toggle bind:checked={form.requireSizeReduction} label={i18n.m.settings.require_smaller} hint={i18n.m.libraryWorkflow.size_hint} />
         </div>
       </fieldset>
 
@@ -1694,11 +1692,12 @@
             hint={i18n.m.settings.loudness_hint}
           />
           {#if form.audioLoudnessGateEnabled}
-            <div class="mt-4 max-w-[16rem]">
-              <label class="label" for="lib-loudness-drift">{i18n.m.settings.loudness_max}</label>
+            {#if room === 'verify/advanced'}
+<div class="mt-4 max-w-[16rem]">
+              <label class="label" for="lib-loudness-drift">{i18n.m.settings.loudness_max} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.loudness_max })} text={i18n.m.settings.loudness_hint} /></label>
               <div class="flex min-w-0 items-center gap-2">
                 <input
-                  id="lib-loudness-drift"
+                  id="lib-loudness-drift" aria-label={i18n.m.settings.loudness_max}
                   class="input min-w-0 flex-1"
                   type="number"
                   min="0"
@@ -1710,6 +1709,7 @@
                 <span class="flex-none text-sm text-ink-3">{i18n.m.settings.lu}</span>
               </div>
             </div>
+{/if}
           {/if}
 
           <div class="mt-5 border-t border-line pt-4">
@@ -1719,14 +1719,15 @@
               hint={i18n.m.settings.clipping_hint}
             />
             {#if form.audioClippingGateEnabled}
-              <div class="mt-4 max-w-[16rem]">
+              {#if room === 'verify/advanced'}
+<div class="mt-4 max-w-[16rem]">
                 <label class="label" for="lib-true-peak">
                   {i18n.m.settings.true_peak}
-                  <InfoTip text={i18n.m.settings.true_peak_tip} />
+                  <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.true_peak })} text={i18n.m.settings.true_peak_tip} />
                 </label>
                 <div class="flex min-w-0 items-center gap-2">
                   <input
-                    id="lib-true-peak"
+                    id="lib-true-peak" aria-label={i18n.m.settings.true_peak}
                     class="input min-w-0 flex-1"
                     type="number"
                     step="0.1"
@@ -1737,6 +1738,7 @@
                   <span class="flex-none text-sm text-ink-3">{i18n.m.settings.dbtp}</span>
                 </div>
               </div>
+{/if}
             {/if}
           </div>
         </fieldset>
@@ -1754,13 +1756,14 @@
             hint={i18n.m.settings.ssim_hint}
           />
           {#if form.imageQualityGateEnabled}
-            <div class="mt-4 max-w-[16rem]">
+            {#if room === 'verify/advanced'}
+<div class="mt-4 max-w-[16rem]">
               <label class="label" for="lib-image-ssim">
                 {i18n.m.settings.ssim_min}
-                <InfoTip text={i18n.m.settings.ssim_min_tip} />
+                <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.ssim_min })} text={i18n.m.settings.ssim_min_tip} />
               </label>
               <input
-                id="lib-image-ssim"
+                id="lib-image-ssim" aria-label={i18n.m.settings.ssim_min}
                 class="input"
                 type="number"
                 step="0.01"
@@ -1771,6 +1774,7 @@
                 bind:value={form.minimumImageSsim}
               />
             </div>
+{/if}
           {/if}
 
           <div class="mt-5 border-t border-line pt-4">
@@ -1790,18 +1794,58 @@
         {verificationError}
       </p>
     {/if}
+    {#if room === 'verify/advanced' && showVideoOptions && !isNoEncodeProfile}
+      {#if vmafMode === 'custom'}
+        <div class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-3">
+          <div>
+            <label class="label" for="lib-vmaf-harmonic">{i18n.m.settings.vmaf_harmonic} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.vmaf_harmonic })} text={i18n.m.settings.vmaf_harmonic_tip} /></label>
+            <input id="lib-vmaf-harmonic" aria-label={i18n.m.settings.vmaf_harmonic} class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafHarmonicMean} />
+          </div>
+          <div>
+            <label class="label" for="lib-vmaf-fifth">{i18n.m.settings.vmaf_min} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.vmaf_min })} text={i18n.m.settings.vmaf_min_tip} /></label>
+            <input id="lib-vmaf-fifth" aria-label={i18n.m.settings.vmaf_min} class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafMin} />
+          </div>
+          <div>
+            <label class="label" for="lib-vmaf-catastrophic">{i18n.m.settings.vmaf_catastrophic} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.vmaf_catastrophic })} text={i18n.m.settings.vmaf_catastrophic_tip} /></label>
+            <input id="lib-vmaf-catastrophic" aria-label={i18n.m.settings.vmaf_catastrophic} class="input" type="number" min="0" max="100" step="0.5" aria-invalid={!!vmafError} aria-describedby="lib-vmaf-error" bind:value={form.minVmafCatastrophicMin} />
+          </div>
+        </div>
+      {/if}
+
+      {#if vmafMode !== 'off'}
+        <div class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-vmaf-sampling">{i18n.m.settings.vmaf_clip_label} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.vmaf_clip_label })} text={i18n.m.settings.vmaf_clip_hint} /></label>
+            <select id="lib-vmaf-sampling" aria-label={i18n.m.settings.vmaf_clip_label} class="input" value={form.clipVmafEnabled ? 'samples' : 'full'} onchange={(event) => (form.clipVmafEnabled = event.currentTarget.value === 'samples')}>
+              <option value="samples">{i18n.m.queue.vmaf_sampling_three}</option>
+              <option value="full">{i18n.m.queue.vmaf_sampling_full}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="lib-vmaf-frames">{i18n.m.settings.vmaf_subsample_label} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.vmaf_subsample_label })} text={i18n.m.settings.vmaf_subsample_hint} /></label>
+            <select id="lib-vmaf-frames" aria-label={i18n.m.settings.vmaf_subsample_label} class="input" bind:value={form.vmafFrameSubsample}>
+              <option value={1}>{i18n.m.settings.vmaf_every_frame}</option>
+              {#each [2, 3, 4, 5, 10] as interval}
+                <option value={interval}>{t(i18n.m.settings.vmaf_every_nth_frame, { interval })}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
+
+    {/if}
   </ConfigSection>
 
-  <!-- Simple, always-visible switches. The technical encoding knobs live under
-       "Advanced options" so the common case stays uncluttered. -->
+
+{/snippet}
+
+{#snippet automationFields()}
   <ConfigSection
     id="library-automation"
-    step={4}
     title={i18n.m.libraries.section_automation}
     description={i18n.m.libraries.automation_intro}
   >
     <div class="space-y-4">
-    <Toggle bind:checked={form.enabled} label={i18n.m.libraries.enabled_label} hint={i18n.m.libraries.enabled_hint} />
 
     <Toggle
       bind:checked={form.autoEnqueueEnabled}
@@ -1811,12 +1855,12 @@
     {#if form.autoEnqueueEnabled}
       <div class="flex flex-wrap items-end gap-4 pl-1">
         <div>
-          <label class="label" for="lib-auto-start">{i18n.m.libraries.window_start}</label>
-          <input id="lib-auto-start" class="input w-32" type="time" bind:value={form.autoEnqueueWindowStart} />
+          <label class="label" for="lib-auto-start">{i18n.m.libraries.window_start} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.window_start })} text={i18n.m.libraries.window_hint} /></label>
+          <input id="lib-auto-start" aria-label={i18n.m.libraries.window_start} class="input w-32" type="time" bind:value={form.autoEnqueueWindowStart} />
         </div>
         <div>
-          <label class="label" for="lib-auto-end">{i18n.m.libraries.window_end}</label>
-          <input id="lib-auto-end" class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
+          <label class="label" for="lib-auto-end">{i18n.m.libraries.window_end} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.window_end })} text={i18n.m.libraries.window_hint} /></label>
+          <input id="lib-auto-end" aria-label={i18n.m.libraries.window_end} class="input w-32" type="time" bind:value={form.autoEnqueueWindowEnd} />
         </div>
         <p class="max-w-xs text-xs text-ink-3">
           {i18n.m.libraries.window_hint}
@@ -1840,16 +1884,16 @@
         />
         {#if form.moveOnComplete}
           <div class="mt-3 max-w-xl">
-            <label class="label" for="lib-target">{i18n.m.libraries.target_folder}</label>
+            <label class="label" for="lib-target">{i18n.m.libraries.target_folder} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_folder })} text={i18n.m.libraries.move_hint} /></label>
             <div class="flex gap-2">
-              <input id="lib-target" class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
+              <input id="lib-target" aria-label={i18n.m.libraries.target_folder} class="input" readonly placeholder={i18n.m.libraries.path_ph} value={form.targetFolder ?? ''} />
               <button type="button" class="btn min-h-11 flex-shrink-0" onclick={() => (targetPickerOpen = true)}>{i18n.m.libraries.browse}</button>
             </div>
           </div>
           <label class="mt-3 flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.moveOverwrite} />
             <span>
-              {i18n.m.libraries.overwrite_label}
+              {i18n.m.libraries.overwrite_label} <InfoTip text={i18n.m.libraries.overwrite_hint} />
               <span class="mt-0.5 block text-xs font-normal text-ink-4">
                 {i18n.m.libraries.overwrite_hint}
               </span>
@@ -1860,466 +1904,40 @@
     </div>
   </ConfigSection>
 
-  <!-- Advanced options: codec / quality / eligibility overrides, hidden by default. The header and
-       body form one tinted, bordered "drawer" so the Advanced zone is clearly set apart from the
-       simple controls above. -->
-  <div class="mt-6 overflow-hidden rounded-xl border {showAdvanced ? 'border-line' : 'border-line'}">
-    <button
-      type="button"
-      class="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-ink-2 transition-colors hover:bg-lit {showAdvanced ? 'bg-raised/80' : ''}"
-      onclick={() => (showAdvanced = !showAdvanced)}
-      aria-expanded={showAdvanced}
-    >
-      <Icon name="sliders" class="h-4 w-4 text-ink-4" />
-      <span>{i18n.m.libraries.advanced}</span>
-      <span class="text-xs font-normal text-ink-4">{i18n.m.libraries.advanced_hint}</span>
-      <Icon name="chevron" class="ml-auto h-4 w-4 text-ink-4 transition-transform {showAdvanced ? 'rotate-180' : ''}" />
-    </button>
 
-  {#if showAdvanced}
-    <!-- divide-y draws a separator between whichever sections are shown for this media type. -->
-    <div class="border-t border-line bg-lit px-4 divide-y divide-line">
+{/snippet}
 
-      {#if showVideoOptions}
-      <!-- VIDEO — scoped to Film/TV/Other libraries. -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.video}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.video_desc}</p>
-
-        {#if !isTrackCleanupProfile}
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="label" for="lib-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.target_codec_tip} /></label>
-            <select id="lib-codec" class="input" bind:value={form.targetVideoCodec}>
-              <option value={null}>{i18n.m.libraries.profile_default}</option>
-              {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-container">{i18n.m.libraries.container} <InfoTip text={i18n.m.libraries.container_tip} /></label>
-            <select id="lib-container" class="input" bind:value={form.targetContainer}>
-              <option value={null}>{i18n.m.libraries.profile_default}</option>
-              {#each options.containers as container}<option value={container}>.{container}</option>{/each}
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-hdr">{i18n.m.libraries.hdr_dv} <InfoTip text={i18n.m.libraries.hdr_dv_tip} /></label>
-            <select id="lib-hdr" class="input" bind:value={form.hdrHandling}>
-              <option value={null}>{i18n.m.libraries.profile_default}</option>
-              {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-preset">{i18n.m.libraries.encoder_preset} <InfoTip text={i18n.m.libraries.encoder_preset_tip} /></label>
-            <select
-              id="lib-preset"
-              class="input"
-              aria-invalid={encoderEffortError ? 'true' : 'false'}
-              aria-describedby={encoderEffortError ? 'lib-encoder-effort-error' : undefined}
-              bind:value={form.encoderPreset}
-            >
-              <option value={null}>{i18n.m.libraries.encoder_default}</option>
-              {#if (encoderEffortError || encoderEffortIsLegacy) && form.encoderPreset}
-                <option value={form.encoderPreset}>
-                  {encoderEffortIsLegacy
-                    ? t(i18n.m.libraries.encoder_effort_legacy, { value: form.encoderPreset })
-                    : form.encoderPreset}
-                </option>
-              {/if}
-              {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
-            </select>
-            {#if encoderEffortError}
-              <p id="lib-encoder-effort-error" class="mt-1 text-xs text-bad" role="alert">{encoderEffortError}</p>
-            {/if}
-          </div>
-        </div>
-
-        <div class="mt-4">
-          <div class="mb-1 flex items-center justify-between">
-            <label class="label mb-0" for="lib-crf">{i18n.m.libraries.quality_crf} <InfoTip text={i18n.m.libraries.quality_crf_tip} /></label>
-            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
-              <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
-              {i18n.m.libraries.customise}
-            </label>
-          </div>
-          {#if form.qualityCrf != null}
-            <div class="flex items-center gap-3">
-              <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-              <input id="lib-crf" class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
-              <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-              <span class="badge w-10 justify-center tone-accent">{form.qualityCrf}</span>
-            </div>
-          {:else}
-            <p class="text-xs text-ink-4">{i18n.m.libraries.using_preset_quality}</p>
-          {/if}
-        </div>
-
-        <!-- Black-bar removal. A bare switch until it is on: the panel below explains why the
-             quality check cannot catch a wrong crop and where the safety actually comes from,
-             which is only worth a reader's attention once it can affect them. -->
-        <div class="mt-4">
-          <Toggle
-            bind:checked={form.cropBlackBars}
-            label={i18n.m.libraries.crop_bars_label}
-            hint={i18n.m.libraries.crop_bars_tip}
-          />
-          <p class="mt-1 text-xs text-ink-3">{i18n.m.libraries.crop_bars_hint}</p>
-          {#if form.cropBlackBars}
-            <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
-              {i18n.m.libraries.crop_bars_on_detail}
-            </div>
-          {/if}
-        </div>
-
-        <!-- Advanced encoder options. Hidden behind one line because almost nobody needs them, and
-             three always-visible controls here would bury the quality slider that most people do.
-             Each knob is portable intent: the encoder chosen at dispatch receives only what it
-             understands, which is why the note below names who honours what rather than implying
-             every setting reaches every GPU. -->
-        <div class="mt-4">
-          <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
-            <input
-              type="checkbox"
-              class="checkbox"
-              checked={showEncoderTuning || hasEncoderTuning}
-              onchange={(e) => (showEncoderTuning = e.currentTarget.checked)}
-            />
-            {i18n.m.libraries.encoder_tuning}
-          </label>
-
-          {#if showEncoderTuning || hasEncoderTuning}
-            <div class="mt-3 grid gap-4 sm:grid-cols-2">
-              <div>
-                <label class="label" for="lib-tune">{i18n.m.libraries.content_tune} <InfoTip text={i18n.m.libraries.content_tune_tip} /></label>
-                <select id="lib-tune" class="input" bind:value={form.contentTune}>
-                  <option value="None">{i18n.m.libraries.encoder_default}</option>
-                  <option value="Animation">{i18n.m.libraries.content_tune_animation}</option>
-                  <option value="Grain">{i18n.m.libraries.content_tune_grain}</option>
-                </select>
-              </div>
-              <div>
-                <label class="label" for="lib-maxbitrate">{i18n.m.libraries.max_bitrate} <InfoTip text={i18n.m.libraries.max_bitrate_tip} /></label>
-                <input
-                  id="lib-maxbitrate"
-                  class="input"
-                  type="number"
-                  min="100"
-                  max="200000"
-                  placeholder={i18n.m.libraries.max_bitrate_none}
-                  bind:value={form.maxBitrateKbps}
-                />
-              </div>
-            </div>
-
-            <!-- A floor only means something inside the window a cap defines, so it is offered
-                 only once a cap exists. Shown then rather than always, because for most people the
-                 honest answer to "minimum bitrate?" is "why would I" — it spends bits on scenes
-                 that need none. -->
-            {#if form.maxBitrateKbps != null}
-              <div class="mt-4 max-w-[16rem]">
-                <label class="label" for="lib-minbitrate">{i18n.m.libraries.min_bitrate} <InfoTip text={i18n.m.libraries.min_bitrate_tip} /></label>
-                <input
-                  id="lib-minbitrate"
-                  class="input"
-                  type="number"
-                  min="100"
-                  max={form.maxBitrateKbps}
-                  placeholder={i18n.m.libraries.min_bitrate_none}
-                  bind:value={form.minBitrateKbps}
-                />
-              </div>
-            {/if}
-
-            <div class="mt-4">
-              <Toggle
-                bind:checked={form.strongerAdaptiveQuantisation}
-                label={i18n.m.libraries.adaptive_quantisation}
-                hint={i18n.m.libraries.adaptive_quantisation_tip}
-              />
-            </div>
-
-            {#if hasEncoderTuning}
-              <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
-                {i18n.m.libraries.encoder_tuning_support}
-              </div>
-            {/if}
-          {/if}
-        </div>
-
-        <div class="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip text={i18n.m.libraries.audio_track_tip} /></label>
-            <select id="lib-video-audio-codec" class="input" bind:value={form.videoAudioCodec}>
-              <option value={null}>{i18n.m.libraries.audio_profile_default}</option>
-              <option value="copy">{i18n.m.libraries.audio_copy}</option>
-              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-video-audio-bitrate">{i18n.m.libraries.audio_bitrate} <InfoTip text={i18n.m.libraries.audio_bitrate_tip} /></label>
-            <input
-              id="lib-video-audio-bitrate"
-              class="input"
-              type="number"
-              min="32"
-              max="512"
-              placeholder={i18n.m.libraries.audio_bitrate_ph}
-              disabled={!form.videoAudioCodec || form.videoAudioCodec === 'copy'}
-              bind:value={form.videoAudioBitrateKbps}
-            />
-          </div>
-        </div>
-        {/if}
-
-        <!-- Track cleanup renders these near the top of the form instead: they are the whole of
-             what that mode does, so they must not sit behind a collapsed drawer. -->
-        {#if !isTrackCleanupProfile}
-          {@render keepLanguageFields()}
-        {/if}
-
-        {#if !isTrackCleanupProfile}
-        <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
-             under an HEVC target). Off by default; the size-saving gate still protects the original. -->
-        <div class="mt-4">
-          <label class="flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" checked={sameCodecGb !== ''} onchange={(e) => toggleSameCodec(e.currentTarget.checked)} />
-            <span>
-              {i18n.m.libraries.same_codec_label}
-              <InfoTip text={i18n.m.libraries.same_codec_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-ink-4">
-                {i18n.m.libraries.same_codec_hint}
-              </span>
-            </span>
-          </label>
-          {#if sameCodecGb !== ''}
-            <div class="mt-2 flex items-center gap-2 pl-6 text-sm">
-              <span class="text-ink-3">{i18n.m.libraries.same_codec_when}</span>
-              <input class="input w-24" type="number" min="1" step="1" bind:value={sameCodecGb} />
-              <span class="text-ink-3">{i18n.m.libraries.gb}</span>
-            </div>
-          {/if}
-        </div>
-
-        <!-- Skip sources already so efficiently encoded that re-encoding won't shrink them. On by
-             default; the size-saving gate still protects the original either way. -->
-        <div class="mt-4">
-          <label class="flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.skipEfficientSources} />
-            <span>
-              {i18n.m.libraries.skip_efficient_label}
-              <InfoTip text={i18n.m.libraries.skip_efficient_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-ink-4">
-                {i18n.m.libraries.skip_efficient_hint}
-              </span>
-            </span>
-          </label>
-        </div>
-
-        <!-- Dolby Vision is left untouched by default: a re-encode drops the DV layer and a Profile 5
-             source comes out green/pink. Opt in only if losing the DV presentation is acceptable. -->
-        <div class="mt-4">
-          <label class="flex cursor-pointer items-start gap-2 text-sm">
-            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.optimiseDolbyVision} />
-            <span>
-              {i18n.m.libraries.dolby_vision_label}
-              <InfoTip text={i18n.m.libraries.dolby_vision_tip} />
-              <span class="mt-0.5 block text-xs font-normal text-ink-4">
-                {i18n.m.libraries.dolby_vision_hint}
-              </span>
-            </span>
-          </label>
-        </div>
-        {/if}
-      </section>
-      {/if}
-
-      {#if showAudioOptions && showVideoOptions && !isTrackCleanupProfile}
-      <!-- AUDIO — the mixed "Other" library keeps audio-only overrides here. Music exposes the
-           same primary choice in the normal Optimisation flow above. -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.audio_desc}</p>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip text={i18n.m.libraries.audio_codec_tip} /></label>
-            <select id="lib-audio-codec" class="input" bind:value={form.audioTargetCodec}>
-              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
-              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
-            </select>
-          </div>
-          <div>
-            <label class="label" for="lib-audio-bitrate">{i18n.m.libraries.bitrate} <InfoTip text={i18n.m.libraries.bitrate_tip} /></label>
-            <input
-              id="lib-audio-bitrate"
-              class="input"
-              type="number"
-              min="32"
-              max="512"
-              placeholder={i18n.m.libraries.bitrate_ph}
-              bind:value={form.audioBitrateKbps}
-            />
-          </div>
-        </div>
-
-        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
-          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
-          <span>
-            {i18n.m.libraries.reencode_lossy_audio}
-            <span class="mt-0.5 block text-xs font-normal text-ink-4">
-              {i18n.m.libraries.reencode_lossy_audio_hint}
-            </span>
-          </span>
-        </label>
-      </section>
-      {/if}
-
-      {#if showImageOptions && !isTrackCleanupProfile}
-      <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.images}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.images_desc}</p>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          {#if !showImagePreset}
-          <div>
-            <label class="label" for="lib-image-format">{i18n.m.libraries.target_format} <InfoTip text={i18n.m.libraries.target_format_tip} /></label>
-            <select id="lib-image-format" class="input" bind:value={form.targetImageFormat}>
-              <option value={null}>{i18n.m.libraries.image_default_jpeg}</option>
-              {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
-            </select>
-          </div>
-          {/if}
-          <div>
-            <div class="mb-1 flex items-center justify-between">
-              <label class="label mb-0" for="lib-image-quality">{i18n.m.libraries.quality} <InfoTip text={i18n.m.libraries.image_quality_tip} /></label>
-              <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
-                <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
-                {i18n.m.libraries.customise}
-              </label>
-            </div>
-            {#if form.imageQuality != null}
-              <div class="flex items-center gap-3">
-                <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
-                <input id="lib-image-quality" class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
-                <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
-                <span class="badge w-10 justify-center tone-accent">{form.imageQuality}</span>
-              </div>
-            {:else}
-              <p class="text-xs text-ink-4">{i18n.m.libraries.using_default_80}</p>
-            {/if}
-          </div>
-        </div>
-
-        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
-          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyImages} />
-          <span>
-            {i18n.m.libraries.reencode_lossy_images}
-            <span class="mt-0.5 block text-xs font-normal text-ink-4">
-              {i18n.m.libraries.reencode_lossy_images_hint}
-            </span>
-          </span>
-        </label>
-
-        <!-- Downscale: optional dimension reduction. Aspect ratio is always kept and images are
-             never enlarged; an intentional downscale is allowed past verification. -->
-        <div class="mt-5 border-t border-line pt-4">
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label class="label" for="lib-image-downscale">{i18n.m.libraries.downscale} <InfoTip text={i18n.m.libraries.downscale_tip} /></label>
-              <select id="lib-image-downscale" class="input" value={downscaleChoice} onchange={(e) => setDownscaleChoice(e.currentTarget.value as DownscaleChoice)}>
-                <option value="none">{i18n.m.libraries.downscale_none}</option>
-                <option value="4k">{i18n.m.libraries.downscale_4k}</option>
-                <option value="1080p">{i18n.m.libraries.downscale_1080p}</option>
-                <option value="longedge">{i18n.m.libraries.downscale_longedge}</option>
-                <option value="percent">{i18n.m.libraries.downscale_percent}</option>
-              </select>
-            </div>
-            {#if downscaleChoice === 'longedge'}
-              <div>
-                <label class="label" for="lib-image-longedge">{i18n.m.libraries.max_long_edge}</label>
-                <input id="lib-image-longedge" class="input" type="number" min="16" max="100000" step="1" bind:value={form.imageDownscaleValue} />
-                <p class="mt-1 text-xs text-ink-4">{i18n.m.libraries.max_long_edge_hint}</p>
-              </div>
-            {:else if downscaleChoice === 'percent'}
-              <div>
-                <label class="label" for="lib-image-percent">{i18n.m.libraries.scale_to}</label>
-                <input id="lib-image-percent" class="input" type="number" min="1" max="99" step="1" bind:value={form.imageDownscaleValue} />
-                <p class="mt-1 text-xs text-ink-4">{i18n.m.libraries.scale_to_hint}</p>
-              </div>
-            {/if}
-          </div>
-        </div>
-      </section>
-      {/if}
-
-      {#if !isTrackCleanupProfile && (showVideoOptions || showAudioOptions)}
-      <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
-           Photo library, which has no audio. -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio_channels}</h3>
-        <p class="mt-0.5 mb-3 text-xs text-ink-4">{i18n.m.libraries.audio_channels_desc}</p>
-        <label class="flex cursor-pointer items-start gap-2 text-sm">
-          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
-          <span>
-            {i18n.m.libraries.downmix_label}
-            <span class="mt-0.5 block text-xs font-normal text-ink-4">
-              {i18n.m.libraries.downmix_hint}
-            </span>
-          </span>
-        </label>
-      </section>
-      {/if}
-
+{#snippet selectionFields()}
+<ConfigSection id="library-selection" title={i18n.m.libraries.eligibility_queue} description={i18n.m.libraries.eligibility_queue_desc}>
       <!-- ELIGIBILITY & QUEUE -->
-      <section class="py-6">
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.eligibility_queue}</h3>
-        <p class="mt-0.5 mb-4 text-xs text-ink-4">{i18n.m.libraries.eligibility_queue_desc}</p>
+      <section class="space-y-4">
         <div class="grid gap-4 sm:grid-cols-2">
           <div>
             <div class="mb-1 flex items-center justify-between">
-              <label class="label mb-0" for="lib-priority">{i18n.m.libraries.queue_priority} <InfoTip text={i18n.m.libraries.queue_priority_tip} /></label>
+              <label class="label mb-0" for="lib-priority">{i18n.m.libraries.queue_priority} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.queue_priority })} text={i18n.m.libraries.queue_priority_tip} /></label>
               <span class="badge tone-neutral">{priorityLabel(form.priority)}</span>
             </div>
-            <input id="lib-priority" class="w-full accent-cyan-600" type="range" min="-2" max="2" step="1" bind:value={form.priority} />
+            <select id="lib-priority" aria-label={i18n.m.libraries.queue_priority} class="input" bind:value={form.priority}>{#each priorityLevels as level}<option value={level.value}>{level.label}</option>{/each}</select>
           </div>
           {#if showVideoOptions && !isTrackCleanupProfile}
           <div>
-            <label class="label" for="lib-maxheight">{i18n.m.libraries.skip_above} <InfoTip text={i18n.m.libraries.skip_above_tip} /></label>
-            <select id="lib-maxheight" class="input" bind:value={form.maxHeight}>
+            <label class="label" for="lib-maxheight">{i18n.m.libraries.skip_above} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.skip_above })} text={i18n.m.libraries.skip_above_tip} /></label>
+            <select id="lib-maxheight" aria-label={i18n.m.libraries.skip_above} class="input" bind:value={form.maxHeight}>
               {#each resolutionLimits as limit}<option value={limit.value}>{limit.label}</option>{/each}
             </select>
           </div>
-          <!-- Two controls that both mention a height and mean opposite things: "skip above"
-               leaves a tall file alone, "downscale to" converts it. Side by side so the
-               difference is visible, with the tip stating which wins when both are set. -->
-          <div>
-            <label class="label" for="lib-downscale">{i18n.m.libraries.video_downscale_to} <InfoTip text={i18n.m.libraries.video_downscale_to_tip} /></label>
-            <select id="lib-downscale" class="input" bind:value={form.videoDownscaleHeight}>
-              <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
-              {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
-            </select>
-          </div>
-          <!-- The temporal twin of "downscale to": the tip carries the one rule worth knowing,
-               that only clean halvings happen, so a reader is not surprised when a 50 fps source
-               under a 60 cap is left alone. -->
-          <div>
-            <label class="label" for="lib-fps-cap">{i18n.m.libraries.video_fps_cap} <InfoTip text={i18n.m.libraries.video_fps_cap_tip} /></label>
-            <select id="lib-fps-cap" class="input" bind:value={form.maxFrameRate}>
-              {#each frameRateCaps as cap}<option value={cap.value}>{cap.label}</option>{/each}
-            </select>
-          </div>
+
           {/if}
           {#if !isTrackCleanupProfile}
           <div>
-            <label class="label" for="lib-minsize">{i18n.m.libraries.min_file_size} <InfoTip text={i18n.m.libraries.min_file_size_tip} /></label>
-            <input id="lib-minsize" class="input" type="number" min="0" placeholder={i18n.m.libraries.profile_default_ph} bind:value={minSizeMb} />
+            <label class="label" for="lib-minsize">{i18n.m.libraries.min_file_size} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.min_file_size })} text={i18n.m.libraries.min_file_size_tip} /></label>
+            <input id="lib-minsize" aria-label={i18n.m.libraries.min_file_size} class="input" type="number" min="0" placeholder={i18n.m.libraries.profile_default_ph} bind:value={minSizeMb} />
           </div>
           {/if}
         </div>
         <div class="mt-4">
-          <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip text={i18n.m.libraries.exclude_paths_tip} /></label>
-          <textarea id="lib-exclude" class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
+          <label class="label" for="lib-exclude">{i18n.m.libraries.exclude_paths} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.exclude_paths })} text={i18n.m.libraries.exclude_paths_tip} /></label>
+          <textarea id="lib-exclude" aria-label={i18n.m.libraries.exclude_paths} class="input h-20 font-mono text-xs" placeholder="Extras&#10;Featurettes&#10;Samples" bind:value={form.excludePaths}></textarea>
         </div>
 
         <!-- Hardlinks belong with the path exclusions rather than the video section: every profile
@@ -2340,7 +1958,52 @@
           {/if}
         </div>
 
-        <!-- Where a video re-encode may run. Only shown while work can actually go to a worker;
+      </section>
+
+
+</ConfigSection>
+{/snippet}
+
+{#snippet selectionAdvancedFields()}
+<ConfigSection id="library-selection-advanced" title={i18n.m.libraryWorkflow.source_advanced} description={i18n.m.libraries.eligibility_queue_desc}>
+{#if showVideoOptions && !isNoEncodeProfile}        <!-- Capture oversized files that already match the target codec (e.g. huge HEVC remuxes
+             under an HEVC target). Off by default; the size-saving gate still protects the original. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" checked={sameCodecGb !== ''} onchange={(e) => toggleSameCodec(e.currentTarget.checked)} />
+            <span>
+              {i18n.m.libraries.same_codec_label}
+              <InfoTip text={i18n.m.libraries.same_codec_tip} />
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
+                {i18n.m.libraries.same_codec_hint}
+              </span>
+            </span>
+          </label>
+          {#if sameCodecGb !== ''}
+            <div class="mt-2 flex items-center gap-2 pl-6 text-sm">
+              <span class="text-ink-3">{i18n.m.libraries.same_codec_when}</span>
+              <input class="input w-24" type="number" min="1" step="1" bind:value={sameCodecGb} aria-label={i18n.m.libraries.same_codec_when} />
+              <span class="text-ink-3">{i18n.m.libraries.gb}</span>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Skip sources already so efficiently encoded that re-encoding won't shrink them. On by
+             default; the size-saving gate still protects the original either way. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.skipEfficientSources} />
+            <span>
+              {i18n.m.libraries.skip_efficient_label}
+              <InfoTip text={i18n.m.libraries.skip_efficient_tip} />
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
+                {i18n.m.libraries.skip_efficient_hint}
+              </span>
+            </span>
+          </label>
+        </div>
+
+{/if}        <!-- Where a video re-encode may run. Only shown while work can actually go to a worker;
              the stored choice is otherwise moot, and a control that does nothing would only invite
              a wrong conclusion. A library that already holds a non-default value while workers
              are off says so in one line instead, so nothing is silently kept. -->
@@ -2407,11 +2070,426 @@
           {/if}
         </div>
         {/if}
+
+</ConfigSection>
+{/snippet}
+
+{#snippet videoFields()}
+<ConfigSection id="library-video" title={i18n.m.libraryWorkflow.video} description={i18n.m.libraries.video_desc}>
+<div class="grid gap-4 sm:grid-cols-2"><div>
+            <label class="label" for="lib-hdr">{i18n.m.libraries.hdr_dv} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.hdr_dv })} text={i18n.m.libraries.hdr_dv_tip} /></label>
+            <select id="lib-hdr" aria-label={i18n.m.libraries.hdr_dv} class="input" bind:value={form.hdrHandling}>
+              <option value={null}>{i18n.m.libraries.profile_default}</option>
+              {#each options.hdrHandlings as hdr}<option value={hdr}>{hdrLabel(hdr)}</option>{/each}
+            </select>
+          </div><div>
+            <label class="label" for="lib-downscale">{i18n.m.libraries.video_downscale_to} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.video_downscale_to })} text={i18n.m.libraries.video_downscale_to_tip} /></label>
+            <select id="lib-downscale" aria-label={i18n.m.libraries.video_downscale_to} class="input" bind:value={form.videoDownscaleHeight}>
+              <option value={null}>{i18n.m.libraries.video_downscale_none}</option>
+              {#each resolutionLimits.filter((l) => l.value != null) as limit}<option value={limit.value}>{limit.label}</option>{/each}
+            </select>
+          </div><div>
+            <label class="label" for="lib-fps-cap">{i18n.m.libraries.video_fps_cap} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.video_fps_cap })} text={i18n.m.libraries.video_fps_cap_tip} /></label>
+            <select id="lib-fps-cap" aria-label={i18n.m.libraries.video_fps_cap} class="input" bind:value={form.maxFrameRate}>
+              {#each frameRateCaps as cap}<option value={cap.value}>{cap.label}</option>{/each}
+            </select>
+          </div></div>        <!-- Black-bar removal. A bare switch until it is on: the panel below explains why the
+             quality check cannot catch a wrong crop and where the safety actually comes from,
+             which is only worth a reader's attention once it can affect them. -->
+        <div class="mt-4">
+          <Toggle
+            bind:checked={form.cropBlackBars}
+            label={i18n.m.libraries.crop_bars_label}
+            hint={i18n.m.libraries.crop_bars_tip}
+          />
+          <p class="mt-1 text-xs text-ink-3">{i18n.m.libraries.crop_bars_hint}</p>
+          {#if form.cropBlackBars}
+            <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
+              {i18n.m.libraries.crop_bars_on_detail}
+            </div>
+          {/if}
+        </div>
+
+        <!-- Dolby Vision is left untouched by default: a re-encode drops the DV layer and a Profile 5
+             source comes out green/pink. Opt in only if losing the DV presentation is acceptable. -->
+        <div class="mt-4">
+          <label class="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.optimiseDolbyVision} />
+            <span>
+              {i18n.m.libraries.dolby_vision_label}
+              <InfoTip text={i18n.m.libraries.dolby_vision_tip} />
+              <span class="mt-0.5 block text-xs font-normal text-ink-4">
+                {i18n.m.libraries.dolby_vision_hint}
+              </span>
+            </span>
+          </label>
+        </div>
+
+</ConfigSection>
+{/snippet}
+
+{#snippet videoAdvancedFields()}
+<ConfigSection id="library-video-advanced" title={i18n.m.libraryWorkflow.encoding_advanced} description={i18n.m.libraryWorkflow.encoding_intro}>
+      <section class="space-y-4">
+
+        {#if !isTrackCleanupProfile}
+        <div class="grid gap-4 sm:grid-cols-2">
+          {#if !isRemuxProfile}<div>
+            <label class="label" for="lib-codec">{i18n.m.libraries.target_codec} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_codec })} text={i18n.m.libraries.target_codec_tip} /></label>
+            <select id="lib-codec" aria-label={i18n.m.libraries.target_codec} class="input" bind:value={form.targetVideoCodec}>
+              <option value={null}>{i18n.m.libraries.profile_default}</option>
+              {#each options.videoCodecs as codec}<option value={codec}>{codec.toUpperCase()}</option>{/each}
+            </select>
+          </div>{/if}
+          <div>
+            <label class="label" for="lib-container">{i18n.m.libraries.container} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.container })} text={i18n.m.libraries.container_tip} /></label>
+            <select id="lib-container" aria-label={i18n.m.libraries.container} class="input" bind:value={form.targetContainer}>
+              <option value={null}>{i18n.m.libraries.profile_default}</option>
+              {#each options.containers as container}<option value={container}>.{container}</option>{/each}
+            </select>
+          </div>
+
+          {#if !isRemuxProfile}<div>
+            <label class="label" for="lib-preset">{i18n.m.libraries.encoder_preset} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.encoder_preset })} text={i18n.m.libraries.encoder_preset_tip} /></label>
+            <select
+              id="lib-preset" aria-label={i18n.m.libraries.encoder_preset}
+              class="input"
+              aria-invalid={encoderEffortError ? 'true' : 'false'}
+              aria-describedby={encoderEffortError ? 'lib-encoder-effort-error' : undefined}
+              bind:value={form.encoderPreset}
+            >
+              <option value={null}>{i18n.m.libraries.encoder_default}</option>
+              {#if (encoderEffortError || encoderEffortIsLegacy) && form.encoderPreset}
+                <option value={form.encoderPreset}>
+                  {encoderEffortIsLegacy
+                    ? t(i18n.m.libraries.encoder_effort_legacy, { value: form.encoderPreset })
+                    : form.encoderPreset}
+                </option>
+              {/if}
+              {#each options.encoderPresets as preset}<option value={preset}>{encoderEffortLabel(preset)}</option>{/each}
+            </select>
+            {#if encoderEffortError}
+              <p id="lib-encoder-effort-error" class="mt-1 text-xs text-bad" role="alert">{encoderEffortError}</p>
+            {/if}
+          </div>{/if}
+        </div>
+
+{#if !isRemuxProfile}        <div class="mt-4">
+          <div class="mb-1 flex items-center justify-between">
+            <label class="label mb-0" for="lib-crf">{i18n.m.libraries.quality_crf} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.quality_crf })} text={i18n.m.libraries.quality_crf_tip} /></label>
+            <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
+              <input type="checkbox" class="checkbox" checked={form.qualityCrf != null} onchange={(e) => toggleCustomQuality(e.currentTarget.checked)} />
+              {i18n.m.libraries.customise} <InfoTip text={room.includes('images') ? i18n.m.libraries.image_quality_tip : i18n.m.libraries.quality_crf_tip} />
+            </label>
+          </div>
+          {#if form.qualityCrf != null}
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
+              <input id="lib-crf" aria-label={i18n.m.libraries.quality_crf} class="flex-1 accent-cyan-600" type="range" min="14" max="40" step="1" bind:value={form.qualityCrf} />
+              <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
+              <span class="badge w-10 justify-center tone-accent">{form.qualityCrf}</span>
+            </div>
+          {:else}
+            <p class="text-xs text-ink-4">{i18n.m.libraries.using_preset_quality}</p>
+          {/if}
+        </div>
+        <div class="mt-4">
+            <div class="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="label" for="lib-tune">{i18n.m.libraries.content_tune} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.content_tune })} text={i18n.m.libraries.content_tune_tip} /></label>
+                <select id="lib-tune" aria-label={i18n.m.libraries.content_tune} class="input" bind:value={form.contentTune}>
+                  <option value="None">{i18n.m.libraries.encoder_default}</option>
+                  <option value="Animation">{i18n.m.libraries.content_tune_animation}</option>
+                  <option value="Grain">{i18n.m.libraries.content_tune_grain}</option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="lib-maxbitrate">{i18n.m.libraries.max_bitrate} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.max_bitrate })} text={i18n.m.libraries.max_bitrate_tip} /></label>
+                <input
+                  id="lib-maxbitrate" aria-label={i18n.m.libraries.max_bitrate}
+                  class="input"
+                  type="number"
+                  min="100"
+                  max="200000"
+                  placeholder={i18n.m.libraries.max_bitrate_none}
+                  bind:value={form.maxBitrateKbps}
+                />
+              </div>
+            </div>
+
+            <!-- A floor only means something inside the window a cap defines, so it is offered
+                 only once a cap exists. Shown then rather than always, because for most people the
+                 honest answer to "minimum bitrate?" is "why would I" — it spends bits on scenes
+                 that need none. -->
+            {#if form.maxBitrateKbps != null}
+              <div class="mt-4 max-w-[16rem]">
+                <label class="label" for="lib-minbitrate">{i18n.m.libraries.min_bitrate} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.min_bitrate })} text={i18n.m.libraries.min_bitrate_tip} /></label>
+                <input
+                  id="lib-minbitrate" aria-label={i18n.m.libraries.min_bitrate}
+                  class="input"
+                  type="number"
+                  min="100"
+                  max={form.maxBitrateKbps}
+                  placeholder={i18n.m.libraries.min_bitrate_none}
+                  bind:value={form.minBitrateKbps}
+                />
+              </div>
+            {/if}
+
+            <div class="mt-4">
+              <Toggle
+                bind:checked={form.strongerAdaptiveQuantisation}
+                label={i18n.m.libraries.adaptive_quantisation}
+                hint={i18n.m.libraries.adaptive_quantisation_tip}
+              />
+            </div>
+
+            {#if hasEncoderTuning}
+              <div class="mt-3 rounded-lg border border-line bg-sunken p-3 text-xs leading-relaxed text-ink-2">
+                {i18n.m.libraries.encoder_tuning_support}
+              </div>
+            {/if}
+        </div>
+
+{/if}
+        {/if}
+
+
       </section>
 
+</ConfigSection>
+{/snippet}
+
+{#snippet audioFields()}
+<ConfigSection id="library-audio" title={i18n.m.libraryWorkflow.audio} description={i18n.m.libraries.audio_channels_desc}>
+{#if showVideoOptions}{#if !isNoEncodeProfile}        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-video-audio-codec">{i18n.m.libraries.audio_track} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.audio_track })} text={i18n.m.libraries.audio_track_tip} /></label>
+            <select id="lib-video-audio-codec" aria-label={i18n.m.libraries.audio_track} class="input" bind:value={form.videoAudioCodec}>
+              <option value={null}>{i18n.m.libraries.audio_profile_default}</option>
+              <option value="copy">{i18n.m.libraries.audio_copy}</option>
+              {#each ['aac', 'opus', 'mp3'] as codec}<option value={codec}>{t(i18n.m.libraries.reencode_to, { codec })}</option>{/each}
+            </select>
+          </div>
+          {#if room === 'encode/audio/advanced'}<div>
+            <label class="label" for="lib-video-audio-bitrate">{i18n.m.libraries.audio_bitrate} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.audio_bitrate })} text={i18n.m.libraries.audio_bitrate_tip} /></label>
+            <input
+              id="lib-video-audio-bitrate" aria-label={i18n.m.libraries.audio_bitrate}
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder={i18n.m.libraries.audio_bitrate_ph}
+              disabled={!form.videoAudioCodec || form.videoAudioCodec === 'copy'}
+              bind:value={form.videoAudioBitrateKbps}
+            />
+          </div>{/if}
+        </div>
+{/if}{@render keepLanguageFields()}{/if}{#if showAudioOptions}      <div class="rounded-lg border border-line bg-lit p-4">
+        <h3 class="text-sm font-semibold text-ink">{i18n.m.libraries.audio}</h3>
+        <p class="mt-1 text-sm leading-relaxed text-ink-3">{i18n.m.libraries.music_note}</p>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="lib-audio-codec">{i18n.m.libraries.target_codec} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_codec })} text={i18n.m.libraries.audio_codec_tip} /></label>
+            <select id="lib-audio-codec" aria-label={i18n.m.libraries.target_codec} class="input" bind:value={form.audioTargetCodec}>
+              <option value={null}>{i18n.m.libraries.audio_default_aac}</option>
+              {#each ['opus', 'aac', 'mp3'] as codec}<option value={codec}>{codec}</option>{/each}
+            </select>
+          </div>
+          {#if room === 'encode/audio/advanced'}<div>
+            <label class="label" for="lib-audio-bitrate">{i18n.m.libraries.bitrate} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.bitrate })} text={i18n.m.libraries.bitrate_tip} /></label>
+            <input
+              id="lib-audio-bitrate" aria-label={i18n.m.libraries.bitrate}
+              class="input"
+              type="number"
+              min="32"
+              max="512"
+              placeholder={i18n.m.libraries.bitrate_ph}
+              bind:value={form.audioBitrateKbps}
+            />
+          </div>{/if}
+        </div>
+        {#if room === 'encode/audio/advanced'}<label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyAudio} />
+          <span>
+            {i18n.m.libraries.reencode_lossy_audio} <InfoTip text={i18n.m.libraries.reencode_lossy_audio_hint} />
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
+              {i18n.m.libraries.reencode_lossy_audio_hint}
+            </span>
+          </span>
+        </label>{/if}
+      </div>{/if}      {#if !isTrackCleanupProfile && ((showVideoOptions && !isRemuxProfile) || showAudioOptions)}
+      <!-- AUDIO CHANNELS — applies wherever audio is re-encoded (video or audio jobs); not for a
+           Photo library, which has no audio. -->
+      <section class="space-y-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-ink-3">{i18n.m.libraries.audio_channels}</h3>
+        <p class="mt-0.5 mb-3 text-xs text-ink-4">{i18n.m.libraries.audio_channels_desc}</p>
+        <label class="flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.downmixToStereo} />
+          <span>
+            {i18n.m.libraries.downmix_label} <InfoTip text={i18n.m.libraries.downmix_hint} />
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
+              {i18n.m.libraries.downmix_hint}
+            </span>
+          </span>
+        </label>
+      </section>
+      {/if}
+
+
+</ConfigSection>
+{/snippet}
+
+{#snippet imageFields()}
+<ConfigSection id="library-images" title={i18n.m.libraries.images} description={i18n.m.libraries.images_desc}>
+          {#if !showImagePreset}
+          <div>
+            <label class="label" for="lib-image-format">{i18n.m.libraries.target_format} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.target_format })} text={i18n.m.libraries.target_format_tip} /></label>
+            <select id="lib-image-format" aria-label={i18n.m.libraries.target_format} class="input" bind:value={form.targetImageFormat}>
+              <option value={null}>{i18n.m.libraries.image_default_jpeg}</option>
+              {#each options.imageFormats as format}<option value={format}>{format.toUpperCase()}</option>{/each}
+            </select>
+          </div>
+          {/if}
+        <!-- Downscale: optional dimension reduction. Aspect ratio is always kept and images are
+             never enlarged; an intentional downscale is allowed past verification. -->
+        <div class="mt-5 border-t border-line pt-4">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="label" for="lib-image-downscale">{i18n.m.libraries.downscale} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.downscale })} text={i18n.m.libraries.downscale_tip} /></label>
+              <select id="lib-image-downscale" aria-label={i18n.m.libraries.downscale} class="input" value={downscaleChoice} onchange={(e) => setDownscaleChoice(e.currentTarget.value as DownscaleChoice)}>
+                <option value="none">{i18n.m.libraries.downscale_none}</option>
+                <option value="4k">{i18n.m.libraries.downscale_4k}</option>
+                <option value="1080p">{i18n.m.libraries.downscale_1080p}</option>
+                <option value="longedge">{i18n.m.libraries.downscale_longedge}</option>
+                <option value="percent">{i18n.m.libraries.downscale_percent}</option>
+              </select>
+            </div>
+            {#if downscaleChoice === 'longedge'}
+              <div>
+                <label class="label" for="lib-image-longedge">{i18n.m.libraries.max_long_edge} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.max_long_edge })} text={i18n.m.libraries.max_long_edge_hint} /></label>
+                <input id="lib-image-longedge" aria-label={i18n.m.libraries.max_long_edge} class="input" type="number" min="16" max="100000" step="1" bind:value={form.imageDownscaleValue} />
+                <p class="mt-1 text-xs text-ink-4">{i18n.m.libraries.max_long_edge_hint}</p>
+              </div>
+            {:else if downscaleChoice === 'percent'}
+              <div>
+                <label class="label" for="lib-image-percent">{i18n.m.libraries.scale_to} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.scale_to })} text={i18n.m.libraries.scale_to_hint} /></label>
+                <input id="lib-image-percent" aria-label={i18n.m.libraries.scale_to} class="input" type="number" min="1" max="99" step="1" bind:value={form.imageDownscaleValue} />
+                <p class="mt-1 text-xs text-ink-4">{i18n.m.libraries.scale_to_hint}</p>
+              </div>
+            {/if}
+          </div>
+        </div>
+
+</ConfigSection>
+{/snippet}
+
+{#snippet imageAdvancedFields()}
+<ConfigSection id="library-images-advanced" title={i18n.m.libraryWorkflow.images_advanced} description={i18n.m.libraries.images_desc}>
+
+      <!-- IMAGES — scoped to Photo and mixed "Other" libraries (still images). -->
+      <section class="space-y-4">
+
+        <div class="grid gap-4 sm:grid-cols-2">
+
+          <div>
+            <div class="mb-1 flex items-center justify-between">
+              <label class="label mb-0" for="lib-image-quality">{i18n.m.libraries.quality} <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.libraries.quality })} text={i18n.m.libraries.image_quality_tip} /></label>
+              <label class="flex cursor-pointer items-center gap-2 text-xs font-normal text-ink-3">
+                <input type="checkbox" class="checkbox" checked={form.imageQuality != null} onchange={(e) => toggleCustomImageQuality(e.currentTarget.checked)} />
+                {i18n.m.libraries.customise} <InfoTip text={room.includes('images') ? i18n.m.libraries.image_quality_tip : i18n.m.libraries.quality_crf_tip} />
+              </label>
+            </div>
+            {#if form.imageQuality != null}
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-ink-4">{i18n.m.libraries.smaller}</span>
+                <input id="lib-image-quality" aria-label={i18n.m.libraries.quality} class="flex-1 accent-cyan-600" type="range" min="1" max="100" step="1" bind:value={form.imageQuality} />
+                <span class="text-xs text-ink-4">{i18n.m.libraries.sharper}</span>
+                <span class="badge w-10 justify-center tone-accent">{form.imageQuality}</span>
+              </div>
+            {:else}
+              <p class="text-xs text-ink-4">{i18n.m.libraries.using_default_80}</p>
+            {/if}
+          </div>
+        </div>
+
+        <label class="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" class="checkbox mt-0.5" bind:checked={form.reencodeLossyImages} />
+          <span>
+            {i18n.m.libraries.reencode_lossy_images} <InfoTip text={i18n.m.libraries.reencode_lossy_images_hint} />
+            <span class="mt-0.5 block text-xs font-normal text-ink-4">
+              {i18n.m.libraries.reencode_lossy_images_hint}
+            </span>
+          </span>
+        </label>
+
+      </section>
+
+</ConfigSection>
+{/snippet}
+
+{#snippet configForm()}
+  <fieldset class="min-w-0 space-y-5" disabled={saving} data-library-workflow>
+    {#if room === 'overview'}
+      <div class="card flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+        <div class="min-w-0"><h2 class="text-base font-semibold">{form.name || i18n.m.libraries.add_library}</h2><p class="mt-1 break-all font-mono text-xs text-ink-3">{form.path || i18n.m.libraries.path_ph}</p></div>
+        <span class="badge {form.enabled ? 'tone-ok' : 'tone-neutral'}">{form.enabled ? i18n.m.libraries.enabled_label : i18n.m.common.off}</span>
+      </div>
+      <div class="grid gap-4">
+        {#each workflowStages as stage, index}
+          <button type="button" class="card card-interactive focus-ring workflow-card flex items-center gap-4 p-5 text-left sm:p-6" onclick={() => goRoom(stage.room)}>
+            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-raised text-accent"><Icon name={stage.icon} class="h-5 w-5" /></span>
+            <span class="min-w-0 flex-1"><span class="mb-1 block text-xs font-medium uppercase tracking-wider text-ink-3">{index + 1} / 4</span><span class="flex flex-wrap items-center gap-2 text-base font-semibold">{stage.title}{#if overrideCount(stage.room)}<span class="badge tone-accent">{t(i18n.m.libraryWorkflow.custom_count, { count: overrideCount(stage.room) })}</span>{/if}</span><span class="mt-1 block text-sm text-ink-3">{stage.summary}</span></span>
+            <Icon name="arrow-right" class="h-5 w-5 shrink-0 text-accent" />
+          </button>
+        {/each}
+      </div>
+    {:else if room === 'source'}
+      {@render sourceFields()}
+      {@render selectionFields()}
+      {@render roomLink('source/advanced')}
+    {:else if room === 'source/advanced'}
+      {@render selectionAdvancedFields()}
+    {:else if room === 'encode'}
+      <div class="grid gap-4 {showVideoOptions && !isNoEncodeProfile ? showImageOptions ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3' : showVideoOptions && showImageOptions ? 'sm:grid-cols-2' : ''}">
+        {#if showVideoOptions && !isTrackCleanupProfile}{@render roomLink('encode/video')}{/if}
+        {#if showVideoOptions && !isNoEncodeProfile}{@render roomLink('encode/quality')}{/if}
+        {#if showVideoOptions || showAudioOptions}{@render roomLink('encode/audio')}{/if}
+        {#if showImageOptions && !isTrackCleanupProfile}{@render roomLink('encode/images')}{/if}
+      </div>
+      {#if showVideoOptions || showImagePreset || (editingId !== null && editingId > 0)}{@render encodeFields()}{/if}
+    {:else if room === 'encode/quality'}
+      {@render qualityFields()}
+    {:else if room === 'encode/video'}
+      {#if isRemuxProfile}{@render videoAdvancedFields()}{:else}{@render videoFields()}{@render roomLink('encode/video/advanced')}{/if}
+    {:else if room === 'encode/video/advanced'}
+      {@render videoAdvancedFields()}
+    {:else if room === 'encode/audio' || room === 'encode/audio/advanced'}
+      {@render audioFields()}
+      {#if room === 'encode/audio' && !isTrackCleanupProfile && (!isRemuxProfile || showAudioOptions)}{@render roomLink('encode/audio/advanced')}{/if}
+    {:else if room === 'encode/images'}
+      {@render imageFields()}
+      {@render roomLink('encode/images/advanced')}
+    {:else if room === 'encode/images/advanced'}
+      {@render imageAdvancedFields()}
+    {:else if room === 'verify' || room === 'verify/advanced'}
+      {#if showVideoOptions && !isNoEncodeProfile}<div class="card p-5"><p class="text-sm text-ink-3">{i18n.m.settings.vmaf_label}: <strong class="text-ink">{vmafMode === 'off' ? i18n.m.common.off : form.minVmafHarmonicMean}</strong></p><button class="btn mt-3 min-h-11" onclick={() => goRoom('encode/quality')}>{i18n.m.libraries.quality_strategy}</button></div>{/if}
+      {@render verifyFields()}
+      {#if room === 'verify'}{@render roomLink('verify/advanced')}{/if}
+    {:else if room === 'automate'}
+      {@render automationFields()}
+    {/if}
+  </fieldset>
+  {#if audioLanguageError || subtitleLanguageError || encoderEffortError || verificationError || (!isNoEncodeProfile && vmafError)}
+    <div class="callout tone-warn mt-5" role="alert">
+      <p class="text-sm font-medium">{i18n.m.libraryWorkflow.review_errors}</p>
+      <div class="mt-2 flex flex-wrap gap-2">
+        {#if audioLanguageError || subtitleLanguageError}<button class="btn min-h-11" onclick={() => goRoom('encode/audio')}>{audioLanguageError || subtitleLanguageError}</button>{/if}
+        {#if encoderEffortError}<button class="btn min-h-11" onclick={() => goRoom('encode/video/advanced')}>{encoderEffortError}</button>{/if}
+        {#if verificationError || (!isNoEncodeProfile && vmafError)}<button class="btn min-h-11" onclick={() => goRoom('verify/advanced')}>{verificationError || vmafError}</button>{/if}
+      </div>
     </div>
   {/if}
-  </div>
   <!-- Actions stay in the document flow until there is something to save. A dirty form pins them
        on normal-height screens; short landscape viewports deliberately keep them static so the
        action bar cannot consume most of the editor. -->
@@ -2419,17 +2497,15 @@
     data-library-actions
     class="library-action-bar {isDirty ? 'library-action-bar-dirty' : ''} card z-10 mt-4 flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6"
   >
-    <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave}>
+    <button class="btn btn-primary min-h-11" onclick={save} disabled={!canSave || saving}>
       <Icon name="check" class="h-4 w-4" />
-      {i18n.m.libraries.save}
+      {saving ? i18n.m.settings.saving : i18n.m.libraries.save}
     </button>
-    <button class="btn min-h-11" onclick={cancelEdit}>
+    <button class="btn min-h-11" onclick={cancelEdit} disabled={saving}>
       <Icon name="x" class="h-4 w-4" />
       {i18n.m.libraries.cancel}
     </button>
-    {#if isDirty}
-      <span class="ml-1 text-xs text-warn">{i18n.m.libraries.unsaved}</span>
-    {/if}
+    <p class="ml-auto text-xs text-ink-3">{#if isDirty}<span class="mb-1 block text-warn">{i18n.m.libraries.unsaved}</span>{/if}{i18n.m.libraryWorkflow.draft_hint}</p>
   </div>
 {/snippet}
 
@@ -2442,6 +2518,15 @@
     </nav>
   {/if}
 
+  {#if room !== 'overview' && activeTab === 'rules'}
+    <nav class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={i18n.m.libraryWorkflow.workflow}>
+      {#each workflowStages as stage, index}
+        <button type="button" class="card card-interactive focus-ring workflow-card flex min-h-14 items-center gap-3 px-4 py-3 text-left text-sm {stageRoom === stage.room ? 'text-accent ring-1 ring-inset ring-accent/40' : 'text-ink-2'}" aria-current={stageRoom === stage.room ? 'step' : undefined} onclick={() => goRoom(stage.room)}>
+          <span class="text-xs tabular-nums text-ink-3">{index + 1}</span><span class="min-w-0 break-words font-medium">{stage.title}</span>
+        </button>
+      {/each}
+    </nav>
+  {/if}
   {#if activeTab === 'rules' || editingId === 0}
     <div class="space-y-4">
       {@render configForm()}
@@ -2576,6 +2661,29 @@
 {/if}
 
 <style>
+  /* Match Settings' readable labels and comfortable control targets while retaining
+     the shared card surfaces, theme tokens and full-width room layout. */
+  [data-library-workflow] :global(.label) {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--ink-2);
+  }
+  [data-library-workflow] :global(.input) {
+    min-height: 2.75rem;
+  }
+  [data-library-workflow] :global([data-config-section]) {
+    transition: box-shadow 180ms ease;
+  }
+  [data-library-workflow] :global([data-config-section]:hover),
+  [data-library-workflow] :global([data-config-section]:focus-within) {
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-library-workflow] :global([data-config-section]) { transition: none; }
+  }
+
   @media (min-height: 501px) {
     .library-action-bar-dirty {
       position: sticky;

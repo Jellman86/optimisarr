@@ -158,7 +158,7 @@ async function mockWorkingQueue(page: Page, fixture: { jobs: ReturnType<typeof j
   })
 }
 
-test('Now and next keeps working jobs separate and opens keyboard-accessible inline details', async ({ page }) => {
+test('Now and next keeps working jobs separate and opens a keyboard-accessible job dialog', async ({ page }) => {
   await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Transcoding', null), progress: .9999 }, job(2, 'Queued', null)] })
   await page.goto('/#/queue')
   const working = page.getByRole('region', { name: 'Working now' })
@@ -167,7 +167,7 @@ test('Now and next keeps working jobs separate and opens keyboard-accessible inl
   const opener = working.getByRole('button', { name: 'View job' })
   await opener.focus()
   await page.keyboard.press('Enter')
-  const details = page.getByRole('region', { name: 'Job details' })
+  const details = page.getByRole('dialog', { name: /Job details/ })
   await expect(details).toBeVisible()
   await expect(details.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '99')
   await expect(details.getByText('Film 1.mkv', { exact: true })).toBeVisible()
@@ -199,6 +199,9 @@ test('pausing local work leaves remote work and verification described accuratel
   await expect(working.locator('article').filter({ hasText: 'Paused' })).toHaveCount(1)
   await expect(working.getByText('Now encoding on Mac mini', { exact: true })).toBeVisible()
   await expect(working.getByText('Now verifying', { exact: true })).toBeVisible()
+  await working.getByRole('button', { name: 'View job', exact: true }).first().click()
+  await expect(page.getByRole('dialog').locator('header .badge')).toHaveText('Paused')
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Resume queue', exact: true }).click()
   await expect(working.getByText('Now encoding', { exact: true })).toBeVisible()
 })
@@ -218,8 +221,9 @@ test('missing posters and long paths keep the job controls usable on a phone', a
   await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Transcoding', null), relativePath: 'Films/' + 'A long media filename '.repeat(10) + '.mkv', progress: .64 }] })
   await page.goto('/#/queue')
   await page.getByRole('button', { name: 'View job', exact: true }).click()
-  const details = page.getByRole('region', { name: 'Job details' })
-  await expect(details.getByRole('button', { name: 'Stop & remove' })).toBeVisible()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details.getByRole('button', { name: 'Stop & remove' })).toBeInViewport()
+  await expect(details.getByRole('button', { name: 'Close details' })).toBeInViewport()
   await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 375)
   const close = await details.getByRole('button', { name: 'Close details' }).boundingBox()
   expect(close!.x + close!.width).toBeLessThanOrEqual(375)
@@ -270,14 +274,22 @@ test('a completed job moves into history while its open details remain current',
   const send = await queueHub(page)
   await page.goto('/#/queue')
   await page.getByRole('button', { name: 'View job', exact: true }).click()
+  await send('jobProgress', { jobId: 1, progress: .95, fps: 24, speed: 2, etaSeconds: 20 })
+  await expect(page.getByRole('dialog').getByRole('progressbar')).toHaveAttribute('aria-valuenow', '95')
   fixture.jobs = [{ ...job(1, 'ReadyToReplace', true), progress: 1 }]
   await send('jobsChanged')
   await expect(page.getByRole('region', { name: 'Working now' })).toHaveCount(0)
-  const details = page.getByRole('region', { name: 'Job details' })
+  const details = page.getByRole('dialog', { name: /Job details/ })
   await expect(details.getByRole('button', { name: 'Replace original' })).toBeVisible()
   await expect(page.locator('tbody tr')).toHaveCount(1)
   await details.getByRole('button', { name: 'Close details' }).click()
   await expect(page.locator('#queue-job-1')).toBeFocused()
+  await page.locator('#queue-job-1').click()
+  fixture.jobs = [{ ...job(1, 'Completed', true), progress: 1 }]
+  await send('jobsChanged')
+  await expect(details.locator('header .badge')).toHaveText('Completed')
+  await expect(details.locator('footer')).toHaveCount(0)
+  await page.keyboard.press('Escape')
 })
 
 test('failed stop keeps the job, exposes the error, and never sends the remove request', async ({ page }) => {
@@ -290,9 +302,55 @@ test('failed stop keeps the job, exposes the error, and never sends the remove r
   page.on('dialog', dialog => dialog.accept())
   await page.goto('/#/queue')
   await page.getByRole('button', { name: 'View job', exact: true }).click()
-  const details = page.getByRole('region', { name: 'Job details' })
+  const details = page.getByRole('dialog', { name: /Job details/ })
   await details.getByRole('button', { name: 'Stop & remove', exact: true }).click()
   await expect(details).toContainText('Unable to stop encoder')
   expect(requests.some(request => request.startsWith('DELETE'))).toBe(false)
   await expect(details.getByRole('button', { name: 'Stop & remove', exact: true })).toBeEnabled()
+})
+
+
+test('opening a job far down the queue preserves the row and scroll position on Escape or backdrop dismissal', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: Array.from({ length: 80 }, (_, i) => job(i + 1, 'Queued', null)) })
+  await page.goto('/#/queue')
+  const row = page.locator('#queue-job-75')
+  await row.scrollIntoViewIfNeeded()
+  const before = await page.locator('main').evaluate(el => el.scrollTop)
+  const rowBefore = await row.boundingBox()
+  expect(before).toBeGreaterThan(2000)
+  for (const dismissal of ['escape', 'backdrop']) {
+    await row.click()
+    const dialog = page.getByRole('dialog', { name: 'Job details Film 75' })
+    await expect(dialog).toBeInViewport({ ratio: 1 })
+    expect(await dialog.evaluate(el => el.matches(':modal'))).toBe(true)
+    await expect(dialog.getByRole('button', { name: 'Close details' })).toBeInViewport()
+    expect(await page.locator('main').evaluate(el => el.scrollTop)).toBeCloseTo(before, 0)
+    if (dismissal === 'escape') await page.keyboard.press('Escape')
+    else await page.mouse.click(2, 2)
+    await expect(dialog).toHaveCount(0)
+    await expect(row).toBeFocused()
+    expect(await page.locator('main').evaluate(el => el.scrollTop)).toBeCloseTo(before, 0)
+    expect((await row.boundingBox())!.y).toBeCloseTo(rowBefore!.y, 0)
+  }
+})
+
+test('job dialog contains keyboard focus and keeps artwork and actions visible in a short window', async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 })
+  await mockWorkingQueue(page, { jobs: [{ ...job(1, 'Failed', false), relativePath: 'Films/' + 'A long name '.repeat(20) + '.mkv', verificationReportJson: JSON.stringify({ checks: [{ name: 'Perceptual quality (VMAF)', outcome: 'Failed', detail: 'Score 84; target 93.' }] }) }] })
+  await page.route('**/api/media/*/thumbnail', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="#52748c"/></svg>' }))
+  await page.goto('/#/queue')
+  await page.locator('#queue-job-1').focus()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeInViewport({ ratio: 1 })
+  await expect(dialog.locator('[data-thumbnail] img')).toHaveCSS('opacity', '1')
+  await expect(dialog.getByRole('button', { name: 'Close details' })).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: 'Retry at higher quality' })).toBeInViewport()
+  await expect(dialog.getByRole('button', { name: 'Remove from queue' })).toBeInViewport()
+  for (let i = 0; i < 10; i++) {
+    await page.keyboard.press('Tab')
+    // Native dialogs allow browser-chrome focus, but never a background control.
+    expect(await dialog.evaluate(el => el.contains(document.activeElement) || document.activeElement === document.body)).toBe(true)
+  }
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })

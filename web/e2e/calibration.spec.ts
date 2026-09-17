@@ -130,7 +130,7 @@ function json(route: Route, body: unknown) {
 
 async function openLab(page: Page, mediaKind: CalibrationMediaKind = 'Video', deferVideoContent = false, keepPreparing = false, revealImmediately = false, enableDiagnostics = false) {
   await mockApp(page, mediaKind, deferVideoContent, keepPreparing, revealImmediately)
-  await page.goto('/#/libraries/1/configure')
+  await page.goto('/#/libraries/1/configure/encode')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/quality-check$/)
   if (enableDiagnostics) {
@@ -214,7 +214,7 @@ test('quality check marks the original reference while keeping media-specific ca
 
 test('active stream bypass is an explicit per-check option in the start request', async ({ page }) => {
   await mockApp(page)
-  await page.goto('/#/libraries/1/configure')
+  await page.goto('/#/libraries/1/configure/encode')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   const bypass = page.getByRole('checkbox', { name: 'Ignore active media streams for this check' })
   await expect(bypass).not.toBeChecked()
@@ -230,7 +230,7 @@ test('active stream bypass is an explicit per-check option in the start request'
 
 test('temporary stream verification is opt-in', async ({ page }) => {
   await mockApp(page)
-  await page.goto('/#/libraries/1/configure')
+  await page.goto('/#/libraries/1/configure/encode')
   await page.getByRole('button', { name: 'Personal quality check' }).click()
   const proof = page.getByRole('checkbox', { name: 'Temporary stream verification' })
   await expect(proof).not.toBeChecked()
