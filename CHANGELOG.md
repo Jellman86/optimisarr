@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Queue artwork stays visible through live updates and refreshes. Loaded posters and
+  missing-artwork placeholders now retain their state until the media item changes.
 - **Library configuration follows the processing workflow.** Choose files, Encode, Verify,
   and Schedule & replace open focused pages with breadcrumbs and browser Back support.
   Specialist encoding, audio, image, eligibility and verification controls have their own
