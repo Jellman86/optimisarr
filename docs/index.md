@@ -52,6 +52,6 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 
 ## A note on screenshots
 
-User-guide screenshots use fabricated dummy library data. Some retained screenshots show an
-earlier layout; the written navigation uses the current interface. Design previews may use freely
-licensed sample media with attribution beside the preview.
+Screenshots use fabricated dummy media created for documentation. No copyrighted material is
+used. They are captured from the current local UI with original artwork and simulated API responses.
+See [Screenshot capture](images/README.md) for the repeatable capture command and coverage.

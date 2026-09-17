@@ -44,6 +44,10 @@ Compare the original and replacement players, sizes, and verification report. Re
 allow purge. Once an original is purged, Optimisarr cannot restore it; keep an
 independent backup for media that cannot be replaced.
 
+![Full-page Quarantine review with a breadcrumb, original and replacement sizes, and synthetic media comparison players](../images/optimisarr-quarantine-review-dark.png)
+
+![Quarantine verification report with passed decode, duration, stream, VMAF, and size checks](../images/optimisarr-quarantine-verification-dark.png)
+
 Rollback stages the optimised file before restoring the quarantined original. If
 the restore fails, the optimised file is put back at the library path and the
 replacement remains available for another rollback attempt.

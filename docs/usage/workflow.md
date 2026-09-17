@@ -37,7 +37,7 @@ curl http://localhost:8787/api/ready
 A library is a folder plus rules. Start with one small Film, TV, Music, Photo,
 or Other library.
 
-![Libraries page without sidebar, showing library cards with scan, enqueue, configure, access, preset, and automation badges](../images/optimisarr-libraries-main-dark.png)
+![Library cards showing media type, file count, eligible files, preset, schedule, and Scan controls](../images/optimisarr-libraries-main-dark.png)
 
 Do this:
 
@@ -55,10 +55,10 @@ Do this:
 8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
    applies changes from all stages together. Advanced pages are optional refinements.
 
-The library overview groups controls by processing stage. The screenshot below records the earlier
-single-page editor; use the stage names above in the current interface.
+The library overview groups controls by processing stage. Each stage opens its own page, and
+breadcrumbs return to the overview without discarding your draft.
 
-![Earlier library editor showing library identity and optimisation controls](../images/optimisarr-library-configure-dark.png)
+![Library overview showing Choose files, Encode, Verify, and Schedule & replace stages](../images/optimisarr-library-configure-dark.png)
 
 Preset guide:
 
@@ -213,7 +213,11 @@ same panel shows the space currently eligible for cleanup. Use **Clean up now** 
 run the saved policy immediately after reviewing the failed-work/quarantine
 breakdown and permanent-deletion confirmation.
 
-![Earlier Queue detail presentation; current job rows open a centred dialog](../images/optimisarr-queue-detail-dark.png)
+![Current-job dialog showing encoding progress, media artwork, resource graphs, and stop controls](../images/optimisarr-queue-detail-dark.png)
+
+The working-job card keeps progress, the assigned encoder, and **View job** together.
+
+![Working job with fabricated Lumen Coast artwork, 68% encoding progress, encoder, speed, and stage indicators](../images/optimisarr-queue-working-job-dark.png)
 
 Use the row actions carefully:
 

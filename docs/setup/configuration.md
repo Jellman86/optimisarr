@@ -28,7 +28,7 @@ installations upgraded from an older release never see the wizard automatically.
 without deleting or resetting any configuration, use **Settings → System → First-run setup → Run
 setup again**.
 
-![Earlier Settings layout; current queue controls are under Encoding and replacement policy under Files & safety](../images/optimisarr-settings-general-dark.png)
+![Encoding settings showing concurrent jobs, CPU limits, hardware selection, and scan interval](../images/optimisarr-settings-general-dark.png)
 
 ## Admin token
 
@@ -102,6 +102,8 @@ the former global policy into each existing library so behaviour does not change
 
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
+
+![Library Advanced encoding page with breadcrumbs, codec and container overrides, encoder effort, and bitrate controls](../images/optimisarr-library-advanced-encoding-dark.png)
 
 ## Media toolchain overrides
 
@@ -344,7 +346,7 @@ includes libraries, activity watchers, notification targets, Arr connections,
 and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
 
-![Configuration backup and first-run setup controls, now under Settings → System](../images/optimisarr-settings-backup-dark.png)
+![Backup and restore card explaining export contents and providing Export config and Import config controls](../images/optimisarr-settings-backup-dark.png)
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

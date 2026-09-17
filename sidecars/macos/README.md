@@ -100,6 +100,15 @@ candidate and temporary work files.
 
 ## The Compact Monitor
 
+Screenshots use fabricated dummy media created for documentation, invented machine names and
+example server addresses. No copyrighted media material is used.
+
+<img src="../../docs/images/optimisarr-sidecar-macos-encoding.png" width="390" alt="Dark Mac Compact Monitor showing a fabricated Prism Field encoding job, Stellar icon and pause control">
+
+<img src="../../docs/images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Light Mac Preferences showing disk, chosen-folder and memory work-location choices inside the native panel">
+
+[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
+
 Click the Stellar icon in the menu bar for the compact activity panel. It shows the Mac's name,
 connection state, current jobs or **Ready for work**, and CPU/GPU/held-job readings. Unknown values
 stay unavailable; macOS does not expose VideoToolbox media-engine utilisation, so the GPU reading
@@ -331,7 +340,7 @@ It builds, signs with the hardened runtime and a secure timestamp (signing the b
 and `ffprobe` first, as notarisation requires), archives with `ditto`, submits to Apple, waits,
 staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will. It
 then builds a disk image from the stapled app and notarises and staples that too. Before notarisation,
-`verify-app.sh` copies the signed app to a temporary directory and renders all sixteen light/dark
+`verify-app.sh` copies the signed app to a temporary directory and renders all twenty light/dark
 fixture states using embedded artwork, without pairing or contacting a server. Final `.sha256`
 files are generated after stapling. Attach the `.dmg`, `.zip`, checksums and corresponding-source
 parts to the GitHub Release.

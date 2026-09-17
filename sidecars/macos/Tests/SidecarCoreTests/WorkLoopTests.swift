@@ -131,6 +131,24 @@ struct AssignmentCommandTests {
 
 // MARK: - A stand-in server
 
+/// Holds the transfer until its task is cancelled. The renewal waits for the transfer to start,
+/// so executor load cannot make the fake download finish before the test actually loses its lease.
+private final class SuspendedSourceTransfer: Sendable {
+    private let started = AsyncStream<Void>.makeStream()
+    private let suspended = AsyncStream<Void>.makeStream()
+
+    func waitUntilStarted() async throws {
+        for await _ in started.stream {}
+        try Task.checkCancellation()
+    }
+
+    func waitForCancellation() async throws {
+        started.continuation.finish()
+        for await _ in suspended.stream {}
+        try Task.checkCancellation()
+    }
+}
+
 /// Answers the worker routes the way Optimisarr does, and records what it was sent, so the whole
 /// claim-fetch-encode-deliver flow can be walked without a server or an ffmpeg.
 final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
@@ -167,6 +185,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var sourceOffsets: [Int64] = []
     private(set) var sourceDownloads = 0
     var sourceDelay: TimeInterval = 0
+    var beforeSourceCompletion: (@Sendable () async throws -> Void)?
     private(set) var sourceDownloadCompleted = false
     var deliveryDelay: TimeInterval = 0
     private(set) var deliveryCompleted = false
@@ -258,6 +277,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
 
     func download(_ request: URLRequest, to destination: URL) async throws -> HTTPURLResponse {
         sourceDownloads += 1
+        try await beforeSourceCompletion?()
         if sourceDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(sourceDelay * 1_000_000_000))
         }
@@ -841,17 +861,19 @@ struct JobRunnerTests {
         #expect(server.deliveredFile == nil)
     }
 
-    @Test("losing the lease during a source transfer cancels the download")
+    @Test("losing the lease during a source transfer cancels the download", .timeLimit(.minutes(1)))
     func lostLeaseCancelsSourceTransfer() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 1, count: 64))
-        server.sourceDelay = 0.2
+        let transfer = SuspendedSourceTransfer()
+        server.beforeSourceCompletion = { try await transfer.waitForCancellation() }
         server.renewStatus = 409
         let runner = JobRunner(
             client: SidecarClient(transport: server),
             ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
             runner: FakeTranscodeRunner(),
             scratchRoot: scratch(),
-            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+            load: MachineLoadSampler(gpu: { nil }),
+            sleep: { _ in try await transfer.waitUntilStarted() })
 
         let outcome = await runner.execute(
             assignment(renewWithinSeconds: 10), pairing: pairing) { _ in }
@@ -860,6 +882,7 @@ struct JobRunnerTests {
             Issue.record("expected the lease to be lost, got \(outcome)")
             return
         }
+        #expect(server.sourceDownloads == 1)
         #expect(!server.sourceDownloadCompleted)
         #expect(server.deliveredFile == nil)
     }

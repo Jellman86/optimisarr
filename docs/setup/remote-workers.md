@@ -6,6 +6,8 @@ scratch space and return candidates and measurements; they cannot modify your or
 
 Remote workers remain an opt-in preview. A single container is still the default installation.
 
+Screenshots use fabricated dummy media created for documentation. No copyrighted material is used.
+
 ## Enable and pair
 
 1. Set `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in the container environment and deploy it.
@@ -39,6 +41,8 @@ may run**. Placement is saved per library and applies to eligible video re-encod
 | **Prefer a worker** | Give an online, non-draining worker first opportunity, then allow the container after up to ten minutes. The waiting window starts when the job becomes eligible to run, not when it was queued. |
 | **Only on workers** | Wait for a compatible worker; do not fall back to a local video encode. |
 
+![Advanced eligibility page showing its library breadcrumb and all four work-placement choices](../images/optimisarr-library-advanced-eligibility-dark.png)
+
 Turning **Remote workers** off makes placement fall back to the container, including libraries
 saved as **Only on workers**. Keep remote workers enabled to enforce worker-only placement.
 Automation windows, pause rules, capability requirements, and disk checks still apply. Audio-only,
@@ -50,6 +54,8 @@ Enable **Verify entirely on the sidecar** under **Settings â†’ Files & safety â†
 and save. This setting defaults off and applies to newly issued assignments. Updated sidecars
 negotiate protocol 2 on heartbeat; they do not need a new pairing. Older workers cannot claim an
 assignment that requires full verification.
+
+![Files and safety settings with Remote workers enabled and Verify entirely on the sidecar selected](../images/optimisarr-settings-files-dark.png)
 
 The worker performs both media probes, the complete candidate decode, packet-timestamp checks,
 VMAF when required, and requested audio loudness/true-peak measurements. The server validates the
