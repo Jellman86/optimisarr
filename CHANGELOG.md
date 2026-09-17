@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.13 — 2026-09-17
+
 ### Added
 
 - Coordinated container and native download releases use the shared application version,
