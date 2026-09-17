@@ -94,13 +94,15 @@ function setupState(currentStep = 5) {
   }
 }
 
-async function mockSetup(page: Page, currentStep = 5, configuredLibrary = library) {
+async function mockSetup(page: Page, currentStep = 5, configuredLibrary: typeof library | null = library) {
   let readinessCalls = 0
+  let completed = false
+  let currentLibraries = configuredLibrary ? [{ ...configuredLibrary }] : []
   await page.route('**/api/**', async (route: Route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
     if (path === '/api/auth/status') return json(route, { required: false })
-    if (path === '/api/setup' && route.request().method() === 'GET') return json(route, setupState(currentStep))
+    if (path === '/api/setup' && route.request().method() === 'GET') return json(route, completed ? { ...setupState(5), completedStep: 5, completed: true } : setupState(currentStep))
     if (path === '/api/setup/readiness') {
       readinessCalls += 1
       return json(route, {
@@ -131,7 +133,24 @@ async function mockSetup(page: Page, currentStep = 5, configuredLibrary = librar
         error: null,
       },
     })
-    if (path === '/api/libraries') return json(route, [configuredLibrary])
+    if (path === '/api/libraries') {
+      if (route.request().method() === 'POST') {
+        const created = { ...library, ...route.request().postDataJSON(), id: currentLibraries.length + 1 }
+        currentLibraries.push(created)
+        return json(route, created)
+      }
+      return json(route, currentLibraries)
+    }
+    if (path === '/api/libraries/1' && route.request().method() === 'PUT') {
+      currentLibraries[0] = { ...currentLibraries[0], ...route.request().postDataJSON(), id: 1 }
+      return json(route, currentLibraries[0])
+    }
+    if (path === '/api/fs/browse') {
+      const folder = url.searchParams.get('path') || '/'
+      return json(route, folder === '/'
+        ? { path: '/', parent: null, directories: [{ name: 'media', path: '/media' }] }
+        : { path: folder, parent: '/', directories: [] })
+    }
     if (path === '/api/library-options') return json(route, {
       mediaTypes: ['Film', 'TV', 'Music', 'Photo', 'Other'],
       ruleProfiles: ['CompatibilityH264', 'ConservativeHevc', 'ExperimentalAv1', 'RemuxCleanup', 'TrackCleanup'],
@@ -153,7 +172,7 @@ async function mockSetup(page: Page, currentStep = 5, configuredLibrary = librar
       return json(route, [])
     }
     if (path === '/api/libraries/1/access') return json(route, {
-      path: configuredLibrary.path, exists: true, readable: true, writable: true, ok: true,
+      path: currentLibraries[0]?.path ?? '/media/films', exists: true, readable: true, writable: true, ok: true,
       message: 'ready', issue: 'none', fileSystemId: 'dev', mountId: '1', mountPoint: '/',
       fileSystemType: 'ext4', availableBytes: 100_000_000_000, totalBytes: 200_000_000_000,
       atomicWithWork: true, atomicWithQuarantine: true,
@@ -162,14 +181,22 @@ async function mockSetup(page: Page, currentStep = 5, configuredLibrary = librar
     if (path === '/api/inventory') return json(route, {
       items: [], total: 0, counts: { all: 0, eligible: 0, skipped: 0, unprobed: 0 },
     })
-    if (path === '/api/setup/progress') return json(route, setupState(Math.min(currentStep + 1, 5)))
-    if (path === '/api/setup/apply') return json(route, {
-      state: { ...setupState(5), completedStep: 5, completed: true },
-      libraryCount: 1,
-      settingsApplied: true,
-      recommendationsApplied: true,
-      alreadyApplied: false,
-    })
+    if (path === '/api/setup/progress') {
+      currentStep = Math.min(route.request().postDataJSON().completedStep + 1, 5)
+      return json(route, setupState(currentStep))
+    }
+    if (path === '/api/setup/apply') {
+      completed = true
+      return json(route, {
+        state: { ...setupState(5), completedStep: 5, completed: true },
+        libraryCount: currentLibraries.length,
+        settingsApplied: true,
+        recommendationsApplied: true,
+        alreadyApplied: false,
+      })
+    }
+    if (path === '/api/jobs' || path === '/api/jobs/failures') return json(route, [])
+    if (path === '/api/queue/status') return json(route, { runningJobs: 0, suspendedEncodeCount: 0, canStart: true })
     return route.fulfill({ status: 404, body: '{}' })
   })
   return () => readinessCalls
@@ -321,4 +348,175 @@ test('review remains usable at the WCAG 400% reflow equivalent and in landscape'
   await page.setViewportSize({ width: 844, height: 390 })
   await expect(page.locator('#setup-content h1')).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+
+test('setup offers theme and language controls and focuses each new step', async ({ page }) => {
+  await mockSetup(page, 1)
+  await page.goto('/')
+  const theme = page.getByRole('button', { name: 'Toggle theme', exact: true })
+  await expect(theme).toBeVisible()
+  await expect(theme.locator('svg path')).toHaveAttribute('d', /.+/)
+  const before = await page.locator('html').getAttribute('class')
+  await theme.click()
+  await expect.poll(() => page.locator('html').getAttribute('class')).not.toBe(before)
+  await expect(theme.locator('svg path')).toHaveAttribute('d', /.+/)
+  await expect(page.getByRole('button', { name: 'Language: English' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.locator('#setup-content h1')).toHaveText('Check the media toolchain')
+  await expect(page.locator('#setup-content h1')).toBeFocused()
+})
+
+test('a failed initial readiness request can retry without advancing or losing the wizard', async ({ page }) => {
+  await mockSetup(page, 5)
+  let failures = 1
+  await page.route('**/api/setup/readiness', route => failures-- > 0
+    ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Readiness unavailable' }) })
+    : route.fallback())
+  await page.goto('/')
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Finish setup' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Finish setup' })).toBeEnabled()
+})
+
+test('fractional concurrency cannot reach final review', async ({ page }) => {
+  await mockSetup(page, 4)
+  await page.goto('/')
+  await page.getByRole('spinbutton', { name: 'Concurrent jobs' }).fill('1.5')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('spinbutton', { name: 'Concurrent jobs' })).toHaveAttribute('aria-invalid', 'true')
+})
+
+test('embedded library configuration never offers an unreachable quality-check page', async ({ page }) => {
+  await mockSetup(page, 3)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Configure', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Processing workflow' }).getByRole('button', { name: /Encode/ }).click()
+  await page.getByRole('button', { name: 'Video settings', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Personal quality check', exact: true })).toHaveCount(0)
+})
+
+test('re-running setup reports saved automation and schedules accurately', async ({ page }) => {
+  await mockSetup(page, 5, { ...library, autoEnqueueEnabled: true, autoReplace: true, autoEnqueueWindowStart: '02:00', autoEnqueueWindowEnd: '07:00' })
+  await page.goto('/')
+  await expect(page.locator('#setup-content')).toContainText('02:00–07:00')
+  await expect(page.locator('#setup-content')).toContainText('auto-replace')
+  await expect(page.getByText('Skipped — add later', { exact: true })).toHaveCount(0)
+})
+
+
+test('folder picker closes with Escape and never selects a stale folder after a navigation failure', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 })
+  await mockSetup(page, 3, null)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create library', exact: true }).click()
+  const browse = page.getByRole('button', { name: 'Browse', exact: true }).first()
+  await browse.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(browse).toBeFocused()
+  await browse.click()
+  await expect(dialog).toHaveAccessibleName('Choose a folder')
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.route('**/api/fs/browse?path=*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Folder unavailable' }) }))
+  await dialog.getByRole('button', { name: 'media', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Select folder', exact: true })).toBeDisabled()
+})
+
+for (const theme of ['light', 'dark']) {
+  test(`fresh setup completes all steps in ${theme} mode, preserves a draft on reload and exits the receipt`, async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.addInitScript(theme => localStorage.setItem('optimisarr.theme', theme), theme)
+    await mockSetup(page, 1, null)
+    await page.goto('/')
+    const next = page.getByRole('button', { name: 'Continue', exact: true })
+    await next.click()
+    await expect(page.locator('#setup-content h1')).toHaveText('Check the media toolchain')
+    await next.click()
+    await expect(next).toBeDisabled()
+    await page.getByRole('button', { name: 'Create library', exact: true }).click()
+    await page.locator('#lib-name').fill('Family films')
+    await page.getByRole('button', { name: 'Browse', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'media', exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Select folder', exact: true }).click()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByRole('article', { name: 'Family films' })).toContainText('/media')
+    await next.click()
+    await page.getByRole('spinbutton', { name: 'Concurrent jobs' }).fill('2')
+    await page.reload()
+    await expect(page.getByRole('spinbutton', { name: 'Concurrent jobs' })).toHaveValue('2')
+    await next.click()
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const applied = page.waitForRequest(request => request.url().endsWith('/api/setup/apply'))
+    await page.getByRole('button', { name: 'Finish setup', exact: true }).click()
+    expect((await applied).postDataJSON().settings.maxConcurrentJobs).toBe(2)
+    await expect(page.getByRole('heading', { name: 'Setup is safely applied' })).toBeVisible()
+    await page.getByRole('button', { name: 'Review candidates', exact: true }).click()
+    await expect(page).toHaveURL(/#\/inventory$/)
+    await expect(page.getByRole('heading', { name: 'Inventory', exact: true })).toBeVisible()
+    expect(errors).toEqual([])
+  })
+}
+
+test('system checks let a missing library path reach the editor, but library access still blocks progress', async ({ page }) => {
+  await mockSetup(page, 2)
+  await page.route('**/api/setup/readiness', async route => {
+    await json(route, {
+      databaseAvailable: true, ready: false, platform: 'compose', recommendation,
+      paths: [
+        { name: 'Config', role: 'config', path: '/config', issue: 'none', exists: true, readable: true, writable: true, availableBytes: null, totalBytes: null },
+        { name: 'Films', role: 'library', libraryId: 1, path: '/media/films', issue: 'missing', exists: false, readable: false, writable: false, availableBytes: null, totalBytes: null },
+      ],
+      storageRelationships: [],
+      tools: [{ name: 'FFmpeg', command: 'ffmpeg', available: true, required: true, version: '7.1', error: null }],
+    })
+  })
+  await page.route('**/api/libraries/1/access', route => json(route, { path: '/media/films', exists: false, readable: false, writable: false, ok: false, message: 'Library folder is missing', issue: 'missing', availableBytes: null, atomicWithWork: null, atomicWithQuarantine: null }))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Configure', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Library folder is missing')
+  await expect(page.getByRole('button', { name: 'Configure', exact: true })).toBeVisible()
+})
+
+test('a failed apply keeps the reviewed plan editable and can be retried', async ({ page }) => {
+  await mockSetup(page, 5)
+  let failures = 1
+  await page.route('**/api/setup/apply', route => failures-- > 0
+    ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Save unavailable' }) })
+    : route.fallback())
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Finish setup', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Finish setup', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Finish setup', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Setup is safely applied' })).toBeVisible()
+})
+
+test('restricted draft storage cannot break setup or completion', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.addInitScript(() => {
+    for (const method of ['getItem', 'setItem', 'removeItem'] as const) {
+      const original = Storage.prototype[method]
+      Storage.prototype[method] = function (key: string, value?: string) {
+        if (key === 'optimisarr.setup.plan.v1') throw new DOMException('Storage denied', 'SecurityError')
+        return original.call(this, key, value!)
+      }
+    }
+  })
+  await mockSetup(page, 5)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Finish setup', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Setup is safely applied' })).toBeVisible()
+  expect(errors).toEqual([])
 })

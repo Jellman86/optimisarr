@@ -4,6 +4,13 @@
 
 ### Changed
 
+- **Setup now follows the current application theme from start to finish.** Theme and
+  language controls are available during onboarding, with clearer status colours,
+  keyboard focus and a mobile-friendly folder picker. Failed checks can be retried,
+  invalid job limits are caught before review, and saved library automation is shown
+  accurately when setup is restarted. Completing setup opens its destination reliably
+  while preserving the reviewed plan across refreshes.
+
 - **Stellar cube is the default application icon.** Three drifting star fields, soft glow,
   moving light and a projected shadow stay calm at rest; active work adds gentle precession
   and occasional inward/outward depth changes before smoothly settling. Favicons and
