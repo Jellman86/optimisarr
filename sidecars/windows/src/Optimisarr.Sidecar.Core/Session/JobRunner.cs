@@ -128,8 +128,20 @@ public sealed class JobRunner(
                         pairing, assignment.LeaseId, boundTo, candidateHash, logs, cancellationToken);
                     report?.Invoke(offered
                         ? $"Job {assignment.JobId}: quality evidence accepted, so the server need not measure"
-                        : $"Job {assignment.JobId}: quality evidence was not accepted; the server will measure");
+                        : assignment.FullVerification is null
+                            ? $"Job {assignment.JobId}: quality evidence was not accepted; the server will measure"
+                            : $"Job {assignment.JobId}: quality evidence was not accepted; strict verification will fail this job");
                 }
+            }
+
+            if (assignment.FullVerification is { } verification)
+            {
+                report?.Invoke($"Job {assignment.JobId}: full verification on this worker");
+                candidateHash ??= await JobTransfer.HashAsync(candidate, cancellationToken);
+                var evidence = await WhileRenewing(pairing, assignment, RemoteStage.Measuring, null,
+                    cancellationToken, token => FullVerification.MeasureAsync(
+                        ffmpegPath, source, candidate, verification, declaredHash ?? string.Empty, candidateHash, token));
+                await client.ReportVerificationAsync(pairing, assignment.LeaseId, evidence, cancellationToken);
             }
 
             report?.Invoke($"Job {assignment.JobId}: delivering");
@@ -289,7 +301,9 @@ public sealed class JobRunner(
             {
                 report?.Invoke(
                     $"Job {assignment.JobId}: the candidate could not be aligned against the source,"
-                    + " so the server will score this itself");
+                    + (assignment.FullVerification is null
+                        ? " so the server will score this itself"
+                        : " so strict verification will fail this job without server fallback"));
                 return null;
             }
 

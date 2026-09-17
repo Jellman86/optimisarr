@@ -254,6 +254,8 @@ public struct SidecarClient: Sendable {
             "freeScratchBytes": freeScratchBytes,
             "maxConcurrency": maxConcurrency,
             "sidecarVersion": SidecarBuild.version,
+            "protocolMinimum": WorkerProtocol.minimum,
+            "protocolMaximum": WorkerProtocol.maximum,
         ]
         if let capabilities {
             body["videoEncoders"] = capabilities.videoEncoders
@@ -407,6 +409,19 @@ public struct SidecarClient: Sendable {
             throw SidecarError.leaseLost(reason: Self.message(data) ?? "That lease is no longer held.")
         case let status:
             throw SidecarError.unexpectedResponse(status: status)
+        }
+    }
+
+    public func reportVerification(
+        serverAddress: String, credential: String, leaseId: String, evidence: FullVerificationEvidence
+    ) async throws {
+        var request = try authorised(serverAddress, "/api/workers/leases/\(leaseId)/verification",
+            credential: credential, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(evidence)
+        let (data, response) = try await perform(request)
+        guard response.statusCode == 200 else {
+            throw SidecarError.deliveryRefused(reason: Self.message(data) ?? "Full verification evidence was refused.")
         }
     }
 

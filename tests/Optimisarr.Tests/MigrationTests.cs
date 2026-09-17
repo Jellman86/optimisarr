@@ -26,6 +26,9 @@ public sealed class MigrationTests : IDisposable
 
         db.AppSettings.Add(new AppSetting { Key = "migration.smoke", Value = "ok" });
         await db.SaveChangesAsync();
+        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        await db.Database.MigrateAsync();
+        Assert.Equal(applied, (await db.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.Equal("ok", (await db.AppSettings.SingleAsync()).Value);
     }
 

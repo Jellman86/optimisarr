@@ -41,7 +41,8 @@ internal sealed record AssignmentDto(
     /// measures it, reports, and is told what to measure next until it is given a quality to encode
     /// at. Null when the quality is already settled and the encode can start immediately.
     /// </summary>
-    AdaptiveSearchStepDto? Search = null);
+    AdaptiveSearchStepDto? Search = null,
+    RemoteVerificationContract? FullVerification = null);
 
 /// <summary>
 /// One candidate of the per-title quality search, on the wire.
@@ -322,6 +323,13 @@ internal static class WorkerLeaseEndpoints
                     continue;
                 }
 
+                if (assignment.FullVerification is not null && worker.ProtocolVersion < 2)
+                {
+                    WorkerProblems.Record(worker, "Sidecar-only verification requires an updated sidecar (protocol 2).", now);
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+
                 var requirements = new JobRequirements(
                     VideoEncoder: assignment.VideoEncoder,
                     // Null when the audio is copied. When the command names one it has to be
@@ -370,6 +378,9 @@ internal static class WorkerLeaseEndpoints
                     AdaptiveContractJson = assignment.Search is null
                         ? null
                         : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
+                    VerificationWorkJson = assignment.VerificationWorkJson,
+                    VerificationContractJson = assignment.FullVerification is null ? null
+                        : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
                     QualityContractJson = assignment.Quality is null
                         ? null
                         : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
@@ -418,7 +429,8 @@ internal static class WorkerLeaseEndpoints
                         policy.MinimumVmafMin,
                         assignment.Quality?.Commands ?? [],
                         assignment.Quality?.Sampling ?? "None"),
-                    AdaptiveSearchWire.From(assignment.Search, policy)));
+                    AdaptiveSearchWire.From(assignment.Search, policy),
+                    assignment.FullVerification));
             }
 
             return Results.NoContent();
@@ -627,8 +639,14 @@ internal static class WorkerLeaseEndpoints
                 // Rebuilt now the quality exists, for this worker's encoder. The assignment's
                 // arguments were fixed before the search and name the library's value.
                 var settled = await dispatcher.PrepareRemoteWorkAsync(
-                    lease.JobId, worker.ToCapabilities(), cancellationToken);
+                    lease.JobId, worker.ToCapabilities(), cancellationToken,
+                    forceStrictVerification: lease.VerificationContractJson is not null);
 
+                if (lease.VerificationContractJson is not null)
+                {
+                    lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,
@@ -652,7 +670,13 @@ internal static class WorkerLeaseEndpoints
                 }
                 await db.SaveChangesAsync(cancellationToken);
                 var fallback = await dispatcher.PrepareRemoteWorkAsync(
-                    lease.JobId, worker.ToCapabilities(), cancellationToken);
+                    lease.JobId, worker.ToCapabilities(), cancellationToken,
+                    forceStrictVerification: lease.VerificationContractJson is not null);
+                if (lease.VerificationContractJson is not null)
+                {
+                    lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,
@@ -791,9 +815,12 @@ internal static class WorkerLeaseEndpoints
                 (lease, workerId, now) => lease.Release(workerId, now),
                 (_, job, outcome) =>
                 {
-                    // Giving a job up must never strand it, so it goes straight back on the queue
-                    // for this machine or another worker to pick up.
-                    job.Status = JobStatus.Queued;
+                    // Requeue unfinished work, but preserve cancellation if it won while the
+                    // worker was stopping its child process. Release still frees lease capacity.
+                    if (job.Status == JobStatus.Leased)
+                    {
+                        job.Status = JobStatus.Queued;
+                    }
                 },
                 _ => Results.NoContent()))
         .WithName("ReleaseLease")

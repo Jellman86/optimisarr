@@ -15,6 +15,11 @@ namespace Optimisarr.Data;
 /// </summary>
 public sealed class JobLease
 {
+    /// <summary>Frozen server-side work and measurement request for strict sidecar verification.</summary>
+    public string? VerificationWorkJson { get; set; }
+    public string? VerificationContractJson { get; set; }
+    public string? VerificationEvidenceJson { get; set; }
+
     public Guid Id { get; set; }
 
     public int JobId { get; set; }

@@ -142,6 +142,30 @@ public sealed class WorkerHeartbeatEndpointTests
     }
 
     [Fact]
+    public async Task Heartbeat_renegotiates_upgraded_and_downgraded_sidecars_without_repairing()
+    {
+        await EnableRemoteWorkers();
+        var pin = await (await Admin().PostAsync("/api/workers/pairing-code", null)).Content.ReadFromJsonAsync<JsonElement>();
+        var pair = await (await _api.CreateClient().PostAsJsonAsync("/api/workers/pair",
+            PairBody(pin.GetProperty("code").GetString()!, "Protocol upgrade"))).Content.ReadFromJsonAsync<JsonElement>();
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pair.GetProperty("credential").GetString());
+        foreach (var maximum in new[] { 2, 1, 2 })
+        {
+            using var response = await client.PostAsJsonAsync("/api/workers/heartbeat",
+                new { freeScratchBytes = 1024, maxConcurrency = 1, protocolMinimum = 1, protocolMaximum = maximum });
+            response.EnsureSuccessStatusCode();
+            Assert.Equal(maximum, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("protocolVersion").GetInt32());
+        }
+        // Protocol-1 clients predate range reporting; a downgrade must not inherit protocol 2.
+        using var legacy = await client.PostAsJsonAsync("/api/workers/heartbeat", Beat());
+        Assert.Equal(1, (await legacy.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("protocolVersion").GetInt32());
+        using var incompatible = await client.PostAsJsonAsync("/api/workers/heartbeat",
+            new { freeScratchBytes = 1024, maxConcurrency = 1, protocolMinimum = 99, protocolMaximum = 99 });
+        Assert.Equal(HttpStatusCode.Conflict, incompatible.StatusCode);
+    }
+
+    [Fact]
     public async Task A_sidecar_upgrading_itself_is_visible_without_re_pairing()
     {
         await EnableRemoteWorkers();

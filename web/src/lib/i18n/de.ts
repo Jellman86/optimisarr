@@ -635,6 +635,8 @@ export const de: Messages = {
     group_connections: 'Verbindungen & System',
     subtitle: 'Globale Optionen, die für jede Bibliothek gelten.',
     remote_workers: 'Remote-Worker',
+    worker_verification: "Vollständig auf dem Sidecar prüfen",
+    worker_verification_hint: "Aktualisierte Sidecars müssen alle Prüfungen ihrer Videoaufträge abschließen. Fehlende Nachweise lassen den Auftrag scheitern; der Server wiederholt keine Prüfung. Gilt für neue Zuweisungen. Bibliotheken auf „Nur Worker“ stellen, um auch die Kodierung auszulagern. Übertragung und Ersetzung bleiben beim Server.",
     remote_workers_hint: 'Sidecar-Apps auf anderen Rechnern freie Encoding-Kapazität beisteuern lassen. Standardmäßig aus – ein Container genügt für den normalen Betrieb. Optimisarr ersetzt weiterhin selbst.',
     name: 'Name',
     type: 'Typ',

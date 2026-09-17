@@ -1104,6 +1104,18 @@ public struct JobRunner: WorkExecutor {
             }
         }
 
+        if let verification = assignment.fullVerification {
+            progress(.measuring)
+            latest.set(.measuring)
+            let evidence = try await whileRenewingLease(assignment, pairing: pairing, progress: latest.get) {
+                try await FullVerification(runner: runner).measure(contract: verification, ffmpeg: ffmpeg,
+                    ffprobe: ffprobe, source: source, candidate: candidate, scratch: scratch,
+                    sourceHash: declaredSourceHash, candidateHash: candidateHash)
+            }
+            try await client.reportVerification(serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, evidence: evidence)
+        }
+
         let candidateBytes = (try? FileManager.default
             .attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value ?? 0
         progress(.delivering(sent: 0, total: candidateBytes))

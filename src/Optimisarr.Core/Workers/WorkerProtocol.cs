@@ -20,7 +20,7 @@ public sealed record ProtocolNegotiation(bool Compatible, int AgreedVersion, str
 public static class WorkerProtocol
 {
     /// <summary>The newest contract version this build speaks.</summary>
-    public const int Current = 1;
+    public const int Current = 2;
 
     /// <summary>The oldest contract version this build still accepts.</summary>
     public const int MinimumSupported = 1;

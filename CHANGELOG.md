@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Added
+
+- Repeatable media acceptance harness for isolated containers and disposable macOS/Windows
+  workers, with pinned Creative Commons film excerpts, independent VMAF/SSIM/audio checks,
+  transfer fault tests, replacement/rollback validation, and HTML/JSON/JUnit evidence. Final-image
+  CI now runs real application workflows before publishing an image. See
+  [the harness guide](docs/development/media-acceptance.md) for scope and hardware requirements.
+
+- Optional strict sidecar-only verification for remote video jobs. When enabled, a protocol-2
+  worker receives a lease-bound contract, performs probes, decode-health, timestamp and audio
+  checks beside its FFmpeg tools, and returns immutable evidence bound to both file hashes. The
+  server evaluates that evidence and never runs a media verification fallback for the lease.
+
+### Fixed
+
+- Existing sidecar pairings renegotiate protocol support on heartbeat after an upgrade. Strict
+  verification rejects incomplete measurements and stores the first report atomically, including
+  concurrent retries. Mac decode checks distinguish harmless muxer timing notes from corruption.
+- The Mac media bundle includes AV1 decoding and 10/12-bit x265 support, with a bundle check that
+  verifies decoding and bit-depth support rather than relying on encoder names alone.
+
+- Software-decode retries recreate and reserve their output directory after rejected candidates
+  are cleaned up, preventing an otherwise valid retry from failing with a missing-directory error.
+
+- Readiness checks now honour configured work and quarantine directories.
+- Finished remote jobs retain the worker name that delivered their output.
+- Short previews verify against the available source duration instead of requiring 60 seconds.
+- Worker VMAF plans include the freshly probed source cadence, keeping variable-frame-rate
+  measurements consistent with local verification.
+- A worker releasing its lease after cancellation no longer puts the cancelled job back on the queue.
+
 ### Changed
 
 - **The Stellar cube has softer, consistent lighting.** Its moving shadow now fades

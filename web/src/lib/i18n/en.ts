@@ -772,6 +772,8 @@ export const en = {
     group_connections: 'Connections & system',
     subtitle: 'Global options that apply across every library.',
     remote_workers: 'Remote workers',
+    worker_verification: "Verify entirely on the sidecar",
+    worker_verification_hint: "Require updated sidecars to complete every check for their video jobs. Missing evidence fails the job; the server never repeats verification. Applies to new assignments. Set libraries to Worker only to keep encoding off the server too. File transfers and replacement stay on the server.",
     remote_workers_hint: 'Let sidecar apps on other machines contribute spare encoding capacity. Off by default — one container is enough for normal use. Optimisarr still does all replacing itself.',
     name: 'Name',
     type: 'Type',

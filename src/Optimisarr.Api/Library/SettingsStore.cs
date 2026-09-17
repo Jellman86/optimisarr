@@ -21,7 +21,8 @@ public sealed record QueueSettings(
     bool ReplacementAllowCrossFilesystem,
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
-    bool RemoteWorkersEnabled = false);
+    bool RemoteWorkersEnabled = false,
+    bool WorkerVerificationRequired = false);
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? remoteWorkers = null)
@@ -76,7 +77,8 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
         SettingKeys.ReplacementAllowCrossFilesystem,
         SettingKeys.DryRunMode,
         SettingKeys.ReplacementQuarantineRetentionDays,
-        SettingKeys.RemoteWorkersEnabled
+        SettingKeys.RemoteWorkersEnabled,
+        SettingKeys.WorkerVerificationRequired
     };
 
     /// <summary>
@@ -165,7 +167,8 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
                 || setting.Key == SettingKeys.ReplacementAllowCrossFilesystem
                 || setting.Key == SettingKeys.DryRunMode
                 || setting.Key == SettingKeys.ReplacementQuarantineRetentionDays
-                || setting.Key == SettingKeys.RemoteWorkersEnabled)
+                || setting.Key == SettingKeys.RemoteWorkersEnabled
+                || setting.Key == SettingKeys.WorkerVerificationRequired)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
 
         return new QueueSettings(
@@ -186,7 +189,8 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             ParseInt(settings.GetValueOrDefault(SettingKeys.ReplacementQuarantineRetentionDays), fallback: 0, min: 0),
             // Off unless explicitly turned on. A fresh install, and any install that predates this
             // setting, has remote workers disabled.
-            ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false));
+            ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false),
+            ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: false));
     }
 
     /// <summary>
@@ -246,7 +250,8 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             [SettingKeys.ReplacementQuarantineRetentionDays] =
                 Math.Max(0, settings.ReplacementQuarantineRetentionDays).ToString(CultureInfo.InvariantCulture),
             [SettingKeys.RemoteWorkersEnabled] =
-                settings.RemoteWorkersEnabled.ToString(CultureInfo.InvariantCulture)
+                settings.RemoteWorkersEnabled.ToString(CultureInfo.InvariantCulture),
+            [SettingKeys.WorkerVerificationRequired] = settings.WorkerVerificationRequired.ToString(CultureInfo.InvariantCulture)
         }, cancellationToken);
     }
 

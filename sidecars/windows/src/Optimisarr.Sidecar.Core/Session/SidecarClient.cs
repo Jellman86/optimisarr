@@ -131,6 +131,8 @@ public sealed class SidecarClient(HttpClient http)
             // Every check-in, not only at pairing: upgrading this service does not re-pair it, so a
             // version recorded once would be wrong from the first upgrade onwards.
             ["sidecarVersion"] = SidecarBuild.Version,
+            ["protocolMinimum"] = WorkerProtocol.Minimum,
+            ["protocolMaximum"] = WorkerProtocol.Maximum,
         };
 
         // Only what was actually measured. A machine whose counters could not be read sends
@@ -319,6 +321,21 @@ public sealed class SidecarClient(HttpClient http)
     /// outcome rather than throwing — a candidate that encoded perfectly well must not be handed
     /// back because the server would not take a score for it.</para>
     /// </summary>
+    public async Task ReportVerificationAsync(
+        StoredPairing pairing, Guid leaseId, Optimisarr.Core.Workers.RemoteVerificationEvidence evidence,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/verification"))
+        {
+            Content = JsonContent.Create(evidence, options: Json)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new SidecarException($"Full verification evidence was refused (HTTP {(int)response.StatusCode}).", recoverable: false);
+    }
+
     public async Task<bool> ReportQualityAsync(
         StoredPairing pairing,
         Guid leaseId,

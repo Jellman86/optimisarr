@@ -8,6 +8,24 @@ namespace Optimisarr.Api.Queue;
 /// </summary>
 public static class WorkPaths
 {
+    internal static IDisposable PrepareOutputDirectory(
+        string outputPath,
+        Func<string, IDisposable> reserve)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath))!;
+        var reservation = reserve(directory);
+        try
+        {
+            Directory.CreateDirectory(directory);
+            return reservation;
+        }
+        catch
+        {
+            reservation.Dispose();
+            throw;
+        }
+    }
+
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 

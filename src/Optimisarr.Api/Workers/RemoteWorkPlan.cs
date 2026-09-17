@@ -25,7 +25,9 @@ public sealed record RemoteAssignment(
     /// The first candidate of a per-title quality search, when this job needs one. Null when the
     /// quality is already settled, in which case the worker encodes straight away.
     /// </summary>
-    AdaptiveSearchStep? Search = null);
+    AdaptiveSearchStep? Search = null,
+    RemoteVerificationContract? FullVerification = null,
+    string? VerificationWorkJson = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

@@ -626,6 +626,8 @@ quarantine: {
     group_connections: 'Connessioni e sistema',
     subtitle: 'Opzioni globali applicate a tutte le librerie.',
     remote_workers: 'Worker remoti',
+    worker_verification: "Verifica tutto sul sidecar",
+    worker_verification_hint: "I sidecar aggiornati devono completare tutti i controlli dei propri lavori video. Se mancano prove, il lavoro fallisce; il server non ripete la verifica. Vale per le nuove assegnazioni. Imposta le librerie su «Solo worker» per spostare anche la codifica. Trasferimento e sostituzione restano sul server.",
     remote_workers_hint: 'Consenti alle app sidecar su altre macchine di contribuire con capacità di codifica libera. Disattivato per impostazione predefinita: un contenitore basta per l’uso normale. Optimisarr continua a eseguire da sé tutte le sostituzioni.',
     name: 'Nome',
     type: 'Tipo',

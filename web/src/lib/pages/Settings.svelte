@@ -439,6 +439,7 @@
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     remoteWorkersEnabled: false,
+    workerVerificationRequired: false,
     remoteWorkersAvailable: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -457,7 +458,7 @@
   /** Which settings belong to which room, so a card can count its own unsaved edits. */
   const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
     encoding: ['maxConcurrentJobs', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
-    files: ['dryRunMode', 'remoteWorkersEnabled', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
+    files: ['dryRunMode', 'remoteWorkersEnabled', 'workerVerificationRequired', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
   }
 
   function sameValue(a: unknown, b: unknown): boolean {
@@ -956,6 +957,15 @@
           label={i18n.m.settings.remote_workers}
           hint={i18n.m.settings.remote_workers_hint}
         />
+        {#if settings.remoteWorkersEnabled}
+          <div class="mt-5 border-t border-line pt-5">
+            <Toggle
+              bind:checked={settings.workerVerificationRequired}
+              label={i18n.m.settings.worker_verification}
+              hint={i18n.m.settings.worker_verification_hint}
+            />
+          </div>
+        {/if}
       </div>
     {/if}
     <div class="mt-5 max-w-2xl border-t border-line pt-5">

@@ -272,7 +272,8 @@ internal sealed record SettingsDto(
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
-    bool RemoteWorkersAvailable = false)
+    bool RemoteWorkersAvailable = false,
+    bool WorkerVerificationRequired = false)
 {
     public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,
@@ -286,7 +287,8 @@ internal sealed record SettingsDto(
         settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays,
         settings.RemoteWorkersEnabled,
-        remoteWorkersAvailable);
+        remoteWorkersAvailable,
+        settings.WorkerVerificationRequired);
 }
 
 internal sealed record QueueStatusDto(

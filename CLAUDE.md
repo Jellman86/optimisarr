@@ -158,12 +158,24 @@ Then:
 ```bash
 dotnet build Optimisarr.slnx          # build everything
 dotnet test  Optimisarr.slnx          # run the suite
+python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 cd web && npm run check               # frontend type/lint check
 cd web && npm run test:e2e            # Playwright end-to-end suite (CI gate — run it)
 cd web && npm run build               # emits static assets into Optimisarr.Api/wwwroot
 cd sidecars/macos && swift test        # macOS sidecar protocol and lifecycle suite
 cd sidecars/macos && swift build -c release
 ```
+
+The final-image gate also runs real application media workflows:
+
+```bash
+docker build -t optimisarr:acceptance .
+python3 scripts/media_acceptance.py --image optimisarr:acceptance \
+  --root /tmp/optimisarr-acceptance-run --tier smoke
+```
+
+Use a new root for each run. See [the acceptance guide](docs/development/media-acceptance.md)
+for independent VMAF evidence, freely licensed fixtures, and isolated hardware-worker runs.
 
 ## 8. Project layout
 
