@@ -8,10 +8,11 @@ on:
   push:
     tags:
       - 'sidecar-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build, e.g. 0.1.0'
+        description: 'Version matching the existing tag selected in Use workflow from'
         required: true
 
 permissions:
@@ -23,15 +24,19 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
 
       - name: Work out the version
         id: version
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${GITHUB_REF_NAME#sidecar-v}" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: python3 scripts/sidecar_release_version.py
+
+      - name: Test the tagged sidecar
+        working-directory: sidecars/macos
+        run: swift test
 
       # Building x264, x265, libvmaf and ffmpeg from source takes the best part of an hour, so it
       # is cached against the tags the build script pins. BUILD-INFO.txt records exactly what went
@@ -115,5 +120,10 @@ jobs:
           files: |
             sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.dmg
             sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.zip
+            sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.*.sha256
+            sidecars/macos/build/release-sources/*.tar
+            sidecars/macos/build/release-sources/*.tar.sha256
           tag_name: ${{ github.ref_name }}
           fail_on_unmatched_files: true
+          draft: true
+          make_latest: false

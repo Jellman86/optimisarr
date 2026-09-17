@@ -15,7 +15,7 @@ docker compose logs --tail=200 optimisarr
 work. Check the reported path ownership/mount, database, or missing tool before
 placing jobs in the queue. Docker's health check uses this readiness endpoint.
 
-Use **Settings → Tools** to verify the required FFmpeg/ffprobe executables, the optional
+Use **Settings → System → Tools** to verify the required FFmpeg/ffprobe executables, the optional
 `libvmaf` measurement capability, and the actual encoder test result. For a failed job,
 open Queue details and read the FFmpeg error and verification report before retrying.
 The Queue **Failures** tab and `GET /api/jobs/failures` also include failed preview and personal
@@ -26,7 +26,7 @@ diagnostic row until **Clear errored** is used.
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
-![Settings Tools tab showing FFmpeg, ffprobe, hardware devices, and encoder availability](../images/optimisarr-settings-tools-dark.png)
+![Media tools and encoder availability, now under Settings → System → Tools](../images/optimisarr-settings-tools-dark.png)
 
 ## Common causes
 
@@ -35,7 +35,7 @@ No copyrighted material is used.
 | `/api/ready` returns `503` | Read the JSON reason first. It usually points to an unwritable `/config`, `/work`, or `/trash` mount, a database migration/open failure, or missing FFmpeg/ffprobe. Fix readiness before queueing jobs. |
 | Library cannot scan | Container path exists below `/data`; PUID/PGID can read it. |
 | Replace fails / "cannot write" | The library folder must be writable by PUID/PGID. Optimisarr checks access when you add or save a library and again during scans; check the reported error and the mount ownership. |
-| Replace/approve says dry-run mode is enabled | Dry-run mode is on under **Settings → General → Replacement and cleanup**. Jobs can still transcode and verify, but originals and quarantined originals are not moved or purged until dry-run is disabled. Expired failed `/work` outputs can still be cleaned because originals are untouched. |
+| Replace/approve says dry-run mode is enabled | Dry-run mode is on under **Settings → Files & safety → Replacement and cleanup**. Jobs can still transcode and verify, but originals and quarantined originals are not moved or purged until dry-run is disabled. Expired failed `/work` outputs can still be cleaned because originals are untouched. |
 | Jobs do not start | A library's auto-optimise window being closed (its jobs only run in-window), the concurrency limit, activity pause, or free `/work` space. The Queue shows a reason when a backlog is waiting on a window. |
 | `/work` keeps growing | Set **Cleanup retention** above `0` and save. The panel shows what is currently reclaimable; **Clean up now** runs the same policy after confirmation. The startup/six-hour sweep also removes expired failed outputs while preserving their job reports and logs. Active and ready-to-replace outputs are never removed. |
 | GPU mode unavailable | Device mapping/NVIDIA toolkit, group permissions, then Tools test encode. |

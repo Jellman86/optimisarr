@@ -8,13 +8,11 @@ its tray application. The **container** half runs Optimisarr's own Docker image 
 GPU through WSL. Do the native half first; the container half only matters when working on GPU
 VMAF in the server image.
 
-> **Read this before following it.** This guide was written from a Mac and was *not* executed
-> against real hardware. It was then followed on PICARD on 2026-09-14, and **six steps were wrong**
-> — which ones is not recorded here, because the person who hit them has not yet said. Treat every
-> step as a hypothesis and check its result rather than assuming the step worked.
->
-> The sections marked **Verified 2026-09-14** below are the exception: those were run and their
-> output observed. Everything else still needs proving, and correcting in place as it is.
+> The native MSI installation, retained pairing, same-version upgrade and Compact Monitor native
+> anchoring tests were exercised on a paired Windows test host on 2026-09-17. Historical **Verified 2026-09-14** notes
+> below describe that host at that time; they do not guarantee the same Windows, driver or WSL
+> behaviour on another machine. Check each step before proceeding. For ordinary use, start with
+> the [MSI instructions](../installer/README.md); the SDK and WSL setup here are for development.
 
 Where a step has a trap in it, the trap is written down rather than left for the next person to
 rediscover.
@@ -112,7 +110,7 @@ winget install --id Git.Git --silent
 the pinned version satisfies it.
 
 **Check it:** `dotnet --version` reports 10.x, `git --version` answers, and
-`dotnet test sidecars\windows\Optimisarr.Sidecar.slnx` passes. A green suite proves the toolchain
+`dotnet test sidecars\windows\tests\Optimisarr.Sidecar.Core.Tests` passes. A green suite proves the toolchain
 far better than a version string does.
 
 **Verified 2026-09-14** on PICARD: .NET SDK 10.0.401, pwsh 7.6.6, suite green.
@@ -144,8 +142,9 @@ New-Item -ItemType Directory -Force -Path <drive>:\OptimisarrWork
 
 ### 6. Graphics driver
 
-Install the current NVIDIA driver from Windows Update or NVIDIA. This is the only driver install
-needed, and it also covers the WSL half below — **do not** install a driver inside WSL.
+For the NVIDIA hardware tests below, install the host’s NVIDIA driver from Windows Update or
+NVIDIA. The native sidecar can also use other encoders that pass its capability probes. The WSL
+GPU path uses the Windows host driver; **do not** install a second GPU driver inside WSL.
 
 **Check it:** `nvidia-smi` lists the card.
 
@@ -347,13 +346,18 @@ service-specific: starting with nobody logged in, surviving a logoff, running as
 Without that, every change costs a stop, uninstall, copy, install and start, and a service that
 fails at startup tells you almost nothing.
 
-**It logs to a file as well as the Event Log.** The Event Log is the idiomatic place and awkward to
-read remotely; a rolling file is `Get-Content -Tail`. The macOS sidecar shipped with no logging at
-all and it cost real time diagnosing a hang.
+**It logs to the Event Log as a service, and to the console when run directly.** Read current
+service activity from Windows Logs → Application, source `OptimisarrSidecar`. There is no rolling
+file logger in the current service; do not wait for a log file that it does not create.
+
+```powershell
+Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'OptimisarrSidecar' } -MaxEvents 30
+```
 
 **The tray renders its states to images.** The tray cannot be seen over SSH, so it takes a flag that
-writes a picture of every state to disk, the way the macOS sidecar's `--render-menu` does. Reviewing
-a layout should not require someone to take a screenshot.
+writes fixture states to disk (`--render-monitor <directory>`), the way the macOS sidecar’s
+`--render-menu` does. The fixtures do not connect to the live worker. `--verify-popover` additionally
+drives the real WPF window through pages and disclosure changes and checks its working-area anchor.
 
 ---
 
@@ -361,5 +365,5 @@ a layout should not require someone to take a screenshot.
 
 | Half | Makes it possible to prove |
 | --- | --- |
-| Native | NVENC encoding, CUDA decode and NVIDIA VMAF on real hardware; the service starting with nobody logged in; the installer; real jobs against the server |
-| Container | Whether a CUDA-enabled VMAF build in the server image genuinely scores on the GPU, which is currently a decision made on reasoning rather than measurement |
+| Native | Proved hardware encoding/decode, CPU VMAF in the bundled redistributable toolchain, service lifecycle, MSI installation, tray behaviour and real jobs against the server. CUDA VMAF requires a separately compatible toolchain and a successful probe. |
+| Container | Real media acceptance and, when the image carries a compatible CUDA VMAF build, GPU measurement on a passed-through NVIDIA device. See the [acceptance harness](../../../docs/development/media-acceptance.md). |

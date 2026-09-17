@@ -5,7 +5,8 @@ pause new work while a service is active. Unreachable watchers do not wedge the
 queue. After a replacement or rollback it asks each connected server to rescan:
 a changed-folder refresh for Jellyfin/Emby, and a section refresh for Plex.
 
-Configure integrations under **Settings → Connections**.
+Configure Plex, Jellyfin, and Emby under **Settings → Media servers**. Configure Sonarr and
+Radarr under **Settings → Download managers**.
 
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.

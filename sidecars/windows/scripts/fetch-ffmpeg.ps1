@@ -83,6 +83,13 @@ try {
         Copy-Item -Path (Join-Path $bin $tool) -Destination (Join-Path $Destination $tool) -Force
     }
 
+    # Retain the upstream copyright notices, licences and build documentation alongside the
+    # binaries. Corresponding source archives are supplied separately with public releases.
+    $noticeDirectory = Join-Path $Destination 'media-notices'
+    New-Item -ItemType Directory -Force -Path $noticeDirectory | Out-Null
+    Get-ChildItem -LiteralPath $found.Directory.Parent.FullName | Where-Object { $_.Name -ne 'bin' } |
+        Copy-Item -Destination $noticeDirectory -Recurse -Force
+
     # Proved by running it, never read off a listing of what the build was meant to contain.
     Write-Host "Verifying capabilities ..."
     $encoders = & $ffmpeg -hide_banner -encoders 2>&1 | Out-String

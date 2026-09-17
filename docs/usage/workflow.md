@@ -26,7 +26,7 @@ Do this:
 3. Check the Queue, Ready to replace, and Libraries cards.
 
 You should see a green health state before queueing work. If the health card is
-not green, open **Settings → Tools** or run:
+not green, open **Settings → System → Tools** or run:
 
 ```bash
 curl http://localhost:8787/api/ready
@@ -43,20 +43,22 @@ Do this:
 
 1. Go to **Libraries**.
 2. Add a library or click **Configure** on an existing one.
-3. In **Library**, use a path as the container sees it, usually below `/data`, and pick the media
-   type.
-4. In **Optimisation**, choose the processing mode and primary preset or format. A Music library
-   shows its codec and bitrate here instead.
-5. In **Verification gates**, review only the safety and quality checks that apply to this media
-   type.
-6. For video, choose a perceptual-quality (VMAF) policy. Leave it **Off**, select a named
-   tier, or use **Custom** for all three quality floors, clip/full-file scoring, and frame sampling.
-7. In **Automation & completion**, choose whether the library runs automatically and what happens
-   after verification.
-8. Leave **Advanced options** closed unless you need technical codec, quality, or eligibility
-   overrides.
+3. In **Choose files**, use a path as the container sees it, usually below `/data`, and pick the
+   media type, eligibility rules, and priority.
+4. In **Encode**, choose the processing mode and preset or format. Open **Video settings**,
+   **Audio & subtitles**, or image settings when you need those controls.
+5. For video re-encodes, review **Video quality path**: new libraries start with Adaptive per-title
+   VMAF and the Visually lossless target. Fixed quality can use a named VMAF tier or turn VMAF off.
+6. In **Verify**, review the required safety checks. **Advanced verification** contains precise
+   tolerances and custom perceptual-quality floors and sampling.
+7. In **Schedule & replace**, choose automation, its time window, and the output destination.
+8. Use the overview or breadcrumbs to move between stages. The draft is retained, and **Save**
+   applies changes from all stages together. Advanced pages are optional refinements.
 
-![Dark library configuration view showing the numbered Library and Optimisation sections, processing modes, and preset slider](../images/optimisarr-library-configure-dark.png)
+The library overview groups controls by processing stage. The screenshot below records the earlier
+single-page editor; use the stage names above in the current interface.
+
+![Earlier library editor showing library identity and optimisation controls](../images/optimisarr-library-configure-dark.png)
 
 Preset guide:
 
@@ -68,7 +70,7 @@ Preset guide:
 | Scott's compatibility-first setup | Scott's Settings |
 | No re-encode, container cleanup only | Remux / cleanup |
 
-Under **Advanced options → Video**, **Encoder effort** is portable across encoder modes:
+Under **Encode → Video settings → Advanced encoding**, **Encoder effort** is portable across encoder modes:
 
 | Choice | Behaviour |
 |---|---|
@@ -200,16 +202,18 @@ During a container update, Optimisarr temporarily continues suspended transcodes
 graceful drain can complete; it does not clear the saved pause. The restarted container therefore
 stays paused until you explicitly resume it.
 
-Open a row when a job fails or finishes.
+Open any job row to see its media details in a centred dialog, including while work is running.
+The dialog opens in the visible viewport even when the queue is scrolled, and closing it returns
+you to the same queue position.
 
-Failed outputs remain under `/work` long enough to inspect. **Settings → General →
+Failed outputs remain under `/work` long enough to inspect. **Settings → Files & safety →
 Replacement and cleanup → Cleanup retention** controls when the timed sweep removes
 their scratch files; the failure report and FFmpeg log remain in Optimisarr. The
 same panel shows the space currently eligible for cleanup. Use **Clean up now** to
 run the saved policy immediately after reviewing the failed-work/quarantine
 breakdown and permanent-deletion confirmation.
 
-![Queue detail sheet opened from a job row](../images/optimisarr-queue-detail-dark.png)
+![Earlier Queue detail presentation; current job rows open a centred dialog](../images/optimisarr-queue-detail-dark.png)
 
 Use the row actions carefully:
 

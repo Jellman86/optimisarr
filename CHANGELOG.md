@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-### Fixed
-
-- Keep sidecar popovers attached to the menu bar or taskbar when details and preferences change size; retain rounded corners and dismiss behind other apps.
-- Use the current Stellar icon in both native clients, including Finder, the Windows tray, Start menu and installer. Windows development MSIs can update an installed preview with the same application version.
-
 ### Added
+
+- Coordinated container and native download releases use the shared application version,
+  validate release tags, and hold packages in draft until validation is complete.
+- Updated setup, worker, verification, API and native-client documentation, including
+  a dedicated worker-placement guide and the current Stellar icon in the README.
 
 - Compact Monitor for the Windows tray, with live worker status, resource readings, processing
   details, pause/resume and nested preferences. Work remains in the background service. An
@@ -29,6 +29,9 @@
   server evaluates that evidence and never runs a media verification fallback for the lease.
 
 ### Fixed
+
+- Keep sidecar popovers attached to the menu bar or taskbar when details and preferences change size; retain rounded corners and dismiss behind other apps.
+- Use the current Stellar icon in both native clients, including Finder, the Windows tray, Start menu and installer. Windows development MSIs can update an installed preview with the same application version.
 
 - Existing sidecar pairings renegotiate protocol support on heartbeat after an upgrade. Strict
   verification rejects incomplete measurements and stores the first report atomically, including
@@ -74,7 +77,7 @@
 
 - Queue artwork stays visible through live updates and refreshes. Loaded posters and
   missing-artwork placeholders now retain their state until the media item changes.
-- **The application icon is now a cube balanced on its tip.** Fifteen slices twist in sequence
+- **The optional Precession icon is a cube balanced on its tip.** Fifteen slices twist in sequence
   while Optimisarr is working, then settle into a seamless cube. At rest, a slowly moving
   light shifts the highlights and shadow. Light and dark themes have matching colours and
   favicons; reduced motion keeps a still image, and hidden icons stop animating.
@@ -128,14 +131,6 @@
   safe-area padding previously overrode the desktop spacing and left both flush with the
   window; the mobile drawer still fills the screen.
 
-- **The application icon now holds a point of light inside a tesseract.** Smooth, supersampled
-  edges replace the pixel grid. During local or remote work, the light shafts rotate, catch
-  the frame and cast moving shadows. While idle or fully suspended, the geometry continues
-  a quieter 36-second turn; work accelerates it to a six-second cycle. The
-  animation is baked ahead of time and loaded only when needed, with no live WebGL rendering
-  and no animation timers while hidden or offscreen. Idle playback is limited to 12 fps and
-  working playback to 24 fps. Reduced-motion mode uses a brighter
-  still, and the browser tab changes between steady and working icons without animating.
 
 - **The sidebar is an island, and it says what is encoding.** The rail no longer runs the
   full height of the window as a wall the page leans against: at desktop widths it is a raised
