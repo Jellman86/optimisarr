@@ -301,7 +301,9 @@ public sealed class JobRunner(
             {
                 report?.Invoke(
                     $"Job {assignment.JobId}: the candidate could not be aligned against the source,"
-                    + " so the server will score this itself");
+                    + (assignment.FullVerification is null
+                        ? " so the server will score this itself"
+                        : " so strict verification will fail this job without server fallback"));
                 return null;
             }
 

@@ -168,8 +168,7 @@ public sealed class VerificationService(
             string? vmafSampling = null;
             if (remoteQuality is not null && policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
-                // Measured on the worker, parsed and bound here. The expensive half of verification
-                // is the one part a worker is allowed to contribute.
+                // The server has already bound the worker's measurement to this lease and both files.
                 qualityResult = remoteQuality.Result;
                 vmafSampling = $"{remoteQuality.Sampling}, measured by the worker";
                 qualityProgress?.Report(1);
