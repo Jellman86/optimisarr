@@ -4,6 +4,11 @@
 
 ### Changed
 
+- **The Stellar cube has softer, consistent lighting.** Its moving shadow now fades
+  naturally instead of appearing as a hard grey platform when Canvas filters are
+  unavailable. Gentler star-field toning, a subtle halo and tighter sidebar spacing
+  carry through light/dark themes, reduced-motion stills and favicons.
+
 - **Setup now follows the current application theme from start to finish.** Theme and
   language controls are available during onboarding, with clearer status colours,
   keyboard focus and a mobile-friendly folder picker. Failed checks can be retried,
