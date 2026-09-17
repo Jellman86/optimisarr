@@ -65,13 +65,26 @@ The review checked consequences beyond the initial overview:
 - No form binding was lost in the extraction. Existing payload conversion, defaults,
   backend verification and replacement logic remain in place. No migration is needed.
 
+## Final width and theme polish
+
+All fourteen workflow rooms retain the shared 1,152px content width on wide
+screens and the same theme-token card gradients in light and dark mode. Regression
+checks exercise both themes, hover shadow changes and horizontal containment.
+Form labels and 44px controls now match Settings; card textures and hover lift
+remain intact. The advanced encoding introduction is shorter, and every locale
+clarifies that changes take effect when saved.
+
+The final review also corrected Candidates/Excluded headings that retained a
+settings-room title, and removed the duplicate audio navigation card in track
+cleanup mode. Mobile and WebKit checks cover the larger control targets.
+
 ## Validation
 
 - Backend: warnings-as-errors build passed with zero warnings/errors; 2,019 tests passed.
 - Frontend: Svelte/TypeScript checks, eight-locale audit and 24 unit tests.
-- Chromium: **122 tests passed** in the full application suite, including workflow/history/draft/save tests,
+- Chromium: **125 tests passed** in the full application suite, including workflow/history/draft/save tests,
   mode/media scoping, hidden validation, custom and legacy values, tooltips and reflow.
-- WebKit: **40 tests passed** in the Library and Setup suites, including short landscape and translated tooltips.
+- WebKit: **43 tests passed** in the Library and Setup suites, including short landscape and translated tooltips.
 - Visual inspection: dark/light desktop, resting/hovered cards, video and advanced
   controls, readable settled tooltips, mobile reflow, and keyboard navigation.
 - Production build retains the pre-existing advisory about the main chunk exceeding

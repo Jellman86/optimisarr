@@ -847,6 +847,7 @@ export const zh: Messages = {
     restart_setup: "再次运行设置", restarting_setup: "正在启动设置…", restart_setup_confirm: "再次运行设置？现有设置和媒体库将被保留。"
   },
   libraryWorkflow: {
+    encoding_intro: "编解码器、容器、编码器处理强度及码率限制。",
     video_summary: "分辨率、帧率、HDR和黑边。",
     audio_summary: "轨道选择、转换和环绕声。",
     quality_summary: "固定或自适应质量及VMAF目标。",
@@ -864,7 +865,7 @@ export const zh: Messages = {
     video: "视频设置",
     audio: "音频与字幕",
     overview_intro: "选择一个阶段，配置此媒体库的处理方式。",
-    advanced_intro: "微调此阶段。离开页面后现有设置仍然有效。",
+    advanced_intro: "微调此阶段。更改将在保存后生效。",
     draft_hint: "所有阶段的更改将一起保存。",
     name_hint: "媒体库的显示名称。重命名不会移动文件夹。",
     type_hint: "决定可用的媒体设置。更改类型不会转换任何文件。",

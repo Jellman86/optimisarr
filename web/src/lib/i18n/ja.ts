@@ -847,6 +847,7 @@ export const ja: Messages = {
     restart_setup: "セットアップを再実行", restarting_setup: "セットアップを開始中…", restart_setup_confirm: "セットアップを再実行しますか？既存の設定とライブラリは保持されます。"
   },
   libraryWorkflow: {
+    encoding_intro: "コーデック、コンテナ、エンコーダーの処理量、ビットレートの上限と下限。",
     video_summary: "解像度、フレームレート、HDR、黒帯。",
     audio_summary: "トラック選択、変換、サラウンド音声。",
     quality_summary: "固定・適応品質とVMAFの目標。",
@@ -864,7 +865,7 @@ export const ja: Messages = {
     video: "動画設定",
     audio: "音声と字幕",
     overview_intro: "ライブラリの処理方法を設定する段階を選んでください。",
-    advanced_intro: "この段階を調整します。ページを離れても設定値は有効です。",
+    advanced_intro: "この段階を細かく調整します。変更は保存すると適用されます。",
     draft_hint: "すべての段階の変更をまとめて保存します。",
     name_hint: "ライブラリの表示名です。名前を変えてもフォルダーは移動しません。",
     type_hint: "使用できるメディア設定を決めます。種類を変えてもファイルは変換されません。",

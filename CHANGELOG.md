@@ -10,7 +10,8 @@
   advanced pages; custom settings remain visible in the overview. Drafts are saved together,
   and validation links return to the setting that needs attention. Named preset choices,
   explanatory tooltips and the shared card textures, shadows and hover lift keep the editor
-  readable on desktop and mobile.
+  readable on desktop and mobile. Child pages retain the shared content width and
+  light/dark surfaces, with form labels and control spacing aligned with Settings.
 - **Queue now separates working jobs from what is next.** A poster-led working card shows
   progress and processing stages; other running jobs remain visible beneath it. Job details
   open in a poster-led dialog with verification evidence, captured commands and the existing job actions.

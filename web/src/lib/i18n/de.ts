@@ -899,6 +899,7 @@ export const de: Messages = {
     restart_setup_confirm: 'Einrichtung erneut ausführen? Bestehende Einstellungen und Bibliotheken bleiben erhalten.',
   },
   libraryWorkflow: {
+    encoding_intro: "Codec, Container, Encoder-Aufwand und Bitratenbegrenzungen.",
     video_summary: "Auflösung, Bildrate, HDR und schwarze Balken.",
     audio_summary: "Spurauswahl, Konvertierung und Surround-Sound.",
     quality_summary: "Feste oder adaptive Qualität und VMAF-Ziele.",
@@ -916,7 +917,7 @@ export const de: Messages = {
     video: "Videoeinstellungen",
     audio: "Audio und Untertitel",
     overview_intro: "Wähle einen Schritt, um die Verarbeitung dieser Bibliothek einzurichten.",
-    advanced_intro: "Passe diesen Schritt an. Bestehende Werte bleiben beim Verlassen dieser Seite aktiv.",
+    advanced_intro: "Passe diese Phase im Detail an. Änderungen werden beim Speichern wirksam.",
     draft_hint: "Änderungen aller Schritte werden gemeinsam gespeichert.",
     name_hint: "Anzeigename dieser Bibliothek. Eine Umbenennung verschiebt den Ordner nicht.",
     type_hint: "Bestimmt die verfügbaren Medieneinstellungen. Ein Typwechsel konvertiert keine Dateien.",

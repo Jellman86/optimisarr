@@ -1037,6 +1037,7 @@ export const en = {
     restart_setup_confirm: 'Run setup again? Existing settings and libraries will be kept.',
   },
   libraryWorkflow: {
+    encoding_intro: "Codec, container, encoder effort and bitrate limits.",
     video_summary: "Resolution, frame rate, HDR and black bars.",
     audio_summary: "Track selection, conversion and surround sound.",
     quality_summary: "Fixed or adaptive quality and VMAF targets.",
@@ -1054,7 +1055,7 @@ export const en = {
     video: "Video settings",
     audio: "Audio & subtitles",
     overview_intro: "Choose a stage to configure how this library is processed.",
-    advanced_intro: "Fine-tune this stage. Existing values stay active when you leave this page.",
+    advanced_intro: "Fine-tune this stage. Changes take effect when you save.",
     draft_hint: "Changes across all stages are saved together.",
     name_hint: "A display name for this library. Renaming it does not move its folder.",
     type_hint: "Controls which media settings are available. Changing the type does not convert any files.",

@@ -847,6 +847,7 @@ export const pt: Messages = {
     restart_setup: "Executar configuração novamente", restarting_setup: "Iniciando configuração…", restart_setup_confirm: "Executar a configuração novamente? As configurações e bibliotecas existentes serão mantidas."
   },
   libraryWorkflow: {
+    encoding_intro: "Codec, contentor, esforço do codificador e limites de taxa de bits.",
     video_summary: "Resolução, taxa de fotogramas, HDR e barras pretas.",
     audio_summary: "Seleção de faixas, conversão e som surround.",
     quality_summary: "Qualidade fixa ou adaptativa e objetivos VMAF.",
@@ -864,7 +865,7 @@ export const pt: Messages = {
     video: "Definições de vídeo",
     audio: "Áudio e legendas",
     overview_intro: "Escolha uma etapa para configurar o processamento desta biblioteca.",
-    advanced_intro: "Ajuste esta etapa. Os valores continuam ativos ao sair desta página.",
+    advanced_intro: "Ajuste esta etapa em detalhe. As alterações são aplicadas ao guardar.",
     draft_hint: "As alterações de todas as etapas são guardadas em conjunto.",
     name_hint: "Nome apresentado da biblioteca. Alterá-lo não move a pasta.",
     type_hint: "Determina as definições multimédia disponíveis. Alterar o tipo não converte ficheiros.",

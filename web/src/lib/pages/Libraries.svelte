@@ -708,6 +708,7 @@
     return Object.hasOwn(roomNames, segment) ? segment as LibraryRoom : editingId === 0 ? 'source' : 'overview'
   })
   const stageRoom = $derived(room.split('/')[0])
+  const editorTitle = $derived(activeTab === 'candidates' ? i18n.m.libraries.tab_candidates : activeTab === 'excluded' ? i18n.m.libraries.tab_excluded : room === 'overview' ? form.name || i18n.m.libraries.add_library : roomNames[room])
   const roomParents = $derived(room === 'overview' ? [] : room.split('/').slice(0, -1).map((_, index) => room.split('/').slice(0, index + 1).join('/') as LibraryRoom))
   const workflowStages = $derived([
     { room: 'source' as const, title: roomNames.source, icon: 'folder' as const, summary: `${mediaTypeLabel(form.mediaType, i18n.m)} · ${i18n.m.libraries.queue_priority}: ${priorityLabel(form.priority)}` },
@@ -1214,12 +1215,12 @@
         {/each}
         <span aria-hidden="true">/</span>
       {/if}
-      <span aria-current="page" class="break-words text-ink">{activeTab !== 'rules' ? activeTab === 'candidates' ? i18n.m.libraries.tab_candidates : i18n.m.libraries.tab_excluded : room === 'overview' ? form.name || i18n.m.libraries.add_library : roomNames[room]}</span>
+      <span aria-current="page" class="break-words text-ink">{editorTitle}</span>
     </nav>
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{room === 'overview' ? form.name || i18n.m.libraries.add_library : roomNames[room]}</h1>
-        <p class="page-subtitle break-all">{room === 'overview' ? i18n.m.libraryWorkflow.overview_intro : room.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : form.path}</p>
+        <h1 class="page-title break-words outline-none" tabindex="-1" bind:this={workflowHeading} data-workflow-heading>{editorTitle}</h1>
+        <p class="page-subtitle break-words">{activeTab !== 'rules' ? form.path : room === 'overview' ? i18n.m.libraryWorkflow.overview_intro : room.includes('advanced') ? i18n.m.libraryWorkflow.advanced_intro : form.path}</p>
       </div>
       <span class="badge tone-info">{mediaTypeLabel(form.mediaType, i18n.m)}</span>
     </div>
@@ -1402,11 +1403,6 @@
 
       {#if trackCleanupNeedsLanguages}
         <p class="mt-1 text-xs text-warn">{i18n.m.libraries.track_cleanup_needs_languages}</p>
-      {/if}
-
-      <!-- Track cleanup links straight to the two fields that define it. -->
-      {#if isTrackCleanupProfile}
-        {@render roomLink('encode/audio')}
       {/if}
 
       {#if !isNoEncodeProfile}
@@ -2133,7 +2129,7 @@
 {/snippet}
 
 {#snippet videoAdvancedFields()}
-<ConfigSection id="library-video-advanced" title={i18n.m.libraryWorkflow.encoding_advanced} description={i18n.m.libraries.encoder_tuning_support}>
+<ConfigSection id="library-video-advanced" title={i18n.m.libraryWorkflow.encoding_advanced} description={i18n.m.libraryWorkflow.encoding_intro}>
       <section class="space-y-4">
 
         {#if !isTrackCleanupProfile}
@@ -2665,6 +2661,18 @@
 {/if}
 
 <style>
+  /* Match Settings' readable labels and comfortable control targets while retaining
+     the shared card surfaces, theme tokens and full-width room layout. */
+  [data-library-workflow] :global(.label) {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--ink-2);
+  }
+  [data-library-workflow] :global(.input) {
+    min-height: 2.75rem;
+  }
   [data-library-workflow] :global([data-config-section]) {
     transition: box-shadow 180ms ease;
   }

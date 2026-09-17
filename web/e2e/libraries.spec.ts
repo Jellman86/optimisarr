@@ -142,7 +142,8 @@ test('track cleanup exposes language choices and hides irrelevant encoder contro
   await expect(page.getByRole('radio', { name: /Re-encode video/ })).not.toBeChecked()
   await expect(page.locator('#lib-vmaf-policy')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Video settings', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Audio & subtitles', exact: true }).first().click()
+  await expect(page.getByRole('button', { name: 'Audio & subtitles', exact: true })).toHaveCount(1)
+  await page.getByRole('button', { name: 'Audio & subtitles', exact: true }).click()
   await expect(page.getByLabel('Keep audio languages', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Keep subtitle languages', { exact: true })).toBeVisible()
   await expect(page.locator('#lib-video-audio-codec')).toHaveCount(0)
@@ -420,6 +421,51 @@ test('custom preset opens its tuning page and unsuitable deep links show relevan
   await page.goBack()
   await expect(page.locator('#lib-codec')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Images', exact: true })).toBeVisible()
+})
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`workflow rooms keep the shared width and themed surfaces in ${colorScheme} mode`, async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+    await mockLibraries(page, { ...library, mediaType: 'Other' })
+    let referenceWidth = 0
+    for (const room of ['', '/source', '/source/advanced', '/encode', '/encode/quality', '/encode/video', '/encode/video/advanced', '/encode/audio', '/encode/audio/advanced', '/encode/images', '/encode/images/advanced', '/verify', '/verify/advanced', '/automate']) {
+      await page.goto('/#/libraries/1/configure' + room)
+      const workflow = page.locator('[data-library-workflow]')
+      await expect(workflow).toBeVisible()
+      const width = (await workflow.boundingBox())!.width
+      if (!referenceWidth) referenceWidth = width
+      expect(width, room).toBe(referenceWidth)
+      expect(width).toBe(1152)
+      const card = workflow.locator('.card-interactive, [data-config-section]').first()
+      await page.mouse.move(0, 0)
+      const surface = await card.evaluate(element => ({
+        gradient: getComputedStyle(element).backgroundImage,
+        panel: getComputedStyle(element).getPropertyValue('--panel').trim(),
+        shadow: getComputedStyle(element).boxShadow,
+      }))
+      const panelRgb = surface.panel.slice(1).match(/.{2}/g)!.map(channel => parseInt(channel, 16)).join(', ')
+      expect(surface.gradient).toContain(`rgb(${panelRgb})`)
+      expect(surface.shadow).not.toBe('none')
+      await card.hover()
+      await expect.poll(() => card.evaluate(element => getComputedStyle(element).boxShadow)).not.toBe(surface.shadow)
+      for (const input of await workflow.locator('.input').all()) {
+        if (await input.isVisible()) expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+      }
+      expect(await page.locator('main').evaluate(main => main.scrollWidth <= main.clientWidth), room).toBe(true)
+    }
+  })
+}
+
+test('library tab headings describe the displayed content and restore the workflow heading', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/source')
+  await page.getByRole('button', { name: /Candidates\(/ }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Candidates')
+  await page.getByRole('button', { name: /Excluded\(/ }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Excluded')
+  await page.getByRole('button', { name: 'Rules', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose files')
 })
 
 test('unknown bookmarked stages return to the overview instead of rendering an empty editor', async ({ page }) => {
