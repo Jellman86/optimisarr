@@ -332,7 +332,7 @@ test('a long in-flight list is capped and says what it is hiding', async ({ page
 })
 
 test('the application mark keeps transparency and reports the server state', async ({ page }) => {
-  // A transparent light field turns while work runs, without an opaque square in the rail.
+  // A transparent sliced cube turns while work runs, without an opaque square in the rail.
   await mockDashboard(page, { queue: { runningJobs: 2 }, jobs: [liveJob()] })
 
   await page.goto('/#/')
@@ -342,15 +342,22 @@ test('the application mark keeps transparency and reports the server state', asy
   // Decorative: every placement sits beside the word "Optimisarr", so the mark must not repeat it.
   await expect(mark).toHaveAttribute('aria-hidden', 'true')
 
+  await expect(mark).toHaveAttribute('data-light-state', 'excited')
   // Something is actually rasterised onto it, and it keeps its alpha channel.
   const painted = await mark.evaluate((el: HTMLCanvasElement) => {
     const d = el.getContext('2d')!.getImageData(0, 0, el.width, el.height).data
     let lit = 0
     let clear = 0
     for (let i = 0; i < d.length; i += 4) (d[i + 3] > 0 ? lit++ : clear++)
-    return { lit, clear }
+    const border = []
+    for (let i = 0; i < el.width; i++) {
+      border.push(d[i * 4 + 3], d[((el.height - 1) * el.width + i) * 4 + 3])
+      border.push(d[(i * el.width) * 4 + 3], d[(i * el.width + el.width - 1) * 4 + 3])
+    }
+    return { lit, clear, border }
   })
   expect(painted.lit).toBeGreaterThan(50)
+  expect(painted.border.every(alpha => alpha === 0)).toBe(true)
   expect(painted.clear).toBeGreaterThan(288 * 288 * 0.3)
 })
 
@@ -364,16 +371,16 @@ test('the collapsed rail keeps a name on the brand button', async ({ page }) => 
   await expect(page.locator('aside').getByRole('button', { name: 'Dashboard', exact: true }).first()).toBeVisible()
 })
 
-test('the favicon reports activity with the brighter still', async ({ page }) => {
+test('the favicon reports activity with a twisted still', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
 
   await page.goto('/#/')
 
   const href = page.locator('link[rel~="icon"]').first()
-  await expect(href).toHaveAttribute('href', '/brand/favicon-excited.png', { timeout: 10_000 })
+  await expect(href).toHaveAttribute('href', /\/brand\/favicon-(dark|light)-excited\.png$/, { timeout: 10_000 })
 })
 
-test('the light icon is smooth and keeps moving when idle', async ({ page }) => {
+test('the cube has smooth edges and moving illumination when idle', async ({ page }) => {
   await mockDashboard(page)
   await page.goto('/#/')
   const mark = page.locator('aside canvas').first()
@@ -391,7 +398,7 @@ test('the light icon is smooth and keeps moving when idle', async ({ page }) => 
   await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(still)
 })
 
-test('remote work animates the light; reduced motion holds a brighter still', async ({ page }) => {
+test('remote work animates the slices; reduced motion holds a twisted still', async ({ page }) => {
   await mockDashboard(page, { jobs: [liveJob({ status: 'Leased', workerName: 'Mac mini' })] })
   await page.goto('/#/')
   const mark = page.locator('aside canvas').first()
@@ -421,7 +428,7 @@ async function mockJobsHub(page: Page) {
   return () => notify()
 }
 
-test('job events change the light state while suspended work keeps a slow drift', async ({ page }) => {
+test('job events change the cube state while suspended work keeps moving illumination', async ({ page }) => {
   const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
   await mockDashboard(page, fixture)
   const notify = await mockJobsHub(page)
@@ -443,12 +450,18 @@ test('job events change the light state while suspended work keeps a slow drift'
   fixture.jobs = []
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
-  await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute('href', '/brand/favicon-steady.png')
+  await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute('href', /\/brand\/favicon-(dark|light)-steady\.png$/)
 })
 
-test('a missing animation leaves a complete still and the app usable', async ({ page }) => {
+test('unavailable graphics leaves a complete still and the app usable', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
-  await page.route('**/brand/active*.webp', route => route.abort())
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function (...args: Parameters<typeof getContext>) {
+      if (String(args[0]).startsWith('webgl')) return null
+      return getContext.apply(this, args)
+    } as typeof getContext
+  })
   await page.goto('/#/')
   const mark = page.locator('aside canvas').first()
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
@@ -457,9 +470,9 @@ test('a missing animation leaves a complete still and the app usable', async ({ 
   await expect(page.locator('main').getByText('ENCODING', { exact: true })).toBeVisible()
 })
 
-test('reduced-motion sessions never download an animation atlas', async ({ page }) => {
-  const atlases: string[] = []
-  page.on('request', request => { if (/\/brand\/active.*\.webp/.test(request.url())) atlases.push(request.url()) })
+test('reduced-motion sessions never load graphics code', async ({ page }) => {
+  const graphics: string[] = []
+  page.on('request', request => { if (/brand-(renderer|geometry|shaders)/.test(request.url())) graphics.push(request.url()) })
   const fixture: Fixture = {}
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await mockDashboard(page, fixture)
@@ -471,7 +484,7 @@ test('reduced-motion sessions never download an animation atlas', async ({ page 
   fixture.jobs = [liveJob()]
   notify()
   await expect(page.locator('aside canvas').first()).toHaveAttribute('data-light-state', 'excited')
-  expect(atlases).toEqual([])
+  expect(graphics).toEqual([])
 })
 
 test('the icon stops scheduling paints offscreen and resumes a slow drift when idle', async ({ page }) => {
@@ -528,16 +541,32 @@ test('the desktop sidebar has breathing room above and below in both widths', as
   expect(drawer!.height).toBe(812)
 })
 
-test('idle geometry advances substantially more slowly than working geometry', async ({ page }) => {
+test('idle geometry stays fixed and work/theme changes reuse the same meshes', async ({ page }) => {
   await page.addInitScript(() => {
-    const target = window as Window & { brandPose: number }
-    target.brandPose = 0
-    const draw = CanvasRenderingContext2D.prototype.drawImage
-    CanvasRenderingContext2D.prototype.drawImage = function (...args: Parameters<typeof draw>) {
-      if (this.canvas.closest('aside') && args[0] instanceof HTMLImageElement && args[0].src.endsWith('/brand/active.webp')) {
-        target.brandPose = Math.round(Number(args[2]) / 288) * 8 + Math.round(Number(args[1]) / 288)
-      }
-      return draw.apply(this, args)
+    const target = window as Window & { brandGraphics: { buffers: number; angle: number; light: number[] } }
+    target.brandGraphics = { buffers: 0, angle: 0, light: [] }
+    const prototype = WebGLRenderingContext.prototype
+    const createBuffer = prototype.createBuffer
+    prototype.createBuffer = function () {
+      target.brandGraphics.buffers++
+      return createBuffer.call(this)
+    }
+    const names = new Map<WebGLUniformLocation, string>()
+    const location = prototype.getUniformLocation
+    prototype.getUniformLocation = function (program, name) {
+      const result = location.call(this, program, name)
+      if (result) names.set(result, name)
+      return result
+    }
+    const scalar = prototype.uniform1f
+    prototype.uniform1f = function (location, value) {
+      if (location && names.get(location) === 'angle') target.brandGraphics.angle = value
+      return scalar.call(this, location, value)
+    }
+    const vector = prototype.uniform3fv
+    prototype.uniform3fv = function (location, value) {
+      if (location && names.get(location) === 'keyLight') target.brandGraphics.light = Array.from(value)
+      return vector.call(this, location, value)
     }
   })
   const fixture: Fixture = {}
@@ -546,22 +575,40 @@ test('idle geometry advances substantially more slowly than working geometry', a
   await page.goto('/#/')
   const mark = page.locator('aside canvas').first()
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
-  const pose = () => page.evaluate(() => (window as Window & { brandPose: number }).brandPose)
-  const idleStart = await pose()
-  await page.waitForTimeout(1200)
-  const idleTravel = ((await pose()) - idleStart + 48) % 48
-  expect(idleTravel).toBeGreaterThan(0)
+  const graphics = () => page.evaluate(() => (window as Window & { brandGraphics: { buffers: number; angle: number; light: number[] } }).brandGraphics)
+  const resting = await graphics()
+  await page.waitForTimeout(500)
+  expect((await graphics()).angle).toBe(0)
+  expect((await graphics()).light).not.toEqual(resting.light)
   fixture.queue = { runningJobs: 1 }
   fixture.jobs = [liveJob()]
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'excited')
-  await page.waitForTimeout(550)
-  const activeStart = await pose()
-  await page.waitForTimeout(1200)
-  const activeTravel = ((await pose()) - activeStart + 48) % 48
-  expect(activeTravel).toBeGreaterThan(idleTravel * 2)
+  await expect.poll(async () => (await graphics()).angle, { timeout: 15_000 }).toBeGreaterThan(.05)
+  await page.getByRole('button', { name: 'Toggle theme', exact: true }).click()
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  fixture.queue = { runningJobs: 0 }
+  fixture.jobs = []
+  notify()
+  await expect(mark).toHaveAttribute('data-light-state', 'steady')
+  await page.waitForTimeout(500)
+  expect((await graphics()).buffers).toBe(resting.buffers)
 })
 
+test('theme changes update reduced-motion stills and the favicon', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
+  await mockDashboard(page)
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  const favicon = page.locator('link[rel~="icon"]').first()
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  await expect(favicon).toHaveAttribute('href', '/brand/favicon-dark-steady.png')
+  const before = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await page.getByRole('button', { name: 'Toggle theme', exact: true }).click()
+  await expect(favicon).toHaveAttribute('href', '/brand/favicon-light-steady.png')
+  await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(before)
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+})
 
 test('a working sidebar keeps its footer reachable in a short window', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
@@ -588,4 +635,39 @@ test('the sidebar recovers artwork when the next job follows one without a poste
   notify()
   await expect(page.locator('aside [data-thumbnail] img')).toHaveJSProperty('naturalWidth', 192)
   await expect(page.locator('aside [data-thumbnail] img')).toHaveCSS('opacity', '1')
+})
+
+test('a lost graphics context falls back once and still follows theme and activity', async ({ page }) => {
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext
+    const target = window as Window & { brandContexts: WebGLRenderingContext[] }
+    target.brandContexts = []
+    HTMLCanvasElement.prototype.getContext = function (...args: Parameters<typeof getContext>) {
+      const context = getContext.apply(this, args)
+      if (context instanceof WebGLRenderingContext) target.brandContexts.push(context)
+      return context
+    } as typeof getContext
+  })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  const fixture: Fixture = {}
+  await mockDashboard(page, fixture)
+  const notify = await mockJobsHub(page)
+  await page.goto('/#/')
+  const mark = page.locator('aside canvas').first()
+  await expect(mark).toHaveAttribute('data-light-motion', 'playing')
+  const contexts = await page.evaluate(() => {
+    const contexts = (window as Window & { brandContexts: WebGLRenderingContext[] }).brandContexts
+    for (const context of contexts) context.getExtension('WEBGL_lose_context')!.loseContext()
+    return contexts.length
+  })
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  fixture.queue = { runningJobs: 1 }
+  fixture.jobs = [liveJob()]
+  notify()
+  await expect(mark).toHaveAttribute('data-light-state', 'excited')
+  const before = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await page.getByRole('button', { name: 'Toggle theme', exact: true }).click()
+  await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(before)
+  await expect(mark).toHaveAttribute('data-light-motion', 'still')
+  expect(await page.evaluate(() => (window as Window & { brandContexts: WebGLRenderingContext[] }).brandContexts.length)).toBe(contexts)
 })

@@ -4,6 +4,11 @@
 
 ### Changed
 
+- **The application icon is now a cube balanced on its tip.** Fifteen slices twist in sequence
+  while Optimisarr is working, then settle into a seamless cube. At rest, a slowly moving
+  light shifts the highlights and shadow. Light and dark themes have matching colours and
+  favicons; reduced motion keeps a still image, and hidden icons stop animating.
+
 - **Library configuration follows the processing workflow.** Choose files, Encode, Verify,
   and Schedule & replace open focused pages with breadcrumbs and browser Back support.
   Specialist encoding, audio, image, eligibility and verification controls have their own
