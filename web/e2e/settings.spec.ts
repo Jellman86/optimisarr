@@ -238,6 +238,8 @@ test('every settings room reflows without horizontal page overflow', async ({ pa
 })
 
 test('information tooltips are translated, populated, and readable in every locale', async ({ page }) => {
+  // This traverses every tooltip in two rooms across all nine locales.
+  test.slow()
   await page.setViewportSize({ width: 812, height: 375 })
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' })
   await mockSettings(page)

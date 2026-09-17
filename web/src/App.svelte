@@ -56,8 +56,9 @@
 
   $effect(() => {
     if (auth.canUseApp) {
-      if (!setup.checked && !setup.loading) void setup.load()
-      else if (setup.checked && !setup.required) { activity.start(); favicon.start() }
+      favicon.start()
+      if (!setup.checked && !setup.loading) void setup.load().catch(() => {})
+      else if (setup.checked && !setup.required) { activity.start() }
     }
   })
 
@@ -128,7 +129,7 @@
     <div class="card w-full max-w-md p-6 text-center">
       <h1 class="font-semibold text-ink">{i18n.m.setup.error_heading}</h1>
       <p class="mt-2 text-sm text-bad">{setup.error}</p>
-      <button class="btn btn-primary mt-5" onclick={() => setup.load()}>{i18n.m.setup.retry}</button>
+      <button class="btn btn-primary mt-5" onclick={() => void setup.load().catch(() => {})}>{i18n.m.setup.retry}</button>
     </div>
   </div>
 {:else if setup.required}

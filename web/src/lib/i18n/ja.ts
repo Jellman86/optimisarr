@@ -63,6 +63,9 @@ export const ja: Messages = {
     token_label: "管理者トークン"
   },
   setup: {
+    vmaf_recommendation_body: "このポリシーを映画とテレビの全ライブラリに適用します。「バランス」は適応型VMAF、「オフ」はVMAF検証なしの固定品質を使用します。未選択の場合、各ライブラリの保存済みポリシーを維持します。",
+    integrations_later: "後で設定から管理できます。既存の接続は変更されません。",
+    concurrent_invalid: "1以上の整数を入力してください。",
     loading: "セットアップを確認中…", retry: "再試行", progress_label: "セットアップの進行状況",
     step_of: "{total} ステップ中 {current}", status_current: "現在", status_completed: "完了", status_pending: "未完了",
     step_welcome: "ようこそ", step_readiness: "システム確認", step_library: "ライブラリ", step_safety: "安全性", step_review: "確認",
@@ -86,11 +89,11 @@ export const ja: Messages = {
     safety_heading: "初期の安全設定を選択", safety_step_body: "これは通常の設定値で、非表示のウィザードモードではありません。後で変更でき、セットアップ中にジョブは開始されません。",
     dry_run_title: "ドライランを有効にする", dry_run_body: "通常どおりエンコードと検証を行い、置換準備完了で停止します。オリジナルを移動する前に結果を確認できます。",
     concurrent_title: "同時ジョブ数", concurrent_body: "まず1件から始めます。実際のエンコードで CPU、GPU、ディスク、温度を確認してから増やしてください。",
-    automation_title: "自動化は無効のまま", automation_body: "新しいライブラリは自動でキュー投入や置換を行いません。候補確認後にライブラリ設定から変更できます。",
+    automation_title: "ライブラリの自動処理", automation_body: "自動処理は各ライブラリの保存済み設定に従います。スケジュールを選ぶと時間帯だけが変わり、自動キュー追加や自動置換の有効・無効は変わりません。",
     recommended_heading: "このシステムへの推奨事項", recommended_body: "上記で確認された機能に基づきます。自動適用はされません。必要な項目だけ選択してください。",
     use_recommendation: "推奨設定を使用", recommendation_applied: "推奨設定を選択済み",
     settings_required_error: "設定を利用できません。システムを再確認してください。",
-    review_eyebrow: "ジョブは開始されていません", review_heading: "開始状態を確認", review_body: "完了するとセットアップを記録してダッシュボードを開きます。ファイルのスキャン、キュー投入、エンコード、置換、削除は行いません。",
+    review_eyebrow: "ジョブは開始されていません", review_heading: "開始状態を確認", review_body: "完了すると確認した設定が適用され、確認画面が表示されます。この操作ではスキャン、エンコード、置換、削除は開始されません。",
     review_system: "システム", review_ready: "必須メディアツールを利用可能", review_attention: "確認が必要", review_library: "ライブラリ",
     review_replacement: "置換", review_dry_run: "ドライラン：検証済み出力をすべて確認", review_live: "検証後の置換を許可",
     review_queue: "キュー", review_jobs_one: "同時ジョブ {count} 件", review_jobs_other: "同時ジョブ {count} 件",

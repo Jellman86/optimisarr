@@ -9,10 +9,14 @@
   import Icon from '../components/Icon.svelte'
   import PreviewCompare from '../components/PreviewCompare.svelte'
   import Libraries from './Libraries.svelte'
-  import { router } from '../stores/ui.svelte'
+  import { router, theme } from '../stores/ui.svelte'
+  import LanguageSelect from '../components/LanguageSelect.svelte'
 
   let viewStep = $state(setup.state?.currentStep ?? 1)
   let busy = $state(false)
+  let loadingContext = $state(true)
+  let contextReady = $state(false)
+  let content = $state<HTMLElement>()
   let error = $state<string | null>(null)
   let errorSummary = $state<HTMLDivElement | null>(null)
   let tools = $state<ToolCheck[]>([])
@@ -49,11 +53,11 @@
   }
 
   const requiredToolsReady = $derived(tools.length > 0 && tools.every((tool) => !tool.required || tool.available))
-  const requiredPathsReady = $derived(paths.length > 0 && paths.every((path) => path.issue === 'none'))
+  const requiredPathsReady = $derived(paths.length > 0 && paths.filter((path) => path.role !== 'library').every((path) => path.issue === 'none'))
   const libraryPathsReady = $derived(allLibraryPathsReady(libraries, libraryAccess))
   const savedVmafEnabled = $derived(libraries.some((library) => library.vmafQualityGateEnabled === true))
-  const concurrencyError = $derived(settings && (!Number.isFinite(settings.maxConcurrentJobs) || settings.maxConcurrentJobs < 1)
-    ? i18n.m.settings.validation_max_jobs
+  const concurrencyError = $derived(settings && (!Number.isInteger(settings.maxConcurrentJobs) || settings.maxConcurrentJobs < 1)
+    ? i18n.m.setup.concurrent_invalid
     : null)
   const stepNames = $derived([
     i18n.m.setup.step_welcome,
@@ -68,6 +72,9 @@
   })
 
   async function loadContext(announce = false) {
+    if (retesting || busy) return
+    loadingContext = true
+    contextReady = false
     if (announce) {
       retesting = true
       retestMessage = null
@@ -98,11 +105,13 @@
       restoreDraft(settingsResult, readiness.recommendation)
       representative = inventoryResult?.items[0]?.file ?? null
       await setLibraries(libraryResults)
+      contextReady = true
       if (announce) retestMessage = i18n.m.setup.retest_complete
     } catch (err) {
       await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
     } finally {
       retesting = false
+      loadingContext = false
     }
   }
 
@@ -129,66 +138,54 @@
     configuringLibraryId = null
     try {
       await setLibraries()
+      await focusStep()
     } catch (err) {
       await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
     }
   }
 
+  async function focusStep() {
+    await tick()
+    const heading = content?.querySelector<HTMLHeadingElement>('h1')
+    heading?.focus({ preventScroll: true })
+    heading?.scrollIntoView({ block: 'start' })
+  }
+
+  function closeLibrary() {
+    configuringLibraryId = null
+    void focusStep()
+  }
+
   async function continueStep() {
-    if (!setup.state) return
-    error = null
-
-    if (viewStep === 3) {
-      try {
-        await setLibraries()
-      } catch (err) {
-        await showError(err instanceof Error ? err.message : i18n.m.setup.error_load)
-        return
-      }
-    }
-
-    if (viewStep === 2 && (!databaseAvailable || !requiredToolsReady || !requiredPathsReady)) {
-      await showError(i18n.m.setup.required_tools_error)
-      return
-    }
-    if (viewStep === 3 && libraries.length === 0) {
-      await showError(i18n.m.setup.library_required_error)
-      return
-    }
-    if (viewStep === 3 && !libraryPathsReady) {
-      const unavailable = firstUnavailableLibrary(libraries, libraryAccess)
-      await showError(unavailable && libraryAccess[unavailable.id]
-        ? libraryAccess[unavailable.id]!.message
-        : i18n.m.setup.access_checking)
-      return
-    }
-    if (viewStep === 4 && !settings) {
-      await showError(i18n.m.setup.settings_required_error)
-      return
-    }
-    if (viewStep === 4 && concurrencyError) {
-      await showError(concurrencyError)
-      return
-    }
-
+    if (busy || loadingContext || retesting || !contextReady || !setup.state) return
     busy = true
+    error = null
     try {
-      if (viewStep === 5 && settings) {
-        receipt = await api.applySetup({
-          settings,
-          useRecommendedEncoder,
-          applyRecommendedVmaf,
-          applyRecommendedSchedule,
-        })
-        localStorage.removeItem(DRAFT_KEY)
+      if (viewStep === 3) await setLibraries()
+      if ((viewStep === 2 || viewStep === 5) && (!databaseAvailable || !requiredToolsReady || !requiredPathsReady)) {
+        await showError(i18n.m.setup.required_tools_error)
         return
       }
-
-      if (viewStep <= setup.state.completedStep) {
-        viewStep += 1
-      } else {
+      if ((viewStep === 3 || viewStep === 5) && !libraryPathsReady) {
+        const unavailable = firstUnavailableLibrary(libraries, libraryAccess)
+        await showError(libraries.length === 0 ? i18n.m.setup.library_required_error
+          : unavailable && libraryAccess[unavailable.id] ? libraryAccess[unavailable.id]!.message : i18n.m.setup.access_checking)
+        return
+      }
+      if ((viewStep === 4 || viewStep === 5) && (!settings || concurrencyError)) {
+        await showError(concurrencyError ?? i18n.m.setup.settings_required_error)
+        return
+      }
+      if (viewStep === 5 && settings) {
+        receipt = await api.applySetup({ settings, useRecommendedEncoder, applyRecommendedVmaf, applyRecommendedSchedule })
+        clearDraft()
+        await focusStep()
+        return
+      }
+      if (viewStep <= setup.state.completedStep) changeStep(viewStep + 1)
+      else {
         const state = await setup.advance(viewStep)
-        viewStep = state?.currentStep ?? viewStep + 1
+        changeStep(state?.currentStep ?? viewStep + 1)
       }
     } catch (err) {
       await showError(err instanceof Error ? err.message : i18n.m.setup.error_save)
@@ -198,6 +195,7 @@
   }
 
   function stepStatus(step: number) {
+    if (receipt) return i18n.m.setup.status_completed
     if (step === viewStep) return i18n.m.setup.status_current
     if (setup.state && step <= setup.state.completedStep) return i18n.m.setup.status_completed
     return i18n.m.setup.status_pending
@@ -257,6 +255,7 @@
   function changeStep(step: number) {
     error = null
     viewStep = step
+    void focusStep()
   }
 
   function vmafReviewLabel(): string {
@@ -266,9 +265,22 @@
     return savedVmafEnabled ? i18n.m.settings.enabled : i18n.m.common.off
   }
 
-  async function leaveReceipt(path: string) {
+  function leaveReceipt(path: string) {
+    if (!receipt) return
     router.go(path)
-    await setup.load()
+    setup.accept(receipt.state)
+  }
+
+  function librarySchedule(library: Library): string {
+    const start = applyRecommendedSchedule && recommendation ? recommendation.scheduleStart : library.autoEnqueueWindowStart
+    const end = applyRecommendedSchedule && recommendation ? recommendation.scheduleEnd : library.autoEnqueueWindowEnd
+    const window = start === end ? i18n.m.libraries.any_time : `${start}–${end}`
+    return library.autoEnqueueEnabled ? t(i18n.m.libraries.auto_optimise_window, { window })
+      : `${i18n.m.libraries.auto_optimise_off} · ${window}`
+  }
+
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* Storage is optional in restricted browsers. */ }
   }
 
   function restoreDraft(target: Settings, nextRecommendation: SetupRecommendation) {
@@ -280,13 +292,13 @@
       if (typeof draft.maxConcurrentJobs === 'number') target.maxConcurrentJobs = draft.maxConcurrentJobs
       applyRecommendedVmaf = draft.applyRecommendedVmaf === true
       applyRecommendedSchedule = draft.applyRecommendedSchedule === true
-      if (draft.useRecommendedEncoder === true) {
+      useRecommendedEncoder = draft.useRecommendedEncoder === true
+      if (useRecommendedEncoder) {
         target.encoderMode = nextRecommendation.encoderMode
         target.hardwareDecode = nextRecommendation.hardwareDecode
-        useRecommendedEncoder = true
       }
     } catch {
-      localStorage.removeItem(DRAFT_KEY)
+      clearDraft()
     }
   }
 
@@ -299,20 +311,26 @@
       applyRecommendedVmaf,
       applyRecommendedSchedule,
     }
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)) } catch { /* Keep the in-memory plan usable. */ }
   })
 </script>
 
-<div class="min-h-dvh bg-raised px-4 py-5 text-ink sm:px-6 sm:py-8">
-  <div class="mx-auto mb-5 flex max-w-5xl items-center gap-3">
+<div class="min-h-dvh bg-ground px-4 py-5 text-ink sm:px-6 sm:py-8">
+  <div class="mx-auto mb-5 flex max-w-5xl flex-wrap items-center gap-3">
     <BrandMark class="h-9 w-9" />
-    <div>
+    <div class="min-w-0 flex-1">
       <div class="font-bold tracking-tight text-ink">Optimisarr</div>
       <div class="text-xs text-ink-3">{i18n.m.app.tagline}</div>
     </div>
+    <div class="flex items-center gap-2 [&_button]:min-h-11 [&_button]:min-w-11">
+      <button type="button" class="btn btn-ghost min-h-11 min-w-11" onclick={() => theme.toggle()} aria-label={i18n.m.nav.toggle_theme}>
+        <Icon name={theme.isDark ? 'sun' : 'moon'} class="h-5 w-5" />
+      </button>
+      <LanguageSelect compact />
+    </div>
   </div>
 
-  <div class="mx-auto grid min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} card overflow-hidden rounded-2xl md:grid-cols-[15rem_minmax(0,1fr)]">
+  <div class="mx-auto grid grid-rows-[auto_1fr] md:grid-rows-1 min-h-[min(43rem,calc(100dvh-8rem))] {configuringLibraryId !== null ? 'max-w-7xl' : 'max-w-5xl'} card overflow-hidden rounded-2xl md:grid-cols-[15rem_minmax(0,1fr)]">
     <aside class="border-b border-line bg-sunken px-4 py-5 md:border-b-0 md:border-r md:px-5 md:py-7">
       <p class="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
         {t(i18n.m.setup.step_of, { current: viewStep, total: setup.state?.stepCount ?? 5 })}
@@ -322,15 +340,15 @@
           {@const number = index + 1}
           <li class="relative md:pb-6">
             {#if number < stepNames.length}
-              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-sunken md:block"></span>
+              <span class="absolute left-[0.9rem] top-8 hidden h-[calc(100%-1.25rem)] w-px bg-line md:block"></span>
             {/if}
-            <div class="relative flex flex-col items-center text-center md:flex-row md:items-start md:gap-3 md:text-left" aria-current={number === viewStep ? 'step' : undefined} aria-label={`${name}: ${stepStatus(number)}`}>
-              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (setup.state?.completedStep ?? 0) ? 'bg-emerald-600 text-white' : number === viewStep ? 'bg-cyan-600 text-white' : 'bg-sunken text-ink-3'}">
-                {number <= (setup.state?.completedStep ?? 0) ? '✓' : number}
+            <div class="relative flex flex-col items-center text-center md:flex-row md:items-start md:gap-3 md:text-left" aria-current={!receipt && number === viewStep ? 'step' : undefined} aria-label={`${name}: ${stepStatus(number)}`}>
+              <span class="flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold {number <= (receipt?.state.completedStep ?? setup.state?.completedStep ?? 0) ? 'tone-ok' : number === viewStep ? 'tone-accent' : 'bg-sunken text-ink-3'}">
+                {#if number <= (receipt?.state.completedStep ?? setup.state?.completedStep ?? 0)}<Icon name="check" class="h-4 w-4" />{:else}{number}{/if}
               </span>
               <span class="hidden min-w-0 pt-0.5 md:block">
                 <span class="block text-sm font-semibold text-ink-2">{name}</span>
-                <span class="block text-[11px] text-ink-4">{stepStatus(number)}</span>
+                <span class="block text-xs text-ink-3">{stepStatus(number)}</span>
               </span>
             </div>
           </li>
@@ -338,14 +356,22 @@
       </ol>
     </aside>
 
-    <main class="flex min-w-0 flex-col px-5 py-6 sm:px-8 sm:py-8 md:px-10" id="setup-content">
+    <main class="flex min-w-0 flex-col [&_h1]:scroll-mt-6 px-5 py-6 sm:px-8 sm:py-8 md:px-10" id="setup-content" bind:this={content} aria-busy={loadingContext || busy}>
+      {#if loadingContext}<p class="mb-4 text-sm text-ink-3" role="status">{i18n.m.setup.loading}</p>{/if}
+      {#if error}
+        <div bind:this={errorSummary} class="callout tone-bad mb-5 px-4 py-3" role="alert" tabindex="-1">
+          <div class="font-semibold">{i18n.m.setup.error_heading}</div>
+          <div>{error}</div>
+          {#if !contextReady}<button class="btn mt-3 min-h-11" type="button" onclick={() => void loadContext()} disabled={loadingContext}>{i18n.m.setup.retry}</button>{/if}
+        </div>
+      {/if}
       {#if receipt}
         <div class="flex flex-1 flex-col justify-center" aria-live="polite">
           <div class="max-w-2xl">
             <span class="flex h-12 w-12 items-center justify-center rounded-full tone-ok">
               <Icon name="check" class="h-6 w-6" />
             </span>
-            <h1 class="mt-5 text-3xl font-bold tracking-tight text-ink">{i18n.m.setup.receipt_heading}</h1>
+            <h1 tabindex="-1" class="mt-5 text-3xl font-bold tracking-tight text-ink">{i18n.m.setup.receipt_heading}</h1>
             <p class="mt-3 text-sm leading-6 text-ink-2">{t(i18n.m.setup.receipt_body, { count: receipt.libraryCount })}</p>
             <div class="mt-7 flex flex-wrap gap-3">
               <button class="btn btn-primary min-h-11" onclick={() => void leaveReceipt('/inventory')}>
@@ -360,21 +386,16 @@
       {:else if configuringLibraryId !== null}
         <Libraries
           embeddedEditorId={configuringLibraryId}
-          onEmbeddedClose={() => (configuringLibraryId = null)}
+          onEmbeddedClose={closeLibrary}
           onEmbeddedSaved={() => void librarySaved()}
         />
       {:else}
-      {#if error}
-        <div bind:this={errorSummary} class="callout tone-bad mb-5 px-4 py-3" role="alert" tabindex="-1">
-          <div class="font-semibold">{i18n.m.setup.error_heading}</div>
-          <div>{error}</div>
-        </div>
-      {/if}
 
-      <div class="flex-1">
+
+      <fieldset class="min-w-0 flex-1" disabled={busy || loadingContext}>
         {#if viewStep === 1}
           <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent">{i18n.m.setup.welcome_eyebrow}</p>
-          <h1 class="max-w-2xl text-3xl font-bold tracking-tight text-ink sm:text-4xl">{i18n.m.setup.welcome_heading}</h1>
+          <h1 tabindex="-1" class="max-w-2xl text-3xl font-bold tracking-tight text-ink sm:text-4xl">{i18n.m.setup.welcome_heading}</h1>
           <p class="mt-4 max-w-2xl text-base leading-7 text-ink-2">{i18n.m.setup.welcome_body}</p>
 
           <dl class="mt-8 max-w-2xl divide-y divide-line border-y border-line">
@@ -388,7 +409,7 @@
             </div>
           </dl>
         {:else if viewStep === 2}
-          <h1 class="page-title">{i18n.m.setup.readiness_heading}</h1>
+          <h1 tabindex="-1" class="page-title">{i18n.m.setup.readiness_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.readiness_body}</p>
 
           <section class="mt-7 max-w-3xl" aria-labelledby="storage-heading">
@@ -408,7 +429,7 @@
                       onclick={() => (selectedPlatform = platform as SetupReadiness['platform'])}
                     >
                       {platformLabel(platform as SetupReadiness['platform'])}
-                      {#if detectedPlatform === platform}<span class="block text-[10px] font-normal opacity-70">{i18n.m.setup.platform_detected}</span>{/if}
+                      {#if detectedPlatform === platform}<span class="block text-xs font-normal opacity-70">{i18n.m.setup.platform_detected}</span>{/if}
                     </button>
                   {/each}
                 </div>
@@ -494,9 +515,9 @@
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="font-semibold text-ink">{tool.name}</span>
-                    <span class="text-xs text-ink-4">{tool.required ? i18n.m.setup.required : i18n.m.setup.optional}</span>
+                    <span class="text-xs text-ink-3">{tool.required ? i18n.m.setup.required : i18n.m.setup.optional}</span>
                   </div>
-                  <div class="truncate font-mono text-xs text-ink-3">{tool.version ?? tool.error ?? tool.command}</div>
+                  <div class="break-words font-mono text-xs text-ink-3">{tool.version ?? tool.error ?? tool.command}</div>
                 </div>
                 <span class="text-xs font-medium {tool.available ? 'text-ok' : 'text-ink-3'}">{tool.available ? i18n.m.setup.available : i18n.m.setup.unavailable}</span>
               </div>
@@ -517,7 +538,7 @@
             {#if retestMessage}<span class="text-sm text-ok">{retestMessage}</span>{/if}
           </div>
         {:else if viewStep === 3}
-          <h1 class="page-title">{i18n.m.setup.library_heading}</h1>
+          <h1 tabindex="-1" class="page-title">{i18n.m.setup.library_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.library_body}</p>
 
           {#if libraries.length > 0}
@@ -562,25 +583,26 @@
             {libraries.length === 0 ? i18n.m.setup.create_library : i18n.m.setup.add_another_library}
           </button>
         {:else if viewStep === 4}
-          <h1 class="page-title">{i18n.m.setup.safety_heading}</h1>
+          <h1 tabindex="-1" class="page-title">{i18n.m.setup.safety_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.safety_step_body}</p>
 
           {#if settings}
             <div class="mt-7 max-w-2xl divide-y divide-line border-y border-line">
               <label class="flex cursor-pointer items-start gap-3 py-4">
-                <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={settings.dryRunMode} />
+                <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={settings.dryRunMode} />
                 <span><span class="block font-semibold text-ink">{i18n.m.setup.dry_run_title}</span><span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.dry_run_body}</span></span>
               </label>
               <div class="grid gap-2 py-4 sm:grid-cols-[1fr_9rem] sm:items-center">
                 <div><div class="font-semibold text-ink">{i18n.m.setup.concurrent_title}</div><div class="mt-1 text-sm text-ink-3">{i18n.m.setup.concurrent_body}</div></div>
                 <div>
-                  <input class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} aria-label={i18n.m.setup.concurrent_title} aria-invalid={concurrencyError ? 'true' : undefined} aria-describedby={concurrencyError ? 'setup-concurrency-error' : undefined} />
+                  <input class="input" type="number" min="1" step="1" bind:value={settings.maxConcurrentJobs} aria-label={i18n.m.setup.concurrent_title} aria-invalid={concurrencyError ? 'true' : undefined} aria-describedby={concurrencyError ? 'setup-concurrency-error' : undefined} />
                   {#if concurrencyError}<p id="setup-concurrency-error" class="mt-1 text-xs text-bad">{concurrencyError}</p>{/if}
                 </div>
               </div>
               <div class="py-4">
                 <div class="font-semibold text-ink">{i18n.m.setup.automation_title}</div>
                 <div class="mt-1 text-sm leading-6 text-ink-3">{i18n.m.setup.automation_body}</div>
+                <ul class="mt-3 space-y-2 text-sm text-ink-2">{#each libraries as library}<li>{library.name}: {librarySchedule(library)} · {i18n.m.libraries.badge_auto_replace}: {library.autoReplace ? i18n.m.settings.enabled : i18n.m.common.off}</li>{/each}</ul>
               </div>
             </div>
           {/if}
@@ -600,14 +622,14 @@
                   </button>
                 </div>
                 <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
-                  <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={applyRecommendedVmaf} />
+                  <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={applyRecommendedVmaf} />
                   <span>
                     <span class="block font-semibold text-ink">{i18n.m.settings.vmaf_label}: {recommendation.vmafTier === 'Balanced' ? i18n.m.settings.vmaf_preset_balanced : i18n.m.common.off}</span>
-                    <span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.settings.vmaf_hint}</span>
+                    <span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.vmaf_recommendation_body}</span>
                   </span>
                 </label>
                 <label class="flex min-h-11 cursor-pointer items-start gap-3 py-4">
-                  <input class="mt-1 h-4 w-4 accent-cyan-600" type="checkbox" bind:checked={applyRecommendedSchedule} />
+                  <input class="mt-1 h-4 w-4 accent-accent" type="checkbox" bind:checked={applyRecommendedSchedule} />
                   <span>
                     <span class="block font-semibold text-ink">{i18n.m.nav.schedule}: {recommendation.scheduleStart}–{recommendation.scheduleEnd}</span>
                     <span class="mt-1 block text-sm leading-6 text-ink-3">{i18n.m.setup.automation_body}</span>
@@ -631,26 +653,26 @@
           </section>
         {:else}
           <p class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-ok">{i18n.m.setup.review_eyebrow}</p>
-          <h1 class="page-title">{i18n.m.setup.review_heading}</h1>
+          <h1 tabindex="-1" class="page-title">{i18n.m.setup.review_heading}</h1>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-ink-2">{i18n.m.setup.review_body}</p>
 
           <dl class="mt-7 max-w-3xl divide-y divide-line border-y border-line">
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.network_title}</dt><dd class="text-sm text-ink">{i18n.m.setup.network_body}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(1)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.storage_heading}</dt><dd class="text-sm text-ink">{databaseAvailable && requiredToolsReady && requiredPathsReady ? i18n.m.setup.review_ready : i18n.m.setup.review_attention}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(2)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_library}</dt><dd class="text-sm text-ink">{libraries.length > 0 ? libraries.map((library) => library.name).join(', ') : '—'}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_library}</dt><dd class="text-sm text-ink">{#each libraries as library}<span class="block">{library.name} · {i18n.m.libraries.badge_auto_replace}: {library.autoReplace ? i18n.m.settings.enabled : i18n.m.common.off}</span>{/each}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(3)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.encoder_mode}</dt><dd class="text-sm text-ink">{settings?.encoderMode ?? '—'} · {plural(settings?.maxConcurrentJobs ?? 1, i18n.m.setup.review_jobs_one, i18n.m.setup.review_jobs_other)}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.vmaf_label}</dt><dd class="text-sm text-ink">{vmafReviewLabel()}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.nav.schedule}</dt><dd class="text-sm text-ink">{applyRecommendedSchedule && recommendation ? `${recommendation.scheduleStart}–${recommendation.scheduleEnd}` : i18n.m.setup.skipped}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
-            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-ink">{i18n.m.setup.skipped}</dd><dd aria-hidden="true"></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.nav.schedule}</dt><dd class="text-sm text-ink">{#each libraries as library}<span class="block">{library.name}: {librarySchedule(library)}</span>{/each}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.settings.room_servers}</dt><dd class="text-sm text-ink">{i18n.m.setup.integrations_later}</dd><dd aria-hidden="true"></dd></div>
             <div class="grid gap-2 py-4 sm:grid-cols-[10rem_1fr_auto] sm:items-center"><dt class="text-sm font-semibold text-ink-3">{i18n.m.setup.review_replacement}</dt><dd class="text-sm text-ink">{settings?.dryRunMode ? i18n.m.setup.review_dry_run : i18n.m.setup.review_live}</dd><dd><button class="btn min-h-11" type="button" onclick={() => changeStep(4)}>{i18n.m.setup.change}</button></dd></div>
           </dl>
         {/if}
-      </div>
+      </fieldset>
 
       <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-        <button class="btn min-h-11" onclick={() => (viewStep = Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy}>{i18n.m.setup.back}</button>
-        <button class="btn btn-primary min-h-11 px-5" onclick={continueStep} disabled={busy || viewStep === 3 && libraries.length === 0}>
-          {busy ? i18n.m.setup.saving : viewStep === 5 ? i18n.m.setup.finish : i18n.m.common.continue}
+        <button class="btn min-h-11" onclick={() => changeStep(Math.max(1, viewStep - 1))} disabled={viewStep === 1 || busy || loadingContext}>{i18n.m.setup.back}</button>
+        <button class="btn btn-primary min-h-11 px-5" onclick={continueStep} disabled={busy || loadingContext || retesting || !contextReady || viewStep === 3 && libraries.length === 0}>
+          {loadingContext ? i18n.m.setup.loading : busy ? i18n.m.setup.saving : viewStep === 5 ? i18n.m.setup.finish : i18n.m.common.continue}
         </button>
       </div>
       {/if}
