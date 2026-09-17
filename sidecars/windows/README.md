@@ -38,6 +38,17 @@ The tray, panel, executable and Start shortcut share the main application’s St
 The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
 for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 
+## The Compact Monitor
+
+Screenshots use fabricated dummy media created for documentation, invented machine names and
+example server addresses. No copyrighted media material is used.
+
+<img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job, Stellar icon and resource readings">
+
+<img src="../../docs/images/optimisarr-sidecar-windows-light-preferences.png" width="390" alt="Light Windows Preferences showing pairing, worker start and tray sign-in controls inside the native panel">
+
+[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
+
 ## Capabilities
 
 Every capability is **proved before it is advertised**, never read from `ffmpeg -encoders`. A build

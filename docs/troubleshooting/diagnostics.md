@@ -26,7 +26,7 @@ diagnostic row until **Clear errored** is used.
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
-![Media tools and encoder availability, now under Settings → System → Tools](../images/optimisarr-settings-tools-dark.png)
+![System Tools card showing FFmpeg, VMAF, and ffprobe availability and executable paths](../images/optimisarr-settings-tools-dark.png)
 
 ## Common causes
 

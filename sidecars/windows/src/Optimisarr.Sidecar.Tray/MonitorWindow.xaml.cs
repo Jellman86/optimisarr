@@ -30,7 +30,7 @@ public partial class MonitorWindow : Window
         InitializeComponent();
         DataContext = model;
         ApplyTheme();
-        LoginToggle.IsChecked = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run", "OptimisarrSidecarTray", null) is not null;
+        LoginToggle.IsChecked = live && Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run", "OptimisarrSidecarTray", null) is not null;
         initialized = true;
         Deactivated += (_, _) => Hide();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };

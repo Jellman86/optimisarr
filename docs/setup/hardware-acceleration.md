@@ -9,7 +9,7 @@ encoder with a real test encode; a GPU device node alone is not sufficient.
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
-![Tools tab showing FFmpeg, ffprobe, hardware acceleration, and encoder availability](../images/optimisarr-settings-tools-dark.png)
+![System settings showing detected hardware accelerators and proved encoder availability](../images/optimisarr-settings-hardware-dark.png)
 
 The bundled Jellyfin FFmpeg is used for both hardware detection and transcoding, so the
 Tools page is the source of truth for what this container can actually encode. A separate

@@ -662,7 +662,7 @@ public extension SidecarSession {
     /// else.
     static func posed(
         status: SidecarStatus,
-        serverAddress: String = "https://optimisarr.pownet.uk",
+        serverAddress: String = "https://optimisarr.example.com",
         activeJobs: [Int: JobProgress] = [:],
         jobTitles: [Int: String] = [:],
         transferRates: [Int: Double] = [:],

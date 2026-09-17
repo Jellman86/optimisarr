@@ -1,7 +1,7 @@
 # Compact Monitor — Windows tray and Mac menu bar
 
-The selected direction is **3 · Compact monitor**. The [native comparison](native.html) records the initial implemented dark/light views; its static
-snapshots predate the final Stellar icon and anchoring fixes. The three original interactive studies live
+The selected direction is **3 · Compact monitor**. The [native comparison](native.html) shows current native dark/light activity panels,
+Processing details and Preferences, including the Stellar icon. The three original interactive studies live
 in `index.html`; their job data and proposed controls are simulated. Production native views use
 real capabilities and readings instead.
 
@@ -69,10 +69,16 @@ The MSI is an unsigned development preview; see [installer notes](../../../sidec
 The selected design has been installed on the paired Mac and Windows workers. The Windows
 installation used the MSI migration route and preserved the existing pairing.
 
-## Preview image licence
+## Current native screenshots
 
-`bunny.jpg` is a frame from **Big Buck Bunny**, © 2008 Blender Foundation,
-[bigbuckbunny.org](https://peach.blender.org/), used under
-[Creative Commons Attribution 3.0](https://creativecommons.org/licenses/by/3.0/).
-It was resized by the source video encoding and cropped by the preview UI. It is a design fixture,
-not bundled artwork for users' media.
+These screenshots use fabricated dummy media created for documentation, invented machine names
+and example server addresses. No copyrighted media material is used. They are rendered by the
+current AppKit and WPF views with isolated fixture data; no live worker is contacted.
+
+![Focused Mac Compact Monitor crop with fabricated Prism Field job and expanded processing details](../../images/optimisarr-sidecar-macos-details.png)
+
+![Windows Compact Monitor with fabricated Prism Field job and expanded processing details](../../images/optimisarr-sidecar-windows-details.png)
+
+See [the native comparison](native.html) for light/dark activity and Preferences views. The
+[original design studies](index.html) remain historical mockups with proposed controls, using a
+fabricated geometric scene in place of real media artwork. They are not evidence of shipped features.

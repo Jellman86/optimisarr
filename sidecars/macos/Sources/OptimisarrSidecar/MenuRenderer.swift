@@ -18,6 +18,10 @@ enum MenuRenderer {
     /// a change that has been reviewed.
     static func render(into directory: URL) {
         let strip = FilmStrip(frames: sampleFrames())
+        let suite = "uk.optimisarr.documentation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SidecarSettings(defaults: defaults, physicalMemoryBytes: 16 * 1024 * 1024 * 1024)
         let poses: [(String, SidecarSession)] = [
             ("unpaired", .posed(status: .unpaired, serverAddress: "")),
             ("connected-idle", .posed(
@@ -26,19 +30,19 @@ enum MenuRenderer {
             ("receiving", .posed(
                 status: .working(jobId: 5846, progress: .fetchingSource(received: 182_000_000, total: 493_040_520)),
                 activeJobs: [5846: .fetchingSource(received: 182_000_000, total: 493_040_520)],
-                jobTitles: [5846: "Big Buck Bunny · 2008"],
+                jobTitles: [5846: "Prism Field · Demo clip"],
                 transferRates: [5846: 42_100_000],
                 gpu: GpuUsage(device: 0.04, memoryInUse: 700_000_000))),
             ("encoding", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "Big Buck Bunny · 2008"],
+                jobTitles: [5846: "Prism Field · Demo clip"],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704))),
             ("sending", .posed(
                 status: .working(jobId: 5846, progress: .delivering(sent: 300_000_000, total: 394_256_442)),
                 activeJobs: [5846: .delivering(sent: 300_000_000, total: 394_256_442)],
-                jobTitles: [5846: "Big Buck Bunny · 2008"],
+                jobTitles: [5846: "Prism Field · Demo clip"],
                 transferRates: [5846: 68_400_000],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.06, memoryInUse: 900_000_000))),
@@ -49,21 +53,28 @@ enum MenuRenderer {
                     5847: .measuring,
                 ],
                 jobTitles: [
-                    5846: "Big Buck Bunny · 2008",
-                    5847: "Sintel · 2010",
+                    5846: "Prism Field · Demo clip",
+                    5847: "Orbit Study · Demo clip",
                 ],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.62, memoryInUse: 2_100_000_000))),
+            ("details", .posed(
+                status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
+                activeJobs: [5846: .encoding(encodedSeconds: 751)],
+                jobTitles: [5846: "Prism Field · Demo clip"], filmStrips: [5846: strip])),
+            ("preferences", .posed(status: .connected(workerId: 1, lastCheckIn: Date()))),
             ("revoked", .posed(status: .revoked)),
             ("unreachable", .posed(
-                status: .unreachable(reason: "optimisarr.pownet.uk could not be reached."))),
+                status: .unreachable(reason: "optimisarr.example.com could not be reached."))),
         ]
 
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for (name, session) in poses {
             for light in [false, true] {
             NSApplication.shared.appearance = NSAppearance(named: light ? .aqua : .darkAqua)
-            let hosting = NSHostingView(rootView: SidecarMenu(session: session).frame(width: 390))
+            let hosting = NSHostingView(rootView: SidecarMenu(session: session, machineName: "Studio Mac",
+                initialPage: name == "preferences" ? "preferences" : "activity",
+                detailsExpanded: name == "details", previewSettings: settings).frame(width: 390))
             let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 390, height: 700),
                                   styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = hosting
@@ -71,8 +82,13 @@ enum MenuRenderer {
             hosting.setFrameSize(size)
             window.setContentSize(size)
             hosting.layoutSubtreeIfNeeded()
-            guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { continue }
-            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            // Focus the documentation details capture on the disclosure; its scroll viewport
+            // otherwise leaves a sliver of the next controls visible above the fixed footer.
+            let capture = name == "details"
+                ? NSRect(x: 0, y: 0, width: size.width, height: min(size.height, 620))
+                : hosting.bounds
+            guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: capture) else { continue }
+            hosting.cacheDisplay(in: capture, to: bitmap)
             guard let png = bitmap.representation(using: .png, properties: [:]) else { continue }
             let file = directory.appendingPathComponent("\(light ? "light-" : "")\(name).png")
             try? png.write(to: file)
