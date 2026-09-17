@@ -24,6 +24,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Bundled runtime failed' }
     & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --render-monitor (Join-Path $logRoot 'ui')
     if ($LASTEXITCODE -ne 0) { throw 'Installed native UI failed' }
+    & (Join-Path $directory 'runtime\dotnet.exe') (Join-Path $directory 'Optimisarr.Sidecar.Tray.dll') --verify-popover
+    if ($LASTEXITCODE -ne 0) { throw 'Installed popover lost its anchor' }
     # This is a test sentinel, never a real credential. The initial guard proves this directory is ours.
     $sentinel = Join-Path $pairing 'installer-test-sentinel.txt'
     'retain settings on uninstall' | Set-Content $sentinel

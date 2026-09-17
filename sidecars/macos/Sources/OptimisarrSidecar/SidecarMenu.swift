@@ -9,6 +9,7 @@ import SwiftUI
 /// gets the frames going through the encoder and a real progress bar, because "Encoding" on its
 /// own cannot tell a working Mac from a stuck one.
 struct SidecarMenu: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var session: SidecarSession
 
     @State private var page = "activity"
@@ -57,6 +58,7 @@ struct SidecarMenu: View {
         .frame(width: 390)
         .foregroundStyle(Instrument.ink)
         .background(Instrument.ground)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .fixedSize(horizontal: false, vertical: true)
         .confirmationDialog("Unpair this Mac? Any current jobs will be handed back.", isPresented: $showUnpairConfirmation) {
             Button("Unpair", role: .destructive) { session.unpair(); pin = ""; page = "activity" }
@@ -78,7 +80,7 @@ struct SidecarMenu: View {
     private var statusBar: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(nsImage: MenuBarIcon.image(for: session.status, spin: session.spin))
+                Image(nsImage: colorScheme == .dark ? MenuBarIcon.artwork : MenuBarIcon.lightArtwork)
                     .resizable().scaledToFit().frame(width: 30, height: 30)
                     .foregroundStyle(Instrument.phosphor).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {

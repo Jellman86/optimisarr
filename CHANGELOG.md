@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Keep sidecar popovers attached to the menu bar or taskbar when details and preferences change size; retain rounded corners and dismiss behind other apps.
+- Use the current Stellar icon in both native clients, including Finder, the Windows tray, Start menu and installer. Windows development MSIs can update an installed preview with the same application version.
+
 ### Added
 
 - Compact Monitor for the Windows tray, with live worker status, resource readings, processing

@@ -14,8 +14,9 @@ let package = Package(
     ],
     targets: [
         .target(name: "SidecarCore"),
-        .executableTarget(name: "OptimisarrSidecar", dependencies: ["SidecarCore"]),
+        .executableTarget(name: "OptimisarrSidecar", dependencies: ["SidecarCore"], resources: [.process("Resources")]),
         .executableTarget(name: "AcceptanceWorker", dependencies: ["SidecarCore"]),
         .testTarget(name: "SidecarCoreTests", dependencies: ["SidecarCore"]),
+        .testTarget(name: "SidecarUITests", dependencies: ["OptimisarrSidecar"]),
     ]
 )
