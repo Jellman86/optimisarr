@@ -199,6 +199,13 @@ public sealed class Job
 
     public DateTimeOffset? VerifiedAt { get; set; }
 
+    /// <summary>
+    /// Set when a hardware-decoded candidate for this job failed verification with the signature
+    /// of decoder corruption, so the next attempt — here or on a worker — decodes in software. The
+    /// local path retries within one run; a remote job cannot, so the fact is kept on the job.
+    /// </summary>
+    public bool PreferSoftwareDecode { get; set; }
+
     public DateTimeOffset EnqueuedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? StartedAt { get; set; }

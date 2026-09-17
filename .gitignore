@@ -21,7 +21,19 @@ sidecars/macos/build/
 # The sidecar's bundled ffmpeg and its build tree. Built from pinned source by
 # sidecars/macos/scripts/build-ffmpeg.sh; an 80MB binary does not belong in git.
 sidecars/macos/vendor/
+# Fetched by sidecars/windows/scripts/fetch-ffmpeg.ps1, pinned and hash-checked there.
+sidecars/windows/vendor/
+sidecars/windows/artifacts/
 sidecars/macos/.build-ffmpeg/
 
 # Work output written when tests exercise the queue against a relative work root.
 src/Optimisarr.Api/work/
+
+# Xcode's per-user state inside a Swift package: window layout, the last scheme selected, and
+# whose account opened it. Local to one person and one machine, and committed here by accident.
+**/.swiftpm/xcode/**/xcuserdata/
+**/.swiftpm/xcode/xcuserdata/
+
+# .NET build output for the Windows sidecar.
+sidecars/windows/**/bin/
+sidecars/windows/**/obj/

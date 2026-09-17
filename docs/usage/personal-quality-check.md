@@ -5,6 +5,8 @@ quality, audio bitrate, or image quality that still looks or sounds acceptable o
 It is a personal calibration aid, not proof that two encodes are identical. Repeat it with several
 representative sources before treating one result as a rule for a varied library.
 
+Screenshots use fabricated dummy media created for documentation. No copyrighted material is used.
+
 ## Before you begin
 
 You need a saved Film, TV, Music, Photo, or Other library; a scanned and probed source; enough free
@@ -21,6 +23,8 @@ cannot replace, move, or delete media and do not appear in the normal Queue.
    texture, fine detail, ambience, or tonal range you care about.
 3. Select **Prepare blind samples**.
 
+![Personal quality check source-selection page showing a fabricated source and safe, disposable preparation controls](../images/optimisarr-personal-quality-check-dark.png)
+
 By default, preparation waits while a configured Plex, Jellyfin, or Emby watcher reports active
 playback. Select **Ignore active media streams for this check** if you want this disposable check to
 run anyway. The exception applies only to jobs created by this quality-check session; normal
@@ -28,7 +32,7 @@ optimisation work remains paused. Encoding can still compete with playback for C
 bandwidth, so use the option only when that trade-off is acceptable.
 
 Optimisarr prepares one unmodified reference and the candidates relevant to that media type. Video
-uses the four complete preset-slider outputs; audio and still images use five-setting quality
+uses the four complete named video preset outputs; audio and still images use five-setting quality
 ladders. It structurally verifies every candidate before the comparison becomes available. For HDR
 video, preparation also requires Preserve HDR handling, a browser-reported HDR display path, and
 your confirmation that the intended display is actually presenting HDR.
@@ -55,6 +59,8 @@ of a long file.
 
 Preparation progress is session-wide and monotonic: FFmpeg may move between probe, encode, and
 verification stages, but the displayed percentage never moves backwards.
+
+![Video quality comparison with a synthetic landscape, scene controls, anonymous sample deck, and reference guidance](../images/optimisarr-personal-quality-video-dark.png)
 
 ## Compare candidates with the original
 
@@ -100,6 +106,8 @@ if the relevant library codec, preset, or quality changed during the session.
 | Audio | One lossless reference plus five codec-appropriate bitrates across three level-matched 15-second excerpts. | Audio bitrate in kbps. |
 | Still image | One lossless PNG reference plus five output-quality levels in a synchronized zoom/pan viewport. | Image quality. |
 
+![Image quality comparison showing a fabricated landscape, zoom controls, and five anonymous candidate settings](../images/optimisarr-personal-quality-image-dark.png)
+
 ## If the check cannot continue
 
 | What you see | What to do |
@@ -107,7 +115,7 @@ if the relevant library codec, preset, or quality changed during the session.
 | **Personal quality check** is disabled | Save or discard the library's unsaved changes first. |
 | No suitable source is ready | Scan and probe the library, then choose a long enough video/audio file or a non-animated image. |
 | HDR viewing check blocks preparation | Use an HDR-capable browser/display and keep the library's HDR handling set to Preserve. |
-| Preparation fails | Check `/work` space and permissions, then **Settings → Tools** for encoder availability. |
+| Preparation fails | Check `/work` space and permissions, then **Settings → System → Tools** for encoder availability. |
 | A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
 | A/V sync fails | The prepared candidate exceeded the strict sync tolerance after exact clipping; inspect its structured failure rather than rating a desynchronised sample. |
 

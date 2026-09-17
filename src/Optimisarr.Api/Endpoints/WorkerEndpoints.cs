@@ -13,15 +13,39 @@ internal sealed record WorkerDto(
     string OperatingSystem,
     string Architecture,
     int ProtocolVersion,
+    /// <summary>The sidecar's own build, as it reported it. Empty when it does not report one.</summary>
+    string SidecarVersion,
     IReadOnlyList<string> VideoEncoders,
+    IReadOnlyList<string> AudioEncoders,
     IReadOnlyList<string> HardwareDecoders,
     string Vmaf,
     long FreeScratchBytes,
     int MaxConcurrency,
+    /// <summary>How busy the worker's machine last said it was, 0-1; null when it has not said.</summary>
+    double? CpuBusyFraction,
+    /// <summary>
+    /// The worker's accelerator utilisation, 0-1, or null. Low does not mean unused: a dedicated
+    /// media engine — Apple silicon's VideoToolbox encoder among them — does not appear here.
+    /// </summary>
+    double? GpuBusyFraction,
+    /// <summary>When those two were reported, so a stale reading is not drawn as current.</summary>
+    DateTimeOffset? LoadReportedAt,
     DateTimeOffset PairedAt,
     DateTimeOffset? LastSeenAt,
     DateTimeOffset? RevokedAt,
-    bool Online);
+    bool Online,
+    /// <summary>When an operator asked this worker to stop taking work; null while it takes work.</summary>
+    DateTimeOffset? DrainRequestedAt,
+    /// <summary>Leases this worker holds right now: the jobs a drain is waiting on.</summary>
+    int HeldLeases,
+    /// <summary>The jobs behind those leases, with where the worker says it is on each.</summary>
+    IReadOnlyList<WorkerJobDto> ActiveJobs,
+    /// <summary>The most recent thing the server refused or discarded from this worker; null if nothing yet.</summary>
+    string? LastProblem,
+    DateTimeOffset? LastProblemAt);
+
+/// <summary>One job a worker holds. Stage is "Claimed" until the worker first says otherwise.</summary>
+internal sealed record WorkerJobDto(int JobId, string? RelativePath, string Stage, double Progress);
 
 /// <summary>The PIN an operator reads off the screen and types into a sidecar.</summary>
 internal sealed record PairingCodeDto(string Code, DateTimeOffset ExpiresUtc, int AttemptsRemaining);
@@ -42,10 +66,16 @@ internal sealed record PairRequest(
     int ProtocolMinimum,
     int ProtocolMaximum,
     IReadOnlyList<string>? VideoEncoders,
+    IReadOnlyList<string>? AudioEncoders,
     IReadOnlyList<string>? HardwareDecoders,
     string? Vmaf,
     long FreeScratchBytes,
-    int MaxConcurrency);
+    int MaxConcurrency,
+    /// <summary>
+    /// The sidecar's own build. Optional, so a sidecar written against the earlier contract still
+    /// pairs; it is recorded and displayed, never used to decide what a worker may be offered.
+    /// </summary>
+    string? SidecarVersion = null);
 
 /// <summary>The credential, returned exactly once. Optimisarr keeps only its fingerprint.</summary>
 internal sealed record PairResponse(int WorkerId, string Credential, int ProtocolVersion);
@@ -56,7 +86,35 @@ internal sealed record PairResponse(int WorkerId, string Credential, int Protoco
 /// worker quietly changing what it claims to support between assignments is a capability the
 /// control plane should re-establish deliberately, not absorb from a heartbeat.
 /// </summary>
-internal sealed record HeartbeatRequest(long FreeScratchBytes, int MaxConcurrency);
+/// <summary>
+/// A check-in. Capabilities ride along because a machine changes: FFmpeg is rebuilt, a driver
+/// stops working, an encoder that used to open no longer does. They were previously recorded only
+/// at pairing, so a sidecar that re-probed itself at launch could not tell the server, and the
+/// server went on scheduling against what was true the day the two were introduced. The capability
+/// fields are optional so an older sidecar still checks in; what it omits is left as it was.
+/// </summary>
+internal sealed record HeartbeatRequest(
+    long FreeScratchBytes,
+    int MaxConcurrency,
+    IReadOnlyList<string>? VideoEncoders = null,
+    IReadOnlyList<string>? AudioEncoders = null,
+    IReadOnlyList<string>? HardwareDecoders = null,
+    string? Vmaf = null,
+    /// <summary>
+    /// How busy the machine is, 0-1, each optional and separately so: a worker can report its CPU
+    /// while having no readable accelerator. Absent leaves whatever was last reported, so a
+    /// momentary failure to read does not erase a good figure.
+    /// </summary>
+    double? CpuBusyFraction = null,
+    double? GpuBusyFraction = null,
+    /// <summary>
+    /// The sidecar's own build, repeated on every check-in rather than only at pairing — upgrading
+    /// a sidecar does not re-pair it, so a version recorded once would be wrong from the first
+    /// upgrade onwards and quietly stay wrong.
+    /// </summary>
+    string? SidecarVersion = null,
+    int? ProtocolMinimum = null,
+    int? ProtocolMaximum = null);
 
 /// <summary>
 /// The acknowledgement. Carries the interval so a sidecar paces itself from the control plane
@@ -66,7 +124,9 @@ internal sealed record HeartbeatResponse(
     int WorkerId,
     int ProtocolVersion,
     DateTimeOffset ServerTimeUtc,
-    int HeartbeatIntervalSeconds);
+    int HeartbeatIntervalSeconds,
+    /// <summary>True while an operator has asked the worker to finish what it holds and take no more.</summary>
+    bool Draining);
 
 internal static class WorkerEndpoints
 {
@@ -161,7 +221,9 @@ internal static class WorkerEndpoints
                 OperatingSystem = Trimmed(request.OperatingSystem, 32),
                 Architecture = Trimmed(request.Architecture, 32),
                 ProtocolVersion = negotiation.AgreedVersion,
+                SidecarVersion = Trimmed(request.SidecarVersion, 64),
                 VideoEncoders = Join(request.VideoEncoders),
+                AudioEncoders = Join(request.AudioEncoders),
                 HardwareDecoders = Join(request.HardwareDecoders),
                 Vmaf = vmaf,
                 FreeScratchBytes = Math.Max(0, request.FreeScratchBytes),
@@ -214,18 +276,54 @@ internal static class WorkerEndpoints
                     statusCode: StatusCodes.Status401Unauthorized);
             }
 
+            // Upgrades keep their pairing. Omitted ranges identify legacy protocol-1 clients,
+            // including a downgrade, so they must never inherit a newer client's capabilities.
+            var negotiation = WorkerProtocol.Negotiate(request.ProtocolMinimum ?? 1, request.ProtocolMaximum ?? 1);
+            if (!negotiation.Compatible)
+                return ApiErrors.Conflict("worker.protocol.incompatible", negotiation.Reason!);
+            worker.ProtocolVersion = negotiation.AgreedVersion;
+
             // Stamped from the server's clock, never from the request, so a sidecar with a wrong
             // or dishonest clock cannot claim to have been alive.
             worker.LastSeenAt = DateTimeOffset.UtcNow;
             worker.FreeScratchBytes = Math.Max(0, request.FreeScratchBytes);
             worker.MaxConcurrency = Math.Max(0, request.MaxConcurrency);
+
+            // Only what the sidecar actually sent. An older one omits these, and overwriting its
+            // recorded capabilities with nothing would silently drain a working worker.
+            if (request.VideoEncoders is not null)
+            {
+                worker.VideoEncoders = Join(request.VideoEncoders);
+            }
+            if (request.AudioEncoders is not null)
+            {
+                worker.AudioEncoders = Join(request.AudioEncoders);
+            }
+            if (request.HardwareDecoders is not null)
+            {
+                worker.HardwareDecoders = Join(request.HardwareDecoders);
+            }
+            if (request.Vmaf is not null && Enum.TryParse<VmafCapability>(request.Vmaf, true, out var vmaf))
+            {
+                worker.Vmaf = vmaf;
+            }
+            // Recorded on every check-in so an upgrade shows up without re-pairing, but only when
+            // the sidecar actually said something: an older one omits this, and blanking what a
+            // previous check-in reported would lose the answer rather than refresh it.
+            if (request.SidecarVersion is not null)
+            {
+                worker.SidecarVersion = Trimmed(request.SidecarVersion, 64);
+            }
+            RecordLoad(worker, request.CpuBusyFraction, request.GpuBusyFraction);
+
             await db.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new HeartbeatResponse(
                 worker.Id,
                 worker.ProtocolVersion,
                 worker.LastSeenAt.Value,
-                (int)WorkerLiveness.HeartbeatInterval.TotalSeconds));
+                (int)WorkerLiveness.HeartbeatInterval.TotalSeconds,
+                worker.DrainRequestedAt is not null));
         })
         .WithName("WorkerHeartbeat")
         .Produces<HeartbeatResponse>()
@@ -240,11 +338,65 @@ internal static class WorkerEndpoints
                 .OrderBy(worker => worker.Id)
                 .ToListAsync(cancellationToken);
 
+            var active = await ActiveJobsByWorkerAsync(db, cancellationToken);
             var now = DateTimeOffset.UtcNow;
-            return Results.Ok(workers.Select(w => ToDto(w, now)).ToList());
+            return Results.Ok(workers
+                .Select(w => ToDto(w, now, active.GetValueOrDefault(w.Id) ?? []))
+                .ToList());
         })
         .WithName("ListWorkers")
         .Produces<IReadOnlyList<WorkerDto>>();
+
+        // Draining is a claim refusal and nothing more: the worker keeps what it holds, finishes
+        // and delivers it, and is offered nothing new until resumed. Idempotent both ways, so an
+        // operator clicking twice, or a retried request, cannot flip the state back.
+        app.MapPost("/api/workers/{id:int}/drain", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+            if (worker is null)
+            {
+                return ApiErrors.NotFound("worker.notFound", $"No worker with id {id}.", new { id });
+            }
+
+            worker.DrainRequestedAt ??= DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+            return await WorkerRowAsync(worker, db, cancellationToken);
+        })
+        .WithName("DrainWorker")
+        .Produces<WorkerDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound);
+
+        app.MapDelete("/api/workers/{id:int}/drain", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+            if (worker is null)
+            {
+                return ApiErrors.NotFound("worker.notFound", $"No worker with id {id}.", new { id });
+            }
+
+            // A revoked worker cannot authenticate, so "resume" would promise work it can never
+            // claim. Re-pairing is the only way back, and this says so.
+            if (worker.RevokedAt is not null)
+            {
+                return Results.Json(
+                    new ApiError("worker.revoked", "A revoked worker cannot resume; pair it again."),
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
+            worker.DrainRequestedAt = null;
+            await db.SaveChangesAsync(cancellationToken);
+            return await WorkerRowAsync(worker, db, cancellationToken);
+        })
+        .WithName("ResumeWorker")
+        .Produces<WorkerDto>()
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
 
         // Revocation clears the fingerprint rather than deleting the row, so the pairing stays in
         // the audit trail while the credential stops matching anything at all.
@@ -267,6 +419,49 @@ internal static class WorkerEndpoints
             return Results.NoContent();
         })
         .WithName("RevokeWorker");
+
+        // Revoking keeps the row, which is right for a worker turned off deliberately: the audit
+        // trail of what it once held outlives it. It is wrong for an orphan — pairing the same
+        // machine again leaves the old record on the Workers tab for ever with nothing that clears
+        // it — so removal is a separate, deliberate act rather than a second meaning for DELETE.
+        app.MapPost("/api/workers/{id:int}/forget", async (
+            int id,
+            OptimisarrDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
+            if (worker is null)
+            {
+                return ApiErrors.NotFound("worker.notFound", $"No worker with id {id}.", new { id });
+            }
+
+            // Removing a worker mid-job would strand it: the lease it is renewing would vanish
+            // underneath it and the candidate it is about to deliver would have nowhere to land.
+            var held = await db.JobLeases
+                .CountAsync(lease => lease.WorkerId == id && lease.State == LeaseState.Held, cancellationToken);
+            if (held > 0)
+            {
+                return ApiErrors.Conflict(
+                    "worker.stillWorking",
+                    $"{worker.Name} is still holding {held} job(s). Revoke it and let the work finish or lapse, then remove it.",
+                    new { id, held });
+            }
+
+            // The lease rows point at this worker and are deliberately not cascaded, so they have
+            // to go first. A forgotten worker's history has no subject left to describe.
+            var leases = await db.JobLeases
+                .Where(lease => lease.WorkerId == id)
+                .ToListAsync(cancellationToken);
+            db.JobLeases.RemoveRange(leases);
+            db.Workers.Remove(worker);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.NoContent();
+        })
+        .WithName("ForgetWorker")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
     private static string RedemptionMessage(PairingRedemption redemption) => redemption switch
@@ -278,23 +473,102 @@ internal static class WorkerEndpoints
         _ => "That pairing code is not correct."
     };
 
-    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc) => new(
+    private static async Task<IResult> WorkerRowAsync(
+        Worker worker,
+        OptimisarrDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var active = await ActiveJobsByWorkerAsync(db, cancellationToken);
+        return Results.Ok(ToDto(worker, DateTimeOffset.UtcNow, active.GetValueOrDefault(worker.Id) ?? []));
+    }
+
+    private static async Task<Dictionary<int, List<WorkerJobDto>>> ActiveJobsByWorkerAsync(
+        OptimisarrDbContext db,
+        CancellationToken cancellationToken)
+    {
+        var held = await db.JobLeases
+            .AsNoTracking()
+            .Where(lease => lease.State == LeaseState.Held)
+            .Select(lease => new
+            {
+                lease.WorkerId,
+                lease.JobId,
+                lease.Stage,
+                lease.AcquiredAt,
+                RelativePath = lease.Job != null && lease.Job.MediaFile != null ? lease.Job.MediaFile.RelativePath : null,
+                Progress = lease.Job != null ? lease.Job.Progress : 0,
+            })
+            .ToListAsync(cancellationToken);
+
+        return held
+            .GroupBy(lease => lease.WorkerId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(lease => lease.AcquiredAt)
+                    .Select(lease => new WorkerJobDto(
+                        lease.JobId,
+                        lease.RelativePath,
+                        lease.Stage?.ToString() ?? "Claimed",
+                        lease.Progress))
+                    .ToList());
+    }
+
+    /// <summary>
+    /// Stores whichever load figures the worker actually sent. Silence leaves the previous reading
+    /// alone rather than blanking it: a sidecar that could not read its counters this once has not
+    /// stopped being busy, and an older one that never reports must not clear what a newer one did.
+    /// Out-of-range values are dropped rather than clamped, since a figure outside 0-1 means the
+    /// sender is confused and guessing on its behalf would hide that.
+    /// </summary>
+    internal static void RecordLoad(Worker worker, double? cpu, double? gpu)
+    {
+        var recorded = false;
+        if (cpu is { } cpuValue && double.IsFinite(cpuValue) && cpuValue is >= 0 and <= 1)
+        {
+            worker.CpuBusyFraction = cpuValue;
+            recorded = true;
+        }
+        if (gpu is { } gpuValue && double.IsFinite(gpuValue) && gpuValue is >= 0 and <= 1)
+        {
+            worker.GpuBusyFraction = gpuValue;
+            recorded = true;
+        }
+        if (recorded)
+        {
+            worker.LoadReportedAt = DateTimeOffset.UtcNow;
+        }
+    }
+
+    private static WorkerDto ToDto(Worker worker, DateTimeOffset nowUtc, IReadOnlyList<WorkerJobDto> activeJobs) => new(
         worker.Id,
         worker.Name,
         worker.OperatingSystem,
         worker.Architecture,
         worker.ProtocolVersion,
+        worker.SidecarVersion,
         Split(worker.VideoEncoders),
+        Split(worker.AudioEncoders),
         Split(worker.HardwareDecoders),
         worker.Vmaf.ToString(),
         worker.FreeScratchBytes,
         worker.MaxConcurrency,
+        // Only while it is current. A worker that stopped reporting mid-encode would otherwise go
+        // on showing the busiest number it ever sent, which is worse than showing nothing.
+        WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc) ? worker.CpuBusyFraction : null,
+        WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc) ? worker.GpuBusyFraction : null,
+        worker.LoadReportedAt,
         worker.PairedAt,
         worker.LastSeenAt,
         worker.RevokedAt,
         // Revoked workers are never "online" whatever their last heartbeat said, so the UI cannot
         // show a green light next to a worker that can no longer authenticate.
-        worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc));
+        worker.RevokedAt is null && WorkerLiveness.IsOnline(worker.LastSeenAt, nowUtc),
+        worker.DrainRequestedAt,
+        activeJobs.Count,
+        activeJobs,
+        worker.LastProblem,
+        worker.LastProblemAt);
 
     /// <summary>
     /// Accepts a capability name, case-insensitively. An absent value means the worker claims no

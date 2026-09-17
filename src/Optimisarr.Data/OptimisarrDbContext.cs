@@ -46,6 +46,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(library => library.HdrHandling).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ImageDownscaleMode).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.ContentTune).HasConversion<string>().HasMaxLength(32);
+            entity.Property(library => library.WorkPlacement).HasConversion<string>().HasMaxLength(32);
             entity.Property(library => library.TargetVideoCodec).HasMaxLength(64);
             entity.Property(library => library.TargetContainer).HasMaxLength(32);
             entity.Property(library => library.ExcludePaths).HasMaxLength(2048);
@@ -176,6 +177,7 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.Property(worker => worker.Vmaf).HasConversion<string>().HasMaxLength(32);
             // A SHA-256 hex fingerprint is always 64 characters; the credential itself is never stored.
             entity.Property(worker => worker.CredentialFingerprint).HasMaxLength(64);
+            entity.Property(worker => worker.LastProblem).HasMaxLength(512);
             // Every authenticated worker call arrives with a credential and no id, so the
             // fingerprint is the lookup key. Unique because two workers must never share one.
             entity.HasIndex(worker => worker.CredentialFingerprint).IsUnique();
@@ -186,6 +188,11 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(lease => lease.Id);
             entity.Property(lease => lease.State).HasConversion<string>().HasMaxLength(32);
             entity.Property(lease => lease.OutputExtension).HasMaxLength(8);
+            entity.Property(lease => lease.Stage).HasConversion<string>().HasMaxLength(32);
+            entity.Property(lease => lease.QualitySourceSha256).HasMaxLength(64);
+            entity.Property(lease => lease.QualityCandidateSha256).HasMaxLength(64);
+            entity.Property(lease => lease.DeliveredSha256).HasMaxLength(64);
+            entity.Property(lease => lease.HardwareDecoder).HasMaxLength(32);
 
             // Removing a job removes its leases; a lease without a job claims nothing.
             entity.HasOne(lease => lease.Job)

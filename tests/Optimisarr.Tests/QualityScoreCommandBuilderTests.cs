@@ -183,6 +183,89 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Sampled_measurement_snaps_the_seek_to_the_reference_frame_grid_and_removes_the_distorted_lead()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
+                ReferenceFrameRate: 24000d / 1001d,
+                // The original's audio leads its video by 21 ms; the encode's video starts 41 ms
+                // into its container. Frame for frame the pictures are the same.
+                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041),
+            threads: 4);
+        var args = command.Arguments;
+        // 113 s falls between two reference pictures. Seeking to the nearest picture instant
+        // (2709 frames plus the 21 ms lead) puts every retained picture on a cadence slot centre,
+        // where a half-millisecond of container rounding cannot move it to the neighbouring slot.
+        Assert.Equal("113.008875", ValueAfter(args, "-ss", occurrence: 1));
+        Assert.Equal("113.008875", ValueAfter(args, "-ss", occurrence: 2));
+        // The 20 ms by which the encode presents each picture later than the original is removed
+        // before cadence rounding; the reference timeline is untouched. Both trim the same span.
+        Assert.Contains(
+            "[0:v]settb=AVTB,setpts=PTS-0.02*1000000,fps=fps=23.976023976023978:start_time=0,trim=start=4.991125:duration=40,",
+            command.FilterGraph);
+        Assert.Contains(
+            "[1:v]settb=AVTB,fps=fps=23.976023976023978:start_time=0,trim=start=4.991125:duration=40,",
+            command.FilterGraph);
+    }
+
+    [Fact]
+    public void Sampled_measurement_hands_a_remote_worker_a_token_for_the_lead_it_will_measure_itself()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "{{distorted}}", "{{reference}}", "{{log}}",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
+                ReferenceFrameRate: 24000d / 1001d,
+                ReferenceContainerLeadSeconds: 0.021, DistortedShiftToken: "{{distortedShift}}"),
+            threads: 8);
+        Assert.Equal("113.008875", ValueAfter(command.Arguments, "-ss", occurrence: 1));
+        Assert.Contains("[0:v]settb=AVTB,setpts=PTS-{{distortedShift}}*1000000,fps=", command.FilterGraph);
+        Assert.DoesNotContain("[1:v]settb=AVTB,setpts=PTS-{{distortedShift}}", command.FilterGraph);
+    }
+
+    [Fact]
+    public void Equal_container_leads_add_no_shift_and_an_unknown_lead_keeps_the_whole_second_seek()
+    {
+        var equal = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
+                ReferenceFrameRate: 24000d / 1001d,
+                ReferenceContainerLeadSeconds: 0.041, DistortedContainerLeadSeconds: 0.041),
+            threads: 4);
+        Assert.DoesNotContain("setpts=PTS-0", equal.FilterGraph);
+
+        var unknown = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                DistortedStartSeconds: 118, ReferenceStartSeconds: 118, MeasureDurationSeconds: 40,
+                ReferenceFrameRate: 24000d / 1001d),
+            threads: 4);
+        Assert.Equal("113", ValueAfter(unknown.Arguments, "-ss", occurrence: 1));
+        Assert.Contains("trim=start=5:duration=40", unknown.FilterGraph);
+    }
+
+    [Fact]
+    public void Full_file_measurement_rebases_both_origins_so_no_lead_shift_is_needed()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "/work/output.mp4", "/data/original.mkv", "/tmp/vmaf.json",
+            new QualityMeasurementContext(
+                1920, 1080, ReferenceIsHdr: false, HdrConvertedToSdr: false,
+                ReferenceFrameRate: 25,
+                ReferenceContainerLeadSeconds: 0.021, DistortedContainerLeadSeconds: 0.041),
+            threads: 4);
+        Assert.DoesNotContain("setpts=PTS-0.02", command.FilterGraph);
+        Assert.DoesNotContain("-ss", command.Arguments);
+    }
+
+    [Fact]
     public void Full_file_cadence_alignment_rebases_each_container_origin_before_fps_rounding()
     {
         var command = QualityScoreCommandBuilder.Build(

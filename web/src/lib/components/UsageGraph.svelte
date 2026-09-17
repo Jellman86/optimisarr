@@ -30,17 +30,17 @@
   let area = $derived(line ? `${line} L${W} ${H} L0 ${H} Z` : '')
 </script>
 
-<div class="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+<div class="rounded-lg border border-line p-3">
   <div class="flex items-baseline justify-between gap-2">
-    <span class="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</span>
+    <span class="text-xs font-medium uppercase tracking-wide text-ink-4">{label}</span>
     {#if !unavailable}
       <span class="text-sm font-semibold tabular-nums" style="color: {color}">
-        {current != null ? Math.round(current) : '–'}%{#if detail}<span class="ml-1 text-xs font-normal text-slate-400">{detail}</span>{/if}
+        {current != null ? Math.round(current) : '–'}%{#if detail}<span class="ml-1 text-xs font-normal text-ink-4">{detail}</span>{/if}
       </span>
     {/if}
   </div>
   {#if unavailable}
-    <div class="mt-2 flex h-10 items-center justify-center text-center text-xs text-slate-400">{unavailable}</div>
+    <div class="mt-2 flex h-10 items-center justify-center text-center text-xs text-ink-4">{unavailable}</div>
   {:else}
     <svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="mt-2 h-10 w-full overflow-visible">
       {#if area}<path d={area} fill={color} fill-opacity="0.12" />{/if}

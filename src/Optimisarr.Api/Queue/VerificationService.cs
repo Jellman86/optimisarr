@@ -2,10 +2,18 @@ using System.Diagnostics;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 
 namespace Optimisarr.Api.Queue;
 
 /// <summary>The properties of the original file a converted output is judged against.</summary>
+/// <summary>
+/// A VMAF measurement made by a remote worker that verification may use instead of its own,
+/// already parsed and pooled here and already bound to the delivered bytes. Verification treats it
+/// as it would its own measurement: every other gate still runs.
+/// </summary>
+public sealed record RemoteQuality(QualityResult Result, string Sampling);
+
 public sealed record OriginalSnapshot(
     string Path,
     long SizeBytes,
@@ -52,7 +60,12 @@ public sealed record VerificationClip(
     int? StartSeconds,
     string ReferencePath,
     bool RetainReference = false,
-    bool VideoOnly = false);
+    bool VideoOnly = false)
+{
+    public double ExpectedDuration(double? sourceDurationSeconds) => sourceDurationSeconds is > 0
+        ? Math.Min(Seconds, Math.Max(0, sourceDurationSeconds.Value - (StartSeconds ?? 0)))
+        : Seconds;
+}
 
 internal static class VerificationClipLifecycle
 {
@@ -84,8 +97,24 @@ public sealed class VerificationService(
         CancellationToken cancellationToken,
         VerificationClip? clip = null,
         IProgress<double>? qualityProgress = null,
-        VmafAcceleration vmafAcceleration = VmafAcceleration.None)
+        VmafAcceleration vmafAcceleration = VmafAcceleration.None,
+        RemoteQuality? remoteQuality = null,
+        RemoteVerificationEvidence? remoteEvidence = null)
     {
+        if (remoteEvidence is not null)
+        {
+            var objections = RemoteVerificationEvidenceValidator.ValidateMeasurements(remoteEvidence,
+                policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled);
+            if (objections.Count > 0)
+                throw new InvalidOperationException("Sidecar-only verification evidence is incomplete; server fallback is disabled. "
+                    + string.Join(" ", objections));
+        }
+        if (remoteEvidence is not null && original.Kind != MediaKind.Video)
+            throw new InvalidOperationException("This sidecar verification contract supports video assignments only.");
+        if (remoteEvidence is not null && clip is not null)
+            throw new InvalidOperationException("Sidecar-only verification does not accept disposable reference clips.");
+        if (remoteEvidence is not null && policy.RequiresVmaf(original.Kind, original.VideoReencoded) && remoteQuality is null)
+            throw new InvalidOperationException("Sidecar-only verification requires complete worker VMAF evidence; server fallback is disabled.");
         var preparedReference = clip is null
             ? new PreparedReference(original, 0)
             : await CreateReferenceClipAsync(original, clip, cancellationToken);
@@ -93,34 +122,38 @@ public sealed class VerificationService(
 
         try
         {
-            var decodeResult = await decode.CheckAsync(outputPath, cancellationToken);
+            var decodeResult = remoteEvidence?.Decode ?? await decode.CheckAsync(outputPath, cancellationToken);
             // Packet-timestamp integrity is a video concern; skip it for an audio output.
-            var timestampResult = reference.Kind == MediaKind.Audio
+            var timestampResult = remoteEvidence?.CandidateVideo ?? (reference.Kind == MediaKind.Audio
                 ? TimestampCheckResult.NotMeasured
-                : await timestamps.CheckAsync(outputPath, cancellationToken);
-            var outputProbe = await probe.ProbeAsync(outputPath, cancellationToken);
+                : await timestamps.CheckAsync(outputPath, cancellationToken));
+            var outputProbe = remoteEvidence is null
+                ? await probe.ProbeAsync(outputPath, cancellationToken)
+                : MediaProbeService.Parse(remoteEvidence.CandidateProbe!);
             var outputSize = TryGetSize(outputPath);
 
             // A quick re-probe of the original (no decode) gives its audio shape so we can
             // catch a silent downmix or sample-rate drop in the output.
-            var originalProbe = await probe.ProbeAsync(reference.Path, cancellationToken);
+            var originalProbe = remoteEvidence is null
+                ? await probe.ProbeAsync(reference.Path, cancellationToken)
+                : MediaProbeService.Parse(remoteEvidence.SourceProbe!);
             // A container can continue long after a damaged picture stream. Read the original's
             // actual packet endpoint for normal jobs so tail verification compares video with
             // video and can report source corruption separately. Disposable clips have their own
             // deliberately bounded/reference-offset timeline, so keep their established checks.
-            var originalTimestampResult = reference.Kind == MediaKind.Video && clip is null
+            var originalTimestampResult = remoteEvidence?.SourceVideo ?? (reference.Kind == MediaKind.Video && clip is null
                 ? await timestamps.CheckAsync(reference.Path, cancellationToken)
-                : TimestampCheckResult.NotMeasured;
-            var originalAudioTimestampResult = reference.Kind == MediaKind.Video
+                : TimestampCheckResult.NotMeasured);
+            var originalAudioTimestampResult = remoteEvidence?.SourceAudio ?? (reference.Kind == MediaKind.Video
                 && originalProbe.AudioTrackCount > 0
                 && clip is null
                     ? await timestamps.CheckPrimaryAudioAsync(reference.Path, cancellationToken)
-                    : TimestampCheckResult.NotMeasured;
+                    : TimestampCheckResult.NotMeasured);
             var referenceVideoDuration = ReferenceVideoDurationForVerification(
                 originalProbe,
                 originalTimestampResult,
                 reference.DurationSeconds,
-                clip is not null && reference.Kind == MediaKind.Video ? clip.Seconds : null);
+                clip is not null && reference.Kind == MediaKind.Video ? clip.ExpectedDuration(original.DurationSeconds) : null);
 
             // When the job removed tracks by language, the audio the output promised to retain
             // is the kept tracks — so channel/sample-rate expectations come from those, not from
@@ -133,7 +166,14 @@ public sealed class VerificationService(
             // audio and image jobs have their own applicable verification gates.
             QualityResult? qualityResult = null;
             string? vmafSampling = null;
-            if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            if (remoteQuality is not null && policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            {
+                // The server has already bound the worker's measurement to this lease and both files.
+                qualityResult = remoteQuality.Result;
+                vmafSampling = $"{remoteQuality.Sampling}, measured by the worker";
+                qualityProgress?.Report(1);
+            }
+            else if (policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
                 var windows = clip is null && referenceVideoDuration is { } total
                     ? VmafWindowPlanner.Plan(total, policy.ClipVmafEnabled)
@@ -153,6 +193,10 @@ public sealed class VerificationService(
                         reference,
                         outputPath,
                         originalProbe,
+                        // A preview's stream-copied clip is not the file VMAF reads, so its
+                        // container lead says nothing about the reference actually decoded.
+                        clip is null ? QueueDispatcher.ContainerLeadSeconds(originalProbe) : null,
+                        clip is null ? QueueDispatcher.ContainerLeadSeconds(outputProbe) : null,
                         quality,
                         // A preview's cheap stream-copy clip is suitable for duration/stream checks,
                         // but can retain keyframe pre-roll. VMAF decodes the full original from the
@@ -203,8 +247,8 @@ public sealed class VerificationService(
             LoudnessResult? outputLoudness = null;
             if (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled)
             {
-                originalLoudness = await loudness.MeasureAsync(reference.Path, cancellationToken);
-                outputLoudness = await loudness.MeasureAsync(outputPath, cancellationToken);
+                originalLoudness = remoteEvidence?.SourceLoudness ?? await loudness.MeasureAsync(reference.Path, cancellationToken);
+                outputLoudness = remoteEvidence?.CandidateLoudness ?? await loudness.MeasureAsync(outputPath, cancellationToken);
             }
 
             var loudnessMeasured = originalLoudness is { Measured: true } && outputLoudness is { Measured: true };
@@ -418,6 +462,8 @@ public sealed class VerificationService(
         OriginalSnapshot reference,
         string outputPath,
         MediaProbeResult originalProbe,
+        double? referenceContainerLeadSeconds,
+        double? distortedContainerLeadSeconds,
         QualityScoreService quality,
         string qualityReferencePath,
         int? referenceStartSeconds,
@@ -451,7 +497,9 @@ public sealed class VerificationService(
             Acceleration: acceleration,
             ReferenceFrameRate: reference.FrameRate?.TargetFps ?? originalProbe.VideoFrameRate,
             ReferenceCrop: reference.Crop,
-            ReferenceDecimation: reference.FrameRate);
+            ReferenceDecimation: reference.FrameRate,
+            ReferenceContainerLeadSeconds: referenceContainerLeadSeconds,
+            DistortedContainerLeadSeconds: distortedContainerLeadSeconds);
         var result = await quality.MeasureAsync(
             qualityReferencePath,
             outputPath,
@@ -504,7 +552,7 @@ public sealed class VerificationService(
             // Stream copy necessarily retains packets from the preceding keyframe. The candidate
             // still represents the requested window, so verify against that window rather than
             // mistaking harmless decode pre-roll for a truncated encode.
-            DurationSeconds = original.Kind == MediaKind.Video ? clip.Seconds : probedDuration,
+            DurationSeconds = original.Kind == MediaKind.Video ? clip.ExpectedDuration(original.DurationSeconds) : probedDuration,
             AudioTrackCount = clipProbe.Success ? clipProbe.AudioTrackCount : original.AudioTrackCount,
             SubtitleTrackCount = clipProbe.Success ? clipProbe.SubtitleTrackCount : original.SubtitleTrackCount,
             IsHdr = clipProbe.Success ? clipProbe.IsHdr : original.IsHdr

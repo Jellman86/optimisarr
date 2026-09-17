@@ -218,6 +218,9 @@ namespace Optimisarr.Data.Migrations
                     b.Property<long?>("OutputSizeBytes")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("PreferSoftwareDecode")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
@@ -305,7 +308,30 @@ namespace Optimisarr.Data.Migrations
                     b.Property<DateTimeOffset>("AcquiredAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("AdaptiveAskedQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AdaptiveContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdaptiveProbesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeliveredSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("EncodedSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HardwareDecoder")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("JobId")
@@ -315,9 +341,36 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("QualityCandidateSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualityContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualityScoresJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QualitySourceSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Stage")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationEvidenceJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationWorkJson")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("WorkerId")
@@ -562,6 +615,11 @@ namespace Optimisarr.Data.Migrations
 
                     b.Property<bool?>("VmafQualityGateEnabled")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("WorkPlacement")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -819,19 +877,42 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AudioEncoders")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("CpuBusyFraction")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("CredentialFingerprint")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("DrainRequestedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("FreeScratchBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<double?>("GpuBusyFraction")
+                        .HasColumnType("REAL");
 
                     b.Property<string>("HardwareDecoders")
                         .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastProblem")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastProblemAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LoadReportedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("MaxConcurrency")
@@ -854,6 +935,10 @@ namespace Optimisarr.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SidecarVersion")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("VideoEncoders")

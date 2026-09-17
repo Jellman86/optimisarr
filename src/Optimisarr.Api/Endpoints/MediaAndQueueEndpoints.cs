@@ -10,6 +10,7 @@ using Optimisarr.Api.Metrics;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Replacement;
+using Optimisarr.Api.Workers;
 using Optimisarr.Api.Security;
 using Optimisarr.Api.Stats;
 using Optimisarr.Core.Domain;
@@ -240,6 +241,7 @@ internal static class MediaAndQueueEndpoints
         // unaffected); the pre-paging total is returned in the X-Total-Count header.
         app.MapGet("/api/jobs", async (
             string? status,
+            bool? live,
             int? libraryId,
             string? category,
             DateTimeOffset? since,
@@ -248,6 +250,8 @@ internal static class MediaAndQueueEndpoints
             int? pageSize,
             HttpResponse response,
             OptimisarrDbContext db,
+            SettingsStore settingsStore,
+            RemoteWorkersFeature remoteWorkers,
             CancellationToken cancellationToken) =>
         {
             JobStatus? wantedStatus = null;
@@ -274,16 +278,20 @@ internal static class MediaAndQueueEndpoints
                 wantedCategory = parsed;
             }
 
+            var queueSettings = await settingsStore.GetQueueSettingsAsync(cancellationToken);
+            var availability = await WorkerAvailability.ResolveAsync(
+                db, queueSettings.RemoteWorkersEnabled, remoteWorkers, DateTimeOffset.UtcNow, cancellationToken);
             var result = await JobQueries.QueryAsync(db, new JobQuery
             {
                 Status = wantedStatus,
+                Live = live ?? false,
                 LibraryId = libraryId,
                 Category = wantedCategory,
                 Since = since,
                 Until = until,
                 Page = page ?? 1,
                 PageSize = pageSize ?? 0
-            }, cancellationToken);
+            }, cancellationToken, availability);
 
             response.Headers["X-Total-Count"] = result.Total.ToString();
             return Results.Ok(result.Items);

@@ -26,6 +26,9 @@ public sealed class MigrationTests : IDisposable
 
         db.AppSettings.Add(new AppSetting { Key = "migration.smoke", Value = "ok" });
         await db.SaveChangesAsync();
+        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        await db.Database.MigrateAsync();
+        Assert.Equal(applied, (await db.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.Equal("ok", (await db.AppSettings.SingleAsync()).Value);
     }
 
@@ -383,6 +386,8 @@ public sealed class MigrationTests : IDisposable
         Assert.Null(films.VideoDownscaleHeight);
         Assert.False(films.CropBlackBars);
         Assert.Null(films.MaxFrameRate);
+        // And placement arrives as "anywhere": exactly how jobs were placed before the choice.
+        Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, films.WorkPlacement);
     }
 
     public void Dispose()

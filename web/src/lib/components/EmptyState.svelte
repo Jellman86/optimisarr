@@ -13,10 +13,10 @@
 </script>
 
 <div class="card flex flex-col items-center gap-3 p-10 text-center">
-  <Icon name={icon} class="h-10 w-10 text-slate-300 dark:text-slate-600" />
+  <Icon name={icon} class="h-10 w-10 text-ink-5" />
   <div>
-    <p class="font-medium text-slate-600 dark:text-slate-300">{title}</p>
-    {#if hint}<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{hint}</p>{/if}
+    <p class="font-medium text-ink-2">{title}</p>
+    {#if hint}<p class="mt-1 text-sm text-ink-3">{hint}</p>{/if}
   </div>
   {@render children?.()}
 </div>

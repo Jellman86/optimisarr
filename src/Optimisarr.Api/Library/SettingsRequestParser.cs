@@ -57,7 +57,8 @@ internal static class SettingsRequestParser
             request.ReplacementAllowCrossFilesystem,
             request.DryRunMode,
             request.ReplacementQuarantineRetentionDays,
-            request.RemoteWorkersEnabled);
+            request.RemoteWorkersEnabled,
+            request.WorkerVerificationRequired);
         error = null;
         return true;
     }

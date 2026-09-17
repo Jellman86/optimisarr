@@ -25,10 +25,10 @@ Fresh installations start in dry-run with one concurrent job. Every new library 
 enqueue and automatic replacement disabled. New video re-encode libraries start on Adaptive
 per-title VMAF with the Visually lossless target; non-video and remux-only libraries keep VMAF off. Existing
 installations upgraded from an older release never see the wizard automatically. To revisit it
-without deleting or resetting any configuration, use **Settings → Backup → First-run setup → Run
+without deleting or resetting any configuration, use **Settings → System → First-run setup → Run
 setup again**.
 
-![Settings General tab grouping queue controls separately from replacement and cleanup policy](../images/optimisarr-settings-general-dark.png)
+![Encoding settings showing concurrent jobs, CPU limits, hardware selection, and scan interval](../images/optimisarr-settings-general-dark.png)
 
 ## Admin token
 
@@ -41,20 +41,6 @@ environment:
   OPTIMISARR_ADMIN_TOKEN: "change-this-long-random-token"
 ```
 
-## Remote workers are a preview, off and hidden
-
-Distributed transcoding through paired sidecars is groundwork in this release, not a feature you
-can rely on: worker-side quality measurement, drain controls, signing, and the Windows sidecar are
-still to build. The **Remote workers** switch and the **Workers** tab therefore exist only when the
-container starts with the preview flag, and every worker route answers 403 without it:
-
-```yaml
-environment:
-  OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS: "true"
-```
-
-Leave it unset unless you are following the sidecar work on `dev`.
-
 When the token is set, the web UI asks for it before loading operational data.
 API clients must send it as a bearer token:
 
@@ -66,6 +52,23 @@ curl -H "Authorization: Bearer change-this-long-random-token" \
 `/api/health`, `/api/ready`, and `/api/auth/status` remain open for health
 checks and startup detection. If the token is not set, Optimisarr behaves as it
 did before and logs a warning at startup.
+
+## Remote workers
+
+Windows and macOS sidecars can encode video, measure VMAF, and optionally perform the full
+verification workload. They remain an opt-in preview behind
+`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`. Enable **Remote workers** in
+**Settings → Files & safety**, then pair and manage machines in **Settings → Remote workers**.
+
+Work placement is per library: **Libraries → Configure → Choose files → Advanced eligibility →
+Where this library's work may run**. Choose **Here or on a worker**, **Only on this server**,
+**Prefer a worker**, or **Only on workers**. To require worker verification too, enable
+**Verify entirely on the sidecar** in **Settings → Files & safety → Remote workers**.
+
+See [Remote workers and sidecars](remote-workers.md) for installation, the ten-minute preference
+window, strict verification, and the work that remains on the container.
+
+## Library workflow
 
 Each library has its own root, media type, rule profile, and processing policy.
 The Inventory explains why every file is eligible or skipped.
@@ -100,6 +103,8 @@ the former global policy into each existing library so behaviour does not change
 There is no global processing window: *when* work runs is set per library (see
 below). Jobs you queue manually run whenever the queue can start one.
 
+![Library Advanced encoding page with breadcrumbs, codec and container overrides, encoder effort, and bitrate controls](../images/optimisarr-library-advanced-encoding-dark.png)
+
 ## Media toolchain overrides
 
 The published container configures a matched Jellyfin FFmpeg/ffprobe pair automatically. Custom
@@ -127,11 +132,12 @@ override the standard values unless supplying a complete, tested replacement too
 
 ## Per-library verification gates
 
-The configuration page uses the same four-stage flow for every media type:
-**Library → Optimisation → Verification gates → Automation & completion**. Music exposes its output
-codec and bitrate in **Optimisation** because those are its primary choices. **Advanced options**
-contains technical encoding and eligibility overrides; completed-output routing remains in the
-normal **Automation & completion** flow.
+The configuration page has four linked stages for every media type:
+**Choose files → Encode → Verify → Schedule & replace**. Open any stage directly from the overview
+or return with its breadcrumb; navigation keeps the current draft and **Save** saves all stages
+together. Music exposes its output codec and bitrate in **Encode**. Specialist controls have
+dedicated **Advanced eligibility**, **Advanced encoding**, and **Advanced verification** pages.
+Completed-output routing stays in **Schedule & replace**, beside automatic replacement.
 
 Every job must pass decode health, output readability, and the media-kind checks
 that apply to it. Video jobs also have an always-on structural comparison: the output codec must
@@ -139,7 +145,7 @@ match the resolved target (or the source for a remux), resolution must not chang
 policy, bit depth and chroma sampling may not be reduced, and ffprobe must report a coherent output
 profile. These checks are independent of VMAF because perceptual quality alone cannot prove the
 requested codec or signal structure was retained. Open **Libraries**, edit a library, and use
-**Verification gates** to tune its applicable checks. Optimisarr shows only controls that can affect
+**Verify** to tune its applicable checks. Optimisarr shows only controls that can affect
 the selected media type:
 
 | Gate | Applies to | Default |
@@ -219,18 +225,18 @@ threshold. Cancelled work and jobs interrupted by a worker restart do not count 
 ## Rule profiles (presets)
 
 Each library picks an **optimisation preset** that sets its codec, container, and a
-researched quality target; anything can be fine-tuned under **Advanced options**.
+researched quality target; specialist controls are available from the applicable workflow stage.
 
 | Preset | Targets |
 |---|---|
 | Compatibility (H.264) | H.264 / MP4 with channel-aware AAC — broad compatibility for proven 8-bit sources, larger files. Higher or unknown bit depths are skipped with guidance to use HEVC or AV1. |
 | Balanced (HEVC) | HEVC (H.265) / MP4 at CRF 24 with channel-aware AAC — a good default. |
 | Efficiency (AV1) | AV1 / MKV — smallest files, slower to encode. |
-| **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR tone-mapped to SDR**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; Settings → General chooses compatible software or supported hardware tone mapping, and the same AAC 96 kbps stereo target applies to a music library. |
+| **Scott's Settings** | HEVC / MP4 at CRF 24, **HDR tone-mapped to SDR**, audio re-encoded to **AAC 96 kbps downmixed to stereo**. A compatibility-first, space-saving bundle; Settings → Encoding chooses compatible software or supported hardware tone mapping, and the same AAC 96 kbps stereo target applies to a music library. |
 | Remux / cleanup | No re-encode — repackage into a clean container only. |
 
 A file already in the target codec is normally skipped. Enable **"Re-encode large
-files already in the target codec"** (Advanced options) to also re-encode oversized
+files already in the target codec"** (**Choose files → Advanced eligibility**) to also re-encode oversized
 same-codec files above a size you set (default 20 GB) — useful for shrinking a huge
 HEVC remux under an HEVC preset. The size-saving verification gate still rejects an
 output that does not get smaller, so the original is never lost.
@@ -246,7 +252,7 @@ uses the same effective value. MP3 requires stereo downmix for sources above two
 Opus accept up to eight retained channels. Post-encode verification independently rejects any
 unrequested channel loss.
 
-**Keep audio languages** (Advanced options) removes unwanted audio tracks while a
+**Keep audio languages** (**Encode → Audio & subtitles**) removes unwanted audio tracks while a
 video is optimised or remuxed. Enter comma-separated ISO 639 codes (e.g. `eng, jpn`);
 the field validates the syntax before Save, then lower-cases and de-duplicates the
 codes. Complete ISO 639-1/-2 aliases match (`de`, `deu`, and `ger` are equivalent).
@@ -260,7 +266,7 @@ preset, a file already in the right container but carrying removable foreign-lan
 tracks becomes eligible for a fast stream-copy cleanup; re-encode presets strip tracks
 as part of the jobs they already run.
 
-**Keep subtitle languages** (Advanced options) works the same way for subtitle
+**Keep subtitle languages** (**Encode → Audio & subtitles**) works the same way for subtitle
 tracks, with one deliberate difference: subtitles are optional streams, so there is
 no keep-at-least-one guard. A track with no language tag is never removed, but if a
 file's subtitles are all in non-kept languages they are all removed and the file ends
@@ -335,12 +341,12 @@ re-adding the library. Originals are never touched either way.
 
 ## Configuration backup and import
 
-The **Settings** page can export and import a JSON configuration snapshot. It
+**Settings → System → Backup & restore** can export and import a JSON configuration snapshot. It
 includes libraries, activity watchers, notification targets, Arr connections,
 and provider credentials in plain text. Store it as sensitive material: do not
 commit, share, or leave it in an unprotected download directory.
 
-![Backup tab separating configuration export and import from the first-run setup action](../images/optimisarr-settings-backup-dark.png)
+![Backup and restore card explaining export contents and providing Export config and Import config controls](../images/optimisarr-settings-backup-dark.png)
 
 Import validates the complete file before writing, then merges configuration
 without deleting existing entries. It intentionally does not include media,

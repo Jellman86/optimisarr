@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Optimisarr · Precession cube</title>
+<style>
+  :root{color-scheme:dark;--ground:#070d1a;--panel:#111a2d;--ink:#eef2f7;--muted:#8f9fb5}
+  :root.light{color-scheme:light;--ground:#e9eef5;--panel:#f8fafd;--ink:#111a2d;--muted:#5d6b80}
+  *{box-sizing:border-box}body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+  main{max-width:820px;margin:0 auto;padding:40px 24px}header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px}
+  h1{font-size:24px;font-weight:600;letter-spacing:-.6px;margin:0}p{color:var(--muted);margin:5px 0 24px}
+  nav{display:flex;flex-wrap:wrap;gap:8px}button{font:inherit;border:1px solid var(--muted);background:transparent;color:var(--ink);border-radius:8px;padding:8px 14px;cursor:pointer;min-height:44px}
+  button[aria-pressed=true]{background:var(--ink);color:var(--ground)}button:focus-visible{outline:2px solid #46bcf5;outline-offset:3px}
+  .study{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{background:var(--panel);border-radius:20px;padding:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:270px}
+  .brand{width:144px;height:144px}.inspection{width:288px;height:288px}.small{width:40px;height:40px}strong{font-size:19px;letter-spacing:-.5px}small{color:var(--muted);font-size:12px}
+  .samples{display:flex;align-items:center;gap:32px;margin-top:24px}.label{margin-top:12px}#state{margin-top:24px;max-width:620px}footer{font-size:12px;color:var(--muted);margin-top:32px}
+  @media(max-width:650px){main{padding:24px 16px}.study{grid-template-columns:1fr}.panel{padding:16px;min-height:220px}}
+</style>
+<main>
+<header><h1>Precession cube</h1><nav aria-label="Preview controls"><button id="steady" aria-pressed="false">Steady</button><button id="excited" aria-pressed="true">Working</button><button id="theme">Light background</button></nav></header>
+<p>A cube on its tip. Fifteen slices, one continuous form.</p>
+<div class="study">
+  <div class="panel"><canvas class="brand" aria-hidden="true"></canvas><strong>Optimisarr</strong><small class="label">Application size · 144 px</small><div class="samples"><canvas class="small" aria-hidden="true"></canvas><img id="favicon" width="32" height="32" alt="Tab icon"></div><small class="label">Collapsed rail · browser tab</small></div>
+  <div class="panel"><canvas class="inspection" aria-hidden="true"></canvas><small>Detail view</small></div>
+</div>
+<p id="state" role="status">Working: a progressive twist travels up the slices. The bottom tip stays anchored.</p>
+<footer>This preview uses the application’s player and assets. Motion follows your system’s reduced-motion preference.</footer>
+</main>
+<script type="module">
+import { createBrandPlayer } from '/src/lib/brand-player.ts'
+const players=[...document.querySelectorAll('canvas')].map(canvas=>createBrandPlayer(canvas,canvas.getContext('2d')))
+let working=true,dark=true
+function update(){
+  players.forEach(player=>player.update(working,dark))
+  document.documentElement.classList.toggle('light',!dark)
+  document.querySelector('#steady').setAttribute('aria-pressed',String(!working))
+  document.querySelector('#excited').setAttribute('aria-pressed',String(working))
+  document.querySelector('#theme').textContent=dark?'Light background':'Dark background'
+  document.querySelector('#favicon').src=`/brand/favicon-${dark?'dark':'light'}-${working?'excited':'steady'}.png`
+  document.querySelector('#state').textContent=working?'Working: a progressive twist travels up the slices. The bottom tip stays anchored.':'Rest: the cube stays fixed while an unseen light orbits in 32 seconds.'
+}
+document.querySelector('#steady').onclick=()=>{working=false;update()}
+document.querySelector('#excited').onclick=()=>{working=true;update()}
+document.querySelector('#theme').onclick=()=>{dark=!dark;update()}
+window.addEventListener('pagehide',()=>players.forEach(player=>player.destroy()),{once:true})
+update()
+</script>
+</html>

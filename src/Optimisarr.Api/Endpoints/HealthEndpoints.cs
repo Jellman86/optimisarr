@@ -38,6 +38,7 @@ internal static class HealthEndpoints
         app.MapGet("/api/ready", async (
             OptimisarrDbContext db,
             ToolDetectionService tools,
+            IHostEnvironment environment,
             CancellationToken cancellationToken) =>
         {
             var failures = new List<string>();
@@ -46,7 +47,7 @@ internal static class HealthEndpoints
                 failures.Add("database is unavailable");
             }
 
-            foreach (var path in new[] { configDirectory, "/work", "/trash" })
+            foreach (var path in new[] { configDirectory, WorkPaths.Resolve(environment), TrashPaths.Resolve(environment) })
             {
                 if (!Directory.Exists(path) || !PathAccessProbe.CanWrite(path))
                 {

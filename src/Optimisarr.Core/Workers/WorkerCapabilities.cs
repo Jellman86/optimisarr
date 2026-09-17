@@ -21,6 +21,7 @@ public sealed record WorkerCapabilities(
     string OperatingSystem,
     string Architecture,
     IReadOnlyList<string> VideoEncoders,
+    IReadOnlyList<string> AudioEncoders,
     IReadOnlyList<string> HardwareDecoders,
     VmafCapability Vmaf,
     long FreeScratchBytes,
@@ -32,6 +33,7 @@ public sealed record WorkerCapabilities(
 /// </summary>
 public sealed record JobRequirements(
     string VideoEncoder,
+    string? AudioEncoder,
     string? HardwareDecoder,
     VmafCapability Vmaf,
     long ScratchBytes);
@@ -58,6 +60,15 @@ public static class WorkerCapabilityMatcher
         else if (!Advertises(worker.VideoEncoders, required.VideoEncoder))
         {
             reasons.Add($"The worker does not advertise the video encoder '{required.VideoEncoder}'.");
+        }
+
+        // Null means the audio is copied, which needs no encoder. A named one has to be proved,
+        // exactly like the video encoder: the alternative is an "Unknown encoder" failure on the
+        // worker for a library setting the operator was allowed to choose.
+        if (!string.IsNullOrWhiteSpace(required.AudioEncoder)
+            && !Advertises(worker.AudioEncoders, required.AudioEncoder))
+        {
+            reasons.Add($"The worker does not advertise the audio encoder '{required.AudioEncoder}'.");
         }
 
         if (!string.IsNullOrWhiteSpace(required.HardwareDecoder)

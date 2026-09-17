@@ -85,7 +85,9 @@ public sealed record LibrarySnapshot(
     int? MinBitrateKbps = null,
     int? VideoDownscaleHeight = null,
     bool? CropBlackBars = null,
-    int? MaxFrameRate = null);
+    int? MaxFrameRate = null,
+    // Null on an older snapshot means "anywhere", the placement every library had before it existed.
+    string? WorkPlacement = null);
 
 /// <summary>An activity watcher definition, matched on its <see cref="Name"/> when imported.</summary>
 public sealed record ActivityWatcherSnapshot(

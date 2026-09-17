@@ -92,16 +92,16 @@
       role="menu"
       tabindex="-1"
       aria-label={label}
-      class="absolute right-0 z-20 mt-1 min-w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      class="absolute right-0 z-20 mt-1 min-w-44 rounded-lg border border-line bg-panel p-1 shadow-lg"
       onkeydown={onMenuKeydown}
     >
       {#each items as item, index (item.label)}
         <button
           type="button"
           role="menuitem"
-          class="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 disabled:pointer-events-none disabled:opacity-50 {item.danger
-            ? 'text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950'
-            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'}"
+          class="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-50 {item.danger
+ ? 'text-bad hover:bg-bad-soft'
+ : 'text-ink-2 hover:bg-raised'}"
           disabled={item.disabled}
           title={item.title}
           bind:this={itemButtons[index]}

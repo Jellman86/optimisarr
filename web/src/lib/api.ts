@@ -128,6 +128,8 @@ export type HardwareCapability = {
   error: string | null
 }
 
+export type WorkPlacement = 'Anywhere' | 'LocalOnly' | 'PreferWorker' | 'WorkerOnly'
+
 export type LibraryRules = {
   priority: number
   minFileSizeBytes: number | null
@@ -184,6 +186,8 @@ export type LibraryRules = {
   minimumImageSsim: number
   imageMetadataGateEnabled: boolean
   videoQualityStrategy: 'Fixed' | 'AdaptiveVmaf'
+  /** Where this library's video re-encodes may run once remote workers are on. Ignored while they are off. */
+  workPlacement: WorkPlacement
   autoEnqueueEnabled: boolean
   autoEnqueueWindowStart: string
   autoEnqueueWindowEnd: string
@@ -291,6 +295,7 @@ export function newLibraryDefaults(): SaveLibrary {
     minimumImageSsim: 0.95,
     imageMetadataGateEnabled: true,
     videoQualityStrategy: 'AdaptiveVmaf',
+    workPlacement: 'Anywhere',
     autoEnqueueEnabled: false,
     autoEnqueueWindowStart: '00:00',
     autoEnqueueWindowEnd: '00:00',
@@ -334,6 +339,7 @@ export type Settings = {
   replacementQuarantineRetentionDays: number
   /** Opt-in. Off by default: one container stays the complete, uncomplicated way to run this. */
   remoteWorkersEnabled: boolean
+  workerVerificationRequired: boolean
   /** Groundwork only in this release: the switch and the Workers tab exist only when the server
    * was started with OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true. */
   remoteWorkersAvailable: boolean
@@ -600,6 +606,12 @@ export type Job = {
   startedAt: string | null
   finishedAt: string | null
   clearable: boolean
+  /** The remote worker holding, or having delivered, this job; null for local work. */
+  workerName: string | null
+  /** Where that worker last said it was (Claimed, FetchingSource, Encoding, Delivering); null unless leased. */
+  remoteStage: string | null
+  /** A queued job its library keeps off this server until a worker takes it. */
+  waitingForWorker: boolean
 }
 
 export type EnqueueResult = {
@@ -726,7 +738,20 @@ export type Worker = {
   operatingSystem: string
   architecture: string
   protocolVersion: number
+  /** The sidecar's own build, as it reported it. Empty when it reports none. */
+  sidecarVersion: string
+  /** How busy the machine last said it was, 0-1. Null when it has not said — never assume zero. */
+  cpuBusyFraction: number | null
+  /**
+   * Accelerator utilisation, 0-1, or null. Low does not mean unused: a dedicated media engine,
+   * Apple silicon's VideoToolbox encoder among them, does not appear here at all.
+   */
+  gpuBusyFraction: number | null
+  /** When those were reported, so a stale reading is not drawn as current. */
+  loadReportedAt: string | null
   videoEncoders: string[]
+  /** Audio encoders the worker proved. A job that re-encodes audio is only offered to a worker naming its encoder. */
+  audioEncoders: string[]
   hardwareDecoders: string[]
   vmaf: VmafCapability
   freeScratchBytes: number
@@ -736,6 +761,23 @@ export type Worker = {
   revokedAt: string | null
   /** Computed by the server from its own liveness rule, so the UI never invents a second one. */
   online: boolean
+  /** When an operator asked the worker to finish what it holds and take no more; null while it takes work. */
+  drainRequestedAt: string | null
+  /** Leases the worker holds right now: what a drain is waiting on. */
+  heldLeases: number
+  /** The jobs behind those leases, with where the worker says it is on each. */
+  activeJobs: WorkerJob[]
+  /** The most recent thing the server refused or discarded from this worker; null if nothing yet. */
+  lastProblem: string | null
+  lastProblemAt: string | null
+}
+
+export type WorkerJob = {
+  jobId: number
+  relativePath: string | null
+  /** "Claimed" until the worker first reports, then FetchingSource | Encoding | Delivering. */
+  stage: string
+  progress: number
 }
 
 export type WorkerPairingCode = {
@@ -1090,6 +1132,10 @@ export const api = {
 
   workers: () => request<Worker[]>('/api/workers'),
   revokeWorker: (id: number) => request<void>(`/api/workers/${id}`, { method: 'DELETE' }),
+  /** Removes the record entirely. Revoking keeps it for the audit trail; this is for an orphan. */
+  forgetWorker: (id: number) => request<void>(`/api/workers/${id}/forget`, { method: 'POST' }),
+  drainWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'POST' }),
+  resumeWorker: (id: number) => request<Worker>(`/api/workers/${id}/drain`, { method: 'DELETE' }),
   issueWorkerPairingCode: () =>
     request<WorkerPairingCode>('/api/workers/pairing-code', { method: 'POST' }),
   /** Null when no code is currently on screen — the ordinary resting state, not an error. */
@@ -1117,6 +1163,8 @@ export const api = {
     request<ConnectionTestResult>('/api/connect/test', { method: 'POST', body: JSON.stringify(body) }),
 
   jobs: () => request<Job[]>('/api/jobs'),
+  /** Only jobs with work outstanding. The unfiltered call returns the entire job history. */
+  liveJobs: () => request<Job[]>('/api/jobs?live=true'),
   jobFailures: () => request<FailureGroup[]>('/api/jobs/failures'),
   // The captured ffmpeg log is plain text, and 404s when a job has none — return null rather than throw.
   jobLog: async (id: number): Promise<string | null> => {

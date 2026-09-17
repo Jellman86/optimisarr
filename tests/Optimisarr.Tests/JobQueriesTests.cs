@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -11,6 +12,36 @@ public sealed class JobQueriesTests : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<OptimisarrDbContext> _options;
+
+    [Theory]
+    [InlineData(JobStatus.ReadyToReplace)]
+    [InlineData(JobStatus.Completed)]
+    [InlineData(JobStatus.Failed)]
+    public async Task Delivered_jobs_keep_worker_attribution_after_verification(JobStatus status)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Films", Path = "/data/films" };
+        var worker = new Worker { Name = "Encoder Mac" };
+        db.AddRange(library, worker);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        var job = Job(1, 1, DateTimeOffset.UtcNow);
+        job.Status = status;
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        db.JobLeases.Add(new JobLease
+        {
+            Id = Guid.NewGuid(), JobId = job.Id, WorkerId = worker.Id,
+            AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            State = LeaseState.Completed, Stage = RemoteStage.Delivering
+        });
+        await db.SaveChangesAsync();
+
+        var result = Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None));
+        Assert.Equal(worker.Name, result.WorkerName);
+        Assert.Null(result.RemoteStage);
+    }
 
     public JobQueriesTests()
     {
@@ -349,6 +380,79 @@ public sealed class JobQueriesTests : IDisposable
         RelativePath = $"{id}.mkv",
         SizeBytes = 1_000_000,
         Status = MediaFileStatus.Probed
+    };
+
+    // The dashboard needs the handful of jobs that are actually in progress. Without a filter it
+    // had to fetch every job and sift client-side: on a real library that is the entire history —
+    // 1,773 rows on the machine this was written against — re-downloaded on every refresh.
+    [Fact]
+    public async Task QueryAsync_live_returns_only_jobs_still_in_progress()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            for (var id = 1; id <= 7; id++) db.MediaFiles.Add(MediaFile(library.Id, id));
+            await db.SaveChangesAsync();
+
+            db.Jobs.Add(WithStatus(1, JobStatus.Transcoding));
+            db.Jobs.Add(WithStatus(2, JobStatus.Verifying));
+            db.Jobs.Add(WithStatus(3, JobStatus.Leased));
+            db.Jobs.Add(WithStatus(4, JobStatus.AwaitingVerification));
+            db.Jobs.Add(WithStatus(5, JobStatus.Probing));
+            // Terminal and not-yet-started states are not "in progress".
+            db.Jobs.Add(WithStatus(6, JobStatus.Completed));
+            db.Jobs.Add(WithStatus(7, JobStatus.Queued));
+            await db.SaveChangesAsync();
+        }
+
+        await using var readDb = new OptimisarrDbContext(_options);
+        var result = await JobQueries.QueryAsync(readDb, new JobQuery { Live = true }, CancellationToken.None);
+
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, result.Items.Select(job => job.Id).OrderBy(id => id));
+        Assert.Equal(5, result.Total);
+    }
+
+    [Fact]
+    public async Task QueryAsync_live_still_honours_paging_and_the_library_filter()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var films = new Library { Name = "Films", Path = "/data/films" };
+            var tv = new Library { Name = "TV", Path = "/data/tv" };
+            db.Libraries.AddRange(films, tv);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(films.Id, id: 1));
+            db.MediaFiles.Add(MediaFile(films.Id, id: 2));
+            db.MediaFiles.Add(MediaFile(tv.Id, id: 3));
+            await db.SaveChangesAsync();
+            db.Jobs.Add(WithStatus(1, JobStatus.Transcoding, films.Id));
+            db.Jobs.Add(WithStatus(2, JobStatus.Verifying, films.Id));
+            db.Jobs.Add(WithStatus(3, JobStatus.Transcoding, tv.Id));
+            await db.SaveChangesAsync();
+
+            var filmsId = films.Id;
+            await using var readDb = new OptimisarrDbContext(_options);
+            var scoped = await JobQueries.QueryAsync(
+                readDb, new JobQuery { Live = true, LibraryId = filmsId }, CancellationToken.None);
+            Assert.Equal(2, scoped.Total);
+
+            var firstPage = await JobQueries.QueryAsync(
+                readDb, new JobQuery { Live = true, PageSize = 1 }, CancellationToken.None);
+            Assert.Single(firstPage.Items);
+            Assert.Equal(3, firstPage.Total);
+        }
+    }
+
+    private static Job WithStatus(int id, JobStatus status, int? libraryId = null) => new()
+    {
+        Id = id,
+        MediaFileId = id,
+        LibraryId = libraryId,
+        Priority = 1,
+        Status = status,
+        EnqueuedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).AddMinutes(id)
     };
 
     private static Job Job(int id, int priority, DateTimeOffset enqueuedAt) => new()

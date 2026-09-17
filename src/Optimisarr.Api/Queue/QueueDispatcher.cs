@@ -57,6 +57,17 @@ public sealed class QueueDispatcher(
 
     private readonly string _workRoot = WorkPaths.Resolve(environment);
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
+    // Scratch directories an encode is writing into. A directory is momentarily empty between
+    // being created and FFmpeg opening its output, and two jobs on the same media file share one
+    // directory — so without this, one job's cleanup prunes another job's freshly made tree.
+    // When each queued job first became eligible to run, so a PreferWorker hold measures the time a
+    // worker actually had to claim it rather than time the job spent parked outside its window.
+    private readonly ConcurrentDictionary<int, DateTimeOffset> _firstRunnableAt = new();
+    // Only ever touched from the single dispatch loop, so no lock is needed for these two.
+    private string? _lastIdleSummary;
+    private DateTimeOffset _lastIdleLoggedAt = DateTimeOffset.MinValue;
+    private readonly ConcurrentDictionary<string, int> _reservedWorkDirectories =
+        new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _dbLock = new(1, 1);
     private readonly SemaphoreSlim _wake = new(0, 1);
     private int _draining;
@@ -435,28 +446,74 @@ public sealed class QueueDispatcher(
         }
 
         List<QueuedJob> queued;
+        HashSet<int> adaptiveLibraryIds = [];
         List<int> delivered;
         Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
+        var remoteWorkersOn = false;
+        var aWorkerCouldTakeWork = false;
         await using (var scope = scopeFactory.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            // A library's placement only means something while work can actually go elsewhere:
+            // the switch on and the preview flag present. Otherwise "only on workers" would hold a
+            // job for a claim that the worker routes refuse, which is a stall nobody asked for.
+            var availability = await WorkerAvailability.ResolveAsync(
+                db,
+                settings.RemoteWorkersEnabled,
+                scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(),
+                DateTimeOffset.UtcNow,
+                stoppingToken);
+            remoteWorkersOn = availability.RemoteWorkersOn;
+            aWorkerCouldTakeWork = availability.AWorkerCouldTakeWork;
+
+            var placements = await db.Libraries
+                .AsNoTracking()
+                .Select(library => new { library.Id, library.WorkPlacement })
+                .ToDictionaryAsync(library => library.Id, library => library.WorkPlacement, stoppingToken);
+            // Libraries whose jobs a worker cannot be offered until this machine has chosen a
+            // per-title quality for them.
+            var adaptiveLibraries = await db.Libraries
+                .AsNoTracking()
+                .Where(library => library.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf)
+                .Select(library => library.Id)
+                .ToListAsync(stoppingToken);
+            adaptiveLibraryIds = [.. adaptiveLibraries];
             delivered = await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.AwaitingVerification)
                 .OrderBy(job => job.Id)
                 .Select(job => job.Id)
                 .ToListAsync(stoppingToken);
-            queued = await db.Jobs
+            queued = (await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
+                .Select(job => new
+                {
+                    job.Id,
+                    job.LibraryId,
+                    job.Priority,
+                    job.EnqueuedAt,
+                    IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
+                    IgnoreLibraryWindow = job.Type == JobType.Preview,
+                    QualityChosen = job.AdaptiveVideoQuality != null,
+                    // Only a normal job is ever offered to a worker, so only a normal job can be
+                    // held for one; a calibration or preview is placed exactly as before.
+                    HonoursPlacement = job.Type == JobType.Normal,
+                })
+                .ToListAsync(stoppingToken))
                 .Select(job => new QueuedJob(
                     job.Id,
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
-                    job.Type == JobType.Calibration && job.IgnoreMediaActivity,
-                    job.Type == JobType.Preview))
-                .ToListAsync(stoppingToken);
+                    job.IgnoreMediaActivity,
+                    job.IgnoreLibraryWindow,
+                    job.HonoursPlacement && job.LibraryId is { } libraryId
+                        && placements.TryGetValue(libraryId, out var placement)
+                        ? placement
+                        : WorkPlacement.Anywhere,
+                    job.QualityChosen))
+                .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
             // auto-optimise off has no window, so its (manually enqueued) jobs may run anytime.
@@ -500,7 +557,16 @@ public sealed class QueueDispatcher(
         }
 
         var nowLocal = TimeOnly.FromDateTime(DateTime.Now);
-        var runnable = queued
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        // The window first, then placement — the order matters, and getting it the other way round
+        // is why "prefer a worker" quietly never preferred one. PreferWorker gives a worker first
+        // refusal for a few minutes, and that clock used to run from when the job was enqueued. A
+        // library with an optimise window enqueues its work hours before that window opens, so the
+        // hold expired while every job sat ineligible to run at all; by the time the window opened
+        // the server was free to take the lot, and did. The hold now starts when a job first
+        // becomes runnable, which is what it was always meant to mean.
+        var withinWindow = queued
             .Where(job =>
             {
                 var window = job.LibraryId is { } libraryId
@@ -515,11 +581,68 @@ public sealed class QueueDispatcher(
             })
             .ToList();
 
+        // Kept in memory rather than on the job: losing it across a restart simply restarts the
+        // hold, which errs towards offering the work to a worker — the safe direction for a
+        // setting whose whole purpose is to prefer one.
+        foreach (var job in withinWindow)
+        {
+            _firstRunnableAt.TryAdd(job.Id, nowUtc);
+        }
+        PruneFirstRunnable(queued);
+
+        // Every job a worker could take is now held for one, including those whose per-title
+        // quality is still unchosen: the search travels with the job, so a worker can be offered it
+        // before a quality exists. That was not true yesterday, and the exception carved out for it
+        // then would now hand every adaptive job straight back to this machine — the exact stall it
+        // was written to cure, inverted.
+        var runnable = SelectLocallyRunnable(
+            withinWindow,
+            _firstRunnableAt,
+            remoteWorkersOn,
+            _ => aWorkerCouldTakeWork,
+            nowUtc);
+
         var toStart = JobScheduler.SelectJobsToStart(
             runnable,
             _running.Count,
             maxConcurrent,
             mediaServicesActive: activity.Active);
+
+        // Say why nothing started, when something plainly could have.
+        //
+        // Every gate above is individually reasonable and none of them logged, so a queue holding
+        // ninety jobs with nothing running, nothing paused and no waiting reason on the status
+        // endpoint was indistinguishable from a dispatcher that had simply stopped. Diagnosing it
+        // from outside took three wrong guesses; naming the filter that emptied the list makes it
+        // a fact instead. Logged once per cycle at Information, and only when the answer is
+        // genuinely surprising — queued work, free capacity, and still nothing chosen.
+        if (toStart.Count == 0 && queued.Count > 0 && _running.Count < maxConcurrent)
+        {
+            // Throttled, because the loop runs every three seconds: a queue parked outside its
+            // window overnight would otherwise write some thirty thousand identical lines and bury
+            // everything worth reading. Logged when the answer changes, and once every five minutes
+            // besides so a long stall still leaves a trail rather than one line at the start of it.
+            var summary = $"{queued.Count}/{withinWindow.Count}/{runnable.Count}/{activity.Active}";
+            var now = DateTimeOffset.UtcNow;
+            if (summary != _lastIdleSummary || now - _lastIdleLoggedAt > TimeSpan.FromMinutes(5))
+            {
+                _lastIdleSummary = summary;
+                _lastIdleLoggedAt = now;
+                logger.LogInformation(
+                "Queue: {Queued} queued, none started — {InWindow} inside their library window, "
+                + "{Runnable} of those this machine may run ({Placement}), "
+                + "{Startable} selected (media activity: {Activity})",
+                queued.Count,
+                withinWindow.Count,
+                runnable.Count,
+                withinWindow.Count == runnable.Count
+                    ? "placement is not holding any back"
+                    : $"{withinWindow.Count - runnable.Count} held for a worker",
+                toStart.Count,
+                activity.Active ? "streaming" : "idle");
+            }
+        }
+
         foreach (var jobId in toStart)
         {
             if (Volatile.Read(ref _draining) != 0
@@ -568,6 +691,13 @@ public sealed class QueueDispatcher(
     internal static async Task<Worker?> DeliveringWorkerAsync(
         OptimisarrDbContext db,
         int jobId,
+        CancellationToken cancellationToken) =>
+        (await DeliveringLeaseAsync(db, jobId, cancellationToken))?.Worker;
+
+    /// <summary>The lease under which the candidate now on disk was delivered: the latest completed one.</summary>
+    internal static async Task<JobLease?> DeliveringLeaseAsync(
+        OptimisarrDbContext db,
+        int jobId,
         CancellationToken cancellationToken)
     {
         var completed = await db.JobLeases
@@ -578,8 +708,21 @@ public sealed class QueueDispatcher(
 
         return completed
             .OrderByDescending(lease => lease.AcquiredAt)
-            .Select(lease => lease.Worker)
             .FirstOrDefault();
+    }
+
+    private async Task RecordWorkerProblemAsync(int workerId, string message, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == workerId, cancellationToken);
+        if (worker is null)
+        {
+            return;
+        }
+
+        WorkerProblems.Record(worker, message, DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     // Single-writer claim for a delivered candidate: only transition if still waiting, so two
@@ -624,17 +767,22 @@ public sealed class QueueDispatcher(
         try
         {
             string? candidatePath;
-            Worker? deliveredBy;
+            string? sourceSha256;
+            JobLease? deliveredLease;
             await using (var scope = scopeFactory.CreateAsyncScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
-                candidatePath = await db.Jobs
+                var facts = await db.Jobs
                     .AsNoTracking()
                     .Where(job => job.Id == jobId)
-                    .Select(job => job.WorkOutputPath)
+                    .Select(job => new { job.WorkOutputPath, job.SourceSha256 })
                     .FirstOrDefaultAsync(cancellationToken);
-                deliveredBy = await DeliveringWorkerAsync(db, jobId, cancellationToken);
+                candidatePath = facts?.WorkOutputPath;
+                sourceSha256 = facts?.SourceSha256;
+                deliveredLease = await DeliveringLeaseAsync(db, jobId, cancellationToken);
             }
+
+            var deliveredBy = deliveredLease?.Worker;
 
             if (candidatePath is null || !File.Exists(candidatePath))
             {
@@ -650,11 +798,35 @@ public sealed class QueueDispatcher(
                 return;
             }
 
-            var work = await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
+            // A strict lease freezes its plan at assignment. Re-planning after upload would run
+            // local probes and filters, violating sidecar-only verification and changing the question.
+            var work = deliveredLease!.VerificationContractJson is not null
+                ? deliveredLease.VerificationWorkJson is { } frozen
+                    ? JsonSerializer.Deserialize<JobWork>(frozen, ReportJsonOptions)
+                    : throw new InvalidOperationException("The strict verification work snapshot is missing.")
+                : await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
             if (work is null)
             {
                 await CompleteAsync(jobId, JobStatus.Failed, error: "Job or media file no longer exists.");
                 return;
+            }
+
+            if (deliveredLease!.VerificationContractJson is not null)
+            {
+                await using var policyScope = scopeFactory.CreateAsyncScope();
+                var db = policyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+                var library = await db.Libraries.AsNoTracking()
+                    .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
+                    .SingleOrDefaultAsync(cancellationToken);
+                var currentSettings = await GetQueueSettingsAsync(cancellationToken);
+                work = work.Value with
+                {
+                    VerificationPolicy = ResolveVerificationPolicy(currentSettings.VerificationPolicy, library),
+                    AutoReplace = library?.AutoReplace ?? false,
+                    MoveOnComplete = library?.MoveOnComplete ?? false,
+                    TargetFolder = library?.TargetFolder,
+                    MoveOverwrite = library?.MoveOverwrite ?? false
+                };
             }
 
             if (!File.Exists(work.Value.Original.Path))
@@ -667,7 +839,77 @@ public sealed class QueueDispatcher(
             }
 
             await WithJobAsync(jobId, job => job.VideoEncoder = work.Value.VideoEncoder, cancellationToken);
-            await VerifyAndFinishAsync(jobId, candidatePath, work.Value, cancellationToken);
+
+            // The worker's own VMAF measurement stands in for this machine's only when it is bound
+            // to these exact bytes and this policy. Anything less is measured again here, and the
+            // worker's card says why its evidence was not taken.
+            var delivered = DeliveredQualityEvidence.Resolve(deliveredLease!, sourceSha256, work.Value.VerificationPolicy);
+            RemoteVerificationEvidence? fullEvidence = null;
+            if (deliveredLease!.VerificationContractJson is { } verificationJson)
+            {
+                var contract = JsonSerializer.Deserialize<RemoteVerificationContract>(verificationJson, ReportJsonOptions)
+                    ?? throw new InvalidOperationException("The full verification contract is missing.");
+                fullEvidence = deliveredLease.VerificationEvidenceJson is { } evidenceJson
+                    ? JsonSerializer.Deserialize<RemoteVerificationEvidence>(evidenceJson, ReportJsonOptions) : null;
+                var objections = RemoteVerificationEvidenceValidator.Validate(
+                    contract, fullEvidence, sourceSha256, deliveredLease.DeliveredSha256);
+                if (objections.Count > 0)
+                    throw new InvalidOperationException("Sidecar-only verification failed: " + string.Join(" ", objections));
+                if (work.Value.VerificationPolicy.RequiresVmaf(work.Value.Spec.Kind, work.Value.Original.VideoReencoded)
+                    && delivered.Accepted is null)
+                    throw new InvalidOperationException("Sidecar-only verification requires valid worker VMAF evidence. Server fallback is disabled.");
+            }
+            if (delivered.WasAsked && delivered.Accepted is null
+                && work.Value.VerificationPolicy.RequiresVmaf(work.Value.Spec.Kind, work.Value.Original.VideoReencoded))
+            {
+                // The worker's card keeps only its latest problem, and a later verdict overwrites
+                // this one within minutes. The log is where the reason survives.
+                logger.LogWarning(
+                    "Job {JobId}: quality evidence from {Worker} was not accepted, measuring VMAF locally: {Objections}",
+                    jobId, deliveredBy.Name,
+                    delivered.Objections.Count > 0 ? string.Join(" ", delivered.Objections) : "no evidence was returned");
+                await RecordWorkerProblemAsync(
+                    deliveredBy.Id,
+                    $"Its quality evidence for {Path.GetFileName(work.Value.Original.Path)} was not accepted, so this server measured VMAF itself: "
+                    + (delivered.Objections.Count > 0 ? string.Join(" ", delivered.Objections) : "no evidence was returned."),
+                    cancellationToken);
+            }
+
+            if (delivered.Accepted is not null)
+            {
+                logger.LogInformation(
+                    "Job {JobId}: quality evidence from {Worker} accepted; VMAF will not be re-measured here",
+                    jobId, deliveredBy.Name);
+            }
+            var disposition = await VerifyAndFinishAsync(
+                jobId, candidatePath, work.Value, cancellationToken,
+                // A worker's hardware decode can corrupt frames as a local one can; the retry
+                // cannot happen on the worker, so it is a requeue with software decode required.
+                softwareDecodeRetryAvailable: deliveredLease!.HardwareDecoder is not null,
+                remoteQuality: delivered.Accepted,
+                remoteEvidence: fullEvidence);
+            if (disposition == VerificationDisposition.RetryWithSoftwareDecode)
+            {
+                DeleteWorkOutput(candidatePath);
+                await WithJobAsync(jobId, job =>
+                {
+                    job.PreferSoftwareDecode = true;
+                    job.Status = JobStatus.Queued;
+                    job.Progress = 0;
+                    job.WorkOutputPath = null;
+                    job.UpdatedAt = DateTimeOffset.UtcNow;
+                }, cancellationToken);
+                logger.LogWarning(
+                    "Job {JobId}: the candidate {Worker} decoded with {Decoder} showed decoder corruption; requeued to be encoded with software decode",
+                    jobId, deliveredBy.Name, deliveredLease.HardwareDecoder);
+                await RecordWorkerProblemAsync(
+                    deliveredBy.Id,
+                    $"Its {deliveredLease.HardwareDecoder} decode of {Path.GetFileName(work.Value.Original.Path)} produced corrupt frames; the job was requeued to decode in software.",
+                    cancellationToken);
+                return;
+            }
+
+            await RecordDeliveredVerdictAsync(jobId, deliveredBy.Id, cancellationToken);
         }
         catch (JobNoLongerEligibleException ex)
         {
@@ -693,6 +935,180 @@ public sealed class QueueDispatcher(
             await NotifyAsync();
             Wake();
         }
+    }
+
+    /// <summary>
+    /// A delivered candidate that failed verification is the worker's problem to hear about, on
+    /// its own card: the worker itself only ever learns that its upload was accepted.
+    /// </summary>
+    private async Task RecordDeliveredVerdictAsync(int jobId, int workerId, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var verdict = await db.Jobs
+            .AsNoTracking()
+            .Where(job => job.Id == jobId)
+            .Select(job => new { job.Status, job.ErrorMessage, Path = job.MediaFile != null ? job.MediaFile.RelativePath : null })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (verdict is null || verdict.Status != JobStatus.Failed)
+        {
+            return;
+        }
+
+        var worker = await db.Workers.FirstOrDefaultAsync(w => w.Id == workerId, cancellationToken);
+        if (worker is null)
+        {
+            return;
+        }
+
+        WorkerProblems.Record(
+            worker,
+            $"Its candidate for {verdict.Path ?? $"job {jobId}"} failed verification: {verdict.ErrorMessage ?? "no reason recorded"}.",
+            DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Whether a job whose per-title quality has just been chosen should go back to the queue for a
+    /// worker rather than being encoded here.
+    ///
+    /// <para>Only when a worker could actually take it. A preference that stalled a library because
+    /// nothing was listening would be worse than ignoring the preference, so an absent, drained or
+    /// incapable fleet means this machine simply carries on.</para>
+    /// </summary>
+    /// <summary>
+    /// Expresses one candidate quality as commands the worker holding this job can run.
+    ///
+    /// <para>Built here rather than in the endpoint because it needs the job's spec, its encoder and
+    /// the source's picture — the same facts <see cref="PrepareRemoteWorkAsync"/> assembles to build
+    /// an assignment. The endpoint asks for a candidate and gets commands; it never learns what a
+    /// sample encode looks like.</para>
+    ///
+    /// <para>Null when the search cannot be expressed at all: no quality gate, no readable source
+    /// picture, no windows. The caller then leaves the job to be searched locally, which is the
+    /// behaviour that existed before any of this.</para>
+    /// </summary>
+    public async Task<AdaptiveSearchStep?> PlanAdaptiveStepAsync(
+        int jobId,
+        int quality,
+        WorkerCapabilities worker,
+        CancellationToken cancellationToken)
+    {
+        // Loaded for the worker that will run it, never for this machine. Resolving the encoder
+        // from this server's probe would plan the search on the wrong encoder entirely — the exact
+        // mistake moving the search was meant to end — and on a server whose probe offers nothing
+        // for the target codec it throws instead, which is how a test caught it.
+        JobWork? work;
+        try
+        {
+            work = await LoadWorkAsync(jobId, new EncodePlacement(worker), cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            // No encoder this worker can use for the target codec. The caller refuses the job,
+            // which leaves it to be searched and encoded here.
+            return null;
+        }
+
+        if (work is not { } loaded
+            || loaded.Spec.VideoCodec is null
+            || loaded.VideoEncoder is null
+            || loaded.SourcePicture is not { } source)
+        {
+            return null;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        // The interface, not the concrete service. Both resolve to the same singleton in the
+        // running app; asking for the abstraction is what lets the offered search be proven in a
+        // test, which is the half of this feature that was left unproven because it could not be.
+        var sourceProbe = await scope.ServiceProvider
+            .GetRequiredService<IMediaProbeService>()
+            .ProbeAsync(loaded.Original.Path, cancellationToken);
+
+        // The primary picture timeline, not the container's. A subtitle or attachment stream can
+        // extend a container well past the programme, and a window planned on that can land after
+        // the last frame and produce an empty, unscorable sample.
+        var samplingDuration = MediaTimelineDuration.Resolve(
+            MediaKind.Video,
+            sourceProbe.VideoDurationSeconds,
+            loaded.DurationSeconds);
+        if (samplingDuration is not > 0)
+        {
+            return null;
+        }
+
+        return AdaptiveSearchPlanner.Plan(
+            quality,
+            loaded.Spec,
+            loaded.VideoEncoder,
+            Path.GetExtension(loaded.Spec.OutputPath),
+            VmafWindowPlanner.PlanAdaptive(samplingDuration.Value),
+            loaded.VerificationPolicy,
+            source.Width,
+            source.Height,
+            loaded.Original.IsHdr,
+            loaded.Original.HdrConvertedToSdr,
+            samplingDuration,
+            loaded.Spec.TargetFrameRate ?? loaded.VideoFrameRate,
+            ContainerLeadSeconds(sourceProbe),
+            loaded.Spec.CropTo,
+            loaded.Spec.FrameRate);
+    }
+
+    /// <summary>
+    /// The two facts an exchange of the quality search needs about a job: what its evidence is
+    /// judged by, and which quality the search brackets around.
+    ///
+    /// <para>Both come from the job's own work, so a search that runs on a worker is judged and
+    /// centred exactly as one that runs here. Rebuilding an approximate policy from the contract's
+    /// two thresholds would leave out the catastrophic floor and quietly judge a remote search more
+    /// leniently; taking the baseline from the job's requested quality rather than its effective
+    /// one would bracket around a different number than a local search would.</para>
+    /// </summary>
+    public async Task<(VerificationPolicy Policy, int Baseline)?> GetSearchContextAsync(
+        int jobId, CancellationToken cancellationToken)
+    {
+        var work = await LoadWorkAsync(jobId, cancellationToken);
+        return work is { VideoQuality: { } quality }
+            ? (work.Value.VerificationPolicy, quality.Effective)
+            : null;
+    }
+
+    private async Task<bool> ShouldHandToWorkerAsync(int jobId, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var settings = await GetQueueSettingsAsync(cancellationToken);
+
+        var availability = await WorkerAvailability.ResolveAsync(
+            db,
+            settings.RemoteWorkersEnabled,
+            scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(),
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        var placement = await JobPlacementLookup.ForJobAsync(db, jobId, cancellationToken);
+
+        var handOver = availability.RemoteWorkersOn
+            && availability.AWorkerCouldTakeWork
+            && placement is WorkPlacement.PreferWorker or WorkPlacement.WorkerOnly;
+
+        // Says which of the three it was. This decision was silent, and a library set to prefer a
+        // worker that never handed one anything looked identical whether the fleet was offline, the
+        // feature was off, or the placement had not been read at all. It is written once per job
+        // that searched its quality here, not once per poll.
+        if (!handOver)
+        {
+            logger.LogInformation(
+                "Job {JobId}: keeping the encode here — remote workers {Remote}, a worker could take it: {Fleet}, placement {Placement}",
+                jobId,
+                availability.RemoteWorkersOn ? "on" : "off",
+                availability.AWorkerCouldTakeWork,
+                placement?.ToString() ?? "unresolved");
+        }
+
+        return handOver;
     }
 
     private async Task RunJobAsync(int jobId, CancellationToken cancellationToken)
@@ -747,11 +1163,38 @@ public sealed class QueueDispatcher(
                 preparedWork.IsCalibration))
             {
                 preparedWork = await SelectAdaptiveQualityAsync(jobId, preparedWork, cancellationToken);
+
+                // The search is the control plane's decision and only it can make one; the encode
+                // that follows is not. A library set to prefer a worker meant nothing at all while
+                // both happened here: the job was unofferable until the quality was chosen, and by
+                // the time it was chosen this machine was already encoding it. Handing it back now
+                // is what makes the preference real.
+                if (await ShouldHandToWorkerAsync(jobId, cancellationToken))
+                {
+                    // Restart the head start, or handing the job back achieves nothing. The clock
+                    // began when the job first became runnable — before a quality search that takes
+                    // minutes — so by now it has almost always lapsed, and the dispatcher polls
+                    // every three seconds while a worker only asks on its next check-in. Without
+                    // this the server would take the job straight back and the handback would be a
+                    // round trip to nowhere.
+                    _firstRunnableAt[jobId] = DateTimeOffset.UtcNow;
+
+                    await WithJobAsync(jobId, job =>
+                    {
+                        job.Status = JobStatus.Queued;
+                        job.Progress = 0;
+                        job.UpdatedAt = DateTimeOffset.UtcNow;
+                    }, cancellationToken);
+                    logger.LogInformation(
+                        "Job {JobId}: quality chosen here; returned to the queue so a worker can encode it",
+                        jobId);
+                    await NotifyAsync();
+                    return;
+                }
             }
 
             var (spec, arguments) = preparedWork;
             var hardwareEncoder = IsHardwareEncoder(work.Value.VideoEncoder);
-            Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
@@ -778,6 +1221,7 @@ public sealed class QueueDispatcher(
                 spec.TargetFrameRate);
             var run = await RunFfmpegAsync(
                 jobId,
+                spec.OutputPath,
                 arguments,
                 progressDuration,
                 expectedFrameCount,
@@ -807,6 +1251,7 @@ public sealed class QueueDispatcher(
                     cancellationToken);
                 run = await RunFfmpegAsync(
                     jobId,
+                    spec.OutputPath,
                     arguments,
                     progressDuration,
                     expectedFrameCount,
@@ -904,6 +1349,7 @@ public sealed class QueueDispatcher(
                     await NotifyAsync();
                     run = await RunFfmpegAsync(
                         jobId,
+                        spec.OutputPath,
                         arguments,
                         progressDuration,
                         expectedFrameCount,
@@ -965,7 +1411,9 @@ public sealed class QueueDispatcher(
         // the quality being compared. Its normal clip verification still measures VMAF after encode.
         && !isCalibration;
 
-    private readonly record struct JobWork(
+    // This snapshot is persisted on a strict sidecar lease and deserialized after delivery. Keep
+    // the nested type visible to System.Text.Json so a restart cannot lose the frozen assignment.
+    internal readonly record struct JobWork(
         TranscodeSpec Spec,
         IReadOnlyList<string> Arguments,
         string? VideoEncoder,
@@ -982,6 +1430,7 @@ public sealed class QueueDispatcher(
         OriginalSnapshot Original,
         VerificationPolicy VerificationPolicy,
         VideoQualityStrategy VideoQualityStrategy,
+        WorkPlacement Placement,
         int? AdaptiveVideoQuality,
         bool AutoReplace,
         int CpuThreadLimit,
@@ -1039,7 +1488,8 @@ public sealed class QueueDispatcher(
     public async Task<RemoteWorkPlan> PrepareRemoteWorkAsync(
         int jobId,
         WorkerCapabilities worker,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceStrictVerification = false)
     {
         JobWork? prepared;
         try
@@ -1056,6 +1506,15 @@ public sealed class QueueDispatcher(
             return RemoteWorkPlan.Refused("The job or its media file no longer exists.");
         }
 
+        if (!WorkPlacementPolicy.MayRunOnWorker(work.Placement))
+        {
+            return RemoteWorkPlan.Refused("The library keeps its work on this server.");
+        }
+
+        var strictVerification = forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
+        if (strictVerification && work.IsDisposable)
+            return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file video job.");
+
         // Only a video re-encode has an encoder to match and arguments worth shipping; a remux,
         // audio or image job is cheap enough that distributing it buys nothing yet.
         if (work.Spec.VideoCodec is null || work.VideoEncoder is null)
@@ -1063,25 +1522,72 @@ public sealed class QueueDispatcher(
             return RemoteWorkPlan.Refused("Only video re-encodes are offered to remote workers.");
         }
 
-        // Adaptive selection runs sample encodes on this machine's encoder, and a quality chosen
-        // for one encoder means nothing on another. Until selection can run on the worker, an
-        // adaptive library's jobs stay local rather than silently encoding at the fixed quality.
+        // Adaptive selection runs sample encodes on an encoder, and a quality proven on one means
+        // nothing on another — which is exactly why the search now travels with the job rather than
+        // being done here first. The worker measures the candidates this machine chooses, on the
+        // encoder that will do the real encode.
+        AdaptiveSearchStep? search = null;
         if (work.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && work.AdaptiveVideoQuality is null)
         {
-            return RemoteWorkPlan.Refused(
-                "Adaptive quality selection has not run for this job and cannot run on a remote worker.");
+            search = work.VideoQuality is { } baseline
+                ? await PlanAdaptiveStepAsync(jobId, baseline.Effective, worker, cancellationToken)
+                : null;
+
+            // A search that cannot be expressed as commands — no quality gate, no readable source
+            // picture, no windows — keeps the job here, where the local search can still run. That
+            // is the behaviour this feature replaced, kept as its fallback.
+            if (search is null)
+            {
+                return RemoteWorkPlan.Refused(
+                    "A per-title quality search could not be planned for this job, so it stays on this server.");
+            }
         }
 
         var (width, height) = work.SourcePicture is { } picture
             ? (work.Spec.CropTo?.Width ?? picture.Width, work.Spec.CropTo?.Height ?? picture.Height)
             : (0, 0);
 
+        // The measurement seeks on the source's frame grid, which needs to know where its first
+        // picture sits relative to its container start. That is not kept on the media record, so
+        // the source is probed here; a failed probe only costs the grid alignment, not the plan.
+        double? referenceContainerLead = null;
+        var referenceFrameRate = work.Spec.TargetFrameRate ?? work.VideoFrameRate;
+        if (work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var sourceProbe = await scope.ServiceProvider
+                .GetRequiredService<MediaProbeService>()
+                .ProbeAsync(work.Original.Path, cancellationToken);
+            referenceContainerLead = ContainerLeadSeconds(sourceProbe);
+            referenceFrameRate ??= sourceProbe.VideoFrameRate;
+        }
+        var quality = work.SourcePicture is { } source
+            ? RemoteQualityPlanner.Plan(
+                work.VerificationPolicy,
+                source.Width,
+                source.Height,
+                work.Original.IsHdr,
+                work.Original.HdrConvertedToSdr,
+                work.DurationSeconds,
+                referenceFrameRate,
+                referenceContainerLead,
+                work.Spec.CropTo,
+                work.Spec.FrameRate)
+            : null;
+
         return RemoteWorkPlan.For(new RemoteAssignment(
             work.VideoEncoder,
             work.Arguments,
             Path.GetExtension(work.Spec.OutputPath).TrimStart('.'),
             work.VerificationPolicy,
-            QualityScoreCommandBuilder.ModelVersionFor(width, height)));
+            QualityScoreCommandBuilder.ModelVersionFor(width, height),
+            quality,
+            work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
+            work.Spec.AudioEncoder,
+            search,
+            strictVerification ? new RemoteVerificationContract(1, Guid.NewGuid(),
+                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
+            strictVerification ? JsonSerializer.Serialize(work, ReportJsonOptions) : null));
     }
 
     /// <summary>
@@ -1446,10 +1952,17 @@ public sealed class QueueDispatcher(
         // reordering around an input seek can move the clip several frames before its VMAF
         // reference. Hardware encoding remains enabled. Normal jobs retain the existing
         // hardware-decode path and transparent software fallback.
-        // A remote worker's decoders are not yet part of the contract, so its command decodes in
-        // software: the path every filter here is proven on, and the one that needs no device.
-        var hardwareDecode = !placement.IsRemote && HardwareDecodePolicy.ShouldUse(
-            queueSettings.HardwareDecode,
+        // A remote worker decodes in hardware only with a decoder it proved by a real decode, and
+        // only for the encoder family that decoder belongs to; otherwise its command decodes in
+        // software, the path every filter here is proven on. A job whose hardware-decoded candidate
+        // already came back corrupt decodes in software wherever it runs next.
+        var remoteHardwareDecoder = placement.RemoteWorker is { } decodingWorker
+            ? RemoteHardwareDecoder(decodingWorker, videoEncoderName)
+            : null;
+        var hardwareDecode = !job.PreferSoftwareDecode
+            && (placement.IsRemote ? remoteHardwareDecoder is not null : true)
+            && HardwareDecodePolicy.ShouldUse(
+            placement.IsRemote || queueSettings.HardwareDecode,
             isDisposable,
             spec.Kind,
             spec.VideoCodec,
@@ -1545,6 +2058,7 @@ public sealed class QueueDispatcher(
             original,
             verificationPolicy,
             library?.VideoQualityStrategy ?? VideoQualityStrategy.Fixed,
+            library?.WorkPlacement ?? WorkPlacement.Anywhere,
             job.AdaptiveVideoQuality,
             library?.AutoReplace ?? false,
             queueSettings.CpuThreadLimit,
@@ -1555,8 +2069,29 @@ public sealed class QueueDispatcher(
             hardwareToneMap,
             media.Width is > 0 && media.Height is > 0
                 ? new PictureSize(media.Width.Value, media.Height.Value)
-                : null);
+                : null,
+            SoftwareDecodeRetryReason: job.PreferSoftwareDecode ? HardwareDecodeFallback.SoftwareDecodeRetryReason : null);
     }
+
+    /// <summary>
+    /// The decoder a worker's command may use: VideoToolbox, when the worker proved it and the
+    /// encoder is VideoToolbox too. Other families are not paired with a worker decoder yet.
+    /// </summary>
+    /// <summary>
+    /// How far into its container a file's first picture sits, or null when ffprobe reported no
+    /// usable starts. Shared with local verification so both measure the same quantity.
+    /// </summary>
+    internal static double? ContainerLeadSeconds(MediaProbeResult probe) =>
+        probe.Success && probe.VideoStartSeconds is { } video && probe.ContainerStartSeconds is { } container
+            ? video - container
+            : null;
+
+    private static string? RemoteHardwareDecoder(WorkerCapabilities worker, string? videoEncoder) =>
+        videoEncoder is not null
+        && videoEncoder.EndsWith("_videotoolbox", StringComparison.OrdinalIgnoreCase)
+        && worker.HardwareDecoders.Any(decoder => string.Equals(decoder, "videotoolbox", StringComparison.OrdinalIgnoreCase))
+            ? "videotoolbox"
+            : null;
 
     /// <summary>
     /// Runs a bounded, fail-open preparation search for an adaptive library. Every candidate uses
@@ -1616,7 +2151,8 @@ public sealed class QueueDispatcher(
             if (!policy.QualityGateEnabled)
             {
                 return await FinishAdaptiveSelectionAsync(
-                    jobId, work, baseline, fellBack: true, "the VMAF target is disabled", cancellationToken);
+                    jobId, work, baseline, fellBack: true, "the VMAF target is disabled", cancellationToken,
+                    expected: true);
             }
 
             var windows = VmafWindowPlanner.PlanAdaptive(samplingDuration.Value);
@@ -1667,11 +2203,12 @@ public sealed class QueueDispatcher(
 
                 measured.Add(candidate);
                 logger.LogInformation(
-                    "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target with {EncodedBytes} encoded video bytes",
+                    "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target with {EncodedBytes} encoded video bytes ({Scores})",
                     jobId,
                     candidate.Quality,
                     candidate.MeetsTarget ? "met" : "missed",
-                    candidate.EncodedBytes);
+                    candidate.EncodedBytes,
+                    AdaptiveProbeReport.Describe(candidate, policy));
             }
         }
         catch (OperationCanceledException)
@@ -1740,6 +2277,7 @@ public sealed class QueueDispatcher(
 
             var run = await RunFfmpegAsync(
                 jobId,
+                outputPath,
                 primary,
                 window.DurationSeconds,
                 FrameRatePlanner.ScaleFrameCount(
@@ -1798,7 +2336,10 @@ public sealed class QueueDispatcher(
                 // lines the judged frames up with the kept ones.
                 ReferenceFrameRate: work.Spec.TargetFrameRate ?? sourceProbe.VideoFrameRate,
                 ReferenceCrop: work.Spec.CropTo,
-                ReferenceDecimation: work.Spec.FrameRate);
+                ReferenceDecimation: work.Spec.FrameRate,
+                // As on a worker: the candidate is a clip cut out of the source, so the reference
+                // window is cut before its cadence is normalised rather than after.
+                DistortedIsCutClip: true);
             var measurementProgress = new Progress<double>(progress =>
             {
                 var mapped = AdaptiveQualityProgress.Map(
@@ -1846,7 +2387,8 @@ public sealed class QueueDispatcher(
             ? new AdaptiveQualityProbe(
                 qualityValue,
                 VmafSoftwareConfirmation.MeetsGate(scores, policy),
-                encodedBytes)
+                encodedBytes,
+                scores)
             : null;
     }
 
@@ -1856,7 +2398,10 @@ public sealed class QueueDispatcher(
         int selectedQuality,
         bool fellBack,
         string reason,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // True only where falling back is the configured answer rather than a failure to learn
+        // anything: a library with no quality gate has nothing for a search to measure against.
+        bool expected = false)
     {
         await WithJobAsync(jobId, job =>
         {
@@ -1865,10 +2410,19 @@ public sealed class QueueDispatcher(
             job.AdaptiveVideoQuality = selectedQuality;
             job.UpdatedAt = DateTimeOffset.UtcNow;
         }, cancellationToken);
-        logger.LogInformation(
+        // A fall-back is a warning, not news. The search running and learning nothing is the
+        // feature not working, and logged at the same level as a success it is indistinguishable
+        // from one: a hundred and seven jobs fell back over a fortnight, encoded at the library's
+        // quality, came out larger than their sources and failed the size gate, and the line saying
+        // so scrolled past among the ordinary ones.
+        //
+        // A library with no quality gate is the exception. There is nothing to search against and
+        // nothing wrong, so that stays ordinary information.
+        logger.Log(
+            AdaptiveSelectionOutcome.SeverityOf(fellBack, expected),
             "Job {JobId}: adaptive quality {Outcome}; full encode will use {Mode} {Quality}. {Reason}",
             jobId,
-            fellBack ? "fell back to the library setting" : "selected a per-title value",
+            AdaptiveSelectionOutcome.Describe(fellBack, expected),
             work.VideoQuality?.Mode,
             selectedQuality,
             reason);
@@ -1930,6 +2484,7 @@ public sealed class QueueDispatcher(
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
+        string outputPath,
         IReadOnlyList<string> arguments,
         double? durationSeconds,
         int? expectedFrameCount,
@@ -1938,6 +2493,10 @@ public sealed class QueueDispatcher(
         bool reportProgress = true,
         Func<double, double>? progressMap = null)
     {
+        // Every attempt must recreate the directory: rejecting a candidate prunes its empty
+        // parent. Reserve it before creation so another job's cleanup cannot remove it while
+        // FFmpeg is opening the output; keep that reservation through retries and cancellation.
+        using var outputDirectory = WorkPaths.PrepareOutputDirectory(outputPath, ReserveWorkDirectory);
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
@@ -2157,21 +2716,30 @@ public sealed class QueueDispatcher(
 
     // Keeps the last few stderr lines for a one-line failure message and the complete bounded
     // diagnostic stream for the API. Progress is on stdout, so no warning or error is filtered out.
+    // The tail holds distinct lines: FFmpeg repeats a warning once per stream, and a file with
+    // twenty audio tracks buries the one line that says what actually went wrong under twenty
+    // identical copies of something harmless. The full log keeps every copy.
     private static async Task<FfmpegStderr> ReadStderrAsync(
         Process process,
         CancellationToken cancellationToken)
     {
         var tail = new Queue<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var log = new FfmpegLogBuffer();
 
         string? line;
         while ((line = await process.StandardError.ReadLineAsync(cancellationToken)) is not null)
         {
             log.Append(line);
+            if (!seen.Add(line))
+            {
+                continue;
+            }
+
             tail.Enqueue(line);
             while (tail.Count > 12)
             {
-                tail.Dequeue();
+                seen.Remove(tail.Dequeue());
             }
         }
 
@@ -2371,7 +2939,9 @@ public sealed class QueueDispatcher(
         string outputPath,
         JobWork work,
         CancellationToken cancellationToken,
-        bool softwareDecodeRetryAvailable = false)
+        bool softwareDecodeRetryAvailable = false,
+        RemoteQuality? remoteQuality = null,
+        RemoteVerificationEvidence? remoteEvidence = null)
     {
         await WithJobAsync(jobId, job =>
         {
@@ -2430,7 +3000,9 @@ public sealed class QueueDispatcher(
                 cancellationToken,
                 clip,
                 qualityProgress,
-                vmafAcceleration);
+                vmafAcceleration,
+                remoteQuality,
+                remoteEvidence);
         }
         outcome = outcome with
         {
@@ -2446,7 +3018,8 @@ public sealed class QueueDispatcher(
                     policy.MinimumVmafHarmonicMean,
                     policy.MinimumVmafMin,
                     policy.MinimumVmafCatastrophicMin,
-                    work.SoftwareDecodeRetryReason)
+                    work.SoftwareDecodeRetryReason,
+                    remoteEvidence is null ? "Server" : "Worker")
             }
         };
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);
@@ -2596,7 +3169,7 @@ public sealed class QueueDispatcher(
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             MoveFile(outputPath, destination);
             // The output left the work dir; clean up its now-empty per-media scratch tree.
-            WorkPaths.PruneEmptyAncestors(_workRoot, outputPath);
+            WorkPaths.PruneEmptyAncestors(_workRoot, outputPath, IsWorkDirectoryReserved);
 
             await WithJobAsync(jobId, job =>
             {
@@ -2957,6 +3530,117 @@ public sealed class QueueDispatcher(
     /// </summary>
     public bool TryDiscardWorkOutput(string? path) => DeleteWorkOutput(path);
 
+    // Held for as long as FFmpeg is writing into the directory. Reference counted, because two
+    // concurrent jobs on the same media file legitimately share one.
+    private IDisposable ReserveWorkDirectory(string directory)
+    {
+        var key = NormaliseDirectory(directory);
+        _reservedWorkDirectories.AddOrUpdate(key, 1, static (_, count) => count + 1);
+        return new WorkDirectoryReservation(_reservedWorkDirectories, key);
+    }
+
+    /// <summary>
+    /// Which of the jobs eligible to run right now this machine may take itself.
+    ///
+    /// Separated from the dispatch loop because the bug it fixes is invisible in the policy it
+    /// calls: <see cref="WorkPlacementPolicy.MayRunLocally"/> was always correct, and was simply
+    /// being handed the wrong instant. Passing the moment a job became runnable, rather than the
+    /// moment it was enqueued, is the whole of the fix, and it is only testable if the choice of
+    /// instant lives somewhere a test can reach.
+    /// </summary>
+    /// <summary>
+    /// True when no worker can be offered this job yet, because its library chooses a per-title
+    /// quality and this job has not been given one. The search runs here, so until it has, the job
+    /// belongs to this machine whatever the placement says.
+    /// </summary>
+    internal static bool AwaitsLocalQualityChoice(QueuedJob job, IReadOnlySet<int> adaptiveLibraryIds) =>
+        !job.QualityChosen && job.LibraryId is { } libraryId && adaptiveLibraryIds.Contains(libraryId);
+
+    internal static List<QueuedJob> SelectLocallyRunnable(
+        IReadOnlyList<QueuedJob> withinWindow,
+        IReadOnlyDictionary<int, DateTimeOffset> firstRunnableAt,
+        bool remoteWorkersEnabled,
+        Func<QueuedJob, bool> aWorkerCouldTakeIt,
+        DateTimeOffset nowUtc) =>
+        withinWindow
+            .Where(job => WorkPlacementPolicy.MayRunLocally(
+                job.Placement,
+                remoteWorkersEnabled,
+                aWorkerCouldTakeIt(job),
+                // Never the enqueue time. A job parked outside its library's window was not being
+                // offered to anybody, so counting that wait against a worker's head start hands
+                // the work straight to this machine the instant the window opens.
+                firstRunnableAt.TryGetValue(job.Id, out var runnableSince) ? runnableSince : nowUtc,
+                nowUtc))
+            .ToList();
+
+    /// <summary>
+    /// Forgets jobs that have left the queue, so a long-running server does not accumulate a
+    /// timestamp for every job it has ever dispatched.
+    /// </summary>
+    private void PruneFirstRunnable(IReadOnlyCollection<QueuedJob> queued)
+    {
+        if (_firstRunnableAt.IsEmpty)
+        {
+            return;
+        }
+
+        var stillQueued = queued.Select(job => job.Id).ToHashSet();
+        foreach (var id in _firstRunnableAt.Keys)
+        {
+            if (!stillQueued.Contains(id))
+            {
+                _firstRunnableAt.TryRemove(id, out _);
+            }
+        }
+    }
+
+    private bool IsWorkDirectoryReserved(string directory) =>
+        _reservedWorkDirectories.ContainsKey(NormaliseDirectory(directory));
+
+    private static string NormaliseDirectory(string directory)
+    {
+        try
+        {
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        }
+        catch (Exception ex) when (ex is ArgumentException or PathTooLongException)
+        {
+            return directory;
+        }
+    }
+
+    private sealed class WorkDirectoryReservation(
+        ConcurrentDictionary<string, int> reservations,
+        string key) : IDisposable
+    {
+        private bool _released;
+
+        public void Dispose()
+        {
+            if (_released)
+            {
+                return;
+            }
+
+            _released = true;
+            while (reservations.TryGetValue(key, out var count))
+            {
+                if (count <= 1)
+                {
+                    if (reservations.TryRemove(new KeyValuePair<string, int>(key, count)))
+                    {
+                        return;
+                    }
+                }
+                else if (reservations.TryUpdate(key, count - 1, count))
+                {
+                    return;
+                }
+            }
+        }
+    }
+
     private bool DeleteWorkOutput(string? path)
     {
         if (string.IsNullOrEmpty(path))
@@ -2984,7 +3668,7 @@ public sealed class QueueDispatcher(
 
         // Tidy the per-media-file scratch directory this output lived in so /work does not
         // accumulate an empty tree for every file ever processed.
-        WorkPaths.PruneEmptyAncestors(_workRoot, path);
+        WorkPaths.PruneEmptyAncestors(_workRoot, path, IsWorkDirectoryReserved);
         return true;
     }
 

@@ -1,5 +1,687 @@
 # Changelog
 
+## 0.2.13 — 2026-09-17
+
+### Added
+
+- Coordinated container and native download releases use the shared application version,
+  validate release tags, and hold packages in draft until validation is complete.
+- Updated setup, worker, verification, API and native-client documentation, including
+  a dedicated worker-placement guide and the current Stellar icon in the README.
+
+- Compact Monitor for the Windows tray, with live worker status, resource readings, processing
+  details, pause/resume and nested preferences. Work remains in the background service. An
+  unsigned MSI preview bundles the tray, worker, media tools and private runtimes, with a guard
+  against overwriting manually installed workers.
+- The Mac menu-bar client shares the compact layout, textured cards and hover shadows, retaining
+  native media previews and work settings. Preferences and diagnostics stay inside the panel;
+  pausing lets held jobs finish and prevents new claims, including a request already in flight.
+
+- Repeatable media acceptance harness for isolated containers and disposable macOS/Windows
+  workers, with pinned Creative Commons film excerpts, independent VMAF/SSIM/audio checks,
+  transfer fault tests, replacement/rollback validation, and HTML/JSON/JUnit evidence. Final-image
+  CI now runs real application workflows before publishing an image. See
+  [the harness guide](docs/development/media-acceptance.md) for scope and hardware requirements.
+
+- Optional strict sidecar-only verification for remote video jobs. When enabled, a protocol-2
+  worker receives a lease-bound contract, performs probes, decode-health, timestamp and audio
+  checks beside its FFmpeg tools, and returns immutable evidence bound to both file hashes. The
+  server evaluates that evidence and never runs a media verification fallback for the lease.
+
+### Fixed
+
+- Keep sidecar popovers attached to the menu bar or taskbar when details and preferences change size; retain rounded corners and dismiss behind other apps.
+- Use the current Stellar icon in both native clients, including Finder, the Windows tray, Start menu and installer. Windows development MSIs can update an installed preview with the same application version.
+
+- Existing sidecar pairings renegotiate protocol support on heartbeat after an upgrade. Strict
+  verification rejects incomplete measurements and stores the first report atomically, including
+  concurrent retries. Mac decode checks distinguish harmless muxer timing notes from corruption.
+- The Mac media bundle includes AV1 decoding and 10/12-bit x265 support, with a bundle check that
+  verifies decoding and bit-depth support rather than relying on encoder names alone.
+
+- Software-decode retries recreate and reserve their output directory after rejected candidates
+  are cleaned up, preventing an otherwise valid retry from failing with a missing-directory error.
+
+- Readiness checks now honour configured work and quarantine directories.
+- Finished remote jobs retain the worker name that delivered their output.
+- Short previews verify against the available source duration instead of requiring 60 seconds.
+- Worker VMAF plans include the freshly probed source cadence, keeping variable-frame-rate
+  measurements consistent with local verification.
+- A worker releasing its lease after cancellation no longer puts the cancelled job back on the queue.
+
+### Changed
+
+- **The Stellar cube has softer, consistent lighting.** Its moving shadow now fades
+  naturally instead of appearing as a hard grey platform when Canvas filters are
+  unavailable. Gentler star-field toning, a subtle halo and tighter sidebar spacing
+  carry through light/dark themes, reduced-motion stills and favicons.
+
+- **Setup now follows the current application theme from start to finish.** Theme and
+  language controls are available during onboarding, with clearer status colours,
+  keyboard focus and a mobile-friendly folder picker. Failed checks can be retried,
+  invalid job limits are caught before review, and saved library automation is shown
+  accurately when setup is restarted. Completing setup opens its destination reliably
+  while preserving the reviewed plan across refreshes.
+
+- **Stellar cube is the default application icon.** Three drifting star fields, soft glow,
+  moving light and a projected shadow stay calm at rest; active work adds gentle precession
+  and occasional inward/outward depth changes before smoothly settling. Favicons and
+  reduced-motion stills match the selected theme and activity. The original sliced
+  Precession cube remains available in Settings → System → Appearance; the choice is
+  saved in this browser.
+
+- Quarantine comparisons now open a dedicated review page with breadcrumbs, direct links,
+  full-width playback and verification cards. Returning to the list restores its scroll
+  position and keyboard focus. Approve and rollback retain their confirmations; finished
+  entries show read-only history.
+
+- Queue artwork stays visible through live updates and refreshes. Loaded posters and
+  missing-artwork placeholders now retain their state until the media item changes.
+- **The optional Precession icon is a cube balanced on its tip.** Fifteen slices twist in sequence
+  while Optimisarr is working, then settle into a seamless cube. At rest, a slowly moving
+  light shifts the highlights and shadow. Light and dark themes have matching colours and
+  favicons; reduced motion keeps a still image, and hidden icons stop animating.
+
+- **Library configuration follows the processing workflow.** Choose files, Encode, Verify,
+  and Schedule & replace open focused pages with breadcrumbs and browser Back support.
+  Specialist encoding, audio, image, eligibility and verification controls have their own
+  advanced pages; custom settings remain visible in the overview. Drafts are saved together,
+  and validation links return to the setting that needs attention. Named preset choices,
+  explanatory tooltips and the shared card textures, shadows and hover lift keep the editor
+  readable on desktop and mobile. Child pages retain the shared content width and
+  light/dark surfaces, with form labels and control spacing aligned with Settings.
+- **Queue now separates working jobs from what is next.** A poster-led working card shows
+  progress and processing stages; other running jobs remain visible beneath it. Job details
+  open in a poster-led dialog with verification evidence, captured commands and the existing job actions.
+  Filtering recent and waiting jobs keeps running work visible, including remote workers.
+- Opening a job anywhere in a long queue now shows its details in the viewport without
+  scrolling the list. The dialog keeps its close button and actions visible while details
+  scroll. Escape, backdrop dismissal and Close return focus to the selected row; live
+  progress and completion continue updating while it is open.
+- Settings rooms and their child pages now use the same content width as Libraries. Cards
+  regain the shared surface gradient and colour, with hover lift and a deeper drop shadow
+  on the room links. System sections keep their spacing at smaller widths.
+- Queue refreshes no longer overwrite newer progress received during the request. Confirmed
+  local suspension is distinguished from remote work, and unfinished encodes stay below
+  100% in both the Queue and sidebar. Job action failures remain visible across refreshes.
+- Cached posters initialise before rendering so a successful image load is not hidden by
+  a later reset of the loading state.
+
+- **Inventory now uses the Index layout.** A calmer file list puts artwork, size, format
+  and the rule verdict together. Opening a file shows a poster-led dialog with its library,
+  metadata, full path and eligibility reason, plus reachable Probe and Preview actions.
+  Missing artwork falls back quietly; phone layouts keep the details scrollable.
+- Preview comparisons now use the application theme and native modal focus handling.
+  Minimising lets you continue browsing; opening another file's preview replaces the previous
+  comparison. Closing a preview before it finishes starting now cleans up the late job too.
+- Rapid inventory filter changes no longer allow an older response to replace the current
+  results. Empty filters stay usable, and probe errors appear alongside the selected file.
+- Sidebar footer controls remain reachable in short windows while a job is active, and
+  artwork recovers when a job without a poster is followed by one with artwork.
+
+- **Settings now uses the Control rooms layout.** Processing and protection sit above
+  connections and system tools, with clearer room icons, complete state summaries and more
+  breathing room. Encoding controls have aligned labels and short explanations; drafts stay
+  intact between rooms, and returning to the overview restores keyboard focus. System
+  sections have consistent spacing, and encoder tiles reflow without squeezing together.
+- The sidebar language menu now keeps its full width instead of collapsing to the globe
+  button’s width. It stays within the viewport in both expanded and collapsed sidebars.
+
+- The desktop sidebar and page tray now have 16 px of space above and below them. Mobile
+  safe-area padding previously overrode the desktop spacing and left both flush with the
+  window; the mobile drawer still fills the screen.
+
+
+- **The sidebar is an island, and it says what is encoding.** The rail no longer runs the
+  full height of the window as a wall the page leans against: at desktop widths it is a raised
+  card floating on the ground, and the page sits in a recessed tray beside it, so the two are
+  read as objects on a surface rather than as regions of one. Beneath the navigation, while
+  work is running, a card names the job being encoded — artwork, title, where it is running,
+  the encoder, a progress bar, the percentage, the speed, how long is left and how many are
+  queued behind it — and opens the Queue. The mark above it already turned while work ran;
+  now the rail says what the work is, whichever page is open. The version and build move up
+  under the name, and the foot becomes three buttons: theme, language and collapse. On a
+  phone the rail is still a drawer and the page still takes the whole screen.
+
+- **The theme lives in one place, and both colour schemes are drawn from it.** Every
+  component used to spell out its own light and dark colours side by side — around fifteen
+  hundred hand-paired classes — so a palette change meant touching all of them, and the two
+  schemes drifted: dark-only captions were never adjusted, and the login screen, the phone
+  header and the table headers each sat on a colour that no card used. The stylesheet now
+  defines an ink scale (headline to ghost), a surface set (ground, panel, raised, sunken, lit)
+  and five tones (ok, warn, bad, live, info), and components say `text-ink-3` or `tone-warn`
+  and let the scheme decide; a unit test keeps hand-paired colours at zero. Alongside that:
+  the dark ground is lifted a step off pure black with a faint bloom from where the mark is,
+  so a panel's lift can actually be seen; badges, chips, notices and toned cards share one
+  set of tints, so "failed" is the same red wherever it is said; notices lose their coloured
+  borders and the setup checklist its coloured left stripes in favour of tinted fills; every
+  pressable thing gets the same focus ring; switches are a well with a raised knob; tooltips,
+  table headers, scrollbars and text selection are themed; figures are tabular everywhere;
+  and the browser's own chrome takes the page colour and follows the theme toggle.
+
+- **Settings is a set of rooms instead of a strip of tabs.** The page had inherited the setup
+  wizard's furniture: numbered sections that implied an order nobody follows, a save button
+  that covered some of the page with a caption explaining which parts it missed, and no way to
+  tell which of forty-odd controls you had moved off its default. It now opens on a grid of
+  cards, one per section, and each card reports what that section is currently set to — which
+  media servers are connected, what the encoder resolves to, how long originals are kept — so
+  the common questions are answered without opening anything. Opening a card gives that section
+  the page to itself at its own URL, so `/settings/encoding` is a link you can send someone.
+  Everything you change is a draft until you press Save: changed values light up, say what they
+  were, and can be put back one at a time, and the save bar counts what it is about to write.
+  The draft follows you between rooms, and leaving Settings with unsaved work asks first.
+  Read-only diagnostics stop pretending to be settings — tools, hardware acceleration, encoder
+  probes and configuration backup are gathered into a System room that is marked read-only.
+  Minimum free disk moved from the queue section to Files & safety, where the rest of the
+  refuses-to-start rules live.
+
+- **The interface is built from surfaces now, not from boxes with lines round them.** Every
+  panel in the app wore the same one-pixel border, which gave a reader nothing to go on: a
+  card, a header band and a table row all announced themselves equally loudly. A surface is
+  now a soft gradient fill, a layered shadow and a single hairline of light along its top
+  edge — the way a raised object actually looks — and lines survive only where they divide
+  content inside a surface. Controls follow the same logic: buttons are raised because you
+  press them, inputs and progress tracks are recessed because you put something into them.
+  Cards you can open lift slightly under the pointer. The light theme's page colour moved a
+  shade deeper to make room for it, because a white card cannot lift off a white page.
+  Selecting a processing mode, a quality strategy or a codec now lights that card's fill
+  rather than drawing a coloured ring around it, which keeps selection reading as "this one
+  is on" rather than "this one has been ringed".
+
+- **The application mark is drawn, and it reports the server's state.** The logo was a static
+  picture that told you which application you already had open. It is now a four-dimensional
+  hypercube rasterised onto a pixel grid — sixteen vertices and thirty-two edges, turned by real
+  rotation matrices and projected through two perspective divides, with a depth buffer so near
+  edges occlude far ones. The light is volumetric rather than a lamp the structure ignores: it
+  fills the lattice from the centre, and every bar it crosses on the way out takes a share of
+  it, so the cube prints its own shadows and the light carries past the shell only where the
+  frame left a gap. It turns quickly with a lit core while work is running and settles to a
+  slow, dim drift when the queue goes quiet, crossing between the two over about a second and
+  a half, so the icon slowing down is itself the signal that the queue emptied. The favicon is
+  the same mark, so a background tab answers "is it still going?" without being opened. It is
+  drawn for the theme it is sitting on, keeps a transparent background, and holds its resting
+  pose for anyone who has asked for reduced motion. It sits above the wordmark at the size the
+  old logo was, with the name riding up over its foot — the mark's lower corner is empty space,
+  so the overlap closes a gap the bounding box left rather than covering anything.
+
+- **The dashboard says what is happening, and why it is not.** The page drew the same screen
+  whether the queue was racing or wedged: every figure on it was a count and none of them was a
+  state, so "0 running, 1,418 queued" was what you got when the optimise window was shut, when
+  media was streaming, when the operator had paused, and when nothing was eligible. A status bar
+  now names the state, and when the state is not encoding it names the gate in the server's own
+  words. Below it the three things you previously had to open two other pages to learn: what is
+  being worked on, which machines are doing it, and what is waiting on a decision from you.
+  Failures are grouped by cause rather than counted, because "144 failed" says nothing you can
+  act on. The live CPU and GPU graph is gone — it was a copy of the one on Queue, two flat lines
+  on an idle server, and the fleet list now carries the same figure per machine, which the single
+  graph could not once workers existed. The lifetime savings figure stays, demoted from a hero to
+  one cell of four.
+- **The navigation carries a number where a number is worth carrying.** The queue while it has
+  work, and quarantine while originals are waiting on a decision — nothing else. A count beside
+  every entry is seven figures competing for attention and five that never change, which leaves
+  a reader no wiser about which one they were meant to look at. A figure that is zero, or that
+  has not been fetched yet, is absent rather than shown as a nought. The rows are roomier, the
+  entry you are on is a soft filled key, and the three strips that used to sit stacked at the
+  foot — each with its own rule across the rail — are one. The running version and the build it
+  came from stay where they were: they are the first thing anyone is asked for when something
+  looks wrong.
+
+- **The macOS sidecar's panel is a readout.** It was a stack of rounded cards that happened to
+  carry figures, with the hierarchy coming from fill and radius rather than from the content. The
+  panel now states the machine's identity and its state opposite each other in a bar across the
+  top, runs everything it knows about itself down one column of monospaced, tabular figures that
+  can be compared vertically, and puts the controls along the bottom where they cannot be mistaken
+  for readings. Progress is lit segments rather than a filled bar, so a glance takes a level off it
+  without reading the figure beside it — and during an encode there is no bar at all, because the
+  worker knows how many seconds it has done and not how many it owes, and a bar that guessed would
+  be a lie in the one place the panel exists to be honest. Every colour now comes from the web
+  interface's own tokens: Tailwind slate for the neutrals and cyan for the single accent, in both
+  appearances, so a fault on this panel is the same colour as the same fault on the dashboard.
+
+### Fixed
+
+- **The menu-bar mark no longer turns on an idle Mac.** The timer behind it also feeds the load
+  meters, which were made to run whenever the panel is open so an idle machine still shows what it
+  is doing — and that set the mark turning with them. It looked busy for exactly as long as
+  somebody was looking at it, which is the one moment the mark has to be honest. It now turns only
+  while a job is actually running.
+- **The macOS sidecar's panel stays against the menu bar.** Once a Mac had run a job and gone
+  quiet, its panel hung below the menu bar with a gap above it, the size of the film strip that was
+  no longer there. A menu-bar window keeps the height its tallest content needed, and SwiftUI
+  centres a shorter view inside it — so the panel drifted down by half the space it had given back.
+  A spacer beneath the content could not fix that, because the stack is sized to its own content
+  and never sees the spare height; the panel now fills whatever height the window has and stays at
+  the top of it.
+- **The candidate is lined up against the source by measuring, not by arithmetic.** Encodes that
+  were perfectly good were being failed at a harmonic mean of 0.21 when they actually score 92.
+  A sampled comparison pairs pictures by time, so the candidate's offset from the source has to be
+  removed first — and that offset was derived from the containers' own headers, as the video
+  stream's start less the container's. Those two are equal in every real container, so the
+  correction computed as zero for every file either sidecar has ever measured and was never once
+  applied. It could not have helped anyway: two episodes of the same show, encoded by the same
+  command on the same machine, are identical in every header field and need opposite answers —
+  one scores 0.21 without a one-frame correction and 92.32 with it, the other 89.88 without and
+  0.31 with. The difference is that frames are still occasionally lost in an encode, so whether a
+  window lines up depends on how many went missing before it, which no header can say. All three
+  machines now try the candidate a frame either way against a two-second window and keep whichever
+  matched, which costs about a second and is the same probe on the server and both sidecars.
+- **A finished candidate is no longer thrown away because the server is restarting.** A worker
+  that had encoded a file, measured it and had its evidence accepted lost the lot to
+  `Delivering the candidate failed (HTTP 502)` — a deployment had restarted the container while the
+  bytes were going up, and the job went back on the queue to be done again from nothing. Delivery
+  has always been resumable, since the server reports how much of the candidate it holds, so a
+  blink should cost a pause; but only a narrow set of errors was being retried, and a 502 from a
+  proxy in front of a restarting container was not among them. Worse on Windows, where the question
+  "how much do you hold?" answered **zero** when it could not be asked at all — the same answer as
+  a server that genuinely holds nothing — which would have sent a delivery back to the beginning
+  and re-sent every byte. It now says it could not ask, and is retried like everything else. The
+  bound is unchanged and stays where it belongs: the lease's own renewal loop gives the job up once
+  no renewal has landed for as long as the server granted the lease for.
+- **A repeated message is not a decode error.** Twenty-four good encodes were thrown away on a
+  line that describes no fault at all. FFmpeg collapses consecutive identical messages into
+  `Last message repeated N times`, and the decode-health gate counted that notice as a corrupt
+  frame. The cruelty of it is which message was being repeated: the muxer's "non monotonically
+  increasing dts" remark, which this gate already knows to ignore, and which hardware encoders emit
+  routinely. So the ignored line was printed, FFmpeg noted it had repeated, and the note — not the
+  line — failed the job: `1 decode error(s): Last message repeated 1 times`. The notice is now read
+  as what it is, an account of how many of the previous message there were: a repeat of an ignored
+  line is ignored with it, a repeat of a real error counts as the errors it stands for rather than
+  as one, and a repeat with nothing before it counts nothing.
+- **The dashboard no longer downloads the entire job history to find the three jobs that are
+  running.** It asked for every job and sifted the result in the browser; on the library this was
+  checked against that is 1,773 records, re-fetched every fifteen seconds. It now asks the server
+  for the jobs with work outstanding.
+- **A worker holding one job says "1 job".** It said "1 jobs", and the version that followed it
+  lost the space before its separator. The same missing space was in the navigation's
+  running/queued figure, which read "3/ 14".
+- **The in-flight list no longer runs off the page.** It drew every outstanding job, and a real
+  server carries a dozen or more — thirteen on the one this was checked against — which pushed
+  everything below it off the screen. It shows the first six and says how many more there are.
+
+
+### Fixed
+
+- **The Windows sidecar says what each measured window scored.** A candidate measured on PICARD
+  came back with a mean of 80.6 and a harmonic mean of 37.1 — a window full of zero-scoring frames
+  beside a respectable average, which is the signature of two timelines misaligned rather than of a
+  bad encode — and nothing in the log said which of its three windows had gone wrong. It now
+  reports the frame count, mean, harmonic mean, lowest frame and how many scored near zero for
+  every window, during the quality search as well as the final measurement, in the same words the
+  macOS sidecar has used since that bug was first found there. The scratch directory goes on every
+  exit path, so this is the only account of a measurement that survives the job.
+- **An encode keeps every frame the source had.** Whole seasons were failing verification with
+  harmonic means in single figures and a fifth percentile of zero, and the encodes were fine: FFmpeg
+  was silently dropping frames. Its default frame-rate handling drops frames whose timestamps
+  collide, and it does that on sources ffprobe is perfectly happy to call constant — a VC-1 WEBRip
+  declaring 25/1 for both its average and real frame rates lost eight frames in its first two
+  hundred seconds, about fifty an episode, gone from the library without a word. It also made the
+  encode unmeasurable, which is how it was found: once the candidate holds fewer frames than the
+  source, frame N of one is no longer frame N of the other and every windowed comparison comes
+  apart. The same pair scored a harmonic mean of 9.4 against the source and 81 against a reference
+  cut the same lossy way. The rule already existed for sources ffprobe had positively identified as
+  variable; the dangerous source is the one that looks regular and is not, so it can no longer be
+  conditional on having noticed. A frame-rate cap still takes over the cadence, and a remux still
+  copies the stream untouched.
+- **A job on the macOS sidecar ends when its process does.** A Mac sat in "Measuring" for fifty-two
+  minutes with no FFmpeg running at all — lease renewing perfectly, menu bar animating, check-in
+  loop answering every ten seconds, and the job never moving. The transcode runner treated
+  end-of-file on the child's standard output as the child ending, but a pipe is only at its end when
+  the last handle on its write side closes, and a pipe macOS creates is inherited by anything the
+  app spawns while it is open: a load probe, a preview frame, another job's FFmpeg. Nothing could
+  recover from it, because every part that might have noticed was working correctly. The pipes are
+  now kept out of other children, and the process's exit — not the pipe — decides when a job is
+  over. The same call was in the capability prober and the frame grabber, which would have hung the
+  same way.
+- **The Windows sidecar no longer waits on a pipe either.** It waited for the exit, which was right,
+  and then read the tail of FFmpeg's diagnostics to the end, which could outlive it for the same
+  reason. The exit is now the authority there too; the pipes are given two seconds to hand over
+  what they still hold and no vote on whether the job is finished.
+- **A moment's silence from the server no longer throws away an encode.** Both sidecars renew their
+  lease every few seconds while a job runs, and a single refused renewal ended the loop and
+  abandoned the work — so restarting the container, which happens on every deployment, discarded
+  every encode running at that moment, minutes in, and the job went back to the queue to start
+  again. Worse, every renewal failure was treated as final, including a 502 from a proxy in front of
+  a container that was still coming up. A lease is now only given up when the server says it is gone
+  — it lapsed, it belongs to another worker, the credential was refused — or when no renewal has
+  landed for as long as the server granted the lease for. A lease the server really has reassigned
+  still stops the encode at once.
+- **The macOS sidecar's panel no longer hangs away from the menu bar.** Once a Mac had run a job
+  and gone quiet, its panel sat detached below the menu bar with a gap above it — roughly the
+  height of the film strip that was no longer there, which is exactly what it was: the window keeps
+  the height its tallest content needed and the content settles at the bottom of it. The panel now
+  takes the top of whatever height the window has. The machine-load card also stays on when idle
+  rather than vanishing with the job, because an idle Mac still has a figure worth seeing and the
+  panel no longer collapses to a single line the moment a job ends.
+- **A worker that is plainly working is no longer marked offline.** Liveness was judged on check-ins
+  alone, so a machine in the middle of a long job could be declared offline while it was renewing
+  its lease every few seconds. Any authenticated request now counts as proof of life.
+- **The Windows sidecar checks in while it works.** Jobs ran inside the check-in loop, so the server
+  heard nothing from a busy worker until whatever it was doing finished. They now run beside it, and
+  a stopping service drains them rather than cutting them off.
+- **A library that prefers a worker now actually sends it work.** Setting every library to prefer a
+  sidecar changed nothing, for a reason no setting made visible: a worker cannot be offered a job
+  until a per-title quality has been chosen for it, that search runs on the server, and the server
+  ran the encode straight afterwards. The job was unofferable right up to the moment the server
+  started encoding it, so the preference had no instant at which it could apply. The search is the
+  server's decision and stays there; the encode that follows is now handed back to the queue when a
+  worker could take it, which is the point at which the preference finally means something. A job
+  still awaiting its quality is no longer held for a worker either, since holding it was waiting for
+  something that could not happen.
+- **The queue says why nothing is running.** Ninety jobs queued, nothing running, nothing paused and
+  no waiting reason was indistinguishable from a dispatcher that had stopped — every gate was
+  reasonable and none of them said anything. It now reports, once a cycle, how many jobs were inside
+  their window, how many this machine may run, how many were held for a worker, and whether media is
+  streaming.
+
+- **"Prefer a worker" now actually prefers one.** A library set to prefer a sidecar was still having
+  every job run on the server. The preference gives a worker first refusal for a few minutes, and
+  that clock ran from the moment a job was enqueued — but a library with an optimise window enqueues
+  its work hours before the window opens, so the head start expired while the job sat ineligible to
+  run at all. The instant the window opened, the server was free to take the entire backlog, and
+  did. The hold now starts when a job first becomes runnable, which is what it always meant.
+- **The queue shows how far the quality search has got.** A job selecting a per-title quality
+  reports real progress, and the preview screen has always shown it, but the queue drew a sliding
+  bar that said nothing — the progress bar was gated on the verification stage alone. The hero, the
+  rows and the detail panel now show the percentage, and say "Selecting quality" rather than
+  "Probing source" once it is measuring candidates, because by then it is no longer reading the
+  source.
+- **The Windows test-host guide now works when you follow it.** Provisioning a machine from
+  `sidecars/windows/docs/test-host-setup.md` failed at seven separate points, several of them
+  silently. Installing PowerShell the way it said produced a per-user alias rather than
+  `C:\Program Files\PowerShell\7\pwsh.exe`, so sshd fell back to `cmd.exe` — the one thing that step
+  exists to prevent. The OpenSSH capability needs a reboot before its service exists, so the
+  commands that started and configured it could not have worked, and even after a reboot the service
+  comes back set to start manually. In the distro, editing the SSH port did nothing because Ubuntu
+  24.04 socket-activates ssh, leaving the host on port 22 with no error to say so; the port-forward
+  command never expanded its own argument; and `sudo` prompted for a password no script could
+  supply. The guide now carries what actually works, including why mirrored WSL networking removes
+  the port-forward entirely, and how to reach the distro from a machine with nobody logged in.
+
+### Added
+
+- **The Workers tab shows how busy each machine is.** A remote worker was a black box: it either
+  took a job or it did not, and there was no way to see whether the Mac in the other room was
+  saturated, idle, or sharing its CPU with something else. Sidecars now report CPU and GPU load
+  with every check-in, and every few seconds while a job runs, so the figure beside a running
+  encode is current rather than a check-in old. A worker that cannot measure itself reports
+  nothing and is shown as reporting nothing, because "idle" and "no answer" are different answers
+  to give someone deciding where work should go. GPU is labelled as utilisation only: a hardware
+  encode can run on a media engine that reports nothing at all, so the number reads low while the
+  machine is flat out.
+
+### Fixed
+
+- **The macOS sidecar no longer freezes on launch behind a Keychain prompt nobody can see.** An
+  upgrade that changed the app's signature left the stored credential unreadable, and the read that
+  found this out blocked the main thread waiting on a dialog — so the app started and then stopped
+  responding, with no window and no Dock icon to show for it, and nothing in the log. Two guards
+  meant to prevent exactly this did not work: the code suppressed Keychain interaction with an
+  `LAContext`, which governs the data protection keychain and has no bearing on the legacy
+  keychain's dialog, and it deferred the read into a task that was already on the main actor and so
+  blocked identically. The read now happens off the main actor with the legacy dialog properly
+  suppressed, an unreadable item is discarded as it was always meant to be, and the app says in its
+  log what it found.
+
+### Added
+
+- **The macOS sidecar can be paired from a terminal.** `--pair <server>` reads a PIN from standard
+  input, pairs, and exits — so a Mac can be set up over SSH, scripted onto several machines, or
+  recovered remotely when a pairing is lost, none of which was possible when the pairing sheet was
+  the only way in. The PIN comes from stdin rather than an argument so it never reaches `ps` or a
+  shell history.
+
+- **The Workers tab shows which build each sidecar is running.** Until now the only version on
+  screen was the protocol version, which says what the two ends agreed to speak and nothing about
+  what is installed — so a Mac quietly ran a build two commits behind the fix it needed, and
+  nothing on the page could have told you. A sidecar now reports its own version and build number
+  on pairing and on every check-in, since upgrading it does not re-pair it. A worker that reports
+  nothing is shown as reporting nothing rather than being assumed current.
+- **A Windows sidecar has begun, starting with capability probing.** A Windows machine will
+  contribute spare encoding capacity the way a Mac does, as a service so it works with nobody logged
+  in, with a tray application as its window onto that service. The first piece is the part worth
+  getting right before anything else: every encoder, hardware decoder and VMAF backend is proved by
+  running it, never read from FFmpeg's listing, because a build lists NVENC on a machine with no
+  NVIDIA card. NVIDIA hardware VMAF is scored for real, since the server sends a GPU measurement
+  command on the strength of that answer alone.
+- **An orphaned sidecar can be removed from the Workers tab.** Revoking keeps the record, which is
+  right for a worker turned off deliberately, but pairing the same machine again left the old entry
+  on the list for ever with nothing that cleared it. Remove deletes the record and its lease
+  history. It is offered only for a worker that is revoked or offline, and refused outright while
+  one is still holding a job, since removing it mid-job would strand the work.
+- **The sidecar says what it is working on and how fast.** A running job is named by its file
+  rather than a job number, which answered the question nobody was asking, and the two transfer
+  stages show a smoothed rate beside the byte counts. The header line names the real stage, so a
+  source still downloading no longer reads as "Encoding".
+- **The macOS sidecar has an Options panel, and work can be moved off the startup disk.** A job's
+  source and candidate can go in the app's own folder, in a folder you choose, or on a RAM disk
+  created for that job and destroyed when it ends. A job needing more working space than the memory
+  budget runs on disk instead of being refused, because losing work to a preference would be worse
+  than ignoring the preference. The budget defaults to a quarter of installed memory and is
+  adjustable between a twentieth and a half. Stray RAM disks from a crash are swept at launch.
+- **The macOS sidecar can encode AV1, and decode it in hardware.** SVT-AV1 is bundled, so a
+  library targeting AV1 can now run on a Mac; the server already named `libsvtav1` for a software
+  AV1 target, so nothing on the server side changed. Apple ships no AV1 encoder in VideoToolbox on
+  any Apple Silicon, M5 included, so AV1 encoding is on the CPU. Decoding AV1 is a hardware path
+  the chip does have, and FFmpeg 8.0 is the first release carrying the VideoToolbox AV1 hwaccel, so
+  the pinned FFmpeg moves from 7.1.2 to 8.0.3. That release also carries the x265 build guard 7.1.2
+  was pinned for.
+- **The macOS sidecar ships as a disk image you install by dragging.** A release now produces a
+  signed, notarised and stapled `.dmg` alongside the zip, opening with the app beside a shortcut to
+  Applications. A zip leaves the app wherever the browser put it, and a menu-bar app living in
+  Downloads is one tidy-up away from disappearing. The app also has an icon at last, generated from
+  the same mark the web app uses, instead of Finder's blank placeholder.
+- **The macOS sidecar can be built as a notarised, distributable app.** `release-app.sh` signs
+  with a Developer ID, archives with `ditto`, submits to Apple, staples the ticket to the bundle and
+  checks the result the way Gatekeeper will; a `sidecar-v*` tag does the same in CI and attaches the
+  zip to the Release, caching the hour-long FFmpeg build against the tags it pins. The app also
+  carries a real version instead of a hardcoded 0.1.0.
+- **The macOS sidecar's menu shows what this Mac is actually doing.** A running job gets a
+  time-lapse of the frames going through the encoder, with a strip beneath showing the run, and a
+  real progress bar for the two stages that have one: bytes received while a source downloads and
+  bytes sent while a candidate is delivered. A GPU reading sits alongside, stating plainly that
+  VideoToolbox encodes on the media engine that macOS does not report. Frames and GPU are sampled
+  only while the menu is open. The menu itself is grouped into cards with a status colour carried
+  from the header, and `--render-menu` writes a picture of every state so a layout change can be
+  reviewed without a paired server and a running job.
+- **A dropped source download resumes instead of starting a multi-gigabyte file again.** The macOS
+  sidecar fetches sources in bounded 64 MB byte ranges, keeps every complete range across transient
+  failures, and asks for the next missing byte. It validates each `Content-Range`, requires the
+  source hash on every response, and still hashes the assembled source before ffmpeg sees it. A
+  server that predates ranged delivery can return the whole file as before.
+- **A remote job keeps its lease during every long-running stage.** Renewal used to run only beside
+  ffmpeg, leaving a slow source download or candidate upload able to outlive its lease. Fetching,
+  encoding, VMAF measurement, and delivery now all renew with their current stage; if renewal says
+  the lease is gone, the in-flight transfer or process is cancelled immediately.
+- **The macOS sidecar has its own CI gate.** Pull requests and protected-branch pushes now run the
+  Swift protocol/lifecycle suite and a release build on an Apple Silicon macOS runner, so this
+  separately versioned client can no longer regress while the Linux backend and web jobs stay green.
+- **The macOS sidecar rechecks free scratch space before it downloads a claimed source.** The
+  server already considers reported capacity while assigning work, but free space can change
+  between a heartbeat and a claim, especially with several jobs at once. The runner now measures
+  the actual work volume immediately before transfer and hands back a job that cannot still hold
+  its source plus candidate allowance; an unreadable capacity fails closed before any media moves.
+  Every heartbeat also refreshes that same work-volume capacity instead of repeating the value
+  measured at launch, so a low-space Mac stops being offered work rather than repeatedly refusing it.
+- **A library can say where its work may run once remote workers are on.** Advanced options gain
+  **Where this library's work may run**, shown only while remote workers are switched on and the
+  preview flag is present: *Here or on a worker* (the default, and what every existing library
+  upgrades to), *Only on this server*, *Prefer a worker* (held for an online, non-draining worker
+  for up to ten minutes, then this server takes it), and *Only on workers*. The choice is a filter
+  over the one shared queue, never a second queue: a job keeps its priority and age wherever it is
+  allowed to run, the local dispatcher and a worker's claim honour the same rule from
+  `WorkPlacementPolicy`, and a library kept on this server is never offered to a worker, neither
+  by the cheap pre-filter nor by full preparation. While remote workers are off every placement
+  runs here, so a library set to *Only on workers* cannot stall for a feature not in use; the
+  editor says so in one line when it is hiding a non-default choice for that reason. Adaptive
+  per-title VMAF libraries still run here whatever the choice says, and the editor says that too.
+  New `workPlacement` on the library API and in config backups (an older backup restores as
+  *Here or on a worker*); migration `AddLibraryWorkPlacement`.
+- **A remote worker can be drained.** `POST /api/workers/{id}/drain` asks a worker to finish what
+  it holds and take no more: its leases still renew and deliver, the claim route offers it nothing,
+  the local dispatcher stops counting it as a worker a *Prefer a worker* library could wait for,
+  and its heartbeat response says `draining` so the sidecar can show it. `DELETE
+  /api/workers/{id}/drain` resumes it, and refuses a revoked worker with `409` because only
+  pairing again brings one back. `GET /api/workers` gains `drainRequestedAt` and `heldLeases`, the
+  jobs a drain is waiting on. Migration `AddWorkerDrain`.
+- **The Workers tab shows what each machine is doing.** Each paired sidecar is now a card:
+  status (Online, Draining, Drained, Offline, Revoked), what it proved it can do, what it is working
+  on with a stage and a progress bar, its load and free scratch, when it was last seen, and its last
+  problem. **Drain after this job**, **Resume taking work** and **Revoke** sit on the card. Progress
+  comes from the sidecar's lease renewals, which now carry the stage and ffmpeg's encoded seconds
+  (and happen at least every fifteen seconds while encoding); the server scales the seconds
+  against the source duration, so the queue row and the card move from one number. "Last problem"
+  is written by the server where it refuses or discards something the worker did — a lapsed lease,
+  a candidate encoded from the wrong source or with the wrong hash, a delivered candidate that
+  failed verification — because the worker itself never learns of those. Migration
+  `AddWorkerActivity`; the macOS sidecar sends the new renewal body.
+- **A queue row says where a remote job is.** A leased job reads "encoding on Mac Studio…" with
+  the worker's own progress bar (or "sending the source…", "returning the candidate…"), a
+  delivered one "returned from Mac Studio · waiting to be verified", and the "Now" card names the
+  machine instead of showing this server's CPU and GPU graphs for work it is not doing. A queued
+  job its library keeps off this server reads "waiting for a worker…", judged by the dispatcher's
+  own rule so the row never says waiting for a job the server would start. `GET /api/jobs` gains
+  `workerName`, `remoteStage` and `waitingForWorker`.
+- **A remote worker measures VMAF, and the server decides whether to believe it.** An assignment
+  now carries the server's own libvmaf command for each measurement window, with placeholders for
+  the worker's paths, fixed at claim and recorded on the lease. The macOS sidecar runs them after
+  its encode and posts the raw JSON logs with both hashes to `POST
+  /api/workers/leases/{id}/quality` before delivering the candidate; the server parses and pools
+  the logs with the same code that reads a local measurement. At verification the evidence stands
+  in for this server's VMAF pass, roughly half the cost of verifying, only when it is bound to the
+  delivered candidate's hash and to a policy at least as strict as the library requires now.
+  Otherwise the server measures VMAF itself and writes why on the worker's card. Every other gate
+  is still repeated here, and a low score fails the candidate the ordinary way. New stage
+  `Measuring`; migration `AddLeaseQualityEvidence`.
+- **The macOS sidecar survives a lid and a quit.** While a job runs it holds a system activity
+  assertion, so macOS neither naps the app nor idles the machine to sleep under an encode. When
+  the Mac sleeps anyway the job is handed back first and the server reassigns it at once, rather
+  than two minutes later when the lease lapses; check-ins resume on wake. Quitting the app
+  mid-job hands the job back before exiting. The menu gains **Start at login**, registered
+  through the system's login-item service.
+- **A remote worker decodes in hardware when it proved it can.** A worker that proved
+  VideoToolbox decode by a real decode is sent a command that decodes with it, for VideoToolbox
+  encodes, with the frames left in system memory so every software filter still applies; the
+  claim requires the proved decoder and the lease records it. A delivered candidate that fails
+  verification with the signature of decoder corruption is not failed: the job is requeued to
+  decode in software wherever it runs next, and the worker's card says why. Migration
+  `AddDecodeFacts`.
+- **A candidate can be delivered in resumable chunks.** `GET …/result/offset`, `PATCH …/result`
+  with `X-Optimisarr-Offset`, and `POST …/result/complete` let a worker append a multi-gigabyte
+  candidate 64 MB at a time and, after a dropped connection, ask where it got to and carry on;
+  the assembled file is hashed and judged exactly as a whole upload, and the staging file is
+  named by lease so a resumed upload can only continue its own transfer. The macOS sidecar
+  delivers this way when the server offers it and in one piece otherwise.
+- **The macOS sidecar runs more than one job at once, and works again after a relaunch.**
+  **Jobs at once** in the menu chooses one to four parallel jobs; the choice is persisted,
+  reported on every check-in, and filled from each check-in while slots are free, with every job
+  listed in the menu. Relaunching the app used to leave it reporting no encoders and zero
+  concurrency — "Drained" on the Workers tab — until it was paired again, because capabilities
+  were only probed at pairing; the machine is now probed on every launch.
+
+### Fixed
+
+- **A worker now records what its VMAF measurement actually did.** Its scratch directory is deleted
+  on every exit path, so after a job ended the command, the files it compared and the score it
+  produced existed nowhere. Each window is logged with its frame count, mean, harmonic mean, lowest
+  frame and how many frames scored near zero, along with the timing shift applied — a window full of
+  zero-scoring frames beside a respectable average is the signature of two timelines misaligned
+  rather than of a bad encode, and an average alone hides it.
+- **The worker's timing-shift guard tested the wrong thing.** Its check for a gap too small to
+  matter multiplied the source lead by a million and compared that, rather than the difference
+  between the two leads, for want of a pair of brackets. It gave the right answer for every real
+  pair, which is why it went unnoticed.
+- **Each job being processed gets its own card, with its own artwork.** Every running job shared
+  one card carrying only the first job's backdrop, so three jobs from three different shows read as
+  one thing behind the wrong picture. With remote workers this is the common case rather than a
+  corner: several jobs run at once and none of them is "the" job.
+- **The macOS sidecar's menu no longer changes shape or slides sideways while a job runs.** Each
+  thumbnail in the film strip asked to fill the available width with no upper bound, so two dozen
+  of them demanded far more than the menu's 340 points: the window grew, the content shifted left
+  out of view and the panel turned square as frames accumulated. The strip is now a fixed number of
+  fixed-size slots showing the tail of the run. The job number also rendered as "#5,643", because
+  an integer in a label is grouped by locale.
+- **A worker is no longer offered a job it has just handed back.** A released job returns to the
+  queue at once, and the claim loop offers the highest-priority queued job to whoever asks next, so
+  a worker that could not run a job took it again on its very next check-in and downloaded the
+  whole source afresh to fail the same way. A handback now earns that worker a ten-minute pause on
+  that job, which is long enough to break the loop and short enough that a Mac which was merely
+  asleep is useful again quickly. The pause is per worker, so another machine can still take it. A
+  job handed back three times stops being offered to workers at all and is left for the server.
+- **A worker is no longer sent a job whose audio encoder it does not have.** Advanced options
+  offer Opus and MP3, which the server emits as `libopus` and `libmp3lame`. The macOS sidecar's
+  bundled FFmpeg links no external audio libraries and has neither, and capability matching only
+  ever considered video, so such a job was handed over, failed with "Unknown encoder", and came
+  straight back to be offered again. The sidecar now proves its audio encoders with a real encode
+  and advertises them, and the matcher checks the job's encoder against that list. Audio that is
+  copied names no encoder and needs none.
+- **A worker's capabilities are refreshed on every check-in, not only at pairing.** The sidecar
+  re-probes itself at each launch, but had no way to say so, so a rebuilt FFmpeg or an encoder that
+  stopped opening left the server scheduling against whatever was true when the two were first
+  introduced. Only pairing again corrected it. A check-in that omits capabilities, as an older
+  sidecar does, leaves them untouched rather than emptying them.
+- **The macOS sidecar's bundled FFmpeg runs on machines other than the one that built it.** The
+  0.1.0 and 0.1.1 downloads linked Homebrew's `libxcb` and failed to start anywhere it was absent.
+  The build set `PKG_CONFIG_PATH`, which *adds* to pkg-config's built-in search path, so configure
+  still found `/opt/homebrew/lib/pkgconfig` and linked what it discovered. It now sets
+  `PKG_CONFIG_LIBDIR`, which replaces that path, and passes `--disable-autodetect` so nothing is
+  linked unless it is named. The build already checked for this and only printed the result; the
+  check now fails the build, for both `ffmpeg` and `ffprobe`.
+- **The macOS sidecar's bundled libx265 no longer crashes on its first frame.** Any libx265 encode
+  segfaulted, at any resolution and with any encoder settings. FFmpeg's wrapper guards x265's
+  multi-layer encoder API with `X265_BUILD >= 210` and no upper bound; x265 reverted that API at
+  build 213, so a wrapper built against x265 4.2 passed an array of pointers where the library
+  expected an array of pictures, and the pointer it read back was overwritten with zero. Upstream
+  added the missing `X265_BUILD < 213` bound in 7.1.1, so the pinned FFmpeg moves from `n7.1` to
+  `n7.1.2`. x265 stays at 4.2.
+- **The macOS sidecar proves every encoder before advertising it, CPU ones included.** It used
+  to trust `ffmpeg -encoders` for software encoders and only test-encode the VideoToolbox ones. The
+  bundled libx265 segfaults on its first frame on Apple Silicon, and the sidecar advertised it
+  anyway, so the server could have chosen an encoder that would never finish a job. Every listed
+  encoder now has to complete a three-frame throwaway encode at launch, and a crash counts as a
+  refusal. The ffmpeg build script also takes its tags and extra x265 cmake flags from the
+  environment, so a rebuild can be tried without editing it.
+- **The macOS sidecar's work-loop tests wait for a condition instead of a fixed delay.** A test
+  that slept 200 ms and then asserted the job had run failed on a loaded CI runner where the first
+  claim had not yet gone out, reporting a defect that did not exist. The shared `waitFor` helper
+  polls with a generous timeout, so these tests stay fast locally and honest under load.
+- **The queue shows the command a remote worker will actually run.** A job leased to a worker
+  kept whatever ffmpeg arguments and encoder this server last used for it, so the first real remote
+  job displayed a stale QSV command while the Mac was encoding with VideoToolbox. Claiming now
+  records the worker's encoder and arguments on the job.
+- **Why a worker's VMAF evidence was refused is now in the server log.** The worker's card keeps
+  only its latest problem, and a verification verdict overwrote the refusal within minutes, leaving
+  no trace of the reason. Both the refusal, with its objections, and an acceptance are logged.
+- **The macOS sidecar stops asking for Keychain access over and over.** An ad-hoc signature is
+  derived from the binary, so it changes on every build and the Keychain treats each rebuilt copy
+  as a different application; reaching the stored pairing then raised a password prompt that kept
+  coming back. `make-app.sh` now takes a `SIGNING_IDENTITY` and signs with a real certificate,
+  whose identity is stable across rebuilds, applying the hardened runtime and a timestamp and
+  signing the bundled ffmpeg and ffprobe first. The credential store also tries the data protection
+  keychain before the legacy one, and an item it cannot read without a prompt is removed and
+  reported as "not paired" rather than asked for again.
+- **Sampled VMAF no longer scores a candidate against its own neighbouring frames.** Both inputs
+  of a sampled window are seeked to the same whole second and then paired by timestamp, but FFmpeg
+  stamps frames relative to each file's container start, which is the earliest stream. A source
+  whose audio leads its video by a frame of priming and a candidate whose video starts a frame
+  into its container therefore present the same picture 20 ms apart: half a frame, exactly the
+  cadence filter's rounding tie, so each window was a coin toss between frame N and frame N+1.
+  Held frames still scored well and moving ones scored zero, which is the "lowest frame 0, mean in
+  the 80s" signature that the decoder-corruption check then read as a broken hardware decode. The
+  first real remote job on 2026-09-13 was re-encoded three times on that reading and failed anyway;
+  on the same file the corrected measurement scores every window in the low 90s with no frame
+  under 70. The measurement now seeks to the nearest source picture instant, so retained frames sit
+  on slot centres, and removes the candidate's extra lead before cadence rounding. Locally the
+  server measures both leads from its probes; a remote worker measures them itself with its
+  ffprobe and fills in a token the server leaves in the filter, and reports no evidence rather
+  than half an answer when it cannot. Full-file measurements, which rebase both timelines, were
+  never affected.
+- **The Workers tab now notices a sidecar pairing without a reload.** While a pairing code was on
+  screen the page only counted down; it never asked the server whether the code had been redeemed
+  and never refreshed the worker list, and with no worker listed yet it never refreshed at all. A
+  freshly paired Mac therefore stayed invisible, under a code that had already been used, until the
+  operator reloaded. The page now polls every two seconds while a code is showing, drops the code
+  the moment the server no longer has it, and keeps a slow refresh going even when the list is empty.
+
 ## 0.2.12 — 2026-09-10
 
 ### Fixed

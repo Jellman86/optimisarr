@@ -12,6 +12,7 @@ public enum AssignmentCommandError: Error, Equatable, Sendable {
     case invalidOutputExtension(String)
     case pathLikeValue(String)
     case strayPlaceholder(String)
+    case unknownHardwareDecoder(String)
 }
 
 /// The server's argument array, checked before this machine will run it.
@@ -40,8 +41,12 @@ public struct AssignmentCommand: Sendable, Equatable {
         "-global_quality", "-rc_mode", "-quality", "-lossless",
         "-tune", "-maxrate", "-minrate", "-bufsize", "-x264-params", "-x265-params",
         "-spatial-aq", "-temporal-aq", "-fps_mode", "-enc_time_base:v:0",
-        "-ss", "-t", "-movflags",
+        "-ss", "-t", "-movflags", "-hwaccel",
     ]
+
+    /// The one hardware decoder this platform has. The server names it only when this machine
+    /// proved it by a real decode; anything else would be a command for some other machine.
+    static let hardwareDecoders: Set<String> = ["videotoolbox"]
 
     public let arguments: [String]
     public let outputExtension: String
@@ -80,6 +85,10 @@ public struct AssignmentCommand: Sendable, Equatable {
                     throw AssignmentCommandError.inputMustBePlaceholder(value)
                 }
                 inputs += 1
+            } else if token == "-hwaccel" {
+                guard hardwareDecoders.contains(value) else {
+                    throw AssignmentCommandError.unknownHardwareDecoder(value)
+                }
             } else {
                 try Self.checkValue(value)
             }

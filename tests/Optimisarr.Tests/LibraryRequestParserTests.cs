@@ -97,6 +97,42 @@ public sealed class LibraryRequestParserTests
     }
 
     [Fact]
+    public void An_omitted_work_placement_means_anywhere()
+    {
+        // A client that predates the choice must keep placing work exactly as it did.
+        var ok = LibraryRequestParser.TryParse(Request(), out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(Optimisarr.Core.Queue.WorkPlacement.Anywhere, parsed.WorkPlacement);
+    }
+
+    [Theory]
+    [InlineData("WorkerOnly", Optimisarr.Core.Queue.WorkPlacement.WorkerOnly)]
+    [InlineData("preferworker", Optimisarr.Core.Queue.WorkPlacement.PreferWorker)]
+    [InlineData("LocalOnly", Optimisarr.Core.Queue.WorkPlacement.LocalOnly)]
+    public void A_named_work_placement_is_accepted_whatever_its_casing(
+        string placement, Optimisarr.Core.Queue.WorkPlacement expected)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { WorkPlacement = placement }, out var parsed, out var error);
+
+        Assert.True(ok, error);
+        Assert.Equal(expected, parsed.WorkPlacement);
+    }
+
+    [Theory]
+    [InlineData("7")]
+    [InlineData("Cloud")]
+    public void An_unknown_work_placement_is_refused(string placement)
+    {
+        var ok = LibraryRequestParser.TryParse(
+            Request() with { WorkPlacement = placement }, out _, out var error);
+
+        Assert.False(ok);
+        Assert.Contains("work placement", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void A_bitrate_floor_above_the_cap_is_refused()
     {
         // An inverted window is impossible to honour. Refused at the boundary so an operator sees

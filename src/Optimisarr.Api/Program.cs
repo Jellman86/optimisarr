@@ -272,7 +272,8 @@ internal sealed record SettingsDto(
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
-    bool RemoteWorkersAvailable = false)
+    bool RemoteWorkersAvailable = false,
+    bool WorkerVerificationRequired = false)
 {
     public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,
@@ -286,7 +287,8 @@ internal sealed record SettingsDto(
         settings.DryRunMode,
         settings.ReplacementQuarantineRetentionDays,
         settings.RemoteWorkersEnabled,
-        remoteWorkersAvailable);
+        remoteWorkersAvailable,
+        settings.WorkerVerificationRequired);
 }
 
 internal sealed record QueueStatusDto(
@@ -392,6 +394,7 @@ internal sealed record SaveLibraryRequest(
     string? AutoEnqueueWindowEnd,
     bool? AutoReplace,
     string? VideoQualityStrategy = null,
+    string? WorkPlacement = null,
     double? DurationTolerancePercent = null,
     bool? RequireAudioRetained = null,
     bool? RequireSubtitlesRetained = null,
@@ -477,6 +480,7 @@ internal sealed record LibraryDto(
     double MinimumImageSsim,
     bool ImageMetadataGateEnabled,
     string VideoQualityStrategy,
+    string WorkPlacement,
     bool AutoEnqueueEnabled,
     string AutoEnqueueWindowStart,
     string AutoEnqueueWindowEnd,
@@ -548,6 +552,7 @@ internal sealed record LibraryDto(
         library.MinimumImageSsim,
         library.ImageMetadataGateEnabled,
         library.VideoQualityStrategy.ToString(),
+        library.WorkPlacement.ToString(),
         library.AutoEnqueueEnabled,
         library.AutoEnqueueWindowStart.ToString("HH:mm", CultureInfo.InvariantCulture),
         library.AutoEnqueueWindowEnd.ToString("HH:mm", CultureInfo.InvariantCulture),

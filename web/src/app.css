@@ -1,9 +1,93 @@
 @import 'tailwindcss';
 
-/* Class-based dark mode: toggled by adding `dark` to <html>. */
+/* Class-based dark mode: toggled by adding `dark` to <html>. Almost nothing needs it now —
+   colours come from the tokens below, which swap as a set — but it stays for the rare
+   scheme-specific tweak. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── The theme, in one place ────────────────────────────────────────────────
+   Everything the app colours itself with is one of three things:
+
+     ink       what text and glyphs are drawn in, on a five-step scale from the
+               headline down to the ghost of an empty-state icon;
+     surface   what things are drawn on — the ground, a panel, a raised key, a
+               sunken well — as a FILL and an ELEVATION, never a stroke;
+     tone      what a state means — ok, warn, bad, live (accent) and info — as
+               an ink, a soft tinted fill, a strong ink for text on that fill,
+               and a hairline.
+
+   A surface is a slightly lifted fill, a soft shadow, and a single hairline of
+   light catching its top edge, the way a raised object actually looks. Drawing
+   a 1px line around every panel gives a reader no hierarchy, so lines survive
+   only where they divide content *inside* a surface, as tints of the ground.
+
+   State is never marked with a coloured edge. The row you are on, the value you
+   have changed and the control that is "on" are shown by a lit fill.
+
+   Both schemes define the same names, so a component never spells out a light
+   colour and a dark colour side by side: it says `text-ink-3` or `tone-warn`
+   and the scheme decides. `theme-tokens.test.ts` keeps it that way. */
 :root {
+  /* Surfaces. The light ground is deliberately cooler and deeper than a white
+     page: a borderless white card cannot separate from a near-white ground, so
+     the step from card to ground has to carry what the border used to. */
+  --ground: #e9eef5;
+  --ground-wash: linear-gradient(180deg, #edf1f7 0%, #e6ecf4 100%);
+  --panel: #f8fafd;
+  --panel-hi: #ffffff;
+  --raised: #e9eff7;
+  --sunken: #e5ebf3;
+  --lit: rgba(30, 55, 95, 0.055);
+
+  --divide: rgba(30, 55, 95, 0.12);
+  --divide-soft: rgba(30, 55, 95, 0.065);
+  --edge: rgba(255, 255, 255, 0.92);
+
+  --lift-1: 0 1px 1px rgba(20, 40, 70, 0.05), 0 2px 5px -2px rgba(20, 40, 70, 0.1);
+  --lift-2: 0 1px 2px rgba(20, 40, 70, 0.06), 0 10px 24px -14px rgba(20, 40, 70, 0.26);
+  --lift-3: 0 2px 6px rgba(20, 40, 70, 0.07), 0 26px 60px -28px rgba(20, 40, 70, 0.38);
+  --inset-1: inset 0 1px 2px rgba(20, 40, 70, 0.07), inset 0 0 0 1px var(--divide-soft);
+
+  /* Ink. Five steps: headline, body, caption, hint, ghost. */
+  --ink: #0f172a;
+  --ink-2: #334155;
+  --ink-3: #5d6b80;
+  --ink-4: #8a98ac;
+  --ink-5: #c2ccd9;
+
+  /* Tones. The bare tone is an ink that clears AA on a panel, and a fill for a
+     dot or a bar; -soft is a tinted fill that works on any surface; -strong is
+     text on that fill; -line is a hairline of the tone. */
+  --ok: #047857;
+  --ok-strong: #065f46;
+  --ok-soft: rgba(16, 185, 129, 0.14);
+  --ok-line: rgba(16, 185, 129, 0.35);
+
+  --warn: #b45309;
+  --warn-strong: #78350f;
+  --warn-soft: rgba(245, 158, 11, 0.16);
+  --warn-line: rgba(245, 158, 11, 0.4);
+
+  --bad: #b91c1c;
+  --bad-strong: #7f1d1d;
+  --bad-soft: rgba(239, 68, 68, 0.12);
+  --bad-line: rgba(239, 68, 68, 0.35);
+
+  --accent: #0e7490;
+  --accent-strong: #164e63;
+  --accent-soft: rgba(6, 182, 212, 0.14);
+  --accent-line: rgba(6, 182, 212, 0.4);
+
+  --info: #0369a1;
+  --info-strong: #0c4a6e;
+  --info-soft: rgba(14, 165, 233, 0.14);
+  --info-line: rgba(14, 165, 233, 0.4);
+
+  /* The one focus ring, and the tooltip surface. */
+  --focus: rgba(8, 145, 178, 0.75);
+  --tip: #1e293b;
+  --tip-ink: #f1f5f9;
+
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
   font-synthesis: none;
@@ -12,16 +96,122 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.dark {
+  /* The dark ground is lifted a step off pure slate-950. On true black a shadow
+     has nothing to fall on, so elevation was invisible; a little luminance in
+     the ground lets the lift read, and a faint cool bloom at the top of the
+     rail lights the room from where the mark is. */
+  --ground: #070d1a;
+  --ground-wash:
+    radial-gradient(900px 520px at 6% -4%, rgba(34, 211, 238, 0.075), transparent 62%),
+    linear-gradient(180deg, #0a1122 0%, #060b16 100%);
+  --panel: #111a2d;
+  --panel-hi: #17223a;
+  --raised: #1e2c48;
+  --sunken: #0a1120;
+  --lit: rgba(148, 176, 214, 0.07);
+
+  --divide: rgba(148, 176, 214, 0.11);
+  --divide-soft: rgba(148, 176, 214, 0.06);
+  --edge: rgba(190, 215, 255, 0.09);
+
+  /* Dark elevation is mostly a lighter fill; the shadow only deepens the rim. A
+     hair of light round the outside is what lets a panel's edge be found on a
+     ground nearly its own colour. */
+  --lift-1: 0 0 0 1px rgba(190, 215, 255, 0.035), 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.45);
+  --lift-2: 0 0 0 1px rgba(190, 215, 255, 0.04), 0 2px 4px rgba(0, 0, 0, 0.3), 0 12px 28px -14px rgba(0, 0, 0, 0.8);
+  --lift-3: 0 0 0 1px rgba(190, 215, 255, 0.05), 0 4px 10px rgba(0, 0, 0, 0.35), 0 24px 60px -24px rgba(0, 0, 0, 0.9);
+  --inset-1: inset 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 0 0 1px var(--divide-soft);
+
+  --ink: #eef2f7;
+  --ink-2: #c6d0de;
+  --ink-3: #8f9fb5;
+  --ink-4: #66758d;
+  --ink-5: #3d4a61;
+
+  --ok: #34d399;
+  --ok-strong: #a7f3d0;
+  --ok-soft: rgba(52, 211, 153, 0.14);
+  --ok-line: rgba(52, 211, 153, 0.3);
+
+  --warn: #fbd24d;
+  --warn-strong: #fde68a;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --warn-line: rgba(251, 191, 36, 0.3);
+
+  --bad: #f87171;
+  --bad-strong: #fecaca;
+  --bad-soft: rgba(248, 113, 113, 0.14);
+  --bad-line: rgba(248, 113, 113, 0.3);
+
+  --accent: #22d3ee;
+  --accent-strong: #a5f3fc;
+  --accent-soft: rgba(34, 211, 238, 0.14);
+  --accent-line: rgba(34, 211, 238, 0.3);
+
+  --info: #38bdf8;
+  --info-strong: #bae6fd;
+  --info-soft: rgba(56, 189, 248, 0.14);
+  --info-line: rgba(56, 189, 248, 0.3);
+
+  --focus: rgba(34, 211, 238, 0.7);
+  --tip: #243149;
+  --tip-ink: #f1f5f9;
+}
+
+/* The tokens as Tailwind colours, so `text-ink-3`, `bg-panel`, `border-line`,
+   `via-panel/80` and `hover:text-accent` all read like the utilities they
+   replace and resolve at runtime to whichever scheme is on. */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-ink-5: var(--ink-5);
+
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-panel-hi: var(--panel-hi);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-lit: var(--lit);
+  --color-line: var(--divide);
+  --color-line-soft: var(--divide-soft);
+
+  --color-ok: var(--ok);
+  --color-ok-strong: var(--ok-strong);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-line: var(--ok-line);
+  --color-warn: var(--warn);
+  --color-warn-strong: var(--warn-strong);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+  --color-bad: var(--bad);
+  --color-bad-strong: var(--bad-strong);
+  --color-bad-soft: var(--bad-soft);
+  --color-bad-line: var(--bad-line);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-info: var(--info);
+  --color-info-strong: var(--info-strong);
+  --color-info-soft: var(--info-soft);
+  --color-info-line: var(--info-line);
+}
+
 /* Paint the document background (not just an inner element) so iOS Safari's
    safe-area insets and rubber-band overscroll never reveal a white strip at the
    top or bottom. color-scheme also gives native form controls and scrollbars the
    right look in each theme. */
 html {
-  background-color: #f8fafc; /* slate-50 */
+  background: var(--ground-wash) fixed, var(--ground);
+  color: var(--ink);
   color-scheme: light;
+  /* Figures line up in columns and never twitch as they change. */
+  font-variant-numeric: tabular-nums;
 }
 html.dark {
-  background-color: #020617; /* slate-950 */
   color-scheme: dark;
 }
 
@@ -29,74 +219,382 @@ body {
   margin: 0;
 }
 
+/* Headlines never leave a one-word orphan; running text avoids the worst rags. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* Scrollbars as thin as the browser allows, in the divider colour, so a long
+   table's scroll track does not draw a heavy grey bar down a soft panel. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--divide) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--divide);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-4);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* The page's tray: a well the page's cards float in. A utility rather than a component
+   class so it can be applied from the md breakpoint up, where the shell becomes islands. */
+@utility app-tray {
+  background: var(--sunken);
+  box-shadow: var(--inset-1);
+}
+
+/* One focus ring for everything that can be pressed. An outline rather than a
+   box-shadow ring: it follows the corner radius, needs no offset colour to fake
+   a gap against whichever surface the control sits on, and never fights a
+   control's own shadow. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+}
+
 /* Operational component classes, shared across the app. A small, consistent set
    of control primitives: one focus ring, one accent (cyan) reserved for the
-   primary action and "on" states, slate for everything else. */
+   primary action and "on" states, ink for everything else. */
 @layer components {
-  .nav-button {
-    @apply flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950;
+  /* Page furniture. Every page opens the same way. */
+  .page-title {
+    @apply text-2xl font-bold tracking-tight text-ink;
   }
+  .page-subtitle {
+    @apply mt-0.5 text-sm text-ink-3;
+  }
+
+  /* Roomier than a dense list wants to be, on purpose: this is the one surface that is on
+     screen on every page, and a 40px row is also a target a thumb can find. */
+  .nav-button {
+    @apply flex w-full items-center gap-3 rounded-[10px] px-3 py-2.5 text-left text-sm font-medium transition-colors focus-ring;
+  }
+  /* A lit, slightly raised key. Not a coloured rail down one edge: that reads as decoration
+     bolted to the row rather than as the row being the one you are on. */
   .nav-button-active {
-    @apply bg-cyan-600 text-white shadow-sm;
+    @apply font-semibold text-ink;
+    background: var(--raised);
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  /* Carried only by the entries that can ask something of you. Tabular so a changing figure
+     does not make the row twitch. */
+  .nav-badge {
+    @apply ml-auto min-w-[1.5rem] rounded-full px-2 py-0.5 text-center font-mono text-[10.5px] text-ink-2;
+    background: var(--raised);
+    box-shadow: inset 0 1px 0 var(--edge);
   }
   .nav-button-inactive {
-    @apply text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800;
+    @apply text-ink-2;
+  }
+  .nav-button-inactive:hover {
+    @apply text-ink;
+    background: var(--lit);
   }
   .nav-button-disabled {
-    @apply cursor-not-allowed text-slate-400 dark:text-slate-600;
+    @apply cursor-not-allowed text-ink-4;
   }
 
+  /* The card. Fill plus elevation plus one hairline of light on the top edge. */
   .card {
-    @apply min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900;
+    @apply min-w-0 max-w-full rounded-xl;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
+  }
+  /* The navigation rail is an island: a raised card floating on the ground, the page in a
+     recessed tray beside it. The rail is the object nearest the reader, the tray is the
+     surface the page's own cards float in, and the ground shows all round both. */
+  .app-rail {
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
   }
 
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-[colors,transform] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-px disabled:pointer-events-none disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus-visible:ring-offset-slate-950;
+  /* A card you can open. The lift on hover is the whole affordance — it says
+     "this is a thing, and it will respond" without a border or a cursor hint. */
+  .card-interactive {
+    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150;
   }
-  .btn-primary {
-    @apply border-cyan-600 bg-cyan-600 text-white shadow-sm hover:bg-cyan-700 dark:border-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700;
+  .card-interactive:hover {
+    background: linear-gradient(180deg, var(--raised), var(--panel-hi));
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+    transform: translateY(-1px);
+  }
+  .card-interactive:active {
+    transform: translateY(0);
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+
+  /* A recessed well, for content that sits *in* a surface rather than on it. */
+  .surface-sunken {
+    @apply rounded-xl;
+    background: var(--sunken);
+    box-shadow: var(--inset-1);
+  }
+  /* Dividers inside a surface, drawn as an inset shadow so they never add to the
+     box model and never double up against a neighbour's edge. */
+  .hairline-t {
+    box-shadow: inset 0 1px 0 var(--divide-soft);
+  }
+  .hairline-b {
+    box-shadow: inset 0 -1px 0 var(--divide-soft);
+  }
+
+  /* Tones: what a state means, as a tinted fill and an ink to read on it. One
+     class colours a badge, a chip, a callout or a whole card the same way, so
+     "failed" is the same red wherever it is said. */
+  .tone-ok {
+    --tone-soft: var(--ok-soft);
+    --tone-ink: var(--ok);
+  }
+  .tone-warn {
+    --tone-soft: var(--warn-soft);
+    --tone-ink: var(--warn);
+  }
+  .tone-bad {
+    --tone-soft: var(--bad-soft);
+    --tone-ink: var(--bad);
+  }
+  .tone-accent {
+    --tone-soft: var(--accent-soft);
+    --tone-ink: var(--accent);
+  }
+  .tone-info {
+    --tone-soft: var(--info-soft);
+    --tone-ink: var(--info);
+  }
+  /* The neutral pair: a fact rather than a verdict ("Video", "hevc"), and the
+     same shape a step quieter for things that are merely not happening ("Skipped"). */
+  .tone-neutral {
+    --tone-soft: var(--raised);
+    --tone-ink: var(--ink-2);
+  }
+  .tone-muted {
+    --tone-soft: var(--raised);
+    --tone-ink: var(--ink-3);
+  }
+  .tone-ok,
+  .tone-warn,
+  .tone-bad,
+  .tone-accent,
+  .tone-info,
+  .tone-neutral,
+  .tone-muted {
+    background-color: var(--tone-soft);
+    color: var(--tone-ink);
+  }
+  /* A toned card keeps its lift and its top-edge light; the tint lies over the
+     panel gradient rather than replacing it. */
+  .card.tone-ok,
+  .card.tone-warn,
+  .card.tone-bad,
+  .card.tone-accent,
+  .card.tone-info {
+    background-image: linear-gradient(var(--tone-soft), var(--tone-soft)),
+      linear-gradient(180deg, var(--panel-hi), var(--panel));
+  }
+  .card.tone-ok,
+  .callout.tone-ok {
+    color: var(--ok-strong);
+  }
+  .card.tone-warn,
+  .callout.tone-warn {
+    color: var(--warn-strong);
+  }
+  .card.tone-bad,
+  .callout.tone-bad {
+    color: var(--bad-strong);
+  }
+  .card.tone-accent,
+  .callout.tone-accent {
+    color: var(--accent-strong);
+  }
+  .card.tone-info,
+  .callout.tone-info {
+    color: var(--info-strong);
+  }
+  /* A callout: a toned paragraph inside a surface. Text is the strong ink so a
+     sentence of amber reads as a sentence, not as a warning icon's caption. */
+  .callout {
+    @apply rounded-lg px-3 py-2.5 text-sm leading-relaxed;
+  }
+
+  /* A selectable card — a processing mode, a quality strategy, a codec chip. Choosing
+     one lights its fill rather than drawing a coloured outline round it, which keeps
+     selection reading as "this one is on" rather than "this one has been ringed". */
+  .choice {
+    @apply cursor-pointer transition-[background,box-shadow,transform] duration-150 focus-ring;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  .choice:hover {
+    background: linear-gradient(180deg, var(--raised), var(--panel-hi));
+    box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);
+    transform: translateY(-1px);
+  }
+  .choice:active {
+    transform: translateY(0);
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  .choice-selected,
+  .choice-selected:hover {
+    @apply text-ink;
+    background: linear-gradient(
+      180deg,
+      --alpha(var(--color-cyan-500) / 16%),
+      --alpha(var(--color-cyan-500) / 7%)
+    );
+    box-shadow: var(--lift-2), inset 0 1px 0 var(--edge);
+  }
+
+  /* Buttons are raised: they are the things you press. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border-0 px-3 py-2 text-sm font-medium text-ink-2 transition-[background,transform,color] focus-ring active:translate-y-px disabled:pointer-events-none disabled:opacity-50;
+    background: linear-gradient(180deg, var(--raised), var(--panel));
+    box-shadow: var(--lift-1), inset 0 1px 0 var(--edge);
+  }
+  .btn:hover {
+    @apply text-ink;
+    background: var(--raised);
+  }
+  .btn-primary,
+  .btn-primary:hover {
+    @apply text-white;
+    background: linear-gradient(180deg, var(--color-cyan-500), var(--color-cyan-600));
+    box-shadow: var(--lift-1), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  .btn-primary:hover {
+    background: var(--color-cyan-600);
   }
   .btn-danger {
-    @apply border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950;
+    @apply text-bad;
   }
-  /* Borderless icon/text button — replaces the !border-0 !bg-transparent hack. */
+  .btn-danger:hover {
+    @apply text-bad;
+    background: var(--bad-soft);
+  }
+  /* Flat text/icon button: no fill, no lift, until you point at it. */
   .btn-ghost {
-    @apply border-transparent bg-transparent text-slate-500 shadow-none hover:bg-slate-100 hover:text-slate-700 dark:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200;
+    @apply text-ink-3;
+    background: none;
+    box-shadow: none;
+  }
+  .btn-ghost:hover {
+    @apply text-ink;
+    background: var(--lit);
   }
 
+  /* Inputs are sunken: they are the things you put something into. */
   .input {
-    @apply min-w-0 max-w-full w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:hover:border-slate-500;
+    @apply w-full min-w-0 max-w-full rounded-lg border-0 px-3 py-2 text-sm text-ink outline-none transition-shadow placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-60;
+    background: var(--sunken);
+    box-shadow: var(--inset-1);
   }
-
+  .input:hover {
+    box-shadow: inset 0 1px 2px rgba(20, 40, 70, 0.09), inset 0 0 0 1px var(--divide);
+  }
+  .input:focus {
+    box-shadow: var(--inset-1), 0 0 0 3px --alpha(var(--color-cyan-500) / 28%);
+  }
   .input[aria-invalid='true'] {
-    @apply border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-700 dark:focus:border-red-500;
+    box-shadow: var(--inset-1), inset 0 0 0 1px --alpha(var(--color-red-500) / 60%);
+  }
+  .input[aria-invalid='true']:focus {
+    box-shadow: var(--inset-1), 0 0 0 3px --alpha(var(--color-red-500) / 25%);
   }
 
   /* Native selects: strip the OS widget and draw our own chevron. */
   select.input {
     @apply cursor-pointer appearance-none bg-no-repeat pr-9;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%238a98ac' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
     background-position: right 0.5rem center;
     background-size: 1.15rem;
   }
 
   /* Checkbox for compact inline options (kept distinct from toggle switches). */
   .checkbox {
-    @apply h-4 w-4 cursor-pointer rounded border-slate-300 accent-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-600 dark:focus-visible:ring-offset-slate-950;
+    @apply h-4 w-4 cursor-pointer rounded border-line accent-cyan-600 focus-ring;
+  }
+
+  /* A switch. The track is a well, like every other thing you set; the knob is
+     the raised part you would put a thumb on. Both are driven by the real
+     checkbox that sits over them. */
+  .switch-track {
+    @apply pointer-events-none absolute inset-0 rounded-full transition-colors duration-200;
+    background: var(--ink-5);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+  .switch-knob {
+    @apply pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  .peer:checked ~ .switch-track {
+    background: linear-gradient(180deg, var(--color-cyan-500), var(--color-cyan-600));
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.15);
+  }
+  .peer:checked ~ .switch-knob {
+    transform: translateX(1.25rem);
+  }
+  .peer:focus-visible ~ .switch-track {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
   }
 
   .label {
-    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
+    @apply mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3;
   }
 
   .badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
   }
 
+  /* The header row of a table inside a card: it sticks, it sits on the panel
+     rather than on a colour of its own, and it is divided from the rows by a
+     hairline rather than a border. */
+  .table-head {
+    @apply sticky top-0 z-10 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3;
+    background: var(--panel-hi);
+    box-shadow: inset 0 -1px 0 var(--divide);
+  }
+
+  /* A tooltip is the one surface drawn in the opposite value to the page, so it
+     is read as something laid over the page rather than part of it. */
+  .tooltip {
+    @apply rounded-md px-3 py-2 text-left text-sm font-normal normal-case leading-relaxed tracking-normal;
+    background: var(--tip);
+    color: var(--tip-ink);
+    box-shadow: var(--lift-3);
+  }
+
   /* Progress bar: a determinate fill for transcoding, an indeterminate sweep for
-     phases without a percentage (probing, verifying). */
+     phases without a percentage (probing, verifying). The track is a well. */
   .progress-track {
-    @apply relative h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700;
+    @apply relative h-1.5 flex-1 overflow-hidden rounded-full;
+    background: var(--sunken);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
   }
   .progress-fill {
     @apply h-full rounded-full bg-cyan-600 transition-[width] duration-300 ease-out;
@@ -104,6 +602,27 @@ body {
   .progress-indeterminate {
     @apply absolute inset-y-0 w-2/5 rounded-full bg-sky-500/70;
     animation: progress-sweep 1.2s ease-in-out infinite;
+  }
+}
+
+/* Anyone who has asked for less motion gets the lift without the movement, and
+   the state without the throb. */
+@media (prefers-reduced-motion: reduce) {
+  .choice,
+  .card-interactive,
+  .switch-track,
+  .switch-knob {
+    transition: none;
+  }
+  .choice:hover,
+  .card-interactive:hover,
+  .choice:active,
+  .card-interactive:active {
+    transform: none;
+  }
+  .animate-pulse,
+  .progress-indeterminate {
+    animation: none;
   }
 }
 
@@ -124,3 +643,20 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+
+/* Native dialogs sit above the application and keep focus out of the background. */
+.app-modal {
+  padding: 0;
+  margin: auto;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  border: 1px solid var(--edge);
+  border-radius: 1.125rem;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--lift-3);
+  overflow: hidden;
+}
+.app-modal[open] { display: grid; }
+.app-modal::backdrop { background: rgb(3 8 17 / .65); backdrop-filter: blur(5px); }

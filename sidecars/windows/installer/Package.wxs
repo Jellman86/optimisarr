@@ -1,0 +1,61 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Optimisarr Sidecar" Manufacturer="Optimisarr contributors"
+           Version="$(var.Version)" UpgradeCode="53DAE213-E6B7-49EB-8FF5-C31F82210925"
+           Scope="perMachine" InstallerVersion="500" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer Optimisarr Sidecar is already installed."
+                  Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Launch Condition="VersionNT64" Message="Optimisarr Sidecar requires 64-bit Windows." />
+    <Property Id="EXISTINGSIDECAR">
+      <RegistrySearch Id="ExistingService" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OptimisarrSidecar" Name="ImagePath" Type="raw" Bitness="always64" />
+    </Property>
+    <Launch Condition="Installed OR WIX_UPGRADE_DETECTED OR NOT EXISTINGSIDECAR"
+            Message="A manually installed Optimisarr Sidecar service already exists. Drain it, wait for its job to finish, then remove its service registration before using this installer. Pairing data can be retained." />
+    <Icon Id="SidecarIcon" SourceFile="$(var.Payload)\Optimisarr.Sidecar.Tray.exe" />
+    <Property Id="ARPPRODUCTICON" Value="SidecarIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Jellman86/optimisarr" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Optimisarr Sidecar">
+        <Directory Id="RUNTIMEFOLDER" Name="runtime">
+          <Component Id="ServiceHost" Guid="1A3F91A8-4EB0-45EF-A265-0A68BA6077DB" Bitness="always64">
+            <File Id="DotnetHost" Source="$(var.Payload)\runtime\dotnet.exe" KeyPath="yes" />
+            <ServiceInstall Id="InstallWorker" Name="OptimisarrSidecar" DisplayName="Optimisarr Sidecar"
+                            Description="Contributes spare encoding and verification capacity to Optimisarr."
+                            Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem"
+                            Arguments="&quot;[INSTALLFOLDER]Optimisarr.Sidecar.Service.dll&quot;" Vital="yes" />
+            <!-- An unpaired worker exits normally. Start it after pairing, rather than making a
+                 successful first install depend on an already-issued worker credential. -->
+            <ServiceControl Id="ControlWorker" Name="OptimisarrSidecar" Stop="both" Remove="uninstall" Wait="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="SidecarPrograms" Name="Optimisarr">
+        <Component Id="TrayShortcut" Guid="805070B6-7438-4208-94B5-FB7E4A7ECED0" Bitness="always64">
+          <Shortcut Id="OpenTray" Name="Optimisarr Sidecar" Target="[INSTALLFOLDER]Optimisarr.Sidecar.Tray.exe" WorkingDirectory="INSTALLFOLDER" Icon="SidecarIcon" IconIndex="0" />
+          <RemoveFolder Id="RemovePrograms" On="uninstall" />
+          <RegistryValue Root="HKLM" Key="Software\Optimisarr\Sidecar" Name="TrayInstalled" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="OptimisarrData" Name="Optimisarr">
+        <Directory Id="PairingFolder" Name="Sidecar">
+          <Component Id="PairingDirectory" Guid="BFC7C938-2087-42F1-B6A7-F874CC2DA044" Bitness="always64" Permanent="yes">
+            <CreateFolder>
+              <PermissionEx Id="PairingAcl" Sddl="D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+            </CreateFolder>
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <Feature Id="Sidecar" Title="Optimisarr Sidecar" Level="1">
+      <ComponentRef Id="TrayShortcut" /><ComponentRef Id="ServiceHost" /><ComponentRef Id="PairingDirectory" />
+      <ComponentGroupRef Id="PayloadFiles" />
+    </Feature>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Installed. Open Optimisarr Sidecar from the Start menu, then click its tray icon. Use Preferences to pair this PC and start the worker." />
+  </Package>
+</Wix>

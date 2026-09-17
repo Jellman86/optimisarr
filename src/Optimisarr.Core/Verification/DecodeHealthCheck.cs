@@ -48,6 +48,7 @@ public sealed class DecodeHealthCheck
                     "-nostdin",
                     "-v", "error",
                     "-i", path,
+                    "-map", "0:v?", "-map", "0:a?",
                     "-f", "null",
                     "-"
                 },

@@ -53,7 +53,7 @@ behind an authenticated reverse proxy; see [reverse proxy](reverse-proxy.md).
 
 ## First workflow
 
-1. Enable **Dry-run mode** in **Settings → General → Replacement and cleanup**.
+1. Enable **Dry-run mode** in **Settings → Files & safety → Replacement and cleanup**.
 2. Add a library below `/data/media` and select its media type and rule profile.
 3. Scan it; newly found files are probed in the background.
 4. Review the explicit eligibility reason in **Inventory**.

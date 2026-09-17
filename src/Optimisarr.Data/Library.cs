@@ -153,6 +153,14 @@ public sealed class Library
     /// </summary>
     public VideoQualityStrategy VideoQualityStrategy { get; set; } = VideoQualityStrategy.Fixed;
 
+    /// <summary>
+    /// Where this library's video re-encodes may run once remote workers are on. Anywhere (the
+    /// default, and the value every existing library upgrades to) lets whichever machine is free
+    /// first take the job. Verification and replacement always happen on this server whatever the
+    /// placement says, and the choice is ignored while remote workers are switched off.
+    /// </summary>
+    public WorkPlacement WorkPlacement { get; set; } = WorkPlacement.Anywhere;
+
     /// <summary>Portable encoder effort; recognised legacy presets remain valid until changed. Null uses the encoder default.</summary>
     public string? EncoderPreset { get; set; }
 

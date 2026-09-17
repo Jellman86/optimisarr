@@ -8,6 +8,24 @@ namespace Optimisarr.Api.Queue;
 /// </summary>
 public static class WorkPaths
 {
+    internal static IDisposable PrepareOutputDirectory(
+        string outputPath,
+        Func<string, IDisposable> reserve)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath))!;
+        var reservation = reserve(directory);
+        try
+        {
+            Directory.CreateDirectory(directory);
+            return reservation;
+        }
+        catch
+        {
+            reservation.Dispose();
+            throw;
+        }
+    }
+
     private static readonly StringComparison PathComparison =
         OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
@@ -30,8 +48,18 @@ public static class WorkPaths
     /// directory and deletes each directory while it is empty, stopping at the first non-empty one
     /// and never deleting (or walking above) the work root itself. Best-effort and safe: a
     /// non-empty directory is never removed, so this can only ever delete empty scratch folders.
+    /// <para>
+    /// Empty is not the same as unused. Two jobs on the same media file share one scratch
+    /// directory, so one job finishing can prune the tree another job has just created and not yet
+    /// written into — that job then dies on "Error opening output … No such file or directory".
+    /// <paramref name="isReserved"/> lets the caller name the directories an encode is currently
+    /// holding so they are left alone.
+    /// </para>
     /// </summary>
-    public static void PruneEmptyAncestors(string workRoot, string filePath)
+    public static void PruneEmptyAncestors(
+        string workRoot,
+        string filePath,
+        Func<string, bool>? isReserved = null)
     {
         string root, dir;
         try
@@ -48,6 +76,7 @@ public static class WorkPaths
             && !PathsEqual(dir, root)
             && IsUnder(dir, root)
             && Directory.Exists(dir)
+            && isReserved?.Invoke(dir) != true
             && !Directory.EnumerateFileSystemEntries(dir).Any())
         {
             try

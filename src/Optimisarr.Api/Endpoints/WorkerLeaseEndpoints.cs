@@ -1,9 +1,13 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
@@ -21,6 +25,9 @@ namespace Optimisarr.Api.Endpoints;
 internal sealed record AssignmentDto(
     Guid LeaseId,
     int JobId,
+    /// <summary>What is being encoded, for the worker to show. A job number alone tells an
+    /// operator standing at the Mac nothing about which of their files is being worked on.</summary>
+    string Title,
     long SourceBytes,
     string VideoEncoder,
     string Vmaf,
@@ -28,7 +35,61 @@ internal sealed record AssignmentDto(
     int RenewWithinSeconds,
     IReadOnlyList<string> Arguments,
     string OutputExtension,
-    QualityRequirementDto Quality);
+    QualityRequirementDto Quality,
+    /// <summary>
+    /// The first candidate of a per-title quality search, when this job needs one. The worker
+    /// measures it, reports, and is told what to measure next until it is given a quality to encode
+    /// at. Null when the quality is already settled and the encode can start immediately.
+    /// </summary>
+    AdaptiveSearchStepDto? Search = null,
+    RemoteVerificationContract? FullVerification = null);
+
+/// <summary>
+/// One candidate of the per-title quality search, on the wire.
+///
+/// <para>Its measurement is the same <see cref="QualityRequirementDto"/> the assignment's own
+/// quality gate uses, and that is the point. The planner's
+/// <see cref="Optimisarr.Core.Workers.RemoteQualityContract"/> carries only the five facts the
+/// server needs to keep on the lease, and sending that shape instead meant a sidecar holding one
+/// type for "how to measure quality" met two different shapes: the macOS decoder required the
+/// three missing fields and gave up, leaving `search` silently null, so every searched job was
+/// encoded at the library's baseline with no probe ever reported. One shape on the wire is what
+/// stops that happening again.</para>
+/// </summary>
+internal sealed record AdaptiveSearchStepDto(
+    int Quality,
+    IReadOnlyList<IReadOnlyList<string>> SampleCommands,
+    QualityRequirementDto Measurement);
+
+/// <summary>
+/// Puts a planned search on the wire in the shape a worker already understands.
+///
+/// <para>The values come from the contract that was stored on the lease, not from the policy: a
+/// report is validated against what the lease holds, so telling the worker a different model or a
+/// different threshold than the one it will be judged by would be an invitation to measure the
+/// wrong thing. Only the two facts the contract does not carry — how far the commands subsample,
+/// and whether they score a clip — are read from the policy the commands were built from.</para>
+/// </summary>
+internal static class AdaptiveSearchWire
+{
+    public static AdaptiveSearchStepDto? From(AdaptiveSearchStep? step, VerificationPolicy policy) =>
+        step is null
+            ? null
+            : new AdaptiveSearchStepDto(
+                step.Quality,
+                step.SampleCommands,
+                new QualityRequirementDto(
+                    // A search exists only where there is a gate to search against, so this is
+                    // always true; it is sent because the worker's measurement reads it.
+                    Measure: true,
+                    step.Measurement.Model,
+                    policy.VmafFrameSubsample,
+                    policy.ClipVmafEnabled,
+                    step.Measurement.MinimumHarmonicMean,
+                    step.Measurement.MinimumMinimum,
+                    step.Measurement.Commands,
+                    step.Measurement.Sampling));
+}
 
 /// <summary>
 /// What the worker's VMAF evidence will be held to. The thresholds and model are stated so the
@@ -41,12 +102,78 @@ internal sealed record QualityRequirementDto(
     int FrameSubsample,
     bool ClipVmaf,
     double MinimumHarmonicMean,
-    double MinimumMinimum);
+    double MinimumMinimum,
+    /// <summary>
+    /// The server's own libvmaf command per measurement window, with <c>{{distorted}}</c>,
+    /// <c>{{reference}}</c> and <c>{{log}}</c> standing in for the worker's paths. Empty when nothing
+    /// is to be measured. The worker returns the raw JSON logs in this order.
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<string>> Commands,
+    /// <summary>How the windows sample the file, for the report.</summary>
+    string Sampling);
+
+/// <summary>The libvmaf logs a worker returns, one per command it was sent, bound to both hashes.</summary>
+internal sealed record QualityEvidenceRequest(
+    string SourceSha256,
+    string CandidateSha256,
+    IReadOnlyList<string> Logs);
+
+/// <summary>
+/// What a worker measured for one candidate quality in the per-title search: the bytes its sample
+/// encodes produced, and the raw libvmaf logs. It reports no verdict, because whether a candidate
+/// met the target needs the library's policy and the pooling rules, and both live here.
+/// </summary>
+internal sealed record AdaptiveProbeRequest(
+    int Quality,
+    long EncodedBytes,
+    IReadOnlyList<string> Logs);
+
+/// <summary>
+/// Measure this next, or stop searching and encode at this quality. Never both.
+/// </summary>
+internal sealed record AdaptiveProbeDirectionDto(
+    AdaptiveSearchStepDto? NextStep,
+    int? SelectedQuality,
+    string Reason,
+    /// <summary>
+    /// The encode to run once the search is over, replacing the arguments the assignment carried.
+    ///
+    /// <para>Those were built before a quality existed, so they name the library's value. Encoding
+    /// with them would run the whole title at the baseline and quietly discard everything the
+    /// search just measured.</para>
+    /// </summary>
+    IReadOnlyList<string>? Arguments = null);
+
+/// <summary>The pooled scores the server read from those logs.</summary>
+internal sealed record QualityEvidenceAcceptedDto(
+    Guid LeaseId,
+    double? VmafHarmonicMean,
+    double? VmafFifthPercentile,
+    double? VmafMin,
+    int? FrameCount);
 
 internal sealed record LeaseRenewedDto(Guid LeaseId, DateTimeOffset ExpiresUtc);
 
+/// <summary>
+/// What a worker may say about a job when it renews. Both optional: an older sidecar renews with
+/// no body and the claim is simply extended. Stage is a name from <see cref="RemoteStage"/>;
+/// encoded seconds is ffmpeg's own out_time, which the server scales against the source duration.
+/// </summary>
+internal sealed record RenewRequest(
+    string? Stage = null,
+    double? EncodedSeconds = null,
+    /// <summary>
+    /// How busy the worker's machine is, 0-1. Carried here as well as on the check-in because a
+    /// renewal happens every few seconds while a job runs, so this is the figure an operator
+    /// watching an encode actually sees. Both optional; absent leaves the last reading alone.
+    /// </summary>
+    double? CpuBusyFraction = null,
+    double? GpuBusyFraction = null);
+
 internal static class WorkerLeaseEndpoints
 {
+    private static readonly JsonSerializerOptions EvidenceJson = new(JsonSerializerDefaults.Web);
+
     public static void MapWorkerLeaseEndpoints(this WebApplication app)
     {
         // A worker asking for something to do. 204 when there is nothing it can run, which is the
@@ -80,6 +207,13 @@ internal static class WorkerLeaseEndpoints
             // A worker that has stopped checking in is not given new work: it may be mid-shutdown,
             // and a job handed over now would only sit until the lease lapsed.
             if (!WorkerLiveness.IsOnline(worker.LastSeenAt, now) || worker.RevokedAt is not null)
+            {
+                return Results.NoContent();
+            }
+
+            // An operator asked this worker to finish what it holds and take no more. Its renewals
+            // and deliveries are untouched; only new offers stop.
+            if (worker.DrainRequestedAt is not null)
             {
                 return Results.NoContent();
             }
@@ -124,6 +258,23 @@ internal static class WorkerLeaseEndpoints
                 .Where(job => shortlist.Contains(job.Id))
                 .ToListAsync(cancellationToken);
 
+            // Who has already given these jobs back, and when. Read in one query rather than per
+            // candidate: the shortlist is 25 jobs and this runs on every check-in from every worker.
+            var handbacks = await db.JobLeases
+                .AsNoTracking()
+                .Where(lease => shortlist.Contains(lease.JobId) && lease.State == LeaseState.Released)
+                .Select(lease => new { lease.JobId, lease.WorkerId, lease.EndedAt })
+                .ToListAsync(cancellationToken);
+            // Distinct workers, not refusals: see HandbackPolicy.MaxRefusingWorkers. One machine
+            // refusing the same job three times is one machine's opinion.
+            var refusingWorkers = handbacks
+                .GroupBy(h => h.JobId)
+                .ToDictionary(g => g.Key, g => g.Select(h => h.WorkerId).Distinct().Count());
+            var lastHandbackHere = handbacks
+                .Where(h => h.WorkerId == worker.Id)
+                .GroupBy(h => h.JobId)
+                .ToDictionary(g => g.Key, g => g.Max(h => h.EndedAt));
+
             var candidates = shortlist
                 .Select(id => loaded.FirstOrDefault(job => job.Id == id))
                 .Where(job => job is not null)
@@ -146,6 +297,19 @@ internal static class WorkerLeaseEndpoints
                     continue;
                 }
 
+                // A job this worker already gave back, or that too many workers have given back.
+                // Offering it again straight away is a loop that re-downloads the source each time.
+                lastHandbackHere.TryGetValue(job.Id, out var handedBackHere);
+                refusingWorkers.TryGetValue(job.Id, out var refusedBy);
+                if (!HandbackPolicy.MayOffer(handedBackHere, refusedBy, now))
+                {
+                    logger.LogInformation(
+                        "Job {JobId} not offered to worker {Worker}: {Reason}",
+                        job.Id, worker.Name,
+                        HandbackPolicy.Explain(handedBackHere, refusedBy, now));
+                    continue;
+                }
+
                 // The same preparation local dispatch runs, with the encoder chosen from what this
                 // worker proved. A refusal is ordinary — an adaptive library, a remux, an encoder
                 // the worker lacks — and is logged rather than surfaced, since the worker's answer
@@ -153,15 +317,27 @@ internal static class WorkerLeaseEndpoints
                 var plan = await dispatcher.PrepareRemoteWorkAsync(job.Id, capabilities, cancellationToken);
                 if (plan.Assignment is not { } assignment)
                 {
-                    logger.LogDebug(
+                    logger.LogInformation(
                         "Job {JobId} not offered to worker {Worker}: {Reason}",
                         job.Id, worker.Name, plan.Reason);
                     continue;
                 }
 
+                if (assignment.FullVerification is not null && worker.ProtocolVersion < 2)
+                {
+                    WorkerProblems.Record(worker, "Sidecar-only verification requires an updated sidecar (protocol 2).", now);
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+
                 var requirements = new JobRequirements(
                     VideoEncoder: assignment.VideoEncoder,
-                    HardwareDecoder: null,
+                    // Null when the audio is copied. When the command names one it has to be
+                    // proved: the library form offers Opus and MP3, and a sidecar whose FFmpeg
+                    // lacks libopus or libmp3lame can only fail the job and hand it straight back.
+                    AudioEncoder: assignment.AudioEncoder,
+                    // Named only when the command actually uses one, and then it must be proved.
+                    HardwareDecoder: assignment.HardwareDecoder,
                     // Only a job whose policy will judge VMAF needs a worker that can score it.
                     Vmaf: assignment.Verification.QualityGateEnabled ? VmafCapability.Cpu : VmafCapability.None,
                     // Scratch for the candidate plus headroom; a worker that cannot hold the output
@@ -171,7 +347,10 @@ internal static class WorkerLeaseEndpoints
                 var match = WorkerCapabilityMatcher.Match(capabilities, requirements);
                 if (!match.Accepted)
                 {
-                    logger.LogDebug(
+                    // Information, not Debug. A paired worker sitting idle beside a full queue is
+                    // the single most confusing thing this feature can do, and the reason was
+                    // written only at a level nobody runs in production.
+                    logger.LogInformation(
                         "Job {JobId} not offered to worker {Worker}: {Reasons}",
                         job.Id, worker.Name, string.Join(" ", match.Reasons));
                     continue;
@@ -190,10 +369,29 @@ internal static class WorkerLeaseEndpoints
                     // Bound to the lease so delivery names the candidate by the contract, not by
                     // the source; the replacement's final extension comes from that name.
                     OutputExtension = assignment.OutputExtension,
+                    HardwareDecoder = assignment.HardwareDecoder,
+                    // What the worker was asked to measure, fixed now so the evidence it returns is
+                    // judged against this, not against a policy that may have changed since.
+                    // The first candidate to measure, and how. Held on the lease so a report can be
+                    // checked against the question that was actually asked.
+                    AdaptiveAskedQuality = assignment.Search?.Quality,
+                    AdaptiveContractJson = assignment.Search is null
+                        ? null
+                        : JsonSerializer.Serialize(assignment.Search.Measurement, EvidenceJson),
+                    VerificationWorkJson = assignment.VerificationWorkJson,
+                    VerificationContractJson = assignment.FullVerification is null ? null
+                        : JsonSerializer.Serialize(assignment.FullVerification, EvidenceJson),
+                    QualityContractJson = assignment.Quality is null
+                        ? null
+                        : JsonSerializer.Serialize(assignment.Quality, EvidenceJson),
                 });
 
                 // The exclusion that matters: off the queue, so this machine will not also run it.
                 job.Status = JobStatus.Leased;
+                // The queue shows these for every job. For a remote job they must be what the
+                // worker will actually run, not whatever this server last ran for it.
+                job.VideoEncoder = assignment.VideoEncoder;
+                job.FfmpegArguments = string.Join(' ', assignment.Arguments);
 
                 try
                 {
@@ -212,6 +410,9 @@ internal static class WorkerLeaseEndpoints
                 return Results.Ok(new AssignmentDto(
                     lease.Id,
                     job.Id,
+                    // The file name rather than the whole relative path: the worker shows this in
+                    // a narrow menu, and the folders above it are the server's business.
+                    Path.GetFileName(job.MediaFile.RelativePath),
                     job.MediaFile.SizeBytes,
                     assignment.VideoEncoder,
                     requirements.Vmaf.ToString(),
@@ -225,7 +426,11 @@ internal static class WorkerLeaseEndpoints
                         policy.VmafFrameSubsample,
                         policy.ClipVmafEnabled,
                         policy.MinimumVmafHarmonicMean,
-                        policy.MinimumVmafMin)));
+                        policy.MinimumVmafMin,
+                        assignment.Quality?.Commands ?? [],
+                        assignment.Quality?.Sampling ?? "None"),
+                    AdaptiveSearchWire.From(assignment.Search, policy),
+                    assignment.FullVerification));
             }
 
             return Results.NoContent();
@@ -236,20 +441,369 @@ internal static class WorkerLeaseEndpoints
 
         app.MapPost("/api/workers/leases/{leaseId:guid}/renew", async (
             Guid leaseId,
+            RenewRequest? request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            RemoteStage? stage = null;
+            if (!string.IsNullOrWhiteSpace(request?.Stage))
+            {
+                // Names are the contract. An unknown one is refused rather than dropped, so a
+                // sidecar built against a newer stage list finds out at once instead of showing a
+                // job that never seems to move.
+                if (!Enum.TryParse<RemoteStage>(request.Stage, ignoreCase: true, out var parsed)
+                    || !Enum.IsDefined(parsed))
+                {
+                    return ApiErrors.BadRequest("worker.lease.stageInvalid",
+                        $"Unknown stage: {request.Stage}. Expected one of {string.Join(", ", Enum.GetNames<RemoteStage>())}.");
+                }
+
+                stage = parsed;
+            }
+
+            (int JobId, double Progress)? report = null;
+            var result = await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Renew(workerId, now),
+                (stored, job, outcome) =>
+                {
+                    // A renewal changes nothing about who owns the job; it may say where the
+                    // worker has got to, which is what the queue and the Workers tab show.
+                    if (stage is { } reported)
+                    {
+                        stored.Stage = reported;
+                    }
+
+                    if (request?.EncodedSeconds is { } encoded && encoded >= 0)
+                    {
+                        stored.EncodedSeconds = encoded;
+                        if (job.MediaFile?.DurationSeconds is { } duration && duration > 0)
+                        {
+                            // Held under 100% until the candidate is actually delivered, the same
+                            // convention the local encode uses so a bar never sits at "done".
+                            job.Progress = Math.Clamp(encoded / duration, 0, 0.99);
+                            report = (job.Id, job.Progress);
+                        }
+                    }
+                },
+                lease => Results.Ok(new LeaseRenewedDto(lease.Id, lease.ExpiresUtc)),
+                renewing => WorkerEndpoints.RecordLoad(
+                    renewing, request?.CpuBusyFraction, request?.GpuBusyFraction));
+
+            if (report is { } progress)
+            {
+                await hub.Clients.All.SendAsync("jobProgress", new
+                {
+                    jobId = progress.JobId,
+                    progress = progress.Progress,
+                    fps = (double?)null,
+                    speed = (double?)null,
+                    etaSeconds = (double?)null,
+                    finishing = false,
+                }, cancellationToken);
+            }
+
+            return result;
+        })
+        .WithName("RenewLease")
+        .Produces<LeaseRenewedDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+
+        // The worker's libvmaf logs, delivered before the candidate. Every number is parsed and
+        // pooled here by the same code that reads a local measurement; the worker sends only what
+        // ffmpeg wrote. Accepted logs are bound to the hashes the worker declares, and are used
+        // only if the candidate it then delivers carries the same hash.
+        // One exchange of the per-title quality search: the worker reports what it measured, and
+        // is told what to do next. At most four of these happen per job.
+        app.MapPost("/api/workers/leases/{leaseId:guid}/quality-probe", async (
+            Guid leaseId,
+            AdaptiveProbeRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            QueueDispatcher dispatcher,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken) =>
+        {
+            var logger = loggerFactory.CreateLogger("Optimisarr.Api.Workers.AdaptiveSearch");
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
+            var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+            if (worker is null)
+            {
+                return WorkerGate.Unauthenticated();
+            }
+
+            var lease = await db.JobLeases
+                .Include(l => l.Job)
+                .ThenInclude(job => job!.MediaFile)
+                .ThenInclude(media => media!.Library)
+                .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
+            if (lease is null)
+            {
+                return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
+            }
+
+            if (lease.WorkerId != worker.Id)
+            {
+                return Results.Json(
+                    new ApiError("worker.lease.notHolder", "That lease belongs to another worker."),
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            if (lease.ToDomain().StateAt(DateTimeOffset.UtcNow) != LeaseState.Held)
+            {
+                // The search dies with the lease. Half a search proves nothing on its own, and the
+                // evidence is bound to the encoder that produced it, so the next holder starts over.
+                return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+            }
+
+            if (lease.AdaptiveAskedQuality is not { } asked)
+            {
+                return ApiErrors.Conflict("worker.search.notRequested",
+                    "This lease was not asked to search for a quality.");
+            }
+
+            // The search's own contract, not the one the finished candidate will be verified
+            // against: a sample is a clip judged from its own first frame, while the final
+            // measurement cuts windows out of a whole file.
+            var contract = lease.AdaptiveContractJson is { } contractJson
+                ? JsonSerializer.Deserialize<RemoteQualityContract>(contractJson, EvidenceJson)
+                : null;
+            if (contract is null)
+            {
+                return ApiErrors.Conflict("worker.search.notRequested",
+                    "This lease asked for no quality search, so no measurement can be reported.");
+            }
+
+            // Judged and centred exactly as a local search would be. Both facts come from the
+            // job's own work rather than being reconstructed here, because an approximate policy
+            // would leave out the catastrophic floor and a different baseline would bracket around
+            // a different number.
+            if (await dispatcher.GetSearchContextAsync(lease.JobId, cancellationToken)
+                is not var (policy, baseline))
+            {
+                return ApiErrors.Conflict("worker.search.notRequested",
+                    "This job can no longer be read, so its search cannot continue.");
+            }
+
+            var prior = lease.AdaptiveProbesJson is { } probesJson
+                ? JsonSerializer.Deserialize<List<AdaptiveQualityProbe>>(probesJson, EvidenceJson) ?? []
+                : [];
+
+            var progress = AdaptiveSearchCoordinator.Advance(
+                baseline, prior, asked, 
+                new AdaptiveSearchReport(request.Quality, request.EncodedBytes, request.Logs ?? []),
+                contract,
+                policy);
+            if (progress is null)
+            {
+                return ApiErrors.BadRequest("worker.search.reportInvalid",
+                    "That report measured a quality this lease did not ask for, or its logs carry no usable score.");
+            }
+
+            lease.AdaptiveProbesJson = JsonSerializer.Serialize(progress.Probes, EvidenceJson);
+
+            // Worded as the local search words it, because the two are the same search and a
+            // reader should not have to know which machine ran it to read the outcome.
+            var probe = progress.Probes.Last();
+            logger.LogInformation(
+                "Job {JobId}: adaptive quality candidate {Quality} {Outcome} the VMAF target on {Worker} with {EncodedBytes} encoded video bytes ({Scores})",
+                lease.JobId,
+                probe.Quality,
+                probe.MeetsTarget ? "met" : "missed",
+                worker.Name,
+                probe.EncodedBytes,
+                AdaptiveProbeReport.Describe(probe, policy));
+
+            if (progress.Decision.Complete)
+            {
+                lease.AdaptiveAskedQuality = null;
+                // Recorded on the job, exactly as a local search records it. Without this the
+                // server would not know what the worker is encoding at: the value would exist only
+                // in the reply the worker acted on, so a recovery retry would start from nothing
+                // and the queue would show no chosen quality at all.
+                if (lease.Job is { } searched)
+                {
+                    searched.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    searched.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                await db.SaveChangesAsync(cancellationToken);
+
+                // Rebuilt now the quality exists, for this worker's encoder. The assignment's
+                // arguments were fixed before the search and name the library's value.
+                var settled = await dispatcher.PrepareRemoteWorkAsync(
+                    lease.JobId, worker.ToCapabilities(), cancellationToken,
+                    forceStrictVerification: lease.VerificationContractJson is not null);
+
+                if (lease.VerificationContractJson is not null)
+                {
+                    lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                return Results.Ok(new AdaptiveProbeDirectionDto(
+                    null,
+                    progress.Decision.SelectedQuality,
+                    progress.Decision.Reason,
+                    settled.Assignment?.Arguments));
+            }
+
+            // Planned for this worker, so every candidate is measured on the encoder that will do
+            // the real encode — which is the whole reason the search travels with the job.
+            var next = await dispatcher.PlanAdaptiveStepAsync(
+                lease.JobId, progress.Decision.NextQuality!.Value, worker.ToCapabilities(), cancellationToken);
+            if (next is null)
+            {
+                // The search cannot be expressed any further, so it ends where it stands rather
+                // than leaving the worker waiting for an instruction that will not come.
+                lease.AdaptiveAskedQuality = null;
+                if (lease.Job is { } stalled)
+                {
+                    stalled.AdaptiveVideoQuality = progress.Decision.SelectedQuality;
+                    stalled.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+                await db.SaveChangesAsync(cancellationToken);
+                var fallback = await dispatcher.PrepareRemoteWorkAsync(
+                    lease.JobId, worker.ToCapabilities(), cancellationToken,
+                    forceStrictVerification: lease.VerificationContractJson is not null);
+                if (lease.VerificationContractJson is not null)
+                {
+                    lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                return Results.Ok(new AdaptiveProbeDirectionDto(
+                    null,
+                    progress.Decision.SelectedQuality,
+                    "No further candidate could be planned; encoding at the selected quality.",
+                    fallback.Assignment?.Arguments));
+            }
+
+            lease.AdaptiveAskedQuality = next.Quality;
+            lease.AdaptiveContractJson = JsonSerializer.Serialize(next.Measurement, EvidenceJson);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(new AdaptiveProbeDirectionDto(
+                AdaptiveSearchWire.From(next, policy), null, progress.Decision.Reason));
+        })
+        .WithName("ReportAdaptiveProbe")
+        .Produces<AdaptiveProbeDirectionDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status404NotFound)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
+        app.MapPost("/api/workers/leases/{leaseId:guid}/quality", async (
+            Guid leaseId,
+            QualityEvidenceRequest request,
             HttpRequest http,
             SettingsStore settings,
             OptimisarrDbContext db,
             CancellationToken cancellationToken) =>
-            await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
-                (lease, workerId, now) => lease.Renew(workerId, now),
-                (job, outcome) =>
+        {
+            if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
+            {
+                return refused;
+            }
+
+            var worker = await WorkerAuth.ResolveAsync(http, db, cancellationToken);
+            if (worker is null)
+            {
+                return WorkerGate.Unauthenticated();
+            }
+
+            var lease = await db.JobLeases
+                .Include(l => l.Job)
+                .ThenInclude(job => job!.MediaFile)
+                .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
+            if (lease is null)
+            {
+                return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
+            }
+
+            if (lease.WorkerId != worker.Id)
+            {
+                return Results.Json(
+                    new ApiError("worker.lease.notHolder", "That lease belongs to another worker."),
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            if (lease.ToDomain().StateAt(now) != LeaseState.Held)
+            {
+                return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
+            }
+
+            var contract = lease.QualityContractJson is { } contractJson
+                ? JsonSerializer.Deserialize<RemoteQualityContract>(contractJson, EvidenceJson)
+                : null;
+            if (contract is null)
+            {
+                return ApiErrors.Conflict("worker.quality.notRequested",
+                    "This lease asked for no quality measurement, so none can be reported.");
+            }
+
+            if (request.Logs is null || request.Logs.Count != contract.WindowCount)
+            {
+                return ApiErrors.BadRequest("worker.quality.windowCount",
+                    $"Expected {contract.WindowCount} libvmaf log(s), one per command sent, but received {request.Logs?.Count ?? 0}.");
+            }
+
+            var relativePath = lease.Job?.MediaFile?.RelativePath ?? $"job {lease.JobId}";
+            if (!string.Equals(lease.Job?.SourceSha256, request.SourceSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                WorkerProblems.Record(worker,
+                    $"Its quality evidence for {relativePath} was measured against a different source and was refused.",
+                    now);
+                await db.SaveChangesAsync(cancellationToken);
+                return ApiErrors.Conflict("worker.quality.sourceMismatch",
+                    "That evidence was measured against a different source than this job's.");
+            }
+
+            var windows = new List<QualityResult>(contract.WindowCount);
+            foreach (var log in request.Logs)
+            {
+                var parsed = string.IsNullOrWhiteSpace(log) ? null : QualityScoreParser.Parse(log);
+                if (parsed is null)
                 {
-                    // A renewal changes nothing about the job; it still belongs to the worker.
-                },
-                lease => Results.Ok(new LeaseRenewedDto(lease.Id, lease.ExpiresUtc))))
-        .WithName("RenewLease")
-        .Produces<LeaseRenewedDto>()
-        .Produces<ApiError>(StatusCodes.Status401Unauthorized);
+                    return ApiErrors.BadRequest("worker.quality.logInvalid",
+                        "A returned log is not a libvmaf JSON log with pooled VMAF metrics.");
+                }
+
+                windows.Add(QualityResult.Ok(parsed with { ModelVersion = contract.Model }));
+            }
+
+            var pooled = QualityScoreAggregator.Combine(windows, contract.Sampling);
+            if (!pooled.Measured || pooled.Scores is null)
+            {
+                return ApiErrors.BadRequest("worker.quality.logInvalid",
+                    pooled.Error ?? "The returned logs produced no usable score.");
+            }
+
+            lease.QualityScoresJson = JsonSerializer.Serialize(pooled.Scores, EvidenceJson);
+            lease.QualitySourceSha256 = request.SourceSha256;
+            lease.QualityCandidateSha256 = request.CandidateSha256;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(new QualityEvidenceAcceptedDto(
+                lease.Id,
+                pooled.Scores.VmafHarmonicMean,
+                pooled.Scores.VmafFifthPercentile,
+                pooled.Scores.VmafMin,
+                pooled.Scores.FrameCount));
+        })
+        .WithName("ReportQualityEvidence")
+        .Produces<QualityEvidenceAcceptedDto>()
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
 
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
             Guid leaseId,
@@ -259,11 +813,14 @@ internal static class WorkerLeaseEndpoints
             CancellationToken cancellationToken) =>
             await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
                 (lease, workerId, now) => lease.Release(workerId, now),
-                (job, outcome) =>
+                (_, job, outcome) =>
                 {
-                    // Giving a job up must never strand it, so it goes straight back on the queue
-                    // for this machine or another worker to pick up.
-                    job.Status = JobStatus.Queued;
+                    // Requeue unfinished work, but preserve cancellation if it won while the
+                    // worker was stopping its child process. Release still frees lease capacity.
+                    if (job.Status == JobStatus.Leased)
+                    {
+                        job.Status = JobStatus.Queued;
+                    }
                 },
                 _ => Results.NoContent()))
         .WithName("ReleaseLease")
@@ -284,8 +841,11 @@ internal static class WorkerLeaseEndpoints
         OptimisarrDbContext db,
         CancellationToken cancellationToken,
         Func<WorkerLease, int, DateTimeOffset, LeaseResult> operation,
-        Action<Job, LeaseOutcome> applyToJob,
-        Func<WorkerLease, IResult> success)
+        Action<JobLease, Job, LeaseOutcome> applyToJob,
+        Func<WorkerLease, IResult> success,
+        // Runs only once the lease operation has succeeded, so a refused or lapsed renewal records
+        // nothing about the machine that sent it.
+        Action<Worker>? applyToWorker = null)
     {
         if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
         {
@@ -300,6 +860,7 @@ internal static class WorkerLeaseEndpoints
 
         var stored = await db.JobLeases
             .Include(lease => lease.Job)
+            .ThenInclude(job => job!.MediaFile)
             .FirstOrDefaultAsync(lease => lease.Id == leaseId, cancellationToken);
 
         if (stored is null)
@@ -327,11 +888,15 @@ internal static class WorkerLeaseEndpoints
                 return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
         }
 
-        stored.Apply(result.Lease);
+        stored.Apply(result.Lease, now);
         if (stored.Job is not null)
         {
-            applyToJob(stored.Job, result.Outcome);
+            applyToJob(stored, stored.Job, result.Outcome);
         }
+        // The authenticated worker, not `stored.Worker`: that navigation is not included by the
+        // query above, so reaching through it would have compiled, run, and silently recorded
+        // nothing at all.
+        applyToWorker?.Invoke(worker);
 
         await db.SaveChangesAsync(cancellationToken);
         return success(result.Lease);
@@ -351,6 +916,8 @@ internal static class WorkerLeaseEndpoints
         // in memory. Held leases are few, so pulling them and filtering here is cheap.
         var held = await db.JobLeases
             .Include(lease => lease.Job)
+            .ThenInclude(job => job!.MediaFile)
+            .Include(lease => lease.Worker)
             .Where(lease => lease.State == LeaseState.Held)
             .ToListAsync(cancellationToken);
 
@@ -364,6 +931,18 @@ internal static class WorkerLeaseEndpoints
         foreach (var lease in lapsed)
         {
             lease.State = LeaseState.Expired;
+            lease.EndedAt ??= now;
+
+            // The worker may never learn its lease lapsed — it went quiet, which is the whole
+            // reason — so the operator is told instead, on the worker's own card.
+            if (lease.Worker is { } holder)
+            {
+                WorkerProblems.Record(
+                    holder,
+                    $"Its lease on {lease.Job?.MediaFile?.RelativePath ?? $"job {lease.JobId}"} lapsed "
+                    + $"after {WorkerLiveness.OfflineAfter.TotalMinutes:0} minutes of silence; the job went back to the queue.",
+                    now);
+            }
 
             // Only a job still sitting in Leased is ours to hand back. One that moved on — because
             // an operator cancelled it, say — must not be dragged back onto the queue.
@@ -391,10 +970,16 @@ internal static class WorkerLeaseEndpoints
         }
 
         var library = media.Library;
-        if (library?.VideoQualityStrategy == VideoQualityStrategy.AdaptiveVmaf && job.AdaptiveVideoQuality is null)
+        if (library is not null && !WorkPlacementPolicy.MayRunOnWorker(library.WorkPlacement))
         {
             return false;
         }
+
+        // A job whose per-title quality is still unchosen used to be refused here, because the
+        // search could only run on the server. It now travels with the job, so this is no longer a
+        // reason to keep the work local. Whether a search can actually be expressed as commands
+        // needs the source's picture and duration, which this cheap pre-filter does not load —
+        // PrepareRemoteWorkAsync decides that, and refuses the job there if it cannot.
 
         var targetCodec = LibraryRuleResolution.Resolve(library).TargetVideoCodec;
         return targetCodec is not null

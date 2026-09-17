@@ -8,7 +8,7 @@ namespace Optimisarr.Api.Workers;
 /// </summary>
 internal static class RemoteCandidate
 {
-    private const string Prefix = "remote-";
+    internal const string Prefix = "remote-";
 
     /// <param name="extension">The contract's container extension, with its leading dot.</param>
     public static string PathFor(string outputRoot, int jobId, string extension) =>

@@ -22,6 +22,17 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Strict_worker_verification_is_opt_in_and_round_trips()
+    {
+        await using var db = CreateDb();
+        var store = new SettingsStore(db);
+        var original = await store.GetQueueSettingsAsync(CancellationToken.None);
+        Assert.False(original.WorkerVerificationRequired);
+        await store.SetQueueSettingsAsync(original with { WorkerVerificationRequired = true }, CancellationToken.None);
+        Assert.True((await store.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
+    }
+
+    [Fact]
     public async Task Queue_settings_have_conservative_defaults()
     {
         await using var db = CreateDb();
