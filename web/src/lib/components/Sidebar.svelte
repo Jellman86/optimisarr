@@ -87,10 +87,7 @@
 >
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
   <div class="flex min-h-full flex-col">
-  <!-- Brand: the mark above the wordmark, and large enough to read. It earns the room because
-       it reports the server's state — it turns while work runs — and a tesseract cannot resolve
-       at sixteen pixels a side. Nothing is drawn behind it but its own light. The collapsed rail
-       still gets the small one. -->
+  <!-- The cube stays fixed at rest and its slices turn while the server works. -->
   <button
     class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 pt-5 pb-3' : 'pt-7 pb-1'}"
     aria-label={i18n.m.nav.dashboard}
@@ -99,21 +96,12 @@
       layout.closeMobile()
     }}
   >
-    {#if !railCollapsed}
-      <!-- Ambient light behind the mark, so the glow reads as coming off the core rather than
-           being painted on it. Blurred and very low alpha: it should be felt, not seen. -->
-      <span
-        class="pointer-events-none absolute left-1/2 top-9 h-32 w-32 -translate-x-1/2 rounded-full bg-accent/15 blur-2xl"
-        aria-hidden="true"
-      ></span>
-    {/if}
-
     <BrandMark
       class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-36 w-36'}"
     />
 
     {#if !railCollapsed}
-      <!-- Leave the lower light shafts clear of the wordmark. -->
+      <!-- Keep the contact shadow clear of the wordmark. -->
       <span
         class="relative -mt-3 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
       >Optimisarr</span>
