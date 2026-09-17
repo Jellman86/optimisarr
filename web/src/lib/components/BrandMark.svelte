@@ -23,5 +23,5 @@
 {#if usable}
   <canvas bind:this={canvas} width="288" height="288" class="object-contain {className}" aria-hidden="true"></canvas>
 {:else}
-  <img src="/favicon-192.png" alt="" decoding="async" class="object-contain {className}" />
+  <img src={`/brand/favicon-${theme.isDark ? 'dark' : 'light'}-${activity.brandWorking ? 'excited' : 'steady'}.png`} alt="" decoding="async" class="object-contain {className}" />
 {/if}

@@ -293,7 +293,7 @@ test('encoder effort uses portable choices and custom settings remain visible on
   await effort.selectOption('efficient')
   await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button', { name: 'Films', exact: true }).click()
   await expect(page).toHaveURL(/#\/libraries\/1\/configure$/)
-  await expect(page.getByRole('button', { name: /Encode/ })).toContainText('Custom settings: 1')
+  await expect(page.getByRole('button', { name: /^2 \/ 4 Encode/ })).toContainText('Custom settings: 1')
 })
 
 test('legacy effort values are preserved until deliberately changed', async ({ page }) => {

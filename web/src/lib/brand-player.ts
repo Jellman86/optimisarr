@@ -1,21 +1,19 @@
-// The expensive light transport is baked offline. All visible marks share decoded WebP assets;
-// the runtime copies tiles at 12 fps while idle and 24 fps during work, when motion is welcome.
-const FRAMES = 48
-const COLUMNS = 8
-const IDLE_FRAME_MS = 1000 / 12
-const WORKING_FRAME_MS = 1000 / 24
-const FADE_MS = 450
-const images = new Map<string, Promise<HTMLImageElement>>()
+import { createBrandMotion } from './brand-motion'
+import type { createBrandRenderer } from './brand-renderer'
 
+const images = new Map<string, Promise<HTMLImageElement>>()
 function loadImage(path: string) {
   let promise = images.get(path)
   if (!promise) {
     const image = new Image()
     image.src = path
-    promise = image.decode().then(() => image).catch(error => {
-      images.delete(path)
-      throw error
-    })
+    promise = image
+      .decode()
+      .then(() => image)
+      .catch((error) => {
+        images.delete(path)
+        throw error
+      })
     images.set(path, promise)
   }
   return promise
@@ -23,172 +21,150 @@ function loadImage(path: string) {
 
 export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)')
-  const snapshot = document.createElement('canvas')
-  let working = false
-  let dark = true
-  let visible = false
-  let disposed = false
-  let size = 0
-  let frame = 0
-  let lastPaint = 0
-  let timer = 0
-  let fadeStart = 0
-  let fading = false
-  let pending = 0
+  const motion = createBrandMotion()
+  let renderer: ReturnType<typeof createBrandRenderer> | undefined
+  let working = false,
+    dark = true,
+    visible = false,
+    disposed = false,
+    graphicsFailed = false
+  let size = 0,
+    lastPaint = 0,
+    timer = 0,
+    pending = 0
+  let preparing = false
   let still: HTMLImageElement | undefined
-  let atlas: HTMLImageElement | undefined
-  let atlasSize = 0
-  let loadedState = ''
+  let stillPath = ''
 
   function stop() {
     window.clearTimeout(timer)
     timer = 0
     lastPaint = 0
+    canvas.dataset.lightMotion = 'still'
   }
-
+  function available() {
+    return !disposed && visible && !document.hidden && size > 0
+  }
   function paint() {
     window.clearTimeout(timer)
     timer = 0
-    if (disposed || !visible || document.hidden || !size || !still) return
-    const playing = !reduced.matches && Boolean(atlas)
-    canvas.dataset.lightMotion = playing ? 'playing' : 'still'
+    if (!available()) return
     canvas.dataset.lightState = working ? 'excited' : 'steady'
+    let source: CanvasImageSource | undefined = still
+    if (renderer && !reduced.matches) {
+      const now = performance.now()
+      let elapsed = lastPaint ? Math.min(0.2, (now - lastPaint) / 1000) : 0
+      lastPaint = now
+      // Fixed upper step size keeps the spring response consistent across frame rates.
+      motion.step(0, working)
+      while (elapsed > 0) {
+        const dt = Math.min(1 / 120, elapsed)
+        motion.step(dt, working)
+        elapsed -= dt
+      }
+      try {
+        source = renderer.render(motion, dark, size)
+      } catch {
+        renderer.destroy()
+        renderer = undefined
+        graphicsFailed = true
+        void prepare()
+      }
+    }
+    if (!source) return
     ctx.clearRect(0, 0, size, size)
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
-    // The same spectral field needs more contrast against the light theme's pale surfaces.
-    ctx.filter = dark ? 'none' : 'brightness(0.64) saturate(1.4)'
-    if (playing && atlas) {
-      const now = performance.now()
-      const elapsed = lastPaint ? Math.min(200, now - lastPaint) : 0
-      lastPaint = now
-      // One circuit in 36 seconds at rest, six seconds while working. Elapsed time keeps
-      // the speed independent of frame rate; hidden/offscreen periods never advance the pose.
-      frame = (frame + elapsed * FRAMES / (working ? 6000 : 36000)) % FRAMES
-      const brightness = working ? 1 : 0.78
-      const first = Math.floor(frame)
-      const mix = frame - first
-      ctx.globalAlpha = (1 - mix) * brightness
-      ctx.drawImage(atlas, (first % COLUMNS) * atlasSize, Math.floor(first / COLUMNS) * atlasSize,
-        atlasSize, atlasSize, 0, 0, size, size)
-      // Interpolate between baked poses at either playback speed. Add premultiplied
-      // contributions so overlapping transparent shafts retain their original brightness.
-      const second = (first + 1) % FRAMES
-      ctx.globalAlpha = mix * brightness
-      ctx.globalCompositeOperation = 'lighter'
-      ctx.drawImage(atlas, (second % COLUMNS) * atlasSize, Math.floor(second / COLUMNS) * atlasSize,
-        atlasSize, atlasSize, 0, 0, size, size)
-      ctx.globalCompositeOperation = 'source-over'
-      ctx.globalAlpha = 1
-    } else {
-      const inset = size <= 80 ? still.width * 60 / 576 : 0
-      ctx.drawImage(still, inset, inset, still.width - inset * 2, still.height - inset * 2, 0, 0, size, size)
-    }
-    ctx.filter = 'none'
-    if (!dark) {
-      const radius = size / 144
-      const core = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, radius)
-      core.addColorStop(0, 'rgba(255,255,255,1)')
-      core.addColorStop(1, 'rgba(255,255,255,0)')
-      ctx.fillStyle = core
-      ctx.fillRect(size / 2 - radius, size / 2 - radius, radius * 2, radius * 2)
-    }
-    if (fading) {
-      const remaining = 1 - (performance.now() - fadeStart) / FADE_MS
-      if (remaining > 0 && !reduced.matches) {
-        ctx.globalAlpha = remaining
-        ctx.drawImage(snapshot, 0, 0, size, size)
-        ctx.globalAlpha = 1
-      } else fading = false
-    }
-    if (playing || fading) timer = window.setTimeout(paint, working || fading ? WORKING_FRAME_MS : IDLE_FRAME_MS)
+    ctx.drawImage(source, 0, 0, size, size)
+    const playing = Boolean(renderer) && !reduced.matches
+    canvas.dataset.lightMotion = playing ? 'playing' : 'still'
+    if (playing) timer = window.setTimeout(paint, 1000 / (working || motion.mode !== 'rest' ? 30 : 24))
   }
 
   async function prepare() {
-    if (disposed || !visible || document.hidden || !size) return
-    const desiredAtlasSize = size > 80 ? 288 : 80
-    const animated = !reduced.matches
-    const key = `${working}:${animated}:${desiredAtlasSize}`
-    if (loadedState === key) { paint(); return }
+    if (!available()) return
+    if (renderer && !reduced.matches) {
+      paint()
+      return
+    }
+    const path = `/brand/${dark ? 'dark' : 'light'}-${working ? 'excited' : 'steady'}.webp`
     const request = ++pending
-    try {
-      const nextStill = await loadImage(`/brand/${working ? 'excited' : 'steady'}.webp`)
-      if (disposed || request !== pending) return
-      still = nextStill
-      atlas = undefined
-      // Show a complete icon while the animation loads. Reduced motion never fetches an atlas.
-      paint()
-      const nextAtlas = animated ? await loadImage(`/brand/active${desiredAtlasSize === 80 ? '-small' : ''}.webp`) : undefined
-      if (disposed || request !== pending) return
-      atlas = nextAtlas
-      atlasSize = desiredAtlasSize
-      loadedState = key
-      paint()
-    } catch {
-      if (disposed || request !== pending) return
-      // A blocked/missing animation is a still icon, never a broken UI or a retry loop.
-      if (!still) {
-        try { still = await loadImage('/favicon-192.png') } catch { return }
+    if (stillPath !== path) {
+      let nextStill: HTMLImageElement
+      try {
+        nextStill = await loadImage(path)
+      } catch {
+        try {
+          nextStill = await loadImage('/favicon-192.png')
+        } catch {
+          return
+        }
       }
       if (disposed || request !== pending) return
-      atlas = undefined
-      fading = false
-      loadedState = key
-      paint()
+      still = nextStill
+      stillPath = path
     }
-  }
-
-  function capture() {
-    if (!still || reduced.matches || !visible || document.hidden) return
-    snapshot.width = snapshot.height = size
-    snapshot.getContext('2d')?.drawImage(canvas, 0, 0)
-    fadeStart = performance.now()
-    fading = true
+    paint()
+    if (reduced.matches || renderer || graphicsFailed || preparing || !available()) return
+    preparing = true
+    try {
+      const { createBrandRenderer } = await import('./brand-renderer')
+      if (!available() || reduced.matches) return
+      renderer = createBrandRenderer()
+      // State/theme changes retain this renderer and its original fifteen meshes.
+      paint()
+    } catch {
+      graphicsFailed = true
+      paint()
+    } finally {
+      preparing = false
+    }
   }
 
   function resize() {
     const box = canvas.getBoundingClientRect()
-    // 2x even on a 1x screen; both exported sizes were themselves supersampled at bake time.
     const nextSize = Math.min(288, Math.max(0, Math.ceil(Math.min(box.width, box.height) * 2)))
     if (size === nextSize) return
     size = nextSize
     canvas.width = canvas.height = size || 1
-    fading = false
     void prepare()
   }
   const resizeObserver = new ResizeObserver(resize)
   resizeObserver.observe(canvas)
-  const intersection = new IntersectionObserver(entries => {
+  const intersection = new IntersectionObserver((entries) => {
     visible = entries[0].isIntersecting
-    if (visible) { resize(); void prepare() } else { stop(); canvas.dataset.lightMotion = 'still' }
+    if (visible) {
+      resize()
+      void prepare()
+    } else stop()
   })
   intersection.observe(canvas)
   function visibilityChanged() {
-    if (document.hidden) { stop(); canvas.dataset.lightMotion = 'still' }
+    if (document.hidden) stop()
     else void prepare()
   }
   function preferenceChanged() {
     stop()
-    fading = false
-    if (reduced.matches) canvas.dataset.lightMotion = 'still'
+    if (reduced.matches) {
+      renderer?.destroy()
+      renderer = undefined
+    }
     void prepare()
   }
   document.addEventListener('visibilitychange', visibilityChanged)
   reduced.addEventListener('change', preferenceChanged)
-
   return {
     update(nextWorking: boolean, nextDark: boolean) {
       if (working === nextWorking && dark === nextDark && still) return
-      if (working !== nextWorking) capture()
       working = nextWorking
       dark = nextDark
-      stop()
       void prepare()
     },
     destroy() {
       disposed = true
       pending++
       stop()
+      renderer?.destroy()
       resizeObserver.disconnect()
       intersection.disconnect()
       document.removeEventListener('visibilitychange', visibilityChanged)
