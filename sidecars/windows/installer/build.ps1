@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string] $Version = '0.2.12',
+    [string] $Version = '',
     [string] $OutputDirectory = (Join-Path $PSScriptRoot '..\artifacts'),
     [string] $Python = 'python'
 )
@@ -8,6 +8,8 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+if (-not $Version) { $Version = ([xml](Get-Content (Join-Path $repo 'Directory.Build.props') -Raw)).Project.PropertyGroup.Version }
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Version must be X.Y.Z' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $work = Join-Path ([IO.Path]::GetTempPath()) ('optimisarr-msi-' + [guid]::NewGuid().ToString('N'))
 $payload = Join-Path $work 'payload'
@@ -50,8 +52,9 @@ https://ffmpeg.org/legal.html
 .NET runtime 10.0.12: Microsoft and contributors. MIT and third-party licences
 are included inside runtime/LICENSE.txt and runtime/ThirdPartyNotices.txt.
 Runtime source: https://github.com/dotnet/runtime/tree/v10.0.12
-This development MSI is unsigned. Public distribution requires signing and
-shipping or hosting the exact corresponding sources for the GPL media bundle.
+This Windows preview MSI is unsigned. Upstream licences are in media-notices.
+The matching release supplies checksums and exact corresponding media sources:
+https://github.com/Jellman86/optimisarr/releases/tag/v${Version}
 "@ | Set-Content (Join-Path $payload 'THIRD-PARTY-NOTICES.txt')
     $license = Get-Content (Join-Path $repo 'LICENSE') -Raw
     $rtf = '{\rtf1\ansi\deff0 {\fonttbl {\f0 Segoe UI;}}\f0\fs18 ' + $license.Replace('\', '\\').Replace('{', '\{').Replace('}', '\}').Replace("`n", '\par ') + '}'

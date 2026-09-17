@@ -107,7 +107,7 @@ if the relevant library codec, preset, or quality changed during the session.
 | **Personal quality check** is disabled | Save or discard the library's unsaved changes first. |
 | No suitable source is ready | Scan and probe the library, then choose a long enough video/audio file or a non-animated image. |
 | HDR viewing check blocks preparation | Use an HDR-capable browser/display and keep the library's HDR handling set to Preserve. |
-| Preparation fails | Check `/work` space and permissions, then **Settings → Tools** for encoder availability. |
+| Preparation fails | Check `/work` space and permissions, then **Settings → System → Tools** for encoder availability. |
 | A comparison stream cannot play | Return to the library and retry with a supported browser, codec, or source rather than guessing. |
 | A/V sync fails | The prepared candidate exceeded the strict sync tolerance after exact clipping; inspect its structured failure rather than rating a desynchronised sample. |
 

@@ -41,20 +41,21 @@ turn off sign-in before uninstalling if desired.
 
 ## Validation
 
-The build was compiled on Windows, passed WiX's package validation, and was administratively
-extracted without installing over the running worker. The extracted tray executable launched using its private runtime and rendered native states on
-Windows, and native pipe tests exercised read/pause/resume, ACL rules and invalid requests.
+The Windows build passes WiX package validation and supports administrative extraction. Native
+pipe tests exercise read/pause/resume, ACL rules and invalid requests. The installed tray uses the
+private runtime, renders isolated native fixture states, and checks real window anchoring across
+page changes and disclosure expansion/collapse.
 
 For actual installation/uninstallation, use a disposable elevated Windows VM with no existing
 sidecar or pairing directory:
 
 ```powershell
-./sidecars/windows/installer/test-install.ps1 -Installer ./sidecars/windows/artifacts/OptimisarrSidecar-0.2.12-win-x64.msi
+./sidecars/windows/installer/test-install.ps1 -Installer ./sidecars/windows/artifacts/OptimisarrSidecar-0.2.13-win-x64.msi
 ```
 
 The test refuses an existing sidecar, installs silently, checks registration and private runtimes,
-renders the installed UI, then uninstalls and verifies retained data. The
-`Windows sidecar installer preview` GitHub workflow builds and runs this test on a fresh Windows
+renders the installed UI, checks native popover anchoring, then uninstalls and verifies retained data. The
+`Windows sidecar installer` GitHub workflow builds and runs this test on a fresh Windows
 runner for relevant pull requests and manual dispatches. The live migration from a manually
 registered service to MSI was tested on a paired Windows PC: installation succeeded, retained
 the original pairing, and the installed service checked in with the server. A same-version preview upgrade was also exercised on that PC, preserving pairing and passing
@@ -64,7 +65,15 @@ the installed native anchoring check. Interactive UAC pairing remains a separate
 
 This MSI and tray apphost are **unsigned development artifacts**. Smart App Control or enterprise
 policy may reject an unsigned executable; do not weaken those protections. Public distribution
-still needs code signing and the exact corresponding-source bundle/hosting required by the pinned
-GPL FFmpeg build. Upstream source/build links and runtime licences are included in the package;
-those links alone are not represented as a completed public distribution compliance process.
-The existing worker's strict sidecar-only verification policy is unchanged.
+as a signed installer needs a code-signing process. An explicitly labelled unsigned preview may
+be published only after its exact corresponding-source bundle/hosting for the pinned GPL FFmpeg
+build is available. Upstream source/build links and runtime licences are included in the package;
+those links alone do not establish that the corresponding sources have been supplied.
+The installer does not change the server’s worker-placement or strict verification policy.
+
+The [installer workflow](../../../.github/workflows/windows-installer.yml) uploads CI artifacts.
+On a reviewed `vX.Y.Z` tag it also attaches the tested MSI and checksum to the matching draft release.
+Publish the coordinated release only after container and both native package gates pass and matching
+source archives are available. A tag must match `Directory.Build.props`, which supplies the default
+MSI version. Use `build.ps1 -Version <version>` for an explicit local build and follow the repository
+[release checklist](../../../docs/development/releasing.md).

@@ -170,14 +170,22 @@ This mode is deliberately strict: missing evidence, an unavailable media tool,
 or evidence for different bytes fails the job. Older sidecars cannot claim these assignments;
 upgraded sidecars renegotiate their protocol on heartbeat without needing to pair again.
 The server parses returned JSON and applies the verification policy, but does not invoke media
-tools during verification of that lease. Choose **Worker only** placement as well to prevent
+tools during verification of that lease. Choose **Only on workers** placement as well to prevent
 local encoding fallback when no compatible worker is available.
+
+Exercise that mode with a fresh fleet run by adding `--sidecar-verification` to
+the fleet command above. It is accepted only with `--tier fleet`. The report
+records `strictWorkerVerification`, and each remote result must record
+`verificationLocation: Worker`; server fallback cannot satisfy the assertion.
+Run once without this flag and once with it when validating both configurations.
+The independent reference measurement still runs in the harness to check the
+worker's result; this is test evidence, not production server verification.
 
 This does not make the server idle. Scanning, initial probing, assignment preparation (including
 filter planning), transfers and hashes, database updates, policy evaluation and replacement still
 run there. Preview, calibration, audio-only and image jobs retain their existing local paths.
-Keep the setting off while a fleet is being upgraded; the default preserves compatibility with
-protocol-1 workers.
+The setting defaults off for compatibility with protocol-1 workers. Preserve an already selected
+strict policy during upgrades; unsupported workers cannot claim its assignments.
 
 ## What is asserted
 

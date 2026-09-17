@@ -39,7 +39,7 @@ A row moves from **Implemented** to **Validated** only after all applicable chec
 for the exact image digest or commit. The Tools encoder probe is necessary, but it is not sufficient.
 
 1. Record the date, Optimisarr commit/image digest, host OS, GPU model, driver, and container runtime.
-2. Capture **Settings → Tools** after its real test encode reports the intended encoder available.
+2. Capture **Settings → System → Tools** after its real test encode reports the intended encoder available.
 3. Complete one normal video job and confirm the Queue reports the intended encoder.
 4. With hardware decode enabled, confirm the FFmpeg command uses the intended decode path and the job
    completes. Then exercise a source that forces the documented software-decode fallback.

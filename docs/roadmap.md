@@ -518,9 +518,22 @@ the replacement workflow is trustworthy.
      is needed. All accelerated paths fall back to software, HDR stays on its established
      software colour pipeline, and `n_threads` remains bounded to the core count.
 
-9. **Optional Windows and macOS sidecars for distributed transcoding: started; hidden behind
-   `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS` since 2026-09-10 until the list below is done.** Keep one
-   Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
+9. **Optional Windows and macOS sidecars for distributed transcoding: implemented as an opt-in
+   preview behind `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`.**
+
+   **Current status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
+   quality search and VMAF, and optional protocol-2 full verification without server media-tool
+   fallback. Windows has an MSI-installed service/tray client with tested same-version preview
+   upgrades; Mac has an anchored native popover and packaged media tools. Both use the Stellar
+   application icon. Real hardware and container acceptance results are recorded under
+   [hardware validation](setup/hardware-validation-matrix.md), including deliberate rejection and
+   rollback checks. Windows packages remain unsigned development previews; distribution/signing
+   and any release-specific acceptance requirements must be checked against the platform guides.
+   The detailed dated milestones below explain how the feature developed; they are not a list
+   of capabilities still missing. For current installation and settings, use the
+   [remote worker guide](setup/remote-workers.md).
+
+   Keep one Optimisarr container as the control plane and safety authority, while trusted desktop sidecars
    contribute otherwise-idle CPU/GPU capacity. A sidecar may receive a read-only source, transcode
    it, run the assigned VMAF policy, and return the candidate plus evidence; it can never replace,
    quarantine, move, or delete an original. This remains post-MVP and opt-in: one container must
@@ -779,12 +792,12 @@ the replacement workflow is trustworthy.
         notarisation, update packaging, and the full release-build acceptance run remain; neither
         platform is described as supported until there is real-hardware acceptance evidence.
 
-   - **Preserve the verification boundary.** The sidecar returns the candidate, VMAF measurements,
-     tool/model versions, preparation details, hashes, and captured process evidence as one result
-     bound to the assignment. The main app independently re-probes the returned file and repeats the
-     structural, decode, duration, tail, stream-policy, and size gates before it may enter the
-     existing replacement workflow. A remote VMAF result is accepted only for the exact source and
-     candidate hashes and requested policy; missing or inconsistent evidence fails closed.
+   - **Preserve the verification boundary: implemented in both modes.** The default mode repeats
+     structural/decode checks on the server and uses remote VMAF only for matching bytes and policy.
+     Opt-in strict verification delegates media measurements to a protocol-2 worker; the server
+     validates the contract and hashes and evaluates every required gate from complete evidence.
+     Missing or inconsistent strict evidence fails without local media-tool fallback. Replacement
+     authority always stays on the server; see the [strict verification review](engineering/hardware-validation/2026-09-17-strict-sidecar-verification.md).
    - **Windows sidecar application.** Ship a self-contained background service with a small tray UI
      for pairing, availability, concurrency, current work, logs, updates, and removal. Package and
      test unattended startup, clean upgrades, cancellation, sleep/resume, low-disk handling, CPU
@@ -797,7 +810,7 @@ the replacement workflow is trustworthy.
      compute backend. Test sleep/wake, App Nap, low-disk handling, upgrades, cancellation, and
      permission prompts without requiring broad access to the user's filesystem.
      **Landed so far:** `sidecars/macos`, a Swift package (not an `.xcodeproj`, so the build is
-     reviewable as text) building a `MenuBarExtra` app that pairs by URL and PIN, keeps its
+     reviewable as text) building a menu-bar app that pairs by URL and PIN, keeps its
      credential in the Keychain, and checks in on the interval the server states. It now bundles an
      ffmpeg built from pinned source and reports what this Mac proves it can do — each VideoToolbox
      encoder confirmed by a real throwaway encode, hardware decode by an encode-then-decode round
@@ -812,10 +825,11 @@ the replacement workflow is trustworthy.
      done so end to end on real Apple Silicon hardware against a server built from `dev`, with the
      candidate passing every server gate including VMAF. Launch-at-login, sleep/wake, App Nap,
      drain controls, concurrent jobs, and a pre-transfer low-disk refusal have landed too.
-     Every long-running stage now renews the lease and cancels its transfer or process if the lease
-     is lost. **Still to build:** upgrade packaging, Developer ID signing and notarisation, and the
-     full acceptance run on a release build.
-     Neither platform is described as supported until that list is done.
+     Every long-running stage renews the lease and cancels its transfer or process if the lease
+     is lost. Packaging and native UI have since landed; the current Mac uses `NSStatusItem` and an
+     anchored `NSPopover`, including resize regression tests. Consult the current platform release
+     guides for signing/notarisation status rather than treating historical development builds as
+     certified releases.
    - **Operational UI and acceptance evidence.** The main app shows each worker's trustworthy name,
      platform, version, capabilities, health, load, active lease, transfer progress, and last error;
      worker removal immediately prevents new assignments. Automated contract and end-to-end tests

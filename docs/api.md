@@ -245,11 +245,19 @@ Settings fields include:
   "encoderMode": "Auto",
   "hardwareDecode": true,
   "hdrToneMapMode": "Software",
+  "remoteWorkersEnabled": false,
+  "workerVerificationRequired": false,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
 }
 ```
+
+`remoteWorkersEnabled` enables the preview worker service when available.
+`workerVerificationRequired` requires complete worker verification for newly issued remote
+full-file video assignments; it defaults off and is separate from per-library work placement.
+`remoteWorkersAvailable` is returned as server capability information, not a toggle that can enable
+the feature without its environment flag. See [Remote Workers](#remote-workers) for the contract.
 
 `replacementQuarantineRetentionDays` retains its historical wire name for API and
 configuration-backup compatibility. It is the general cleanup-retention window:
@@ -537,10 +545,11 @@ with this server's URL. The code lives five minutes, redeems once, and is destro
 guesses rather than throttled, so a code short enough to retype is safe on its attempt budget rather
 than its length.
 
-`POST /api/workers/pair` is the **only** worker route reachable without the admin token — a pairing
-sidecar holds the PIN and nothing else, so that route authenticates itself. It is inert unless an
-operator has just issued a code, and returns nothing without the correct one. Every other worker
-route stays behind the admin token.
+`POST /api/workers/pair` authenticates with the one-time PIN and does not require the admin token.
+Heartbeat, claim, and `/api/workers/leases/...` routes authenticate with the paired worker's bearer
+credential. They do not require or grant access to the admin token. Operator routes such as issuing
+pairing codes, listing machines, drain/resume, revocation, and forgetting a worker use the configured
+admin authentication.
 
 The credential is returned exactly once, in the pairing response. Optimisarr stores only its SHA-256
 fingerprint and cannot reproduce it. Revoking clears the fingerprint, which ends the worker's access
@@ -582,9 +591,12 @@ sidecar learns of a drain on its next check-in rather than at the end of its job
 | `DELETE` | `/api/workers/{id}` | Revoke a worker. Clears its credential and drains it; keeps the record. |
 | `POST` | `/api/workers/{id}/drain` | Ask a worker to finish what it holds and take no more. Its leases still renew and deliver; only new claims are refused. Idempotent; returns the worker row with `drainRequestedAt` set and `heldLeases`, the jobs the drain is waiting on. |
 | `DELETE` | `/api/workers/{id}/drain` | Resume a drained worker. `409 worker.revoked` for a revoked worker, which can only come back by pairing again. |
+| `POST` | `/api/workers/{id}/forget` | Remove a worker record and its lease history. Admin authentication; `409 worker.stillWorking` while it holds any job. Unlike revocation, this removes the displayed record. |
 | `POST` | `/api/workers/claim` | Ask for work. Returns one assignment, or `204` when nothing matches the worker's proved capabilities — the ordinary answer, not an error. Worker credential. |
-| `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. Optional body `{ "stage": "FetchingSource" \| "Encoding" \| "Delivering", "encodedSeconds": 123.4 }` says where the worker is, and optional `cpuBusyFraction`/`gpuBusyFraction` say how busy its machine is; the server scales encoded seconds against the source duration into the job's progress and pushes it over `jobProgress`. `400 worker.lease.stageInvalid` for an unknown stage, `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/renew` | Extend a claim. Optional body `{ "stage": "FetchingSource" \| "Encoding" \| "Measuring" \| "Delivering", "encodedSeconds": 123.4 }` says where the worker is, and optional `cpuBusyFraction`/`gpuBusyFraction` say how busy its machine is; the server scales encoded seconds against the source duration into the job's progress and pushes it over `jobProgress`. `400 worker.lease.stageInvalid` for an unknown stage, `403` if the lease belongs to another worker, `409` once it has lapsed. |
+| `POST` | `/api/workers/leases/{leaseId}/quality-probe` | Report an assigned adaptive sample's quality, encoded size and VMAF logs. Worker credential. The server advances the bounded search and returns the next step or the selected quality and final encode arguments; the worker does not select its own final quality. |
 | `POST` | `/api/workers/leases/{leaseId}/quality` | Report the libvmaf JSON logs for the commands the assignment carried, with `sourceSha256` and `candidateSha256`. The server parses and pools them itself and stores the result on the lease; `400 worker.quality.windowCount` / `worker.quality.logInvalid`, `409 worker.quality.notRequested` when the assignment asked for no measurement, `409 worker.quality.sourceMismatch` for another source. Evidence is used at verification only if the candidate then delivered carries the same hash. |
+| `POST` | `/api/workers/leases/{leaseId}/verification` | Submit full verification evidence for the lease's contract, bound to source and candidate hashes. Worker credential. A matching retry is idempotent; a different second report returns `409 worker.verification.alreadyRecorded`. A wrong contract or hash returns `409`. Negative/incomplete evidence is retained so strict verification can fail the job without local fallback. |
 | `POST` | `/api/workers/leases/{leaseId}/release` | Give a job back. It returns to the queue immediately. |
 | `GET` | `/api/workers/leases/{leaseId}/result/offset` | How many bytes of a resumable delivery the server holds for this lease (`bytes`). Zero before the first chunk. |
 | `PATCH` | `/api/workers/leases/{leaseId}/result` | Append one chunk at `X-Optimisarr-Offset`. `409 worker.result.offsetMismatch` with the real `bytes` when the offsets disagree, so the worker resumes from the truth. Staged by lease, so a resumed upload can only continue its own transfer. |
@@ -593,19 +605,34 @@ sidecar learns of a drain on its next check-in rather than at the end of its job
 | `GET` | `/api/workers/leases/{leaseId}/source` | Stream the source for a held lease. Supports `Range` for resumable transfer, and returns `X-Optimisarr-Source-Sha256` so the worker can verify what it received. |
 
 A delivered candidate is written to the same work directory a local transcode would have used, and
-the job moves to `Verifying` — never to `ReadyToReplace`. Verification has not run at that point, and
-a candidate produced elsewhere earns nothing until every local gate has been repeated against it.
-Nothing about delivering a result touches the original.
+the job moves to `AwaitingVerification` — never directly to `ReadyToReplace`. The server must still
+evaluate all required gates before replacement is possible. Delivering a result never touches the
+original.
 
-The assignment's `quality` block carries the server's own libvmaf command per measurement window
+The assignment's `quality` block carries the server's libvmaf command per measurement window
 (`commands`, with `{{distorted}}`, `{{reference}}` and `{{log}}` placeholders) and the `sampling`
-those windows represent, fixed at claim and recorded on the lease. A worker that returns its logs
-before delivering spares the server the VMAF pass, which is roughly half the cost of verification;
-every other gate is still repeated locally. The command decodes with a hardware decoder only
-when the worker proved it and it belongs to the encoder's family; the lease records the decoder,
-and a candidate that fails with decoder corruption requeues the job for software decode. Evidence that is missing, names other bytes, or was
-measured under a weaker policy than the library now requires is not used: the server measures
-VMAF itself and writes the reason on the worker's card.
+those windows represent, fixed at claim and recorded on the lease. The worker returns the raw logs
+with both file hashes before delivering the candidate. The server parses and pools quality itself;
+it does not accept a worker-supplied pass/fail verdict.
+
+With `workerVerificationRequired: false` (the default), usable remote quality evidence avoids the
+server's VMAF pass while the remaining verification media checks run on the server. Missing,
+mismatched, or insufficient quality evidence triggers a local VMAF measurement with the reason
+reported on the worker's card. Hardware decode is selected only when the worker proved it and it
+matches the encoder family; decoder-corruption recovery uses software decode.
+
+With `workerVerificationRequired: true`, new full-file video assignments carry a `fullVerification`
+contract and require protocol 2. The worker posts both probes, full candidate decode health,
+source/candidate video timestamps, source audio timestamps, and any requested audio measurements
+to `/verification`, as well as VMAF logs to `/quality` when required. The server validates contract
+and file identity and applies the frozen verification policy. Missing or invalid evidence fails the
+job without launching local verification media tools. Existing leases retain their assigned mode;
+updated sidecars renegotiate protocol on heartbeat without re-pairing.
+
+This setting does not select work placement: use library `workPlacement: "WorkerOnly"` as well to
+prevent local video encoding while remote workers are enabled. Scanning, initial probes,
+assignment preparation, transfers/hashing, persistence, policy evaluation, replacement, and rollback
+remain server responsibilities. See [Remote workers](setup/remote-workers.md) for the UI controls.
 
 Checks run in an order chosen for what each protects: authenticate first, so nothing about a lease
 is revealed to a caller with no claim on it; then prove the claim is still held, which covers both

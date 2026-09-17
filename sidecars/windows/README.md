@@ -2,8 +2,9 @@
 
 A Windows machine that contributes spare encoding capacity to an Optimisarr server, the way the
 [macOS sidecar](../macos/README.md) does. Same protocol, same guarantees: the server decides what to
-encode, this machine encodes it, and the candidate comes back for the server to verify. Nothing here
-ever replaces, quarantines, moves or deletes a file.
+encode, this machine encodes it and returns a candidate with any requested verification evidence.
+Only the server can replace or quarantine original library files. The sidecar manages its own
+downloaded source, candidate and scratch files.
 
 ## Why it is built this way
 
@@ -22,13 +23,18 @@ capability probe means anything, and the only way the advertised capabilities ca
 ## Layout
 
 ```
-src/Optimisarr.Sidecar.Core     Protocol, capability probing, job execution. No Windows types, so
-                                it builds and is tested on any platform.
-tests/                          xUnit over that core.
+src/Optimisarr.Sidecar.Core      Protocol, probing and execution; no Windows-only dependencies.
+src/Optimisarr.Sidecar.Service   Windows service, pairing and local monitor pipe.
+src/Optimisarr.Sidecar.Tray      WPF Compact Monitor and tray controls.
+installer/                      MSI build, payload notices and installation tests.
+tests/                          Core and local pipe tests.
 ```
 
 `Optimisarr.Sidecar.Service` hosts the worker; `Optimisarr.Sidecar.Tray` provides the compact
-monitor above the Windows notification area. Preferences and diagnostics stay inside the panel.
+monitor anchored to the notification-area screen. Preferences and diagnostics stay inside the panel.
+Changing pages or expanding **Processing details** keeps the rounded panel inside that screen’s
+working area. It dismisses on focus loss or Escape and is not an always-on-top window.
+The tray, panel, executable and Start shortcut share the main application’s Stellar icon.
 The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
 for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 
@@ -64,40 +70,97 @@ folder, and optionally WSL with Docker for testing the server image against an N
 
 ## Installing it on a machine
 
-The build produces a managed assembly and **no executable of its own**, so everything runs through
-`dotnet`:
+Use the [MSI installer](installer/README.md) for a normal installation. It includes FFmpeg, ffprobe,
+the service, the tray companion and private Microsoft .NET/Windows Desktop runtimes. No separate
+runtime installation is needed. First installation leaves the worker stopped until it is paired.
+
+1. Open **Optimisarr Sidecar** from Start and click its notification-area icon.
+2. In **Preferences**, choose **Pair this PC**, enter the server address and its short-lived pairing
+   code, then start the worker. Pairing and service start require administrator approval.
+3. Enable **Open tray at sign-in** if wanted. The service starts with Windows independently of this
+   per-user preference, and continues working when the tray is closed or nobody is signed in.
+
+For headless pairing, run an administrator PowerShell window and read the code from standard input:
+
+```powershell
+Set-Location 'C:\Program Files\Optimisarr Sidecar'
+.\runtime\dotnet.exe .\Optimisarr.Sidecar.Service.dll --pair https://optimisarr.example.com
+# Type the short-lived pairing code, then press Enter.
+Start-Service OptimisarrSidecar
+```
+
+The service is a managed assembly launched by the bundled Microsoft-signed `dotnet.exe`. The WPF
+tray has its own apphost executable and uses the private desktop runtime. The current MSI and tray
+apphost are unsigned previews; see the installer’s distribution status before sharing them. Do not
+disable Smart App Control or other Windows protections to run a preview.
+
+### Worker placement and strict verification
+
+Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
+**Settings → Remote workers**. If these controls are absent, the server operator must enable
+`OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in its container environment through the normal
+deployment process. Each library chooses placement under **Choose files → Advanced eligibility →
+Where this library's work may run**. **Only on workers** keeps eligible video re-encodes off the
+container; **Prefer a worker** allows server fallback after ten minutes. Remote workers must remain
+enabled for these placement choices to apply. Remuxes, audio-only and image jobs remain server work.
+
+**Verify entirely on the sidecar**, alongside the global worker toggle, applies to new assignments.
+It asks updated sidecars for source/candidate probes, complete candidate decode, timestamp checks,
+optional audio loudness measurements and any configured VMAF measurements. The server binds this
+evidence to the transferred source and candidate hashes and evaluates its safety rules. Missing or
+invalid evidence fails the strict job rather than causing a server-side verification fallback.
+
+This removes media verification from the server for those worker jobs. It does not remove server
+scheduling, file transfers and hashing, database work, evidence evaluation or replacement/quarantine.
+With the toggle off, the server retains normal verification and measurement fallback.
+
+### Manual developer installation
+
+A source-only installation is still available for debugging. It requires a machine-wide .NET 10
+runtime and a matching FFmpeg/ffprobe bundle next to the service. From `sidecars/windows`:
 
 ```powershell
 dotnet publish src\Optimisarr.Sidecar.Service\Optimisarr.Sidecar.Service.csproj -c Release -o C:\OptimisarrSidecar
-
-# Pair first: the code is read from standard input, never from the command line.
-"123456" | dotnet C:\OptimisarrSidecar\Optimisarr.Sidecar.Service.dll --pair https://optimisarr.example.com
-
-# Then install and start the service.
+dotnet C:\OptimisarrSidecar\Optimisarr.Sidecar.Service.dll --pair https://optimisarr.example.com
+# Type the pairing code and press Enter, then register the service:
 dotnet C:\OptimisarrSidecar\Optimisarr.Sidecar.Service.dll --install
-sc.exe start OptimisarrSidecar
+Start-Service OptimisarrSidecar
 ```
 
-**Why there is no .exe.** Smart App Control is on by default on Windows 11 and judges an executable
-by its reputation. A freshly built, unsigned apphost has none, so the service is refused outright —
-it will not start, and the system log says only `%%4551`. Every rebuild produces a new unknown file,
-so it is not something that settles down with use. Signing would solve it and needs a certificate
-this project does not have. `dotnet` is Microsoft-signed and trusted, and the managed assembly it
-loads is not held to the same test.
-
-The cost is that **the .NET runtime is a prerequisite** — the sidecar cannot carry its own. Install
-the ASP.NET Core or .NET runtime for `net10.0` before installing the service. The installer looks
-for `dotnet.exe` beside the running process, then under `DOTNET_ROOT`, then in
-`%ProgramFiles%\dotnet`, and refuses to register a service it knows cannot start rather than
-leaving a machine looking installed and doing nothing. It deliberately does not search the `PATH`:
-that belongs to whoever ran the install, and the service runs as LocalSystem.
+Do not register this over an MSI-owned service. Conversely, the MSI refuses a manually registered
+service until it is explicitly drained and its old registration removed. Pairing is retained in
+`%ProgramData%\Optimisarr\Sidecar`; do not delete it during migration.
 
 ## Building and testing
 
 ```bash
 cd sidecars/windows
-dotnet test Optimisarr.Sidecar.slnx
+dotnet test tests/Optimisarr.Sidecar.Core.Tests
 ```
 
 The core targets `net10.0` and has no Windows-only dependencies, so this works on macOS and Linux
-too. Anything that needs a real GPU is an explicit hardware acceptance run on a Windows machine.
+too. Build the complete WPF/service solution on Windows with:
+
+```powershell
+dotnet build Optimisarr.Sidecar.slnx -c Release -warnaserror
+.\src\Optimisarr.Sidecar.Tray\bin\Release\net10.0-windows\Optimisarr.Sidecar.Tray.exe --verify-popover
+```
+
+The native check opens the actual monitor, changes pages and disclosure state, and checks its
+working-area anchor. `--render-monitor <directory>` writes isolated fixture images without polling
+a live worker. [Installer validation](installer/README.md#validation) additionally exercises the
+installed binaries and private runtime. Real GPU and end-to-end media checks use the
+[media acceptance harness](../../docs/development/media-acceptance.md).
+
+## Releases
+
+Follow the repository [release checklist](../../docs/development/releasing.md). The
+[Windows installer workflow](../../.github/workflows/windows-installer.yml) currently builds and
+tests unsigned preview artifacts on relevant pull requests, manual dispatch and reviewed `vX.Y.Z`
+tags. For a tag, the tested MSI and checksum are attached to the matching draft release alongside
+the Mac packages. Publish only after all exact-tag checks pass and matching media-tool sources are
+available. The Windows download remains explicitly an unsigned preview.
+
+The MSI version defaults to `Directory.Build.props`; `installer/build.ps1 -Version <version>`
+overrides it for an explicit build. Tag publication requires the tag and shared version to agree.
+Public distribution requirements are listed in the [installer notes](installer/README.md#distribution-status).
