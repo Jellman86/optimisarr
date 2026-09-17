@@ -38,7 +38,7 @@ jobs:
       # in, and the key changes whenever the script does.
       - name: Cache the bundled FFmpeg
         id: ffmpeg-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: sidecars/macos/vendor
           key: sidecar-ffmpeg-${{ runner.arch }}-${{ hashFiles('sidecars/macos/scripts/build-ffmpeg.sh') }}
@@ -110,7 +110,7 @@ jobs:
           rm -f "$RUNNER_TEMP/notary.p8"
 
       - name: Attach it to the Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             sidecars/macos/build/OptimisarrSidecar-${{ steps.version.outputs.value }}.dmg
