@@ -5,12 +5,13 @@ pause new work while a service is active. Unreachable watchers do not wedge the
 queue. After a replacement or rollback it asks each connected server to rescan:
 a changed-folder refresh for Jellyfin/Emby, and a section refresh for Plex.
 
-Configure integrations under **Settings → Connections**.
+Configure Plex, Jellyfin, and Emby under **Settings → Media servers**. Configure Sonarr and
+Radarr under **Settings → Download managers**.
 
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
-![Connections tab showing media-server watchers and Sonarr/Radarr download manager connections](../images/optimisarr-settings-connections-dark.png)
+![Media servers settings showing a fabricated Jellyfin connection and playback-pause controls](../images/optimisarr-settings-connections-dark.png)
 
 | Service | Use it for | Connection method |
 |---|---|---|
@@ -22,6 +23,8 @@ No copyrighted material is used.
 
 Test each connection before enabling it. Keep only the pause and refresh
 behaviour you actually need.
+
+![Download managers settings showing a fabricated Radarr connection and its connection controls](../images/optimisarr-settings-downloads-dark.png)
 
 ## Notifications
 

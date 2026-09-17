@@ -14,7 +14,8 @@ APP_NAME="OptimisarrSidecar"
 
 # The version people will quote back at you in a bug report. Kept here rather than in a checked-in
 # Info.plist because the plist is generated below; release-app.sh passes the tag through.
-APP_VERSION="${APP_VERSION:-0.1.0}"
+APP_VERSION="${APP_VERSION:-$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' ../../Directory.Build.props)}"
+[[ "${APP_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "error: invalid application version" >&2; exit 2; }
 # A build number must increase for each upload of the same version, so derive one that always does.
 BUILD_NUMBER="${BUILD_NUMBER:-$(date -u +%Y%m%d%H%M)}"
 BUNDLE="build/${APP_NAME}.app"
@@ -32,8 +33,7 @@ for resource in "$(dirname "${BINARY}")"/*.bundle; do
   [[ -d "${resource}" ]] && cp -R "${resource}" "${BUNDLE}/Contents/Resources/"
 done
 
-# The app icon. Built here rather than committed as a binary .icns so the one source PNG stays the
-# only artwork in the repository.
+# Build the Finder icon from the shared Stellar artwork.
 if [[ -f Resources/AppIcon.png ]]; then
   ./scripts/make-icon.sh >/dev/null
   cp build/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"
@@ -48,6 +48,13 @@ if [[ -x vendor/ffmpeg ]]; then
   echo "Bundled ffmpeg: $(vendor/ffmpeg -hide_banner -version | head -1)"
 else
   echo "warning: no vendor/ffmpeg — run scripts/build-ffmpeg.sh; the app will prove no encoders" >&2
+fi
+
+cp ../../LICENSE "${BUNDLE}/Contents/Resources/LICENSE.txt"
+if [[ -n "${SIDECAR_SOURCE_PACKAGE:-}" ]]; then
+  cp -R "${SIDECAR_SOURCE_PACKAGE}/licenses" "${BUNDLE}/Contents/Resources/"
+  cp "${SIDECAR_SOURCE_PACKAGE}/THIRD-PARTY-NOTICES.txt" "${BUNDLE}/Contents/Resources/"
+  cp "${SIDECAR_SOURCE_PACKAGE}/source-manifest.json" "${BUNDLE}/Contents/Resources/"
 fi
 
 # LSUIElement keeps it out of the Dock and the app switcher. The app also sets its activation

@@ -3,13 +3,13 @@
 See the maintained [hardware validation matrix](hardware-validation-matrix.md) for the distinction
 between automated implementation coverage and paths proven on a physical GPU.
 
-Use **Settings → Tools** after deployment. Optimisarr verifies each available
+Use **Settings → System → Tools** after deployment. Optimisarr verifies each available
 encoder with a real test encode; a GPU device node alone is not sufficient.
 
 Screenshots in this page use fabricated dummy media created for documentation.
 No copyrighted material is used.
 
-![Tools tab showing FFmpeg, ffprobe, hardware acceleration, and encoder availability](../images/optimisarr-settings-tools-dark.png)
+![System settings showing detected hardware accelerators and proved encoder availability](../images/optimisarr-settings-hardware-dark.png)
 
 The bundled Jellyfin FFmpeg is used for both hardware detection and transcoding, so the
 Tools page is the source of truth for what this container can actually encode. A separate
@@ -54,7 +54,7 @@ Settings after Tools has validated the encoder.
 ### HDR-to-SDR tone mapping
 
 The per-library **HDR handling** drop-down remains the output policy: only **Tone-map to SDR**
-requests a colour conversion. **Settings → General → Queue → HDR tone-map engine** chooses its
+requests a colour conversion. **Settings → Encoding → HDR tone-map engine** chooses its
 machine-specific implementation:
 
 - **Software (compatible)** is the default and uses the established `zscale`/Hable Rec.709 path.

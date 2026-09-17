@@ -7,7 +7,7 @@ the supplied clips.
 ## Before starting
 
 - Update the Optimisarr container to the latest `dev` image.
-- Confirm **Settings → Tools** shows NVIDIA H.264 and HEVC encoding as available.
+- Confirm **Settings → System → Tools** shows NVIDIA H.264 and HEVC encoding as available.
 - Have enough free space for temporary versions of three short clips.
 
 Use three ordinary **8-bit SDR** clips between roughly 30 seconds and 2 minutes:

@@ -12,7 +12,21 @@ struct SidecarMenu: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var session: SidecarSession
 
+    private let machineName: String
+    private let previewSettings: SidecarSettings?
     @State private var page = "activity"
+    @State private var detailsExpanded = false
+
+    init(session: SidecarSession, machineName: String = Host.current().localizedName ?? "This Mac",
+         initialPage: String = "activity", detailsExpanded: Bool = false,
+         previewSettings: SidecarSettings? = nil) {
+        self.session = session
+        self.machineName = machineName
+        self.previewSettings = previewSettings
+        _page = State(initialValue: initialPage)
+        _detailsExpanded = State(initialValue: detailsExpanded)
+        _startAtLogin = State(initialValue: previewSettings == nil ? LoginItem.isEnabled : false)
+    }
     @State private var showUnpairConfirmation = false
     @State private var serverAddress = ""
     @State private var pin = ""
@@ -30,7 +44,7 @@ struct SidecarMenu: View {
                             Label("Back to activity", systemImage: "chevron.left")
                         }.buttonStyle(.plain).foregroundStyle(Instrument.phosphor)
                         Text("Preferences").font(.title3.weight(.semibold))
-                        OptionsView(settings: AppState.shared.settings, embedded: true)
+                        OptionsView(settings: previewSettings ?? AppState.shared.settings, embedded: true)
                         loginControl
                     } else if page == "diagnostics" {
                         Button { page = "activity" } label: {
@@ -85,7 +99,7 @@ struct SidecarMenu: View {
                     .foregroundStyle(Instrument.phosphor).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Optimisarr").font(.system(size: 17, weight: .semibold))
-                    Text(Host.current().localizedName ?? "This Mac")
+                    Text(machineName)
                         .font(.caption).foregroundStyle(Instrument.dim).lineLimit(1)
                 }
                 Spacer()
@@ -172,7 +186,7 @@ struct SidecarMenu: View {
                 }
             }
             cells
-            DisclosureGroup("Processing details") {
+            DisclosureGroup("Processing details", isExpanded: $detailsExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(session.activeJobs.keys.sorted(), id: \.self) { jobId in
                         if let progress = session.activeJobs[jobId] {

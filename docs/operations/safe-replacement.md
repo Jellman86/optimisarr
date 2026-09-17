@@ -32,16 +32,21 @@ moves; cross-filesystem copy-plus-delete is an opt-in fallback.
 Auto-replace is per-library, disabled by default, and runs only after every
 verification gate passes. It does not bypass quarantine or rollback.
 
-Dry-run mode is global. When enabled in **Settings → General → Replacement and cleanup**, Optimisarr
+Dry-run mode is global. When enabled in **Settings → Files & safety → Replacement and cleanup**, Optimisarr
 still scans, queues, transcodes, and verifies, but replacement and quarantine
 purge actions are refused. Verified outputs stop at **Ready to replace** so you
 can review the exact work that would have been applied. The timed cleanup may
 still remove expired failed outputs from `/work`; it retains their diagnostic
 records and never touches an original.
 
-In **Quarantine**, reject a replacement to restore the original or approve it to
+In **Quarantine**, open an entry to use its full-page review with a breadcrumb back to the list.
+Compare the original and replacement players, sizes, and verification report. Reject a replacement to restore the original or approve it to
 allow purge. Once an original is purged, Optimisarr cannot restore it; keep an
 independent backup for media that cannot be replaced.
+
+![Full-page Quarantine review with a breadcrumb, original and replacement sizes, and synthetic media comparison players](../images/optimisarr-quarantine-review-dark.png)
+
+![Quarantine verification report with passed decode, duration, stream, VMAF, and size checks](../images/optimisarr-quarantine-verification-dark.png)
 
 Rollback stages the optimised file before restoring the quarantined original. If
 the restore fails, the optimised file is put back at the library path and the

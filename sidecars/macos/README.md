@@ -1,12 +1,13 @@
 # Optimisarr macOS sidecar
 
 A menu-bar app that pairs a Mac with an Optimisarr server so it can contribute spare encoding
-capacity.
+capacity. It uses the same Stellar application icon and Compact Monitor layout as the
+[Windows tray companion](../windows/README.md).
 
 ## What this version does, and does not
 
 It pairs, stores its credential, reports what this Mac can actually do, checks in, and — once the
-server has verified it can finish a job that came back — asks for work. A job runs like this:
+server has confirmed it is eligible under the configured policy — asks for work. A job runs like this:
 
 1. **Claim.** On each healthy check-in while idle, the app asks for one job. The server answers
    with the exact FFmpeg command it would have run itself, resolved for an encoder this Mac
@@ -25,16 +26,33 @@ server has verified it can finish a job that came back — asks for work. A job 
 4. **Encode, renewing.** The bundled ffmpeg runs the command against this Mac's paths. The lease
    is renewed throughout; losing it stops the encode rather than finishing work the server has
    already given to someone else.
-5. **Measure.** When the library has a quality gate, the assignment also carries the server's own
-   libvmaf command for each measurement window, validated the same way. The app runs them against
-   the source and the candidate and posts the raw JSON logs with both hashes. Nothing is computed
-   here; the server parses, pools and judges the logs, and only believes them if the candidate it
-   then receives carries the same hash. If a measurement cannot be made, the candidate is still
-   delivered and the server measures for itself.
-6. **Deliver.** The candidate is hashed and uploaded with both hashes, so the server can bind it to
-   this exact source — in 64 MB chunks at offsets the server confirms, resuming from whatever it
-   holds after a dropped connection, or in one request against a server that predates that. The server then verifies it against the original exactly as it would a local
-   encode. Nothing is replaced from here, ever.
+5. **Measure and verify.** Quality-gated assignments carry validated libvmaf commands. The Mac
+   returns raw measurement logs bound to source and candidate hashes; the server parses and judges
+   the scores. With **Verify entirely on the sidecar** enabled, the assignment also requests source
+   and candidate probes, a complete candidate decode, timestamp checks and, when needed, audio
+   loudness measurements. Missing or invalid evidence fails that strict assignment; it does not
+   trigger server-side verification. With strict verification disabled, the server retains its
+   normal verification and measurement fallback.
+6. **Deliver.** The candidate is hashed and uploaded with both hashes in resumable 64 MB chunks
+   (or one request for an older server). The server validates the evidence against the received
+   bytes, applies its safety rules and owns replacement and quarantine. Nothing is replaced from
+   this Mac, ever.
+
+### Where jobs and verification run
+
+Enable workers under **Settings → Files & safety → Remote workers**. In the same section,
+**Verify entirely on the sidecar** requires complete verification evidence for new worker
+assignments. Pair and inspect machines under **Settings → Remote workers**. If these controls are absent,
+the server operator must opt into the preview with `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true`
+in the container environment and restart through their normal deployment process.
+
+Choose placement separately for each library under **Libraries → open a library → Choose files →
+Advanced eligibility → Where this library's work may run**. Select **Only on workers** to keep
+eligible video re-encodes off the server, and enable strict verification to keep their media
+verification there too. Worker placement applies to video re-encodes; remuxes, audio-only and image
+jobs remain server work. The server still schedules jobs, transfers and hashes files, evaluates
+evidence, writes its database and performs replacement/quarantine. This is not a zero-work server
+mode. Keep remote workers enabled: placement preferences are ignored while they are disabled.
 
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every
 exit path. **Jobs at once** in the menu chooses how many jobs run in parallel (one to four); the
@@ -51,8 +69,8 @@ the app to run from the built bundle rather than a bare build directory.
 
 This loop has run end to end on real hardware: `LiveWorkLoopTests` pairs with a running server,
 claims a queued job, encodes it with the bundled ffmpeg and delivers it, and the server's own
-verification — every gate, VMAF included — then judges the candidate. Run it against a server that
-has a job queued this Mac can take:
+verification policy — including the configured VMAF gate — then judges the candidate. Run it
+against a server that has a job queued this Mac can take:
 
 ```bash
 OPTIMISARR_LIVE_URL=localhost:8787 OPTIMISARR_LIVE_PIN="1234 5678" \
@@ -76,33 +94,39 @@ A machine that proves nothing reports nothing, and Optimisarr's capability match
 such a worker is never offered work. Honesty here is the safety mechanism: a sidecar that overstated
 itself would have jobs scheduled onto it that could only fail.
 
-Optimisarr remains the only thing that replaces, quarantines, moves, or deletes a file. A sidecar
-never can, by design, and nothing in this app is capable of touching media.
+Optimisarr remains the only thing that replaces or quarantines an original library file. A sidecar
+never has direct access to the original library. It reads and writes only its downloaded source,
+candidate and temporary work files.
 
-## The panel
+## The Compact Monitor
 
-The menu-bar panel is a readout, not a settings sheet that happens to carry numbers. Nothing is
-hidden behind a disclosure, because the thing you want is usually the thing you did not think to
-open: the machine's identity and state sit opposite each other in a bar across the top, everything
-it knows about itself runs down one column of monospaced, tabular figures that can be compared
-vertically, and the controls live along the bottom where they cannot be mistaken for readings.
+Screenshots use fabricated dummy media created for documentation, invented machine names and
+example server addresses. No copyrighted media material is used.
 
-Two rules are worth keeping when changing it.
+<img src="../../docs/images/optimisarr-sidecar-macos-encoding.png" width="390" alt="Dark Mac Compact Monitor showing a fabricated Prism Field encoding job, Stellar icon and pause control">
 
-**A level is only drawn when there is an honest one.** Progress is lit segments rather than a
-filled bar, so a glance takes a level off it without reading the figure beside it — and during an
-encode there is no bar at all, because the worker knows how many seconds it has done and not how
-many it owes. A bar that guessed would be a lie in the one place the panel exists to be honest.
+<img src="../../docs/images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Light Mac Preferences showing disk, chosen-folder and memory work-location choices inside the native panel">
 
-**The palette is Optimisarr's, not this app's.** Every colour comes from the web interface's own
-tokens in [`web/src/app.css`](../../web/src/app.css) — Tailwind slate for the neutrals, cyan for the
-single accent, amber and red for the two kinds of trouble — with the Tailwind step named beside each
-value in `Instrument.swift`. Both appearances are supported, because the web interface has both. A
-fault on this panel is the same colour as the same fault on the dashboard, which is the point.
+[Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
 
-The menu-bar mark turns only while a job is actually running. The timer behind it also feeds the
-load meters whenever the panel is open, and letting that turn the mark made an idle Mac look busy
-for exactly as long as somebody was looking at it.
+Click the Stellar icon in the menu bar for the compact activity panel. It shows the Mac's name,
+connection state, current jobs or **Ready for work**, and CPU/GPU/held-job readings. Unknown values
+stay unavailable; macOS does not expose VideoToolbox media-engine utilisation, so the GPU reading
+must not be interpreted as encoder utilisation.
+
+**Processing details** expands the technical readout and previews. The gear opens **Preferences**
+inside the same panel; **Diagnostics** opens connection and capability details with a route back to
+activity. The native popover stays anchored to the menu-bar item when its content changes size,
+keeps its rounded corners, and cannot be detached into a floating window.
+
+**Jobs at once** selects one to four concurrent jobs. **Pause new jobs** (or **Pause after current
+jobs** while working) lets current leases finish; it does not cancel them. Closing the panel leaves
+work running. Quitting the application hands current leases back to the server.
+
+Both light and dark appearances use the application's slate surfaces, accent colours and card
+shadows. The menu-bar, application and panel icons use the shared Stellar artwork. The native
+status mark is static; activity is communicated through the labelled state and job progress,
+with an amber badge when the Mac is disconnected.
 
 ## Codecs
 
@@ -115,18 +139,17 @@ Encoding, all proved with a real test encode at launch rather than taken from FF
 | AV1 | `libsvtav1` (software only) |
 | Audio | `aac`. **Not** `libopus` or `libmp3lame` — the build links no external audio libraries, so a library set to Opus or MP3 is never offered to this worker |
 
-**There is no hardware AV1 encoder on Apple Silicon.** VideoToolbox on an M5 advertises 27 encoders
-and not one of them is AV1, so AV1 here is SVT-AV1 on the CPU. Decoding AV1 *is* a hardware path
-the chip has, and FFmpeg 8.0 is the first release with the VideoToolbox AV1 hwaccel, which is why
-the build is pinned there.
+**This sidecar currently offers software AV1 encoding through SVT-AV1.** Hardware decoding is
+advertised only where the launch probe succeeds. The bundled build is pinned to FFmpeg 8.0.3; see
+`vendor/BUILD-INFO.txt` after building for the exact source revisions.
 
 Decoding covers H.264, HEVC, VP9, AV1, MPEG-2, VC-1 and ProRes, with VideoToolbox acceleration
 where the server asks for it.
 
 ## Options
 
-**Options…** in the menu opens a panel for how the Mac does the work, kept apart from the menu so
-watching a job and configuring one stay separate.
+The **Preferences** gear opens work-location and login settings inside the Compact Monitor.
+Choose **Back to activity** to return to job progress.
 
 **Where work happens.** A job downloads its source and writes its candidate before sending it back,
 which together come to roughly one and a half times the size of the original. Three choices:
@@ -154,18 +177,19 @@ reboots with nothing on screen to say so.
 
 - macOS 14 or later
 - Xcode 26 (or a Swift 6 toolchain) to build
-- An Optimisarr server with **Settings → General → Remote workers** switched on
+- An Optimisarr server with **Settings → Files & safety → Remote workers** switched on
 
 ## Build and run
 
 ```bash
 cd sidecars/macos
-./scripts/make-app.sh          # or: ./scripts/make-app.sh release
+./scripts/build-ffmpeg.sh       # first build; requires the build tools documented in the script
+./scripts/make-app.sh release  # version defaults to Directory.Build.props
 open build/OptimisarrSidecar.app
 ```
 
 It appears in the menu bar with no Dock icon. Click it, enter your server address and the pairing
-code from **Settings → Workers** in Optimisarr, and press Pair.
+code from **Settings → Remote workers** in Optimisarr, and press Pair.
 
 The server address is whatever you use to reach Optimisarr in a browser — `optimisarr.local:8787`,
 an IP and port, or a full `https://` URL behind a reverse proxy. A missing scheme is assumed to be
@@ -193,11 +217,9 @@ Entirely inside the notch, with nine other status items to its right. Note that 
 the *left* of the notch is not available: macOS reserves it for the application menu and never
 places status items there, so a menu bar that looks half empty can still have no room.
 
-**Launch it again.** `open` on an already-running app raises it rather than starting a second copy,
-and this app responds by opening a normal window with the same pairing screen. That is the way back
-in when the icon cannot be seen — macOS has no overflow menu for status items the way Windows does
-for the system tray, so a hidden icon is otherwise unreachable. The window also opens by itself on
-first launch while nothing is paired.
+**While unpaired**, reopening the app can show its pairing window, which also opens on first
+launch. A paired app deliberately does not open a separate window when relaunched. If its menu-bar
+icon is hidden behind the notch, make room for the icon as described below.
 
 Check whether it is actually running before assuming it crashed:
 
@@ -218,8 +240,9 @@ swift build --configuration release
 
 The suite covers the protocol client, resumable transfers, scratch-space refusal, lease loss during
 transfers, the pairing and check-in lifecycle, address handling, and capability probing — including
-live probes against the bundled ffmpeg. CI runs the ordinary suite and release build on an Apple
-Silicon macOS runner; the live suites remain explicit acceptance tests because they need the pinned
+live probes against the bundled ffmpeg. Native AppKit tests also expand and collapse real popover
+content and verify that its top edge stays anchored. CI runs the ordinary suite and release build
+on an Apple Silicon macOS runner; the live suites remain explicit acceptance tests because they need the pinned
 FFmpeg and, for the work loop, a paired server with a suitable queued job.
 
 There is also a live suite that runs against a real server, skipped unless you point it at one:
@@ -238,7 +261,7 @@ It is issued once at pairing and cannot be reissued by the server, so it is writ
 before anything else can go wrong.
 
 "Forget this pairing" clears it locally. That does **not** revoke it server-side; only an operator
-can do that, from the Workers tab in Optimisarr. If a worker is revoked there, this app notices on
+can do that, from Settings → Remote workers in Optimisarr. If a worker is revoked there, this app notices on
 its next check-in, discards the dead credential, and says so.
 
 An item written by an earlier build whose signature this one no longer matches cannot be read —
@@ -251,8 +274,9 @@ its pairing.
 ## Pairing without a screen
 
 ```
-echo "<pin>" | /Applications/OptimisarrSidecar.app/Contents/MacOS/OptimisarrSidecar \
+/Applications/OptimisarrSidecar.app/Contents/MacOS/OptimisarrSidecar \
   --pair https://optimisarr.example.com
+# Type the pairing code on standard input, then press Enter.
 ```
 
 Pairs and exits, printing the worker id on success and the reason on failure. Nothing appears on
@@ -260,7 +284,7 @@ screen, so a Mac can be paired over SSH, scripted onto several machines at once,
 remotely when a pairing is lost.
 
 The PIN is read from standard input rather than taken as an argument, so it never lands in `ps`
-output or a shell history. Get one from the Workers tab, or from
+output or a shell history. Get one from Settings → Remote workers, or from
 `POST /api/workers/pairing-code`.
 
 Give the address with its scheme. A bare host is reached over `http://`, which is right for a
@@ -304,14 +328,22 @@ signature is stable and a pairing survives rebuilds.
 ```bash
 SIGNING_IDENTITY="Developer ID Application: You (TEAMID)" \
 NOTARY_PROFILE=optimisarr-notary \
-./scripts/release-app.sh 0.1.0
+./scripts/release-app.sh 0.2.13
 ```
 
-That builds, signs with the hardened runtime and a secure timestamp (signing the bundled `ffmpeg`
+The public release script requires a clean committed worktree so its archived source matches the
+binary. It prepares or validates exact corresponding sources against the release version, current
+commit and bundled media-tool revisions before signing. `SIDECAR_SOURCE_PACKAGE` can select an
+existing package; a stale package fails rather than being reused silently.
+
+It builds, signs with the hardened runtime and a secure timestamp (signing the bundled `ffmpeg`
 and `ffprobe` first, as notarisation requires), archives with `ditto`, submits to Apple, waits,
 staples the ticket to the bundle, re-archives, and checks the result the way Gatekeeper will. It
-then builds a disk image from the stapled app and notarises and staples that too. Attach both the
-`.dmg` and the `.zip` to the GitHub Release.
+then builds a disk image from the stapled app and notarises and staples that too. Before notarisation,
+`verify-app.sh` copies the signed app to a temporary directory and renders all twenty light/dark
+fixture states using embedded artwork, without pairing or contacting a server. Final `.sha256`
+files are generated after stapling. Attach the `.dmg`, `.zip`, checksums and corresponding-source
+parts to the GitHub Release.
 
 The disk image is the one to point people at: it opens with the app beside a shortcut to
 Applications, so it installs by dragging. Install [`dmgbuild`](https://pypi.org/project/dmgbuild/)
@@ -326,7 +358,15 @@ Stellar renderer. The same generation step produces the Windows multi-resolution
 Stapling matters: without the ticket attached, anyone who downloads the app on a machine that
 cannot reach Apple is told it "cannot be checked for malicious software".
 
-CI can do the same on a `sidecar-v*` tag — see
+Use the intended release version in place of the example above, and follow the repository
+[release checklist](../../docs/development/releasing.md) for the reviewed source and release notes.
+A reviewed `vX.Y.Z` tag triggers container CI and both native package workflows. The Mac workflow
+attaches notarised DMG/ZIP artifacts to the matching draft release. Publish only after the exact
+container and native package checks pass and the matching media-tool sources are available.
+Legacy `sidecar-v*` tags still trigger standalone Mac packaging. Manual dispatch must select an
+existing tag whose version matches `Directory.Build.props`; it cannot publish from a branch.
+
+See
 [`.github/workflows/sidecar-release.yml`](../../.github/workflows/sidecar-release.yml), which needs
 these repository secrets:
 
