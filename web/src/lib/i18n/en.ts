@@ -756,6 +756,11 @@ export const en = {
     action_removing_ellipsis: 'Removing…',
   },
   settings: {
+    appearance_title: "Appearance",
+    appearance_desc: "Saved in this browser. Applies to the application icon and favicon.",
+    brand_style: "Application icon",
+    brand_stellar: "Stellar cube (default)",
+    brand_precession: "Precession cube",
     concurrency_hint: 'Maximum work running on this server.',
     encoder_hint: 'Use automatic selection or choose an encoder.',
     threads_hint: '0 lets the encoder choose its thread count.',

@@ -4,6 +4,13 @@
 
 ### Changed
 
+- **Stellar cube is the default application icon.** Three drifting star fields, soft glow,
+  moving light and a projected shadow stay calm at rest; active work adds gentle precession
+  and occasional inward/outward depth changes before smoothly settling. Favicons and
+  reduced-motion stills match the selected theme and activity. The original sliced
+  Precession cube remains available in Settings → System → Appearance; the choice is
+  saved in this browser.
+
 - Quarantine comparisons now open a dedicated review page with breadcrumbs, direct links,
   full-width playback and verification cards. Returning to the list restores its scroll
   position and keyboard focus. Approve and rollback retain their confirmations; finished

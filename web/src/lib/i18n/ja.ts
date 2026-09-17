@@ -588,6 +588,11 @@ export const ja: Messages = {
     action_removing_ellipsis: "削除中…"
   },
   settings: {
+    appearance_title: "外観",
+    appearance_desc: "このブラウザーに保存されます。アプリのアイコンとファビコンに適用されます。",
+    brand_style: "アプリのアイコン",
+    brand_stellar: "星空キューブ（既定）",
+    brand_precession: "歳差運動キューブ",
     concurrency_hint: 'このサーバーで同時に実行するタスクの上限。',
     encoder_hint: '自動選択を使うか、エンコーダーを指定します。',
     threads_hint: '0 にするとエンコーダーがスレッド数を決めます。',

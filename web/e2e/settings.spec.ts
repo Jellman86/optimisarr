@@ -95,7 +95,7 @@ test('global settings use the same logical section flow as library configuration
     ['Media servers', ['Media servers']],
     ['Download managers', ['Download managers']],
     ['Notifications', ['Notifications']],
-    ['System', ['Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
+    ['System', ['Appearance', 'Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
   ])
 
   for (const [room, headings] of expectedRooms) {

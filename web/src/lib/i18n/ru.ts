@@ -588,6 +588,11 @@ export const ru: Messages = {
     action_removing_ellipsis: "Удаление…"
   },
   settings: {
+    appearance_title: "Внешний вид",
+    appearance_desc: "Сохраняется в этом браузере. Применяется к значку приложения и значку вкладки.",
+    brand_style: "Значок приложения",
+    brand_stellar: "Звёздный куб (по умолчанию)",
+    brand_precession: "Прецессирующий куб",
     concurrency_hint: 'Максимум одновременных задач на этом сервере.',
     encoder_hint: 'Автоматический выбор или указанный кодировщик.',
     threads_hint: 'При значении 0 кодировщик выбирает число потоков.',
