@@ -28,7 +28,8 @@ public sealed record Assignment(
     /// quality is already settled and the encode can start immediately — which is also what a
     /// server predating the search sends.
     /// </summary>
-    AdaptiveSearchStep? Search = null);
+    AdaptiveSearchStep? Search = null,
+    Optimisarr.Core.Workers.RemoteVerificationContract? FullVerification = null);
 
 /// <summary>
 /// One candidate quality the control plane wants measured on this machine.

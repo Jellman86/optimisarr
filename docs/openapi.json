@@ -195,6 +195,16 @@
             "format": "date-time",
             "type": "string"
           },
+          "fullVerification": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RemoteVerificationContract"
+              }
+            ]
+          },
           "jobId": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -427,6 +437,33 @@
         ],
         "type": "object"
       },
+      "DecodeHealthResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errorCount": {
+            "default": 0,
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "healthy": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "healthy",
+          "error"
+        ],
+        "type": "object"
+      },
       "ExcludeRequest": {
         "properties": {
           "mediaFileId": {
@@ -600,6 +637,24 @@
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "protocolMaximum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "protocolMinimum": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
               "integer",
               "string"
             ]
@@ -1155,6 +1210,44 @@
         ],
         "type": "object"
       },
+      "LoudnessResult": {
+        "properties": {
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "integratedLufs": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "truePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "integratedLufs",
+          "truePeakDbtp",
+          "error"
+        ],
+        "type": "object"
+      },
       "NotificationTargetSnapshot": {
         "properties": {
           "enabled": {
@@ -1618,6 +1711,129 @@
           "freeDiskBytes",
           "workRoot",
           "waitingReason"
+        ],
+        "type": "object"
+      },
+      "RemoteVerificationContract": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "measureAudio": {
+            "type": "boolean"
+          },
+          "version": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "measureAudio"
+        ],
+        "type": "object"
+      },
+      "RemoteVerificationEvidence": {
+        "properties": {
+          "candidateLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "candidateProbe": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "candidateSha256": {
+            "type": "string"
+          },
+          "candidateVideo": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          },
+          "contractId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "decode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DecodeHealthResult"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceAudio": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          },
+          "sourceLoudness": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LoudnessResult"
+              }
+            ]
+          },
+          "sourceProbe": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceSha256": {
+            "type": "string"
+          },
+          "sourceVideo": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TimestampCheckResult"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contractId",
+          "sourceSha256",
+          "candidateSha256"
         ],
         "type": "object"
       },
@@ -2413,6 +2629,10 @@
               "integer",
               "string"
             ]
+          },
+          "workerVerificationRequired": {
+            "default": false,
+            "type": "boolean"
           }
         },
         "required": [
@@ -2598,6 +2818,43 @@
           "preview",
           "cleanedCount",
           "reclaimedBytes"
+        ],
+        "type": "object"
+      },
+      "TimestampCheckResult": {
+        "properties": {
+          "firstRegressionDetail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastPresentationSeconds": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "nonMonotonicCount": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "measured",
+          "nonMonotonicCount",
+          "firstRegressionDetail",
+          "lastPresentationSeconds"
         ],
         "type": "object"
       },
@@ -5874,6 +6131,40 @@
               }
             },
             "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/verification": {
+      "post": {
+        "operationId": "ReportWorkerVerification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoteVerificationEvidence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         },
         "tags": [

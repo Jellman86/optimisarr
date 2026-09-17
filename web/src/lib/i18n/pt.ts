@@ -596,6 +596,8 @@ export const pt: Messages = {
     group_connections: 'Ligações e sistema',
     subtitle: "Opções globais que se aplicam a todas as bibliotecas de mídia.",
     remote_workers: "Workers remotos",
+    worker_verification: "Verificar tudo no sidecar",
+    worker_verification_hint: "Os sidecars atualizados devem concluir todas as verificações dos seus trabalhos de vídeo. A falta de provas faz falhar o trabalho; o servidor não repete a verificação. Aplica-se a novas atribuições. Define as bibliotecas como «Apenas worker» para também deslocar a codificação. A transferência e a substituição continuam no servidor.",
     remote_workers_hint: "Permite que aplicações sidecar noutras máquinas contribuam com capacidade de codificação livre. Desativado por predefinição: um contentor chega para uso normal. O Optimisarr continua a fazer todas as substituições.",
     name: "Nome",
     type: "Tipo",

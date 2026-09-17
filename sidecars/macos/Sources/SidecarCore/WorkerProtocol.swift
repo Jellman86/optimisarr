@@ -8,7 +8,7 @@ import Foundation
 /// working across a server upgrade.
 public enum WorkerProtocol {
     public static let minimum = 1
-    public static let maximum = 1
+    public static let maximum = 2
 }
 
 /// What this machine has *proved* it can do.
@@ -180,11 +180,13 @@ public struct Assignment: Sendable, Equatable {
     /// The first candidate of a per-title quality search, when this job needs one. Nil when the
     /// quality is already settled and the encode can start immediately.
     public let search: AdaptiveSearchStep?
+    public let fullVerification: FullVerificationContract?
 
     public init(
         leaseId: String, jobId: Int, title: String = "", sourceBytes: Int64, videoEncoder: String,
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
-        quality: QualityRequirement, search: AdaptiveSearchStep? = nil
+        quality: QualityRequirement, search: AdaptiveSearchStep? = nil,
+        fullVerification: FullVerificationContract? = nil
     ) {
         self.leaseId = leaseId
         self.jobId = jobId
@@ -196,6 +198,7 @@ public struct Assignment: Sendable, Equatable {
         self.outputExtension = outputExtension
         self.quality = quality
         self.search = search
+        self.fullVerification = fullVerification
     }
 
     init?(json: [String: Any]) {
@@ -210,6 +213,12 @@ public struct Assignment: Sendable, Equatable {
             let qualityJson = json["quality"] as? [String: Any],
             let quality = QualityRequirement(json: qualityJson)
         else { return nil }
+        var fullVerification: FullVerificationContract?
+        if let raw = json["fullVerification"], !(raw is NSNull) {
+            guard let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let contract = try? JSONDecoder().decode(FullVerificationContract.self, from: data) else { return nil }
+            fullVerification = contract
+        }
         self.init(
             leaseId: leaseId, jobId: jobId,
             // Optional: a server that predates the field simply leaves the menu showing the job
@@ -221,7 +230,7 @@ public struct Assignment: Sendable, Equatable {
             // Absent from a server that predates the search, and from every job whose quality is
             // already settled — both mean "encode straight away", which is what this app did
             // before the field existed.
-            search: Assignment.search(from: json))
+            search: Assignment.search(from: json), fullVerification: fullVerification)
     }
 
     /// Says so when a search arrives that cannot be read.

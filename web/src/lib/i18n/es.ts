@@ -623,6 +623,8 @@ settings: {
     group_connections: 'Conexiones y sistema',
 subtitle: 'Opciones globales que se aplican en todas las bibliotecas.',
 remote_workers: 'Trabajadores remotos',
+    worker_verification: "Verificar todo en el sidecar",
+    worker_verification_hint: "Los sidecars actualizados deben completar todas las comprobaciones de sus trabajos de vídeo. Si faltan pruebas, el trabajo falla; el servidor no repite la verificación. Se aplica a nuevas asignaciones. Elige «Solo trabajador» en las bibliotecas para trasladar también la codificación. La transferencia y la sustitución siguen en el servidor.",
 remote_workers_hint: 'Permite que aplicaciones sidecar en otras máquinas aporten capacidad de codificación libre. Desactivado por defecto: un contenedor basta para el uso normal. Optimisarr sigue haciendo todas las sustituciones.',
 name: 'Nombre',
 type: 'Tipo',

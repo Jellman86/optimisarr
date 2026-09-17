@@ -136,7 +136,7 @@ public sealed class MediaProbeService : IMediaProbeService
         }
     }
 
-    internal static MediaProbeResult Parse(string json, string? extension = null)
+    public static MediaProbeResult Parse(string json, string? extension = null)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;

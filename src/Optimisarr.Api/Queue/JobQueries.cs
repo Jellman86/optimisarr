@@ -188,7 +188,9 @@ public static class JobQueries
         CancellationToken cancellationToken)
     {
         var remoteIds = jobs
-            .Where(job => job.Status is nameof(JobStatus.Leased) or nameof(JobStatus.AwaitingVerification) or nameof(JobStatus.Verifying))
+            .Where(job => job.Status is nameof(JobStatus.Leased) or nameof(JobStatus.AwaitingVerification)
+                or nameof(JobStatus.Verifying) or nameof(JobStatus.ReadyToReplace) or nameof(JobStatus.Completed)
+                or nameof(JobStatus.Failed))
             .Select(job => job.Id)
             .ToList();
         if (remoteIds.Count == 0)

@@ -364,6 +364,15 @@ namespace Optimisarr.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VerificationContractJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationEvidenceJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerificationWorkJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("WorkerId")
                         .HasColumnType("INTEGER");
 

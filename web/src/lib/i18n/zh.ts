@@ -596,6 +596,8 @@ export const zh: Messages = {
     group_connections: '连接与系统',
     subtitle: "适用于每个媒体库的全局选项。",
     remote_workers: "远程工作节点",
+    worker_verification: "完全在边车上验证",
+    worker_verification_hint: "更新后的边车必须完成其视频任务的全部检查。缺少验证结果会使任务失败，服务器不会重新验证。适用于新分配的任务。将媒体库设置为“仅工作节点”可同时避免服务器编码。文件传输和替换仍由服务器负责。",
     remote_workers_hint: "允许其他机器上的边车应用贡献空闲的编码算力。默认关闭——日常使用一个容器就够了。替换操作仍全部由 Optimisarr 自己完成。",
     name: "姓名",
     type: "类型",

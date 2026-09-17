@@ -12,5 +12,5 @@ namespace Optimisarr.Sidecar.Core.Session;
 public static class WorkerProtocol
 {
     public const int Minimum = 1;
-    public const int Maximum = 1;
+    public const int Maximum = 2;
 }

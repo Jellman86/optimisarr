@@ -48,6 +48,7 @@ public sealed class LoudnessService(string? ffmpegCommand = null)
                     "-nostats",
                     "-v", "info",
                     "-i", path,
+                    "-map", "0:a:0",
                     "-af", "ebur128=peak=true",
                     "-f", "null",
                     "-"

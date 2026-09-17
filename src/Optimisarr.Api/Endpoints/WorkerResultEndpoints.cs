@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Library;
@@ -23,6 +24,41 @@ internal static class WorkerResultEndpoints
 
     public static void MapWorkerResultEndpoints(this WebApplication app)
     {
+        app.MapPost("/api/workers/leases/{leaseId:guid}/verification", async (
+            Guid leaseId, RemoteVerificationEvidence request, HttpRequest http,
+            SettingsStore settings, OptimisarrDbContext db, CancellationToken cancellationToken) =>
+        {
+            var resolved = await ResolveHeldLeaseAsync(leaseId, http, settings, db, cancellationToken);
+            if (resolved.Refusal is { } refusal) return refusal;
+            var lease = resolved.Lease!;
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            var contract = lease.VerificationContractJson is { } json
+                ? JsonSerializer.Deserialize<RemoteVerificationContract>(json, options) : null;
+            if (contract is null || request.ContractId != contract.Id)
+                return ApiErrors.Conflict("worker.verification.contractMismatch", "This lease did not request that verification contract.");
+            if (!string.Equals(request.SourceSha256, resolved.Job!.SourceSha256, StringComparison.OrdinalIgnoreCase)
+                || request.CandidateSha256 is not { Length: 64 } hash || !hash.All(Uri.IsHexDigit))
+                return ApiErrors.Conflict("worker.verification.hashMismatch", "Verification must identify the source and candidate hashes.");
+            // Store negative/incomplete measurements too: strict verification will fail the job
+            // with their reason, never silently fall back or repeatedly requeue an incapable worker.
+            var evidence = JsonSerializer.Serialize(request, options);
+            // Compare-and-set in the database: overlapping retries must not overwrite the first
+            // report, even when both requests read the lease before either saves it.
+            var written = await db.JobLeases
+                .Where(row => row.Id == lease.Id && row.State == LeaseState.Held && row.VerificationEvidenceJson == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(row => row.VerificationEvidenceJson, evidence), cancellationToken);
+            if (written == 0)
+            {
+                var previous = await db.JobLeases.AsNoTracking().Where(row => row.Id == lease.Id)
+                    .Select(row => row.VerificationEvidenceJson).SingleAsync(cancellationToken);
+                if (previous != evidence)
+                    return ApiErrors.Conflict("worker.verification.alreadyRecorded", "Different evidence is already recorded or the lease has ended.");
+            }
+            return Results.Ok(new { leaseId });
+        })
+        .WithName("ReportWorkerVerification")
+        .WithMetadata(new RequestSizeLimitAttribute(3 * 1024 * 1024));
+
         // Takes delivery of a candidate encoded elsewhere.
         //
         // This is the point where bytes from another machine enter the pipeline, so the checks run

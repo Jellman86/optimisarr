@@ -154,6 +154,67 @@ public sealed class WorkPathsTests : IDisposable
         Assert.True(Directory.Exists(workRoot));
     }
 
+    [Fact]
+    public void Retry_recreates_the_output_directory_pruned_after_a_failed_attempt()
+    {
+        var workRoot = Path.Combine(_root, "work");
+        var output = Path.Combine(workRoot, "42", "movie.mkv");
+        var reserved = new HashSet<string>();
+        IDisposable Reserve(string directory)
+        {
+            Assert.False(Directory.Exists(directory));
+            reserved.Add(directory);
+            return new Release(() => reserved.Remove(directory));
+        }
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using (WorkPaths.PrepareOutputDirectory(output, Reserve))
+            {
+                WorkPaths.PruneEmptyAncestors(workRoot, output, reserved.Contains);
+                File.WriteAllText(output, "candidate");
+                Assert.Equal("candidate", File.ReadAllText(output));
+            }
+            Assert.Empty(reserved);
+            File.Delete(output);
+            WorkPaths.PruneEmptyAncestors(workRoot, output, reserved.Contains);
+            Assert.False(Directory.Exists(Path.GetDirectoryName(output)));
+        }
+    }
+
+    [Fact]
+    public void Output_directory_reservation_is_released_when_creation_fails()
+    {
+        Directory.CreateDirectory(_root);
+        var parent = Path.Combine(_root, "not-a-directory");
+        File.WriteAllText(parent, "keep");
+        var released = false;
+
+        Assert.ThrowsAny<IOException>(() => WorkPaths.PrepareOutputDirectory(
+            Path.Combine(parent, "movie.mkv"), _ => new Release(() => released = true)));
+
+        Assert.True(released);
+        Assert.Equal("keep", File.ReadAllText(parent));
+    }
+
+    [Fact]
+    public async Task Output_directory_reservation_is_released_when_an_attempt_is_cancelled()
+    {
+        var released = false;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            using var reservation = WorkPaths.PrepareOutputDirectory(
+                Path.Combine(_root, "movie.mkv"), _ => new Release(() => released = true));
+            await Task.FromCanceled(new CancellationToken(canceled: true));
+        });
+        Assert.True(released);
+    }
+
+    private sealed class Release(Action release) : IDisposable
+    {
+        public void Dispose() => release();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

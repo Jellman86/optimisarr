@@ -798,11 +798,35 @@ public sealed class QueueDispatcher(
                 return;
             }
 
-            var work = await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
+            // A strict lease freezes its plan at assignment. Re-planning after upload would run
+            // local probes and filters, violating sidecar-only verification and changing the question.
+            var work = deliveredLease!.VerificationContractJson is not null
+                ? deliveredLease.VerificationWorkJson is { } frozen
+                    ? JsonSerializer.Deserialize<JobWork>(frozen, ReportJsonOptions)
+                    : throw new InvalidOperationException("The strict verification work snapshot is missing.")
+                : await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
             if (work is null)
             {
                 await CompleteAsync(jobId, JobStatus.Failed, error: "Job or media file no longer exists.");
                 return;
+            }
+
+            if (deliveredLease!.VerificationContractJson is not null)
+            {
+                await using var policyScope = scopeFactory.CreateAsyncScope();
+                var db = policyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+                var library = await db.Libraries.AsNoTracking()
+                    .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
+                    .SingleOrDefaultAsync(cancellationToken);
+                var currentSettings = await GetQueueSettingsAsync(cancellationToken);
+                work = work.Value with
+                {
+                    VerificationPolicy = ResolveVerificationPolicy(currentSettings.VerificationPolicy, library),
+                    AutoReplace = library?.AutoReplace ?? false,
+                    MoveOnComplete = library?.MoveOnComplete ?? false,
+                    TargetFolder = library?.TargetFolder,
+                    MoveOverwrite = library?.MoveOverwrite ?? false
+                };
             }
 
             if (!File.Exists(work.Value.Original.Path))
@@ -820,6 +844,21 @@ public sealed class QueueDispatcher(
             // to these exact bytes and this policy. Anything less is measured again here, and the
             // worker's card says why its evidence was not taken.
             var delivered = DeliveredQualityEvidence.Resolve(deliveredLease!, sourceSha256, work.Value.VerificationPolicy);
+            RemoteVerificationEvidence? fullEvidence = null;
+            if (deliveredLease!.VerificationContractJson is { } verificationJson)
+            {
+                var contract = JsonSerializer.Deserialize<RemoteVerificationContract>(verificationJson, ReportJsonOptions)
+                    ?? throw new InvalidOperationException("The full verification contract is missing.");
+                fullEvidence = deliveredLease.VerificationEvidenceJson is { } evidenceJson
+                    ? JsonSerializer.Deserialize<RemoteVerificationEvidence>(evidenceJson, ReportJsonOptions) : null;
+                var objections = RemoteVerificationEvidenceValidator.Validate(
+                    contract, fullEvidence, sourceSha256, deliveredLease.DeliveredSha256);
+                if (objections.Count > 0)
+                    throw new InvalidOperationException("Sidecar-only verification failed: " + string.Join(" ", objections));
+                if (work.Value.VerificationPolicy.RequiresVmaf(work.Value.Spec.Kind, work.Value.Original.VideoReencoded)
+                    && delivered.Accepted is null)
+                    throw new InvalidOperationException("Sidecar-only verification requires valid worker VMAF evidence. Server fallback is disabled.");
+            }
             if (delivered.WasAsked && delivered.Accepted is null
                 && work.Value.VerificationPolicy.RequiresVmaf(work.Value.Spec.Kind, work.Value.Original.VideoReencoded))
             {
@@ -847,7 +886,8 @@ public sealed class QueueDispatcher(
                 // A worker's hardware decode can corrupt frames as a local one can; the retry
                 // cannot happen on the worker, so it is a requeue with software decode required.
                 softwareDecodeRetryAvailable: deliveredLease!.HardwareDecoder is not null,
-                remoteQuality: delivered.Accepted);
+                remoteQuality: delivered.Accepted,
+                remoteEvidence: fullEvidence);
             if (disposition == VerificationDisposition.RetryWithSoftwareDecode)
             {
                 DeleteWorkOutput(candidatePath);
@@ -1179,23 +1219,14 @@ public sealed class QueueDispatcher(
                     work.Value.VideoFrameRate),
                 work.Value.VideoFrameRate,
                 spec.TargetFrameRate);
-            // Claim the output directory before creating it and hold it until FFmpeg has finished,
-            // then create it here rather than earlier in this method. Another job on the same media
-            // file writes into the same directory and prunes it on its way out; between creation
-            // and FFmpeg opening the output the directory is empty, so an unclaimed one gets pruned
-            // and the encode dies on "Error opening output … No such file or directory".
-            FfmpegRun run;
-            using (ReserveWorkDirectory(Path.GetDirectoryName(spec.OutputPath)!))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(spec.OutputPath)!);
-                run = await RunFfmpegAsync(
-                    jobId,
-                    arguments,
-                    progressDuration,
-                    expectedFrameCount,
-                    hardwareEncoder,
-                    cancellationToken);
-            }
+            var run = await RunFfmpegAsync(
+                jobId,
+                spec.OutputPath,
+                arguments,
+                progressDuration,
+                expectedFrameCount,
+                hardwareEncoder,
+                cancellationToken);
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
@@ -1220,6 +1251,7 @@ public sealed class QueueDispatcher(
                     cancellationToken);
                 run = await RunFfmpegAsync(
                     jobId,
+                    spec.OutputPath,
                     arguments,
                     progressDuration,
                     expectedFrameCount,
@@ -1317,6 +1349,7 @@ public sealed class QueueDispatcher(
                     await NotifyAsync();
                     run = await RunFfmpegAsync(
                         jobId,
+                        spec.OutputPath,
                         arguments,
                         progressDuration,
                         expectedFrameCount,
@@ -1378,7 +1411,9 @@ public sealed class QueueDispatcher(
         // the quality being compared. Its normal clip verification still measures VMAF after encode.
         && !isCalibration;
 
-    private readonly record struct JobWork(
+    // This snapshot is persisted on a strict sidecar lease and deserialized after delivery. Keep
+    // the nested type visible to System.Text.Json so a restart cannot lose the frozen assignment.
+    internal readonly record struct JobWork(
         TranscodeSpec Spec,
         IReadOnlyList<string> Arguments,
         string? VideoEncoder,
@@ -1453,7 +1488,8 @@ public sealed class QueueDispatcher(
     public async Task<RemoteWorkPlan> PrepareRemoteWorkAsync(
         int jobId,
         WorkerCapabilities worker,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceStrictVerification = false)
     {
         JobWork? prepared;
         try
@@ -1474,6 +1510,10 @@ public sealed class QueueDispatcher(
         {
             return RemoteWorkPlan.Refused("The library keeps its work on this server.");
         }
+
+        var strictVerification = forceStrictVerification || (await GetQueueSettingsAsync(cancellationToken)).WorkerVerificationRequired;
+        if (strictVerification && work.IsDisposable)
+            return RemoteWorkPlan.Refused("Sidecar-only verification requires a full-file video job.");
 
         // Only a video re-encode has an encoder to match and arguments worth shipping; a remux,
         // audio or image job is cheap enough that distributing it buys nothing yet.
@@ -1511,6 +1551,7 @@ public sealed class QueueDispatcher(
         // picture sits relative to its container start. That is not kept on the media record, so
         // the source is probed here; a failed probe only costs the grid alignment, not the plan.
         double? referenceContainerLead = null;
+        var referenceFrameRate = work.Spec.TargetFrameRate ?? work.VideoFrameRate;
         if (work.SourcePicture is not null && work.VerificationPolicy.QualityGateEnabled)
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -1518,6 +1559,7 @@ public sealed class QueueDispatcher(
                 .GetRequiredService<MediaProbeService>()
                 .ProbeAsync(work.Original.Path, cancellationToken);
             referenceContainerLead = ContainerLeadSeconds(sourceProbe);
+            referenceFrameRate ??= sourceProbe.VideoFrameRate;
         }
         var quality = work.SourcePicture is { } source
             ? RemoteQualityPlanner.Plan(
@@ -1527,7 +1569,7 @@ public sealed class QueueDispatcher(
                 work.Original.IsHdr,
                 work.Original.HdrConvertedToSdr,
                 work.DurationSeconds,
-                work.Spec.TargetFrameRate ?? work.VideoFrameRate,
+                referenceFrameRate,
                 referenceContainerLead,
                 work.Spec.CropTo,
                 work.Spec.FrameRate)
@@ -1542,7 +1584,10 @@ public sealed class QueueDispatcher(
             quality,
             work.UsedHardwareDecode ? RemoteHardwareDecoder(worker, work.VideoEncoder) : null,
             work.Spec.AudioEncoder,
-            search));
+            search,
+            strictVerification ? new RemoteVerificationContract(1, Guid.NewGuid(),
+                work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
+            strictVerification ? JsonSerializer.Serialize(work, ReportJsonOptions) : null));
     }
 
     /// <summary>
@@ -2232,6 +2277,7 @@ public sealed class QueueDispatcher(
 
             var run = await RunFfmpegAsync(
                 jobId,
+                outputPath,
                 primary,
                 window.DurationSeconds,
                 FrameRatePlanner.ScaleFrameCount(
@@ -2438,6 +2484,7 @@ public sealed class QueueDispatcher(
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
+        string outputPath,
         IReadOnlyList<string> arguments,
         double? durationSeconds,
         int? expectedFrameCount,
@@ -2446,6 +2493,10 @@ public sealed class QueueDispatcher(
         bool reportProgress = true,
         Func<double, double>? progressMap = null)
     {
+        // Every attempt must recreate the directory: rejecting a candidate prunes its empty
+        // parent. Reserve it before creation so another job's cleanup cannot remove it while
+        // FFmpeg is opening the output; keep that reservation through retries and cancellation.
+        using var outputDirectory = WorkPaths.PrepareOutputDirectory(outputPath, ReserveWorkDirectory);
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
@@ -2889,7 +2940,8 @@ public sealed class QueueDispatcher(
         JobWork work,
         CancellationToken cancellationToken,
         bool softwareDecodeRetryAvailable = false,
-        RemoteQuality? remoteQuality = null)
+        RemoteQuality? remoteQuality = null,
+        RemoteVerificationEvidence? remoteEvidence = null)
     {
         await WithJobAsync(jobId, job =>
         {
@@ -2949,7 +3001,8 @@ public sealed class QueueDispatcher(
                 clip,
                 qualityProgress,
                 vmafAcceleration,
-                remoteQuality);
+                remoteQuality,
+                remoteEvidence);
         }
         outcome = outcome with
         {
@@ -2965,7 +3018,8 @@ public sealed class QueueDispatcher(
                     policy.MinimumVmafHarmonicMean,
                     policy.MinimumVmafMin,
                     policy.MinimumVmafCatastrophicMin,
-                    work.SoftwareDecodeRetryReason)
+                    work.SoftwareDecodeRetryReason,
+                    remoteEvidence is null ? "Server" : "Worker")
             }
         };
         var reportJson = JsonSerializer.Serialize(outcome.Report, ReportJsonOptions);

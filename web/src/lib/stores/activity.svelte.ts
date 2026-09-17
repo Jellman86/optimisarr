@@ -45,7 +45,10 @@ function createActivity() {
   // finishing is exactly the moment the card's subject changes.
   async function refreshLead() {
     try {
-      liveJobs = await api.liveJobs()
+      const fetched = await api.liveJobs()
+      // Preserve the last confirmed activity if an incompatible response reaches this endpoint.
+      if (!Array.isArray(fetched)) return
+      liveJobs = fetched
       const next = pickLeadJob(liveJobs)
       if (next?.id !== leadJob?.id) leadProgress = null
       leadJob = next

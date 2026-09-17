@@ -112,7 +112,9 @@ internal sealed record HeartbeatRequest(
     /// a sidecar does not re-pair it, so a version recorded once would be wrong from the first
     /// upgrade onwards and quietly stay wrong.
     /// </summary>
-    string? SidecarVersion = null);
+    string? SidecarVersion = null,
+    int? ProtocolMinimum = null,
+    int? ProtocolMaximum = null);
 
 /// <summary>
 /// The acknowledgement. Carries the interval so a sidecar paces itself from the control plane
@@ -273,6 +275,13 @@ internal static class WorkerEndpoints
                     new ApiError("worker.credential.invalid", "Unknown or revoked worker credential."),
                     statusCode: StatusCodes.Status401Unauthorized);
             }
+
+            // Upgrades keep their pairing. Omitted ranges identify legacy protocol-1 clients,
+            // including a downgrade, so they must never inherit a newer client's capabilities.
+            var negotiation = WorkerProtocol.Negotiate(request.ProtocolMinimum ?? 1, request.ProtocolMaximum ?? 1);
+            if (!negotiation.Compatible)
+                return ApiErrors.Conflict("worker.protocol.incompatible", negotiation.Reason!);
+            worker.ProtocolVersion = negotiation.AgreedVersion;
 
             // Stamped from the server's clock, never from the request, so a sidecar with a wrong
             // or dishonest clock cannot claim to have been alive.

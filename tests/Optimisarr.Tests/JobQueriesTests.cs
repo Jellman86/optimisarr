@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Optimisarr.Api.Queue;
 using Optimisarr.Core.Queue;
 using Optimisarr.Core.Verification;
+using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
 namespace Optimisarr.Tests;
@@ -11,6 +12,36 @@ public sealed class JobQueriesTests : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<OptimisarrDbContext> _options;
+
+    [Theory]
+    [InlineData(JobStatus.ReadyToReplace)]
+    [InlineData(JobStatus.Completed)]
+    [InlineData(JobStatus.Failed)]
+    public async Task Delivered_jobs_keep_worker_attribution_after_verification(JobStatus status)
+    {
+        await using var db = new OptimisarrDbContext(_options);
+        var library = new Library { Name = "Films", Path = "/data/films" };
+        var worker = new Worker { Name = "Encoder Mac" };
+        db.AddRange(library, worker);
+        await db.SaveChangesAsync();
+        db.MediaFiles.Add(MediaFile(library.Id, 1));
+        await db.SaveChangesAsync();
+        var job = Job(1, 1, DateTimeOffset.UtcNow);
+        job.Status = status;
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync();
+        db.JobLeases.Add(new JobLease
+        {
+            Id = Guid.NewGuid(), JobId = job.Id, WorkerId = worker.Id,
+            AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            State = LeaseState.Completed, Stage = RemoteStage.Delivering
+        });
+        await db.SaveChangesAsync();
+
+        var result = Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None));
+        Assert.Equal(worker.Name, result.WorkerName);
+        Assert.Null(result.RemoteStage);
+    }
 
     public JobQueriesTests()
     {

@@ -5,7 +5,21 @@ the command path and fallback behaviour are covered by automated tests; it does 
 physical GPU has completed an Optimisarr job. **Validated** means a real container completed the
 listed path and the evidence was observed outside a mock.
 
-Last reviewed: **2026-08-11**.
+Last reviewed: **2026-09-17**.
+
+The [real-media acceptance harness](../development/media-acceptance.md) now provides repeatable
+isolated container and sidecar runs with independent quality measurements and rollback evidence.
+Its selected coverage and results must be retained before updating a hardware row below.
+
+The [2026-09-17 Windows/container acceptance run](../engineering/hardware-validation/2026-09-17-windows-container-acceptance.md)
+passed 146 fleet cases plus 17 container smoke cases on an RTX 4070. It adds real H.264/HEVC/AV1
+CPU and NVENC output, CPU VMAF and rollback evidence for the container and native Windows worker.
+It does not upgrade the hardware-decode, HDR or CUDA VMAF claims in the table below.
+
+The [installed Mac/Intel container run](../engineering/hardware-validation/2026-09-17-installed-mac-container.md)
+adds QSV H.264/HEVC, software AV1 and installed Mac VideoToolbox evidence. It retained three
+failures on the deployed image: two VFR measurement-plan mismatches and an output-directory
+failure during a correctly triggered quality rejection retry. These are not passing validations.
 
 | Platform | Encode | Hardware decode | HDR→SDR tone map | VMAF path | Live metrics | Last real-host validation | Evidence and known limits |
 |---|---|---|---|---|---|---|---|

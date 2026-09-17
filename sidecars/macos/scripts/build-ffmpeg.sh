@@ -31,6 +31,7 @@ X265_TAG="${X265_TAG:-4.2}"
 # way to encode AV1 here.
 SVTAV1_TAG="${SVTAV1_TAG:-v4.2.0}"
 VMAF_TAG="${VMAF_TAG:-v3.0.0}"
+DAV1D_TAG="${DAV1D_TAG:-1.5.3}"
 # n7.1.2, not n7.1. The libx265 wrapper in the base n7.1 tag guards the multi-layer encoder API
 # with `#if X265_BUILD >= 210` and no upper bound. x265 reverted that API at build 213, so a
 # wrapper built against x265 4.2 passes an array of *pointers* where the library now expects an
@@ -84,13 +85,14 @@ echo "==> Fetching sources"
 clone_at "https://code.videolan.org/videolan/x264.git" "${X264_TAG}" x264
 clone_at "https://bitbucket.org/multicoreware/x265_git.git" "${X265_TAG}" x265
 clone_at "https://gitlab.com/AOMediaCodec/SVT-AV1.git" "${SVTAV1_TAG}" svtav1
+clone_at "https://code.videolan.org/videolan/dav1d.git" "${DAV1D_TAG}" dav1d
 clone_at "https://github.com/Netflix/vmaf.git" "${VMAF_TAG}" vmaf
 clone_at "https://github.com/FFmpeg/FFmpeg.git" "${FFMPEG_TAG}" ffmpeg
 
 echo "==> Recording exactly what was built"
 {
   echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  for d in x264 x265 svtav1 vmaf ffmpeg; do
+  for d in x264 x265 svtav1 dav1d vmaf ffmpeg; do
     printf '%-8s %s %s\n' "${d}" "$(git -C "${BUILD}/${d}" describe --tags --always 2>/dev/null || echo '?')" \
       "$(git -C "${BUILD}/${d}" rev-parse HEAD 2>/dev/null || echo '?')"
   done
@@ -103,15 +105,41 @@ if [[ ! -f "${PREFIX}/lib/libx264.a" ]]; then
       --disable-cli --disable-opencl >/dev/null && make -j"${JOBS}" >/dev/null && make install >/dev/null)
 fi
 
-if [[ ! -f "${PREFIX}/lib/libx265.a" ]]; then
-  echo "==> x265"
-  # x265 predates CMake 4, which removed both the pre-3.5 minimum and the OLD setting for policies
-  # the project sets explicitly. CMAKE_POLICY_VERSION_MINIMUM alone is not enough — an explicit
-  # cmake_policy(SET ... OLD) still errors — so the tag is the fix and this flag covers the
-  # minimum-version half.
-  (cd "${BUILD}/x265/build" && cmake ../source -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-      -DENABLE_SHARED=OFF -DENABLE_CLI=OFF ${X265_CMAKE_FLAGS} >/dev/null && make -j"${JOBS}" >/dev/null && make install >/dev/null)
+# The marker invalidates an older 8-bit-only cached archive.
+if [[ ! -f "${PREFIX}/lib/x265-multilib-8-10-12" ]]; then
+  echo "==> x265 (8, 10 and 12 bit)"
+  for depth in 12 10 8; do
+    build_dir="${BUILD}/x265/build/multilib-${depth}"
+    mkdir -p "${build_dir}"
+    depth_flags=()
+    if [[ "${depth}" != 8 ]]; then
+      depth_flags=(-DHIGH_BIT_DEPTH=ON -DEXPORT_C_API=OFF)
+      [[ "${depth}" == 12 ]] && depth_flags+=(-DMAIN12=ON)
+    else
+      cp "${BUILD}/x265/build/multilib-10/libx265.a" "${build_dir}/libx265_main10.a"
+      cp "${BUILD}/x265/build/multilib-12/libx265.a" "${build_dir}/libx265_main12.a"
+      depth_flags=(-DLINKED_10BIT=ON -DLINKED_12BIT=ON
+        '-DEXTRA_LIB=x265_main10.a;x265_main12.a' "-DEXTRA_LINK_FLAGS=-L${build_dir}")
+    fi
+    cmake -S "${BUILD}/x265/source" -B "${build_dir}" -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+      -DENABLE_SHARED=OFF -DENABLE_CLI=OFF "${depth_flags[@]}" ${X265_CMAKE_FLAGS} >/dev/null
+    cmake --build "${build_dir}" -j "${JOBS}" >/dev/null
+  done
+  cmake --install "${BUILD}/x265/build/multilib-8" >/dev/null
+  libtool -static -o "${PREFIX}/lib/libx265.a" \
+    "${BUILD}/x265/build/multilib-8/libx265.a" \
+    "${BUILD}/x265/build/multilib-10/libx265.a" \
+    "${BUILD}/x265/build/multilib-12/libx265.a"
+  touch "${PREFIX}/lib/x265-multilib-8-10-12"
+fi
+
+if [[ ! -f "${PREFIX}/lib/libdav1d.a" ]]; then
+  echo "==> dav1d (software AV1 decode for verification)"
+  meson setup "${BUILD}/dav1d/build" "${BUILD}/dav1d" --buildtype release \
+    --default-library static --prefix "${PREFIX}" -Denable_tools=false \
+    -Denable_tests=false -Denable_docs=false >/dev/null
+  ninja -C "${BUILD}/dav1d/build" install >/dev/null
 fi
 
 if [[ ! -f "${PREFIX}/lib/libSvtAv1Enc.a" ]]; then
@@ -151,6 +179,7 @@ echo "==> ffmpeg"
     --enable-libx264 \
     --enable-libx265 \
     --enable-libsvtav1 \
+    --enable-libdav1d \
     --enable-libvmaf \
     --enable-videotoolbox \
     --disable-doc \
@@ -188,3 +217,7 @@ if [[ "${portable}" != true ]]; then
   exit 1
 fi
 echo "  both link only the OS"
+
+# Listings alone missed both bugs: an encoder can silently reduce bit depth, and AV1 hardware
+# decode does not provide the software decoder used by full verification.
+python3 ../../scripts/check_media_tool_bundle.py --ffmpeg "${VENDOR}/ffmpeg" --ffprobe "${VENDOR}/ffprobe"
