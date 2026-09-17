@@ -1,3 +1,4 @@
+import { createSoftMask } from './canvas-soft-mask.ts'
 import type { StellarMotion } from './stellar-motion'
 
 // Canvas layers are reused across theme/activity changes: the three faces never swap meshes.
@@ -32,8 +33,6 @@ export function createStellarRenderer(
   const fill = norm([0.85, -0.18, 0.65])
   const modelBuffer = makeCanvas(),
     modelContext = modelBuffer.getContext('2d')!
-  const bloomBuffer = makeCanvas(),
-    bloomContext = bloomBuffer.getContext('2d')!
   const shadowBuffer = makeCanvas(),
     shadowContext = shadowBuffer.getContext('2d')!
   function rotate([x, y, z]: number[], yaw: number, pitch: number) {
@@ -77,6 +76,29 @@ export function createStellarRenderer(
       .sort((a, b) => a.z - b.z)
     return { rotated, planes }
   }
+  // Bake the photographic toning once. Canvas filters are absent in some browsers.
+  const materials = scenes.map((scene, index) => {
+    const texture = makeCanvas()
+    texture.width = texture.height = N
+    const ctx = texture.getContext('2d')!
+    ctx.drawImage(scene, 0, 0, N, N)
+    const pixels = ctx.getImageData(0, 0, N, N)
+    const contrast = 1 - options.softness * 0.28
+    const saturation = 1 - options.softness * 0.24
+    const brightness = index === 2 ? options.goldLift : 1.065
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const luminance = pixels.data[i] * 0.2126 + pixels.data[i + 1] * 0.7152 + pixels.data[i + 2] * 0.0722
+      for (let c = 0; c < 3; c++) {
+        const colour = luminance + (pixels.data[i + c] - luminance) * saturation
+        pixels.data[i + c] = ((colour - 127.5) * contrast + 127.5) * brightness
+      }
+    }
+    ctx.putImageData(pixels, 0, 0)
+    return texture
+  })
+
+  const softMask = createSoftMask(makeCanvas)
+  const softSilhouette = softMask.draw
   function material(
     ctx: CanvasRenderingContext2D,
     points: number[][],
@@ -99,16 +121,7 @@ export function createStellarRenderer(
       travel = (N * (scale - 1)) / 2,
       x = -travel * (1 + Math.sin(phase / 520 + scene * 1.7)),
       y = -travel * (1 + Math.cos(phase / 712 + scene * 2.1))
-    ctx.filter = `contrast(${1 - options.softness * 0.22}) saturate(${1 - options.softness * 0.2}) brightness(${scene === 2 ? options.goldLift : 1.035})`
-    ctx.drawImage(scenes[scene], x, y, N * scale, N * scale)
-    ctx.filter = 'none'
-    // Broad, low-opacity bloom fills the dark gaps without erasing the sharp stars.
-    ctx.save()
-    ctx.globalCompositeOperation = 'screen'
-    ctx.globalAlpha = 0.16 * options.softness
-    ctx.filter = 'blur(12px)'
-    ctx.drawImage(scenes[scene], x, y, N * scale, N * scale)
-    ctx.restore()
+    ctx.drawImage(materials[scene], x, y, N * scale, N * scale)
     ctx.fillStyle = `rgba(0,5,17,${shade})`
     ctx.fillRect(0, 0, N, N)
     if (scene === 2) {
@@ -158,16 +171,11 @@ export function createStellarRenderer(
     }
     sc.restore()
     const meanHeight = height / count,
-      softness = r * (0.024 + 0.035 * meanHeight)
-    ctx.save()
-    ctx.globalAlpha = (dark ? 0.52 : 0.22) * options.shadow
-    ctx.filter = `blur(${softness}px)`
-    ctx.drawImage(shadowBuffer, 0, 0)
-    ctx.globalAlpha = (dark ? 0.13 : 0.095) * options.shadow
-    ctx.filter = `blur(${softness * 0.4}px)`
-    ctx.drawImage(shadowBuffer, 0, 0)
-    ctx.restore()
+      softness = r * (0.15 + 0.055 * meanHeight)
+    softSilhouette(ctx, shadowBuffer, '#132335', softness, (dark ? 0.43 : 0.17) * options.shadow)
+    softSilhouette(ctx, shadowBuffer, '#132335', softness * 0.5, (dark ? 0.12 : 0.055) * options.shadow)
   }
+
   function drawModel(ctx: CanvasRenderingContext2D, g: ReturnType<typeof geometry>) {
     for (const f of g.planes) {
       const points = f.v.map((v) => [v[0], v[1]]),
@@ -285,30 +293,11 @@ export function createStellarRenderer(
     mc.scale(r, r)
     drawModel(mc, g)
     mc.restore()
-    // Lift the silhouette into a luminous bloom; dark nebulae must not cast a false halo-shadow.
-    if (bloomBuffer.width !== w || bloomBuffer.height !== h) {
-      bloomBuffer.width = w
-      bloomBuffer.height = h
-    }
-    const bc = bloomContext
-    bc.clearRect(0, 0, w, h)
-    bc.drawImage(modelBuffer, 0, 0)
-    bc.save()
-    bc.globalCompositeOperation = 'source-atop'
-    const halo = bc.createLinearGradient(cx - r, cy - r, cx + r, cy + r)
-    halo.addColorStop(0, 'rgba(199,221,255,.58)')
-    halo.addColorStop(1, 'rgba(255,223,190,.58)')
-    bc.fillStyle = halo
-    bc.fillRect(0, 0, w, h)
-    bc.restore()
+    // A broad atmosphere and a tighter cool rim use the same mask as the cube.
     ctx.save()
     ctx.globalCompositeOperation = dark ? 'screen' : 'source-over'
-    ctx.globalAlpha = options.glow * 0.48
-    ctx.filter = `blur(${r * 0.045}px)`
-    ctx.drawImage(bloomBuffer, 0, 0)
-    ctx.globalAlpha = options.glow * 0.16
-    ctx.filter = `blur(${r * 0.14}px)`
-    ctx.drawImage(bloomBuffer, 0, 0)
+    softSilhouette(ctx, modelBuffer, dark ? '#a7c9ef' : '#bacde3', r * 0.23, options.glow * (dark ? 0.18 : 0.12))
+    softSilhouette(ctx, modelBuffer, '#d5e4f5', r * 0.075, options.glow * 0.23)
     ctx.restore()
     ctx.drawImage(modelBuffer, 0, 0)
     return canvas
@@ -317,7 +306,8 @@ export function createStellarRenderer(
     render,
     destroy() {
       disposed = true
-      for (const buffer of [canvas, modelBuffer, bloomBuffer, shadowBuffer])
+      softMask.destroy()
+      for (const buffer of [canvas, modelBuffer, shadowBuffer, ...materials])
         buffer.width = buffer.height = 1
     },
   }

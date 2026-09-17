@@ -391,7 +391,7 @@ test('the cube has smooth edges and moving illumination when idle', async ({ pag
     for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0 && pixels[i] < 255) partial++
     return partial
   })).toBeGreaterThan(100)
-  expect(await mark.evaluate((el: HTMLCanvasElement) => el.width)).toBeGreaterThanOrEqual(288)
+  expect(await mark.evaluate((el: HTMLCanvasElement) => el.width / el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(2)
   expect(await mark.evaluate(el => getComputedStyle(el).imageRendering)).toBe('auto')
   await expect(mark).toHaveAttribute('data-light-motion', 'playing')
   const still = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())

@@ -87,9 +87,9 @@
 >
   <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
   <div class="flex min-h-full flex-col">
-  <!-- The cube stays fixed at rest and its slices turn while the server works. -->
+  <!-- A calm identity above the operational navigation; activity animates the chosen mark. -->
   <button
-    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 pt-5 pb-3' : 'pt-7 pb-1'}"
+    class="relative flex w-full flex-col items-center px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-inset {railCollapsed ? 'px-2 pt-5 pb-3' : 'pt-5 pb-1'}"
     aria-label={i18n.m.nav.dashboard}
     onclick={() => {
       router.go('/')
@@ -97,13 +97,13 @@
     }}
   >
     <BrandMark
-      class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-36 w-36'}"
+      class="relative flex-shrink-0 {railCollapsed ? 'h-10 w-10' : 'h-32 w-32'}"
     />
 
     {#if !railCollapsed}
       <!-- Keep the contact shadow clear of the wordmark. -->
       <span
-        class="relative -mt-3 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
+        class="relative -mt-2 text-[18px] font-bold tracking-tight text-ink [text-shadow:0_1px_10px_var(--panel)]"
       >Optimisarr</span>
     {/if}
   </button>
