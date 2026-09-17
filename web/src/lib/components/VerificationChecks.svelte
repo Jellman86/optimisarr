@@ -8,12 +8,12 @@
 
 <ul class="space-y-1.5">
   {#each checks as check (check.name)}
-    <li class="flex items-start gap-2 text-xs">
+    <li class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-xs sm:grid-cols-[auto_minmax(0,8rem)_minmax(0,1fr)]">
       <span class={check.outcome === 'Passed' ? 'text-ok' : 'text-bad'}>
         {check.outcome === 'Passed' ? '✓' : '✗'}
       </span>
-      <span class="w-32 shrink-0 font-medium text-ink-2">{check.name}</span>
-      <span class="text-ink-3">{check.detail}</span>
+      <span class="break-words font-medium text-ink-2">{check.name}</span>
+      <span class="col-start-2 break-words text-ink-3 sm:col-start-3">{check.detail}</span>
     </li>
   {/each}
 </ul>

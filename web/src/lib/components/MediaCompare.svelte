@@ -170,23 +170,23 @@
 
 {#if playable}
   <div class="mb-2 flex justify-end">
-    <button type="button" class="btn px-2 py-1 text-xs" onclick={toggleBoth}>
+    <button type="button" class="btn min-h-11 px-3 text-xs" onclick={toggleBoth}>
       {anyPlaying ? i18n.m.shared.pause_both : i18n.m.shared.play_both}
     </button>
   </div>
 {/if}
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
   {#each sides as side, i (side.label)}
-    <div>
-      <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+    <div class="min-w-0">
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-ink-3">
         <span>{side.label}</span>
         <span class="flex items-center gap-2">
           <span>{side.sizeBytes != null ? formatSize(side.sizeBytes) : ''}</span>
-          <a class="btn px-2 py-1 text-xs" href={side.url} download>{i18n.m.shared.download}</a>
+          <a class="btn min-h-11 px-3 text-xs" href={side.url} download>{i18n.m.shared.download}</a>
         </span>
       </div>
       {#if mediaKind === 'Image'}
-        <img src={side.url} alt={side.label} class="max-h-72 w-full rounded bg-slate-100 object-contain dark:bg-slate-800" />
+        <img src={side.url} alt={side.label} class="max-h-96 w-full rounded bg-sunken object-contain" />
       {:else if mediaKind === 'Audio'}
         <audio
           bind:this={players[i]}
@@ -215,12 +215,12 @@
           onseeking={() => handleSeeking(i)}
           onratechange={() => handleRateChange(i)}
           ontimeupdate={() => correctDrift(i)}
-          class="max-h-72 w-full rounded bg-black"
+          class="aspect-video max-h-96 w-full rounded bg-black"
         ><track kind="captions" /></video>
       {/if}
     </div>
   {/each}
 </div>
 {#if mediaKind !== 'Image' && mediaKind !== 'Audio'}
-  <p class="mt-2 text-xs text-slate-400">{i18n.m.shared.playback_note}</p>
+  <p class="mt-3 text-xs leading-relaxed text-ink-3">{i18n.m.shared.playback_note}</p>
 {/if}

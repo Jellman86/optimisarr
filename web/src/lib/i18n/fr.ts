@@ -321,6 +321,13 @@ language: {
     none_after: ' et activez "Optimiser automatiquement".',
   },
   quarantine: {
+    review_title: "Examiner le remplacement",
+    compare_title: "Comparer les fichiers",
+    file_locations: "Emplacements des fichiers",
+    decision_title: "Décision",
+    finished_note: "Cette entrée est terminée. L’original et le remplacement ne sont plus disponibles pour une comparaison.",
+    unavailable: "Ce remplacement n’est plus disponible.",
+
     error_load: 'Impossible de charger les remplacements',
     error_comparison: 'Impossible de charger la comparaison',
     error_approve: 'Échec de la validation',
@@ -369,7 +376,7 @@ copied: 'copié',
 copied_title: 'Système de fichiers différent : une copie vérifiée puis suppression a été utilisée au lieu d’un déplacement atomique.',
 original_purged: '↳ original purgé',
 original_in: '↳ original dans {path}',
-replacements_count: '{count} remplacements · cliquez une ligne Remplacé pour comparer et approuver',
+replacements_count: "{count} remplacements · sélectionnez un fichier à examiner",
 empty:
   'Rien en quarantaine. Lorsque vous remplacez un travail vérifié depuis la File d’attente, son original est conservé ici pour vérification.',
 loading_comparison: 'Chargement de la comparaison…',

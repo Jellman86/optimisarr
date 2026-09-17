@@ -324,6 +324,13 @@ language: {
     none_after: ' página y habilita "Optimizar automáticamente".',
   },
   quarantine: {
+    review_title: "Revisar sustitución",
+    compare_title: "Comparar archivos",
+    file_locations: "Ubicaciones de los archivos",
+    decision_title: "Decisión de revisión",
+    finished_note: "Esta entrada ha finalizado. El original y el reemplazo ya no están disponibles para compararlos.",
+    unavailable: "Esta sustitución ya no está disponible.",
+
     error_load: 'No se pudo cargar los reemplazos',
     error_comparison: 'No se pudo cargar la comparación',
     error_approve: 'La aprobación falló',
@@ -372,7 +379,7 @@ copied: 'copiado',
 copied_title: 'Sistema de archivos diferente: se usó copia y eliminación verificada en vez de un movimiento atómico.',
 original_purged: '↳ original eliminado',
 original_in: '↳ original en {path}',
-replacements_count: '{count} reemplazos · haz clic en una fila reemplazada para comparar y aprobar',
+replacements_count: "{count} sustituciones · selecciona un archivo para revisarlo",
 empty:
   'Nada en cuarentena. Cuando reemplazas un trabajo verificado desde la Cola, su original se conserva aquí para revisión.',
 loading_comparison: 'Cargando comparación…',

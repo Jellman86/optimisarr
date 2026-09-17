@@ -318,6 +318,13 @@ export const zh: Messages = {
     none_after: "页面并启用“自动优化”。"
   },
   quarantine: {
+    review_title: "审核替换",
+    compare_title: "比较文件",
+    file_locations: "文件位置",
+    decision_title: "审核决定",
+    finished_note: "此条目已完成。原始文件与替换文件已无法进行成对比较。",
+    unavailable: "此替换记录已不可用。",
+
     error_load: "无法加载替代品",
     error_comparison: "无法加载比较",
     error_approve: "批准失败",
@@ -358,7 +365,7 @@ export const zh: Messages = {
     copied_title: "不同的文件系统：使用经过验证的复制加删除而不是原子移动。",
     original_purged: "↳ 原始清除",
     original_in: "↳ 原创于{path}",
-    replacements_count: "{count} 替换 · 单击替换行进行比较和批准",
+    replacements_count: "{count} 个替换记录 · 选择文件进行审核",
     empty: "隔离区什么都没有。当您从队列中替换已验证的处理任务时，其原始任务将保留在此处以供审核。",
     loading_comparison: "正在加载比较...",
     original_quarantined: "原件（隔离）",

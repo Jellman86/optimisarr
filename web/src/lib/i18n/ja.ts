@@ -318,6 +318,13 @@ export const ja: Messages = {
     none_after: "ページを開き、「自動的に最適化」を有効にします。"
   },
   quarantine: {
+    review_title: "置換の確認",
+    compare_title: "ファイルを比較",
+    file_locations: "ファイルの場所",
+    decision_title: "確認結果の決定",
+    finished_note: "この項目は完了しています。元のファイルと置換後のファイルの比較はできません。",
+    unavailable: "この置換は利用できなくなりました。",
+
     error_load: "代替品をロードできません",
     error_comparison: "比較をロードできません",
     error_approve: "承認に失敗しました",
@@ -358,7 +365,7 @@ export const ja: Messages = {
     copied_title: "異なるファイルシステム: アトミックな移動の代わりに、検証済みのコピーと削除が使用されました。",
     original_purged: "↳ オリジナルはパージされました",
     original_in: "↳ オリジナル ({path})",
-    replacements_count: "{count} の置換 - 置換された行をクリックして比較して承認します",
+    replacements_count: "{count} 件の置換 · 確認するファイルを選択",
     empty: "検疫には何もありません。検証済みの処理タスクをキューから置き換えると、元のタスクはレビューのためにここに保存されます。",
     loading_comparison: "比較を読み込み中…",
     original_quarantined: "オリジナル（隔離済み）",

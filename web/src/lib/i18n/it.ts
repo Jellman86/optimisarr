@@ -319,6 +319,13 @@ schedule: {
   none_after: " e abilita 'Ottimizza automaticamente'.",
 },
 quarantine: {
+    review_title: "Revisione della sostituzione",
+    compare_title: "Confronta i file",
+    file_locations: "Percorsi dei file",
+    decision_title: "Decisione",
+    finished_note: "Questa voce è conclusa. L’originale e la sostituzione non sono più disponibili per il confronto.",
+    unavailable: "Questa sostituzione non è più disponibile.",
+
   error_load: 'Impossibile caricare le sostituzioni',
   error_comparison: 'Impossibile caricare il confronto',
   error_approve: 'Approvazione fallita',
@@ -367,7 +374,7 @@ quarantine: {
     copied_title: 'Filesystem diverso: è stata usata una copia verificata con eliminazione invece di uno spostamento atomico.',
     original_purged: '↳ originale eliminato',
     original_in: '↳ originale in {path}',
-    replacements_count: '{count} sostituzioni · clic su una riga Sostituita per confrontare e approvare',
+    replacements_count: "{count} sostituzioni · seleziona un file da esaminare",
     empty:
       'Nessun file in quarantena. Quando sostituisci un job verificato dalla Coda, il suo originale resta qui per revisione.',
     loading_comparison: 'Caricamento confronto…',

@@ -318,6 +318,13 @@ export const pt: Messages = {
     none_after: "página e ative \"Otimizar automaticamente\"."
   },
   quarantine: {
+    review_title: "Rever substituição",
+    compare_title: "Comparar ficheiros",
+    file_locations: "Localizações dos ficheiros",
+    decision_title: "Decisão da revisão",
+    finished_note: "Esta entrada está concluída. O original e a substituição já não estão disponíveis para comparação.",
+    unavailable: "Esta substituição já não está disponível.",
+
     error_load: "Não foi possível carregar substituições",
     error_comparison: "Não foi possível carregar a comparação",
     error_approve: "Falha na aprovação",
@@ -358,7 +365,7 @@ export const pt: Messages = {
     copied_title: "Sistema de arquivos diferente: um copiar-e-excluir verificado foi usado em vez de um movimento atômico.",
     original_purged: "↳ original eliminado",
     original_in: "↳ original em {path}",
-    replacements_count: "Substituições {count} · clique em uma linha Substituída para comparar e aprovar",
+    replacements_count: "{count} substituições · selecione um ficheiro para rever",
     empty: "Nada na quarentena. Quando você substitui uma tarefa de processamento verificada da Fila, seu original é mantido aqui para revisão.",
     loading_comparison: "Carregando comparação…",
     original_quarantined: "Original (em quarentena)",
