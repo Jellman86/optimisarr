@@ -1,5 +1,32 @@
 # Queue and Settings polish review — 16 September 2026
 
+## Queue dialog correction — 17 September 2026
+
+The initial inline-detail decision failed for long queues: selecting a lower row expanded
+details above the list and disconnected the result from the click. The initial review
+missed this long-list interaction. The Queue now uses the same native modal mechanism as
+Inventory, with a poster, title and status header, a scrolling detail body, and persistent
+job actions. Working-card artwork and titles also open the dialog.
+
+The new regression opens job 75 in an 80-row queue. Opening, Escape and backdrop dismissal
+preserve the main scroll position and restore the original row's focus. Existing tests
+now exercise dialog behaviour, live telemetry, transition into the history list, action
+failure, paused status and completed jobs with no action footer. A short-window test covers
+long titles, artwork, the full quality-retry action set and native focus containment.
+
+Visual inspection covered desktop dark/light, a 375 × 667 phone, 667 × 375 landscape,
+queued, working, failed and completed jobs. The body scrolls independently; the title,
+close button and actions stay visible. No horizontal overflow or overlapping controls
+were found in these reviewed states. Data and artwork are deterministic test fixtures.
+
+The original comparative assessment below records the earlier implementation; its inline
+detail choice is superseded by this correction. Backend behaviour and replacement safety
+remain unchanged.
+
+Validation: 116 Chromium tests, 18 Queue/Inventory WebKit tests, 24 frontend unit tests
+and 2,019 backend tests passed. Frontend checks and the backend build have zero errors or
+warnings; the production frontend build retains its existing bundle-size advisory.
+
 ## Comparative assessment
 
 The Queue follows the selected **Now & next** direction. Settings follows the user's

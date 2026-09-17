@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { isWorkingJob } from '../job-presentation'
+  import { modal } from '../modal'
+  import { isWorkingJob, isJobSuspended } from '../job-presentation'
   import WorkingJob from '../components/WorkingJob.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
@@ -278,7 +279,6 @@
     error = null
     await tick()
     document.getElementById('queue-detail-title')?.focus({ preventScroll: true })
-    document.getElementById('queue-detail-title')?.scrollIntoView({ block: 'nearest' })
   }
 
   async function closeDetails() {
@@ -458,9 +458,19 @@
 
     {#if selectedJob}
       {@const report = fullReport(selectedJob)}
-      <section class="queue-detail" aria-label={i18n.m.queue.job_details}>
+      {@const suspended = isJobSuspended(selectedJob, queueStatus)}
+      <dialog id="queue-job-dialog" class="app-modal queue-detail" use:modal={closeDetails} aria-labelledby="queue-detail-label queue-detail-title">
         <header class="queue-detail-heading">
-          <div><p>{i18n.m.queue.job_details}</p><h2 id="queue-detail-title" tabindex="-1">{heroTitle(selectedJob.relativePath) ?? jobName(selectedJob)}</h2></div>
+          <div class="queue-detail-poster"><Thumbnail mediaFileId={selectedJob.mediaFileId} size="poster" /></div>
+          <div class="queue-detail-identity">
+            <p id="queue-detail-label">{i18n.m.queue.job_details}</p>
+            <h2 id="queue-detail-title" tabindex="-1">{heroTitle(selectedJob.relativePath) ?? jobName(selectedJob)}</h2>
+            <div class="queue-detail-status">
+              <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : statusLabel(selectedJob.status)}</span>
+              {#if selectedJob.workerName}<span>{selectedJob.workerName}</span>
+              {:else if ['Transcoding', 'Probing', 'Verifying'].includes(selectedJob.status)}<span>{i18n.m.dashboard.this_server}</span>{/if}
+            </div>
+          </div>
           <button class="btn btn-ghost" onclick={closeDetails} aria-label={i18n.m.queue.close_details}><Icon name="x" /></button>
         </header>
         <div class="queue-detail-body">
@@ -468,7 +478,7 @@
           {#if isWorkingJob(selectedJob)}
             <JobProgress job={selectedJob} queue={queueStatus} telemetry={live[selectedJob.id]} />
             <JobStages job={selectedJob} />
-          {:else}<span class="badge {badgeClass(selectedJob.status)}">{statusLabel(selectedJob.status)}</span>{/if}
+          {/if}
           {#if selectedJob.status === 'Failed'}
             <p class="callout tone-bad mt-4">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
             {#if selectedJob.errorMessage}<details class="mt-3 text-xs text-ink-3"><summary>{i18n.m.queue.technical_error}</summary><p class="mt-2 whitespace-pre-wrap break-words font-mono">{selectedJob.errorMessage}</p></details>{/if}
@@ -542,6 +552,7 @@
           {/if}
           <div class="queue-path"><span>{i18n.m.queue.col_file}</span><p>{selectedJob.relativePath ?? '—'}</p></div>
         </div>
+        {#if isActive(selectedJob.status) || selectedJob.status === 'Failed' || selectedJob.status === 'Cancelled'}
         <footer class="queue-detail-actions">
                 <!-- Actions -->
       <div class="flex flex-wrap gap-2">
@@ -576,7 +587,8 @@
       </div>
 
         </footer>
-      </section>
+        {/if}
+      </dialog>
     {/if}
 
     <section aria-label={i18n.m.queue.next_recent}>
@@ -604,7 +616,7 @@
           <thead><tr><th scope="col">{i18n.m.queue.col_file}</th><th scope="col">{i18n.m.queue.col_status}</th><th scope="col" class="verification-column">{i18n.m.queue.col_verification}</th><th scope="col" class="action-column"><span class="sr-only">{i18n.m.queue.view_job}</span></th></tr></thead>
           <tbody>{#each pagedJobs as job (job.id)}
             <tr class:selected-row={selectedJobId === job.id}>
-              <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-expanded={selectedJobId === job.id}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
+              <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureDescription(job.failureCategory, i18n.m)}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
               <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
@@ -623,9 +635,36 @@
   .queue-layout { max-width: 72rem; margin-inline: auto; }.queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
   .queue-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--divide-soft); }.queue-tabs button { padding: .75rem 1rem; font-size: .8125rem; color: var(--ink-3); }.queue-tabs button[aria-pressed=true] { color: var(--accent); box-shadow: 0 2px 0 var(--accent); }.queue-tabs > span { margin-left: auto; color: var(--ink-3); font-size: .6875rem; padding: .5rem 0; }.queue-tabs strong { margin-left: .5rem; font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
-  .queue-detail { margin: 1.5rem 0; background: var(--panel); border-radius: 1rem; box-shadow: var(--lift-2), inset 0 0 0 1px var(--edge); overflow: clip; }.queue-detail-heading { padding: 1.25rem 1.5rem; background: var(--raised); display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }.queue-detail-heading > div { min-width: 0; }.queue-detail-heading p { font-size: .6875rem; color: var(--ink-3); margin-bottom: .5rem; }.queue-detail-heading h2 { font-size: 1.125rem; font-weight: 600; overflow-wrap: anywhere; }.queue-detail-heading .btn { flex-shrink: 0; min-height: 2.75rem; min-width: 2.75rem; }.queue-detail-body { padding: 1.5rem; }.queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 1.5rem; background: var(--raised); }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
+  .queue-detail { width: 52rem; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .queue-detail-heading { position: relative; display: flex; align-items: center; gap: 1.5rem; padding: 1.5rem 2rem; background: linear-gradient(135deg, var(--raised), var(--panel)); }
+  .queue-detail-poster { flex-shrink: 0; overflow: hidden; border-radius: .625rem; box-shadow: var(--lift-3); }
+  .queue-detail-poster :global([data-thumbnail]) { width: 5rem; height: 7.5rem; }
+  .queue-detail-identity { min-width: 0; padding-right: 1.75rem; }
+  .queue-detail-heading p { font-size: .6875rem; color: var(--ink-3); margin-bottom: .625rem; }
+  .queue-detail-heading h2 { font-size: clamp(1.125rem, 3vw, 1.5rem); line-height: 1.3; font-weight: 650; letter-spacing: -.025em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .queue-detail-heading .btn { position: absolute; right: .75rem; top: .75rem; min-height: 2.75rem; min-width: 2.75rem; }
+  .queue-detail-status { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; margin-top: .75rem; font-size: .75rem; color: var(--ink-3); overflow-wrap: anywhere; }
+  .queue-detail-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 1.5rem 2rem; }
+  .queue-detail-specs:first-child { margin-top: 0; }
+  .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
   .queue-tools { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }.queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .625rem .75rem; font-size: .75rem; color: var(--ink-3); border-radius: .5rem; }.queue-filters button[aria-pressed=true] { background: var(--raised); color: var(--ink); box-shadow: var(--lift-1); }.queue-bulk { display: flex; align-items: flex-start; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }.queue-bulk .btn { font-size: .75rem; }.queue-management { font-size: .75rem; color: var(--ink-3); }.queue-management summary { padding: .75rem; cursor: pointer; border-radius: .5rem; }.queue-management > div { display: flex; flex-wrap: wrap; padding: .5rem; gap: .5rem; background: var(--panel); border-radius: .75rem; max-width: 100%; }
   .queue-table-surface { border-radius: .875rem; background: var(--panel); box-shadow: var(--lift-1); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.queue-table th:first-child { width: 43%; }.queue-table th:nth-child(2) { width: 25%; }.queue-table th:nth-child(3) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
   .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
   @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs > span { width: 100%; margin: 0; }.queue-tabs button { padding: .625rem .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 63%; }.queue-table th:nth-child(2) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
+  @media(max-width: 639px) {
+    .queue-detail-heading { gap: 1rem; }
+    .queue-detail-poster :global([data-thumbnail]) { width: 3.5rem; height: 5.25rem; }
+    .queue-detail-actions > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .queue-detail-actions :global(.btn:only-child) { grid-column: 1/-1; }
+    .queue-detail-actions :global(.btn) { white-space: normal; }
+  }
+  @media(max-height: 540px) {
+    .queue-detail-heading { gap: 1rem; padding: .75rem 1rem; }
+    .queue-detail-poster :global([data-thumbnail]) { width: 2.5rem; height: 3.75rem; }
+    .queue-detail-heading h2 { -webkit-line-clamp: 1; line-clamp: 1; font-size: 1.125rem; }
+    .queue-detail-heading p { margin-bottom: .25rem; }
+    .queue-detail-status { margin-top: .375rem; }
+    .queue-detail-body { padding: 1rem; }
+    .queue-detail-actions { padding: .5rem 1rem; }
+  }
 </style>
