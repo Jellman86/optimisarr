@@ -4,6 +4,13 @@
 
 ### Changed
 
+- **Library configuration follows the processing workflow.** Choose files, Encode, Verify,
+  and Schedule & replace open focused pages with breadcrumbs and browser Back support.
+  Specialist encoding, audio, image, eligibility and verification controls have their own
+  advanced pages; custom settings remain visible in the overview. Drafts are saved together,
+  and validation links return to the setting that needs attention. Named preset choices,
+  explanatory tooltips and the shared card textures, shadows and hover lift keep the editor
+  readable on desktop and mobile.
 - **Queue now separates working jobs from what is next.** A poster-led working card shows
   progress and processing stages; other running jobs remain visible beneath it. Job details
   open in a poster-led dialog with verification evidence, captured commands and the existing job actions.

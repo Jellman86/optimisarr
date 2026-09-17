@@ -41,6 +41,8 @@
   let pageKey = $derived.by(() => {
     const path = router.path
     if (path.startsWith('/settings') || path.startsWith('/tools')) return '/settings'
+    const libraryEditor = path.match(/^\/libraries\/(?:new|\d+\/configure)(?:\/|$)/)
+    if (libraryEditor) return libraryEditor[0].replace(/\/$/, '')
     return path
   })
 
