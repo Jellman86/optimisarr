@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Quarantine comparisons now open a dedicated review page with breadcrumbs, direct links,
+  full-width playback and verification cards. Returning to the list restores its scroll
+  position and keyboard focus. Approve and rollback retain their confirmations; finished
+  entries show read-only history.
+
 - Queue artwork stays visible through live updates and refreshes. Loaded posters and
   missing-artwork placeholders now retain their state until the media item changes.
 - **The application icon is now a cube balanced on its tip.** Fifteen slices twist in sequence

@@ -464,6 +464,13 @@ export const en = {
     none_after: ' page and enable "Optimise automatically".',
   },
   quarantine: {
+    review_title: "Replacement review",
+    compare_title: "Compare files",
+    file_locations: "File locations",
+    decision_title: "Review decision",
+    finished_note: "This entry is finished. The original and replacement are no longer available as a comparison pair.",
+    unavailable: "This replacement is no longer available.",
+
     error_load: 'Unable to load replacements',
     error_comparison: 'Unable to load the comparison',
     error_approve: 'Approve failed',
@@ -512,7 +519,7 @@ export const en = {
     copied_title: 'Different filesystem: a verified copy-plus-delete was used instead of an atomic move.',
     original_purged: '↳ original purged',
     original_in: '↳ original in {path}',
-    replacements_count: '{count} replacements · click a Replaced row to compare and approve',
+    replacements_count: "{count} replacements · select a file to review",
     empty:
       'Nothing in quarantine. When you replace a verified job from the Queue, its original is kept here for review.',
     loading_comparison: 'Loading comparison…',

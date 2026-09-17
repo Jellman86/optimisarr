@@ -328,6 +328,13 @@ export const de: Messages = {
     none_after: ' und aktivieren Sie „Automatisch optimieren“.',
   },
   quarantine: {
+    review_title: "Ersetzung prüfen",
+    compare_title: "Dateien vergleichen",
+    file_locations: "Dateipfade",
+    decision_title: "Entscheidung",
+    finished_note: "Dieser Eintrag ist abgeschlossen. Original und Ersatz stehen nicht mehr als Vergleichspaar zur Verfügung.",
+    unavailable: "Diese Ersetzung ist nicht mehr verfügbar.",
+
     error_load: 'Ersetzungen konnten nicht geladen werden',
     error_comparison: 'Vergleich konnte nicht geladen werden',
     error_approve: 'Freigabe fehlgeschlagen',
@@ -376,7 +383,7 @@ export const de: Messages = {
     copied_title: 'Anderes Dateisystem: Es wurde ein geprüftes Kopieren-und-Löschen statt eines atomaren Verschiebens verwendet.',
     original_purged: '↳ Original endgültig gelöscht',
     original_in: '↳ Original in {path}',
-    replacements_count: '{count} Ersetzungen · klicken Sie auf eine ersetzte Zeile zum Vergleichen und Freigeben',
+    replacements_count: "{count} Ersetzungen · Datei zur Prüfung auswählen",
     empty:
       'Nichts in Quarantäne. Wenn Sie einen geprüften Auftrag aus der Warteschlange ersetzen, wird sein Original hier zur Prüfung aufbewahrt.',
     loading_comparison: 'Vergleich wird geladen …',
