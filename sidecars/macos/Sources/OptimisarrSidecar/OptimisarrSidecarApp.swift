@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SidecarCore
 import SwiftUI
 
@@ -25,35 +26,19 @@ final class AppState {
 
 /// A menu-bar app, with a way back in when the menu bar has no room for it.
 ///
-/// A `MenuBarExtra` is the whole interface right up until macOS has nowhere to draw it: on a
+/// The menu-bar popover is the whole interface right up until macOS has nowhere to draw it: on a
 /// notched Mac with a busy menu bar the icon lands behind the notch, and an app with no window and
 /// no Dock icon then has no reachable surface at all. Relaunching therefore opens a real window,
 /// which is the gesture someone will already try when they think an app failed to start.
 @main
-struct OptimisarrSidecarApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var session = AppState.shared.session
-
-    var body: some Scene {
-        MenuBarExtra {
-            SidecarMenu(session: session)
-        } label: {
-            // Optimisarr's own mark rather than a stock symbol, drawn as a template so macOS tints
-            // it for the menu bar's appearance. State rides along as a badge instead of swapping
-            // the icon wholesale, so the thing in the menu bar stays recognisably this app.
-            Image(nsImage: MenuBarIcon.image(for: session.status, spin: session.spin))
-        }
-        .menuBarExtraStyle(.window)
-    }
-
-    init() {
+@MainActor
+enum OptimisarrSidecarApp {
+    static func main() {
         // A design pass over the menu, rather than the app: render its states and stop before any
         // pairing, network or menu bar work begins.
         let arguments = CommandLine.arguments
         if let flag = arguments.firstIndex(of: MenuRenderer.flag), flag + 1 < arguments.count {
-            MainActor.assumeIsolated {
-                MenuRenderer.render(into: URL(fileURLWithPath: arguments[flag + 1]))
-            }
+            MenuRenderer.render(into: URL(fileURLWithPath: arguments[flag + 1]))
             exit(0)
         }
 
@@ -78,7 +63,11 @@ struct OptimisarrSidecarApp: App {
 
         // Accessory rather than regular: no Dock icon, no app switcher entry. Set in code so the
         // package behaves correctly even when run straight from the build directory.
-        NSApplication.shared.setActivationPolicy(.accessory)
+        let application = NSApplication.shared
+        application.setActivationPolicy(.accessory)
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        withExtendedLifetime(delegate) { application.run() }
     }
 }
 
@@ -92,6 +81,9 @@ struct OptimisarrSidecarApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
+    private var statusItem: NSStatusItem?
+    private var monitor: AnchoredPopover?
+    private var statusObservation: AnyCancellable?
     /// False until the stored pairing has been looked for. Reopen arrives before that answer does.
     private var restoreSettled = false
 
@@ -148,6 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installApplicationMenu()
+        installMenuBarItem()
         observePowerEvents()
         sweepStrayRamDisks()
         // Restoring reads the Keychain, and that read can block — on an item written by a build
@@ -166,6 +160,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 showPairingWindow()
             }
         }
+    }
+
+    private func installApplicationMenu() {
+        let menu = NSMenu()
+        let application = NSMenuItem()
+        application.submenu = NSMenu(title: "Optimisarr Sidecar")
+        application.submenu?.addItem(withTitle: "About Optimisarr Sidecar", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        application.submenu?.addItem(.separator())
+        application.submenu?.addItem(withTitle: "Quit Optimisarr Sidecar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(application)
+        let edit = NSMenuItem()
+        edit.submenu = NSMenu(title: "Edit")
+        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
+            edit.submenu?.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
+        }
+        menu.addItem(edit)
+        NSApplication.shared.mainMenu = menu
+    }
+
+    private func installMenuBarItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = item
+        monitor = AnchoredPopover(content: SidecarMenu(session: AppState.shared.session)) { visible in
+            AppState.shared.session.setPreviewsWanted(visible)
+        }
+        item.button?.target = self
+        item.button?.action = #selector(toggleMonitor)
+        item.button?.toolTip = "Optimisarr Sidecar"
+        item.button?.setAccessibilityLabel("Optimisarr Sidecar")
+        statusObservation = AppState.shared.session.$status.sink { [weak self] status in
+            self?.statusItem?.button?.image = MenuBarIcon.image(for: status)
+        }
+    }
+
+    @objc private func toggleMonitor() {
+        guard let monitor, let button = statusItem?.button else { return }
+        if monitor.popover.isShown { monitor.popover.performClose(nil) }
+        else { monitor.show(relativeTo: button) }
     }
 
     private func showPairingWindow() {

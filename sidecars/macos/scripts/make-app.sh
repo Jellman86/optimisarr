@@ -28,6 +28,9 @@ BINARY="$(swift build --configuration "${CONFIGURATION}" --show-bin-path)/${APP_
 rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/Contents/MacOS" "${BUNDLE}/Contents/Resources"
 cp "${BINARY}" "${BUNDLE}/Contents/MacOS/${APP_NAME}"
+for resource in "$(dirname "${BINARY}")"/*.bundle; do
+  [[ -d "${resource}" ]] && cp -R "${resource}" "${BUNDLE}/Contents/Resources/"
+done
 
 # The app icon. Built here rather than committed as a binary .icns so the one source PNG stays the
 # only artwork in the repository.

@@ -1,6 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Windows.Threading;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -19,8 +22,10 @@ public partial class MonitorWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim requests = new(1, 1);
     private bool initialized;
+    private System.Windows.Forms.Screen? anchorScreen;
+    private bool positioning;
 
-    public MonitorWindow()
+    public MonitorWindow(bool live = true)
     {
         InitializeComponent();
         DataContext = model;
@@ -29,31 +34,94 @@ public partial class MonitorWindow : Window
         initialized = true;
         Deactivated += (_, _) => Hide();
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Hide(); };
-        IsVisibleChanged += (_, _) => { if (IsVisible) _ = RefreshAsync(MonitorProtocol.Read); };
+        IsVisibleChanged += (_, _) => { if (live && IsVisible) _ = RefreshAsync(MonitorProtocol.Read); };
         Closed += (_, _) => lifetime.Cancel();
-        _ = PollAsync();
+        SizeChanged += (_, _) => QueuePosition();
+        DpiChanged += (_, _) => QueuePosition();
+        if (live) _ = PollAsync();
     }
 
     public void ShowAtTray()
     {
+        if (IsVisible) { Hide(); return; }
+        anchorScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
         ApplyTheme();
+        Opacity = 0;
         Show();
-        var screen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
-        var source = PresentationSource.FromVisual(this);
-        var scale = source?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
-        var topLeft = scale.Transform(new Point(screen.WorkingArea.Left, screen.WorkingArea.Top));
-        var bottomRight = scale.Transform(new Point(screen.WorkingArea.Right, screen.WorkingArea.Bottom));
-        MaxHeight = Math.Max(240, bottomRight.Y - topLeft.Y - 20);
-        BodyScroll.MaxHeight = Math.Min(565, MaxHeight - 150);
-        UpdateLayout();
-        Left = Math.Max(topLeft.X + 10, bottomRight.X - ActualWidth - 12);
-        Top = Math.Max(topLeft.Y + 10, bottomRight.Y - ActualHeight - 12);
+        PositionAtTray();
+        Opacity = 1;
         Activate();
+    }
+
+    private void QueuePosition()
+    {
+        if (IsVisible && anchorScreen is not null)
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(PositionAtTray));
+    }
+
+    private void PositionAtTray()
+    {
+        if (positioning || !IsVisible || anchorScreen is null) return;
+        positioning = true;
+        try
+        {
+            var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(item => item.DeviceName == anchorScreen.DeviceName)
+                ?? System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
+            anchorScreen = screen;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            var dpi = VisualTreeHelper.GetDpi(this).DpiScaleY;
+            MaxHeight = Math.Max(180, (screen.WorkingArea.Height - 8) / dpi);
+            BodyScroll.MaxHeight = Math.Max(80, Math.Min(565, MaxHeight - 158));
+            UpdateLayout();
+            if (!GetWindowRect(hwnd, out var bounds)) return;
+            var work = screen.WorkingArea;
+            var full = screen.Bounds;
+            var point = TrayPlacement.Place(new(full.Left, full.Top, full.Right, full.Bottom),
+                new(work.Left, work.Top, work.Right, work.Bottom), bounds.Right - bounds.Left, bounds.Bottom - bounds.Top);
+            SetWindowPos(hwnd, IntPtr.Zero, (int)Math.Round(point.Left), (int)Math.Round(point.Top), 0, 0,
+                0x0001 | 0x0004 | 0x0010); // Preserve size, z-order and activation while anchoring.
+        }
+        finally { positioning = false; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
+
+    internal async Task VerifyAnchoringAsync()
+    {
+        ShowAtTray();
+        foreach (var page in new[] { ActivityPage, PreferencesPage, ActivityPage, DiagnosticsPage, ActivityPage })
+        {
+            Page(page);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            PositionAtTray();
+            var work = anchorScreen!.WorkingArea;
+            GetWindowRect(new WindowInteropHelper(this).Handle, out var bounds);
+            if (bounds.Bottom > work.Bottom || bounds.Top < work.Top || Math.Abs(bounds.Bottom - (work.Bottom - 4)) > 2)
+                throw new InvalidOperationException("Popup lost its taskbar anchor after navigation.");
+        }
+        foreach (var expanded in new[] { true, false, true, false })
+        {
+            ProcessingDetails.IsExpanded = expanded;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            PositionAtTray();
+            GetWindowRect(new WindowInteropHelper(this).Handle, out var bounds);
+            if (Math.Abs(bounds.Bottom - (anchorScreen!.WorkingArea.Bottom - 4)) > 2)
+                throw new InvalidOperationException("Popup lost its taskbar anchor after disclosure.");
+        }
+        Hide();
     }
 
     internal void ApplyTheme(bool? forcedLight = null)
     {
         var light = forcedLight ?? (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 0) is int value && value != 0);
+        BrandImage.Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(light ? "pack://application:,,,/Resources/BrandMarkLight.png" : "pack://application:,,,/Resources/BrandMark.png"));
         string[] names = ["Ground", "Surface", "Raised", "Line", "Ink", "Muted", "Accent"];
         string[] colours = light ? ["#F3F6FA", "#FFFFFF", "#E5EDF5", "#CAD5E2", "#152338", "#50637D", "#087E8B"] : ["#101A2C", "#18253B", "#203149", "#34455F", "#EFF4FC", "#B0BDD1", "#7BD8D1"];
         for (var index = 0; index < names.Length; index++) Resources[names[index]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colours[index]));

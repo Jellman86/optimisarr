@@ -20,13 +20,14 @@ internal static class MonitorRenderer
                 pose is "encoding" or "verifying" ? [new MonitorJob(42, "Big Buck Bunny", "hevc_nvenc", pose == "encoding" ? RemoteStage.Encoding : RemoteStage.Measuring, 92)] : [],
                 "Job #41: candidate returned to server", "0.2.12"));
             if (pose == "offline") model.Disconnect("The worker is unavailable. Live readings have been cleared.");
-            var window = new MonitorWindow { DataContext = model };
+            var window = new MonitorWindow(live: false) { DataContext = model };
             window.ApplyTheme(state.StartsWith("light-", System.StringComparison.Ordinal));
             var content = (FrameworkElement)window.Content;
             content.Measure(new Size(410, 720));
-            content.Arrange(new Rect(0, 0, 410, System.Math.Ceiling(content.DesiredSize.Height) + 12));
+            var height = System.Math.Ceiling(content.DesiredSize.Height) + 12;
+            content.Arrange(new Rect(0, 0, 410, height));
             content.UpdateLayout();
-            var bitmap = new RenderTargetBitmap(820, (int)(content.ActualHeight * 2), 192, 192, PixelFormats.Pbgra32);
+            var bitmap = new RenderTargetBitmap(820, (int)(height * 2), 192, 192, PixelFormats.Pbgra32);
             bitmap.Render(content);
             var png = new PngBitmapEncoder();
             png.Frames.Add(BitmapFrame.Create(bitmap));

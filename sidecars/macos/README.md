@@ -319,8 +319,9 @@ for that layout — `pip install dmgbuild`. Without it the image is still built 
 with Finder's default arrangement. Scripting Finder to do the layout was tried and abandoned: it
 times out under automation, so the result would be a coin toss.
 
-The app's icon is generated from `Resources/AppIcon.png`, the same mark the web app uses. That
-source is 192px, so sizes above 128 are upscaled; replace it with a larger master if one appears.
+The app's icon is generated from `Resources/AppIcon.png`, the same mark the web app uses. The
+1024px master comes from `web/scripts/render-sidecar-icons.ts`, using the main application’s
+Stellar renderer. The same generation step produces the Windows multi-resolution icon.
 
 Stapling matters: without the ticket attached, anyone who downloads the app on a machine that
 cannot reach Apple is told it "cannot be checked for malicious software".

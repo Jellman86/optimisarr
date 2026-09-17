@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../src/Optimisarr.Sidecar.Tray/TrayPlacement.cs" Link="TrayPlacement.cs" />
     <Compile Include="../../src/Optimisarr.Sidecar.Tray/MonitorViewModel.cs" Link="MonitorViewModel.cs" />
   </ItemGroup>
   <ItemGroup>

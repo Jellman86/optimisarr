@@ -30,7 +30,9 @@ worker in the server UI, wait for its job to finish, then explicitly remove the 
 registration before installing. Keep its pairing file if the same server/worker should be retained.
 This safeguard also avoids overwriting a separately managed developer installation.
 
-MSI upgrades stop the worker and replace program files; downgrade is blocked. After an upgrade,
+MSI upgrades stop the worker and replace program files. Development previews permit upgrades
+with the same version so a corrected preview can replace the previous build; lower version
+numbers are blocked. Keep the previous MSI if a preview needs to be restored. After an upgrade,
 use **Start worker** (or reboot). Do not upgrade in the middle of work unless handing that job
 back is acceptable. Uninstall removes program files and service registration but retains
 `%ProgramData%\Optimisarr\Sidecar` and scratch/media data. Pairing storage is restricted to
@@ -55,8 +57,8 @@ renders the installed UI, then uninstalls and verifies retained data. The
 `Windows sidecar installer preview` GitHub workflow builds and runs this test on a fresh Windows
 runner for relevant pull requests and manual dispatches. The live migration from a manually
 registered service to MSI was tested on a paired Windows PC: installation succeeded, retained
-the original pairing, and the installed service checked in with the server. Full major-upgrade
-and interactive UAC pairing tests remain separate from that migration test.
+the original pairing, and the installed service checked in with the server. A same-version preview upgrade was also exercised on that PC, preserving pairing and passing
+the installed native anchoring check. Interactive UAC pairing remains a separate manual check.
 
 ## Distribution status
 

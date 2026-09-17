@@ -3,7 +3,7 @@
            Version="$(var.Version)" UpgradeCode="53DAE213-E6B7-49EB-8FF5-C31F82210925"
            Scope="perMachine" InstallerVersion="500" Compressed="yes">
     <MajorUpgrade DowngradeErrorMessage="A newer Optimisarr Sidecar is already installed."
-                  Schedule="afterInstallInitialize" />
+                  Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Launch Condition="VersionNT64" Message="Optimisarr Sidecar requires 64-bit Windows." />
     <Property Id="EXISTINGSIDECAR">
@@ -11,6 +11,8 @@
     </Property>
     <Launch Condition="Installed OR WIX_UPGRADE_DETECTED OR NOT EXISTINGSIDECAR"
             Message="A manually installed Optimisarr Sidecar service already exists. Drain it, wait for its job to finish, then remove its service registration before using this installer. Pairing data can be retained." />
+    <Icon Id="SidecarIcon" SourceFile="$(var.Payload)\Optimisarr.Sidecar.Tray.exe" />
+    <Property Id="ARPPRODUCTICON" Value="SidecarIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/Jellman86/optimisarr" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Optimisarr Sidecar">
@@ -31,7 +33,7 @@
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="SidecarPrograms" Name="Optimisarr">
         <Component Id="TrayShortcut" Guid="805070B6-7438-4208-94B5-FB7E4A7ECED0" Bitness="always64">
-          <Shortcut Id="OpenTray" Name="Optimisarr Sidecar" Target="[INSTALLFOLDER]Optimisarr.Sidecar.Tray.exe" WorkingDirectory="INSTALLFOLDER" />
+          <Shortcut Id="OpenTray" Name="Optimisarr Sidecar" Target="[INSTALLFOLDER]Optimisarr.Sidecar.Tray.exe" WorkingDirectory="INSTALLFOLDER" Icon="SidecarIcon" IconIndex="0" />
           <RemoveFolder Id="RemovePrograms" On="uninstall" />
           <RegistryValue Root="HKLM" Key="Software\Optimisarr\Sidecar" Name="TrayInstalled" Type="integer" Value="1" KeyPath="yes" />
         </Component>

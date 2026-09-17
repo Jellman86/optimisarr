@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.ServiceProcess;
 using System.Threading;
@@ -32,6 +31,14 @@ public sealed class TrayApp : Application
 
     private async Task StartAsync(string[] args)
     {
+        if (args.Contains("--verify-popover"))
+        {
+            var verification = new MonitorWindow(live: false);
+            try { await verification.VerifyAnchoringAsync(); Shutdown(0); }
+            catch (Exception error) { Console.Error.WriteLine(error.Message); Shutdown(1); }
+            finally { verification.Close(); }
+            return;
+        }
         if (args.Contains("--render-monitor"))
         {
             var index = Array.IndexOf(args, "--render-monitor");
@@ -57,18 +64,8 @@ public sealed class TrayApp : Application
         if (!created) { Shutdown(); return; }
         var window = new MonitorWindow();
         MainWindow = window;
-        using (var bitmap = new System.Drawing.Bitmap(32, 34))
-        {
-            using var drawing = System.Drawing.Graphics.FromImage(bitmap);
-            drawing.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var pen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(123, 216, 209), 1.8f);
-            drawing.DrawPolygon(pen, new System.Drawing.Point[] {new(16, 2), new(29, 9), new(29, 24), new(16, 32), new(3, 24), new(3, 9)});
-            drawing.DrawLines(pen, new System.Drawing.Point[] {new(3, 9), new(16, 17), new(29, 9)});
-            drawing.DrawLine(pen, 16, 17, 16, 32);
-            var handle = bitmap.GetHicon();
-            try { trayIcon = (System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone(); }
-            finally { DestroyIcon(handle); }
-        }
+        using (var resource = GetResourceStream(new Uri("pack://application:,,,/Resources/AppIcon.ico")).Stream)
+            trayIcon = new System.Drawing.Icon(resource, Forms.SystemInformation.SmallIconSize);
         tray = new Forms.NotifyIcon { Icon = trayIcon, Text = "Optimisarr Sidecar — click for activity", Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Dispatcher.Invoke(window.ShowAtTray); };
         var menu = new Forms.ContextMenuStrip();
@@ -80,7 +77,7 @@ public sealed class TrayApp : Application
     private void ShowSetup()
     {
         var panel = new StackPanel { Margin = new Thickness(24) };
-        var window = new Window { Title = "Pair Optimisarr Sidecar", Width = 410, SizeToContent = SizeToContent.Height,
+        var window = new Window { Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Resources/BrandMark.png")), Title = "Pair Optimisarr Sidecar", Width = 410, SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterScreen, ResizeMode = ResizeMode.NoResize,
             Background = new SolidColorBrush(Color.FromRgb(16, 26, 44)), Foreground = Brushes.White, Content = panel };
         panel.Children.Add(new TextBlock { Text = "Connect this PC", FontSize = 22, FontWeight = FontWeights.SemiBold });
@@ -127,7 +124,4 @@ public sealed class TrayApp : Application
         service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
     });
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyIcon(IntPtr handle);
 }

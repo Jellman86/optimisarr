@@ -8,8 +8,11 @@
     <Nullable>enable</Nullable>
     <StartupObject>Optimisarr.Sidecar.Tray.TrayApp</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Resources/AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Resources/*.png" />
+    <Resource Include="Resources/*.ico" />
     <ProjectReference Include="../Optimisarr.Sidecar.Service/Optimisarr.Sidecar.Service.csproj" />
   </ItemGroup>
 </Project>

@@ -99,6 +99,8 @@ jobs:
       # rather than on someone's machine.
       - run: dotnet build Optimisarr.Sidecar.slnx --configuration Release -warnaserror
       - run: dotnet test tests/Optimisarr.Sidecar.Core.Tests --configuration Release --no-build
+      - name: Verify native popover anchoring
+        run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --verify-popover
       - name: Render native tray states
         run: dotnet src/Optimisarr.Sidecar.Tray/bin/Release/net10.0-windows/Optimisarr.Sidecar.Tray.dll --render-monitor artifacts/ui
       - uses: actions/upload-artifact@v4
