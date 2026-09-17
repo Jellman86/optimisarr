@@ -588,6 +588,11 @@ export const zh: Messages = {
     action_removing_ellipsis: "正在删除..."
   },
   settings: {
+    appearance_title: "外观",
+    appearance_desc: "保存在此浏览器中。应用于应用图标和网站图标。",
+    brand_style: "应用图标",
+    brand_stellar: "星空立方体（默认）",
+    brand_precession: "进动立方体",
     concurrency_hint: '此服务器同时运行的最大任务数。',
     encoder_hint: '自动选择或指定编码器。',
     threads_hint: '设为 0 时，由编码器决定线程数。',

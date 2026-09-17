@@ -619,6 +619,11 @@ export const de: Messages = {
     action_removing_ellipsis: 'Wird entfernt …',
   },
   settings: {
+    appearance_title: "Darstellung",
+    appearance_desc: "In diesem Browser gespeichert. Gilt für das Anwendungssymbol und das Favicon.",
+    brand_style: "Anwendungssymbol",
+    brand_stellar: "Sternenwürfel (Standard)",
+    brand_precession: "Präzessionswürfel",
     concurrency_hint: 'Maximal gleichzeitig laufende Aufgaben auf diesem Server.',
     encoder_hint: 'Automatisch auswählen lassen oder einen Encoder festlegen.',
     threads_hint: 'Bei 0 bestimmt der Encoder die Anzahl der Threads.',

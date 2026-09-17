@@ -1,5 +1,6 @@
 import { createBrandMotion } from './brand-motion'
-import type { createBrandRenderer } from './brand-renderer'
+import { createStellarMotion } from './stellar-motion'
+import { brandAsset, type BrandStyle } from './brand-style'
 
 const images = new Map<string, Promise<HTMLImageElement>>()
 function loadImage(path: string) {
@@ -19,10 +20,13 @@ function loadImage(path: string) {
   return promise
 }
 
-export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, style: BrandStyle = 'stellar') {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)')
-  const motion = createBrandMotion()
-  let renderer: ReturnType<typeof createBrandRenderer> | undefined
+  const precession = style === 'precession' ? createBrandMotion() : undefined
+  const stellar = style === 'stellar' ? createStellarMotion() : undefined
+  const motion = (precession ?? stellar)!
+  canvas.dataset.brandStyle = style
+  let renderer: { render(dark: boolean, size: number): CanvasImageSource; destroy(): void } | undefined
   let working = false,
     dark = true,
     visible = false,
@@ -63,7 +67,7 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
         elapsed -= dt
       }
       try {
-        source = renderer.render(motion, dark, size)
+        source = renderer.render(dark, size)
       } catch {
         renderer.destroy()
         renderer = undefined
@@ -78,6 +82,7 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
     ctx.drawImage(source, 0, 0, size, size)
     const playing = Boolean(renderer) && !reduced.matches
     canvas.dataset.lightMotion = playing ? 'playing' : 'still'
+    canvas.dataset.brandMode = reduced.matches ? 'rest' : motion.mode
     if (playing) timer = window.setTimeout(paint, 1000 / (working || motion.mode !== 'rest' ? 30 : 24))
   }
 
@@ -87,7 +92,7 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
       paint()
       return
     }
-    const path = `/brand/${dark ? 'dark' : 'light'}-${working ? 'excited' : 'steady'}.webp`
+    const path = brandAsset(style, dark, working)
     const request = ++pending
     if (stillPath !== path) {
       let nextStill: HTMLImageElement
@@ -108,10 +113,22 @@ export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderin
     if (reduced.matches || renderer || graphicsFailed || preparing || !available()) return
     preparing = true
     try {
-      const { createBrandRenderer } = await import('./brand-renderer')
-      if (!available() || reduced.matches) return
-      renderer = createBrandRenderer()
-      // State/theme changes retain this renderer and its original fifteen meshes.
+      if (stellar) {
+        const [{ createStellarRenderer }, { stellarTextures }] = await Promise.all([
+          import('./stellar-renderer'), import('./stellar-textures'),
+        ])
+        if (!available() || reduced.matches) return
+        const scenes = await Promise.all(stellarTextures.map(loadImage))
+        if (!available() || reduced.matches) return
+        const engine = createStellarRenderer(scenes)
+        renderer = { render: (dark, size) => engine.render(stellar, dark, size), destroy: () => engine.destroy() }
+      } else {
+        const { createBrandRenderer } = await import('./brand-renderer')
+        if (!available() || reduced.matches) return
+        const engine = createBrandRenderer()
+        renderer = { render: (dark, size) => engine.render(precession!, dark, size), destroy: () => engine.destroy() }
+      }
+      // Keep the renderer and motion through all activity and theme changes.
       paint()
     } catch {
       graphicsFailed = true

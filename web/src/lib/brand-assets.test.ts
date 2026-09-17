@@ -5,8 +5,14 @@ import { test } from 'node:test'
 // These are also the complete download path for reduced-motion sessions.
 test('theme and activity stills stay within the immediate icon budget', () => {
   const bytes = (name: string) => statSync(new URL(`../../public/brand/${name}`, import.meta.url)).size
-  for (const theme of ['dark', 'light']) for (const state of ['steady', 'excited']) {
-    assert.ok(bytes(`${theme}-${state}.webp`) < 30_000)
-    assert.ok(bytes(`favicon-${theme}-${state}.png`) < 15_000)
+  for (const style of ['', 'stellar/']) for (const theme of ['dark', 'light']) for (const state of ['steady', 'excited']) {
+    assert.ok(bytes(`${style}${theme}-${state}.webp`) < 30_000)
+    assert.ok(bytes(`${style}favicon-${theme}-${state}.png`) < 15_000)
   }
+})
+
+
+test('stellar textures stay within the lazy-loaded artwork budget', () => {
+  const total = ['blue', 'pink', 'gold'].reduce((sum, name) => sum + statSync(new URL(`./assets/stellar/${name}-scene.jpg`, import.meta.url)).size, 0)
+  assert.ok(total < 400_000)
 })
