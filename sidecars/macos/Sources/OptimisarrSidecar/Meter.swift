@@ -12,6 +12,7 @@ struct Meter: View {
 
     private static let height: CGFloat = 5
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sweep = false
 
     var body: some View {
@@ -23,7 +24,7 @@ struct Meter: View {
                     Capsule()
                         .fill(tint)
                         .frame(width: max(Self.height, geometry.size.width * min(max(value, 0), 1)))
-                        .animation(.easeOut(duration: 0.25), value: value)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: value)
                 } else {
                     // Indeterminate: a short bar sweeping across says "running, no estimate",
                     // where a full bar would claim progress nobody has measured.
@@ -34,7 +35,7 @@ struct Meter: View {
                         .animation(
                             .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
                             value: sweep)
-                        .onAppear { sweep = true }
+                        .onAppear { sweep = !reduceMotion }
                 }
             }
         }

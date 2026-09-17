@@ -9,7 +9,6 @@ namespace Optimisarr.Sidecar.Service;
 /// <para>Done here rather than left to a separate installer so the service can be stood up on a
 /// machine over SSH with nothing else present. The installer will call the same commands.</para>
 /// </summary>
-[SupportedOSPlatform("windows")]
 public static class ServiceControl
 {
     public const string ServiceName = "OptimisarrSidecar";
@@ -18,6 +17,7 @@ public static class ServiceControl
     internal const string AssemblyFileName = "Optimisarr.Sidecar.Service.dll";
     private const string DisplayName = "Optimisarr Sidecar";
 
+    [SupportedOSPlatform("windows")]
     public static int Install()
     {
         if (LaunchCommand() is not { } launch)
@@ -136,6 +136,7 @@ public static class ServiceControl
         return null;
     }
 
+    [SupportedOSPlatform("windows")]
     public static int Uninstall()
     {
         // Stopped first: deleting a running service leaves it marked for deletion until the process

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Optimisarr.Sidecar.Core/Optimisarr.Sidecar.Core.csproj" />
     <Project Path="src/Optimisarr.Sidecar.Acceptance/Optimisarr.Sidecar.Acceptance.csproj" />
+    <Project Path="src/Optimisarr.Sidecar.Tray/Optimisarr.Sidecar.Tray.csproj" />
     <Project Path="src/Optimisarr.Sidecar.Service/Optimisarr.Sidecar.Service.csproj" />
   </Folder>
   <Folder Name="/tests/">

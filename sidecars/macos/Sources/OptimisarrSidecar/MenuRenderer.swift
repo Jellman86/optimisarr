@@ -26,19 +26,19 @@ enum MenuRenderer {
             ("receiving", .posed(
                 status: .working(jobId: 5846, progress: .fetchingSource(received: 182_000_000, total: 493_040_520)),
                 activeJobs: [5846: .fetchingSource(received: 182_000_000, total: 493_040_520)],
-                jobTitles: [5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv"],
+                jobTitles: [5846: "Big Buck Bunny · 2008"],
                 transferRates: [5846: 42_100_000],
                 gpu: GpuUsage(device: 0.04, memoryInUse: 700_000_000))),
             ("encoding", .posed(
                 status: .working(jobId: 5846, progress: .encoding(encodedSeconds: 751)),
                 activeJobs: [5846: .encoding(encodedSeconds: 751)],
-                jobTitles: [5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv"],
+                jobTitles: [5846: "Big Buck Bunny · 2008"],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.31, memoryInUse: 1_253_064_704))),
             ("sending", .posed(
                 status: .working(jobId: 5846, progress: .delivering(sent: 300_000_000, total: 394_256_442)),
                 activeJobs: [5846: .delivering(sent: 300_000_000, total: 394_256_442)],
-                jobTitles: [5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv"],
+                jobTitles: [5846: "Big Buck Bunny · 2008"],
                 transferRates: [5846: 68_400_000],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.06, memoryInUse: 900_000_000))),
@@ -49,8 +49,8 @@ enum MenuRenderer {
                     5847: .measuring,
                 ],
                 jobTitles: [
-                    5846: "The Shield - S04E12 - Judas Priest Bluray-1080p.mkv",
-                    5847: "Mad Men - S02E06 - Maidenform Bluray-720p.mkv",
+                    5846: "Big Buck Bunny · 2008",
+                    5847: "Sintel · 2010",
                 ],
                 filmStrips: [5846: strip],
                 gpu: GpuUsage(device: 0.62, memoryInUse: 2_100_000_000))),
@@ -61,27 +61,32 @@ enum MenuRenderer {
 
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for (name, session) in poses {
-            let renderer = ImageRenderer(content: SidecarMenu(session: session).frame(width: 340))
-            // Retina, so the PNG is worth looking at closely rather than a blurry approximation.
-            renderer.scale = 2
-            guard let image = renderer.nsImage,
-                  let tiff = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiff),
-                  let png = bitmap.representation(using: .png, properties: [:])
-            else {
-                FileHandle.standardError.write(Data("could not render \(name)\n".utf8))
-                continue
-            }
-            let file = directory.appendingPathComponent("\(name).png")
+            for light in [false, true] {
+            NSApplication.shared.appearance = NSAppearance(named: light ? .aqua : .darkAqua)
+            let hosting = NSHostingView(rootView: SidecarMenu(session: session).frame(width: 390))
+            let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 390, height: 700),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = hosting
+            let size = hosting.fittingSize
+            hosting.setFrameSize(size)
+            window.setContentSize(size)
+            hosting.layoutSubtreeIfNeeded()
+            guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { continue }
+            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else { continue }
+            let file = directory.appendingPathComponent("\(light ? "light-" : "")\(name).png")
             try? png.write(to: file)
             print(file.path)
+            }
         }
     }
 
     /// Stand-in frames: a colour ramp, so the strip and its playback are visibly a sequence rather
     /// than one picture repeated.
     private static func sampleFrames() -> [Data] {
-        (0..<8).compactMap { index in
+        if let path = ProcessInfo.processInfo.environment["OPTIMISARR_RENDER_FRAME"],
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)) { return [data] }
+        return (0..<8).compactMap { index in
             let size = NSSize(width: 320, height: 180)
             let image = NSImage(size: size)
             image.lockFocus()

@@ -23,6 +23,7 @@ sidecars/macos/build/
 sidecars/macos/vendor/
 # Fetched by sidecars/windows/scripts/fetch-ffmpeg.ps1, pinned and hash-checked there.
 sidecars/windows/vendor/
+sidecars/windows/artifacts/
 sidecars/macos/.build-ffmpeg/
 
 # Work output written when tests exercise the queue against a relative work root.

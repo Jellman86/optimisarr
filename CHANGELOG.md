@@ -4,6 +4,14 @@
 
 ### Added
 
+- Compact Monitor for the Windows tray, with live worker status, resource readings, processing
+  details, pause/resume and nested preferences. Work remains in the background service. An
+  unsigned MSI preview bundles the tray, worker, media tools and private runtimes, with a guard
+  against overwriting manually installed workers.
+- The Mac menu-bar client shares the compact layout, textured cards and hover shadows, retaining
+  native media previews and work settings. Preferences and diagnostics stay inside the panel;
+  pausing lets held jobs finish and prevents new claims, including a request already in flight.
+
 - Repeatable media acceptance harness for isolated containers and disposable macOS/Windows
   workers, with pinned Creative Commons film excerpts, independent VMAF/SSIM/audio checks,
   transfer fault tests, replacement/rollback validation, and HTML/JSON/JUnit evidence. Final-image
