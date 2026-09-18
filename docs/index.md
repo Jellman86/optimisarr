@@ -35,6 +35,7 @@ verifies each output, and keeps originals in quarantine until you approve purge.
 - [Troubleshooting](troubleshooting/diagnostics.md) - health/readiness, stalled jobs, failed verification, GPU detection, and stale UI.
 - [Known issues](../KNOWN_ISSUES.md) - reproducible problems still present in the current release.
 - [Security policy](../SECURITY.md)
+- [Code signing policy](../CODE_SIGNING_POLICY.md) - signed Windows release scope, approvals, privacy and verification.
 - [Support](../SUPPORT.md)
 - [Contributing](development/contributing.md)
 - [Writing a release](development/releasing.md) - the human-first GitHub Release standard and checklist.

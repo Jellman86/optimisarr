@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Published the Windows code-signing policy, including the exact artifacts eligible for signing,
+  trusted-build and approval controls, privacy and network-transfer details, user verification,
+  incident response, and the boundary between pending SignPath support and current unsigned previews.
+
 ### Changed
 
 - **The Precession cube is now the default icon everywhere.** New browser sessions use its
