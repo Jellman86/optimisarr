@@ -39,6 +39,11 @@ back is acceptable. Uninstall removes program files and service registration but
 Administrators and SYSTEM. Per-user preferences, including the sign-in setting, are user-owned;
 turn off sign-in before uninstalling if desired.
 
+After uninstalling, an administrator can permanently remove retained pairing, scratch and media
+data by deleting `%ProgramData%\Optimisarr\Sidecar`. Do this only when the worker will not be
+reinstalled: deleting the pairing prevents it from reconnecting until it is paired again, and
+deleting work data cannot be undone.
+
 ## Validation
 
 The Windows build passes WiX package validation and supports administrative extraction. Native
@@ -65,7 +70,9 @@ the installed native anchoring check. Interactive UAC pairing remains a separate
 
 This MSI and tray apphost are **unsigned development artifacts**. Smart App Control or enterprise
 policy may reject an unsigned executable; do not weaken those protections. Public distribution
-as a signed installer needs a code-signing process. An explicitly labelled unsigned preview may
+as a signed installer must follow the public [Code signing policy](../../../CODE_SIGNING_POLICY.md).
+The SignPath Foundation application and production workflow are not complete; this link does not
+mean the current download is signed. An explicitly labelled unsigned preview may
 be published only after its exact corresponding-source bundle/hosting for the pinned GPL FFmpeg
 build is available. Upstream source/build links and runtime licences are included in the package;
 those links alone do not establish that the corresponding sources have been supplied.

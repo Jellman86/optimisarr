@@ -28,4 +28,6 @@ makes safer, clearer, or easier.]
   compatibility note, or performance cost that should not be buried.]
 
 See the [full changelog](https://github.com/Jellman86/optimisarr/blob/TAG/CHANGELOG.md)
-for the complete technical record.
+for the complete technical record. Windows downloads follow the project's
+[Code signing policy](https://github.com/Jellman86/optimisarr/blob/TAG/CODE_SIGNING_POLICY.md);
+state explicitly whether each Windows artifact is signed or an unsigned preview.
