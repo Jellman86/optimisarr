@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- **The Precession cube is now the default icon everywhere.** New browser sessions use its
+  sliced, activity-driven cube and matching favicon; Stellar remains available in Settings →
+  System → Appearance and an existing saved choice is preserved. The Mac menu-bar app, Finder,
+  Windows tray, executable, Start shortcut and installer now use the same Precession artwork.
+
 ## 0.2.13 — 2026-09-17
 
 ### Added

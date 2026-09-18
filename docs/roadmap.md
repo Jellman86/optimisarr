@@ -524,7 +524,7 @@ the replacement workflow is trustworthy.
    **Current status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
    quality search and VMAF, and optional protocol-2 full verification without server media-tool
    fallback. Windows has an MSI-installed service/tray client with tested same-version preview
-   upgrades; Mac has an anchored native popover and packaged media tools. Both use the Stellar
+   upgrades; Mac has an anchored native popover and packaged media tools. Both use the Precession
    application icon. Real hardware and container acceptance results are recorded under
    [hardware validation](setup/hardware-validation-matrix.md), including deliberate rejection and
    rollback checks. Windows packages remain unsigned development previews; distribution/signing

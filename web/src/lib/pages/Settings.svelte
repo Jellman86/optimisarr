@@ -1383,8 +1383,8 @@
       <div class="max-w-sm">
         <label for="brand-style" class="label">{i18n.m.settings.brand_style}</label>
         <select id="brand-style" class="input" value={brand.style} onchange={(event) => brand.set(parseBrandStyle(event.currentTarget.value))}>
-          <option value="stellar">{i18n.m.settings.brand_stellar}</option>
           <option value="precession">{i18n.m.settings.brand_precession}</option>
+          <option value="stellar">{i18n.m.settings.brand_stellar}</option>
         </select>
       </div>
     </ConfigSection>

@@ -26,15 +26,5 @@ for (const dark of [true, false])
     const favicon = createCanvas(64, 64)
     favicon.getContext('2d').drawImage(image, 45, 14, 194, 194, 0, 0, 64, 64)
     await writeFile(new URL(`favicon-${suffix}.png`, destination), favicon.toBuffer('image/png'))
-    if (dark && !working)
-      for (const [name, size] of [
-        ['favicon.png', 32],
-        ['favicon-192.png', 192],
-        ['apple-touch-icon.png', 180],
-      ] as const) {
-        const icon = createCanvas(size, size)
-        icon.getContext('2d').drawImage(image, 45, 14, 194, 194, 0, 0, size, size)
-        await writeFile(new URL(`../public/${name}`, import.meta.url), icon.toBuffer('image/png'))
-      }
   }
 renderer.destroy()

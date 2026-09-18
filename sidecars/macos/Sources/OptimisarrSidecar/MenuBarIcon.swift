@@ -1,7 +1,7 @@
 import AppKit
 import SidecarCore
 
-/// The same Stellar artwork used by the application, Finder and the Windows tray.
+/// The same Precession artwork used by the application, Finder and the Windows tray.
 @MainActor
 enum MenuBarIcon {
     static let artwork = loadArtwork(named: "BrandMark")
@@ -13,7 +13,7 @@ enum MenuBarIcon {
             Bundle.module.url(forResource: name, withExtension: "png")
         }
         guard let url, let image = NSImage(contentsOf: url) else {
-            preconditionFailure("Missing packaged Stellar artwork: \(name)")
+            preconditionFailure("Missing packaged Precession artwork: \(name)")
         }
         return image
     }

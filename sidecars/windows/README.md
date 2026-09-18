@@ -34,7 +34,7 @@ tests/                          Core and local pipe tests.
 monitor anchored to the notification-area screen. Preferences and diagnostics stay inside the panel.
 Changing pages or expanding **Processing details** keeps the rounded panel inside that screen’s
 working area. It dismisses on focus loss or Escape and is not an always-on-top window.
-The tray, panel, executable and Start shortcut share the main application’s Stellar icon.
+The tray, panel, executable and Start shortcut share the main application’s Precession icon.
 The tray is optional: closing it leaves work running. See [installer notes](installer/README.md)
 for the unsigned MSI preview, pairing, upgrade safeguards and release limitations.
 
@@ -43,7 +43,7 @@ for the unsigned MSI preview, pairing, upgrade safeguards and release limitation
 Screenshots use fabricated dummy media created for documentation, invented machine names and
 example server addresses. No copyrighted media material is used.
 
-<img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job, Stellar icon and resource readings">
+<img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job and resource readings">
 
 <img src="../../docs/images/optimisarr-sidecar-windows-light-preferences.png" width="390" alt="Light Windows Preferences showing pairing, worker start and tray sign-in controls inside the native panel">
 
