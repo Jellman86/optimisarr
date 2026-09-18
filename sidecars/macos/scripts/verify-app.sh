@@ -36,7 +36,7 @@ for name in ['ffmpeg', 'ffprobe', 'AppIcon.icns']:
 for name in ['BrandMark.png', 'BrandMarkLight.png']:
     matches = list(resources.glob(f'OptimisarrSidecar_OptimisarrSidecar.bundle/**/{name}'))
     if len(matches) != 1 or not matches[0].resolve().is_relative_to(app.resolve()):
-        raise SystemExit(f'Stellar artwork must be embedded in the app: {name}')
+        raise SystemExit(f'Precession artwork must be embedded in the app: {name}')
 
 environment = os.environ.copy()
 for key in ['PACKAGE_RESOURCE_BUNDLE_PATH', 'PACKAGE_RESOURCE_BUNDLE_URL', 'OPTIMISARR_RENDER_FRAME']:

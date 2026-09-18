@@ -7,10 +7,10 @@ Stellar icon is visible; reduced-motion sessions use the small pre-rendered stil
 
 The renderer lives in `stellar-renderer.ts` and the continuous idle/work/settling
 motion in `stellar-motion.ts`. Run `npm run brand:assets` from `web` after changing
-those files or these textures to regenerate the committed Stellar stills, favicons
-and Apple touch icon. The asset generator uses the same renderer with a native
+those files or these textures to regenerate the committed optional Stellar stills
+and favicons. The asset generator uses the same renderer with a native
 Canvas adapter; it does not run during a production build.
 
-The original Precession renderer, motion, shaders and `/brand` assets remain
-available. Stellar assets live under `/brand/stellar`; Settings → System →
+The default Precession renderer, motion, shaders and `/brand` assets remain
+separate. Stellar assets live under `/brand/stellar`; Settings → System →
 Appearance saves the selected style in `optimisarr.brand` in local storage.

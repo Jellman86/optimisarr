@@ -78,7 +78,7 @@ The downloadable DMG and ZIP must contain the Developer ID signed, notarised
 and stapled app. The DMG is notarised and stapled separately. Keep the
 Gatekeeper and stapler validation output; an ad-hoc or merely signed local app
 does not replace this distribution check. Verify that bundled FFmpeg and
-ffprobe, Swift package resources and Stellar icon assets survive packaging.
+ffprobe, Swift package resources and Precession icon assets survive packaging.
 
 ### Windows package
 

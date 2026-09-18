@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="sidecars/macos/Sources/OptimisarrSidecar/Resources/BrandMarkLight.png">
-    <img src="sidecars/macos/Resources/AppIcon.png" alt="Optimisarr Stellar cube application icon" width="192" height="192">
+    <img src="sidecars/macos/Resources/AppIcon.png" alt="Optimisarr Precession cube application icon" width="192" height="192">
   </picture>
 </p>
 <h1 align="center">Optimisarr</h1>
