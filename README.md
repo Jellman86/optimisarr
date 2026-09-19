@@ -1,7 +1,9 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="sidecars/macos/Sources/OptimisarrSidecar/Resources/BrandMarkLight.png">
-    <img src="sidecars/macos/Resources/AppIcon.png" alt="Optimisarr Precession cube application icon" width="192" height="192">
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="sidecars/macos/Sources/OptimisarrSidecar/Resources/BrandMarkLight.png">
+    <source media="(prefers-reduced-motion: reduce)" srcset="sidecars/macos/Resources/AppIcon.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/optimisarr-precession-working-light.gif">
+    <img src="docs/images/optimisarr-precession-working-dark.gif" alt="Animated Optimisarr Precession cube application icon" width="192" height="192">
   </picture>
 </p>
 <h1 align="center">Optimisarr</h1>

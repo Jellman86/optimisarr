@@ -14,6 +14,10 @@
   sliced, activity-driven cube and matching favicon; Stellar remains available in Settings →
   System → Appearance and an existing saved choice is preserved. The Mac menu-bar app, Finder,
   Windows tray, executable, Start shortcut and installer now use the same Precession artwork.
+- Mac and Windows sidecar tray icons now rotate while their worker is handling a job, settle back
+  to the exact application mark when work stops, and stay still when reduced motion is enabled.
+- The README header now shows the real working Precession motion, with light-theme and
+  reduced-motion variants rather than a separate illustration.
 
 ## 0.2.13 — 2026-09-17
 

@@ -17,6 +17,7 @@
   <ItemGroup>
     <Compile Include="../../src/Optimisarr.Sidecar.Tray/TrayPlacement.cs" Link="TrayPlacement.cs" />
     <Compile Include="../../src/Optimisarr.Sidecar.Tray/MonitorViewModel.cs" Link="MonitorViewModel.cs" />
+    <Compile Include="../../src/Optimisarr.Sidecar.Tray/ActivityIconFrame.cs" Link="ActivityIconFrame.cs" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
