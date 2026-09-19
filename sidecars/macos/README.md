@@ -1,7 +1,7 @@
 # Optimisarr macOS sidecar
 
 A menu-bar app that pairs a Mac with an Optimisarr server so it can contribute spare encoding
-capacity. It uses the same Stellar application icon and Compact Monitor layout as the
+capacity. It uses the same Precession application icon and Compact Monitor layout as the
 [Windows tray companion](../windows/README.md).
 
 ## What this version does, and does not
@@ -103,13 +103,13 @@ candidate and temporary work files.
 Screenshots use fabricated dummy media created for documentation, invented machine names and
 example server addresses. No copyrighted media material is used.
 
-<img src="../../docs/images/optimisarr-sidecar-macos-encoding.png" width="390" alt="Dark Mac Compact Monitor showing a fabricated Prism Field encoding job, Stellar icon and pause control">
+<img src="../../docs/images/optimisarr-sidecar-macos-encoding.png" width="390" alt="Dark Mac Compact Monitor showing a fabricated Prism Field encoding job, Precession icon and pause control">
 
 <img src="../../docs/images/optimisarr-sidecar-macos-light-preferences.png" width="390" alt="Light Mac Preferences showing disk, chosen-folder and memory work-location choices inside the native panel">
 
 [Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).
 
-Click the Stellar icon in the menu bar for the compact activity panel. It shows the Mac's name,
+Click the Precession icon in the menu bar for the compact activity panel. It shows the Mac's name,
 connection state, current jobs or **Ready for work**, and CPU/GPU/held-job readings. Unknown values
 stay unavailable; macOS does not expose VideoToolbox media-engine utilisation, so the GPU reading
 must not be interpreted as encoder utilisation.
@@ -124,7 +124,7 @@ jobs** while working) lets current leases finish; it does not cancel them. Closi
 work running. Quitting the application hands current leases back to the server.
 
 Both light and dark appearances use the application's slate surfaces, accent colours and card
-shadows. The menu-bar, application and panel icons use the shared Stellar artwork. The native
+shadows. The menu-bar, application and panel icons use the shared Precession artwork. The native
 status mark is static; activity is communicated through the labelled state and job progress,
 with an amber badge when the Mac is disconnected.
 
@@ -353,7 +353,7 @@ times out under automation, so the result would be a coin toss.
 
 The app's icon is generated from `Resources/AppIcon.png`, the same mark the web app uses. The
 1024px master comes from `web/scripts/render-sidecar-icons.ts`, using the main application’s
-Stellar renderer. The same generation step produces the Windows multi-resolution icon.
+Precession renderer. The same generation step produces the Windows multi-resolution icon.
 
 Stapling matters: without the ticket attached, anyone who downloads the app on a machine that
 cannot reach Apple is told it "cannot be checked for malicious software".

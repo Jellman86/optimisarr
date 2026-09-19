@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SidecarCore
 import Testing
 @testable import OptimisarrSidecar
 
@@ -54,5 +55,13 @@ struct PackagedArtworkTests {
         let expected = URL(fileURLWithPath: "/build-tree/BrandMark.png")
         #expect(MenuBarIcon.resourceURL(named: "BrandMark", applicationURL: URL(fileURLWithPath: "/build-tree"),
                                        resourceDirectory: nil) { expected } == expected)
+    }
+
+    @Test func menuBarRotationOnlyAdvancesWhileWorkingAndMotionIsAllowed() {
+        let connected = SidecarStatus.connected(workerId: 1, lastCheckIn: .now)
+        let working = SidecarStatus.working(jobId: 9, progress: .encoding(encodedSeconds: 12))
+        #expect(MenuBarIcon.rotationTurns(for: connected, spin: 0.35, reduceMotion: false) == 0)
+        #expect(abs(MenuBarIcon.rotationTurns(for: working, spin: 1.35, reduceMotion: false) - 0.35) < 0.000_001)
+        #expect(MenuBarIcon.rotationTurns(for: working, spin: 0.35, reduceMotion: true) == 0)
     }
 }

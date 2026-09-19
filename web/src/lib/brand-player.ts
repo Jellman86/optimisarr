@@ -20,7 +20,7 @@ function loadImage(path: string) {
   return promise
 }
 
-export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, style: BrandStyle = 'stellar') {
+export function createBrandPlayer(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, style: BrandStyle = 'precession') {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)')
   const precession = style === 'precession' ? createBrandMotion() : undefined
   const stellar = style === 'stellar' ? createStellarMotion() : undefined

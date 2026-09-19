@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Optimisarr.Sidecar.Core.Session;
 using Optimisarr.Sidecar.Service;
 using Forms = System.Windows.Forms;
 
@@ -17,7 +18,8 @@ namespace Optimisarr.Sidecar.Tray;
 public sealed class TrayApp : Application
 {
     private Forms.NotifyIcon? tray;
-    private System.Drawing.Icon? trayIcon;
+    private TrayIconAnimator? trayIcon;
+    private readonly CancellationTokenSource activityLifetime = new();
     private Mutex? singleInstance;
 
     [STAThread]
@@ -25,7 +27,7 @@ public sealed class TrayApp : Application
     {
         var app = new TrayApp { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Startup += async (_, _) => await app.StartAsync(args);
-        app.Exit += (_, _) => { app.tray?.Dispose(); app.trayIcon?.Dispose(); app.singleInstance?.Dispose(); };
+        app.Exit += (_, _) => { app.activityLifetime.Cancel(); app.trayIcon?.Dispose(); app.tray?.Dispose(); app.singleInstance?.Dispose(); };
         app.Run();
     }
 
@@ -64,14 +66,38 @@ public sealed class TrayApp : Application
         if (!created) { Shutdown(); return; }
         var window = new MonitorWindow();
         MainWindow = window;
-        using (var resource = GetResourceStream(new Uri("pack://application:,,,/Resources/AppIcon.ico")).Stream)
-            trayIcon = new System.Drawing.Icon(resource, Forms.SystemInformation.SmallIconSize);
-        tray = new Forms.NotifyIcon { Icon = trayIcon, Text = "Optimisarr Sidecar — click for activity", Visible = true };
+        using var resource = GetResourceStream(new Uri("pack://application:,,,/Resources/AppIcon.ico")).Stream;
+        using var sourceIcon = new System.Drawing.Icon(resource);
+        tray = new Forms.NotifyIcon { Text = "Optimisarr Sidecar — click for activity" };
+        trayIcon = new TrayIconAnimator(tray, sourceIcon, SystemParameters.ClientAreaAnimation);
+        tray.Visible = true;
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Dispatcher.Invoke(window.ShowAtTray); };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open compact monitor", null, (_, _) => Dispatcher.Invoke(window.ShowAtTray));
         menu.Items.Add("Quit tray — keep worker running", null, (_, _) => Dispatcher.Invoke(Shutdown));
         tray.ContextMenuStrip = menu;
+        _ = WatchActivityAsync();
+    }
+
+    private async Task WatchActivityAsync()
+    {
+        try
+        {
+            while (!activityLifetime.IsCancellationRequested)
+            {
+                try
+                {
+                    var snapshot = await MonitorClient.RequestAsync(MonitorProtocol.Read, activityLifetime.Token);
+                    trayIcon?.SetWorking(snapshot.Jobs.Count > 0);
+                }
+                catch (Exception error) when (error is IOException or OperationCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException)
+                {
+                    trayIcon?.SetWorking(false);
+                }
+                await Task.Delay(TimeSpan.FromSeconds(2), activityLifetime.Token);
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void ShowSetup()

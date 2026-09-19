@@ -1,7 +1,7 @@
 # Compact Monitor — Windows tray and Mac menu bar
 
 The selected direction is **3 · Compact monitor**. The [native comparison](native.html) shows current native dark/light activity panels,
-Processing details and Preferences, including the Stellar icon. The three original interactive studies live
+Processing details and Preferences, including the Precession icon. The three original interactive studies live
 in `index.html`; their job data and proposed controls are simulated. Production native views use
 real capabilities and readings instead.
 
@@ -42,7 +42,7 @@ WPF monitor inside the selected screen's working area using physical coordinates
 on resize or DPI changes. It is not always on top and closes when focus moves elsewhere or Escape
 is pressed.
 
-Both platforms use the web application's Stellar artwork. The Windows executable, notification
+Both platforms use the web application's Precession artwork. The Windows executable, notification
 icon, MSI/Start shortcut and monitor header carry that identity; the Mac package, status item and
 header use matching art. The native icon artwork is static, while processing indicators reflect
 actual work. Native tests exercise expansion/collapse and navigation to prevent geometry regressions.

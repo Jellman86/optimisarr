@@ -1,7 +1,7 @@
 import AppKit
 import SidecarCore
 
-/// The same Stellar artwork used by the application, Finder and the Windows tray.
+/// The same Precession artwork used by the application, Finder and the Windows tray.
 @MainActor
 enum MenuBarIcon {
     static let artwork = loadArtwork(named: "BrandMark")
@@ -13,7 +13,7 @@ enum MenuBarIcon {
             Bundle.module.url(forResource: name, withExtension: "png")
         }
         guard let url, let image = NSImage(contentsOf: url) else {
-            preconditionFailure("Missing packaged Stellar artwork: \(name)")
+            preconditionFailure("Missing packaged Precession artwork: \(name)")
         }
         return image
     }
@@ -39,7 +39,16 @@ enum MenuBarIcon {
         let image = NSImage(size: NSSize(width: 18, height: 18))
         image.lockFocus()
         let mark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? artwork : lightArtwork
+        let turns = rotationTurns(for: status, spin: spin,
+                                  reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        NSGraphicsContext.current?.saveGraphicsState()
+        let transform = NSAffineTransform()
+        transform.translateX(by: 9, yBy: 9)
+        transform.rotate(byDegrees: turns * 360)
+        transform.translateX(by: -9, yBy: -9)
+        transform.concat()
         mark.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
+        NSGraphicsContext.current?.restoreGraphicsState()
         switch status {
         case .connected, .working: break
         default:
@@ -51,5 +60,10 @@ enum MenuBarIcon {
         image.unlockFocus()
         image.isTemplate = false
         return image
+    }
+
+    static func rotationTurns(for status: SidecarStatus, spin: Double, reduceMotion: Bool) -> Double {
+        guard !reduceMotion, case .working = status else { return 0 }
+        return spin.truncatingRemainder(dividingBy: 1)
     }
 }

@@ -33,7 +33,7 @@ for resource in "$(dirname "${BINARY}")"/*.bundle; do
   [[ -d "${resource}" ]] && cp -R "${resource}" "${BUNDLE}/Contents/Resources/"
 done
 
-# Build the Finder icon from the shared Stellar artwork.
+# Build the Finder icon from the shared Precession artwork.
 if [[ -f Resources/AppIcon.png ]]; then
   ./scripts/make-icon.sh >/dev/null
   cp build/AppIcon.icns "${BUNDLE}/Contents/Resources/AppIcon.icns"

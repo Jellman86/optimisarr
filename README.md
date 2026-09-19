@@ -1,7 +1,9 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="sidecars/macos/Sources/OptimisarrSidecar/Resources/BrandMarkLight.png">
-    <img src="sidecars/macos/Resources/AppIcon.png" alt="Optimisarr Stellar cube application icon" width="192" height="192">
+    <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: light)" srcset="sidecars/macos/Sources/OptimisarrSidecar/Resources/BrandMarkLight.png">
+    <source media="(prefers-reduced-motion: reduce)" srcset="sidecars/macos/Resources/AppIcon.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/optimisarr-precession-working-light.gif">
+    <img src="docs/images/optimisarr-precession-working-dark.gif" alt="Animated Optimisarr Precession cube application icon" width="192" height="192">
   </picture>
 </p>
 <h1 align="center">Optimisarr</h1>
@@ -43,7 +45,7 @@ for rollback rather than deleted immediately.
 
 ## Documentation
 
-Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [known issues](KNOWN_ISSUES.md), [glossary](docs/glossary.md), and [API reference](docs/api.md).
+Start with the [documentation index](docs/index.md): [getting started](docs/setup/getting-started.md), [user workflow](docs/usage/workflow.md), [personal quality check](docs/usage/personal-quality-check.md), [configuration](docs/setup/configuration.md), [hardware acceleration](docs/setup/hardware-acceleration.md), [reverse proxy](docs/setup/reverse-proxy.md), [safe replacement](docs/operations/safe-replacement.md), [integrations](docs/integrations/media-servers.md), [troubleshooting](docs/troubleshooting/diagnostics.md), [known issues](KNOWN_ISSUES.md), [glossary](docs/glossary.md), [Code signing policy](CODE_SIGNING_POLICY.md), and [API reference](docs/api.md).
 
 ## Remote workers
 

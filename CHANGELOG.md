@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.14 — 2026-09-19
+
+### Added
+
+- Published the Windows code-signing policy, including the exact artifacts eligible for signing,
+  trusted-build and approval controls, privacy and network-transfer details, user verification,
+  incident response, and the boundary between pending SignPath support and current unsigned previews.
+
+### Changed
+
+- **The Precession cube is now the default icon everywhere.** New browser sessions use its
+  sliced, activity-driven cube and matching favicon; Stellar remains available in Settings →
+  System → Appearance and an existing saved choice is preserved. The Mac menu-bar app, Finder,
+  Windows tray, executable, Start shortcut and installer now use the same Precession artwork.
+- Mac and Windows sidecar tray icons now rotate while their worker is handling a job, settle back
+  to the exact application mark when work stops, and stay still when reduced motion is enabled.
+- The README header now shows the real working Precession motion, with light-theme and
+  reduced-motion variants rather than a separate illustration.
+
 ## 0.2.13 — 2026-09-17
 
 ### Added

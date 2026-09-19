@@ -371,13 +371,13 @@ test('the collapsed rail keeps a name on the brand button', async ({ page }) => 
   await expect(page.locator('aside').getByRole('button', { name: 'Dashboard', exact: true }).first()).toBeVisible()
 })
 
-test('the favicon reports stellar activity with an indented still', async ({ page }) => {
+test('the favicon reports precession activity with an excited still', async ({ page }) => {
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
 
   await page.goto('/#/')
 
   const href = page.locator('link[rel~="icon"]').first()
-  await expect(href).toHaveAttribute('href', /\/brand\/stellar\/favicon-(dark|light)-excited\.png$/, { timeout: 10_000 })
+  await expect(href).toHaveAttribute('href', /\/brand\/favicon-(dark|light)-excited\.png$/, { timeout: 10_000 })
 })
 
 test('the cube has smooth edges and moving illumination when idle', async ({ page }) => {
@@ -450,7 +450,7 @@ test('job events change the cube state while suspended work keeps moving illumin
   fixture.jobs = []
   notify()
   await expect(mark).toHaveAttribute('data-light-state', 'steady')
-  await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute('href', /\/brand\/stellar\/favicon-(dark|light)-steady\.png$/)
+  await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute('href', /\/brand\/favicon-(dark|light)-steady\.png$/)
 })
 
 test('unavailable precession graphics leaves a complete still and the app usable', async ({ page }) => {
@@ -604,10 +604,10 @@ test('theme changes update reduced-motion stills and the favicon', async ({ page
   const mark = page.locator('aside canvas').first()
   const favicon = page.locator('link[rel~="icon"]').first()
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
-  await expect(favicon).toHaveAttribute('href', '/brand/stellar/favicon-dark-steady.png')
+  await expect(favicon).toHaveAttribute('href', '/brand/favicon-dark-steady.png')
   const before = await mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())
   await page.getByRole('button', { name: 'Toggle theme', exact: true }).click()
-  await expect(favicon).toHaveAttribute('href', '/brand/stellar/favicon-light-steady.png')
+  await expect(favicon).toHaveAttribute('href', '/brand/favicon-light-steady.png')
   await expect.poll(() => mark.evaluate((el: HTMLCanvasElement) => el.toDataURL())).not.toBe(before)
   await expect(mark).toHaveAttribute('data-light-motion', 'still')
 })
@@ -676,29 +676,31 @@ test('a lost graphics context falls back once and still follows theme and activi
 })
 
 
-test('stellar is first and default, while the original icon choice persists with its favicon', async ({ page }) => {
+test('precession is first and default, while the stellar icon choice persists with its favicon', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
   await mockDashboard(page)
   await page.goto('/#/settings/system')
   const choice = page.getByLabel('Application icon', { exact: true })
   const mark = page.locator('aside canvas').first()
   const favicon = page.locator('link[rel~="icon"]').first()
+  await expect(choice).toHaveValue('precession')
+  await expect(choice.locator('option').first()).toHaveAttribute('value', 'precession')
+  await expect(mark).toHaveAttribute('data-brand-style', 'precession')
+  await expect(favicon).toHaveAttribute('href', '/brand/favicon-dark-steady.png')
+  await choice.selectOption('stellar')
+  await expect(mark).toHaveAttribute('data-brand-style', 'stellar')
+  await expect(favicon).toHaveAttribute('href', '/brand/stellar/favicon-dark-steady.png')
+  await page.reload()
   await expect(choice).toHaveValue('stellar')
-  await expect(choice.locator('option').first()).toHaveAttribute('value', 'stellar')
   await expect(mark).toHaveAttribute('data-brand-style', 'stellar')
   await expect(favicon).toHaveAttribute('href', '/brand/stellar/favicon-dark-steady.png')
   await choice.selectOption('precession')
   await expect(mark).toHaveAttribute('data-brand-style', 'precession')
   await expect(favicon).toHaveAttribute('href', '/brand/favicon-dark-steady.png')
-  await page.reload()
-  await expect(choice).toHaveValue('precession')
-  await expect(mark).toHaveAttribute('data-brand-style', 'precession')
-  await choice.selectOption('stellar')
-  await expect(mark).toHaveAttribute('data-brand-style', 'stellar')
-  await expect(favicon).toHaveAttribute('href', '/brand/stellar/favicon-dark-steady.png')
 })
 
 test('stellar activity settles back to idle and retains its renderer through theme changes', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('optimisarr.brand', 'stellar'))
   const fixture: Fixture = { queue: { runningJobs: 1 }, jobs: [liveJob()] }
   await mockDashboard(page, fixture)
   const notify = await mockJobsHub(page)
@@ -718,6 +720,7 @@ test('stellar activity settles back to idle and retains its renderer through the
 })
 
 test('unavailable stellar textures retain a themed still and a working favicon', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('optimisarr.brand', 'stellar'))
   await page.route('**/*-scene.jpg', route => route.abort())
   await mockDashboard(page, { queue: { runningJobs: 1 }, jobs: [liveJob()] })
   await page.goto('/#/')

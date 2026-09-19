@@ -1,7 +1,7 @@
 export type BrandStyle = 'stellar' | 'precession'
 
 export function parseBrandStyle(value: string | null): BrandStyle {
-  return value === 'precession' ? 'precession' : 'stellar'
+  return value === 'stellar' ? 'stellar' : 'precession'
 }
 
 export function brandAsset(style: BrandStyle, dark: boolean, working: boolean, favicon = false) {
