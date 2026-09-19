@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private var statusItem: NSStatusItem?
     private var monitor: AnchoredPopover?
-    private var statusObservation: AnyCancellable?
+    private var iconObservation: AnyCancellable?
     /// False until the stored pairing has been looked for. Reopen arrives before that answer does.
     private var restoreSettled = false
 
@@ -189,8 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.action = #selector(toggleMonitor)
         item.button?.toolTip = "Optimisarr Sidecar"
         item.button?.setAccessibilityLabel("Optimisarr Sidecar")
-        statusObservation = AppState.shared.session.$status.sink { [weak self] status in
-            self?.statusItem?.button?.image = MenuBarIcon.image(for: status)
+        iconObservation = Publishers.CombineLatest(
+            AppState.shared.session.$status,
+            AppState.shared.session.$spin
+        ).sink { [weak self] status, spin in
+            self?.statusItem?.button?.image = MenuBarIcon.image(for: status, spin: spin)
         }
     }
 
@@ -221,4 +224,3 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         created.makeKeyAndOrderFront(nil)
     }
 }
-
