@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.14 — 2026-09-19
+
 ### Added
 
 - Published the Windows code-signing policy, including the exact artifacts eligible for signing,
