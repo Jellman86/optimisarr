@@ -658,11 +658,8 @@ internal static class WorkerLeaseEndpoints
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
                     forceStrictVerification: lease.VerificationContractJson is not null);
 
-                if (lease.VerificationContractJson is not null)
-                {
-                    lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
-                    await db.SaveChangesAsync(cancellationToken);
-                }
+                lease.VerificationWorkJson = settled.Assignment?.VerificationWorkJson;
+                await db.SaveChangesAsync(cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,
@@ -688,11 +685,8 @@ internal static class WorkerLeaseEndpoints
                 var fallback = await dispatcher.PrepareRemoteWorkAsync(
                     lease.JobId, worker.ToCapabilities(), cancellationToken,
                     forceStrictVerification: lease.VerificationContractJson is not null);
-                if (lease.VerificationContractJson is not null)
-                {
-                    lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
-                    await db.SaveChangesAsync(cancellationToken);
-                }
+                lease.VerificationWorkJson = fallback.Assignment?.VerificationWorkJson;
+                await db.SaveChangesAsync(cancellationToken);
                 return Results.Ok(new AdaptiveProbeDirectionDto(
                     null,
                     progress.Decision.SelectedQuality,

@@ -47,7 +47,8 @@ public sealed record MediaProbeResult(
     // Where the container itself begins: the earliest timestamp of any stream. FFmpeg seeks and
     // reports timestamps relative to this, so the video's start alone does not say where a picture
     // will appear in a filter graph. Null when ffprobe did not report it.
-    double? ContainerStartSeconds = null)
+    double? ContainerStartSeconds = null,
+    string? ColorRange = null)
 {
     public static MediaProbeResult Failure(string error) =>
         new(false, null, null, null, null, null, null, null, Array.Empty<string>(), Array.Empty<AudioTrackInfo>(),
@@ -197,6 +198,7 @@ public sealed class MediaProbeService : IMediaProbeService
         string? colorPrimaries = null;
         string? colorTransfer = null;
         string? colorSpace = null;
+        string? colorRange = null;
         double? videoStart = null;
         double? audioStart = null;
         string? pixelFormat = null;
@@ -260,6 +262,7 @@ public sealed class MediaProbeService : IMediaProbeService
                         colorPrimaries = ReadString(stream, "color_primaries");
                         colorTransfer = ReadString(stream, "color_transfer");
                         colorSpace = ReadString(stream, "color_space");
+                        colorRange = ReadString(stream, "color_range");
                         pixelFormat = ReadString(stream, "pix_fmt");
                         bitsPerRawSample = ReadIntegerString(stream, "bits_per_raw_sample");
                         isVariableFrameRate = DetectVariableFrameRate(stream);
@@ -354,7 +357,8 @@ public sealed class MediaProbeService : IMediaProbeService
             videoProfile,
             null,
             videoFrameRate,
-            containerStart);
+            containerStart,
+            colorRange);
     }
 
     // A cover-art / attached-picture stream is flagged by its disposition; it is a still

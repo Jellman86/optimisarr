@@ -114,7 +114,8 @@ public static class VerificationEvaluator
         if (isVideo
             && (input.OriginalColorPrimaries is not null
                 || input.OriginalColorTransfer is not null
-                || input.OriginalColorSpace is not null))
+                || input.OriginalColorSpace is not null
+                || input.OriginalColorRange is not null))
         {
             checks.Add(ColorMetadataPreserved(input));
         }
@@ -176,7 +177,20 @@ public static class VerificationEvaluator
             checks,
             Vmaf: vmafRequested
                 ? new VmafEvidence(input.QualityMeasured, input.QualityError, input.QualityScores)
-                : null);
+                : null,
+            Colour: isVideo ? ColourContract(input) : null);
+    }
+
+    private static ColourEvidence ColourContract(VerificationInput input)
+    {
+        var source = new ColourTags(input.OriginalColorPrimaries, input.OriginalColorTransfer,
+            input.OriginalColorSpace, input.OriginalColorRange);
+        var expected = input.HdrConvertedToSdr
+            ? new ColourTags("bt709", "bt709", "bt709", "tv")
+            : source;
+        var output = new ColourTags(input.OutputColorPrimaries, input.OutputColorTransfer,
+            input.OutputColorSpace, input.OutputColorRange);
+        return new ColourEvidence(source, expected, output, input.HdrConvertedToSdr);
     }
 
     private static VerificationCheck AudioMetadataPreserved(VerificationInput input)
@@ -288,6 +302,9 @@ public static class VerificationEvaluator
 
     private static VerificationCheck ColorMetadataPreserved(VerificationInput input)
     {
+        var evidence = ColourContract(input);
+        var values = $"Source {FormatColourTags(evidence.Source)}; expected {FormatColourTags(evidence.Expected)}; "
+            + $"output {FormatColourTags(evidence.Output)}.";
         if (input.HdrConvertedToSdr)
         {
             // The shared production tone-map deliberately converts BT.2020/PQ or
@@ -298,10 +315,15 @@ public static class VerificationEvaluator
             AddUnexpectedToneMapValue(unexpected, "primaries", input.OutputColorPrimaries);
             AddUnexpectedToneMapValue(unexpected, "transfer", input.OutputColorTransfer);
             AddUnexpectedToneMapValue(unexpected, "matrix", input.OutputColorSpace);
+            if (input.OutputColorRange is not null
+                && !string.Equals(input.OutputColorRange, "tv", StringComparison.OrdinalIgnoreCase))
+            {
+                unexpected.Add($"range is {input.OutputColorRange}, expected tv");
+            }
 
             return unexpected.Count == 0
-                ? Pass("Colour metadata", "Intentional HDR-to-SDR output is tagged as Rec.709.")
-                : Fail("Colour metadata", $"Tone-mapped SDR metadata is invalid: {string.Join("; ", unexpected)}.");
+                ? Pass("Colour metadata", $"Intentional HDR-to-SDR output is tagged as Rec.709. {values}")
+                : Fail("Colour metadata", $"Tone-mapped SDR metadata is invalid: {string.Join("; ", unexpected)}. {values}");
         }
 
         // Only a definite change is a failure: the original and output both declare a
@@ -309,13 +331,32 @@ public static class VerificationEvaluator
         // output is treated as benign, since absence usually means "container default".
         var mismatches = new List<string>();
         AddMismatch(mismatches, "primaries", input.OriginalColorPrimaries, input.OutputColorPrimaries);
-        AddMismatch(mismatches, "transfer", input.OriginalColorTransfer, input.OutputColorTransfer);
+        var equivalentSdTransfer = !input.OriginalIsHdr
+            && ((string.Equals(input.OriginalColorTransfer, "smpte170m", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(input.OutputColorTransfer, "bt709", StringComparison.OrdinalIgnoreCase))
+                || (string.Equals(input.OriginalColorTransfer, "bt709", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(input.OutputColorTransfer, "smpte170m", StringComparison.OrdinalIgnoreCase)));
+        // H.262 gives SMPTE 170M and BT.709 the same transfer function. VideoToolbox can emit
+        // the BT.709 name while preserving the SD primaries and matrix; this is a tag alias,
+        // not an HDR-to-SDR conversion. All other transfer changes remain definite mismatches.
+        if (!equivalentSdTransfer)
+        {
+            AddMismatch(mismatches, "transfer", input.OriginalColorTransfer, input.OutputColorTransfer);
+        }
         AddMismatch(mismatches, "matrix", input.OriginalColorSpace, input.OutputColorSpace);
+        AddMismatch(mismatches, "range", input.OriginalColorRange, input.OutputColorRange);
 
+        var aliasDetail = equivalentSdTransfer
+            ? " SMPTE 170M and BT.709 transfer tags describe the same curve."
+            : string.Empty;
         return mismatches.Count == 0
-            ? Pass("Colour metadata", "Colour primaries, transfer, and matrix preserved.")
-            : Fail("Colour metadata", $"Colour metadata changed: {string.Join("; ", mismatches)}.");
+            ? Pass("Colour metadata", $"Colour primaries, transfer, matrix, and range preserved.{aliasDetail} {values}")
+            : Fail("Colour metadata", $"Colour metadata changed: {string.Join("; ", mismatches)}. {values}");
     }
+
+    private static string FormatColourTags(ColourTags tags) =>
+        $"primaries={tags.Primaries ?? "unknown"}, transfer={tags.Transfer ?? "unknown"}, "
+        + $"matrix={tags.Matrix ?? "unknown"}, range={tags.Range ?? "unknown"}";
 
     private static void AddUnexpectedToneMapValue(List<string> unexpected, string label, string? output)
     {

@@ -1296,6 +1296,72 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void Standard_definition_smpte170m_is_preserved_without_a_tone_map()
+    {
+        var input = Healthy() with
+        {
+            OriginalColorPrimaries = "smpte170m", OutputColorPrimaries = "smpte170m",
+            OriginalColorTransfer = "smpte170m", OutputColorTransfer = "smpte170m",
+            OriginalColorSpace = "smpte170m", OutputColorSpace = "smpte170m",
+            OriginalColorRange = "tv", OutputColorRange = "tv"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+        Assert.Equal("smpte170m", report.Colour?.Expected.Primaries);
+        Assert.Equal("tv", report.Colour?.Output.Range);
+        Assert.False(report.Colour?.ToneMapped);
+        Assert.Contains("expected primaries=smpte170m", report.Checks.Single(check => check.Name == ColorCheck).Detail);
+    }
+
+    [Fact]
+    public void Sd_videotoolbox_transfer_alias_does_not_count_as_colour_conversion()
+    {
+        var input = Healthy() with
+        {
+            OriginalColorPrimaries = "smpte170m", OutputColorPrimaries = "smpte170m",
+            OriginalColorTransfer = "smpte170m", OutputColorTransfer = "bt709",
+            OriginalColorSpace = "smpte170m", OutputColorSpace = "smpte170m",
+            OriginalColorRange = "tv", OutputColorRange = "tv"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+        Assert.Equal("smpte170m", report.Colour?.Expected.Transfer);
+        Assert.Equal("bt709", report.Colour?.Output.Transfer);
+    }
+
+    [Fact]
+    public void A_definite_colour_range_change_fails()
+    {
+        var input = Healthy() with { OriginalColorRange = "tv", OutputColorRange = "pc" };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+        Assert.Contains("range", report.Checks.Single(check => check.Name == ColorCheck).Detail);
+    }
+
+    [Fact]
+    public void Preserved_sd_colour_does_not_hide_an_independent_vmaf_failure()
+    {
+        var input = Healthy() with
+        {
+            OriginalColorPrimaries = "smpte170m", OutputColorPrimaries = "smpte170m",
+            OriginalColorTransfer = "smpte170m", OutputColorTransfer = "smpte170m",
+            OriginalColorSpace = "smpte170m", OutputColorSpace = "smpte170m",
+            QualityScores = new QualityScores(89, 85, 70, 40, 0.95)
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, QualityGate);
+
+        Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, QualityCheck));
+    }
+
+    [Fact]
     public void A_definite_colour_mismatch_fails()
     {
         var input = Healthy() with { OriginalColorPrimaries = "bt709", OutputColorPrimaries = "bt601" };
@@ -1335,6 +1401,9 @@ public sealed class VerificationEvaluatorTests
 
         Assert.True(report.Passed);
         Assert.Equal(CheckOutcome.Passed, Outcome(report, ColorCheck));
+        Assert.Equal("bt709", report.Colour?.Expected.Primaries);
+        Assert.Equal("tv", report.Colour?.Expected.Range);
+        Assert.True(report.Colour?.ToneMapped);
     }
 
     [Fact]
@@ -1356,6 +1425,27 @@ public sealed class VerificationEvaluatorTests
         var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
 
         Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+    }
+
+    [Fact]
+    public void Intentional_hdr_to_sdr_rejects_full_range_output_tags()
+    {
+        var input = Healthy() with
+        {
+            OriginalIsHdr = true,
+            HdrConvertedToSdr = true,
+            OutputIsHdr = false,
+            OriginalColorPrimaries = "bt2020",
+            OutputColorPrimaries = "bt709",
+            OutputColorTransfer = "bt709",
+            OutputColorSpace = "bt709",
+            OutputColorRange = "pc"
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.Equal(CheckOutcome.Failed, Outcome(report, ColorCheck));
+        Assert.Contains("range is pc, expected tv", report.Checks.Single(check => check.Name == ColorCheck).Detail);
     }
 
     [Fact]

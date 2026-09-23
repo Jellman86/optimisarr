@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Optimisarr.Api.Queue;
 using Optimisarr.Api.Workers;
+using Optimisarr.Core.Domain;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
 
@@ -151,11 +152,67 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             Assert.NotNull(lease);
             Assert.NotNull(lease!.VerificationContractJson);
             Assert.NotNull(lease.VerificationWorkJson);
+            using var frozen = JsonDocument.Parse(lease.VerificationWorkJson);
+            Assert.False(frozen.RootElement.GetProperty("original").GetProperty("hdrConvertedToSdr").GetBoolean());
         }
         finally
         {
             await EnableRemoteWorkers();
         }
+    }
+
+    [Fact]
+    public async Task Legacy_worker_assignment_freezes_its_actual_colour_contract()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairWorker("Legacy colour verifier");
+        await QueueAJob();
+
+        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.NotEqual(JsonValueKind.Null, assignment.ValueKind);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var lease = await db.JobLeases.FindAsync(assignment.GetProperty("leaseId").GetGuid());
+        Assert.NotNull(lease);
+        Assert.Null(lease.VerificationContractJson);
+        Assert.NotNull(lease.VerificationWorkJson);
+        using var frozen = JsonDocument.Parse(lease.VerificationWorkJson);
+        Assert.Equal(
+            frozen.RootElement.GetProperty("spec").GetProperty("tonemapToSdr").GetBoolean(),
+            frozen.RootElement.GetProperty("original").GetProperty("hdrConvertedToSdr").GetBoolean());
+        Assert.False(frozen.RootElement.GetProperty("original").GetProperty("hdrConvertedToSdr").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_delivered_candidate_keeps_its_worker_plan_after_library_settings_change()
+    {
+        await EnableRemoteWorkers();
+        var encoder = await PairWorker("Colour assignment owner");
+        await PairWorker("Other available worker");
+        await QueueAJob();
+        var (leaseId, sourceHash) = await ClaimAndFetch(encoder);
+
+        string originalPlan;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var lease = await db.JobLeases.FindAsync(Guid.Parse(leaseId));
+            originalPlan = Assert.IsType<string>(lease!.VerificationWorkJson);
+            var library = await db.Libraries.FindAsync(_createdLibraries[^1]);
+            library!.HdrHandling = HdrHandling.TonemapToSdr;
+            await db.SaveChangesAsync();
+        }
+
+        (await encoder.SendAsync(Upload(leaseId, CandidateBytes, sourceHash))).EnsureSuccessStatusCode();
+
+        using var read = _api.Services.CreateScope();
+        var readDb = read.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var delivered = await readDb.JobLeases.FindAsync(Guid.Parse(leaseId));
+        Assert.Equal(originalPlan, delivered!.VerificationWorkJson);
+        Assert.Equal("Colour assignment owner",
+            (await QueueDispatcher.DeliveringWorkerAsync(readDb, delivered.JobId, CancellationToken.None))?.Name);
     }
 
     [Fact]
