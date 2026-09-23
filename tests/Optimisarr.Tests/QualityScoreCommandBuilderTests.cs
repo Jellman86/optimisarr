@@ -48,6 +48,16 @@ public sealed class QualityScoreCommandBuilderTests
     }
 
     [Fact]
+    public void Windows_VMAF_log_path_survives_both_filter_option_parsers()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", @"C:\Users\scott\AppData\Local\Temp\score.json",
+            new QualityMeasurementContext(1920, 1080, false, false), threads: 4);
+
+        Assert.Contains(@"log_path=C\\:/Users/scott/AppData/Local/Temp/score.json", command.FilterGraph);
+    }
+
+    [Fact]
     public void Cuda_measurement_keeps_sdr_frames_on_the_gpu()
     {
         var command = QualityScoreCommandBuilder.Build(

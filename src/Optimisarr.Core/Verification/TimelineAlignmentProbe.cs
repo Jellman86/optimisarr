@@ -48,7 +48,7 @@ public static class TimelineAlignmentProbe
             + $"[1:v]settb=AVTB,trim=start={lead}:duration={length},"
             + "settb=AVTB,setpts=PTS-STARTPTS,scale=320:240:flags=bilinear,format=yuv420p[ref];"
             + "[dist][ref]libvmaf=n_threads=4:n_subsample=1:"
-            + $"log_fmt=json:log_path={EscapeForFilterOption(logPath)}:shortest=1:repeatlast=0";
+            + $"log_fmt=json:log_path={FfmpegFilterOptionPath.Escape(logPath)}:shortest=1:repeatlast=0";
 
         return
         [
@@ -105,9 +105,4 @@ public static class TimelineAlignmentProbe
     public static double? FrameSeconds(double? framesPerSecond) =>
         framesPerSecond is > 0 ? 1 / framesPerSecond.Value : null;
 
-    // A colon inside a filter option ends the option, so one in a path has to survive both the
-    // filtergraph parser and the option parser, which unescape it once each.
-    private static string EscapeForFilterOption(string path) =>
-        path.Replace("\\", "/", StringComparison.Ordinal)
-            .Replace(":", @"\\:", StringComparison.Ordinal);
 }

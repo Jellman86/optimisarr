@@ -210,10 +210,11 @@ public static class QualityScoreCommandBuilder
             referencePreparation = $"{Queue.CropPlanner.Filter(referenceCrop)},{referencePreparation}";
         }
         var boundedThreads = Math.Max(1, threads);
+        var escapedLogPath = FfmpegFilterOptionPath.Escape(logPath);
         var filter = acceleration == VmafAcceleration.Cuda
             ? BuildCudaFilter(
                 context,
-                logPath,
+                escapedLogPath,
                 model,
                 boundedThreads,
                 distortedTimeline,
@@ -222,7 +223,7 @@ public static class QualityScoreCommandBuilder
                 referenceDecimation,
                 normalise,
                 referencePreparation,
-                logPath,
+                escapedLogPath,
                 model,
                 boundedThreads,
                 context.FrameSubsample,
