@@ -164,4 +164,58 @@ public sealed class PacketTimestampParserTests
         Assert.Null(integrity.FirstRegressionDetail);
         Assert.Null(integrity.LastPresentationSeconds);
     }
+
+    [Fact]
+    public async Task Packet_stream_can_be_measured_incrementally_without_buffering_the_whole_file()
+    {
+        using var stream = new GeneratedPacketReader(100_000);
+        var integrity = await PacketTimestampParser.ParseAsync(stream, CancellationToken.None);
+
+        Assert.Equal(100_000, integrity.TimestampCount);
+        Assert.Equal(0, integrity.NonMonotonicCount);
+        Assert.Equal(4000.0, integrity.LastPresentationSeconds);
+        Assert.Equal(100_000, stream.LinesRead);
+    }
+
+    [Fact]
+    public void Incremental_scan_preserves_decode_order_across_read_boundaries()
+    {
+        var scan = new PacketTimestampAccumulator();
+        scan.AddLine("0.000000,0.000000,0.040000");
+        scan.AddLine("0.120000,0.040000,0.040000");
+        scan.AddLine("0.040000,0.080000,0.040000");
+        scan.AddLine("0.080000,0.060000,0.040000");
+
+        var integrity = scan.Result;
+        Assert.Equal(4, integrity.TimestampCount);
+        Assert.Equal(1, integrity.NonMonotonicCount);
+        Assert.Equal(0.16, integrity.LastPresentationSeconds);
+        Assert.Contains("0.08", integrity.FirstRegressionDetail);
+    }
+
+    [Fact]
+    public async Task Packet_stream_stops_reading_when_cancelled()
+    {
+        using var stream = new GeneratedPacketReader(100_000);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await PacketTimestampParser.ParseAsync(stream, cancellation.Token));
+        Assert.Equal(0, stream.LinesRead);
+    }
+
+    private sealed class GeneratedPacketReader(int count) : StringReader(string.Empty)
+    {
+        public int LinesRead { get; private set; }
+
+        public override ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (LinesRead >= count) return ValueTask.FromResult<string?>(null);
+            var seconds = LinesRead++ * 0.04;
+            var line = FormattableString.Invariant($"{seconds:0.000000},{seconds:0.000000},0.040000");
+            return ValueTask.FromResult<string?>(line);
+        }
+    }
 }
