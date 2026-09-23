@@ -22,7 +22,7 @@ public sealed record QueueSettings(
     bool DryRunMode,
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
-    bool WorkerVerificationRequired = false);
+    bool WorkerVerificationRequired = true);
 
 /// <summary>Reads and writes well-known application settings in the database.</summary>
 public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? remoteWorkers = null)
@@ -121,17 +121,28 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             .FirstOrDefaultAsync(candidate => candidate.Key == SettingKeys.SetupState, cancellationToken);
         var existing = ParseSetupState(setting?.Value);
         var state = SetupState.Initialise(existing, databaseExistedBeforeStartup);
+        var initialValues = new Dictionary<string, string>();
         if (existing is null)
         {
-            var initialValues = new Dictionary<string, string>
-            {
-                [SettingKeys.SetupState] = JsonSerializer.Serialize(state)
-            };
+            initialValues[SettingKeys.SetupState] = JsonSerializer.Serialize(state);
             if (!databaseExistedBeforeStartup)
             {
                 initialValues[SettingKeys.DryRunMode] = bool.TrueString;
             }
+        }
 
+        // The old implicit value was false. An upgraded database may have no saved key at all,
+        // so materialise that old choice before the new true fallback can take effect.
+        if (!await db.AppSettings.AnyAsync(
+                candidate => candidate.Key == SettingKeys.WorkerVerificationRequired,
+                cancellationToken))
+        {
+            initialValues[SettingKeys.WorkerVerificationRequired] =
+                (!databaseExistedBeforeStartup).ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (initialValues.Count > 0)
+        {
             await UpsertManyAsync(initialValues, cancellationToken);
         }
 
@@ -190,7 +201,7 @@ public sealed class SettingsStore(OptimisarrDbContext db, RemoteWorkersFeature? 
             // Off unless explicitly turned on. A fresh install, and any install that predates this
             // setting, has remote workers disabled.
             ParseBool(settings.GetValueOrDefault(SettingKeys.RemoteWorkersEnabled), fallback: false),
-            ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: false));
+            ParseBool(settings.GetValueOrDefault(SettingKeys.WorkerVerificationRequired), fallback: true));
     }
 
     /// <summary>

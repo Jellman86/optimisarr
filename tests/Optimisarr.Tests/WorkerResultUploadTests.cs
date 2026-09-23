@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Optimisarr.Api.Queue;
+using Optimisarr.Api.Library;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Workers;
@@ -66,7 +67,7 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         return client;
     }
 
-    private async Task EnableRemoteWorkers(bool strictVerification = false)
+    private async Task EnableRemoteWorkers(bool? strictVerification = false)
     {
         var admin = Admin();
         var current = await (await admin.GetAsync("/api/settings")).Content.ReadFromJsonAsync<JsonElement>();
@@ -75,7 +76,8 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         foreach (var p in doc.RootElement.EnumerateObject())
             payload[p.Name] = JsonSerializer.Deserialize<object?>(p.Value.GetRawText());
         payload["remoteWorkersEnabled"] = true;
-        payload["workerVerificationRequired"] = strictVerification;
+        if (strictVerification is not null)
+            payload["workerVerificationRequired"] = strictVerification;
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
     }
 
@@ -154,6 +156,39 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             Assert.NotNull(lease.VerificationWorkJson);
             using var frozen = JsonDocument.Parse(lease.VerificationWorkJson);
             Assert.False(frozen.RootElement.GetProperty("original").GetProperty("hdrConvertedToSdr").GetBoolean());
+        }
+        finally
+        {
+            await EnableRemoteWorkers();
+        }
+    }
+
+    [Fact]
+    public async Task Fresh_settings_assign_complete_verification_without_operator_toggle()
+    {
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var saved = await db.AppSettings.FindAsync(SettingKeys.WorkerVerificationRequired);
+            if (saved is not null)
+            {
+                db.AppSettings.Remove(saved);
+                await db.SaveChangesAsync();
+            }
+            var settings = new SettingsStore(db);
+            await settings.InitialiseSetupStateAsync(
+                databaseExistedBeforeStartup: false, CancellationToken.None);
+            Assert.True((await settings.GetQueueSettingsAsync(CancellationToken.None)).WorkerVerificationRequired);
+        }
+        await EnableRemoteWorkers(strictVerification: null);
+        try
+        {
+            var worker = await PairWorker("Default complete verifier", protocolMaximum: 2);
+            await QueueAJob();
+            var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
+                .Content.ReadFromJsonAsync<JsonElement>();
+            Assert.NotEqual(JsonValueKind.Null, assignment.ValueKind);
+            Assert.True(assignment.TryGetProperty("fullVerification", out _));
         }
         finally
         {

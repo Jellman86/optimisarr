@@ -273,7 +273,7 @@ internal sealed record SettingsDto(
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
     bool RemoteWorkersAvailable = false,
-    bool WorkerVerificationRequired = false)
+    bool? WorkerVerificationRequired = null)
 {
     public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,

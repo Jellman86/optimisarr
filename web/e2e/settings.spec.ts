@@ -109,9 +109,9 @@ test('global settings use the same logical section flow as library configuration
   await expect(page.getByRole('button', { name: 'Run setup again' })).toBeVisible()
 })
 
-test('strict sidecar verification is opt-in and saved with remote-worker settings', async ({ page }) => {
+test('strict sidecar verification defaults on and an explicit opt-out is saved', async ({ page }) => {
   await mockSettings(page)
-  let current = { ...settings, remoteWorkersAvailable: true, workerVerificationRequired: false }
+  let current = { ...settings, remoteWorkersAvailable: true, workerVerificationRequired: true }
   await page.route('**/api/settings', async route => {
     if (route.request().method() === 'PUT') current = route.request().postDataJSON()
     return json(route, current)
@@ -120,16 +120,16 @@ test('strict sidecar verification is opt-in and saved with remote-worker setting
   const strict = page.getByRole('checkbox', { name: 'Verify entirely on the sidecar', exact: true })
   await expect(strict).toHaveCount(0)
   await page.getByRole('checkbox', { name: 'Remote workers', exact: true }).check()
-  await expect(strict).not.toBeChecked()
-  await strict.check()
+  await expect(strict).toBeChecked()
+  await strict.uncheck()
   const saved = page.waitForResponse(response => response.url().endsWith('/api/settings')
     && response.request().method() === 'PUT')
   await page.getByRole('button', { name: /^Save/ }).click()
   await saved
-  expect(current.workerVerificationRequired).toBe(true)
+  expect(current.workerVerificationRequired).toBe(false)
   expect(current.remoteWorkersEnabled).toBe(true)
   await page.reload()
-  await expect(strict).toBeChecked()
+  await expect(strict).not.toBeChecked()
 })
 
 test('an edit survives walking to another room and back', async ({ page }) => {

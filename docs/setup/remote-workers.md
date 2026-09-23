@@ -50,8 +50,9 @@ image, preview, and personal quality-check workflows retain their existing local
 
 ## Require all verification on the sidecar
 
-Enable **Verify entirely on the sidecar** under **Settings → Files & safety → Remote workers**
-and save. This setting defaults off and applies to newly issued assignments. Updated sidecars
+**Verify entirely on the sidecar** is on by default for fresh installations once remote workers
+are enabled. Existing installations retain their saved or previous value. You can change it under
+**Settings → Files & safety → Remote workers**; changes apply to newly issued assignments. Updated sidecars
 negotiate protocol 2 on heartbeat; they do not need a new pairing. Older workers cannot claim an
 assignment that requires full verification.
 
@@ -68,7 +69,7 @@ media processing on workers. It does **not** make the server idle: scanning and 
 assignment/filter preparation, file transfers and hashing, database updates, policy evaluation,
 replacement, quarantine, and rollback remain on the container.
 
-With strict verification off, a worker can still return requested VMAF measurements to save the
+If you deliberately turn strict verification off, a worker can still return requested VMAF measurements to save the
 server that pass. The container repeats the remaining verification checks and measures VMAF
 itself if the returned quality evidence cannot be used.
 

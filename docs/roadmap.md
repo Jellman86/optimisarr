@@ -522,7 +522,7 @@ the replacement workflow is trustworthy.
    preview behind `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS`.**
 
    **Current status, 2026-09-17:** both platforms run the Compact Monitor UI, worker-side adaptive
-   quality search and VMAF, and optional protocol-2 full verification without server media-tool
+   quality search and VMAF, and protocol-2 full verification without server media-tool
    fallback. Windows has an MSI-installed service/tray client with tested same-version preview
    upgrades; Mac has an anchored native popover and packaged media tools. Both use the Precession
    application icon. Real hardware and container acceptance results are recorded under
@@ -792,12 +792,16 @@ the replacement workflow is trustworthy.
         notarisation, update packaging, and the full release-build acceptance run remain; neither
         platform is described as supported until there is real-hardware acceptance evidence.
 
-   - **Preserve the verification boundary: implemented in both modes.** The default mode repeats
-     structural/decode checks on the server and uses remote VMAF only for matching bytes and policy.
-     Opt-in strict verification delegates media measurements to a protocol-2 worker; the server
+   - **Preserve the verification boundary: implemented in both modes.** New installations default to
+     strict verification, which delegates media measurements to a protocol-2 worker; the server
      validates the contract and hashes and evaluates every required gate from complete evidence.
      Missing or inconsistent strict evidence fails without local media-tool fallback. Replacement
-     authority always stays on the server; see the [strict verification review](engineering/hardware-validation/2026-09-17-strict-sidecar-verification.md).
+     authority always stays on the server. Existing installations retain their verification choice;
+     the opt-out mode repeats structural/decode checks on the server and uses remote VMAF only for
+     matching bytes and policy. See the [strict verification review](engineering/hardware-validation/2026-09-17-strict-sidecar-verification.md).
+     This default does not turn on remote workers or change per-library placement. When an operator
+     does enable them, requiring a complete, hash-bound worker report keeps the container from
+     silently taking over media verification and makes missing evidence a visible failure.
    - **Windows sidecar application.** Ship a self-contained background service with a small tray UI
      for pairing, availability, concurrency, current work, logs, updates, and removal. Package and
      test unattended startup, clean upgrades, cancellation, sleep/resume, low-disk handling, CPU

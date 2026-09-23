@@ -439,7 +439,7 @@
     replacementAllowCrossFilesystem: false,
     dryRunMode: false,
     remoteWorkersEnabled: false,
-    workerVerificationRequired: false,
+    workerVerificationRequired: true,
     remoteWorkersAvailable: false,
     replacementQuarantineRetentionDays: 0,
   })
@@ -942,7 +942,7 @@
     title={i18n.m.settings.replacement_title}
     description={i18n.m.settings.replacement_desc}
   >
-    <div class="max-w-2xl">
+    <div>
       <Toggle
         bind:checked={settings.dryRunMode}
         label={i18n.m.settings.dry_run}
@@ -951,7 +951,7 @@
     </div>
     {#if settings.remoteWorkersAvailable}
       <!-- Groundwork, not a feature: the server shows this only under the experimental flag. -->
-      <div class="mt-5 max-w-2xl border-t border-line pt-5">
+      <div class="mt-5 border-t border-line pt-5">
         <Toggle
           bind:checked={settings.remoteWorkersEnabled}
           label={i18n.m.settings.remote_workers}
@@ -968,14 +968,14 @@
         {/if}
       </div>
     {/if}
-    <div class="mt-5 max-w-2xl border-t border-line pt-5">
+    <div class="mt-5 border-t border-line pt-5">
       <Toggle
         bind:checked={settings.replacementAllowCrossFilesystem}
         label={i18n.m.settings.cross_fs}
         hint={i18n.m.settings.cross_fs_hint}
       />
     </div>
-    <div class="mt-5 max-w-2xl border-t border-line pt-5">
+    <div class="mt-5 border-t border-line pt-5">
       <div class="-m-2 max-w-[16rem] rounded-lg p-2 transition-colors {isChanged('minFreeDiskBytes') ? 'settings-field-changed' : ''}">
         <label class="label" for="free-disk">{i18n.m.settings.free_disk} <InfoTip text={tr(i18n.m.settings.free_disk_tip, { size: formatSize(gibToBytes(minFreeDiskGiB)) })} /></label>
         <div class="flex min-w-0 items-center gap-2">
@@ -985,7 +985,7 @@
         {@render wasChanged('minFreeDiskBytes', savedMinFreeDiskGiB)}
       </div>
     </div>
-    <div class="mt-5 max-w-2xl border-t border-line pt-5">
+    <div class="mt-5 border-t border-line pt-5">
       <label class="label" for="cleanup-retention">{i18n.m.settings.cleanup_retention} <InfoTip text={i18n.m.settings.cleanup_retention_tip} /></label>
       <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
         <input id="cleanup-retention" class="input min-w-0 flex-1" type="number" min="0" step="1" bind:value={settings.replacementQuarantineRetentionDays} />

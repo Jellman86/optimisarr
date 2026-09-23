@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Complete sidecar verification now defaults on for fresh settings stores; upgrades retain the prior worker-verification choice, and fleet acceptance exercises the strict mode by default.
 - Remote verification now uses each worker assignment's frozen colour-conversion plan, preserving SD SMPTE 170M output and reporting source, expected, and output colour tags including range.
 - A failed source video timeline now blocks software-decode and higher-quality retries that cannot repair the unchanged original, with the exact gate named in the job failure reason.
 - Remote software-decode retries now clear the rejected candidate's active verification and encoder details in one transition, preserve its checks as attempt history, and show the retry reason and worker handoff in Queue.

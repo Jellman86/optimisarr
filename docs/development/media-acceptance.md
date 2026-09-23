@@ -159,8 +159,8 @@ does not constitute Windows hardware evidence. Stop remote launchers after the r
 
 ### Strict sidecar-only verification
 
-Remote verification is opt-in in **Settings → Files & safety → Remote workers**. Enabling **Verify
-entirely on the sidecar** makes the control plane issue full-verification contracts only to
+Remote verification defaults on for fresh installations. **Verify entirely on the sidecar** in
+**Settings → Files & safety → Remote workers** makes the control plane issue full-verification contracts only to
 protocol-2 sidecars. The sidecar performs both probes, a complete candidate decode, packet-timestamp
 checks and, when the library policy asks for them, loudness/true-peak measurements. Existing worker
 quality reports still carry VMAF evidence. Every report is bound to the lease contract, the source
@@ -173,11 +173,12 @@ The server parses returned JSON and applies the verification policy, but does no
 tools during verification of that lease. Choose **Only on workers** placement as well to prevent
 local encoding fallback when no compatible worker is available.
 
-Exercise that mode with a fresh fleet run by adding `--sidecar-verification` to
-the fleet command above. It is accepted only with `--tier fleet`. The report
+The fleet acceptance run exercises this mode by default. Use `--server-verification` with
+`--tier fleet` to deliberately test the old server-verification mode; `--sidecar-verification`
+remains an accepted explicit spelling for the default. The report
 records `strictWorkerVerification`, and each remote result must record
 `verificationLocation: Worker`; server fallback cannot satisfy the assertion.
-Run once without this flag and once with it when validating both configurations.
+Run once with the default and once with `--server-verification` when validating both configurations.
 The independent reference measurement still runs in the harness to check the
 worker's result; this is test evidence, not production server verification.
 
