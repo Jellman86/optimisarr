@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Optimisarr.Core.Library;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 
@@ -19,14 +20,33 @@ public static class FullVerification
                 OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe");
             var timestamps = new TimestampIntegrityCheck(ffprobe);
             var loudness = new LoudnessService(ffmpeg);
+            var sourceProbe = await ProbeAsync(ffprobe, source, cancellationToken);
+            var candidateProbe = await ProbeAsync(ffprobe, candidate, cancellationToken);
+            var decode = await new DecodeHealthCheck(ffmpeg).CheckAsync(candidate, cancellationToken);
+            var sourceVideo = await timestamps.CheckAsync(source, cancellationToken);
+            var candidateVideo = await timestamps.CheckAsync(candidate, cancellationToken);
+            var sourceAudio = await timestamps.CheckPrimaryAudioAsync(source, cancellationToken);
+            var sourceStreams = MediaProbeService.Parse(sourceProbe);
+            // Confirm a short source packet scan before submitting it as evidence. The server's
+            // strict mode deliberately does not repeat media reads after receiving this report.
+            if (SourceTimelineAssessment.NeedsConfirmation(
+                    sourceVideo.LastPresentationSeconds is { } videoEnd
+                        ? Math.Max(0, videoEnd - (sourceStreams.VideoStartSeconds ?? 0)) : null,
+                    sourceAudio.LastPresentationSeconds is { } audioEnd
+                        ? Math.Max(0, audioEnd - (sourceStreams.AudioStartSeconds ?? 0)) : null))
+            {
+                var confirmed = await timestamps.CheckAsync(source, cancellationToken);
+                if (confirmed.Measured && confirmed.LastPresentationSeconds is not null)
+                    sourceVideo = confirmed;
+            }
             return evidence with
             {
-                SourceProbe = await ProbeAsync(ffprobe, source, cancellationToken),
-                CandidateProbe = await ProbeAsync(ffprobe, candidate, cancellationToken),
-                Decode = await new DecodeHealthCheck(ffmpeg).CheckAsync(candidate, cancellationToken),
-                SourceVideo = await timestamps.CheckAsync(source, cancellationToken),
-                CandidateVideo = await timestamps.CheckAsync(candidate, cancellationToken),
-                SourceAudio = await timestamps.CheckPrimaryAudioAsync(source, cancellationToken),
+                SourceProbe = sourceProbe,
+                CandidateProbe = candidateProbe,
+                Decode = decode,
+                SourceVideo = sourceVideo,
+                CandidateVideo = candidateVideo,
+                SourceAudio = sourceAudio,
                 SourceLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(source, cancellationToken) : null,
                 CandidateLoudness = contract.MeasureAudio ? await loudness.MeasureAsync(candidate, cancellationToken) : null
             };
