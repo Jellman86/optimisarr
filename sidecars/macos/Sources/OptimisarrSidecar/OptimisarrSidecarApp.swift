@@ -41,6 +41,10 @@ enum OptimisarrSidecarApp {
             MenuRenderer.render(into: URL(fileURLWithPath: arguments[flag + 1]))
             exit(0)
         }
+        if let flag = arguments.firstIndex(of: MenuRenderer.iconFlag), flag + 1 < arguments.count {
+            MenuRenderer.renderIcons(into: URL(fileURLWithPath: arguments[flag + 1]))
+            exit(0)
+        }
 
         // Pair from a terminal and exit, without ever putting a menu bar or a window on screen.
         // A machine that can only be paired by hand cannot be set up over SSH or recovered

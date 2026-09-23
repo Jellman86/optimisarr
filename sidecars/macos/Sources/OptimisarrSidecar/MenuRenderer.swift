@@ -13,6 +13,37 @@ import SwiftUI
 @MainActor
 enum MenuRenderer {
     static let flag = "--render-menu"
+    static let iconFlag = "--render-menu-icon-motion"
+
+    static func renderIcons(into directory: URL) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let working = SidecarStatus.working(jobId: 1, progress: .encoding(encodedSeconds: 1))
+        for light in [false, true] {
+            NSApplication.shared.appearance = NSAppearance(named: light ? .aqua : .darkAqua)
+            let idle = MenuBarIcon.image(for: .connected(workerId: 1, lastCheckIn: .now))
+            let theme = light ? "light" : "dark"
+            for index in [0, 12, 32, 49, 72, 87] {
+                let icon = index == 0 ? idle : MenuBarIcon.image(for: working, spin: Double(index) / 88,
+                                                                  reduceMotion: false)
+                writeIcon(icon, to: directory.appendingPathComponent("\(theme)-\(String(format: "%02d", index)).png"))
+            }
+            let from = MenuBarIcon.image(for: working, spin: 32.0 / 88, reduceMotion: false)
+            for index in 0..<6 {
+                let icon = index == 5 ? idle : MenuBarIcon.blend(
+                    from: from, to: idle, progress: CGFloat(index + 1) / 6)
+                writeIcon(icon, to: directory.appendingPathComponent("\(theme)-settle-\(String(format: "%02d", index)).png"))
+            }
+        }
+    }
+
+    private static func writeIcon(_ icon: NSImage, to url: URL) {
+        guard let tiff = icon.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            preconditionFailure("Could not render menu-bar icon")
+        }
+        try! png.write(to: url)
+    }
 
     /// The states the layout has to hold up in. A change that only looks right while idle is not
     /// a change that has been reviewed.

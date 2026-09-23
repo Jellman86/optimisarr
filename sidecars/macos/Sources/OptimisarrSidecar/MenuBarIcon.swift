@@ -40,10 +40,10 @@ enum MenuBarIcon {
         return nil
     }
 
-    static func image(for status: SidecarStatus, spin: Double = 0) -> NSImage {
+    static func image(for status: SidecarStatus, spin: Double = 0, reduceMotion: Bool? = nil) -> NSImage {
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         if let frame = frameIndex(for: status, spin: spin,
-                                  reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion), frame > 0 {
+                                  reduceMotion: reduceMotion ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion), frame > 0 {
             return (dark ? darkFrames : lightFrames)[frame]
         }
         let image = NSImage(size: NSSize(width: 18, height: 18))
