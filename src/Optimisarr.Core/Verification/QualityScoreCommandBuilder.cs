@@ -210,10 +210,11 @@ public static class QualityScoreCommandBuilder
             referencePreparation = $"{Queue.CropPlanner.Filter(referenceCrop)},{referencePreparation}";
         }
         var boundedThreads = Math.Max(1, threads);
+        var escapedLogPath = FfmpegFilterOptionPath.Escape(logPath);
         var filter = acceleration == VmafAcceleration.Cuda
             ? BuildCudaFilter(
                 context,
-                logPath,
+                escapedLogPath,
                 model,
                 boundedThreads,
                 distortedTimeline,
@@ -222,7 +223,7 @@ public static class QualityScoreCommandBuilder
                 referenceDecimation,
                 normalise,
                 referencePreparation,
-                logPath,
+                escapedLogPath,
                 model,
                 boundedThreads,
                 context.FrameSubsample,
@@ -249,6 +250,7 @@ public static class QualityScoreCommandBuilder
         }
         AppendInputAcceleration(arguments, acceleration);
         // libvmaf requires distorted first and reference second.
+        arguments.AddRange(["-threads", boundedThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.Add("-i");
         arguments.Add(distortedPath);
         // Preview outputs begin at zero after an accurate decode seek into the source. Seek the
@@ -260,6 +262,7 @@ public static class QualityScoreCommandBuilder
             arguments.Add(FormatSeconds(referenceInputStart.Value));
         }
         AppendInputAcceleration(arguments, acceleration);
+        arguments.AddRange(["-threads", boundedThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.Add("-i");
         arguments.Add(referencePath);
         arguments.AddRange(["-lavfi", filter]);

@@ -27,6 +27,8 @@ public sealed class QualityScoreService(
     string? ffmpegCommand = null,
     string? cudaFfmpegCommand = null)
 {
+    private static readonly TimeSpan MeasurementProgressTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan AlignmentProbeTimeout = TimeSpan.FromMinutes(2);
     // VMAF needs an ffmpeg built with libvmaf, which may differ from the transcoding
     // binary; the composition layer can point this at one (e.g. jellyfin-ffmpeg).
     private readonly string _ffmpeg = string.IsNullOrWhiteSpace(ffmpegCommand) ? "ffmpeg" : ffmpegCommand;
@@ -172,28 +174,35 @@ public sealed class QualityScoreService(
         {
             using var process = CreateProcess(executable, command.Arguments);
             process.Start();
-
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            using var stalled = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            stalled.CancelAfter(MeasurementProgressTimeout);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(stalled.Token);
             // When clip-VMAF caps the measurement, progress is a fraction of the clip, not the file.
             var measuredSeconds = (double?)context.MeasureDurationSeconds ?? context.ReferenceDurationSeconds;
             var stderrTask = ReadStderrWithProgressAsync(
                 process.StandardError,
                 measuredSeconds,
                 progress,
-                cancellationToken);
+                stalled.Token,
+                () => stalled.CancelAfter(MeasurementProgressTimeout));
 
             try
             {
-                await process.WaitForExitAsync(cancellationToken);
+                await process.WaitForExitAsync(stalled.Token);
+                await stdoutTask;
+                stderr = await stderrTask;
             }
             catch (OperationCanceledException)
             {
                 KillQuietly(process);
-                throw;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                return QualityResult.Failed(
+                    $"FFmpeg made no VMAF progress for {MeasurementProgressTimeout.TotalMinutes:0} minutes; measurement stopped to protect the host.");
             }
 
-            await stdoutTask;
-            stderr = await stderrTask;
             exitCode = process.ExitCode;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -258,22 +267,28 @@ public sealed class QualityScoreService(
             var log = Path.Combine(Path.GetTempPath(), $"optimisarr-align-{Guid.NewGuid():N}.json");
             try
             {
+                using var probeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                probeTimeout.CancelAfter(AlignmentProbeTimeout);
                 using var process = CreateProcess(
                     executable,
                     TimelineAlignmentProbe.Arguments(referencePath, distortedPath, shift, log, probeStart));
                 process.Start();
-                var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+                var stderr = process.StandardError.ReadToEndAsync(probeTimeout.Token);
                 try
                 {
-                    await process.WaitForExitAsync(cancellationToken);
+                    await process.WaitForExitAsync(probeTimeout.Token);
+                    await stderr;
                 }
                 catch (OperationCanceledException)
                 {
                     KillQuietly(process);
-                    throw;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    return null;
                 }
 
-                await stderr;
                 if (process.ExitCode != 0 || !File.Exists(log))
                 {
                     continue;
@@ -308,22 +323,28 @@ public sealed class QualityScoreService(
     {
         try
         {
+            using var filterTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            filterTimeout.CancelAfter(AlignmentProbeTimeout);
             using var process = CreateProcess(executable, ["-hide_banner", "-filters"]);
             process.Start();
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(filterTimeout.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(filterTimeout.Token);
             try
             {
-                await process.WaitForExitAsync(cancellationToken);
+                await process.WaitForExitAsync(filterTimeout.Token);
+                var stdout = await stdoutTask;
+                await stderrTask;
+                return process.ExitCode == 0 && FfmpegFilterParser.Contains(stdout, filter);
             }
             catch (OperationCanceledException)
             {
                 KillQuietly(process);
-                throw;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                return false;
             }
-            var stdout = await stdoutTask;
-            await stderrTask;
-            return process.ExitCode == 0 && FfmpegFilterParser.Contains(stdout, filter);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -358,10 +379,12 @@ public sealed class QualityScoreService(
         StreamReader reader,
         double? durationSeconds,
         IProgress<double>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action onProgress)
     {
         var builder = new StringBuilder();
         var lastReported = 0.0;
+        var lastElapsed = -1.0;
 
         string? line;
         while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
@@ -369,6 +392,11 @@ public sealed class QualityScoreService(
             var sample = FfmpegProgressParser.Parse(line);
             if (sample.ElapsedSeconds is { } elapsed)
             {
+                if (elapsed > lastElapsed)
+                {
+                    lastElapsed = elapsed;
+                    onProgress();
+                }
                 if (progress is not null && durationSeconds is > 0)
                 {
                     var fraction = Math.Clamp(elapsed / durationSeconds.Value, 0, 0.999);

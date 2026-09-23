@@ -5,6 +5,41 @@ namespace Optimisarr.Core.Verification;
 /// <param name="FirstError">The first error line, for display; null when there were none.</param>
 public sealed record DecodeIntegrity(int ErrorCount, string? FirstError);
 
+/// <summary>Counts decode diagnostics as they arrive, without retaining unbounded FFmpeg output.</summary>
+public sealed class DecodeIntegrityAccumulator
+{
+    private int _count;
+    private string? _first;
+    private bool _lastCounted;
+
+    public DecodeIntegrity Result => new(_count, _first);
+
+    public void AddLine(string line)
+    {
+        line = line.Trim();
+        if (line.Length == 0)
+        {
+            return;
+        }
+
+        if (DecodeIntegrityParser.RepeatCount(line) is { } repeats)
+        {
+            if (_lastCounted)
+            {
+                _count = (int)Math.Min(int.MaxValue, (long)_count + repeats);
+            }
+            return;
+        }
+
+        _lastCounted = DecodeIntegrityParser.IsDecodeError(line);
+        if (_lastCounted)
+        {
+            _count = (int)Math.Min(int.MaxValue, (long)_count + 1);
+            _first ??= line;
+        }
+    }
+}
+
 /// <summary>
 /// Pure parser for the stderr of a full-file decode run at <c>-v error</c>. At that
 /// log level FFmpeg prints one line per real decode problem, so the line count is a
@@ -26,44 +61,20 @@ public static class DecodeIntegrityParser
             return new DecodeIntegrity(0, null);
         }
 
-        var count = 0;
-        string? first = null;
-        // What FFmpeg last printed, so a repeat notice can be attributed to it. Null once the last
-        // line was one this gate ignores, which is what stops a notice standing for nothing.
-        string? lastCounted = null;
+        var accumulator = new DecodeIntegrityAccumulator();
 
         foreach (var line in stderr.Split(
             '\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            if (RepeatCount(line) is { } repeats)
-            {
-                // Only ever as many as the message it stands for. A repeat of a line this gate
-                // ignores is ignored with it, and a repeat with nothing before it counts nothing.
-                if (lastCounted is not null)
-                {
-                    count += repeats;
-                }
-
-                continue;
-            }
-
-            if (!IsDecodeError(line))
-            {
-                lastCounted = null;
-                continue;
-            }
-
-            count++;
-            first ??= line;
-            lastCounted = line;
+            accumulator.AddLine(line);
         }
 
-        return count == 0 ? new DecodeIntegrity(0, null) : new DecodeIntegrity(count, first);
+        return accumulator.Result;
     }
 
     // A non-strictly-increasing DTS handed to the null muxer is a timestamp remark, not corruption;
     // it is the dominant false positive for hardware-encoded output and is filtered out here.
-    private static bool IsDecodeError(string line) =>
+    internal static bool IsDecodeError(string line) =>
         line.IndexOf("non monotonically increasing dts", StringComparison.OrdinalIgnoreCase) < 0;
 
     /// <summary>
@@ -76,7 +87,7 @@ public static class DecodeIntegrityParser
     /// twenty-four good encodes were thrown away on it. It is not an error; it is an account of
     /// how many of the previous one there were.</para>
     /// </summary>
-    private static int? RepeatCount(string line)
+    internal static int? RepeatCount(string line)
     {
         const string prefix = "Last message repeated ";
         var start = line.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);

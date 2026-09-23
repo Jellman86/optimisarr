@@ -123,8 +123,12 @@ public sealed class VerificationService(
         try
         {
             var decodeResult = remoteEvidence?.Decode ?? await decode.CheckAsync(outputPath, cancellationToken);
+            // Once a local candidate has failed full decode, no further full-file scans can make
+            // it replaceable. Keep already-supplied sidecar evidence for diagnosis, but do not
+            // read both large files repeatedly after an AV1 parser error on the server.
+            var inspectFullFile = decodeResult.Healthy || remoteEvidence is not null;
             // Packet-timestamp integrity is a video concern; skip it for an audio output.
-            var timestampResult = remoteEvidence?.CandidateVideo ?? (reference.Kind == MediaKind.Audio
+            var timestampResult = remoteEvidence?.CandidateVideo ?? (!inspectFullFile || reference.Kind == MediaKind.Audio
                 ? TimestampCheckResult.NotMeasured
                 : await timestamps.CheckAsync(outputPath, cancellationToken));
             var outputProbe = remoteEvidence is null
@@ -141,10 +145,10 @@ public sealed class VerificationService(
             // actual packet endpoint for normal jobs so tail verification compares video with
             // video and can report source corruption separately. Disposable clips have their own
             // deliberately bounded/reference-offset timeline, so keep their established checks.
-            var originalTimestampResult = remoteEvidence?.SourceVideo ?? (reference.Kind == MediaKind.Video && clip is null
+            var originalTimestampResult = remoteEvidence?.SourceVideo ?? (inspectFullFile && reference.Kind == MediaKind.Video && clip is null
                 ? await timestamps.CheckAsync(reference.Path, cancellationToken)
                 : TimestampCheckResult.NotMeasured);
-            var originalAudioTimestampResult = remoteEvidence?.SourceAudio ?? (reference.Kind == MediaKind.Video
+            var originalAudioTimestampResult = remoteEvidence?.SourceAudio ?? (inspectFullFile && reference.Kind == MediaKind.Video
                 && originalProbe.AudioTrackCount > 0
                 && clip is null
                     ? await timestamps.CheckPrimaryAudioAsync(reference.Path, cancellationToken)
@@ -186,7 +190,13 @@ public sealed class VerificationService(
             // audio and image jobs have their own applicable verification gates.
             QualityResult? qualityResult = null;
             string? vmafSampling = null;
-            if (remoteQuality is not null && policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            if (!decodeResult.Healthy && policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
+            {
+                // A corrupt candidate cannot earn a meaningful VMAF verdict. In particular, an
+                // AV1 parser failure must not launch more full-file decoders against the bad file.
+                qualityResult = QualityResult.Failed("Skipped because the candidate failed decode health.");
+            }
+            else if (remoteQuality is not null && policy.RequiresVmaf(reference.Kind, reference.VideoReencoded))
             {
                 // The server has already bound the worker's measurement to this lease and both files.
                 qualityResult = remoteQuality.Result;
@@ -265,7 +275,7 @@ public sealed class VerificationService(
             // measurement runs when either is enabled; both are opt-in for the extra passes.
             LoudnessResult? originalLoudness = null;
             LoudnessResult? outputLoudness = null;
-            if (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled)
+            if (inspectFullFile && (policy.AudioLoudnessGateEnabled || policy.AudioClippingGateEnabled))
             {
                 originalLoudness = remoteEvidence?.SourceLoudness ?? await loudness.MeasureAsync(reference.Path, cancellationToken);
                 outputLoudness = remoteEvidence?.CandidateLoudness ?? await loudness.MeasureAsync(outputPath, cancellationToken);

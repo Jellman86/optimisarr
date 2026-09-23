@@ -51,6 +51,7 @@ public sealed class TimelineAlignmentProbeTests
         Assert.Contains("[0:v]settb=AVTB,setpts=PTS-40000.000000", graph);
         Assert.Contains("[1:v]settb=AVTB,trim=start=1", graph);
         Assert.Equal("dist.mp4", arguments[arguments.ToList().IndexOf("-i") + 1]);
+        Assert.Equal(2, arguments.Count(argument => argument == "-threads"));
     }
 
     [Fact]

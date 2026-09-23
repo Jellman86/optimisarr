@@ -19,6 +19,10 @@ public sealed class QualityScoreCommandBuilderTests
         Assert.Equal("SDR", command.Preprocessing);
         Assert.Equal("/work/output.mkv", ValueAfter(command.Arguments, "-i", occurrence: 1));
         Assert.Equal("/data/original.mkv", ValueAfter(command.Arguments, "-i", occurrence: 2));
+        var inputs = command.Arguments.Select((argument, index) => (argument, index))
+            .Where(entry => entry.argument == "-i").Select(entry => entry.index).ToArray();
+        Assert.Equal(2, inputs.Length);
+        Assert.All(inputs, index => Assert.Equal(["-threads", "4"], command.Arguments.Skip(index - 2).Take(2)));
         Assert.Contains("[0:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[dist]", command.FilterGraph);
         Assert.Contains("[1:v]settb=AVTB,setpts=PTS-STARTPTS,scale=1920:1080:flags=bicubic:in_range=auto:out_range=tv,format=yuv420p[ref]", command.FilterGraph);
         Assert.Contains("model=version=vmaf_v0.6.1", command.FilterGraph);
@@ -41,6 +45,16 @@ public sealed class QualityScoreCommandBuilderTests
 
         Assert.Contains("n_subsample=4", command.FilterGraph);
         Assert.Contains("every 4th frame", command.Preprocessing);
+    }
+
+    [Fact]
+    public void Windows_VMAF_log_path_survives_both_filter_option_parsers()
+    {
+        var command = QualityScoreCommandBuilder.Build(
+            "output.mkv", "original.mkv", @"C:\Users\scott\AppData\Local\Temp\score.json",
+            new QualityMeasurementContext(1920, 1080, false, false), threads: 4);
+
+        Assert.Contains(@"log_path=C\\:/Users/scott/AppData/Local/Temp/score.json", command.FilterGraph);
     }
 
     [Fact]
