@@ -605,6 +605,9 @@ export type Job = {
   enqueuedAt: string
   startedAt: string | null
   finishedAt: string | null
+  executionAttempt?: number
+  retryReason?: string | null
+  attemptHistoryJson?: string | null
   clearable: boolean
   /** The remote worker holding, or having delivered, this job; null for local work. */
   workerName: string | null
@@ -612,6 +615,23 @@ export type Job = {
   remoteStage: string | null
   /** A queued job its library keeps off this server until a worker takes it. */
   waitingForWorker: boolean
+}
+
+export type JobAttemptSnapshot = {
+  number: number
+  workerName: string | null
+  videoEncoder: string | null
+  hardwareDecoder: string | null
+  startedAt: string | null
+  endedAt: string
+  verificationPassed: boolean | null
+  verificationReportJson: string | null
+  verifiedAt: string | null
+  outputSizeBytes: number | null
+  outcome: string
+  reason: string
+  ffmpegArguments: string | null
+  processLog: string | null
 }
 
 export type EnqueueResult = {

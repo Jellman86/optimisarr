@@ -27,7 +27,10 @@ public sealed record RemoteAssignment(
     /// </summary>
     AdaptiveSearchStep? Search = null,
     RemoteVerificationContract? FullVerification = null,
-    string? VerificationWorkJson = null);
+    string? VerificationWorkJson = null,
+    int? RequestedVideoQuality = null,
+    int? EffectiveVideoQuality = null,
+    string? VideoQualityMode = null);
 
 /// <summary>
 /// Whether a job may be offered to a worker, and why not when it may not. A refusal is the

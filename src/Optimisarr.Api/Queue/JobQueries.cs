@@ -35,6 +35,9 @@ public sealed record JobDto(
     DateTimeOffset? StartedAt,
     DateTimeOffset? FinishedAt,
     bool Clearable,
+    int ExecutionAttempt,
+    string? RetryReason,
+    string? AttemptHistoryJson,
     /// <summary>The remote worker holding, or having delivered, this job; null for local work.</summary>
     string? WorkerName = null,
     /// <summary>Where that worker last said it was: Claimed, FetchingSource, Encoding, Delivering. Null unless leased.</summary>
@@ -147,7 +150,10 @@ public static class JobQueries
                 job.EnqueuedAt,
                 job.StartedAt,
                 job.FinishedAt,
-                false))
+                false,
+                job.ExecutionAttempt,
+                job.RetryReason,
+                job.AttemptHistoryJson))
             .ToListAsync(cancellationToken);
 
         var remote = await RemoteFactsAsync(db, jobs, cancellationToken);
@@ -212,7 +218,13 @@ public static class JobQueries
             })
             .ToListAsync(cancellationToken);
 
+        var startedAt = jobs.ToDictionary(job => job.Id, job => job.StartedAt);
         return leases
+            // A completed lease belongs to the current attempt only if it was acquired when
+            // that attempt began. Otherwise a later local retry would be labelled with an older
+            // worker even though its encoder and verification are this server's.
+            .Where(lease => startedAt[lease.JobId] is not { } start
+                || lease.AcquiredAt >= start.AddSeconds(-1))
             .GroupBy(lease => lease.JobId)
             .ToDictionary(
                 group => group.Key,

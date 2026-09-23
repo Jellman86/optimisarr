@@ -106,6 +106,68 @@ public sealed class JobQueriesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_rejected_remote_attempt_survives_restart_and_the_feed_shows_only_the_current_candidate()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            db.Libraries.Add(library);
+            await db.SaveChangesAsync();
+            db.MediaFiles.Add(MediaFile(library.Id, id: 1));
+            await db.SaveChangesAsync();
+            var job = Job(id: 1, priority: 1, enqueuedAt: DateTimeOffset.UtcNow);
+            job.Status = JobStatus.Verifying;
+            job.ExecutionAttempt = 1;
+            job.VideoEncoder = "hevc_videotoolbox";
+            job.VerificationPassed = false;
+            job.VerificationReportJson = "{\"checks\":[]}";
+            job.VerifiedAt = DateTimeOffset.UtcNow;
+            db.Jobs.Add(job);
+            JobAttemptHistory.RequeueAfterRejectedCandidate(job, "MacBook Air", "videotoolbox", DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync();
+        }
+
+        await using var reopened = new OptimisarrDbContext(_options);
+        var current = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
+        Assert.Null(current.VerificationPassed);
+        Assert.Null(current.VerificationReportJson);
+        Assert.Null(current.VerifiedAt);
+        Assert.Null(current.VideoEncoder);
+        Assert.Equal("SoftwareDecode", current.RetryReason);
+        Assert.Equal("MacBook Air", Assert.Single(JobAttemptHistory.Read(current.AttemptHistoryJson)).WorkerName);
+
+        var picard = new Worker { Name = "PICARD" };
+        reopened.Workers.Add(picard);
+        await reopened.SaveChangesAsync();
+        var claimed = await reopened.Jobs.SingleAsync();
+        claimed.Status = JobStatus.AwaitingVerification;
+        claimed.ExecutionAttempt += 1;
+        claimed.VideoEncoder = "hevc_nvenc";
+        reopened.JobLeases.Add(new JobLease
+        {
+            Id = Guid.NewGuid(), JobId = claimed.Id, WorkerId = picard.Id,
+            AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            State = LeaseState.Completed
+        });
+        await reopened.SaveChangesAsync();
+
+        var retried = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
+        Assert.Equal("PICARD", retried.WorkerName);
+        Assert.Equal("hevc_nvenc", retried.VideoEncoder);
+        Assert.Equal(2, retried.ExecutionAttempt);
+        Assert.Null(retried.VerificationPassed);
+        Assert.Equal("MacBook Air", Assert.Single(JobAttemptHistory.Read(retried.AttemptHistoryJson)).WorkerName);
+
+        claimed.Status = JobStatus.Verifying;
+        claimed.StartedAt = DateTimeOffset.UtcNow.AddMinutes(2);
+        claimed.VideoEncoder = "libx265";
+        await reopened.SaveChangesAsync();
+        var localRetry = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
+        Assert.Null(localRetry.WorkerName);
+        Assert.Equal("libx265", localRetry.VideoEncoder);
+    }
+
+    [Fact]
     public async Task ListAsync_surfaces_why_a_job_was_enqueued()
     {
         await using (var db = new OptimisarrDbContext(_options))

@@ -388,10 +388,21 @@ internal static class WorkerLeaseEndpoints
 
                 // The exclusion that matters: off the queue, so this machine will not also run it.
                 job.Status = JobStatus.Leased;
+                job.ExecutionAttempt += 1;
+                job.StartedAt = now;
+                job.FinishedAt = null;
+                job.ProcessLog = null;
+                job.OutputSizeBytes = null;
+                job.VerificationPassed = null;
+                job.VerificationReportJson = null;
+                job.VerifiedAt = null;
                 // The queue shows these for every job. For a remote job they must be what the
                 // worker will actually run, not whatever this server last ran for it.
                 job.VideoEncoder = assignment.VideoEncoder;
                 job.FfmpegArguments = string.Join(' ', assignment.Arguments);
+                job.RequestedVideoQuality = assignment.RequestedVideoQuality;
+                job.EffectiveVideoQuality = assignment.EffectiveVideoQuality;
+                job.VideoQualityMode = assignment.VideoQualityMode;
 
                 try
                 {
