@@ -102,7 +102,16 @@ public sealed class JobRunner(
                     {
                         encoded = seconds;
                         if (previews is not null) _ = previews.TrySampleAsync(source, seconds, token);
-                    }), token));
+                    }), token, assignment.MaxCandidateBytes is { } maximum
+                        ? new OutputSizeBudget(candidate, maximum) : null));
+
+            if (result.SizeBudgetExceededAtBytes is { } observed)
+            {
+                await client.ReportSizeBudgetExceededAsync(
+                    pairing, assignment.LeaseId, observed, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false,
+                    $"Size saving: candidate exceeded the {assignment.MaxCandidateBytes:n0}-byte budget; the job was stopped.");
+            }
 
             if (!result.Succeeded)
             {

@@ -161,6 +161,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var deliveredFile: Data?
     private(set) var deliveredHeaders: [String: String] = [:]
     private(set) var released = false
+    private(set) var sizeBudgetFailed = false
     private(set) var renewals = 0
     private(set) var qualityReport: [String: Any]?
     /// What the search answers, in order: the worker is told what to measure next until told to stop.
@@ -221,6 +222,10 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             }
             if path.hasSuffix("/release") {
                 released = true
+                return (Data(), response(request, 204))
+            }
+            if path.hasSuffix("/size-budget-exceeded") {
+                sizeBudgetFailed = true
                 return (Data(), response(request, 204))
             }
             if path.hasSuffix("/result/offset") {
@@ -572,6 +577,17 @@ struct FakeTranscodeRunner: TranscodeRunner, @unchecked Sendable {
     var recorder: ArgumentRecorder?
 
     var measurementExitCode: Int32 = 0
+    var sizeBudgetExceededAtBytes: Int64?
+
+    func run(
+        _ executable: URL, _ arguments: [String], sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String) {
+        if let sizeBudget, let observed = sizeBudgetExceededAtBytes {
+            throw OutputSizeExceeded(observedBytes: observed, maxBytes: sizeBudget.maxBytes)
+        }
+        return try await run(executable, arguments, progress: progress)
+    }
 
     func run(
         _ executable: URL, _ arguments: [String], progress: @escaping @Sendable (Double) -> Void
@@ -617,7 +633,7 @@ private let measurementCommand: [String] = [
 
 private func assignment(
     renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096,
-    commands: [[String]] = [measurementCommand]
+    commands: [[String]] = [measurementCommand], maxCandidateBytes: Int64? = nil
 ) -> Assignment {
     Assignment(
         leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: sourceBytes,
@@ -626,7 +642,8 @@ private func assignment(
         quality: QualityRequirement(
             measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
-            commands: measure ? commands : [], sampling: "Full file"))
+            commands: measure ? commands : [], sampling: "Full file"),
+        maxCandidateBytes: maxCandidateBytes)
 }
 
 @Suite("Scratch capacity")
@@ -665,6 +682,30 @@ private func scratch() -> URL {
 
 @Suite("Job runner")
 struct JobRunnerTests {
+    @Test("an oversized candidate is reported as terminal instead of handed to another worker")
+    func sizeBudgetStopsJob() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let root = scratch()
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(sizeBudgetExceededAtBytes: 4_096),
+            scratchRoot: root,
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(maxCandidateBytes: 4_095), pairing: pairing) { _ in }
+
+        guard case let .failed(jobId, reason) = outcome else {
+            Issue.record("expected a terminal size failure, got \(outcome)")
+            return
+        }
+        #expect(jobId == 12)
+        #expect(reason.contains("Size saving"))
+        #expect(server.sizeBudgetFailed)
+        #expect(!server.released)
+        #expect(server.deliveredFile == nil)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("job-12").path))
+    }
+
     @Test("a healthy job fetches, encodes, hashes and delivers, then leaves no scratch behind")
     func deliversAndCleansUp() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))

@@ -460,6 +460,17 @@ public struct SidecarClient: Sendable {
         try Self.checkLease(response.statusCode, data)
     }
 
+    public func reportSizeBudgetExceeded(
+        serverAddress: String, credential: String, leaseId: String, observedBytes: Int64
+    ) async throws {
+        var request = try authorised(serverAddress,
+            "/api/workers/leases/\(leaseId)/size-budget-exceeded", credential: credential, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["observedBytes": observedBytes])
+        let (data, response) = try await perform(request)
+        try Self.checkLease(response.statusCode, data)
+    }
+
     /// Fetches the source for a lease to a file and returns the hash the server declared for it,
     /// so the caller can prove the transfer arrived intact before encoding a byte of it.
     public func fetchSource(

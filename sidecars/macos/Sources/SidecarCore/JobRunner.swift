@@ -30,6 +30,33 @@ public protocol TranscodeRunner: Sendable {
         _ arguments: [String],
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> (exitCode: Int32, stderr: String)
+
+    func run(
+        _ executable: URL,
+        _ arguments: [String],
+        sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String)
+}
+
+public struct OutputSizeBudget: Sendable, Equatable {
+    public let output: URL
+    public let maxBytes: Int64
+    public init(output: URL, maxBytes: Int64) { self.output = output; self.maxBytes = maxBytes }
+}
+
+public struct OutputSizeExceeded: Error, Sendable, Equatable {
+    public let observedBytes: Int64
+    public let maxBytes: Int64
+}
+
+public extension TranscodeRunner {
+    func run(
+        _ executable: URL, _ arguments: [String], sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String) {
+        try await run(executable, arguments, progress: progress)
+    }
 }
 
 public struct ProcessTranscodeRunner: TranscodeRunner {
@@ -141,6 +168,15 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
         _ arguments: [String],
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> (exitCode: Int32, stderr: String) {
+        try await run(executable, arguments, sizeBudget: nil, progress: progress)
+    }
+
+    public func run(
+        _ executable: URL,
+        _ arguments: [String],
+        sizeBudget: OutputSizeBudget?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> (exitCode: Int32, stderr: String) {
         let running = RunningProcess()
         running.process.executableURL = executable
         running.process.arguments = arguments
@@ -188,13 +224,33 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
             throw error
         }
 
-        return try await withTaskCancellationHandler {
+        let budgetWatch: Task<Int64?, Never>? = sizeBudget.map { budget in
+            Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    if Task.isCancelled { return nil }
+                    guard running.process.isRunning,
+                          let number = try? FileManager.default.attributesOfItem(atPath: budget.output.path)[.size] as? NSNumber,
+                          number.int64Value > budget.maxBytes else { continue }
+                    running.process.terminate()
+                    return number.int64Value
+                }
+                return nil
+            }
+        }
+        defer { budgetWatch?.cancel() }
+        let result = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 running.waitFor { continuation.resume(with: $0) }
             }
         } onCancel: {
             running.process.terminate()
         }
+        budgetWatch?.cancel()
+        if let observed = await budgetWatch?.value, let sizeBudget {
+            throw OutputSizeExceeded(observedBytes: observed, maxBytes: sizeBudget.maxBytes)
+        }
+        return result
     }
 }
 
@@ -202,6 +258,9 @@ public struct ProcessTranscodeRunner: TranscodeRunner {
 public enum JobOutcome: Sendable, Equatable {
     /// The candidate reached the server intact. Verification there decides what it is worth.
     case delivered(jobId: Int, bytes: Int64)
+
+    /// The server accepted a terminal failure for this attempt; it will not requeue it.
+    case failed(jobId: Int, reason: String)
 
     /// The job was handed back for the server to reassign, with the reason it could not be done.
     case released(jobId: Int, reason: String)
@@ -1049,28 +1108,39 @@ public struct JobRunner: WorkExecutor {
 
         let arguments = encodeCommand.materialise(input: source, output: candidate)
         latest.set(.encoding(encodedSeconds: 0))
-        let encode = try await whileRenewingLease(
-            assignment, pairing: pairing, progress: latest.get
-        ) {
-            try await runner.run(ffmpeg, arguments) { [previewSampler, wantsPreviews] seconds in
-                latest.set(.encoding(encodedSeconds: seconds))
-                progress(.encoding(encodedSeconds: seconds))
-                // Only while someone has the menu open, and never faster than the sampler's own
-                // interval: a frame grab is a whole process, and the encode is the job here.
-                guard let previewSampler else {
-                    Self.notePreviewsOff(jobId: assignment.jobId, because: "this build has no ffmpeg to grab one with")
-                    return
-                }
-                guard wantsPreviews() else {
-                    Self.notePreviewsOff(jobId: assignment.jobId, because: "nothing is watching")
-                    return
-                }
-                Task {
-                    if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
-                        preview(frame)
+        let encode: (exitCode: Int32, stderr: String)
+        do {
+            encode = try await whileRenewingLease(
+                assignment, pairing: pairing, progress: latest.get
+            ) {
+                try await runner.run(ffmpeg, arguments,
+                    sizeBudget: assignment.maxCandidateBytes.map { OutputSizeBudget(output: candidate, maxBytes: $0) }) {
+                    [previewSampler, wantsPreviews] seconds in
+                    latest.set(.encoding(encodedSeconds: seconds))
+                    progress(.encoding(encodedSeconds: seconds))
+                    // Only while someone has the menu open, and never faster than the sampler's own
+                    // interval: a frame grab is a whole process, and the encode is the job here.
+                    guard let previewSampler else {
+                        Self.notePreviewsOff(jobId: assignment.jobId, because: "this build has no ffmpeg to grab one with")
+                        return
+                    }
+                    guard wantsPreviews() else {
+                        Self.notePreviewsOff(jobId: assignment.jobId, because: "nothing is watching")
+                        return
+                    }
+                    Task {
+                        if let frame = await previewSampler.frame(from: source, atSeconds: seconds) {
+                            preview(frame)
+                        }
                     }
                 }
             }
+        } catch let exceeded as OutputSizeExceeded {
+            try await client.reportSizeBudgetExceeded(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, observedBytes: exceeded.observedBytes)
+            return .failed(jobId: assignment.jobId,
+                reason: "Size saving: candidate exceeded the \(exceeded.maxBytes)-byte budget; encoding stopped.")
         }
 
         guard encode.0 == 0 else {

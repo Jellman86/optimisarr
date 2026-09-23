@@ -54,6 +54,10 @@ jobs remain server work. The server still schedules jobs, transfers and hashes f
 evidence, writes its database and performs replacement/quarantine. This is not a zero-work server
 mode. Keep remote workers enabled: placement preferences are ignored while they are disabled.
 
+If a library requires a smaller output, its full-encode assignment includes a frozen byte limit.
+The Mac stops when the candidate exceeds that limit and reports a terminal **Size saving** failure
+instead of handing the same job to another worker. The source is retained.
+
 Scratch lives under `~/Library/Application Support/OptimisarrSidecar/work` and is removed on every
 exit path. **Jobs at once** in the menu chooses how many jobs run in parallel (one to four); the
 number is reported on every check-in and the server holds the worker to it. The machine is probed

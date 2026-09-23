@@ -4,13 +4,15 @@ using System.Globalization;
 namespace Optimisarr.Sidecar.Core.Session;
 
 /// <summary>What FFmpeg said when it finished.</summary>
-public sealed record TranscodeResult(int ExitCode, string ErrorTail)
+public sealed record TranscodeResult(int ExitCode, string ErrorTail, long? SizeBudgetExceededAtBytes = null)
 {
     public bool Succeeded => ExitCode == 0;
 }
 
 /// <summary>What a probe said on its standard output.</summary>
 public sealed record ProbeResult(int ExitCode, string Output);
+
+public sealed record OutputSizeBudget(string OutputPath, long MaxBytes);
 
 /// <summary>Runs the encode the server asked for, and says how far through it is.</summary>
 public interface ITranscoder
@@ -19,7 +21,8 @@ public interface ITranscoder
         string ffmpeg,
         IReadOnlyList<string> arguments,
         IProgress<double>? encodedSeconds,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        OutputSizeBudget? sizeBudget = null);
 
     /// <summary>
     /// Runs ffprobe and hands back what it printed.
@@ -47,7 +50,8 @@ public sealed class ProcessTranscoder : ITranscoder
         string ffmpeg,
         IReadOnlyList<string> arguments,
         IProgress<double>? encodedSeconds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        OutputSizeBudget? sizeBudget = null)
     {
         var startInfo = new ProcessStartInfo(ffmpeg)
         {
@@ -78,7 +82,21 @@ public sealed class ProcessTranscoder : ITranscoder
 
         try
         {
-            await process.WaitForExitAsync(cancellationToken);
+            var exited = process.WaitForExitAsync(cancellationToken);
+            while (sizeBudget is not null
+                && await Task.WhenAny(exited, Task.Delay(TimeSpan.FromSeconds(2), cancellationToken)) != exited)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (TryOutputSize(sizeBudget.OutputPath) is not { } bytes
+                    || bytes <= sizeBudget.MaxBytes) continue;
+
+                Kill(process);
+                await exited;
+                _ = await ChildOutput.WithinGraceAsync(errorTail);
+                await ChildOutput.WithinGraceAsync(progress);
+                return new TranscodeResult(-1, "Size saving budget exceeded.", bytes);
+            }
+            await exited;
         }
         catch (OperationCanceledException)
         {
@@ -89,6 +107,7 @@ public sealed class ProcessTranscoder : ITranscoder
         }
 
         // The exit is the authority; the pipe gets a moment to hand over the rest of the tail.
+        await ChildOutput.WithinGraceAsync(progress);
         return new TranscodeResult(
             process.ExitCode, (await ChildOutput.WithinGraceAsync(errorTail)).Trim());
     }
@@ -215,5 +234,11 @@ public sealed class ProcessTranscoder : ITranscoder
         catch (Exception exception) when (exception is InvalidOperationException or SystemException)
         {
         }
+    }
+
+    private static long? TryOutputSize(string path)
+    {
+        try { return File.Exists(path) ? new FileInfo(path).Length : null; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
     }
 }

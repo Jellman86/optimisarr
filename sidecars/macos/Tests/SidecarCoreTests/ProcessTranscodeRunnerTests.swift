@@ -10,6 +10,24 @@ import Testing
 struct ProcessTranscodeRunnerTests {
     private static let shell = URL(fileURLWithPath: "/bin/sh")
 
+    @Test("a candidate beyond its frozen size budget stops its encoder")
+    func sizeBudgetStopsProcess() async throws {
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: output) }
+        let started = Date()
+
+        do {
+            _ = try await ProcessTranscodeRunner().run(Self.shell,
+                ["-c", "printf '1234567890123' > \"$1\"; sleep 120", "-", output.path],
+                sizeBudget: OutputSizeBudget(output: output, maxBytes: 12), progress: { _ in })
+            Issue.record("expected the runner to stop an oversized candidate")
+        } catch let exceeded as OutputSizeExceeded {
+            #expect(exceeded.observedBytes == 13)
+            #expect(exceeded.maxBytes == 12)
+        }
+        #expect(Date().timeIntervalSince(started) < 10)
+    }
+
     /// Collects what the progress callback was told, from whichever queue tells it.
     private final class Reported: @unchecked Sendable {
         private let gate = NSLock()

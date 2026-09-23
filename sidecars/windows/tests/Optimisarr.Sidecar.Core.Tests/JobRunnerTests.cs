@@ -81,6 +81,27 @@ public sealed class JobRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task An_exceeded_size_budget_reports_a_terminal_failure_instead_of_releasing_the_job()
+    {
+        var source = Encoding.UTF8.GetBytes("source-bytes");
+        var server = new FakeWorkerServer(source, Hash(source));
+        var http = new HttpClient(server);
+        var transcoder = new FakeMeasuringTranscoder { SizeBudgetExceededAtBytes = 13 };
+        var assignment = Assignment() with { MaxCandidateBytes = 12 };
+        var runner = new JobRunner(new SidecarClient(http), new JobTransfer(http),
+            transcoder, "ffmpeg.exe", _scratch, () => null);
+
+        var outcome = await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        Assert.False(outcome.Delivered);
+        Assert.Contains("Size saving", outcome.Detail);
+        Assert.Equal(12, transcoder.LastSizeBudget!.MaxBytes);
+        Assert.Contains(server.Calls, call => call.EndsWith("/size-budget-exceeded", StringComparison.Ordinal));
+        Assert.DoesNotContain(server.Calls, call => call.EndsWith("/release", StringComparison.Ordinal));
+        Assert.False(server.Completed);
+    }
+
+    [Fact]
     public async Task A_source_that_did_not_arrive_intact_is_never_encoded()
     {
         // The server declares a hash that will not match what it actually sent. Encoding anyway

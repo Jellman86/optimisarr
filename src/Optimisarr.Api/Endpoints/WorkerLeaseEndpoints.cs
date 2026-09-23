@@ -7,6 +7,7 @@ using Optimisarr.Api.Realtime;
 using Optimisarr.Api.Workers;
 using Optimisarr.Core.Domain;
 using Optimisarr.Core.Queue;
+using Optimisarr.Core.Scheduling;
 using Optimisarr.Core.Verification;
 using Optimisarr.Core.Workers;
 using Optimisarr.Data;
@@ -42,7 +43,10 @@ internal sealed record AssignmentDto(
     /// at. Null when the quality is already settled and the encode can start immediately.
     /// </summary>
     AdaptiveSearchStepDto? Search = null,
-    RemoteVerificationContract? FullVerification = null);
+    RemoteVerificationContract? FullVerification = null,
+    long? MaxCandidateBytes = null);
+
+internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
 
 /// <summary>
 /// One candidate of the per-title quality search, on the wire.
@@ -357,6 +361,9 @@ internal static class WorkerLeaseEndpoints
                 }
 
                 var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
+                var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
+                    job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                    job.Type is JobType.Preview or JobType.Calibration);
 
                 db.JobLeases.Add(new JobLease
                 {
@@ -369,6 +376,7 @@ internal static class WorkerLeaseEndpoints
                     // Bound to the lease so delivery names the candidate by the contract, not by
                     // the source; the replacement's final extension comes from that name.
                     OutputExtension = assignment.OutputExtension,
+                    MaxCandidateBytes = maxCandidateBytes,
                     HardwareDecoder = assignment.HardwareDecoder,
                     // What the worker was asked to measure, fixed now so the evidence it returns is
                     // judged against this, not against a policy that may have changed since.
@@ -446,7 +454,8 @@ internal static class WorkerLeaseEndpoints
                         assignment.Quality?.Commands ?? [],
                         assignment.Quality?.Sampling ?? "None"),
                     AdaptiveSearchWire.From(assignment.Search, policy),
-                    assignment.FullVerification));
+                    assignment.FullVerification,
+                    maxCandidateBytes));
             }
 
             return Results.NoContent();
@@ -815,6 +824,54 @@ internal static class WorkerLeaseEndpoints
         .Produces<ApiError>(StatusCodes.Status403Forbidden)
         .Produces<ApiError>(StatusCodes.Status409Conflict);
 
+        app.MapPost("/api/workers/leases/{leaseId:guid}/size-budget-exceeded", async (
+            Guid leaseId,
+            SizeBudgetExceededRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    stored.SizeBudgetExceededAtBytes = request.ObservedBytes;
+                    job.Status = JobStatus.Failed;
+                    job.ErrorMessage = $"Size saving: candidate grew to {request.ObservedBytes:n0} bytes, exceeding this attempt's byte budget.";
+                    job.FailureCategory = FailureCategory.SizeSaving;
+                    job.FinishedAt = now;
+                    job.UpdatedAt = now;
+                },
+                _ => Results.NoContent(),
+                validate: stored => stored.MaxCandidateBytes is not { } maximum
+                    || request.ObservedBytes <= maximum
+                    || stored.Job?.Status != JobStatus.Leased
+                        ? Results.BadRequest(new ApiError("worker.sizeBudget.invalid",
+                            "This lease has no exceeded candidate-size budget."))
+                        : null,
+                afterApply: async (context, _, job) =>
+                    await QueueDispatcher.ApplyFailureTrackingAsync(context, job, JobStatus.Failed,
+                        ImmediateAutoExclusionReason.SizeSaving),
+                alreadyHandled: (stored, workerId) =>
+                    stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released
+                    && stored.SizeBudgetExceededAtBytes == request.ObservedBytes
+                    && stored.Job?.Status == JobStatus.Failed
+                        ? Results.NoContent() : null);
+            if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status204NoContent })
+                await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+            return result;
+        })
+        .WithName("ReportSizeBudgetExceeded")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
         app.MapPost("/api/workers/leases/{leaseId:guid}/release", async (
             Guid leaseId,
             HttpRequest http,
@@ -855,7 +912,10 @@ internal static class WorkerLeaseEndpoints
         Func<WorkerLease, IResult> success,
         // Runs only once the lease operation has succeeded, so a refused or lapsed renewal records
         // nothing about the machine that sent it.
-        Action<Worker>? applyToWorker = null)
+        Action<Worker>? applyToWorker = null,
+        Func<JobLease, IResult?>? validate = null,
+        Func<OptimisarrDbContext, JobLease, Job, Task>? afterApply = null,
+        Func<JobLease, int, IResult?>? alreadyHandled = null)
     {
         if (await WorkerGate.RefusedAsync(settings, cancellationToken) is { } refused)
         {
@@ -878,6 +938,11 @@ internal static class WorkerLeaseEndpoints
             return ApiErrors.NotFound("worker.lease.notFound", $"No lease with id {leaseId}.");
         }
 
+        if (alreadyHandled?.Invoke(stored, worker.Id) is { } repeated)
+        {
+            return repeated;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var result = operation(stored.ToDomain(), worker.Id, now);
 
@@ -898,10 +963,16 @@ internal static class WorkerLeaseEndpoints
                 return ApiErrors.Conflict("worker.lease.notHeld", "That lease is no longer held.");
         }
 
+        if (validate?.Invoke(stored) is { } invalid)
+        {
+            return invalid;
+        }
+
         stored.Apply(result.Lease, now);
         if (stored.Job is not null)
         {
             applyToJob(stored, stored.Job, result.Outcome);
+            if (afterApply is not null) await afterApply(db, stored, stored.Job);
         }
         // The authenticated worker, not `stored.Worker`: that navigation is not included by the
         // query above, so reaching through it would have compiled, run, and silently recorded

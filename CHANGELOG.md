@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Full video encodes with a required size reduction stop once their candidate exceeds the source-size budget. Sidecars report this as a terminal size-saving failure, so another worker cannot repeat the doomed encode; the original remains untouched.
 - Container and sidecar verification confirm a source picture packet scan once when it ends materially before primary audio, including moderate shortfalls, before attributing a failed timeline to the original.
 
 ### Added

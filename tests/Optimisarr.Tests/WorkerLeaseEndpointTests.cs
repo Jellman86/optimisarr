@@ -73,6 +73,9 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
             payload[property.Name] = JsonSerializer.Deserialize<object?>(property.Value.GetRawText());
         }
         payload["remoteWorkersEnabled"] = true;
+        // This fixture pairs protocol-1 workers. Explicitly disable the fresh-install strict
+        // default instead of relying on another test having changed shared settings first.
+        payload["workerVerificationRequired"] = false;
         (await admin.PutAsJsonAsync("/api/settings", payload)).EnsureSuccessStatusCode();
     }
 
@@ -1065,8 +1068,9 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         var worker = await PairCapableWorker("Releaser");
         var jobId = await QueueAJob();
 
-        var assignment = await (await worker.PostAsJsonAsync("/api/workers/claim", new { }))
-            .Content.ReadFromJsonAsync<JsonElement>();
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
         var leaseId = assignment.GetProperty("leaseId").GetString()!;
 
         using var released = await worker.PostAsJsonAsync($"/api/workers/leases/{leaseId}/release", new { });
@@ -1075,6 +1079,52 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
         // Back on the queue, runnable here or by another worker. Giving a job up must never strand
         // it.
         Assert.Equal(JobStatus.Queued, await StatusOf(jobId));
+    }
+
+    [Fact]
+    public async Task A_worker_can_end_an_oversized_candidate_without_requeuing_or_touching_the_source()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Size guard");
+        var other = await PairCapableWorker("Next worker");
+        var jobId = await QueueAJob();
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+        var budget = assignment.GetProperty("maxCandidateBytes").GetInt64();
+        Assert.Equal(SourceBytes.Length - 1, budget);
+
+        using var intruder = await other.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-exceeded", new { observedBytes = budget + 1 });
+        Assert.Equal(HttpStatusCode.Forbidden, intruder.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(jobId));
+
+        using var premature = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-exceeded", new { observedBytes = budget });
+        Assert.Equal(HttpStatusCode.BadRequest, premature.StatusCode);
+        Assert.Equal(JobStatus.Leased, await StatusOf(jobId));
+
+        using var stopped = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-exceeded", new { observedBytes = budget + 1 });
+        Assert.Equal(HttpStatusCode.NoContent, stopped.StatusCode);
+        using var retriedReport = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-exceeded", new { observedBytes = budget + 1 });
+        Assert.Equal(HttpStatusCode.NoContent, retriedReport.StatusCode);
+        Assert.Equal(JobStatus.Failed, await StatusOf(jobId));
+        using var next = await other.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, next.StatusCode);
+
+        using var scope = _api.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await db.Jobs.Include(item => item.MediaFile).SingleAsync(item => item.Id == jobId);
+        Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
+        Assert.Contains("Size saving", job.ErrorMessage);
+        Assert.Equal(1, job.MediaFile!.FailureCount);
+        var lease = await db.JobLeases.SingleAsync(item => item.Id == Guid.Parse(leaseId));
+        Assert.Equal(budget + 1, lease.SizeBudgetExceededAtBytes);
+        Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile!.Path));
     }
 
     [Fact]

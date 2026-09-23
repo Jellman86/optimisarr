@@ -132,6 +132,10 @@ disable Smart App Control or other Windows protections to run a preview.
 
 ### Worker placement and strict verification
 
+When a library requires a smaller output, the assignment carries a frozen candidate byte limit.
+The worker stops a full encode that exceeds it and reports a terminal **Size saving** failure; it
+does not hand the job to another worker to repeat the same encode. The source file is retained.
+
 Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
 **Settings → Remote workers**. If these controls are absent, the server operator must enable
 `OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true` in its container environment through the normal
