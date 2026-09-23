@@ -35,11 +35,12 @@ public static class TimelineAlignmentProbe
 
     /// <summary>The arguments for one candidate offset's probe.</summary>
     public static IReadOnlyList<string> Arguments(
-        string reference, string distorted, double shiftSeconds, string logPath)
+        string reference, string distorted, double shiftSeconds, string logPath,
+        double probeStartSeconds = ProbeStartSeconds)
     {
         var lead = ProbeLeadSeconds.ToString("G", CultureInfo.InvariantCulture);
         var length = ProbeSeconds.ToString("G", CultureInfo.InvariantCulture);
-        var start = ProbeStartSeconds.ToString("G", CultureInfo.InvariantCulture);
+        var start = probeStartSeconds.ToString("G", CultureInfo.InvariantCulture);
         var offset = (shiftSeconds * 1_000_000).ToString("F6", CultureInfo.InvariantCulture);
         var graph =
             $"[0:v]settb=AVTB,setpts=PTS-{offset},trim=start={lead}:duration={length},"

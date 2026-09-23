@@ -113,6 +113,24 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Packet_timeline_selects_the_same_moving_picture_stream_as_the_media_probe()
+    {
+        var probe = MediaProbeService.Parse("""
+        {
+          "streams": [
+            { "codec_type": "video", "codec_name": "mjpeg", "disposition": { "attached_pic": 1 }, "duration": "0.08" },
+            { "codec_type": "video", "codec_name": "h264", "duration": "1279.24" },
+            { "codec_type": "audio", "codec_name": "aac", "duration": "1277.27" }
+          ],
+          "format": { "duration": "1279.24" }
+        }
+        """, ".mkv");
+
+        Assert.Equal("h264", probe.VideoCodec);
+        Assert.Equal("V:0", TimestampIntegrityCheck.MovingPictureStreamSpecifier);
+    }
+
+    [Fact]
     public void Disposable_video_verification_uses_the_requested_window_not_stream_copy_preroll()
     {
         var probe = MediaProbeService.Parse("""

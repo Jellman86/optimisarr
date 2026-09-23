@@ -77,6 +77,8 @@ struct VerificationTimestampAccumulator {
 }
 
 public struct FullVerification: Sendable {
+    // Uppercase V excludes attached artwork, matching the server's primary-video probe.
+    static let movingPictureStreamSpecifier = "V:0"
     let runner: any TranscodeRunner
     public init(runner: any TranscodeRunner = ProcessTranscodeRunner()) { self.runner = runner }
 
@@ -92,8 +94,8 @@ public struct FullVerification: Sendable {
             let decoded = try await runner.run(ffmpeg, ["-nostdin", "-xerror", "-v", "error", "-i", candidate.path,
                 "-map", "0:v?", "-map", "0:a?", "-f", "null", "-"]) { _ in }
             evidence.decode = Self.parseDecode(decoded.stderr, exitCode: decoded.exitCode)
-            evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: "v:0", scratch: scratch, name: "source-video")
-            evidence.candidateVideo = try await timestamps(ffprobe, file: candidate, stream: "v:0", scratch: scratch, name: "candidate-video")
+            evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "source-video")
+            evidence.candidateVideo = try await timestamps(ffprobe, file: candidate, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "candidate-video")
             evidence.sourceAudio = try await timestamps(ffprobe, file: source, stream: "a:0", scratch: scratch, name: "source-audio")
             if contract.measureAudio {
                 evidence.sourceLoudness = try await loudness(ffmpeg, file: source)

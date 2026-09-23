@@ -901,6 +901,33 @@ public sealed class VerificationEvaluatorTests
     }
 
     [Fact]
+    public void An_indeterminate_source_packet_scan_blocks_replacement_without_claiming_corruption()
+    {
+        var input = Healthy() with
+        {
+            OriginalDurationSeconds = 1279.24,
+            OutputDurationSeconds = 1279.24,
+            OriginalTimestampsMeasured = true,
+            OriginalLastPresentationSeconds = 0.08,
+            OriginalAudioLastPresentationSeconds = 1277.27,
+            OutputLastPresentationSeconds = 1279.24,
+            TimestampsMeasured = true,
+            SourceTimelineIndeterminate = true
+        };
+
+        var report = VerificationEvaluator.Evaluate(input, VerificationPolicy.Default);
+
+        Assert.False(report.Passed);
+        var check = report.Checks.Single(item => item.Name == VerificationEvaluator.SourceVideoTimelineCheckName);
+        Assert.Equal(CheckOutcome.Failed, check.Outcome);
+        Assert.Contains("indeterminate", check.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0.08s", check.Detail);
+        Assert.DoesNotContain("corrupt", check.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(report.Checks, item => item.Name == "Tail integrity");
+        Assert.False(HardwareDecodeFallback.ShouldRetryAfterVerification(report, catastrophicFloor: 40));
+    }
+
+    [Fact]
     public void An_incomplete_source_with_catastrophic_vmaf_stays_failed_without_a_futile_retry()
     {
         var input = Healthy() with

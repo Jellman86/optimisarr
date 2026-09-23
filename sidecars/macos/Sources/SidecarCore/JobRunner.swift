@@ -909,33 +909,26 @@ public struct JobRunner: WorkExecutor {
         var logs: [String] = []
         let commands = assignment.quality.commands.compactMap { try? MeasurementCommand.validate($0) }
         guard commands.count == assignment.quality.commands.count else { return nil }
-        // A sampled window pairs pictures by timestamp, so the server wants the candidate's extra
-        // lead over the source removed first. Only this machine has both files to measure it from.
-        var distortedShift: String?
-        if commands.contains(where: \.needsDistortedShift) {
-            // Measured rather than derived. The old arithmetic over container metadata answered
-            // zero for every file it was ever given, and could not have done better: two episodes
-            // of the same show, identical in every header field, need different corrections
-            // because different numbers of frames went missing in their encodes.
-            guard let measured = await TimelineAlignment.measure(
-                ffmpeg: ffmpeg, source: source, candidate: candidate,
-                frameSeconds: TimelineAlignment.frameSeconds(
-                    ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0),
-                scratch: scratch, runner: runner)
-            else { return nil }
-            distortedShift = measured
-        }
-        // Logged because a measurement that comes back wrong is otherwise undiagnosable after the
-        // fact: the scratch directory is deleted on every exit path, so the command, the files it
-        // compared and the score it produced exist nowhere once the job ends. A window scoring near
-        // zero is the signature of the two timelines being misaligned rather than of a bad encode,
-        // and knowing which window, and what shift was applied, is the whole diagnosis.
-        SidecarLog.job.info("""
-            Job \(assignment.jobId): measuring \(commands.count) window(s), \
-            distorted shift \(distortedShift ?? "none", privacy: .public)
-            """)
+        let frameSeconds = commands.contains(where: \.needsDistortedShift)
+            ? await TimelineAlignment.frameSeconds(ffprobe: ffprobe, file: source, runner: leadProbe) ?? (1.0 / 25.0)
+            : nil
 
         for (index, command) in commands.enumerated() {
+            var distortedShift: String?
+            if command.needsDistortedShift {
+                guard let probeStart = TimelineAlignment.probeStart(for: command.arguments),
+                      let frameSeconds,
+                      let measured = await TimelineAlignment.measure(
+                          ffmpeg: ffmpeg, source: source, candidate: candidate,
+                          frameSeconds: frameSeconds, probeStartSeconds: probeStart,
+                          scratch: scratch, runner: runner)
+                else { return nil }
+                distortedShift = measured
+            }
+            SidecarLog.job.info("""
+                Job \(assignment.jobId): measuring window \(index + 1)/\(commands.count), \
+                distorted shift \(distortedShift ?? "none", privacy: .public)
+                """)
             let log = scratch.appendingPathComponent("vmaf-\(index).json", isDirectory: false)
             let materialised = command.materialise(
                 distorted: candidate, reference: source, log: log, distortedShift: distortedShift)

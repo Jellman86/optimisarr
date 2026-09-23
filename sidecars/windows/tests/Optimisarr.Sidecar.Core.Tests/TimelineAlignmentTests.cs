@@ -47,6 +47,30 @@ public sealed class TimelineAlignmentTests
         Assert.Equal(1 / 23.976, TimelineAlignment.FrameSeconds("24000/1001")!.Value, 6);
     }
 
+    [Fact]
+    public void Frame_rate_probe_ignores_attached_artwork()
+    {
+        var arguments = TimelineAlignment.FrameRateArguments("source.mkv");
+        Assert.Equal("V:0", arguments[Array.IndexOf(arguments.ToArray(), "-select_streams") + 1]);
+    }
+
+    [Fact]
+    public void Sample_alignment_probes_the_window_it_will_score()
+    {
+        string[] command = ["-ss", "263.01275", "-i", "{{distorted}}", "-ss", "263.01275",
+            "-i", "{{reference}}", "-lavfi", "[0:v]trim=start=4.98725:duration=40[dist]",
+            "-t", "40", "-f", "null", "-"];
+
+        Assert.Equal(267, TimelineAlignment.ProbeStartForCommand(command));
+    }
+
+    [Fact]
+    public void Full_file_alignment_keeps_its_existing_probe_location()
+    {
+        Assert.Equal(TimelineAlignment.ProbeStartSeconds,
+            TimelineAlignment.ProbeStartForCommand(["-i", "{{distorted}}", "-i", "{{reference}}"]));
+    }
+
     [Theory]
     [InlineData("0/0")]
     [InlineData("25")]

@@ -83,7 +83,7 @@ public sealed class ReferenceFrameAlignmentProbe
                 ArgumentList =
                 {
                     "-v", "error",
-                    "-select_streams", "v:0",
+                    "-select_streams", TimestampIntegrityCheck.MovingPictureStreamSpecifier,
                     "-read_intervals", $"{requestedStartSeconds}%+{durationSeconds}",
                     "-show_frames",
                     "-show_entries", "frame=key_frame,best_effort_timestamp_time",

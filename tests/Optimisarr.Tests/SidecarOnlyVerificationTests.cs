@@ -53,5 +53,33 @@ public sealed class SidecarOnlyVerificationTests : IDisposable
             remoteEvidence: Evidence() with { Decode = null }));
     }
 
+    [Fact]
+    public async Task Implausible_worker_source_packet_span_is_held_as_indeterminate()
+    {
+        const string probe = """{"streams":[{"codec_type":"video","codec_name":"hevc","width":64,"height":64,"pix_fmt":"yuv420p"},{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000"}],"format":{"duration":"1279.24","format_name":"matroska"}}""";
+        Directory.CreateDirectory(_root);
+        var output = Path.Combine(_root, "candidate.mkv");
+        await File.WriteAllTextAsync(output, "candidate");
+        var original = new OriginalSnapshot(Path.Combine(_root, "source.mkv"), 1000, 1279.24,
+            1, 0, false, false, ExpectedVideoCodec: "hevc");
+        var evidence = Evidence() with
+        {
+            SourceProbe = probe,
+            CandidateProbe = probe,
+            SourceVideo = new TimestampCheckResult(true, 0, null, 0.08),
+            SourceAudio = new TimestampCheckResult(true, 0, null, 1277.27),
+            CandidateVideo = new TimestampCheckResult(true, 0, null, 1279.24)
+        };
+
+        var outcome = await Service().VerifyAsync(original, output, VerificationPolicy.Default,
+            CancellationToken.None, remoteEvidence: evidence);
+
+        Assert.False(outcome.Report.Passed);
+        var timeline = outcome.Report.Checks.Single(check => check.Name == "Source video timeline");
+        Assert.Equal(CheckOutcome.Failed, timeline.Outcome);
+        Assert.Contains("indeterminate", timeline.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(outcome.Report.Checks, check => check.Name == "Tail integrity");
+    }
+
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 }

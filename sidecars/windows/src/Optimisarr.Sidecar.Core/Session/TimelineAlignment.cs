@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Optimisarr.Core.Verification;
 
 namespace Optimisarr.Sidecar.Core.Session;
 
@@ -43,6 +44,30 @@ public static class TimelineAlignment
     public const double ProbeLeadSeconds = 1;
     public const double ProbeSeconds = 2;
 
+    /// <summary>Seek so the probe's one-second lead lands at this command's sample start.</summary>
+    public static double? ProbeStartForCommand(IReadOnlyList<string> command)
+    {
+        var seekIndex = command.ToList().IndexOf("-ss");
+        if (seekIndex < 0) return ProbeStartSeconds;
+        if (seekIndex + 1 >= command.Count
+            || !double.TryParse(command[seekIndex + 1], NumberStyles.Float,
+                CultureInfo.InvariantCulture, out var seek)
+            || !double.IsFinite(seek) || seek < 0)
+            return null;
+
+        var graphIndex = command.ToList().IndexOf("-lavfi");
+        if (graphIndex < 0 || graphIndex + 1 >= command.Count) return null;
+        const string marker = "trim=start=";
+        var graph = command[graphIndex + 1];
+        var position = graph.IndexOf(marker, StringComparison.Ordinal);
+        if (position < 0) return null;
+        var value = graph[(position + marker.Length)..].Split(':', ',', ';', '[', ']')[0];
+        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var trim)
+            || !double.IsFinite(trim) || trim < 0)
+            return null;
+        return Math.Max(0, Math.Round(seek + trim - ProbeLeadSeconds, 6));
+    }
+
     /// <summary>
     /// The shift to hand the server's measurement commands, written the way it writes seconds, or
     /// null when no probe could be scored at all.
@@ -54,7 +79,8 @@ public static class TimelineAlignment
         string candidate,
         double frameSeconds,
         string scratch,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        double probeStartSeconds = ProbeStartSeconds)
     {
         double? bestShift = null;
         var bestScore = double.NegativeInfinity;
@@ -66,7 +92,7 @@ public static class TimelineAlignment
             try
             {
                 var run = await transcoder.RunAsync(
-                    ffmpegPath, Arguments(source, candidate, shift, log), null, cancellationToken);
+                    ffmpegPath, Arguments(source, candidate, shift, log, probeStartSeconds), null, cancellationToken);
                 if (!run.Succeeded || !File.Exists(log))
                 {
                     continue;
@@ -94,7 +120,8 @@ public static class TimelineAlignment
     /// the alignment for a measurement nobody runs.
     /// </summary>
     public static IReadOnlyList<string> Arguments(
-        string source, string candidate, double shift, string log)
+        string source, string candidate, double shift, string log,
+        double probeStartSeconds = ProbeStartSeconds)
     {
         var lead = ProbeLeadSeconds.ToString("G", CultureInfo.InvariantCulture);
         var length = ProbeSeconds.ToString("G", CultureInfo.InvariantCulture);
@@ -110,8 +137,8 @@ public static class TimelineAlignment
         return
         [
             "-nostdin", "-v", "error",
-            "-ss", ProbeStartSeconds.ToString("G", CultureInfo.InvariantCulture), "-i", candidate,
-            "-ss", ProbeStartSeconds.ToString("G", CultureInfo.InvariantCulture), "-i", source,
+            "-ss", probeStartSeconds.ToString("G", CultureInfo.InvariantCulture), "-i", candidate,
+            "-ss", probeStartSeconds.ToString("G", CultureInfo.InvariantCulture), "-i", source,
             "-lavfi", graph,
             "-t", length, "-f", "null", "-",
         ];
@@ -170,7 +197,7 @@ public static class TimelineAlignment
     /// <summary>What to ask ffprobe for, to learn how long a picture lasts.</summary>
     public static IReadOnlyList<string> FrameRateArguments(string file) =>
     [
-        "-v", "error", "-select_streams", "v:0",
+        "-v", "error", "-select_streams", TimestampIntegrityCheck.MovingPictureStreamSpecifier,
         "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", file,
     ];
 }

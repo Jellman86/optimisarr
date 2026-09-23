@@ -28,6 +28,9 @@ public sealed record TimestampCheckResult(
 /// </summary>
 public sealed class TimestampIntegrityCheck
 {
+    // Uppercase V excludes attached pictures and thumbnails, matching MediaProbeService's
+    // primary video selection. Lowercase v:0 can measure a single cover-art packet instead.
+    public const string MovingPictureStreamSpecifier = "V:0";
     private readonly string _ffprobe;
 
     public TimestampIntegrityCheck(string? ffprobeCommand = null)
@@ -36,7 +39,7 @@ public sealed class TimestampIntegrityCheck
     }
 
     public async Task<TimestampCheckResult> CheckAsync(string path, CancellationToken cancellationToken)
-        => await CheckAsync(path, "v:0", cancellationToken);
+        => await CheckAsync(path, MovingPictureStreamSpecifier, cancellationToken);
 
     /// <summary>
     /// Reads the primary audio packet endpoint. This deliberately excludes subtitles and secondary

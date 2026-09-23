@@ -54,6 +54,14 @@ public sealed class TimelineAlignmentProbeTests
     }
 
     [Fact]
+    public void Sample_alignment_probe_seeks_to_its_own_window()
+    {
+        var arguments = TimelineAlignmentProbe.Arguments("ref.mkv", "dist.mp4", 0, "log.json", 267);
+
+        Assert.Equal("267", arguments[Array.IndexOf(arguments.ToArray(), "-ss") + 1]);
+    }
+
+    [Fact]
     public void The_chosen_offset_is_written_the_way_the_builder_writes_seconds()
     {
         Assert.Equal("0", TimelineAlignmentProbe.Format(0));
