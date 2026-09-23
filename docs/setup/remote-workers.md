@@ -48,6 +48,13 @@ saved as **Only on workers**. Keep remote workers enabled to enforce worker-only
 Automation windows, pause rules, capability requirements, and disk checks still apply. Audio-only,
 image, preview, and personal quality-check workflows retain their existing local paths.
 
+Queue shows separate capacity for video work, audio/images, sidecar evidence checks, safe
+replacement, and workers. A strict worker result waits for the container to validate its evidence;
+the container does not repeat media verification. **Settings → Encoding & queue → Advanced →
+Workload concurrency** shows the effective limits and lets you set extra lightweight lanes when
+the server has capacity. The primary video limit remains separate from each worker's advertised
+slots. Queue names the waiting lane and its reason when work cannot start yet.
+
 ## Require all verification on the sidecar
 
 **Verify entirely on the sidecar** is on by default for fresh installations once remote workers

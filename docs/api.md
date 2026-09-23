@@ -251,6 +251,11 @@ Settings fields include:
   "hdrToneMapMode": "Software",
   "remoteWorkersEnabled": false,
   "workerVerificationRequired": true,
+  "workloadConcurrencyMode": "Automatic",
+  "nonVideoSlots": 0,
+  "evidenceValidationSlots": 1,
+  "automaticNonVideoSlots": 0,
+  "automaticEvidenceValidationSlots": 1,
   "replacementAllowCrossFilesystem": false,
   "dryRunMode": false,
   "replacementQuarantineRetentionDays": 0
@@ -262,6 +267,14 @@ Settings fields include:
 full-file video assignments. It defaults on for new installations, while upgrades keep their
 previous choice, and is separate from per-library work placement.
 Older clients that omit this field from an update retain the installation's current choice.
+`workloadConcurrencyMode` is `Automatic` or `Manual`. In manual mode, `nonVideoSlots` (0–4)
+adds audio/image work beside the primary video limit, and `evidenceValidationSlots` (1–4)
+limits concurrent validation of strict sidecar evidence. Automatic mode computes those limits
+from the server's CPU and memory; the `automatic*Slots` response fields show that recommendation
+and are read-only. Older clients that omit the workload fields retain the current values.
+`GET /api/queue/status` includes `workloadLanes` with each lane's active, capacity, waiting,
+and reason values. A bounded finalisation lane covers replacement and rollback; worker slots
+remain controlled by the paired sidecars.
 `remoteWorkersAvailable` is returned as server capability information, not a toggle that can enable
 the feature without its environment flag. See [Remote Workers](#remote-workers) for the contract.
 
@@ -493,11 +506,12 @@ Verification reports are stored as JSON in `verificationReportJson`:
 }
 ```
 
-Each job row carries three remote-work fields: `workerName` (the sidecar holding, or having
+Each job row carries remote-work fields: `workerName` (the sidecar holding, or having
 delivered, the job; null for local work), `remoteStage` (`Claimed`, `FetchingSource`, `Encoding`
 or `Delivering` while leased, otherwise null), and `waitingForWorker` (a queued job its library's
 placement keeps off this server until a worker takes it, judged by the same rule the dispatcher
-applies).
+applies). `sidecarVerification` identifies an assignment whose media checks ran on the worker;
+`finalizing` is true only while this server is safely moving the verified output into place.
 
 ## Exclusions
 

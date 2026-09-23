@@ -343,6 +343,19 @@ export type Settings = {
   /** Groundwork only in this release: the switch and the Workers tab exist only when the server
    * was started with OPTIMISARR_EXPERIMENTAL_REMOTE_WORKERS=true. */
   remoteWorkersAvailable: boolean
+  workloadConcurrencyMode: 'Automatic' | 'Manual'
+  nonVideoSlots: number
+  evidenceValidationSlots: number
+  automaticNonVideoSlots: number
+  automaticEvidenceValidationSlots: number
+}
+
+export type WorkloadLaneStatus = {
+  lane: 'Video' | 'NonVideo' | 'Evidence' | 'Finalization' | 'Workers'
+  active: number
+  capacity: number
+  waiting: number
+  reason: string | null
 }
 
 export type TimedCleanupPreview = {
@@ -404,6 +417,7 @@ export type QueueStatus = Settings & {
   // Set when dispatch is ready but nothing starts because every queued job's library auto-optimise
   // window is shut, e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)".
   waitingReason: string | null
+  workloadLanes?: WorkloadLaneStatus[]
 }
 
 export type Stats = {
@@ -615,6 +629,10 @@ export type Job = {
   remoteStage: string | null
   /** A queued job its library keeps off this server until a worker takes it. */
   waitingForWorker: boolean
+  /** The current worker assignment completed the media checks; the container only validates evidence. */
+  sidecarVerification?: boolean
+  /** The verified output is currently being safely moved into place by the container. */
+  finalizing?: boolean
 }
 
 export type JobAttemptSnapshot = {

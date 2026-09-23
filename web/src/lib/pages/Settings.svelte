@@ -442,6 +442,11 @@
     remoteWorkersEnabled: false,
     workerVerificationRequired: true,
     remoteWorkersAvailable: false,
+    workloadConcurrencyMode: 'Automatic',
+    nonVideoSlots: 0,
+    evidenceValidationSlots: 1,
+    automaticNonVideoSlots: 0,
+    automaticEvidenceValidationSlots: 1,
     replacementQuarantineRetentionDays: 0,
   })
 
@@ -458,7 +463,7 @@
 
   /** Which settings belong to which room, so a card can count its own unsaved edits. */
   const ROOM_FIELDS: Partial<Record<RoomKey, (keyof Settings)[]>> = {
-    encoding: ['maxConcurrentJobs', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
+    encoding: ['maxConcurrentJobs', 'workloadConcurrencyMode', 'nonVideoSlots', 'evidenceValidationSlots', 'encoderMode', 'cpuThreadLimit', 'libraryScanIntervalHours', 'hardwareDecode', 'hdrToneMapMode'],
     files: ['dryRunMode', 'remoteWorkersEnabled', 'workerVerificationRequired', 'replacementAllowCrossFilesystem', 'replacementQuarantineRetentionDays'],
   }
 
@@ -646,6 +651,8 @@
       const saved = await api.saveSettings({
         ...settings,
         maxConcurrentJobs: Number(settings.maxConcurrentJobs) || 1,
+        nonVideoSlots: Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)),
+        evidenceValidationSlots: Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)),
         cpuThreadLimit: Math.max(0, Number(settings.cpuThreadLimit) || 0),
         libraryScanIntervalHours: Math.max(1, Number(settings.libraryScanIntervalHours) || 1),
         replacementQuarantineRetentionDays: Math.max(0, Math.floor(Number(settings.replacementQuarantineRetentionDays) || 0)),
@@ -882,6 +889,36 @@
         <input id="max-jobs" class="input" type="number" min="1" bind:value={settings.maxConcurrentJobs} />
         {@render wasChanged('maxConcurrentJobs', String(savedSettings?.maxConcurrentJobs ?? ''))}
       </div>
+
+      <details class="workload-details">
+        <summary class="focus-ring">{i18n.m.settings.workload_advanced}</summary>
+        <p class="workload-intro">{i18n.m.settings.workload_intro}</p>
+        <div class="settings-field {isChanged('workloadConcurrencyMode') ? 'settings-field-changed' : ''}">
+          <div class="settings-field-label"><label class="label" for="workload-mode">{i18n.m.settings.workload_mode} <InfoTip text={i18n.m.settings.workload_mode_tip} /></label><p>{i18n.m.settings.workload_mode_hint}</p></div>
+          <select id="workload-mode" class="input" bind:value={settings.workloadConcurrencyMode}>
+            <option value="Automatic">{i18n.m.settings.workload_automatic}</option>
+            <option value="Manual">{i18n.m.settings.workload_manual}</option>
+          </select>
+          {@render wasChanged('workloadConcurrencyMode', String(savedSettings?.workloadConcurrencyMode ?? ''))}
+        </div>
+        {#if settings.workloadConcurrencyMode === 'Manual'}
+          <div class="settings-field {isChanged('nonVideoSlots') ? 'settings-field-changed' : ''}">
+            <div class="settings-field-label"><label class="label" for="non-video-slots">{i18n.m.settings.workload_nonvideo} <InfoTip text={i18n.m.settings.workload_nonvideo_tip} /></label><p>{i18n.m.settings.workload_nonvideo_hint}</p></div>
+            <input id="non-video-slots" class="input" type="number" min="0" max="4" step="1" bind:value={settings.nonVideoSlots} />
+            {@render wasChanged('nonVideoSlots', String(savedSettings?.nonVideoSlots ?? ''))}
+          </div>
+          <div class="settings-field {isChanged('evidenceValidationSlots') ? 'settings-field-changed' : ''}">
+            <div class="settings-field-label"><label class="label" for="evidence-slots">{i18n.m.settings.workload_evidence} <InfoTip text={i18n.m.settings.workload_evidence_tip} /></label><p>{i18n.m.settings.workload_evidence_hint}</p></div>
+            <input id="evidence-slots" class="input" type="number" min="1" max="4" step="1" bind:value={settings.evidenceValidationSlots} />
+            {@render wasChanged('evidenceValidationSlots', String(savedSettings?.evidenceValidationSlots ?? ''))}
+          </div>
+        {/if}
+        <div class="workload-preview" aria-live="polite">
+          <span>{i18n.m.settings.workload_effective}</span>
+          <strong>{tr(i18n.m.settings.workload_preview, { video: Math.max(1, Number(settings.maxConcurrentJobs) || 1), nonvideo: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticNonVideoSlots : Math.min(4, Math.max(0, Number(settings.nonVideoSlots) || 0)), evidence: settings.workloadConcurrencyMode === 'Automatic' ? settings.automaticEvidenceValidationSlots : Math.min(4, Math.max(1, Number(settings.evidenceValidationSlots) || 1)) })}</strong>
+          <small>{i18n.m.settings.workload_preview_note}</small>
+        </div>
+      </details>
 
       <div class="settings-field {isChanged('encoderMode') ? 'settings-field-changed' : ''}">
         <div class="settings-field-label"><label class="label" for="encoder-mode">{i18n.m.settings.encoder_mode} <InfoTip text={i18n.m.settings.encoder_mode_tip} /></label><p>{i18n.m.settings.encoder_hint}</p></div>
@@ -1518,6 +1555,13 @@
     display: grid; gap: 1.5rem;
     margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--divide);
   }
+  .workload-details { border-top: 1px solid var(--divide-soft); margin-top: 1rem; padding-top: 1rem; }
+  .workload-details summary { width: fit-content; cursor: pointer; color: var(--accent); font-size: .8125rem; font-weight: 600; border-radius: .375rem; padding: .5rem; margin-left: -.5rem; }
+  .workload-details summary:hover { background: var(--lit); }
+  .workload-intro { color: var(--ink-3); font-size: .75rem; line-height: 1.6; margin: .5rem 0 1rem; }
+  .workload-preview { display: grid; gap: .35rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }
+  .workload-preview span, .workload-preview small { color: var(--ink-3); font-size: .75rem; }
+  .workload-preview strong { color: var(--ink); font-size: .875rem; font-weight: 600; }
   .settings-video-fields > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .65fr); gap: 1.5rem; align-items: center; }
   .settings-savebar {
     border-radius: .875rem; background: var(--raised); box-shadow: var(--lift-3), inset 0 1px 0 var(--edge);

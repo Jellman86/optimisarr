@@ -252,6 +252,7 @@ internal static class MediaAndQueueEndpoints
             OptimisarrDbContext db,
             SettingsStore settingsStore,
             RemoteWorkersFeature remoteWorkers,
+            ReplacementCoordinator replacementCoordinator,
             CancellationToken cancellationToken) =>
         {
             JobStatus? wantedStatus = null;
@@ -294,7 +295,7 @@ internal static class MediaAndQueueEndpoints
             }, cancellationToken, availability);
 
             response.Headers["X-Total-Count"] = result.Total.ToString();
-            return Results.Ok(result.Items);
+            return Results.Ok(result.Items.Select(job => job with { Finalizing = replacementCoordinator.IsActive(job.Id) }));
         })
         .WithName("ListJobs");
 

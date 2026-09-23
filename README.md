@@ -82,7 +82,8 @@ no support SLA or promise of a release schedule.
 - Svelte 5 + Tailwind **sidebar UI** (Dashboard, Libraries, Inventory, Queue,
   Quarantine, Schedule, Settings; Tools live under Settings). Verification reports
   are available in the Queue job dialog and the full-page Quarantine review.
-- Queue resource controls: max concurrent jobs, CPU thread limits, and a free
+- Queue resource controls: primary media slots, optional parallel audio/image and
+  sidecar-evidence lanes, CPU thread limits, and a free
   work-disk safety pause. The only global scheduling setting is the library scan
   interval; *when* work runs is set per library (see auto-optimise below).
 - Per-library **auto-optimise** windows continuously queue newly eligible files;

@@ -1,15 +1,17 @@
 <script lang="ts">
   import type { Job, QueueStatus } from '../api'
   import type { JobProgress } from '../realtime'
-  import { jobPercent, isJobSuspended } from '../job-presentation'
+  import { jobPercent, isJobSuspended, verificationPhase } from '../job-presentation'
   import { formatDuration } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   let { job, queue, telemetry, compact = false }: { job: Job; queue: QueueStatus | null; telemetry?: JobProgress; compact?: boolean } = $props()
   let percent = $derived(jobPercent(job))
   let paused = $derived(isJobSuspended(job, queue))
   let encoding = $derived(job.status === 'Transcoding' || (job.status === 'Leased' && job.remoteStage === 'Encoding'))
+  let phase = $derived(verificationPhase(job))
   let description = $derived.by(() => {
     if (paused) return i18n.m.queue.now_paused
+    if (job.finalizing) return i18n.m.queue.finalizing_detail
     if (job.status === 'Leased') {
       const worker = job.workerName ?? '?'
       switch (job.remoteStage) {
@@ -20,9 +22,12 @@
         default: return t(i18n.m.queue.remote_claimed, { worker })
       }
     }
-    if (job.status === 'AwaitingVerification') return i18n.m.queue.returned_waiting
+    if (phase === 'waiting') return job.sidecarVerification
+      ? t(i18n.m.queue.evidence_waiting_detail, { worker: job.workerName ?? '?' })
+      : i18n.m.queue.returned_waiting
     if (job.status === 'Probing') return job.progress > 0 ? i18n.m.queue.selecting_quality : i18n.m.queue.probing_source
-    if (job.status === 'Verifying') return job.workerName ? t(i18n.m.queue.verifying_returned, { worker: job.workerName }) : i18n.m.queue.verifying_output
+    if (phase === 'evidence') return t(i18n.m.queue.evidence_validating_detail, { worker: job.workerName ?? '?' })
+    if (phase === 'media') return job.workerName ? t(i18n.m.queue.verifying_returned, { worker: job.workerName }) : i18n.m.queue.verifying_output
     return ''
   })
   function eta(seconds: number) { return seconds < 60 ? t(i18n.m.queue.eta_seconds, { seconds: Math.round(seconds) }) : t(i18n.m.queue.eta_duration, { duration: formatDuration(seconds) }) }

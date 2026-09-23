@@ -125,7 +125,7 @@ test('a remote job says where it is, and a job kept for a worker says it is wait
 
   // The hero leads with the remote encode and names the machine.
   await expect(page.getByText('Now encoding on Mac Studio', { exact: true })).toBeVisible()
-  await expect(page.getByText('Returned from MacBook Air', { exact: true })).toBeVisible()
+  await expect(page.getByText('Waiting for container verdict · MacBook Air', { exact: true })).toBeVisible()
 
   const working = page.getByRole('region', { name: 'Working now' })
   await expect(working).toContainText('encoding on Mac Studio')
@@ -151,7 +151,7 @@ test('a software-decode retry shows its current worker and keeps the rejected Ma
   await mockWorkingQueue(page, { jobs: [retried] })
   await page.goto('/#/queue')
   const working = page.getByRole('region', { name: 'Working now' })
-  await expect(working).toContainText('Returned from PICARD')
+  await expect(working).toContainText('Waiting for container verdict · PICARD')
   await expect(working).toContainText('Retrying with software decode')
   await working.getByRole('button', { name: 'View job' }).click()
   const details = page.getByRole('dialog', { name: /Job details/ })
@@ -233,6 +233,50 @@ test('pausing local work leaves remote work and verification described accuratel
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Resume queue', exact: true }).click()
   await expect(working.getByText('Now encoding', { exact: true })).toBeVisible()
+})
+
+test('strict evidence and legacy media verification show distinct phases beside lane capacity', async ({ page }) => {
+  const strict = { ...job(10, 'Verifying', null), workerName: 'PICARD', sidecarVerification: true, progress: .3 }
+  const legacy = { ...job(11, 'Verifying', null), workerName: 'MacBook Air', sidecarVerification: false, progress: .4 }
+  await mockWorkingQueue(page, { jobs: [strict, legacy], queue: { workloadLanes: [
+    { lane: 'Video', active: 1, capacity: 1, waiting: 2, reason: 'All video slots are busy.' },
+    { lane: 'NonVideo', active: 0, capacity: 1, waiting: 1, reason: 'Checking library windows.' },
+    { lane: 'Evidence', active: 1, capacity: 2, waiting: 0, reason: null },
+    { lane: 'Finalization', active: 2, capacity: 2, waiting: 1, reason: 'Both finalisation slots are busy.' },
+    { lane: 'Workers', active: 0, capacity: 2, waiting: 0, reason: null },
+  ] } })
+  await page.goto('/#/queue')
+  const lanes = page.getByRole('region', { name: 'Execution lanes' })
+  await expect(lanes).toContainText('Video on container')
+  await expect(lanes).toContainText('Audio & images')
+  await expect(lanes).toContainText('All video slots are busy.')
+  await expect(lanes).toContainText('Safe replacement')
+  await expect(lanes).toContainText('Both finalisation slots are busy.')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working).toContainText('Validating sidecar evidence')
+  await expect(working).toContainText('The container is not repeating FFmpeg media checks.')
+  await expect(working).toContainText('The container is verifying the media returned by MacBook Air.')
+  await working.getByRole('button', { name: 'View job' }).first().click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details).toContainText('Validating sidecar evidence')
+  await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('PICARD')
+  await expect(details.getByRole('region', { name: 'Execution path' })).toContainText('This server')
+  await details.getByRole('button', { name: 'Close details' }).click()
+  await page.setViewportSize({ width: 375, height: 667 })
+  await expect(lanes).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('safe replacement remains visible as work and cannot be started twice', async ({ page }) => {
+  await mockWorkingQueue(page, { jobs: [{ ...job(12, 'ReadyToReplace', true), finalizing: true }] })
+  await page.goto('/#/queue')
+  const working = page.getByRole('region', { name: 'Working now' })
+  await expect(working).toContainText('Finalising replacement')
+  await expect(working).toContainText('The original is kept for rollback.')
+  await working.getByRole('button', { name: 'View job' }).click()
+  const details = page.getByRole('dialog', { name: /Job details/ })
+  await expect(details.locator('header .badge')).toHaveText('Finalising replacement')
+  await expect(details.getByRole('button', { name: 'Replace original' })).toHaveCount(0)
 })
 
 test('empty history filters retain controls and explain that work is still running', async ({ page }) => {

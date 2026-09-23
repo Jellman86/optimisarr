@@ -28,7 +28,16 @@ installations upgraded from an older release never see the wizard automatically.
 without deleting or resetting any configuration, use **Settings → System → First-run setup → Run
 setup again**.
 
-![Encoding settings showing concurrent jobs, CPU limits, hardware selection, and scan interval](../images/optimisarr-settings-general-dark.png)
+![Encoding settings showing primary media slots and advanced workload lanes](../images/optimisarr-settings-general-dark.png)
+
+**Settings → Encoding → Queue** sets the primary media slots for video encoding and full
+container verification. Open **Advanced workload lanes** to choose **Automatic** or **Manual**.
+Automatic conservatively reserves an extra audio/image slot on servers with sufficient CPU and
+memory, and one or two slots for validating strict sidecar evidence. Manual lets you set 0–4 extra
+audio/image slots and 1–4 evidence slots; the effective capacity preview shows the result before
+you save. At zero extra audio/image slots, those jobs can still use a free primary slot. Worker
+capacity is independent of these local slots. The Queue page shows each lane's active capacity,
+waiting work, and the current reason for a wait.
 
 ## Admin token
 
@@ -93,7 +102,7 @@ the former global policy into each existing library so behaviour does not change
 | Control | Behaviour |
 |---|---|
 | Library scan interval | Rescans every enabled library at the configured interval (one hour by default), the only scheduling control in global settings. Scanning also runs once at startup. |
-| Concurrent jobs | Bounds parallel encodes. |
+| Primary media slots | Bounds video encodes and full container media verification. Audio/image work can use a free slot. Advanced workload lanes provide independent extra audio/image and strict sidecar-evidence capacity. |
 | CPU threads | Limits FFmpeg CPU usage where applicable. |
 | Work-disk threshold | Prevents new starts when `/work` is too full. |
 | Encoder mode | Auto, CPU, NVIDIA NVENC, Intel QSV, or VA-API. |

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { modal } from '../modal'
-  import { isWorkingJob, isJobSuspended } from '../job-presentation'
+  import { isWorkingJob, isJobSuspended, jobLocation, verificationPhase } from '../job-presentation'
   import WorkingJob from '../components/WorkingJob.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
@@ -296,6 +296,20 @@
   )
 
   let queuedCount = $derived(jobs.filter(job => job.status === 'Queued').length)
+  const LANE_LABELS = $derived({ Video: i18n.m.queue.lane_video, NonVideo: i18n.m.queue.lane_nonvideo, Evidence: i18n.m.queue.lane_evidence, Finalization: i18n.m.queue.lane_finalization, Workers: i18n.m.queue.lane_workers })
+  function laneLabel(lane: 'Video' | 'NonVideo' | 'Evidence' | 'Finalization' | 'Workers'): string { return LANE_LABELS[lane] }
+  function detailLocation(job: Job): string {
+    const location = jobLocation(job)
+    return location === 'worker' ? job.workerName ?? i18n.m.queue.lane_workers
+      : location === 'transfer' ? i18n.m.queue.location_transfer : i18n.m.dashboard.this_server
+  }
+  function detailPhase(job: Job): string | null {
+    if (job.finalizing) return i18n.m.queue.finalizing_detail
+    const phase = verificationPhase(job)
+    return phase === 'waiting' ? i18n.m.queue.status_awaitingverification
+      : phase === 'evidence' ? i18n.m.queue.phase_evidence
+      : phase === 'media' ? i18n.m.queue.phase_media : null
+  }
 
   function badgeClass(status: string): string {
     switch (status) {
@@ -462,6 +476,21 @@
   </div>
 {/if}
 
+    {#if queueStatus?.workloadLanes?.length && (activeCount > 0 || queuedCount > 0)}
+      <section class="queue-lanes" aria-label={i18n.m.queue.lanes_title}>
+        <div class="queue-lanes-heading"><h2>{i18n.m.queue.lanes_title}</h2><p>{i18n.m.queue.lanes_hint}</p></div>
+        <div class="queue-lane-grid">
+          {#each queueStatus.workloadLanes.filter(lane => lane.lane !== 'Finalization' || lane.active > 0 || lane.waiting > 0) as lane (lane.lane)}
+            <div class="queue-lane card" title={lane.reason ?? undefined}>
+              <div class="queue-lane-head"><span>{laneLabel(lane.lane)}</span><strong>{lane.active}<span aria-hidden="true"> / </span>{lane.capacity}</strong></div>
+              <p>{t(i18n.m.queue.lane_waiting, { count: lane.waiting })}</p>
+              {#if lane.reason && lane.waiting > 0}<small>{lane.reason}</small>{/if}
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
 
     {#if !loading && leadJob}
       <section class="queue-working" aria-label={i18n.m.queue.working_now}>
@@ -487,10 +516,9 @@
             <p id="queue-detail-label">{i18n.m.queue.job_details}</p>
             <h2 id="queue-detail-title" tabindex="-1">{heroTitle(selectedJob.relativePath) ?? jobName(selectedJob)}</h2>
             <div class="queue-detail-status">
-              <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : statusLabel(selectedJob.status)}</span>
+              <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : selectedJob.finalizing ? i18n.m.queue.phase_finalizing : statusLabel(selectedJob.status)}</span>
               {#if selectedJob.executionAttempt && selectedJob.executionAttempt > 0}<span>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt })}</span>{/if}
-              {#if selectedJob.workerName}<span>{selectedJob.workerName}</span>
-              {:else if ['Transcoding', 'Probing', 'Verifying'].includes(selectedJob.status)}<span>{i18n.m.dashboard.this_server}</span>{/if}
+              {#if isWorkingJob(selectedJob)}<span>{detailLocation(selectedJob)}</span>{/if}
             </div>
           </div>
           <button class="btn btn-ghost" onclick={closeDetails} aria-label={i18n.m.queue.close_details}><Icon name="x" /></button>
@@ -503,9 +531,18 @@
               <p class="mt-1 text-xs leading-relaxed">{t(i18n.m.queue.retry_software_detail, { worker: lastAttempt.workerName ?? i18n.m.dashboard.this_server, encoder: lastAttempt.videoEncoder ?? '—' })}</p>
             </div>
           {/if}
+          {#if selectedJob.status !== 'Queued'}
+            <section class="queue-execution-path" aria-label={i18n.m.queue.execution_path}>
+              <h3>{i18n.m.queue.execution_path}</h3>
+              <div><span>{i18n.m.queue.step_encode}</span><strong>{selectedJob.workerName ?? i18n.m.dashboard.this_server}</strong></div>
+              <div><span>{i18n.m.queue.step_verify}</span><strong>{selectedJob.sidecarVerification ? selectedJob.workerName ?? i18n.m.queue.lane_workers : i18n.m.dashboard.this_server}</strong></div>
+              <div><span>{i18n.m.queue.step_replace}</span><strong>{i18n.m.dashboard.this_server}</strong></div>
+            </section>
+          {/if}
           {#if isWorkingJob(selectedJob)}
             <JobProgress job={selectedJob} queue={queueStatus} telemetry={live[selectedJob.id]} />
             <JobStages job={selectedJob} />
+            {#if detailPhase(selectedJob)}<p class="queue-phase-note">{detailPhase(selectedJob)}</p>{/if}
           {/if}
           {#if selectedJob.status === 'Failed'}
             <p class="callout tone-bad mt-4">{jobFailureDescription(selectedJob.failureCategory, i18n.m)}</p>
@@ -603,7 +640,7 @@
         <footer class="queue-detail-actions">
                 <!-- Actions -->
       <div class="flex flex-wrap gap-2">
-        {#if selectedJob.status === 'ReadyToReplace' && selectedJob.verificationPassed}
+        {#if selectedJob.status === 'ReadyToReplace' && selectedJob.verificationPassed && !selectedJob.finalizing}
           <button class="btn btn-primary px-3 py-1 text-xs" onclick={() => selectedJob && replace(selectedJob)} disabled={replacingAll || replacingId !== null}>
             {replacingId === selectedJob.id ? i18n.m.queue.action_replacing_ellipsis : i18n.m.queue.action_replace_original}
           </button>
@@ -666,7 +703,7 @@
               <td><button id={`queue-job-${job.id}`} class="queue-file focus-ring" onclick={(event) => selectRow(job.id, event)} aria-haspopup="dialog" aria-controls={selectedJobId === job.id ? 'queue-job-dialog' : undefined}><Thumbnail mediaFileId={job.mediaFileId} /><span><strong>{job.relativePath?.split(/[\\/]/).pop() ?? jobName(job)}</strong><small>{job.videoEncoder ?? job.enqueueReason ?? '—'}</small></span></button></td>
               <td><span class="badge {badgeClass(job.status)}">{statusLabel(job.status)}</span>{#if job.status === 'Queued' && job.waitingForWorker}<small class="queue-row-note text-warn">{i18n.m.queue.waiting_for_worker}</small>{:else if job.status === 'Failed'}<small class="queue-row-note text-bad">{jobFailureDescription(job.failureCategory, i18n.m)}</small>{/if}</td>
               <td class="verification-column">{#if job.verificationPassed !== null}<button class="queue-verification focus-ring" class:text-ok={job.verificationPassed} class:text-bad={!job.verificationPassed} onclick={(event) => selectRow(job.id, event)}>{job.verificationPassed ? i18n.m.queue.verify_passed : i18n.m.queue.verify_failed}</button>{#if job.outputSizeBytes != null}<small class="queue-row-note text-ink-3">{formatSize(job.outputSizeBytes)}</small>{/if}{:else}<span class="text-ink-4">—</span>{/if}</td>
-              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
+              <td class="action-column">{#if job.status === 'ReadyToReplace' && job.verificationPassed && !job.finalizing}<button class="btn btn-primary" onclick={() => replace(job)} disabled={replacingAll || replacingId !== null}>{replacingId === job.id ? i18n.m.queue.action_replacing : i18n.m.queue.action_replace}</button>{:else if job.status === 'Failed' || job.status === 'Cancelled'}<button class="btn btn-ghost" onclick={(event) => selectRow(job.id, event)}>{i18n.m.queue.view_job}</button>{/if}</td>
             </tr>
           {/each}</tbody>
         </table></div>
@@ -682,6 +719,12 @@
   .queue-layout { max-width: 72rem; margin-inline: auto; }.queue-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }.queue-heading > div { flex: 1; min-width: 15rem; }.queue-heading .page-subtitle { max-width: 45rem; }
   .queue-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--divide-soft); }.queue-tabs button { padding: .75rem 1rem; font-size: .8125rem; color: var(--ink-3); }.queue-tabs button[aria-pressed=true] { color: var(--accent); box-shadow: 0 2px 0 var(--accent); }.queue-tabs > span { margin-left: auto; color: var(--ink-3); font-size: .6875rem; padding: .5rem 0; }.queue-tabs strong { margin-left: .5rem; font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .queue-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0 1rem; }.queue-section-heading h2 { font-size: .875rem; color: var(--ink-2); font-weight: 600; }.queue-section-heading span { font-size: .75rem; color: var(--ink-3); }.queue-working { display: grid; gap: .75rem; }.queue-working .queue-section-heading { margin: 0 0 .25rem; }.queue-idle { display: flex; align-items: center; gap: .75rem; font-size: .8125rem; color: var(--ink-3); padding: 1.25rem; border-radius: .875rem; background: var(--panel); }
+  .queue-lanes { margin-bottom: 1.5rem; }.queue-lanes-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .75rem; }.queue-lanes-heading h2 { font-size: .8125rem; font-weight: 600; color: var(--ink-2); }.queue-lanes-heading p { font-size: .6875rem; color: var(--ink-3); }.queue-lane-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .625rem; }.queue-lane { min-width: 0; padding: .875rem 1rem; transition: transform .18s ease, box-shadow .18s ease; }.queue-lane:hover { transform: translateY(-2px); box-shadow: var(--lift-2); }.queue-lane-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; color: var(--ink-2); font-size: .75rem; }.queue-lane-head strong { flex: none; font-size: 1rem; color: var(--ink); font-variant-numeric: tabular-nums; }.queue-lane p { color: var(--ink-3); font-size: .6875rem; margin-top: .4rem; }.queue-lane small { display: block; color: var(--ink-3); font-size: .6875rem; line-height: 1.45; margin-top: .625rem; overflow-wrap: anywhere; }.queue-phase-note { margin-top: .75rem; font-size: .75rem; color: var(--ink-3); }
+  .queue-execution-path { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px solid var(--divide-soft); border-radius: .75rem; background: var(--sunken); }.queue-execution-path h3 { grid-column: 1/-1; margin: 0; font-size: .75rem; color: var(--ink-3); font-weight: 600; }.queue-execution-path div { min-width: 0; display: grid; gap: .25rem; font-size: .6875rem; color: var(--ink-3); }.queue-execution-path strong { color: var(--ink); font-size: .75rem; font-weight: 600; overflow-wrap: anywhere; }
+  @media(max-width: 900px) { .queue-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media(max-width: 420px) { .queue-lane-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-lane { padding: .75rem; } }
+  @media(max-width: 340px) { .queue-lane-grid { grid-template-columns: 1fr; } }
+  @media(max-width: 420px) { .queue-execution-path { grid-template-columns: 1fr; } }
   .queue-detail { width: 52rem; grid-template-rows: auto minmax(0, 1fr) auto; }
   .queue-detail-heading { position: relative; display: flex; align-items: center; gap: 1.5rem; padding: 1.5rem 2rem; background: linear-gradient(135deg, var(--raised), var(--panel)); }
   .queue-detail-poster { flex-shrink: 0; overflow: hidden; border-radius: .625rem; box-shadow: var(--lift-3); }

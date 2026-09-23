@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Library, type QueueStatus } from '../api'
+  import { localWorkloadCapacity } from '../job-presentation'
   import { formatSize } from '../format'
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
@@ -88,7 +89,7 @@
       <div>
         <dt class="text-xs font-medium uppercase tracking-wide text-ink-4">{i18n.m.schedule.running_jobs}</dt>
         <dd class="mt-1 text-ink-2">
-          {queueStatus.runningJobs} / {queueStatus.maxConcurrentJobs}
+          {queueStatus.runningJobs} / {localWorkloadCapacity(queueStatus)}
         </dd>
       </div>
       <div>
