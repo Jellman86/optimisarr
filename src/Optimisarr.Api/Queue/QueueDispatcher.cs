@@ -831,10 +831,11 @@ public sealed class QueueDispatcher(
                 var library = await db.Libraries.AsNoTracking()
                     .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
                     .SingleOrDefaultAsync(cancellationToken);
-                var currentSettings = await GetQueueSettingsAsync(cancellationToken);
                 work = work.Value with
                 {
-                    VerificationPolicy = ResolveVerificationPolicy(currentSettings.VerificationPolicy, library),
+                    // The worker's byte limit and verification contract were fixed together at
+                    // claim time. Applying a later library edit here could reject an output the
+                    // worker was told to produce, or accept one the worker was told to stop.
                     AutoReplace = library?.AutoReplace ?? false,
                     MoveOnComplete = library?.MoveOnComplete ?? false,
                     TargetFolder = library?.TargetFolder,
