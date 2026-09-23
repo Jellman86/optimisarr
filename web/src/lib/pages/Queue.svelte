@@ -39,6 +39,7 @@
 
   let selectedJobId = $state<number | null>(null)
   let diagnosticCapture = $state<DiagnosticCapture | null>(null)
+  let diagnosticLookupPending = $state(false)
   let downloadingDiagnostics = $state(false)
   let captureLookup = 0
   let detailOpener: HTMLElement | null = null
@@ -280,6 +281,7 @@
     detailOpener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
     selectedJobId = id
     diagnosticCapture = null
+    diagnosticLookupPending = true
     const lookup = ++captureLookup
     error = null
     await tick()
@@ -295,6 +297,8 @@
           ? capture : null
     } catch {
       // The operational job detail still works when enhanced capture is unavailable.
+    } finally {
+      if (selectedJobId === jobId && captureLookup === lookup) diagnosticLookupPending = false
     }
   }
 
@@ -328,6 +332,7 @@
     const id = selectedJobId
     selectedJobId = null
     diagnosticCapture = null
+    diagnosticLookupPending = false
     captureLookup++
     await tick()
     const target = detailOpener?.isConnected ? detailOpener : document.getElementById(`working-job-${id}`) ?? document.getElementById(`queue-job-${id}`)
@@ -690,9 +695,11 @@
       <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
         <div>
           <h3>{i18n.m.settings.diagnostics_title}</h3>
-          <p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) + ` · ${diagnosticCapture.eventsStored} ${i18n.m.settings.diagnostics_events}` : i18n.m.settings.diagnostics_desc}</p>
+          {#if !diagnosticLookupPending}<p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) + ` · ${diagnosticCapture.eventsStored} ${i18n.m.settings.diagnostics_events}` : i18n.m.settings.diagnostics_desc}</p>{/if}
         </div>
-        {#if diagnosticCapture}
+        {#if diagnosticLookupPending}
+          <span class="queue-diagnostic-pending" role="status">{i18n.m.common.loading_short}</span>
+        {:else if diagnosticCapture}
           <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
         {:else}
           <button class="btn min-h-11" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
@@ -830,6 +837,7 @@
   .queue-diagnostic-action > div { min-width: 0; }
   .queue-diagnostic-action p { max-width: 44ch; margin-top: .375rem; color: var(--ink-3); font-size: .75rem; line-height: 1.5; }
   .queue-diagnostic-action .btn { flex: none; }
+  .queue-diagnostic-pending { flex: none; color: var(--ink-3); font-size: .75rem; }
   .queue-detail-specs:first-child { margin-top: 0; }
   .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
   .queue-tools { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }.queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .625rem .75rem; font-size: .75rem; color: var(--ink-3); border-radius: .5rem; }.queue-filters button[aria-pressed=true] { background: var(--raised); color: var(--ink); box-shadow: var(--lift-1); }.queue-bulk { display: flex; align-items: flex-start; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }.queue-bulk .btn { font-size: .75rem; }.queue-management { font-size: .75rem; color: var(--ink-3); }.queue-management summary { padding: .75rem; cursor: pointer; border-radius: .5rem; }.queue-management > div { display: flex; flex-wrap: wrap; padding: .5rem; gap: .5rem; background: var(--panel); border-radius: .75rem; max-width: 100%; }
