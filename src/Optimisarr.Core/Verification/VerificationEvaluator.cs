@@ -11,6 +11,7 @@ namespace Optimisarr.Core.Verification;
 /// </summary>
 public static class VerificationEvaluator
 {
+    public const string SourceVideoTimelineCheckName = "Source video timeline";
     // Half a percent covers the rounding between a planned rate (59.94 / 2) and ffprobe's rational
     // for the same cadence (30000/1001), while staying far under the factor of two a missed
     // decimation would show.
@@ -396,8 +397,8 @@ public static class VerificationEvaluator
             tolerancePercent);
 
         return shortfall > absoluteFloorSeconds && shortfallPercent > tolerancePercent
-            ? Fail("Source video timeline", $"{detail} The source appears corrupt or has a materially incomplete picture stream.")
-            : Pass("Source video timeline", detail);
+            ? Fail(SourceVideoTimelineCheckName, $"{detail} The source appears corrupt or has a materially incomplete picture stream.")
+            : Pass(SourceVideoTimelineCheckName, detail);
     }
 
     private static double? OriginalVideoSpanSeconds(VerificationInput input) =>

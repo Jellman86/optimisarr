@@ -3052,6 +3052,13 @@ public sealed class QueueDispatcher(
 
         if (!outcome.Report.Passed)
         {
+            var sourceFailure = HardwareDecodeFallback.SourceFailureBlockingRetry(outcome.Report);
+            if (sourceFailure is not null)
+            {
+                logger.LogWarning(
+                    "Job {JobId}: retry suppressed because unchanged source check {FailedGate} failed",
+                    jobId, sourceFailure);
+            }
             // Asked before the higher-quality retry: a corrupt decode fails at every quality, so
             // re-encoding it at a higher one would only spend a second encode on the same rubbish.
             if (softwareDecodeRetryAvailable
@@ -3070,7 +3077,7 @@ public sealed class QueueDispatcher(
                 return VerificationDisposition.RetryWithSoftwareDecode;
             }
 
-            if (!work.IsDisposable && VmafRetryPolicy.ShouldRetry(
+            if (sourceFailure is null && !work.IsDisposable && VmafRetryPolicy.ShouldRetry(
                     outcome.Report,
                     work.VideoQuality?.RetryCount ?? 0,
                     work.VideoQuality?.Effective))
@@ -3083,6 +3090,10 @@ public sealed class QueueDispatcher(
                 .Where(check => check.Outcome == CheckOutcome.Failed)
                 .ToList();
             var summary = "Verification failed: " + string.Join("; ", failed.Select(check => check.Name));
+            if (sourceFailure is not null)
+            {
+                summary += $". Retry skipped: {sourceFailure} failed on the unchanged source.";
+            }
             logger.LogWarning(
                 "Job {JobId} verification failed: {Failures}",
                 jobId,
