@@ -4,6 +4,44 @@ namespace Optimisarr.Data;
 
 public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> options) : DbContext(options)
 {
+    private static readonly SemaphoreSlim DiagnosticTransitionGate = new(1, 1);
+
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        ChangeTracker.DetectChanges();
+        var transitions = ChangeTracker.Entries<Job>()
+            .Where(entry => entry.State == EntityState.Modified
+                && entry.Property(job => job.Status).IsModified)
+            .Select(entry => (entry.Entity, Previous: entry.Property(job => job.Status).OriginalValue))
+            .Where(entry => entry.Entity.Status != entry.Previous)
+            .ToArray();
+        if (transitions.Length == 0)
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        // The event cap is read before insertion. Hold the gate through the write so concurrent
+        // transitions in this host cannot both reserve the final event slot.
+        await DiagnosticTransitionGate.WaitAsync(cancellationToken);
+        try
+        {
+            var nowUtc = DateTimeOffset.UtcNow;
+            foreach (var (job, previous) in transitions)
+            {
+                await DiagnosticEventCapture.AppendJobTransitionAsync(
+                    this, job, previous, nowUtc, cancellationToken);
+            }
+
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        finally
+        {
+            DiagnosticTransitionGate.Release();
+        }
+    }
+
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     public DbSet<Library> Libraries => Set<Library>();
@@ -26,6 +64,10 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
 
     public DbSet<JobLease> JobLeases => Set<JobLease>();
 
+    public DbSet<DiagnosticCaptureSession> DiagnosticCaptureSessions => Set<DiagnosticCaptureSession>();
+
+    public DbSet<DiagnosticEvent> DiagnosticEvents => Set<DiagnosticEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>(entity =>
@@ -33,6 +75,25 @@ public sealed class OptimisarrDbContext(DbContextOptions<OptimisarrDbContext> op
             entity.HasKey(setting => setting.Key);
             entity.Property(setting => setting.Key).HasMaxLength(160);
             entity.Property(setting => setting.Value).IsRequired();
+        });
+
+        modelBuilder.Entity<DiagnosticCaptureSession>(entity =>
+        {
+            entity.HasKey(session => session.Id);
+            entity.HasIndex(session => session.StartedAt);
+        });
+
+        modelBuilder.Entity<DiagnosticEvent>(entity =>
+        {
+            entity.HasKey(entry => entry.Id);
+            entity.Property(entry => entry.ReasonCode).IsRequired().HasMaxLength(64);
+            entity.Property(entry => entry.PreviousStatus).HasMaxLength(32);
+            entity.Property(entry => entry.CurrentStatus).IsRequired().HasMaxLength(32);
+            entity.HasIndex(entry => new { entry.SessionId, entry.JobId, entry.Id });
+            entity.HasOne<DiagnosticCaptureSession>()
+                .WithMany()
+                .HasForeignKey(entry => entry.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Library>(entity =>

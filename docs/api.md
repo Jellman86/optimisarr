@@ -194,6 +194,10 @@ exists in quarantine.
 | `GET` | `/api/ready` | Readiness check: database, writable paths, FFmpeg, and ffprobe are usable. |
 | `GET` | `/api/auth/status` | Authentication discovery: whether `OPTIMISARR_ADMIN_TOKEN` is configured. |
 | `GET` | `/api/diagnostics` | Admin support snapshot: version, environment, settings, library and integration summaries, stats, and the failure summary. Assembled from non-secret data only (no tokens, API keys, or webhook URLs). Protected by the admin token when one is set. |
+| `GET` | `/api/diagnostics/capture` | Latest opt-in capture session, or `null`. |
+| `POST` | `/api/diagnostics/capture` | Start a session with `durationHours` (`1`, `24`, `168`, or `null` for until stopped), optional `scopedJobId`, and `includePaths` (default `false`). Returns `409` if another session is active. |
+| `POST` | `/api/diagnostics/capture/{id}/stop` | Stop a session; its evidence remains downloadable until retention removes it. |
+| `GET` | `/api/diagnostics/capture/{id}/jobs/{jobId}/bundle` | Download a structured JSON bundle for a job in that session. The manifest lists omissions and whether full paths were included. |
 | `GET` | `/api/system/tools` | Required FFmpeg/ffprobe checks plus optional CPU/CUDA VMAF-FFmpeg capabilities; each result includes `required`. |
 | `GET` | `/api/system/hardware` | Hardware accelerator and encoder detection. Use `?refresh=true` to retest. |
 | `GET` | `/api/fs/browse?path=/data` | Folder browser for directories visible inside the container. |

@@ -70,6 +70,7 @@ builder.Services.AddSingleton(new ImageMetadataService(Environment.GetEnvironmen
 builder.Services.AddSingleton<VerificationService>();
 builder.Services.AddSingleton(RemoteWorkersFeature.FromEnvironment());
 builder.Services.AddScoped<SettingsStore>();
+builder.Services.AddScoped<DiagnosticCaptureStore>();
 builder.Services.AddScoped<ConfigPortabilityService>();
 builder.Services.AddScoped<LibraryInventoryService>();
 builder.Services.AddScoped<CandidateService>();
@@ -221,6 +222,8 @@ app.Use(async (context, next) =>
 app.MapHealthEndpoints(adminToken, configDirectory);
 
 app.MapSystemEndpoints();
+
+app.MapDiagnosticCaptureEndpoints();
 
 app.MapLibraryEndpoints();
 

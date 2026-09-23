@@ -31,6 +31,7 @@
   import ConfigSection from '../components/ConfigSection.svelte'
   import ToolsPanel from '../components/ToolsPanel.svelte'
   import WorkersPanel from '../components/WorkersPanel.svelte'
+  import DiagnosticCapturePanel from '../components/DiagnosticCapturePanel.svelte'
 
   // Settings is a set of rooms rather than a strip of tabs. The landing page is a grid of
   // cards, one per room, and each card reports what that room is currently set to — so
@@ -1388,6 +1389,7 @@
         </select>
       </div>
     </ConfigSection>
+    <DiagnosticCapturePanel />
     <div
         class="min-w-0"
     >
