@@ -5,7 +5,7 @@
   import WorkingJob from '../components/WorkingJob.svelte'
   import JobProgress from '../components/JobProgress.svelte'
   import JobStages from '../components/JobStages.svelte'
-  import { api, type Job, type JobAttemptSnapshot, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
+  import { api, type DiagnosticCapture, type Job, type JobAttemptSnapshot, type QueueStatus, type VerificationCheck, type VerificationReport } from '../api'
   import { formatSize } from '../format'
   import { createJobsConnection, type JobProgress as Telemetry } from '../realtime'
   import { i18n, t, plural } from '../i18n/i18n.svelte'
@@ -38,6 +38,9 @@
   let activeTab = $state<'queue' | 'failures'>('queue')
 
   let selectedJobId = $state<number | null>(null)
+  let diagnosticCapture = $state<DiagnosticCapture | null>(null)
+  let downloadingDiagnostics = $state(false)
+  let captureLookup = 0
   let detailOpener: HTMLElement | null = null
   let loadError = $state<string | null>(null)
   let requestId = 0
@@ -276,14 +279,56 @@
   async function selectRow(id: number, event: MouseEvent) {
     detailOpener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
     selectedJobId = id
+    diagnosticCapture = null
+    const lookup = ++captureLookup
     error = null
     await tick()
     document.getElementById('queue-detail-title')?.focus({ preventScroll: true })
+    void loadDiagnosticCapture(id, lookup)
+  }
+
+  async function loadDiagnosticCapture(jobId: number, lookup: number) {
+    try {
+      const capture = await api.diagnosticCapture()
+      if (selectedJobId === jobId && captureLookup === lookup)
+        diagnosticCapture = capture && (capture.scopedJobId === null || capture.scopedJobId === jobId)
+          ? capture : null
+    } catch {
+      // The operational job detail still works when enhanced capture is unavailable.
+    }
+  }
+
+  async function downloadJobDiagnostics() {
+    if (!selectedJob || !diagnosticCapture) return
+    const jobId = selectedJob.id
+    const captureId = diagnosticCapture.id
+    downloadingDiagnostics = true
+    error = null
+    try {
+      const blob = await api.diagnosticBundle(captureId, jobId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `optimisarr-diagnostics-${jobId}-${captureId}.json`
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause)
+    } finally {
+      downloadingDiagnostics = false
+    }
+  }
+
+  async function openDiagnosticSettings() {
+    await closeDetails()
+    router.go('/settings/system')
   }
 
   async function closeDetails() {
     const id = selectedJobId
     selectedJobId = null
+    diagnosticCapture = null
+    captureLookup++
     await tick()
     const target = detailOpener?.isConnected ? detailOpener : document.getElementById(`working-job-${id}`) ?? document.getElementById(`queue-job-${id}`)
     target?.focus({ preventScroll: true })
@@ -607,24 +652,52 @@
         </div>
       {/if}
       {#if earlierAttempts.length > 0}
-        <details class="mt-4 rounded-lg border border-line-soft bg-raised p-4 text-xs text-ink-3">
-          <summary class="cursor-pointer font-semibold text-ink-2">{i18n.m.queue.attempt_history} ({earlierAttempts.length})</summary>
-          <div class="mt-4 space-y-4">
-            {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
-              <div class="rounded-md bg-panel p-3">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <strong class="text-ink">{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {i18n.m.queue.attempt_rejected}</strong>
-                  <span>{new Date(attempt.endedAt).toLocaleString()}</span>
+        <section class="attempt-timeline" aria-label={i18n.m.queue.attempts}>
+          <h3>{i18n.m.queue.attempts}</h3>
+          <ol class="attempt-list" aria-label={i18n.m.queue.attempts}>
+            <li class="attempt-item current">
+              <div class="attempt-card">
+                <div class="attempt-card-top">
+                  <strong>{t(i18n.m.queue.attempt_number, { number: selectedJob.executionAttempt ?? earlierAttempts.length + 1 })} · {i18n.m.queue.attempt_current}</strong>
+                  <span class="badge {suspended ? 'tone-warn' : badgeClass(selectedJob.status)}">{suspended ? i18n.m.queue.now_paused : statusLabel(selectedJob.status)}</span>
                 </div>
-                <p class="mt-2">{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder} · {attempt.hardwareDecoder}{/if}</p>
-                {#if attemptChecks(attempt).length > 0}
-                  <div class="mt-3 border-t border-line-soft pt-3"><VerificationChecks checks={attemptChecks(attempt)} /></div>
-                {/if}
+                <p>{selectedJob.workerName ?? i18n.m.dashboard.this_server} · {selectedJob.videoEncoder ?? '—'}</p>
+                {#if selectedJob.retryReason === 'SoftwareDecode'}<p class="attempt-reason">{i18n.m.queue.retry_software_title}</p>{/if}
               </div>
+            </li>
+            {#each [...earlierAttempts].reverse() as attempt (attempt.number)}
+              <li class="attempt-item">
+                <div class="attempt-card">
+                  <div class="attempt-card-top">
+                    <strong>{t(i18n.m.queue.attempt_number, { number: attempt.number })} · {i18n.m.queue.attempt_rejected}</strong>
+                    <time datetime={attempt.endedAt}>{new Date(attempt.endedAt).toLocaleString()}</time>
+                  </div>
+                  <p>{attempt.workerName ?? i18n.m.dashboard.this_server} · {attempt.videoEncoder ?? '—'}{#if attempt.hardwareDecoder} · {attempt.hardwareDecoder}{/if}</p>
+                  {#if attempt.reason}<p class="attempt-reason">{attempt.reason === 'HardwareDecodeCorruption' ? i18n.m.queue.attempt_decode_corruption : attempt.reason}</p>{/if}
+                  {#if attemptChecks(attempt).length > 0}
+                    <details class="attempt-checks">
+                      <summary>{i18n.m.queue.attempt_checks}</summary>
+                      <div class="mt-3"><VerificationChecks checks={attemptChecks(attempt)} /></div>
+                    </details>
+                  {/if}
+                </div>
+              </li>
             {/each}
-          </div>
-        </details>
+          </ol>
+        </section>
       {/if}
+
+      <section class="queue-diagnostic-action" aria-label={i18n.m.settings.diagnostics_title}>
+        <div>
+          <h3>{i18n.m.settings.diagnostics_title}</h3>
+          <p>{diagnosticCapture ? (diagnosticCapture.status === 'Recording' ? i18n.m.settings.diagnostics_recording : i18n.m.settings.diagnostics_off) + ` · ${diagnosticCapture.eventsStored} ${i18n.m.settings.diagnostics_events}` : i18n.m.settings.diagnostics_desc}</p>
+        </div>
+        {#if diagnosticCapture}
+          <button class="btn min-h-11" disabled={downloadingDiagnostics} onclick={downloadJobDiagnostics}>{i18n.m.settings.diagnostics_download}</button>
+        {:else}
+          <button class="btn min-h-11" onclick={openDiagnosticSettings}>{i18n.m.queue.attempt_open_diagnostics}</button>
+        {/if}
+      </section>
 
           </div>
           {#if selectedJob.status === 'Transcoding' || selectedJob.status === 'Verifying'}
@@ -735,12 +808,36 @@
   .queue-detail-heading .btn { position: absolute; right: .75rem; top: .75rem; min-height: 2.75rem; min-width: 2.75rem; }
   .queue-detail-status { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .75rem; margin-top: .75rem; font-size: .75rem; color: var(--ink-3); overflow-wrap: anywhere; }
   .queue-detail-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 1.5rem 2rem; }
+  .attempt-timeline { margin-top: 1.5rem; border-top: 1px solid var(--divide-soft); padding-top: 1.25rem; }
+  .attempt-timeline h3, .queue-diagnostic-action h3 { color: var(--ink); font-size: .875rem; font-weight: 650; }
+  .attempt-list { list-style: none; margin: 1rem 0 0; padding: 0 0 0 .375rem; }
+  .attempt-item { position: relative; border-left: 1px solid var(--divide-soft); padding: 0 0 1rem 1.25rem; }
+  .attempt-item:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .attempt-item::before { content: ''; position: absolute; top: 1rem; left: -.375rem; width: .6875rem; height: .6875rem; border-radius: 50%; background: var(--ink-4); box-shadow: 0 0 0 .25rem var(--panel); }
+  .attempt-item.current::before { background: var(--accent); }
+  .attempt-card { min-width: 0; border: 1px solid var(--edge); border-radius: .75rem; padding: 1rem; background: var(--raised); color: var(--ink-3); font-size: .75rem; line-height: 1.5; box-shadow: var(--lift-1); transition: box-shadow 180ms ease; }
+  .attempt-item.current .attempt-card { background: var(--lit); }
+  .attempt-card:hover, .attempt-card:focus-within { box-shadow: var(--lift-3); }
+  .attempt-card-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; }
+  .attempt-card-top strong { color: var(--ink); font-size: .8125rem; }
+  .attempt-card-top time { font: .6875rem/1.4 ui-monospace, monospace; color: var(--ink-3); }
+  .attempt-card > p { margin-top: .5rem; overflow-wrap: anywhere; }
+  .attempt-card .attempt-reason { color: var(--ink-2); }
+  .attempt-checks { margin-top: .875rem; border-top: 1px solid var(--divide-soft); padding-top: .75rem; }
+  .attempt-checks summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: .25rem 0; }
+  .queue-diagnostic-action { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; border: 1px solid var(--edge); border-radius: .75rem; padding: 1rem; background: var(--raised); box-shadow: var(--lift-1); transition: box-shadow 180ms ease; }
+  .queue-diagnostic-action:hover, .queue-diagnostic-action:focus-within { box-shadow: var(--lift-3); }
+  .queue-diagnostic-action > div { min-width: 0; }
+  .queue-diagnostic-action p { max-width: 44ch; margin-top: .375rem; color: var(--ink-3); font-size: .75rem; line-height: 1.5; }
+  .queue-diagnostic-action .btn { flex: none; }
   .queue-detail-specs:first-child { margin-top: 0; }
   .queue-detail-specs { margin-top: 1.5rem; }.queue-detail-specs :global(dl) { grid-template-columns: repeat(2, minmax(0, 1fr)); }.queue-detail-specs :global(dl > div) { min-width: 0; padding: .75rem 0; border-bottom: 1px solid var(--divide-soft); font-size: .8125rem; }.queue-detail-specs :global(dd) { min-width: 0; overflow-wrap: anywhere; }.queue-detail-actions { padding: 1rem 2rem; background: var(--raised); box-shadow: inset 0 1px 0 var(--divide-soft); }.queue-detail-actions > div { justify-content: flex-end; }.queue-detail-actions :global(.btn) { min-height: 2.75rem; }.queue-usage-heading { color: var(--ink-3); font-size: .75rem; margin: 1.5rem 0 .75rem; }.queue-usage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }.queue-path { margin-top: 1.5rem; font-size: .75rem; color: var(--ink-3); }.queue-path p { margin-top: .5rem; font: .6875rem/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
   .queue-tools { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }.queue-filters { display: flex; flex-wrap: wrap; gap: .25rem; }.queue-filters button { padding: .625rem .75rem; font-size: .75rem; color: var(--ink-3); border-radius: .5rem; }.queue-filters button[aria-pressed=true] { background: var(--raised); color: var(--ink); box-shadow: var(--lift-1); }.queue-bulk { display: flex; align-items: flex-start; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }.queue-bulk .btn { font-size: .75rem; }.queue-management { font-size: .75rem; color: var(--ink-3); }.queue-management summary { padding: .75rem; cursor: pointer; border-radius: .5rem; }.queue-management > div { display: flex; flex-wrap: wrap; padding: .5rem; gap: .5rem; background: var(--panel); border-radius: .75rem; max-width: 100%; }
   .queue-table-surface { border-radius: .875rem; background: var(--panel); box-shadow: var(--lift-1); overflow: clip; }.queue-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }.queue-table th { background: var(--raised); color: var(--ink-3); padding: .875rem 1rem; font-size: .6875rem; font-weight: 500; }.queue-table th:first-child { width: 43%; }.queue-table th:nth-child(2) { width: 25%; }.queue-table th:nth-child(3) { width: 17%; }.queue-table th:last-child { width: 15%; }.queue-table td { padding: 1rem; border-top: 1px solid var(--divide-soft); font-size: .75rem; color: var(--ink-2); overflow-wrap: anywhere; }.queue-table .badge { white-space: normal; }.queue-table tr:hover td,.queue-table .selected-row td { background: var(--lit); }.queue-file { display: flex; align-items: center; width: 100%; min-width: 0; gap: .875rem; text-align: left; border-radius: .375rem; }.queue-file > span { min-width: 0; }.queue-file strong { display: block; color: var(--ink); font-size: .8125rem; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }.queue-file:hover strong { color: var(--accent); }.queue-file small { display: block; font-size: .6875rem; margin-top: .375rem; color: var(--ink-3); overflow-wrap: anywhere; }.queue-row-note { display: block; font-size: .6875rem; margin-top: .375rem; }.queue-verification { border-radius: .25rem; text-align: left; }.action-column .btn { font-size: .75rem; padding: .5rem .75rem; max-width: 100%; white-space: normal; }
   .queue-empty { padding: 2rem 1.5rem; background: var(--panel); border-radius: .875rem; text-align: center; font-size: .8125rem; color: var(--ink-3); }.queue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--ink-3); font-size: .75rem; }.queue-pagination > div { display: flex; align-items: center; gap: .5rem; }
   @media(max-width: 639px) { .queue-heading { gap: 1rem; }.queue-tabs > span { width: 100%; margin: 0; }.queue-tabs button { padding: .625rem .75rem; }.verification-column,.action-column { display: none; }.queue-table th:first-child { width: 63%; }.queue-table th:nth-child(2) { width: 37%; }.queue-table th,.queue-table td { padding: .875rem .75rem; }.queue-file { gap: .625rem; }.queue-file strong { font-size: .75rem; }.queue-detail-heading,.queue-detail-body,.queue-detail-actions { padding: 1rem; }.queue-detail-specs :global(dl) { grid-template-columns: 1fr; }.queue-usage { grid-template-columns: 1fr; }.queue-filters button { font-size: .6875rem; padding: .625rem; }.queue-bulk { justify-content: flex-start; }.queue-detail-actions :global(.btn) { flex: 1; }.queue-pagination { flex-wrap: wrap; } }
+  @media(max-width: 639px) { .queue-diagnostic-action { align-items: stretch; flex-direction: column; }.queue-diagnostic-action .btn { width: 100%; }.attempt-card-top { align-items: flex-start; flex-direction: column; } }
+  @media(prefers-reduced-motion: reduce) { .attempt-card, .queue-diagnostic-action { transition: none; } }
   @media(max-width: 639px) {
     .queue-detail-heading { gap: 1rem; }
     .queue-detail-poster :global([data-thumbnail]) { width: 3.5rem; height: 5.25rem; }

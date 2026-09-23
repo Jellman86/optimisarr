@@ -9,6 +9,7 @@
 
 ### Added
 
+- Queue job details now show the active and rejected worker attempts as a clear timeline, with each prior verification report one click away. A job with a matching opt-in diagnostic capture can download its bundle directly from the detail view.
 - Mac and Windows sidecar tray controls can drain new assignments, finish held work and server acknowledgement, then shut down the host after a visible, cancelable 60-second countdown. Disconnects and unconfirmed lease results block shutdown; the request is not restored after a restart.
 - Independent, bounded queue lanes for media jobs, lightweight jobs, strict sidecar evidence checks, and safe replacement. Equal-priority libraries take turns, while Queue shows each lane's capacity, backlog, and wait reason; Settings → Advanced offers automatic or manual limits with an effective-capacity preview. Schedule now explains dispatch gates and each library's window in the same card layout as Libraries.
 - Windows Compact Monitor now shows a bounded frame from each active job's locally downloaded source, sampled only while the activity panel is open. Its fallback stays stable for unsupported or audio-only media, and per-job previews clear on completion or disconnect.
