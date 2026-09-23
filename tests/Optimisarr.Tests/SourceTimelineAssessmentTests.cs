@@ -4,6 +4,27 @@ namespace Optimisarr.Tests;
 
 public sealed class SourceTimelineAssessmentTests
 {
+    [Theory]
+    [InlineData(2900.814, 3070.25)]
+    [InlineData(2898.395, 3268.863)]
+    [InlineData(0.08, 1277.27)]
+    public void A_materially_short_source_picture_span_needs_an_independent_confirmation(
+        double videoSeconds, double audioSeconds)
+    {
+        Assert.True(SourceTimelineAssessment.NeedsConfirmation(videoSeconds, audioSeconds));
+    }
+
+    [Theory]
+    [InlineData(1405.112, 1405.109)]
+    [InlineData(3570.0, 3600.0)]
+    [InlineData(null, 3600.0)]
+    [InlineData(2900.0, null)]
+    public void An_aligned_or_unmeasured_source_does_not_repeat_the_full_packet_scan(
+        double? videoSeconds, double? audioSeconds)
+    {
+        Assert.False(SourceTimelineAssessment.NeedsConfirmation(videoSeconds, audioSeconds));
+    }
+
     [Fact]
     public void A_two_packet_source_measurement_is_indeterminate_when_audio_and_output_span_the_episode()
     {

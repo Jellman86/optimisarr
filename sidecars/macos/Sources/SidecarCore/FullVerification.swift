@@ -97,6 +97,14 @@ public struct FullVerification: Sendable {
             evidence.sourceVideo = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "source-video")
             evidence.candidateVideo = try await timestamps(ffprobe, file: candidate, stream: Self.movingPictureStreamSpecifier, scratch: scratch, name: "candidate-video")
             evidence.sourceAudio = try await timestamps(ffprobe, file: source, stream: "a:0", scratch: scratch, name: "source-audio")
+            // Strict server verification consumes this evidence without re-reading media. Confirm
+            // a short source packet scan here so a transient read is not blamed on the original.
+            if Self.needsSourceVideoConfirmation(video: evidence.sourceVideo, audio: evidence.sourceAudio,
+                sourceProbe: evidence.sourceProbe) {
+                let confirmed = try await timestamps(ffprobe, file: source, stream: Self.movingPictureStreamSpecifier,
+                    scratch: scratch, name: "source-video-confirmation")
+                if confirmed.measured && confirmed.lastPresentationSeconds != nil { evidence.sourceVideo = confirmed }
+            }
             if contract.measureAudio {
                 evidence.sourceLoudness = try await loudness(ffmpeg, file: source)
                 evidence.candidateLoudness = try await loudness(ffmpeg, file: candidate)
@@ -138,6 +146,31 @@ public struct FullVerification: Sendable {
         }
         if !pending.isEmpty { accumulator.append(String(decoding: pending, as: UTF8.self)) }
         return accumulator.result
+    }
+
+    static func needsSourceVideoConfirmation(video: VerificationTimestamps?, audio: VerificationTimestamps?,
+                                             sourceProbe: String?) -> Bool {
+        guard let video, video.measured, let pictureEnd = video.lastPresentationSeconds,
+              pictureEnd >= 0, pictureEnd.isFinite,
+              let audio, audio.measured, let audioEnd = audio.lastPresentationSeconds,
+              audioEnd > 0, audioEnd.isFinite else { return false }
+        let streams = ((sourceProbe?.data(using: .utf8)).flatMap {
+            (try? JSONSerialization.jsonObject(with: $0) as? [String: Any])?["streams"] as? [[String: Any]]
+        }) ?? []
+        func start(_ kind: String) -> Double {
+            let stream = streams.first { stream in
+                guard stream["codec_type"] as? String == kind else { return false }
+                if kind == "video", let disposition = stream["disposition"] as? [String: Any],
+                   (disposition["attached_pic"] as? Int) == 1 { return false }
+                return true
+            }
+            let value = stream?["start_time"]
+            return Double(value as? String ?? "") ?? (value as? Double) ?? 0
+        }
+        let videoSpan = max(0, pictureEnd - start("video"))
+        let audioSpan = max(0, audioEnd - start("audio"))
+        let shortfall = audioSpan - videoSpan
+        return audioSpan > 0 && shortfall > 1 && shortfall / audioSpan > 0.02
     }
 
     private func loudness(_ ffmpeg: URL, file: URL) async throws -> VerificationLoudness {

@@ -162,9 +162,14 @@ public sealed class VerificationService(
                     timestampResult.LastPresentationSeconds is { } outputEnd
                         ? Math.Max(0, outputEnd - (outputProbe.VideoStartSeconds ?? 0)) : null);
 
-            // An implausibly short source packet read may be transient. Re-read once before
-            // classifying it; never substitute container metadata as proof of a complete picture.
-            if (remoteEvidence is null && SourceTimelineIndeterminate(originalTimestampResult))
+            // A short source packet read may be transient even when it is only several percent
+            // short. Confirm it once before classifying the unchanged original; the scan is not
+            // repeated for normally aligned sources or on queue polls and worker claims.
+            if (remoteEvidence is null && SourceTimelineAssessment.NeedsConfirmation(
+                    originalTimestampResult.LastPresentationSeconds is { } videoEnd
+                        ? Math.Max(0, videoEnd - (originalProbe.VideoStartSeconds ?? 0)) : null,
+                    originalAudioTimestampResult.LastPresentationSeconds is { } audioEnd
+                        ? Math.Max(0, audioEnd - (originalProbe.AudioStartSeconds ?? 0)) : null))
             {
                 var rechecked = await timestamps.CheckAsync(reference.Path, cancellationToken);
                 if (rechecked.Measured && rechecked.LastPresentationSeconds is not null)

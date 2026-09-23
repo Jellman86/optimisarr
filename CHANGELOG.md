@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Container and sidecar verification confirm a source picture packet scan once when it ends materially before primary audio, including moderate shortfalls, before attributing a failed timeline to the original.
+
 ### Added
 
 - Mac and Windows sidecar tray controls can drain new assignments, finish held work and server acknowledgement, then shut down the host after a visible, cancelable 60-second countdown. Disconnects and unconfirmed lease results block shutdown; the request is not restored after a restart.
