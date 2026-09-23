@@ -51,6 +51,7 @@ public sealed class WorkerMonitor
         lock (_gate)
         {
             if (!_jobs.ContainsKey(jobId) || _now() - _previewRequested >= TimeSpan.FromSeconds(5)) return false;
+            if (!_previews.ContainsKey(jobId) && _previews.Count >= MonitorProtocol.MaximumPreviewJobs) return false;
             _previews[jobId] = (byte[])jpeg.Clone();
             return true;
         }

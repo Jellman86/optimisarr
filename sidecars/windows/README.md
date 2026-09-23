@@ -52,6 +52,12 @@ example server addresses. No copyrighted media material is used.
 
 <img src="../../docs/images/optimisarr-sidecar-windows-encoding.png" width="390" alt="Dark Windows Compact Monitor showing a fabricated Prism Field encoding job and resource readings">
 
+<img src="../../docs/images/optimisarr-sidecar-windows-two-jobs.png" width="390" alt="Expanded Windows Processing details showing two separate fabricated job previews">
+
+If a frame is unavailable, the monitor keeps a labelled placeholder. Previews are sampled from
+the worker's local source only while the activity panel is open; they never affect encoding or
+verification.
+
 <img src="../../docs/images/optimisarr-sidecar-windows-light-preferences.png" width="390" alt="Light Windows Preferences showing pairing, worker start and tray sign-in controls inside the native panel">
 
 [Compare native activity, Processing details and Preferences on both platforms](../../docs/design/windows-sidecar/native.html).

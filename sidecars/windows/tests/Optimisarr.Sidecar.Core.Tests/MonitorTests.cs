@@ -179,7 +179,7 @@ public sealed class MonitorTests
             frame[0] = frame[^2] = 0xff;
             frame[1] = 0xd8;
             frame[^1] = 0xd9;
-            Assert.True(monitor.PublishPreview(id, frame));
+            Assert.Equal(id <= MonitorProtocol.MaximumPreviewJobs, monitor.PublishPreview(id, frame));
         }
         var (jobs, _) = monitor.Read(includePreviews: true);
         Assert.Equal(MonitorProtocol.MaximumPreviewJobs, jobs.Count(job => job.PreviewJpeg is not null));

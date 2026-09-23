@@ -28,16 +28,21 @@ public sealed class FfmpegFramePreviewExtractor : IFramePreviewExtractor
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
         foreach (var argument in Arguments(source, seconds)) start.ArgumentList.Add(argument);
         using var process = new Process { StartInfo = start };
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+        Task? errorDrain = null;
         try
         {
             if (!process.Start()) return null;
+            // FFmpeg may report malformed media at length. Drain stderr concurrently so its pipe
+            // cannot stall extraction; stdout is the only data sent to the monitor.
+            errorDrain = process.StandardError.BaseStream.CopyToAsync(Stream.Null, timeout.Token);
             try { process.PriorityClass = ProcessPriorityClass.BelowNormal; }
             catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { }
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(3));
             using var output = new MemoryStream();
             var buffer = new byte[4096];
             while (true)
@@ -48,6 +53,7 @@ public sealed class FfmpegFramePreviewExtractor : IFramePreviewExtractor
                 output.Write(buffer, 0, count);
             }
             await process.WaitForExitAsync(timeout.Token);
+            await errorDrain;
             return process.ExitCode == 0 ? output.ToArray() : null;
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -65,6 +71,11 @@ public sealed class FfmpegFramePreviewExtractor : IFramePreviewExtractor
                 }
             }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or TimeoutException) { }
+            if (errorDrain is not null)
+            {
+                try { await errorDrain.WaitAsync(TimeSpan.FromSeconds(1)); }
+                catch (Exception error) when (error is OperationCanceledException or IOException or TimeoutException) { }
+            }
         }
     }
 }
