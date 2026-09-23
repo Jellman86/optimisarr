@@ -34,13 +34,15 @@ public sealed class JobQueriesTests : IDisposable
         {
             Id = Guid.NewGuid(), JobId = job.Id, WorkerId = worker.Id,
             AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
-            State = LeaseState.Completed, Stage = RemoteStage.Delivering
+            State = LeaseState.Completed, Stage = RemoteStage.Delivering,
+            VerificationContractJson = "{}"
         });
         await db.SaveChangesAsync();
 
         var result = Assert.Single(await JobQueries.ListAsync(db, CancellationToken.None));
         Assert.Equal(worker.Name, result.WorkerName);
         Assert.Null(result.RemoteStage);
+        Assert.True(result.SidecarVerification);
     }
 
     public JobQueriesTests()
@@ -50,6 +52,41 @@ public sealed class JobQueriesTests : IDisposable
         _options = new DbContextOptionsBuilder<OptimisarrDbContext>().UseSqlite(_connection).Options;
         using var db = new OptimisarrDbContext(_options);
         db.Database.EnsureCreated();
+    }
+
+    [Fact]
+    public async Task Restarted_dispatch_uses_the_latest_delivered_attempt_for_its_verification_lane()
+    {
+        await using (var db = new OptimisarrDbContext(_options))
+        {
+            var library = new Library { Name = "Films", Path = "/data/films" };
+            var worker = new Worker { Name = "Sidecar" };
+            db.AddRange(library, worker);
+            await db.SaveChangesAsync();
+            db.MediaFiles.AddRange(MediaFile(library.Id, 1), MediaFile(library.Id, 2));
+            await db.SaveChangesAsync();
+            var strict = Job(1, 0, DateTimeOffset.UtcNow);
+            var legacy = Job(2, 0, DateTimeOffset.UtcNow);
+            strict.Status = legacy.Status = JobStatus.AwaitingVerification;
+            db.Jobs.AddRange(strict, legacy);
+            await db.SaveChangesAsync();
+            var baseTime = DateTimeOffset.UtcNow.AddMinutes(-2);
+            db.JobLeases.AddRange(
+                new JobLease { Id = Guid.NewGuid(), JobId = 1, WorkerId = worker.Id,
+                    AcquiredAt = baseTime, ExpiresAt = baseTime.AddMinutes(1),
+                    State = LeaseState.Completed, VerificationContractJson = null },
+                new JobLease { Id = Guid.NewGuid(), JobId = 1, WorkerId = worker.Id,
+                    AcquiredAt = baseTime.AddMinutes(1), ExpiresAt = baseTime.AddMinutes(2),
+                    State = LeaseState.Completed, VerificationContractJson = "{}" },
+                new JobLease { Id = Guid.NewGuid(), JobId = 2, WorkerId = worker.Id,
+                    AcquiredAt = baseTime.AddMinutes(1), ExpiresAt = baseTime.AddMinutes(2),
+                    State = LeaseState.Completed });
+            await db.SaveChangesAsync();
+        }
+
+        await using var reopened = new OptimisarrDbContext(_options);
+        Assert.Equal([(1, WorkloadLane.Evidence), (2, WorkloadLane.Video)],
+            await QueueDispatcher.DeliveredWorkloadsAsync(reopened, CancellationToken.None));
     }
 
     // Regression: SQLite cannot ORDER BY a DateTimeOffset, so listing must order the
@@ -153,6 +190,7 @@ public sealed class JobQueriesTests : IDisposable
 
         var retried = Assert.Single(await JobQueries.ListAsync(reopened, CancellationToken.None));
         Assert.Equal("PICARD", retried.WorkerName);
+        Assert.False(retried.SidecarVerification);
         Assert.Equal("hevc_nvenc", retried.VideoEncoder);
         Assert.Equal(2, retried.ExecutionAttempt);
         Assert.Null(retried.VerificationPassed);

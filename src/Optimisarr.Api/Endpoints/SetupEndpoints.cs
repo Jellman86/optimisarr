@@ -153,7 +153,7 @@ internal static class SetupEndpoints
 
             var currentQueueSettings = await settings.GetQueueSettingsAsync(cancellationToken);
             if (!SettingsRequestParser.TryParse(request.Settings, settings.RemoteWorkersAvailable, out var queueSettings, out var error,
-                    currentQueueSettings.WorkerVerificationRequired))
+                    currentQueueSettings.WorkerVerificationRequired, currentQueueSettings))
             {
                 return ApiErrors.BadRequest(error!.Code, error.Message);
             }

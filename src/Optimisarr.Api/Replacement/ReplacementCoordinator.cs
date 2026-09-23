@@ -3,8 +3,8 @@ using System.Collections.Concurrent;
 namespace Optimisarr.Api.Replacement;
 
 /// <summary>
-/// Serialises replacement per job so only one <see cref="ReplacementService.ReplaceAsync"/>
-/// can act on a given job at a time. A job becomes eligible for replacement the instant it
+/// Serialises replacement per job and per media file so only one destructive operation
+/// can act on the same source at a time. A job becomes eligible for replacement the instant it
 /// reaches <c>ReadyToReplace</c>, and two independent callers race for it — the worker's
 /// post-verify auto-replace and the background auto-replace reconcile sweep (and a manual
 /// API replace). Replacement is destructive (it quarantines the original and moves the
@@ -15,14 +15,57 @@ namespace Optimisarr.Api.Replacement;
 /// </summary>
 public sealed class ReplacementCoordinator
 {
-    private readonly ConcurrentDictionary<int, byte> _inFlight = new();
+    public const int Capacity = 2;
+    private readonly ConcurrentDictionary<int, byte> _jobsInFlight = new();
+    private readonly ConcurrentDictionary<int, byte> _activeJobs = new();
+    private readonly ConcurrentDictionary<int, byte> _mediaInFlight = new();
+    private readonly SemaphoreSlim _slots = new(Capacity, Capacity);
+    private int _active;
+    private int _waiting;
+
+    public int Active => Volatile.Read(ref _active);
+    public int Waiting => Volatile.Read(ref _waiting);
+    public bool IsActive(int jobId) => _activeJobs.ContainsKey(jobId);
 
     /// <summary>
-    /// Attempts to claim exclusive replacement of <paramref name="jobId"/>. Returns true to the
-    /// single winner; every other caller gets false until the winner calls <see cref="End"/>.
+    /// Attempts to claim both the job and its source. A losing source claim gives the job claim
+    /// back, so a later cycle can retry without ever overlapping another replacement or rollback.
     /// </summary>
-    public bool TryBegin(int jobId) => _inFlight.TryAdd(jobId, 0);
+    public async Task<bool> TryBeginAsync(int jobId, int mediaFileId, CancellationToken cancellationToken)
+    {
+        if (!_jobsInFlight.TryAdd(jobId, 0)) return false;
+        if (!_mediaInFlight.TryAdd(mediaFileId, 0))
+        {
+            _jobsInFlight.TryRemove(jobId, out _);
+            return false;
+        }
+        Interlocked.Increment(ref _waiting);
+        try
+        {
+            await _slots.WaitAsync(cancellationToken);
+            _activeJobs.TryAdd(jobId, 0);
+            Interlocked.Increment(ref _active);
+            return true;
+        }
+        catch
+        {
+            _mediaInFlight.TryRemove(mediaFileId, out _);
+            _jobsInFlight.TryRemove(jobId, out _);
+            throw;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _waiting);
+        }
+    }
 
-    /// <summary>Releases the claim taken by <see cref="TryBegin"/> so the job can be replaced again.</summary>
-    public void End(int jobId) => _inFlight.TryRemove(jobId, out _);
+    /// <summary>Releases the bounded finalisation slot and both source claims.</summary>
+    public void End(int jobId, int mediaFileId)
+    {
+        _activeJobs.TryRemove(jobId, out _);
+        _mediaInFlight.TryRemove(mediaFileId, out _);
+        _jobsInFlight.TryRemove(jobId, out _);
+        Interlocked.Decrement(ref _active);
+        _slots.Release();
+    }
 }

@@ -1692,6 +1692,15 @@
           },
           "workRoot": {
             "type": "string"
+          },
+          "workloadLanes": {
+            "items": {
+              "$ref": "#/components/schemas/WorkloadLaneStatus"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           }
         },
         "required": [
@@ -2564,6 +2573,24 @@
       },
       "SettingsDto": {
         "properties": {
+          "automaticEvidenceValidationSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "automaticNonVideoSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "cpuThreadLimit": {
             "format": "int32",
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -2577,6 +2604,15 @@
           },
           "encoderMode": {
             "type": "string"
+          },
+          "evidenceValidationSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
           },
           "hardwareDecode": {
             "type": "boolean"
@@ -2611,6 +2647,15 @@
               "string"
             ]
           },
+          "nonVideoSlots": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "remoteWorkersAvailable": {
             "default": false,
             "type": "boolean"
@@ -2634,6 +2679,12 @@
             "type": [
               "null",
               "boolean"
+            ]
+          },
+          "workloadConcurrencyMode": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         },
@@ -3116,6 +3167,51 @@
           "relativePath",
           "stage",
           "progress"
+        ],
+        "type": "object"
+      },
+      "WorkloadLaneStatus": {
+        "properties": {
+          "active": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "capacity": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "lane": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "waiting": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "lane",
+          "active",
+          "capacity",
+          "waiting",
+          "reason"
         ],
         "type": "object"
       }

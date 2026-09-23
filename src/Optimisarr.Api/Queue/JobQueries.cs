@@ -43,7 +43,11 @@ public sealed record JobDto(
     /// <summary>Where that worker last said it was: Claimed, FetchingSource, Encoding, Delivering. Null unless leased.</summary>
     string? RemoteStage = null,
     /// <summary>A queued job its library's placement keeps off this server until a worker takes it.</summary>
-    bool WaitingForWorker = false);
+    bool WaitingForWorker = false,
+    /// <summary>The current worker assignment supplied a strict verification contract.</summary>
+    bool SidecarVerification = false,
+    /// <summary>Safe replacement is currently moving this job's verified output into place.</summary>
+    bool Finalizing = false);
 
 public static class JobQueries
 {
@@ -168,6 +172,7 @@ public static class JobQueries
                 WorkerName = remote.GetValueOrDefault(job.Id).WorkerName,
                 RemoteStage = remote.GetValueOrDefault(job.Id).Stage,
                 WaitingForWorker = waiting.Contains(job.Id),
+                SidecarVerification = remote.GetValueOrDefault(job.Id).SidecarVerification,
             })
             // A job's effective time is when it finished, or when it was enqueued if it hasn't.
             .Where(job => WithinRange(job.FinishedAt ?? job.EnqueuedAt, filter.Since, filter.Until))
@@ -188,7 +193,7 @@ public static class JobQueries
     /// here. The latest lease wins: a job reclaimed from a vanished worker and taken by another
     /// names the one that actually holds it.
     /// </summary>
-    private static async Task<Dictionary<int, (string? WorkerName, string? Stage)>> RemoteFactsAsync(
+    private static async Task<Dictionary<int, (string? WorkerName, string? Stage, bool SidecarVerification)>> RemoteFactsAsync(
         OptimisarrDbContext db,
         IReadOnlyList<JobDto> jobs,
         CancellationToken cancellationToken)
@@ -214,6 +219,7 @@ public static class JobQueries
                 lease.AcquiredAt,
                 lease.State,
                 lease.Stage,
+                SidecarVerification = lease.VerificationContractJson != null,
                 WorkerName = lease.Worker != null ? lease.Worker.Name : null,
             })
             .ToListAsync(cancellationToken);
@@ -234,7 +240,7 @@ public static class JobQueries
                     // A stage only means something while the lease is held; a delivered job is
                     // back in this server's hands and its row says so through its status.
                     var stage = latest.State == LeaseState.Held ? latest.Stage?.ToString() ?? "Claimed" : null;
-                    return (latest.WorkerName, stage);
+                    return (latest.WorkerName, stage, latest.SidecarVerification);
                 });
     }
 

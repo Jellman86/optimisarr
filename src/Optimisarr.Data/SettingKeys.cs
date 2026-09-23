@@ -11,6 +11,9 @@ public static class SettingKeys
 
     /// <summary>Maximum number of transcode jobs allowed to run at once across all libraries.</summary>
     public const string MaxConcurrentJobs = "queue.maxConcurrentJobs";
+    public const string WorkloadConcurrencyMode = "queue.workloadConcurrencyMode";
+    public const string NonVideoSlots = "queue.nonVideoSlots";
+    public const string EvidenceValidationSlots = "queue.evidenceValidationSlots";
 
     /// <summary>Minimum free bytes on the work filesystem before new jobs may start.</summary>
     public const string MinFreeDiskBytes = "queue.minFreeDiskBytes";

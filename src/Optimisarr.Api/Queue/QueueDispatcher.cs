@@ -56,7 +56,14 @@ public sealed class QueueDispatcher(
     };
 
     private readonly string _workRoot = WorkPaths.Resolve(environment);
-    private readonly ConcurrentDictionary<int, CancellationTokenSource> _running = new();
+    private sealed record ActiveWork(CancellationTokenSource Cancellation, WorkloadLane Lane);
+    private readonly ConcurrentDictionary<int, ActiveWork> _running = new();
+    private int? _lastStartedLibraryId;
+    private WorkloadLane? _lastStartedVideoClass;
+    private WorkloadSlots RunningSlots() => new(
+        _running.Values.Count(work => work.Lane == WorkloadLane.Video),
+        _running.Values.Count(work => work.Lane == WorkloadLane.NonVideo),
+        _running.Values.Count(work => work.Lane == WorkloadLane.Evidence));
     // Scratch directories an encode is writing into. A directory is momentarily empty between
     // being created and FFmpeg opening its output, and two jobs on the same media file share one
     // directory — so without this, one job's cleanup prunes another job's freshly made tree.
@@ -82,9 +89,9 @@ public sealed class QueueDispatcher(
     /// <summary>Stops the ffmpeg process backing a running job, if any.</summary>
     public void RequestCancel(int jobId)
     {
-        if (_running.TryGetValue(jobId, out var cts))
+        if (_running.TryGetValue(jobId, out var work))
         {
-            cts.Cancel();
+            work.Cancellation.Cancel();
         }
     }
 
@@ -109,7 +116,7 @@ public sealed class QueueDispatcher(
                 released.FailedEncodeCount);
             foreach (var source in _running.Values)
             {
-                source.Cancel();
+                source.Cancellation.Cancel();
             }
         }
 
@@ -132,7 +139,7 @@ public sealed class QueueDispatcher(
                 _running.Count);
             foreach (var source in _running.Values)
             {
-                source.Cancel();
+                source.Cancellation.Cancel();
             }
         }
 
@@ -439,15 +446,12 @@ public sealed class QueueDispatcher(
         }
 
         var settings = await GetQueueSettingsAsync(stoppingToken);
-        var maxConcurrent = settings.MaxConcurrentJobs;
-        if (maxConcurrent - _running.Count <= 0)
-        {
-            return;
-        }
+        var limits = settings.EffectiveWorkloadSlots(Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
 
         List<QueuedJob> queued;
         HashSet<int> adaptiveLibraryIds = [];
-        List<int> delivered;
+        List<(int Id, WorkloadLane Lane)> delivered;
         Dictionary<int, (TimeOnly Start, TimeOnly End)> autoWindows;
         var remoteWorkersOn = false;
         var aWorkerCouldTakeWork = false;
@@ -478,12 +482,7 @@ public sealed class QueueDispatcher(
                 .Select(library => library.Id)
                 .ToListAsync(stoppingToken);
             adaptiveLibraryIds = [.. adaptiveLibraries];
-            delivered = await db.Jobs
-                .AsNoTracking()
-                .Where(job => job.Status == JobStatus.AwaitingVerification)
-                .OrderBy(job => job.Id)
-                .Select(job => job.Id)
-                .ToListAsync(stoppingToken);
+            delivered = await DeliveredWorkloadsAsync(db, stoppingToken);
             queued = (await db.Jobs
                 .AsNoTracking()
                 .Where(job => job.Status == JobStatus.Queued)
@@ -493,6 +492,7 @@ public sealed class QueueDispatcher(
                     job.LibraryId,
                     job.Priority,
                     job.EnqueuedAt,
+                    Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown,
                     IgnoreMediaActivity = job.Type == JobType.Calibration && job.IgnoreMediaActivity,
                     IgnoreLibraryWindow = job.Type == JobType.Preview,
                     QualityChosen = job.AdaptiveVideoQuality != null,
@@ -512,7 +512,8 @@ public sealed class QueueDispatcher(
                         && placements.TryGetValue(libraryId, out var placement)
                         ? placement
                         : WorkPlacement.Anywhere,
-                    job.QualityChosen))
+                    job.QualityChosen,
+                    job.Kind))
                 .ToList();
 
             // A library that auto-optimises only runs its jobs inside its window; a library with
@@ -536,15 +537,14 @@ public sealed class QueueDispatcher(
             return;
         }
 
-        // Candidates delivered by remote workers are finished work waiting only for this machine's
-        // verdict. They take slots under the same cap and the same activity policy, ahead of
-        // starting new encodes: a verdict on work already done is worth more than a new start,
-        // and holding a delivered candidate longer than necessary only invites a lease to lapse
-        // or a source to change under it.
-        foreach (var jobId in delivered)
+        // Strict sidecar evidence uses a small independent lane: it must not wait for a long
+        // container encode. Legacy delivered candidates still require full media verification
+        // here and therefore take video capacity.
+        var running = RunningSlots();
+        foreach (var (jobId, lane) in delivered)
         {
             if (Volatile.Read(ref _draining) != 0
-                || _running.Count >= maxConcurrent
+                || running.For(lane) >= limits.For(lane)
                 || _running.ContainsKey(jobId)
                 || !await TryClaimDeliveredAsync(jobId, stoppingToken))
             {
@@ -552,7 +552,8 @@ public sealed class QueueDispatcher(
             }
 
             var cts = new CancellationTokenSource();
-            _running[jobId] = cts;
+            _running[jobId] = new ActiveWork(cts, lane);
+            running = running.WithStarted(lane);
             _ = Task.Run(() => VerifyDeliveredAsync(jobId, cts.Token), CancellationToken.None);
         }
 
@@ -566,20 +567,7 @@ public sealed class QueueDispatcher(
         // hold expired while every job sat ineligible to run at all; by the time the window opened
         // the server was free to take the lot, and did. The hold now starts when a job first
         // becomes runnable, which is what it was always meant to mean.
-        var withinWindow = queued
-            .Where(job =>
-            {
-                var window = job.LibraryId is { } libraryId
-                    && autoWindows.TryGetValue(libraryId, out var configuredWindow)
-                        ? configuredWindow
-                        : ((TimeOnly Start, TimeOnly End)?)null;
-                return JobScheduler.CanRunInLibraryWindow(
-                    job,
-                    window?.Start,
-                    window?.End,
-                    nowLocal);
-            })
-            .ToList();
+        var withinWindow = JobScheduler.WithinLibraryWindows(queued, autoWindows, nowLocal);
 
         // Kept in memory rather than on the job: losing it across a restart simply restarts the
         // hold, which errs towards offering the work to a worker — the safe direction for a
@@ -602,11 +590,9 @@ public sealed class QueueDispatcher(
             _ => aWorkerCouldTakeWork,
             nowUtc);
 
-        var toStart = JobScheduler.SelectJobsToStart(
-            runnable,
-            _running.Count,
-            maxConcurrent,
-            mediaServicesActive: activity.Active);
+        var toStart = JobScheduler.SelectJobsByWorkload(runnable, running, limits,
+            mediaServicesActive: activity.Active, lastStartedLibraryId: _lastStartedLibraryId,
+            lastStartedVideoClass: _lastStartedVideoClass);
 
         // Say why nothing started, when something plainly could have.
         //
@@ -616,7 +602,9 @@ public sealed class QueueDispatcher(
         // from outside took three wrong guesses; naming the filter that emptied the list makes it
         // a fact instead. Logged once per cycle at Information, and only when the answer is
         // genuinely surprising — queued work, free capacity, and still nothing chosen.
-        if (toStart.Count == 0 && queued.Count > 0 && _running.Count < maxConcurrent)
+        if (toStart.Count == 0 && queued.Count > 0 && runnable.Any(job =>
+                running.Video < limits.Video ||
+                (JobScheduler.LaneFor(job.Kind) == WorkloadLane.NonVideo && running.NonVideo < limits.NonVideo)))
         {
             // Throttled, because the loop runs every three seconds: a queue parked outside its
             // window overnight would otherwise write some thirty thousand identical lines and bury
@@ -643,7 +631,7 @@ public sealed class QueueDispatcher(
             }
         }
 
-        foreach (var jobId in toStart)
+        foreach (var (jobId, lane) in toStart)
         {
             if (Volatile.Read(ref _draining) != 0
                 || _running.ContainsKey(jobId)
@@ -653,9 +641,33 @@ public sealed class QueueDispatcher(
             }
 
             var cts = new CancellationTokenSource();
-            _running[jobId] = cts;
+            _running[jobId] = new ActiveWork(cts, lane);
+            _lastStartedLibraryId = queued.First(job => job.Id == jobId).LibraryId;
+            if (lane == WorkloadLane.Video)
+                _lastStartedVideoClass = JobScheduler.LaneFor(queued.First(job => job.Id == jobId).Kind);
             _ = Task.Run(() => RunJobAsync(jobId, cts.Token), CancellationToken.None);
         }
+    }
+
+    internal static async Task<List<(int Id, WorkloadLane Lane)>> DeliveredWorkloadsAsync(
+        OptimisarrDbContext db, CancellationToken cancellationToken)
+    {
+        var ids = await db.Jobs.AsNoTracking()
+            .Where(job => job.Status == JobStatus.AwaitingVerification)
+            .OrderBy(job => job.Id)
+            .Select(job => job.Id)
+            .ToListAsync(cancellationToken);
+        if (ids.Count == 0) return [];
+
+        var leases = await db.JobLeases.AsNoTracking()
+            .Where(lease => ids.Contains(lease.JobId) && lease.State == LeaseState.Completed)
+            .Select(lease => new { lease.JobId, lease.AcquiredAt,
+                HasStrictEvidence = lease.VerificationContractJson != null })
+            .ToListAsync(cancellationToken);
+        var latest = leases.GroupBy(lease => lease.JobId).ToDictionary(group => group.Key,
+            group => group.OrderByDescending(lease => lease.AcquiredAt).First().HasStrictEvidence);
+        return ids.Select(id => (id,
+            latest.GetValueOrDefault(id) ? WorkloadLane.Evidence : WorkloadLane.Video)).ToList();
     }
 
     // Single-writer claim: only transition if still Queued, so a job can never start twice.
@@ -757,10 +769,9 @@ public sealed class QueueDispatcher(
     }
 
     /// <summary>
-    /// Verifies a candidate a remote worker delivered, exactly as a local encode is verified. The
-    /// encode contract is read from the delivering lease, so the gates hold the candidate
-    /// to the picture, tracks and quality it was told to make; the candidate then earns
-    /// replacement, or does not, through the same path as everything else.
+    /// Judges a delivered candidate against its lease snapshot. Strict sidecar results validate
+    /// bound evidence without repeating media checks; older leases run the full server verification
+    /// path. Neither route can replace a source until every required gate passes.
     /// </summary>
     private async Task VerifyDeliveredAsync(int jobId, CancellationToken cancellationToken)
     {
@@ -927,9 +938,9 @@ public sealed class QueueDispatcher(
         }
         finally
         {
-            if (_running.TryRemove(jobId, out var cts))
+            if (_running.TryRemove(jobId, out var work))
             {
-                cts.Dispose();
+                work.Cancellation.Dispose();
             }
             await NotifyAsync();
             Wake();
@@ -1386,9 +1397,9 @@ public sealed class QueueDispatcher(
         }
         finally
         {
-            if (_running.TryRemove(jobId, out var cts))
+            if (_running.TryRemove(jobId, out var work))
             {
-                cts.Dispose();
+                work.Cancellation.Dispose();
             }
             await NotifyAsync();
             Wake(); // a slot just freed up
@@ -3004,7 +3015,7 @@ public sealed class QueueDispatcher(
         // Mark verification as active work so the metrics broadcaster keeps sampling CPU load
         // (the VMAF pass runs its own ffmpeg outside the encode registry).
         VerificationOutcome outcome;
-        using (encodes.TrackVerification())
+        using (remoteEvidence is null ? encodes.TrackVerification() : null)
         {
             var vmafAcceleration = VmafAccelerationSelector.Select(
                 work.VideoEncoder,
@@ -3316,6 +3327,9 @@ public sealed class QueueDispatcher(
     public async Task<QueueDispatchStatus> GetDispatchStatusAsync(CancellationToken cancellationToken)
     {
         var settings = await GetQueueSettingsAsync(cancellationToken);
+        var limits = settings.EffectiveWorkloadSlots(Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+        var running = RunningSlots();
         var activity = await activityMonitor.GetActivityAsync(cancellationToken);
         var decision = EvaluateDispatchPolicy(settings, activity);
         var freeDiskBytes = WorkPaths.TryGetAvailableFreeSpace(_workRoot);
@@ -3325,6 +3339,9 @@ public sealed class QueueDispatcher(
         var waitingReason = decision.CanStart && _running.Count == 0
             ? await DescribeWindowWaitAsync(cancellationToken)
             : null;
+
+        var lanes = await GetWorkloadLanesAsync(settings, limits, running, decision,
+            waitingReason, cancellationToken);
 
         var pause = pauseManager.Snapshot;
         return new QueueDispatchStatus(
@@ -3343,7 +3360,83 @@ public sealed class QueueDispatcher(
             encodes.AnyHardware,
             freeDiskBytes,
             _workRoot,
-            waitingReason);
+            waitingReason,
+            lanes);
+    }
+
+    private async Task<IReadOnlyList<WorkloadLaneStatus>> GetWorkloadLanesAsync(
+        QueueSettings settings, WorkloadSlots limits, WorkloadSlots running,
+        DispatchDecision decision, string? waitingReason, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var queued = await db.Jobs.AsNoTracking()
+            .Where(job => job.Status == JobStatus.Queued)
+            .Select(job => new { job.Id, job.LibraryId, job.Type, job.EnqueuedAt,
+                Kind = job.MediaFile != null ? job.MediaFile.MediaKind : MediaKind.Unknown })
+            .ToListAsync(cancellationToken);
+        var delivered = await DeliveredWorkloadsAsync(db, cancellationToken);
+        var libraries = await db.Libraries.AsNoTracking()
+            .Select(library => new { library.Id, library.WorkPlacement, library.AutoEnqueueEnabled,
+                library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd })
+            .ToDictionaryAsync(library => library.Id, library => library, cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var availability = await WorkerAvailability.ResolveAsync(db, settings.RemoteWorkersEnabled,
+            scope.ServiceProvider.GetRequiredService<RemoteWorkersFeature>(), now, cancellationToken);
+        var remoteWorkersOn = availability.RemoteWorkersOn;
+        var scheduled = queued.Select(job => new QueuedJob(job.Id, job.LibraryId, 0,
+            job.EnqueuedAt, IgnoreLibraryWindow: job.Type == JobType.Preview,
+            Placement: job.Type == JobType.Normal && job.LibraryId is { } id
+                && libraries.TryGetValue(id, out var library) ? library.WorkPlacement : WorkPlacement.Anywhere,
+            Kind: job.Kind)).ToList();
+        var autoWindows = libraries.Values.Where(library => library.AutoEnqueueEnabled)
+            .ToDictionary(library => library.Id,
+                library => (library.AutoEnqueueWindowStart, library.AutoEnqueueWindowEnd));
+        var withinWindow = JobScheduler.WithinLibraryWindows(scheduled, autoWindows,
+            TimeOnly.FromDateTime(DateTime.Now));
+        // Use the same first-runnable clock and placement policy as dispatch. Counting every
+        // PreferWorker job as local made the lane cards claim there was local work ready while the
+        // scheduler was correctly reserving it for a sidecar.
+        var local = SelectLocallyRunnable(withinWindow, _firstRunnableAt,
+            remoteWorkersOn, _ => availability.AWorkerCouldTakeWork, now);
+        var localIds = local.Select(job => job.Id).ToHashSet();
+        var workerWaiting = withinWindow.Count(job => !localIds.Contains(job.Id));
+        var videoWaiting = local.Count(job => JobScheduler.LaneFor(job.Kind) == WorkloadLane.Video)
+            + delivered.Count(job => job.Lane == WorkloadLane.Video);
+        var nonVideoWaiting = local.Count(job => JobScheduler.LaneFor(job.Kind) == WorkloadLane.NonVideo);
+        var evidenceWaiting = delivered.Count(job => job.Lane == WorkloadLane.Evidence);
+        var workers = remoteWorkersOn
+            ? await db.Workers.AsNoTracking()
+                .Where(worker => worker.RevokedAt == null && worker.DrainRequestedAt == null)
+                .Select(worker => new { worker.MaxConcurrency, worker.LastSeenAt })
+                .ToListAsync(cancellationToken)
+            : [];
+        var remoteCapacity = workers.Where(worker => WorkerLiveness.IsOnline(worker.LastSeenAt, now))
+            .Sum(worker => Math.Max(0, worker.MaxConcurrency));
+        var remoteActive = remoteWorkersOn
+            ? await db.Jobs.AsNoTracking().CountAsync(job => job.Status == JobStatus.Leased, cancellationToken)
+            : 0;
+        var finalisation = scope.ServiceProvider.GetRequiredService<ReplacementCoordinator>();
+        string? Reason(int waiting, int active, int capacity, string label) =>
+            waiting == 0 ? null : !decision.CanStart ? decision.BlockedReason
+            : capacity == 0 ? $"No extra {label} slots are configured. These jobs can use a free video slot."
+            : active >= capacity ? $"All {label} slots are busy."
+            : waitingReason ?? "Eligible jobs are being considered for the next dispatch.";
+        return
+        [
+            new("Video", running.Video, limits.Video, videoWaiting,
+                Reason(videoWaiting, running.Video, limits.Video, "video")),
+            new("NonVideo", running.NonVideo, limits.NonVideo, nonVideoWaiting,
+                Reason(nonVideoWaiting, running.NonVideo, limits.NonVideo, "non-video")),
+            new("Evidence", running.Evidence, limits.Evidence, evidenceWaiting,
+                Reason(evidenceWaiting, running.Evidence, limits.Evidence, "evidence validation")),
+            new("Finalization", finalisation.Active, ReplacementCoordinator.Capacity, finalisation.Waiting,
+                finalisation.Waiting > 0 ? "Both finalisation slots are busy; this source is waiting for a safe replacement turn." : null),
+            new("Workers", remoteActive, remoteCapacity, workerWaiting,
+                workerWaiting == 0 ? null : waitingReason ?? (remoteCapacity == 0 ? "No accepting worker is online."
+                    : remoteActive >= remoteCapacity ? "All worker slots are busy."
+                    : "Waiting for an eligible worker to claim these jobs."))
+        ];
     }
 
     private async Task<string?> DescribeWindowWaitAsync(CancellationToken cancellationToken)
@@ -3739,4 +3832,7 @@ public sealed record QueueDispatchStatus(
     string WorkRoot,
     // Set when dispatch is ready but nothing starts because every queued job's library window is
     // shut (e.g. "1605 job(s) waiting for the TV optimise window (00:00–05:00)"). Null otherwise.
-    string? WaitingReason);
+    string? WaitingReason,
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null);
+
+public sealed record WorkloadLaneStatus(string Lane, int Active, int Capacity, int Waiting, string? Reason);

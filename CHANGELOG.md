@@ -4,6 +4,7 @@
 
 ### Added
 
+- Independent, bounded queue lanes for media jobs, lightweight jobs, strict sidecar evidence checks, and safe replacement. Equal-priority libraries take turns, while Queue shows each lane's capacity, backlog, and wait reason; Settings → Advanced offers automatic or manual limits with an effective-capacity preview. Schedule now explains dispatch gates and each library's window in the same card layout as Libraries.
 - Windows Compact Monitor now shows a bounded frame from each active job's locally downloaded source, sampled only while the activity panel is open. Its fallback stays stable for unsupported or audio-only media, and per-job previews clear on completion or disconnect.
 - Opt-in diagnostic capture in Settings → System records bounded, structured job transitions and exports a secret-filtered job bundle with attempt, lease and verification summaries. Captures expire or can be stopped; ended evidence is cleaned up after 7 days, or 30 days when it contains a failure.
 - Repeatable Playwright UI layout audit across every main page and nested control room, seven viewport/text-size profiles, all nine locales on narrow screens, modal sizing, and card hover/focus behavior, with an optional WebKit pass for Safari rendering.

@@ -110,6 +110,30 @@ test('global settings use the same logical section flow as library configuration
   await expect(page.getByRole('button', { name: 'Run setup again' })).toBeVisible()
 })
 
+test('advanced workload controls preview and save independent local capacity', async ({ page }) => {
+  await mockSettings(page)
+  let saved: Record<string, unknown> | null = null
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() === 'PUT') {
+      saved = route.request().postDataJSON()
+      return json(route, saved)
+    }
+    return json(route, { ...settings, workloadConcurrencyMode: 'Automatic', nonVideoSlots: 0,
+      evidenceValidationSlots: 1, automaticNonVideoSlots: 1, automaticEvidenceValidationSlots: 2 })
+  })
+  await page.goto('/#/settings/encoding')
+  await page.getByText('Advanced workload lanes').click()
+  await expect(page.getByText('1 video · 1 extra audio/image · 2 evidence')).toBeVisible()
+  await page.getByLabel('Lane allocation').selectOption('Manual')
+  await page.getByLabel('Extra audio & image slots').fill('2')
+  await page.getByLabel('Evidence validation slots').fill('3')
+  await expect(page.getByText('1 video · 2 extra audio/image · 3 evidence')).toBeVisible()
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  expect(saved).toMatchObject({ workloadConcurrencyMode: 'Manual', nonVideoSlots: 2, evidenceValidationSlots: 3 })
+  await page.setViewportSize({ width: 375, height: 667 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
 test('diagnostic capture is opt-in, can be stopped, and exports the selected job', async ({ page }) => {
   await mockSettings(page)
   const sessionId = '00000000-0000-4000-8000-000000000042'
@@ -324,6 +348,7 @@ test('information tooltips are translated, populated, and readable in every loca
     // by card position, because the card labels are translated and the order is not the point.
     for (const room of ['encoding', 'files']) {
       await page.goto(`/#/settings/${room}`)
+      if (room === 'encoding') await page.locator('.workload-details summary').click()
       const tooltips = page.locator('main [role="tooltip"]')
       expect(await tooltips.count()).toBeGreaterThan(0)
 

@@ -3,6 +3,7 @@
   import { i18n, t } from '../i18n/i18n.svelte'
   import { router } from '../stores/ui.svelte'
   import type { DashboardState } from '../dashboard-state'
+  import { jobLocation, verificationPhase } from '../job-presentation'
 
   let { jobs, state: queueState }: { jobs: Job[]; state: DashboardState | null } = $props()
 
@@ -10,12 +11,22 @@
   // per-title quality is measuring candidates, not probing the source, and saying "probing"
   // sent people looking for a disk problem that was not there.
   function stageLabel(job: Job): string {
+    const phase = verificationPhase(job)
+    if (phase === 'waiting') return i18n.m.queue.status_awaitingverification
+    if (phase === 'evidence') return i18n.m.queue.phase_evidence
+    if (phase === 'media') return i18n.m.queue.phase_media
     if (job.workerName && job.remoteStage) {
       const remote = i18n.m.dashboard.remote_stage as Record<string, string>
       return remote[job.remoteStage] ?? job.remoteStage
     }
     const local = i18n.m.dashboard.local_stage as Record<string, string>
     return local[job.status] ?? job.status
+  }
+
+  function locationLabel(job: Job): string {
+    const location = jobLocation(job)
+    return location === 'worker' ? job.workerName ?? i18n.m.queue.lane_workers
+      : location === 'transfer' ? i18n.m.queue.location_transfer : i18n.m.dashboard.this_server
   }
 
   function fileName(path: string | null): string {
@@ -83,7 +94,7 @@
             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-3">
               {#if job.videoEncoder}<span class="badge border border-line font-mono font-normal">{job.videoEncoder}</span>{/if}
               {#if job.effectiveVideoQuality != null}<span class="badge border border-line font-mono font-normal">CRF {job.effectiveVideoQuality}</span>{/if}
-              <span class="truncate">{job.workerName ?? i18n.m.dashboard.this_server}</span>
+              <span class="truncate" title={job.workerName && !job.remoteStage ? t(i18n.m.queue.now_returned, { worker: job.workerName }) : undefined}>{locationLabel(job)}</span>
             </div>
           </div>
 

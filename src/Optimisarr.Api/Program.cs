@@ -276,7 +276,12 @@ internal sealed record SettingsDto(
     int ReplacementQuarantineRetentionDays,
     bool RemoteWorkersEnabled = false,
     bool RemoteWorkersAvailable = false,
-    bool? WorkerVerificationRequired = null)
+    bool? WorkerVerificationRequired = null,
+    string? WorkloadConcurrencyMode = null,
+    int? NonVideoSlots = null,
+    int? EvidenceValidationSlots = null,
+    int? AutomaticNonVideoSlots = null,
+    int? AutomaticEvidenceValidationSlots = null)
 {
     public static SettingsDto From(QueueSettings settings, bool remoteWorkersAvailable = false) => new(
         settings.MaxConcurrentJobs,
@@ -291,7 +296,14 @@ internal sealed record SettingsDto(
         settings.ReplacementQuarantineRetentionDays,
         settings.RemoteWorkersEnabled,
         remoteWorkersAvailable,
-        settings.WorkerVerificationRequired);
+        settings.WorkerVerificationRequired,
+        settings.WorkloadConcurrencyMode.ToString(),
+        settings.NonVideoSlots,
+        settings.EvidenceValidationSlots,
+        WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).NonVideo,
+        WorkloadSlots.Automatic(settings.MaxConcurrentJobs, Environment.ProcessorCount,
+            GC.GetGCMemoryInfo().TotalAvailableMemoryBytes).Evidence);
 }
 
 internal sealed record QueueStatusDto(
@@ -310,7 +322,8 @@ internal sealed record QueueStatusDto(
     bool HardwareAccelerated,
     long? FreeDiskBytes,
     string WorkRoot,
-    string? WaitingReason)
+    string? WaitingReason,
+    IReadOnlyList<WorkloadLaneStatus>? WorkloadLanes = null)
 {
     public static QueueStatusDto From(QueueDispatchStatus status) => new(
         status.CanStart,
@@ -328,7 +341,8 @@ internal sealed record QueueStatusDto(
         status.HardwareAccelerated,
         status.FreeDiskBytes,
         status.WorkRoot,
-        status.WaitingReason);
+        status.WaitingReason,
+        status.WorkloadLanes);
 }
 
 internal sealed record JellyfinConnectRequest(string? BaseUrl);

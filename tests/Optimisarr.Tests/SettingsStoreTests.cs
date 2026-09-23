@@ -39,6 +39,8 @@ public sealed class SettingsStoreTests : IDisposable
         var settings = await new SettingsStore(db).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(1, settings.MaxConcurrentJobs);
+        Assert.Equal(WorkloadConcurrencyMode.Automatic, settings.WorkloadConcurrencyMode);
+        Assert.Equal(new WorkloadSlots(1, 0, 1), settings.EffectiveWorkloadSlots(2, 4L << 30));
         Assert.Equal(10L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(0, settings.CpuThreadLimit);
         Assert.Equal(1, settings.LibraryScanIntervalHours);
@@ -98,13 +100,18 @@ public sealed class SettingsStoreTests : IDisposable
                     VmafFrameSubsample: 4),
                 ReplacementAllowCrossFilesystem: true,
                 DryRunMode: true,
-                ReplacementQuarantineRetentionDays: 30), CancellationToken.None);
+                ReplacementQuarantineRetentionDays: 30,
+                WorkloadConcurrencyMode: WorkloadConcurrencyMode.Manual,
+                NonVideoSlots: 1,
+                EvidenceValidationSlots: 3), CancellationToken.None);
         }
 
         await using var readDb = CreateDb();
         var settings = await new SettingsStore(readDb).GetQueueSettingsAsync(CancellationToken.None);
 
         Assert.Equal(2, settings.MaxConcurrentJobs);
+        Assert.Equal(WorkloadConcurrencyMode.Manual, settings.WorkloadConcurrencyMode);
+        Assert.Equal(new WorkloadSlots(2, 1, 3), settings.EffectiveWorkloadSlots(2, 4L << 30));
         Assert.Equal(50L * 1024 * 1024 * 1024, settings.MinFreeDiskBytes);
         Assert.Equal(2, settings.CpuThreadLimit);
         Assert.Equal(6, settings.LibraryScanIntervalHours);
