@@ -389,9 +389,14 @@ internal static class WorkerLeaseEndpoints
                 // The exclusion that matters: off the queue, so this machine will not also run it.
                 job.Status = JobStatus.Leased;
                 job.ExecutionAttempt += 1;
+                job.Progress = 0;
                 job.StartedAt = now;
                 job.FinishedAt = null;
+                job.UpdatedAt = now;
+                job.ErrorMessage = null;
+                job.FailureCategory = null;
                 job.ProcessLog = null;
+                job.WorkOutputPath = null;
                 job.OutputSizeBytes = null;
                 job.VerificationPassed = null;
                 job.VerificationReportJson = null;

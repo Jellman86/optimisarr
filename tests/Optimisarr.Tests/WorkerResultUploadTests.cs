@@ -175,6 +175,8 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
             job.VerifiedAt = DateTimeOffset.UtcNow;
             job.OutputSizeBytes = 1234;
             job.VideoEncoder = "hevc_videotoolbox";
+            job.Progress = 0.8;
+            job.ErrorMessage = "previous failure";
             await db.SaveChangesAsync();
         }
 
@@ -192,6 +194,8 @@ public sealed class WorkerResultUploadTests : IAsyncLifetime
         Assert.Null(claimed.VerificationReportJson);
         Assert.Null(claimed.VerifiedAt);
         Assert.Null(claimed.OutputSizeBytes);
+        Assert.Equal(0, claimed.Progress);
+        Assert.Null(claimed.ErrorMessage);
     }
 
     [Fact]
