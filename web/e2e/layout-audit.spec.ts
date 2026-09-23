@@ -69,6 +69,7 @@ async function mockApp(page: Page) {
     if (path === '/api/setup') return json(route, { version: 1, completedStep: 5, currentStep: 5, stepCount: 5, completed: true })
     if (path === '/api/health') return json(route, { status: 'healthy', service: 'optimisarr', version: 'audit' })
     if (path === '/api/settings') return json(route, fixtures.settings)
+    if (path === '/api/diagnostics/capture') return json(route, null)
     if (path === '/api/settings/cleanup') return json(route, {
       retentionDays: 14, dryRunMode: true, failedOutputCount: 1, failedOutputBytes: 2e9,
       quarantinedOriginalCount: 0, quarantinedOriginalBytes: 0, planToken: 'layout-audit',

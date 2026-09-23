@@ -1,3 +1,5 @@
+using Optimisarr.Api.Diagnostics;
+
 namespace Optimisarr.Api.Replacement;
 
 /// <summary>
@@ -19,6 +21,8 @@ public sealed class TimedCleanupWorker(
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var cleanup = scope.ServiceProvider.GetRequiredService<TimedCleanupService>();
                 await cleanup.PurgeExpiredAsync(stoppingToken);
+                var diagnostics = scope.ServiceProvider.GetRequiredService<DiagnosticCaptureStore>();
+                await diagnostics.PruneEndedAsync(DateTimeOffset.UtcNow, stoppingToken);
             }
             catch (OperationCanceledException)
             {

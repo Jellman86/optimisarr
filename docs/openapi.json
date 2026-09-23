@@ -2718,6 +2718,37 @@
         ],
         "type": "object"
       },
+      "StartDiagnosticCaptureRequest": {
+        "properties": {
+          "durationHours": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "includePaths": {
+            "default": false,
+            "type": "boolean"
+          },
+          "scopedJobId": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "durationHours",
+          "scopedJobId"
+        ],
+        "type": "object"
+      },
       "TimedCleanupPreview": {
         "properties": {
           "dryRunMode": {
@@ -3695,6 +3726,110 @@
     "/api/diagnostics": {
       "get": {
         "operationId": "GetDiagnostics",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture": {
+      "get": {
+        "operationId": "GetDiagnosticCapture",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      },
+      "post": {
+        "operationId": "StartDiagnosticCapture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartDiagnosticCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture/{id}/jobs/{jobId}/bundle": {
+      "get": {
+        "operationId": "DownloadJobDiagnostics",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Admin token required when OPTIMISARR_ADMIN_TOKEN is set on the server."
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/diagnostics/capture/{id}/stop": {
+      "post": {
+        "operationId": "StopDiagnosticCapture",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

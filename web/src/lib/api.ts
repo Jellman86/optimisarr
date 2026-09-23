@@ -919,6 +919,31 @@ export type BrowseResponse = {
   directories: { name: string; path: string }[]
 }
 
+export type DiagnosticCapture = {
+  id: string
+  startedAt: string
+  expiresAt: string | null
+  stoppedAt: string | null
+  scopedJobId: number | null
+  includePaths: boolean
+  eventsStored: number
+  maximumEvents: number
+  eventLimitReached: boolean
+  status: 'Recording' | 'Stopped' | 'Expired'
+}
+
+async function diagnosticBundle(sessionId: string, jobId: number): Promise<Blob> {
+  const response = await fetch(`/api/diagnostics/capture/${encodeURIComponent(sessionId)}/jobs/${jobId}/bundle`, {
+    headers: authorizedHeaders(),
+  })
+  if (response.status === 401) handleAuthRequired()
+  if (!response.ok) {
+    const payload = tryParseJson(await response.text())
+    throw new Error(apiErrorMessage(payload, response.status))
+  }
+  return response.blob()
+}
+
 function authorizedHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers)
   const token = getAdminToken()
@@ -1029,6 +1054,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  diagnosticCapture: () => request<DiagnosticCapture | null>('/api/diagnostics/capture'),
+  startDiagnosticCapture: (body: { durationHours: number | null; scopedJobId: number | null; includePaths: boolean }) =>
+    request<DiagnosticCapture>('/api/diagnostics/capture', { method: 'POST', body: JSON.stringify(body) }),
+  stopDiagnosticCapture: (id: string) =>
+    request<DiagnosticCapture>(`/api/diagnostics/capture/${encodeURIComponent(id)}/stop`, { method: 'POST' }),
+  diagnosticBundle,
   health: () => request<Health>('/api/health'),
   authStatus: () => request<AuthStatus>('/api/auth/status'),
   setup: () => request<SetupState>('/api/setup'),

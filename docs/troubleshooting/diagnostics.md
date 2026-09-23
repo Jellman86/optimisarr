@@ -28,6 +28,30 @@ No copyrighted material is used.
 
 ![System Tools card showing FFmpeg, VMAF, and ffprobe availability and executable paths](../images/optimisarr-settings-tools-dark.png)
 
+## Collect a job diagnostic bundle
+
+Open **Settings → System → Diagnostic capture** before reproducing a problem. Choose
+**1 hour**, **24 hours**, **7 days**, or **Until stopped**. Enter a job ID to limit
+the capture to one job; leaving it empty records job transitions across the
+queue. **Include full media paths in the export** is off by default. Start the
+capture, reproduce the issue, then select **Stop capture**. Enter the job ID
+under **Job ID to export** and select **Download diagnostics**. The JSON file
+contains the selected job's server-held state transitions, attempt summaries,
+worker leases, and verification summaries.
+
+The capture is off until you start it. Each session records at most 10,000
+enhanced events. Ended sessions and their events are removed after seven days;
+sessions containing a recorded failure remain for 30 days. An **Until stopped**
+session stays active across restarts until you stop it. You can still download
+a stopped session until retention removes it. The export omits raw FFmpeg logs,
+commands, stored credential fields and media content. Sidecar-local diagnostic logs are not
+yet collected; the bundle's manifest names that omission. If you opt in to
+full paths, review the file before sharing it publicly.
+
+This is an administrative feature. Protect remote access to the UI/API with an
+authenticated reverse proxy or the admin token. A bundle may still reveal
+technical information about your server and media policy, even without paths.
+
 ## Common causes
 
 | Symptom | Check |

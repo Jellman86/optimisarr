@@ -70,6 +70,7 @@ async function mockSettings(page: Page) {
     if (path === '/api/jobs') return json(route, [])
     if (path === '/api/queue/status') return json(route, { runningJobs: 0, suspendedEncodeCount: 0 })
     if (path === '/api/settings') return json(route, settings)
+    if (path === '/api/diagnostics/capture') return json(route, null)
     if (path === '/api/settings/cleanup') return json(route, {
       retentionDays: 14, dryRunMode: true, failedOutputCount: 2, failedOutputBytes: 2_147_483_648,
       quarantinedOriginalCount: 1, quarantinedOriginalBytes: 4_294_967_296,
@@ -95,7 +96,7 @@ test('global settings use the same logical section flow as library configuration
     ['Media servers', ['Media servers']],
     ['Download managers', ['Download managers']],
     ['Notifications', ['Notifications']],
-    ['System', ['Appearance', 'Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
+    ['System', ['Appearance', 'Diagnostic capture', 'Tools', 'Hardware acceleration', 'Encoders', 'Backup & restore', 'First-run setup']],
   ])
 
   for (const [room, headings] of expectedRooms) {
@@ -107,6 +108,49 @@ test('global settings use the same logical section flow as library configuration
 
   await page.getByRole('button', { name: /^System/ }).click()
   await expect(page.getByRole('button', { name: 'Run setup again' })).toBeVisible()
+})
+
+test('diagnostic capture is opt-in, can be stopped, and exports the selected job', async ({ page }) => {
+  await mockSettings(page)
+  const sessionId = '00000000-0000-4000-8000-000000000042'
+  let capture: Record<string, unknown> | null = null
+  let started: Record<string, unknown> | null = null
+  await page.route('**/api/diagnostics/capture**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/bundle')) {
+      expect(path).toContain(`/capture/${sessionId}/jobs/42/bundle`)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"manifest":{}}' })
+    }
+    if (path.endsWith('/stop')) {
+      capture = { ...capture, status: 'Stopped', stoppedAt: '2026-09-23T11:00:00Z' }
+      return json(route, capture)
+    }
+    if (route.request().method() === 'POST') {
+      started = route.request().postDataJSON()
+      capture = {
+        id: sessionId, status: 'Recording', startedAt: '2026-09-23T10:00:00Z',
+        expiresAt: '2026-09-23T11:00:00Z', stoppedAt: null,
+        scopedJobId: 42, includePaths: false, eventsStored: 0,
+        maximumEvents: 10000, eventLimitReached: false,
+      }
+      return json(route, capture, 201)
+    }
+    return json(route, capture)
+  })
+
+  await page.goto('/#/settings/system')
+  await expect(page.getByText('Enhanced diagnostics off')).toBeVisible()
+  await page.getByLabel('Capture duration').selectOption('1')
+  await page.getByLabel('Job ID (optional)').fill('42')
+  await page.getByRole('button', { name: 'Start capture' }).click()
+  await expect(page.getByText('Recording diagnostics')).toBeVisible()
+  expect(started).toEqual({ durationHours: 1, scopedJobId: 42, includePaths: false })
+
+  await page.getByRole('button', { name: 'Stop capture' }).click()
+  await expect(page.getByText('Enhanced diagnostics off')).toBeVisible()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download diagnostics' }).click()
+  expect((await download).suggestedFilename()).toContain(`optimisarr-diagnostics-42-${sessionId}`)
 })
 
 test('strict sidecar verification defaults on and an explicit opt-out is saved', async ({ page }) => {
@@ -231,7 +275,7 @@ test('settings and tool capability cards stay within a small mobile viewport', a
     expect(cardFit.right).toBeLessThanOrEqual(cardFit.mainRight)
   }
 
-  const refreshBox = await page.getByRole('button', { name: 'Refresh' }).boundingBox()
+  const refreshBox = await page.locator('#global-tools').getByRole('button', { name: 'Refresh' }).boundingBox()
   expect(refreshBox?.height).toBeGreaterThanOrEqual(44)
 })
 

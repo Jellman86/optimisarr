@@ -68,6 +68,10 @@ public sealed class AdminTokenAuthEndpointTests
     [InlineData("POST", "/api/replacements/1/rollback")]
     [InlineData("POST", "/api/replacements/1/approve")]
     [InlineData("GET", "/api/diagnostics")]       // admin support snapshot
+    [InlineData("GET", "/api/diagnostics/capture")]
+    [InlineData("POST", "/api/diagnostics/capture")]
+    [InlineData("POST", "/api/diagnostics/capture/00000000-0000-0000-0000-000000000000/stop")]
+    [InlineData("GET", "/api/diagnostics/capture/00000000-0000-0000-0000-000000000000/jobs/1/bundle")]
     // Worker administration stays behind the token; only the pairing exchange itself is open,
     // and that one carries the PIN as its own credential.
     [InlineData("POST", "/api/workers/pairing-code")]
@@ -81,6 +85,68 @@ public sealed class AdminTokenAuthEndpointTests
             .SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_can_start_stop_and_download_a_scoped_diagnostic_capture()
+    {
+        using var client = _api.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TokenedApi.Token);
+        using (var unspecified = await client.PostAsJsonAsync("/api/diagnostics/capture",
+            new { scopedJobId = (int?)null, includePaths = false }))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, unspecified.StatusCode);
+        }
+        int jobId;
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var media = new MediaFile
+            {
+                Path = Path.Combine(_api.LibraryDirectory, $"diagnostic-{Guid.NewGuid():N}.mkv"),
+                RelativePath = "private-diagnostic-title.mkv"
+            };
+            db.MediaFiles.Add(media);
+            await db.SaveChangesAsync();
+            var job = new Job { MediaFileId = media.Id, Status = JobStatus.Queued };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        using var started = await client.PostAsJsonAsync("/api/diagnostics/capture", new
+        {
+            durationHours = 1, scopedJobId = jobId, includePaths = false
+        });
+        Assert.Equal(HttpStatusCode.Created, started.StatusCode);
+        var session = JsonNode.Parse(await started.Content.ReadAsStringAsync())!;
+        var id = session["id"]!.GetValue<string>();
+        Assert.Equal("Recording", session["status"]!.GetValue<string>());
+        using (var duplicate = await client.PostAsJsonAsync("/api/diagnostics/capture", new
+        {
+            durationHours = 1, scopedJobId = jobId, includePaths = false
+        }))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        }
+
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var job = db.Jobs.Single(candidate => candidate.Id == jobId);
+            job.Status = JobStatus.Verifying;
+            await db.SaveChangesAsync();
+        }
+
+        using var stopped = await client.PostAsync($"/api/diagnostics/capture/{id}/stop", null);
+        Assert.Equal(HttpStatusCode.OK, stopped.StatusCode);
+        using var downloaded = await client.GetAsync(
+            $"/api/diagnostics/capture/{id}/jobs/{jobId}/bundle");
+        Assert.Equal(HttpStatusCode.OK, downloaded.StatusCode);
+        Assert.Equal("application/json", downloaded.Content.Headers.ContentType?.MediaType);
+        var bundle = await downloaded.Content.ReadAsStringAsync();
+        Assert.Contains("Verifying", bundle);
+        Assert.DoesNotContain("private-diagnostic-title", bundle);
     }
 
     [Theory]
