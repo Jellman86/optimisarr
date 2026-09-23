@@ -1214,6 +1214,36 @@ struct MeasurementFlowTests {
         #expect(measurement[13].contains("setpts=PTS-0*1000000,fps="))
     }
 
+    @Test("each quality window probes its own picture alignment")
+    func alignsEachQualityWindow() async throws {
+        #expect(TimelineAlignment.probeStart(for: shiftedMeasurementCommand) == 117)
+        var second = shiftedMeasurementCommand
+        second = second.map {
+            $0.replacingOccurrences(of: "113.008875", with: "1414.996917")
+                .replacingOccurrences(of: "4.991125", with: "5.003083")
+        }
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let recorder = ArgumentRecorder()
+        var fake = FakeTranscodeRunner()
+        fake.recorder = recorder
+        let runner = JobRunner(
+            client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            ffprobe: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: fake, leadProbe: FakeLeadProbe(), scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(
+            assignment(measure: true, commands: [shiftedMeasurementCommand, second]),
+            pairing: pairing) { _ in }
+
+        #expect(outcome == .delivered(jobId: 12, bytes: 15))
+        let probes = recorder.all.filter { $0.contains { $0.contains("scale=320:240") } }
+        #expect(probes.count == 2 * TimelineAlignment.framesToTry.count)
+        #expect(probes[0][probes[0].firstIndex(of: "-ss")! + 1] == "117")
+        #expect(probes[3][probes[3].firstIndex(of: "-ss")! + 1] == "1419")
+    }
+
     @Test("a sampled measurement whose alignment cannot be scored reports nothing")
     func noAlignmentNoEvidence() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))

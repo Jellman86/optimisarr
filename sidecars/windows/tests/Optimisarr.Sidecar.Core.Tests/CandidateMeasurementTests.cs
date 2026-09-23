@@ -135,6 +135,33 @@ public sealed class CandidateMeasurementTests : IDisposable
     }
 
     [Fact]
+    public async Task Each_sampled_window_gets_its_own_alignment_probe()
+    {
+        var (_, runner, transcoder) = Build();
+        var assignment = Measured();
+        IReadOnlyList<string> Command(string seek, string trim) =>
+        [
+            "-nostdin", "-v", "error", "-ss", seek, "-i", "{{distorted}}",
+            "-ss", seek, "-i", "{{reference}}", "-lavfi",
+            $"[0:v]setpts=PTS-{{{{distortedShift}}}}*1000000,trim=start={trim}:duration=40[d];"
+            + $"[1:v]trim=start={trim}:duration=40[r];[d][r]libvmaf=log_path={{{{log}}}}:shortest=1",
+            "-f", "null", "-"
+        ];
+        assignment = assignment with { Quality = assignment.Quality with
+        {
+            Commands = [Command("263.01275", "4.98725"), Command("1414.996917", "5.003083")]
+        } };
+
+        await runner.RunAsync(Pairing(), assignment, CancellationToken.None);
+
+        var probes = transcoder.AllRuns.Where(run =>
+            run.Any(argument => argument.Contains("scale=320:240", StringComparison.Ordinal))).ToList();
+        Assert.Equal(2 * TimelineAlignment.FramesToTry.Count, probes.Count);
+        Assert.Equal("267", probes[0][Array.IndexOf(probes[0].ToArray(), "-ss") + 1]);
+        Assert.Equal("1419", probes[3][Array.IndexOf(probes[3].ToArray(), "-ss") + 1]);
+    }
+
+    [Fact]
     public async Task A_command_needing_no_shift_is_not_made_to_wait_for_a_probe()
     {
         // Nothing to substitute means nothing to measure, and probing anyway would fail the whole

@@ -285,38 +285,37 @@ public sealed class JobRunner(
     {
         var commands = assignment.Quality.Commands;
 
-        // A sampled window pairs pictures by timestamp, so the server wants the candidate's extra
-        // lead over the source taken off first. Only this machine holds both files.
-        string? distortedShift = null;
-        if (commands.Any(command => command.Any(argument =>
-                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal))))
-        {
-            // Measured rather than derived. The old arithmetic over container metadata answered
-            // zero for every file it was ever given, and could not have done better: two episodes
-            // of the same show, identical in every header field, need different corrections
-            // because different numbers of frames went missing in their encodes.
-            var frameSeconds = await ProbeFrameSecondsAsync(source, cancellationToken) ?? 1d / 25;
-            var measured = await TimelineAlignment.MeasureAsync(
-                transcoder, ffmpegPath, source, candidate, frameSeconds, scratch, cancellationToken);
-            if (measured is null)
-            {
-                report?.Invoke(
-                    $"Job {assignment.JobId}: the candidate could not be aligned against the source,"
-                    + (assignment.FullVerification is null
-                        ? " so the server will score this itself"
-                        : " so strict verification will fail this job without server fallback"));
-                return null;
-            }
-
-            distortedShift = measured;
-        }
-
-        report?.Invoke(
-            $"Job {assignment.JobId}: measuring {commands.Count} window(s), distorted shift {distortedShift ?? "none"}");
+        // A dropped frame can change alignment later in the file. Each sampled window must
+        // measure its own shift against the pictures it will score.
+        var frameSeconds = commands.Any(command => command.Any(argument =>
+                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
+            ? await ProbeFrameSecondsAsync(source, cancellationToken) ?? 1d / 25
+            : (double?)null;
 
         var logs = new List<string>(commands.Count);
         for (var index = 0; index < commands.Count; index++)
         {
+            string? distortedShift = null;
+            if (commands[index].Any(argument =>
+                argument.Contains(MeasurementPlaceholders.DistortedShift, StringComparison.Ordinal)))
+            {
+                var probeStart = TimelineAlignment.ProbeStartForCommand(commands[index]);
+                if (probeStart is null) return null;
+                distortedShift = await TimelineAlignment.MeasureAsync(
+                    transcoder, ffmpegPath, source, candidate, frameSeconds!.Value,
+                    scratch, cancellationToken, probeStart.Value);
+                if (distortedShift is null)
+                {
+                    report?.Invoke($"Job {assignment.JobId}: window {index} could not be aligned; "
+                        + (assignment.FullVerification is null
+                            ? "the server will score this itself"
+                            : "strict verification will fail without server fallback"));
+                    return null;
+                }
+            }
+
+            report?.Invoke($"Job {assignment.JobId}: measuring window {index + 1}/{commands.Count}, "
+                + $"distorted shift {distortedShift ?? "none"}");
             if (MeasurementCommand.Refuse(commands[index]) is { } refused)
             {
                 report?.Invoke(

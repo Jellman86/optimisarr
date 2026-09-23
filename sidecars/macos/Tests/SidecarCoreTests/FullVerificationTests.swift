@@ -4,6 +4,11 @@ import Testing
 
 @Suite("Full sidecar verification")
 struct FullVerificationTests {
+    @Test("source and candidate timestamps select moving video, not attached artwork")
+    func selectsMovingPicture() {
+        #expect(FullVerification.movingPictureStreamSpecifier == "V:0")
+    }
+
     @Test("null-muxer timing notes and their repeats are not corrupt pictures")
     func decodeDiagnostics() {
         let notes = "Application provided invalid, non monotonically increasing dts to muxer\nLast message repeated 17 times\n"

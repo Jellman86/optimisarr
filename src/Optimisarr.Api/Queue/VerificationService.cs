@@ -149,9 +149,29 @@ public sealed class VerificationService(
                 && clip is null
                     ? await timestamps.CheckPrimaryAudioAsync(reference.Path, cancellationToken)
                     : TimestampCheckResult.NotMeasured);
+            bool SourceTimelineIndeterminate(TimestampCheckResult source) =>
+                SourceTimelineAssessment.IsIndeterminate(
+                    source.LastPresentationSeconds is { } sourceEnd
+                        ? Math.Max(0, sourceEnd - (originalProbe.VideoStartSeconds ?? 0)) : null,
+                    originalAudioTimestampResult.LastPresentationSeconds is { } audioEnd
+                        ? Math.Max(0, audioEnd - (originalProbe.AudioStartSeconds ?? 0)) : null,
+                    timestampResult.LastPresentationSeconds is { } outputEnd
+                        ? Math.Max(0, outputEnd - (outputProbe.VideoStartSeconds ?? 0)) : null);
+
+            // An implausibly short source packet read may be transient. Re-read once before
+            // classifying it; never substitute container metadata as proof of a complete picture.
+            if (remoteEvidence is null && SourceTimelineIndeterminate(originalTimestampResult))
+            {
+                var rechecked = await timestamps.CheckAsync(reference.Path, cancellationToken);
+                if (rechecked.Measured && rechecked.LastPresentationSeconds is not null)
+                {
+                    originalTimestampResult = rechecked;
+                }
+            }
+            var sourceTimelineIndeterminate = SourceTimelineIndeterminate(originalTimestampResult);
             var referenceVideoDuration = ReferenceVideoDurationForVerification(
                 originalProbe,
-                originalTimestampResult,
+                sourceTimelineIndeterminate ? TimestampCheckResult.NotMeasured : originalTimestampResult,
                 reference.DurationSeconds,
                 clip is not null && reference.Kind == MediaKind.Video ? clip.ExpectedDuration(original.DurationSeconds) : null);
 
@@ -320,6 +340,7 @@ public sealed class VerificationService(
                 OriginalTimestampsMeasured: originalTimestampResult.Measured,
                 OriginalLastPresentationSeconds: originalTimestampResult.LastPresentationSeconds,
                 OriginalAudioLastPresentationSeconds: originalAudioTimestampResult.LastPresentationSeconds,
+                SourceTimelineIndeterminate: sourceTimelineIndeterminate,
                 Kind: reference.Kind,
                 AudioReencoded: reference.AudioReencoded,
                 AudioDownmixed: reference.AudioDownmixed,

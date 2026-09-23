@@ -248,6 +248,9 @@ public sealed class QualityScoreService(
 
         double? bestShift = null;
         var bestScore = double.NegativeInfinity;
+        var probeStart = context.ReferenceStartSeconds is { } windowStart
+            ? Math.Max(0, windowStart - TimelineAlignmentProbe.ProbeLeadSeconds)
+            : TimelineAlignmentProbe.ProbeStartSeconds;
 
         foreach (var frames in TimelineAlignmentProbe.FramesToTry)
         {
@@ -257,7 +260,7 @@ public sealed class QualityScoreService(
             {
                 using var process = CreateProcess(
                     executable,
-                    TimelineAlignmentProbe.Arguments(referencePath, distortedPath, shift, log));
+                    TimelineAlignmentProbe.Arguments(referencePath, distortedPath, shift, log, probeStart));
                 process.Start();
                 var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
                 try

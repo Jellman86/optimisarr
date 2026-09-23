@@ -152,6 +152,7 @@ public static class VerificationEvaluator
         if (isVideo
             && input.TimestampsMeasured
             && input.OutputLastPresentationSeconds is not null
+            && !input.SourceTimelineIndeterminate
             && OriginalVideoSpanSeconds(input) is > 0)
         {
             checks.Add(TailComplete(input));
@@ -422,6 +423,21 @@ public static class VerificationEvaluator
 
     private static VerificationCheck SourceVideoTimelineComplete(VerificationInput input)
     {
+        if (input.SourceTimelineIndeterminate)
+        {
+            var sourceSpan = OriginalVideoSpanSeconds(input) ?? 0;
+            var audioSpan = Math.Max(0, input.OriginalAudioLastPresentationSeconds!.Value
+                - (input.OriginalAudioStartSeconds ?? 0));
+            var outputSpan = Math.Max(0, input.OutputLastPresentationSeconds!.Value
+                - (input.OutputVideoStartSeconds ?? 0));
+            return Fail(SourceVideoTimelineCheckName,
+                string.Format(CultureInfo.InvariantCulture,
+                    "The source packet scan spans {0:0.###}s, but primary audio spans {1:0.###}s "
+                    + "and encoded video spans {2:0.###}s. The source timeline measurement is "
+                    + "indeterminate; the original is retained until its picture timeline can be verified.",
+                    sourceSpan, audioSpan, outputSpan));
+        }
+
         const double absoluteFloorSeconds = 1.0;
         const double tolerancePercent = 2.0;
 

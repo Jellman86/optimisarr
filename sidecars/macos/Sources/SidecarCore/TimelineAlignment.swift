@@ -29,9 +29,23 @@ public enum TimelineAlignment {
 
     /// Where to take the probe from, and how much of it. Far enough in to be past titles and
     /// black, short enough that three of them cost a second or two.
-    static let probeStartSeconds = 60.0
+    public static let probeStartSeconds = 60.0
     static let probeLeadSeconds = 1.0
     static let probeSeconds = 2.0
+
+    /// Seek so the probe's one-second lead lands at the window this command will score.
+    static func probeStart(for command: [String]) -> Double? {
+        guard let seekIndex = command.firstIndex(of: "-ss") else { return probeStartSeconds }
+        guard seekIndex + 1 < command.count,
+              let seek = Double(command[seekIndex + 1]), seek.isFinite, seek >= 0,
+              let graphIndex = command.firstIndex(of: "-lavfi"), graphIndex + 1 < command.count,
+              let marker = command[graphIndex + 1].range(of: "trim=start=")
+        else { return nil }
+        let suffix = command[graphIndex + 1][marker.upperBound...]
+        let value = String(suffix.prefix { !":,;[]".contains($0) })
+        guard let trim = Double(value), trim.isFinite, trim >= 0 else { return nil }
+        return max(0, ((seek + trim - probeLeadSeconds) * 1_000_000).rounded() / 1_000_000)
+    }
 
     /// The shift to hand the server's measurement commands, written the way it writes seconds.
     /// Nil when no probe could be scored at all, which the caller treats as it treats any other
@@ -41,6 +55,7 @@ public enum TimelineAlignment {
         source: URL,
         candidate: URL,
         frameSeconds: Double = 1.0 / 25.0,
+        probeStartSeconds: Double = TimelineAlignment.probeStartSeconds,
         scratch: URL,
         runner: TranscodeRunner
     ) async -> String? {
@@ -53,7 +68,8 @@ public enum TimelineAlignment {
 
             guard let run = try? await runner.run(
                 ffmpeg,
-                arguments(source: source, candidate: candidate, shift: shift, log: log),
+                arguments(source: source, candidate: candidate, shift: shift, log: log,
+                          probeStartSeconds: probeStartSeconds),
                 progress: { _ in }),
                 run.exitCode == 0,
                 let text = try? String(contentsOf: log, encoding: .utf8),
@@ -72,7 +88,8 @@ public enum TimelineAlignment {
     /// The probe: the same pairing the real measurement does, on a short window, at a small size.
     /// Same shape deliberately — an alignment chosen by a differently-built comparison would be
     /// the alignment for a measurement nobody runs.
-    static func arguments(source: URL, candidate: URL, shift: Double, log: URL) -> [String] {
+    static func arguments(source: URL, candidate: URL, shift: Double, log: URL,
+                          probeStartSeconds: Double = TimelineAlignment.probeStartSeconds) -> [String] {
         let lead = String(format: "%g", probeLeadSeconds)
         let length = String(format: "%g", probeSeconds)
         let offset = String(format: "%.6f", shift * 1_000_000)
@@ -100,7 +117,7 @@ public enum TimelineAlignment {
     ) async -> Double? {
         guard let ffprobe else { return nil }
         let result = await runner.run(ffprobe, [
-            "-v", "error", "-select_streams", "v:0",
+            "-v", "error", "-select_streams", FullVerification.movingPictureStreamSpecifier,
             "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", file.path,
         ])
         guard result.exitCode == 0 else { return nil }
