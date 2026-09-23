@@ -59,8 +59,14 @@ public sealed class JobLease
     /// </summary>
     public long? MaxCandidateBytes { get; set; }
 
+    /// <summary>Frozen minimum final size for an optional maximum-compression gate.</summary>
+    public long? MinCandidateBytes { get; set; }
+
     /// <summary>The partial candidate size observed when the frozen budget stopped this lease.</summary>
     public long? SizeBudgetExceededAtBytes { get; set; }
+
+    /// <summary>The completed candidate size when it undershot the compression floor.</summary>
+    public long? SizeBudgetUndershotAtBytes { get; set; }
 
     /// <summary>Where the worker says it is, from its latest renewal. Null until it reports.</summary>
     public RemoteStage? Stage { get; set; }

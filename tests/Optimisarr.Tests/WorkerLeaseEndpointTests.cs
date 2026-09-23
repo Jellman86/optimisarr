@@ -1128,6 +1128,57 @@ public sealed class WorkerLeaseEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_worker_can_end_an_over_compressed_candidate_without_requeuing_or_touching_the_source()
+    {
+        await EnableRemoteWorkers();
+        var worker = await PairCapableWorker("Compression floor");
+        var other = await PairCapableWorker("Unrelated worker");
+        var jobId = await QueueAJob();
+        using (var scope = _api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+            var libraryId = await db.Jobs.Where(job => job.Id == jobId)
+                .Select(job => job.LibraryId).SingleAsync();
+            var library = await db.Libraries.SingleAsync(row => row.Id == libraryId);
+            library.MaximumSizeSavingPercent = 65;
+            await db.SaveChangesAsync();
+        }
+
+        using var claim = await worker.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var assignment = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        var leaseId = assignment.GetProperty("leaseId").GetString()!;
+        var floor = assignment.GetProperty("minCandidateBytes").GetInt64();
+        Assert.Equal(SizeBudget.MinCandidateBytes(SourceBytes.Length, true, false, 65), floor);
+
+        using var intruder = await other.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-undershot", new { observedBytes = floor - 1 });
+        Assert.Equal(HttpStatusCode.Forbidden, intruder.StatusCode);
+        using var premature = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-undershot", new { observedBytes = floor });
+        Assert.Equal(HttpStatusCode.BadRequest, premature.StatusCode);
+        using var stopped = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-undershot", new { observedBytes = floor - 1 });
+        Assert.Equal(HttpStatusCode.NoContent, stopped.StatusCode);
+        using var repeated = await worker.PostAsJsonAsync(
+            $"/api/workers/leases/{leaseId}/size-budget-undershot", new { observedBytes = floor - 1 });
+        Assert.Equal(HttpStatusCode.NoContent, repeated.StatusCode);
+        Assert.Equal(JobStatus.Failed, await StatusOf(jobId));
+        using var next = await other.PostAsJsonAsync("/api/workers/claim", new { });
+        Assert.Equal(HttpStatusCode.NoContent, next.StatusCode);
+
+        using var inspect = _api.Services.CreateScope();
+        var inspectedDb = inspect.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
+        var job = await inspectedDb.Jobs.Include(item => item.MediaFile).SingleAsync(item => item.Id == jobId);
+        Assert.Equal(FailureCategory.SizeSaving, job.FailureCategory);
+        Assert.Contains("Compression ceiling", job.ErrorMessage);
+        Assert.Equal(1, job.MediaFile!.FailureCount);
+        var lease = await inspectedDb.JobLeases.SingleAsync(item => item.Id == Guid.Parse(leaseId));
+        Assert.Equal(floor - 1, lease.SizeBudgetUndershotAtBytes);
+        Assert.Equal(SourceBytes, await File.ReadAllBytesAsync(job.MediaFile.Path));
+    }
+
+    [Fact]
     public async Task A_worker_cannot_touch_a_lease_it_does_not_hold()
     {
         await EnableRemoteWorkers();

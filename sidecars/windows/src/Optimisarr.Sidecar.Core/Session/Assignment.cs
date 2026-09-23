@@ -30,7 +30,8 @@ public sealed record Assignment(
     /// </summary>
     AdaptiveSearchStep? Search = null,
     Optimisarr.Core.Workers.RemoteVerificationContract? FullVerification = null,
-    long? MaxCandidateBytes = null);
+    long? MaxCandidateBytes = null,
+    long? MinCandidateBytes = null);
 
 /// <summary>
 /// One candidate quality the control plane wants measured on this machine.

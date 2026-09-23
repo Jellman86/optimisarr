@@ -1161,6 +1161,16 @@ public struct JobRunner: WorkExecutor {
                 reason: "Size saving: finished candidate exceeded the \(maximum)-byte budget.")
         }
 
+        if let minimum = assignment.minCandidateBytes,
+           let size = (try? FileManager.default.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value,
+           size < minimum {
+            try await client.reportSizeBudgetUndershot(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, observedBytes: size)
+            return .failed(jobId: assignment.jobId,
+                reason: "Compression ceiling: finished candidate was below the \(minimum)-byte floor.")
+        }
+
         let candidateHash = try Self.sha256(of: candidate)
 
         // The server's measurement, run here and returned as the raw logs. Measuring is the one

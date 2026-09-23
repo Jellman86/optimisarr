@@ -342,6 +342,7 @@ Create and update library bodies use the same shape. Common fields:
   "requireSubtitlesRetained": false,
   "requireSizeReduction": true,
   "minimumSizeSavingPercent": null,
+  "maximumSizeSavingPercent": null,
   "audioLoudnessGateEnabled": false,
   "maxLoudnessDriftLufs": 1,
   "audioClippingGateEnabled": false,
@@ -360,6 +361,13 @@ Create and update library bodies use the same shape. Common fields:
   "autoReplace": false
 }
 ```
+
+`minimumSizeSavingPercent` and `maximumSizeSavingPercent` are optional video re-encode gates when
+size reduction is required. At 10% minimum and 65% maximum, a 1,000-byte source accepts a
+completed candidate from 350 through 900 bytes, inclusive. The minimum cannot exceed the maximum;
+null preserves the respective unbounded behavior. Compatibility jobs that disable size reduction
+ignore both. Current Mac and Windows sidecars reject a candidate below the final-size floor before
+VMAF or upload; the server also verifies the frozen policy before replacement.
 
 Use `/api/library-options` for valid enum values. Unknown or invalid values are
 rejected. `encoderPreset` retains its historical API name but new clients should store a portable

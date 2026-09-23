@@ -34,7 +34,7 @@ public static class FailureClassifier
 
         // Checked before the generic "Verification failed" below, because the size-saving message is
         // itself a verification message ("Verification failed: Size saving").
-        if (Has("Size saving"))
+        if (Has("Size saving") || Has("Compression ceiling"))
         {
             return FailureCategory.SizeSaving;
         }
@@ -77,7 +77,7 @@ public static class FailureClassifier
     /// <summary>A short, operator-facing explanation of a category, for the diagnostics view.</summary>
     public static string Describe(FailureCategory category) => category switch
     {
-        FailureCategory.SizeSaving => "Output was not smaller than the source (size-saving gate)",
+        FailureCategory.SizeSaving => "Output fell outside the configured size-saving range",
         FailureCategory.Verification => "A verification gate rejected the output",
         FailureCategory.ContainerIncompatibility => "A stream the target container can't hold",
         FailureCategory.BitmapSubtitles => "Image-based subtitles the MP4 container can't store",

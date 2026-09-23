@@ -30,6 +30,18 @@ public sealed class SizeBudgetTests
         Assert.Null(SizeBudget.MaxCandidateBytes(1000, true, true, minimumSavingPercent: 10));
     }
 
+    [Fact]
+    public void Maximum_saving_sets_an_inclusive_lower_bound_only_for_required_non_disposable_work()
+    {
+        Assert.Equal(350L, SizeBudget.MinCandidateBytes(1000, true, false, maximumSavingPercent: 65));
+        Assert.Equal(3L, SizeBudget.MinCandidateBytes(7, true, false, maximumSavingPercent: 65));
+        Assert.False(SizeBudget.Below(350, 350));
+        Assert.True(SizeBudget.Below(349, 350));
+        Assert.Null(SizeBudget.MinCandidateBytes(1000, false, false, maximumSavingPercent: 65));
+        Assert.Null(SizeBudget.MinCandidateBytes(1000, true, true, maximumSavingPercent: 65));
+        Assert.Null(SizeBudget.MinCandidateBytes(1000, true, false));
+    }
+
     [Theory]
     [InlineData(false, false, 1000)]
     [InlineData(true, true, 1000)]

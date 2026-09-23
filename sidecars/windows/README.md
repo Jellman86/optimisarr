@@ -137,6 +137,9 @@ The worker stops a full encode that exceeds it and reports a terminal **Size sav
 does not hand the job to another worker to repeat the same encode. The source file is retained.
 An optional minimum useful saving on the library tightens that frozen limit (10% means the output
 must be at most 90% of the source); blank retains the any-reduction rule.
+An optional maximum allowed saving adds a frozen final-size floor (65% requires at least 35% of
+the source). Updated Windows sidecars reject a smaller finished candidate before VMAF or upload
+with a terminal **Compression ceiling** result; blank leaves compression unrestricted.
 
 Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
 **Settings → Remote workers**. If these controls are absent, the server operator must enable

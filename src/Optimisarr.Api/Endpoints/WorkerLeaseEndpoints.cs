@@ -44,9 +44,11 @@ internal sealed record AssignmentDto(
     /// </summary>
     AdaptiveSearchStepDto? Search = null,
     RemoteVerificationContract? FullVerification = null,
-    long? MaxCandidateBytes = null);
+    long? MaxCandidateBytes = null,
+    long? MinCandidateBytes = null);
 
 internal sealed record SizeBudgetExceededRequest(long ObservedBytes);
+internal sealed record SizeBudgetUndershotRequest(long ObservedBytes);
 
 /// <summary>
 /// One candidate of the per-title quality search, on the wire.
@@ -365,6 +367,10 @@ internal static class WorkerLeaseEndpoints
                     job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
                     job.Type is JobType.Preview or JobType.Calibration,
                     assignment.Verification.MinimumSizeSavingPercent);
+                var minCandidateBytes = SizeBudget.MinCandidateBytes(
+                    job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
+                    job.Type is JobType.Preview or JobType.Calibration,
+                    assignment.Verification.MaximumSizeSavingPercent);
 
                 db.JobLeases.Add(new JobLease
                 {
@@ -378,6 +384,7 @@ internal static class WorkerLeaseEndpoints
                     // the source; the replacement's final extension comes from that name.
                     OutputExtension = assignment.OutputExtension,
                     MaxCandidateBytes = maxCandidateBytes,
+                    MinCandidateBytes = minCandidateBytes,
                     HardwareDecoder = assignment.HardwareDecoder,
                     // What the worker was asked to measure, fixed now so the evidence it returns is
                     // judged against this, not against a policy that may have changed since.
@@ -456,7 +463,8 @@ internal static class WorkerLeaseEndpoints
                         assignment.Quality?.Sampling ?? "None"),
                     AdaptiveSearchWire.From(assignment.Search, policy),
                     assignment.FullVerification,
-                    maxCandidateBytes));
+                    maxCandidateBytes,
+                    minCandidateBytes));
             }
 
             return Results.NoContent();
@@ -867,6 +875,55 @@ internal static class WorkerLeaseEndpoints
             return result;
         })
         .WithName("ReportSizeBudgetExceeded")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces<ApiError>(StatusCodes.Status400BadRequest)
+        .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+        .Produces<ApiError>(StatusCodes.Status403Forbidden)
+        .Produces<ApiError>(StatusCodes.Status409Conflict);
+
+        app.MapPost("/api/workers/leases/{leaseId:guid}/size-budget-undershot", async (
+            Guid leaseId,
+            SizeBudgetUndershotRequest request,
+            HttpRequest http,
+            SettingsStore settings,
+            OptimisarrDbContext db,
+            IHubContext<JobsHub> hub,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await MutateLeaseAsync(leaseId, http, settings, db, cancellationToken,
+                (lease, workerId, now) => lease.Release(workerId, now),
+                (stored, job, _) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    stored.SizeBudgetUndershotAtBytes = request.ObservedBytes;
+                    job.Status = JobStatus.Failed;
+                    job.ErrorMessage = $"Compression ceiling: finished candidate was {request.ObservedBytes:n0} bytes, below the {stored.MinCandidateBytes:n0}-byte floor.";
+                    job.FailureCategory = FailureCategory.SizeSaving;
+                    job.FinishedAt = now;
+                    job.UpdatedAt = now;
+                },
+                _ => Results.NoContent(),
+                validate: stored => stored.MinCandidateBytes is not { } minimum
+                    || request.ObservedBytes >= minimum
+                    || request.ObservedBytes < 0
+                    || stored.Job?.Status != JobStatus.Leased
+                        ? Results.BadRequest(new ApiError("worker.sizeBudget.invalid",
+                            "This lease has no undershot candidate-size floor."))
+                        : null,
+                afterApply: async (context, _, job) =>
+                    await QueueDispatcher.ApplyFailureTrackingAsync(context, job, JobStatus.Failed,
+                        ImmediateAutoExclusionReason.SizeSaving),
+                alreadyHandled: (stored, workerId) =>
+                    stored.WorkerId == workerId
+                    && stored.State == LeaseState.Released
+                    && stored.SizeBudgetUndershotAtBytes == request.ObservedBytes
+                    && stored.Job?.Status == JobStatus.Failed
+                        ? Results.NoContent() : null);
+            if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status204NoContent })
+                await hub.Clients.All.SendAsync("jobsChanged", cancellationToken);
+            return result;
+        })
+        .WithName("ReportSizeBudgetUndershot")
         .Produces(StatusCodes.Status204NoContent)
         .Produces<ApiError>(StatusCodes.Status400BadRequest)
         .Produces<ApiError>(StatusCodes.Status401Unauthorized)

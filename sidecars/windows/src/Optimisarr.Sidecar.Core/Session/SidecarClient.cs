@@ -381,6 +381,19 @@ public sealed class SidecarClient(HttpClient http)
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task ReportSizeBudgetUndershotAsync(
+        StoredPairing pairing, Guid leaseId, long observedBytes, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            Endpoint(pairing.ServerAddress, $"/api/workers/leases/{leaseId}/size-budget-undershot"))
+        {
+            Content = JsonContent.Create(new { observedBytes })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", pairing.Credential);
+        using var response = await http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
     private sealed record HeartbeatResponse(
         int WorkerId,
         int ProtocolVersion,

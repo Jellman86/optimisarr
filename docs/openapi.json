@@ -226,6 +226,15 @@
               "string"
             ]
           },
+          "minCandidateBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
           "outputExtension": {
             "type": "string"
           },
@@ -977,6 +986,15 @@
             ]
           },
           "maxTruePeakDbtp": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "maximumSizeSavingPercent": {
             "format": "double",
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
@@ -2230,6 +2248,15 @@
               "string"
             ]
           },
+          "maximumSizeSavingPercent": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
           "mediaType": {
             "type": [
               "null",
@@ -2769,6 +2796,22 @@
         "type": "object"
       },
       "SizeBudgetExceededRequest": {
+        "properties": {
+          "observedBytes": {
+            "format": "int64",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "observedBytes"
+        ],
+        "type": "object"
+      },
+      "SizeBudgetUndershotRequest": {
         "properties": {
           "observedBytes": {
             "format": "int64",
@@ -6402,6 +6445,80 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SizeBudgetExceededRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workers"
+        ]
+      }
+    },
+    "/api/workers/leases/{leaseId}/size-budget-undershot": {
+      "post": {
+        "operationId": "ReportSizeBudgetUndershot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "leaseId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SizeBudgetUndershotRequest"
               }
             }
           },
