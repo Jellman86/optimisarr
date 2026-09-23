@@ -24,7 +24,8 @@ public sealed record VerificationPolicyOverrides(
     bool? ImageQualityGateEnabled = null,
     double? MinimumImageSsim = null,
     bool? ImageMetadataGateEnabled = null,
-    double? MinimumSizeSavingPercent = null);
+    double? MinimumSizeSavingPercent = null,
+    double? MaximumSizeSavingPercent = null);
 
 public static class VerificationPolicyResolver
 {
@@ -41,6 +42,8 @@ public static class VerificationPolicyResolver
             RequireSizeReduction = overrides.RequireSizeReduction ?? baseline.RequireSizeReduction,
             MinimumSizeSavingPercent = ClampRange(overrides.MinimumSizeSavingPercent, 0, 99)
                 ?? baseline.MinimumSizeSavingPercent,
+            MaximumSizeSavingPercent = ClampRange(overrides.MaximumSizeSavingPercent, 0, 99)
+                ?? baseline.MaximumSizeSavingPercent,
             QualityGateEnabled = overrides.QualityGateEnabled ?? baseline.QualityGateEnabled,
             MinimumVmafHarmonicMean = ClampRange(overrides.MinimumVmafHarmonicMean, 0, 100)
                 ?? baseline.MinimumVmafHarmonicMean,

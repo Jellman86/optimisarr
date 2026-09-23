@@ -216,11 +216,13 @@ public sealed class WorkerChainEndToEndTests : IAsyncLifetime
                 .Select(job => job.LibraryId).SingleAsync();
             var library = await db.Libraries.SingleAsync(row => row.Id == libraryId);
             library.MinimumSizeSavingPercent = 10;
+            library.MaximumSizeSavingPercent = 65;
             await db.SaveChangesAsync();
         }
 
         var (leaseId, _, assignment) = await ClaimAndFetch(worker);
         Assert.Equal(7372, assignment.GetProperty("maxCandidateBytes").GetInt64());
+        Assert.Equal(2868, assignment.GetProperty("minCandidateBytes").GetInt64());
 
         using var changedScope = _api.Services.CreateScope();
         var changedDb = changedScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
@@ -228,6 +230,7 @@ public sealed class WorkerChainEndToEndTests : IAsyncLifetime
             .Select(job => job.LibraryId).SingleAsync();
         var changedLibrary = await changedDb.Libraries.SingleAsync(row => row.Id == changedLibraryId);
         changedLibrary.MinimumSizeSavingPercent = 20;
+        changedLibrary.MaximumSizeSavingPercent = 50;
         await changedDb.SaveChangesAsync();
 
         var lease = await changedDb.JobLeases.AsNoTracking()
@@ -235,7 +238,10 @@ public sealed class WorkerChainEndToEndTests : IAsyncLifetime
         using var frozen = JsonDocument.Parse(lease.VerificationWorkJson!);
         Assert.Equal(10, frozen.RootElement.GetProperty("verificationPolicy")
             .GetProperty("minimumSizeSavingPercent").GetDouble());
+        Assert.Equal(65, frozen.RootElement.GetProperty("verificationPolicy")
+            .GetProperty("maximumSizeSavingPercent").GetDouble());
         Assert.Equal(7372, lease.MaxCandidateBytes);
+        Assert.Equal(2868, lease.MinCandidateBytes);
     }
 
     [Fact]

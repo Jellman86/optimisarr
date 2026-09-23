@@ -12,6 +12,7 @@
 
 ### Added
 
+- An optional per-library maximum allowed saving for video re-encodes. At 65%, a finished candidate below 35% of the source size fails before final full-file VMAF verification on the container or updated sidecars. The original is retained; blank leaves compression unrestricted. Minimum and maximum targets cannot conflict.
 - An optional per-library minimum useful saving for video re-encodes. A 10% target rejects outputs above 90% of the source size; the same frozen limit stops container and sidecar encodes early. Blank keeps the existing any-reduction rule, and compatibility work with size reduction disabled is unaffected.
 - Queue job details now show the active and rejected worker attempts as a clear timeline, with each prior verification report one click away. A job with a matching opt-in diagnostic capture can download its bundle directly from the detail view.
 - Mac and Windows sidecar tray controls can drain new assignments, finish held work and server acknowledgement, then shut down the host after a visible, cancelable 60-second countdown. Disconnects and unconfirmed lease results block shutdown; the request is not restored after a restart.

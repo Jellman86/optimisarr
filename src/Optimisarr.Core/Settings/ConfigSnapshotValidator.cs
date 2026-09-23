@@ -125,6 +125,17 @@ public static class ConfigSnapshotValidator
             {
                 errors.Add($"{where} minimum useful saving must be greater than 0% and at most 99%.");
             }
+            if (library.MaximumSizeSavingPercent is { } maximumSaving
+                && (!double.IsFinite(maximumSaving) || maximumSaving <= 0 || maximumSaving > 99))
+            {
+                errors.Add($"{where} maximum allowed saving must be greater than 0% and at most 99%.");
+            }
+            if (library.MinimumSizeSavingPercent is { } minimumTarget
+                && library.MaximumSizeSavingPercent is { } maximumTarget
+                && minimumTarget > maximumTarget)
+            {
+                errors.Add($"{where} minimum useful saving cannot exceed maximum allowed saving.");
+            }
             RequireRange(library.MaxLoudnessDriftLufs, 0, double.MaxValue, $"{where} loudness drift tolerance", errors);
             RequireFinite(library.MaxTruePeakDbtp, $"{where} true-peak ceiling", errors);
             RequireRange(library.MinimumImageSsim, 0, 1, $"{where} image SSIM floor", errors);

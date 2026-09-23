@@ -67,6 +67,11 @@ public static class VerificationEvaluator
         }
 
         checks.Add(SizeReduced(input, policy));
+        if (isVideo && input.VideoReencoded && policy.RequireSizeReduction
+            && policy.MaximumSizeSavingPercent is > 0)
+        {
+            checks.Add(CompressionCeiling(input, policy.MaximumSizeSavingPercent.Value));
+        }
 
         // A still is verified as an image: it must contain a picture and keep its dimensions.
         // No downscaling is performed yet, so any shrink is an unintended/degenerate encode.
@@ -1029,6 +1034,17 @@ public static class VerificationEvaluator
 
     private static double PercentChange(long original, long output) =>
         original > 0 ? (output - original) / (double)original * 100.0 : 0;
+
+    private static VerificationCheck CompressionCeiling(VerificationInput input, double maximumSavingPercent)
+    {
+        var minimumBytes = SizeBudget.MinCandidateBytes(
+            input.OriginalSizeBytes, requireReduction: true, disposable: false,
+            maximumSavingPercent: maximumSavingPercent);
+        return minimumBytes is { } minimum && input.OutputSizeBytes >= minimum
+            ? Pass("Compression ceiling", $"Output remains within the {maximumSavingPercent:0.##}% maximum saving.")
+            : Fail("Compression ceiling",
+                $"Output is smaller than the {maximumSavingPercent:0.##}% maximum saving allows.");
+    }
 
     private static string Describe(string? error) =>
         string.IsNullOrWhiteSpace(error) ? "no detail available" : error;

@@ -183,12 +183,14 @@ public struct Assignment: Sendable, Equatable {
     public let fullVerification: FullVerificationContract?
     /// Frozen by the server when a full candidate must be smaller than its source.
     public let maxCandidateBytes: Int64?
+    public let minCandidateBytes: Int64?
 
     public init(
         leaseId: String, jobId: Int, title: String = "", sourceBytes: Int64, videoEncoder: String,
         renewWithinSeconds: Int, arguments: [String], outputExtension: String,
         quality: QualityRequirement, search: AdaptiveSearchStep? = nil,
-        fullVerification: FullVerificationContract? = nil, maxCandidateBytes: Int64? = nil
+        fullVerification: FullVerificationContract? = nil, maxCandidateBytes: Int64? = nil,
+        minCandidateBytes: Int64? = nil
     ) {
         self.leaseId = leaseId
         self.jobId = jobId
@@ -202,6 +204,7 @@ public struct Assignment: Sendable, Equatable {
         self.search = search
         self.fullVerification = fullVerification
         self.maxCandidateBytes = maxCandidateBytes
+        self.minCandidateBytes = minCandidateBytes
     }
 
     init?(json: [String: Any]) {
@@ -234,7 +237,8 @@ public struct Assignment: Sendable, Equatable {
             // already settled — both mean "encode straight away", which is what this app did
             // before the field existed.
             search: Assignment.search(from: json), fullVerification: fullVerification,
-            maxCandidateBytes: (json["maxCandidateBytes"] as? NSNumber)?.int64Value)
+            maxCandidateBytes: (json["maxCandidateBytes"] as? NSNumber)?.int64Value,
+            minCandidateBytes: (json["minCandidateBytes"] as? NSNumber)?.int64Value)
     }
 
     /// Says so when a search arrives that cannot be read.

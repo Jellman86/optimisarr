@@ -272,6 +272,9 @@ public sealed class Library
     /// <summary>Optional minimum useful saving for a video re-encode, in percent of source bytes.</summary>
     public double? MinimumSizeSavingPercent { get; set; }
 
+    /// <summary>Optional maximum allowed saving for a video re-encode, in percent of source bytes.</summary>
+    public double? MaximumSizeSavingPercent { get; set; }
+
     /// <summary>Whether EBU R128 integrated-loudness drift is measured and bounded.</summary>
     public bool AudioLoudnessGateEnabled { get; set; }
 

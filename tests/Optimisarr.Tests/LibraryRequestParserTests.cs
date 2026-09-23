@@ -376,6 +376,7 @@ public sealed class LibraryRequestParserTests
         Assert.Equal(VerificationPolicy.Default.RequireSubtitlesRetained, parsed.RequireSubtitlesRetained);
         Assert.Equal(VerificationPolicy.Default.RequireSizeReduction, parsed.RequireSizeReduction);
         Assert.Null(parsed.MinimumSizeSavingPercent);
+        Assert.Null(parsed.MaximumSizeSavingPercent);
         Assert.Equal(VerificationPolicy.Default.ImageQualityGateEnabled, parsed.ImageQualityGateEnabled);
         Assert.Equal(VerificationPolicy.Default.MinimumImageSsim, parsed.MinimumImageSsim);
         Assert.Equal(VerificationPolicy.Default.ImageMetadataGateEnabled, parsed.ImageMetadataGateEnabled);
@@ -403,6 +404,30 @@ public sealed class LibraryRequestParserTests
 
         Assert.True(ok, error);
         Assert.Equal(10, parsed.MinimumSizeSavingPercent);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(99.1)]
+    [InlineData(double.NaN)]
+    public void Invalid_maximum_saving_is_rejected(double percent)
+    {
+        Assert.False(LibraryRequestParser.TryParse(
+            Request() with { MaximumSizeSavingPercent = percent }, out _, out var error));
+        Assert.Contains("maximum allowed saving", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Maximum_saving_must_not_conflict_with_the_minimum_target()
+    {
+        Assert.False(LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = 70, MaximumSizeSavingPercent = 65 },
+            out _, out var error));
+        Assert.Contains("cannot exceed", error, StringComparison.OrdinalIgnoreCase);
+        Assert.True(LibraryRequestParser.TryParse(
+            Request() with { MinimumSizeSavingPercent = 10, MaximumSizeSavingPercent = 65 },
+            out var parsed, out error), error);
+        Assert.Equal(65, parsed.MaximumSizeSavingPercent);
     }
 
     [Theory]

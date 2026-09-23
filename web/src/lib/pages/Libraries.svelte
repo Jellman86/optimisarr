@@ -230,6 +230,18 @@
         || Number(form.minimumSizeSavingPercent) > 99)) {
       return i18n.m.settings.validation_minimum_saving
     }
+    if (form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+      && form.maximumSizeSavingPercent != null
+      && (!Number.isFinite(Number(form.maximumSizeSavingPercent))
+        || Number(form.maximumSizeSavingPercent) <= 0
+        || Number(form.maximumSizeSavingPercent) > 99)) {
+      return i18n.m.settings.validation_maximum_saving
+    }
+    if (form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+      && form.minimumSizeSavingPercent != null && form.maximumSizeSavingPercent != null
+      && Number(form.minimumSizeSavingPercent) > Number(form.maximumSizeSavingPercent)) {
+      return i18n.m.settings.validation_saving_order
+    }
     if (!Number.isFinite(Number(form.durationTolerancePercent))
       || Number(form.durationTolerancePercent) < 0) {
       return i18n.m.settings.validation_duration
@@ -730,7 +742,7 @@
       'encode/video/advanced': ['targetVideoCodec', 'targetContainer', 'encoderPreset', 'qualityCrf', 'contentTune', 'maxBitrateKbps', 'minBitrateKbps', 'strongerAdaptiveQuantisation'],
       'encode/audio/advanced': ['audioBitrateKbps', 'videoAudioBitrateKbps', 'reencodeLossyAudio'],
       'encode/images/advanced': ['imageQuality', 'reencodeLossyImages'],
-      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
+      'verify/advanced': ['durationTolerancePercent', 'minimumSizeSavingPercent', 'maximumSizeSavingPercent', 'maxLoudnessDriftLufs', 'maxTruePeakDbtp', 'minimumImageSsim', 'clipVmafEnabled', 'vmafFrameSubsample'],
     }
     const keys = fields[target] ?? Object.entries(fields).filter(([key]) => key.startsWith(target + '/')).flatMap(([, fields]) => fields)
     return keys.filter(key => {
@@ -990,6 +1002,7 @@
       requireSizeReduction:
         library.requireSizeReduction ?? defaults.requireSizeReduction,
       minimumSizeSavingPercent: library.minimumSizeSavingPercent ?? null,
+      maximumSizeSavingPercent: library.maximumSizeSavingPercent ?? null,
       audioLoudnessGateEnabled:
         library.audioLoudnessGateEnabled ?? defaults.audioLoudnessGateEnabled,
       maxLoudnessDriftLufs:
@@ -1080,6 +1093,8 @@
       durationTolerancePercent: Number(form.durationTolerancePercent),
       minimumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
         ? toNullableNumber(form.minimumSizeSavingPercent) : null,
+      maximumSizeSavingPercent: form.requireSizeReduction && showVideoOptions && !isNoEncodeProfile
+        ? toNullableNumber(form.maximumSizeSavingPercent) : null,
       maxLoudnessDriftLufs: Number(form.maxLoudnessDriftLufs),
       maxTruePeakDbtp: Number(form.maxTruePeakDbtp),
       minimumImageSsim: Number(form.minimumImageSsim),
@@ -1649,7 +1664,7 @@
     title={i18n.m.settings.gates_title}
     description={i18n.m.libraries.verification_intro}
   >
-    <div class="grid gap-4 xl:grid-cols-2">
+    <div class="grid items-start gap-4 xl:grid-cols-2">
       <fieldset class="min-w-0 rounded-lg border border-line bg-panel p-4">
         <legend class="px-1 text-sm font-semibold text-ink-2">
           {i18n.m.settings.always_on}
@@ -1708,6 +1723,26 @@
               <span class="flex-none text-sm text-ink-3">%</span>
             </div>
             <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.settings.minimum_saving_tip}</p>
+            <div class="mt-4 border-t border-line pt-4">
+              <label class="label" for="lib-maximum-saving">
+                {i18n.m.settings.maximum_saving}
+                <InfoTip label={t(i18n.m.common.about_information, { label: i18n.m.settings.maximum_saving })} text={i18n.m.settings.maximum_saving_tip} />
+              </label>
+              <div class="flex max-w-[16rem] min-w-0 items-center gap-2">
+                <input
+                  id="lib-maximum-saving"
+                  aria-label={i18n.m.settings.maximum_saving}
+                  aria-invalid={verificationError === i18n.m.settings.validation_maximum_saving || verificationError === i18n.m.settings.validation_saving_order}
+                  aria-describedby="lib-verification-error"
+                  class="input min-w-0 flex-1"
+                  type="number" min="0.1" max="99" step="0.1"
+                  disabled={!form.requireSizeReduction}
+                  bind:value={form.maximumSizeSavingPercent}
+                />
+                <span class="flex-none text-sm text-ink-3">%</span>
+              </div>
+              <p class="mt-2 text-xs leading-relaxed text-ink-3">{i18n.m.settings.maximum_saving_tip}</p>
+            </div>
           </div>
         {/if}
       </fieldset>

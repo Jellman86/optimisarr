@@ -1212,6 +1212,12 @@ public sealed class QueueDispatcher(
                 preparedWork.IsDisposable,
                 spec.VideoCodec is not null
                     ? preparedWork.VerificationPolicy.MinimumSizeSavingPercent : null);
+            var minCandidateBytes = SizeBudget.MinCandidateBytes(
+                preparedWork.Original.SizeBytes,
+                preparedWork.VerificationPolicy.RequireSizeReduction,
+                preparedWork.IsDisposable,
+                spec.VideoCodec is not null
+                    ? preparedWork.VerificationPolicy.MaximumSizeSavingPercent : null);
             await BeginTranscodeAsync(
                 jobId,
                 spec.OutputPath,
@@ -1244,12 +1250,13 @@ public sealed class QueueDispatcher(
                 expectedFrameCount,
                 hardwareEncoder,
                 cancellationToken,
-                maxCandidateBytes: maxCandidateBytes);
+                maxCandidateBytes: maxCandidateBytes,
+                minCandidateBytes: minCandidateBytes);
 
             // Hardware decode and hardware tone-map support vary by source, driver, and FFmpeg
             // build. Retry a recognised setup failure once with the established software path.
             if (run.ExitCode != 0
-                && !run.SizeBudgetExceeded
+                && !run.SizeGateFailed
                 && preparedWork.SoftwareFallbackArguments is { } softwareArguments
                 && (preparedWork.UsedHardwareDecode
                         && HardwareDecodeFallback.ShouldRetryInSoftware(run.Log ?? run.Error)
@@ -1276,7 +1283,8 @@ public sealed class QueueDispatcher(
                     expectedFrameCount,
                     hardwareEncoder,
                     cancellationToken,
-                    maxCandidateBytes: maxCandidateBytes);
+                    maxCandidateBytes: maxCandidateBytes,
+                    minCandidateBytes: minCandidateBytes);
             }
 
             if (run.ExitCode == 0)
@@ -1375,7 +1383,8 @@ public sealed class QueueDispatcher(
                         expectedFrameCount,
                         hardwareEncoder,
                         cancellationToken,
-                        maxCandidateBytes: maxCandidateBytes);
+                        maxCandidateBytes: maxCandidateBytes,
+                        minCandidateBytes: minCandidateBytes);
                     if (run.ExitCode == 0)
                     {
                         await VerifyAndFinishAsync(jobId, spec.OutputPath, retriedWork, cancellationToken);
@@ -1499,7 +1508,8 @@ public sealed class QueueDispatcher(
                 library?.ImageQualityGateEnabled,
                 library?.MinimumImageSsim,
                 library?.ImageMetadataGateEnabled,
-                library?.MinimumSizeSavingPercent));
+                library?.MinimumSizeSavingPercent,
+                library?.MaximumSizeSavingPercent));
 
     /// <summary>
     /// Resolves one queued job into an assignment a remote worker could execute, or a reason it
@@ -2505,7 +2515,7 @@ public sealed class QueueDispatcher(
 
     private sealed class JobNoLongerEligibleException(string message) : Exception(message);
 
-    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeBudgetExceeded = false);
+    private sealed record FfmpegRun(int ExitCode, string? Error, string? Log, bool SizeGateFailed = false);
 
     private async Task<FfmpegRun> RunFfmpegAsync(
         int jobId,
@@ -2517,7 +2527,8 @@ public sealed class QueueDispatcher(
         CancellationToken cancellationToken,
         bool reportProgress = true,
         Func<double, double>? progressMap = null,
-        long? maxCandidateBytes = null)
+        long? maxCandidateBytes = null,
+        long? minCandidateBytes = null)
     {
         // Every attempt must recreate the directory: rejecting a candidate prunes its empty
         // parent. Reserve it before creation so another job's cleanup cannot remove it while
@@ -2588,7 +2599,7 @@ public sealed class QueueDispatcher(
             return new FfmpegRun(-1,
                 $"Size saving: candidate reached {observed:n0} bytes, exceeding the {maxCandidateBytes:n0}-byte budget before encoding finished.",
                 stderr.Log,
-                SizeBudgetExceeded: true);
+                SizeGateFailed: true);
         }
         if (stopped?.Stall is { } stalledAs)
         {
@@ -2607,7 +2618,17 @@ public sealed class QueueDispatcher(
             return new FfmpegRun(-1,
                 $"Size saving: finished candidate is {finalBytes:n0} bytes, exceeding the {maximum:n0}-byte budget.",
                 stderr.Log,
-                SizeBudgetExceeded: true);
+                SizeGateFailed: true);
+        }
+
+        if (process.ExitCode == 0 && minCandidateBytes is { } minimum
+            && TryReadOutputSize(outputPath) is { } finalSize
+            && SizeBudget.Below(finalSize, minimum))
+        {
+            return new FfmpegRun(-1,
+                $"Compression ceiling: finished candidate is {finalSize:n0} bytes, below the {minimum:n0}-byte floor.",
+                stderr.Log,
+                SizeGateFailed: true);
         }
 
         return process.ExitCode == 0
@@ -2826,7 +2847,7 @@ public sealed class QueueDispatcher(
             ?? run.Error
             ?? $"ffmpeg exited with code {run.ExitCode}";
         await CompleteAsync(jobId, JobStatus.Failed, error: error, processLog: run.Log,
-            immediateAutoExclusion: run.SizeBudgetExceeded
+            immediateAutoExclusion: run.SizeGateFailed
                 ? ImmediateAutoExclusionReason.SizeSaving
                 : ImmediateAutoExclusionReason.None);
         await NotifyJobFailedAsync(jobId, error);
@@ -2984,7 +3005,7 @@ public sealed class QueueDispatcher(
                     Reason = immediateAutoExclusion switch
                     {
                         ImmediateAutoExclusionReason.SizeSaving =>
-                            "Auto-excluded after the output failed the size-saving gate",
+                            "Auto-excluded after the output failed a configured size gate",
                         ImmediateAutoExclusionReason.VmafAfterHigherQualityRetry =>
                             "Auto-excluded after VMAF failed the higher-quality retry",
                         ImmediateAutoExclusionReason.VmafAtMaximumQuality =>

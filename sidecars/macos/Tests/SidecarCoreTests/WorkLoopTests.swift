@@ -162,6 +162,7 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
     private(set) var deliveredHeaders: [String: String] = [:]
     private(set) var released = false
     private(set) var sizeBudgetFailed = false
+    private(set) var sizeBudgetUndershot = false
     private(set) var renewals = 0
     private(set) var qualityReport: [String: Any]?
     /// What the search answers, in order: the worker is told what to measure next until told to stop.
@@ -226,6 +227,10 @@ final class FakeWorkerServer: HTTPTransport, @unchecked Sendable {
             }
             if path.hasSuffix("/size-budget-exceeded") {
                 sizeBudgetFailed = true
+                return (Data(), response(request, 204))
+            }
+            if path.hasSuffix("/size-budget-undershot") {
+                sizeBudgetUndershot = true
                 return (Data(), response(request, 204))
             }
             if path.hasSuffix("/result/offset") {
@@ -633,7 +638,8 @@ private let measurementCommand: [String] = [
 
 private func assignment(
     renewWithinSeconds: Int = 30, measure: Bool = false, sourceBytes: Int64 = 4_096,
-    commands: [[String]] = [measurementCommand], maxCandidateBytes: Int64? = nil
+    commands: [[String]] = [measurementCommand], maxCandidateBytes: Int64? = nil,
+    minCandidateBytes: Int64? = nil
 ) -> Assignment {
     Assignment(
         leaseId: "8b1e2c3d-0000-4000-8000-000000000001", jobId: 12, sourceBytes: sourceBytes,
@@ -643,7 +649,7 @@ private func assignment(
             measure: measure, model: "vmaf_v0.6.1", frameSubsample: 1, clipVmaf: false,
             minimumHarmonicMean: 93, minimumMinimum: 80,
             commands: measure ? commands : [], sampling: "Full file"),
-        maxCandidateBytes: maxCandidateBytes)
+        maxCandidateBytes: maxCandidateBytes, minCandidateBytes: minCandidateBytes)
 }
 
 @Suite("Scratch capacity")
@@ -724,6 +730,26 @@ struct JobRunnerTests {
         }
         #expect(reason.contains("Size saving"))
         #expect(server.sizeBudgetFailed)
+        #expect(!server.released)
+        #expect(server.deliveredFile == nil)
+    }
+
+    @Test("an over-compressed final candidate fails before quality work or delivery")
+    func finalCompressionCeilingStopsJob() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(), scratchRoot: scratch(),
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(minCandidateBytes: 16), pairing: pairing) { _ in }
+
+        guard case let .failed(_, reason) = outcome else {
+            Issue.record("expected a terminal compression failure, got \(outcome)")
+            return
+        }
+        #expect(reason.contains("Compression ceiling"))
+        #expect(server.sizeBudgetUndershot)
         #expect(!server.released)
         #expect(server.deliveredFile == nil)
     }

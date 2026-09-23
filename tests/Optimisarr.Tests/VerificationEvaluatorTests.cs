@@ -1209,6 +1209,24 @@ public sealed class VerificationEvaluatorTests
             input with { VideoReencoded = false }, policy), "Size saving"));
     }
 
+    [Theory]
+    [InlineData(350_000_000L, CheckOutcome.Passed)]
+    [InlineData(349_999_999L, CheckOutcome.Failed)]
+    public void Optional_maximum_saving_rejects_over_compression_for_video_reencodes(
+        long outputBytes, CheckOutcome expected)
+    {
+        var input = Healthy() with { OutputSizeBytes = outputBytes };
+        var policy = VerificationPolicy.Default with { MaximumSizeSavingPercent = 65 };
+
+        Assert.Equal(expected, Outcome(VerificationEvaluator.Evaluate(input, policy), "Compression ceiling"));
+        Assert.DoesNotContain(VerificationEvaluator.Evaluate(input,
+            policy with { MaximumSizeSavingPercent = null }).Checks, check => check.Name == "Compression ceiling");
+        Assert.DoesNotContain(VerificationEvaluator.Evaluate(input,
+            policy with { RequireSizeReduction = false }).Checks, check => check.Name == "Compression ceiling");
+        Assert.DoesNotContain(VerificationEvaluator.Evaluate(input with { VideoReencoded = false },
+            policy).Checks, check => check.Name == "Compression ceiling");
+    }
+
     [Fact]
     public void Empty_output_fails_the_size_check()
     {

@@ -137,6 +137,13 @@ public sealed class JobRunner(
                 return new JobOutcome(assignment.JobId, false,
                     $"Size saving: finished candidate exceeded the {finalMaximum:n0}-byte budget.");
             }
+            if (assignment.MinCandidateBytes is { } finalMinimum && finalBytes < finalMinimum)
+            {
+                await client.ReportSizeBudgetUndershotAsync(
+                    pairing, assignment.LeaseId, finalBytes, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false,
+                    $"Compression ceiling: finished candidate was below the {finalMinimum:n0}-byte floor.");
+            }
 
             // The server's own measurement, run here and returned as the raw logs. Measuring is the
             // one part of verification a worker may contribute, and it is only an offer: if it

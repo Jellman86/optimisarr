@@ -45,6 +45,16 @@ public sealed class AutoExclusionPolicyTests
                 effectiveQuality: 20));
     }
 
+    [Fact]
+    public void An_over_compressed_candidate_is_excluded_without_another_encode()
+    {
+        var report = new VerificationReport([
+            new VerificationCheck("Compression ceiling", CheckOutcome.Failed, "too small")]);
+
+        Assert.Equal(ImmediateAutoExclusionReason.SizeSaving,
+            AutoExclusionPolicy.ImmediateReason(report, qualityRetryCount: 0, effectiveQuality: 20));
+    }
+
     [Theory]
     [InlineData(0, 20, ImmediateAutoExclusionReason.None)]
     [InlineData(1, 17, ImmediateAutoExclusionReason.VmafAfterHigherQualityRetry)]
