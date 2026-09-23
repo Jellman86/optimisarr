@@ -795,6 +795,9 @@ duration_tolerance_tip: "La variation maximale du temps d’exécution de la sor
 require_audio: 'Exiger la conservation de toutes les pistes audio',
 require_subtitles: 'Exiger la conservation de toutes les pistes de sous-titres',
 require_smaller: 'Exiger une sortie plus petite que l’original',
+minimum_saving: 'Gain minimal utile',
+minimum_saving_tip: 'Facultatif pour les réencodages vidéo. Avec 10 %, la sortie doit être au moins 10 % plus petite. Le serveur et les sidecars arrêtent l’encodage si cet objectif devient impossible. Laissez vide pour accepter toute réduction ; les tâches de compatibilité l’ignorent.',
+validation_minimum_saving: 'Le gain minimal utile doit être supérieur à 0 % et ne pas dépasser 99 %.',
 vmaf_label: 'Qualité perceptuelle (VMAF)',
 vmaf_hint:
   "Compare les vidéos réencodées à l’original avec libvmaf de FFmpeg et rejette une sortie sous le seuil choisi. Optimisarr choisit automatiquement le modèle HDTV ou 4K et gère la mise à l’échelle, la synchronisation, la plage de couleurs et la préparation de la référence HDR vers SDR. Désactivé par défaut, car il sollicite fortement le processeur : l’évaluation du fichier complet image par image décode les deux fichiers, utilise souvent la majeure partie d’un cœur pendant plusieurs minutes et double environ le temps de vérification. L’évaluation par extraits et l’échantillonnage d’images réduisent ce coût. Les niveaux supérieurs sont plus stricts ; Archive est proche du sans-perte.",

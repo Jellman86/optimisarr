@@ -363,7 +363,8 @@ internal static class WorkerLeaseEndpoints
                 var lease = WorkerLease.Acquire(Guid.NewGuid(), job.Id, worker.Id, now);
                 var maxCandidateBytes = SizeBudget.MaxCandidateBytes(
                     job.MediaFile.SizeBytes, assignment.Verification.RequireSizeReduction,
-                    job.Type is JobType.Preview or JobType.Calibration);
+                    job.Type is JobType.Preview or JobType.Calibration,
+                    assignment.Verification.MinimumSizeSavingPercent);
 
                 db.JobLeases.Add(new JobLease
                 {

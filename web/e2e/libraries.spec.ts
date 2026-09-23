@@ -13,7 +13,7 @@ const library = {
   targetFolder: null, moveOverwrite: false, minVmafHarmonicMean: null, minVmafMin: null,
   vmafQualityGateEnabled: false, minVmafCatastrophicMin: null, clipVmafEnabled: null,
   vmafFrameSubsample: null, durationTolerancePercent: 1, requireAudioRetained: true,
-  requireSubtitlesRetained: false, requireSizeReduction: true,
+  requireSubtitlesRetained: false, requireSizeReduction: true, minimumSizeSavingPercent: null,
   audioLoudnessGateEnabled: false, maxLoudnessDriftLufs: 1,
   audioClippingGateEnabled: false, maxTruePeakDbtp: 0,
   imageQualityGateEnabled: true, minimumImageSsim: 0.95, imageMetadataGateEnabled: true,
@@ -271,6 +271,24 @@ test('optional verification thresholds follow their switches on the advanced pag
   await expect(page.locator('#lib-loudness-drift')).toBeVisible()
   await loudness.uncheck()
   await expect(page.locator('#lib-loudness-drift')).toHaveCount(0)
+})
+
+test('minimum useful saving is optional, validates its range, and is saved with the library', async ({ page }) => {
+  await mockLibraries(page)
+  await page.goto('/#/libraries/1/configure/verify/advanced')
+  const minimum = page.getByLabel('Minimum useful saving', { exact: true })
+  await expect(minimum).toBeVisible()
+  await expect(minimum).toHaveValue('')
+  await minimum.fill('0')
+  await expect(page.locator('#lib-verification-error')).toHaveText('Minimum useful saving must be above 0% and no more than 99%.')
+  await minimum.fill('10')
+  await minimum.evaluate(element => element.scrollIntoView({ block: 'center' }))
+  const inputBounds = await minimum.boundingBox()
+  const actionsBounds = await page.locator('[data-library-actions]').boundingBox()
+  expect(inputBounds && actionsBounds && inputBounds.y + inputBounds.height < actionsBounds.y).toBe(true)
+  const saved = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith('/api/libraries/1'))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect((await saved).postDataJSON()).toMatchObject({ minimumSizeSavingPercent: 10 })
 })
 
 test('invalid settings stay discoverable after navigating away from their field', async ({ page }) => {

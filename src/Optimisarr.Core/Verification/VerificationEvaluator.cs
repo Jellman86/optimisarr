@@ -1009,9 +1009,22 @@ public static class VerificationEvaluator
             return Pass("Size saving", $"{detail} Reduction not required by policy.");
         }
 
-        return input.OutputSizeBytes < input.OriginalSizeBytes
+        var minimum = input.Kind == MediaKind.Video && input.VideoReencoded
+            ? policy.MinimumSizeSavingPercent
+            : null;
+        var maximumBytes = SizeBudget.MaxCandidateBytes(
+            input.OriginalSizeBytes, requireReduction: true, disposable: false,
+            minimumSavingPercent: minimum);
+        if (maximumBytes is null)
+        {
+            return Fail("Size saving", $"{detail} Original size is unavailable.");
+        }
+
+        return input.OutputSizeBytes <= maximumBytes.Value
             ? Pass("Size saving", detail)
-            : Fail("Size saving", $"{detail} Output is not smaller than the original.");
+            : Fail("Size saving", minimum is > 0
+                ? $"{detail} At least {minimum:0.##}% saving is required for this video re-encode."
+                : $"{detail} Output is not smaller than the original.");
     }
 
     private static double PercentChange(long original, long output) =>

@@ -1193,6 +1193,22 @@ public sealed class VerificationEvaluatorTests
             "Size saving"));
     }
 
+    [Theory]
+    [InlineData(900_000_000L, CheckOutcome.Passed)]
+    [InlineData(900_000_001L, CheckOutcome.Failed)]
+    public void Optional_minimum_useful_saving_is_an_exact_video_reencode_gate(
+        long outputBytes, CheckOutcome expected)
+    {
+        var input = Healthy() with { OutputSizeBytes = outputBytes };
+        var policy = VerificationPolicy.Default with { MinimumSizeSavingPercent = 10 };
+
+        Assert.Equal(expected, Outcome(VerificationEvaluator.Evaluate(input, policy), "Size saving"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(
+            input, policy with { RequireSizeReduction = false }), "Size saving"));
+        Assert.Equal(CheckOutcome.Passed, Outcome(VerificationEvaluator.Evaluate(
+            input with { VideoReencoded = false }, policy), "Size saving"));
+    }
+
     [Fact]
     public void Empty_output_fails_the_size_check()
     {

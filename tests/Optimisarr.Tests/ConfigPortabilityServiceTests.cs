@@ -454,6 +454,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
                 RequireAudioRetained = false,
                 RequireSubtitlesRetained = true,
                 RequireSizeReduction = false,
+                MinimumSizeSavingPercent = 10,
                 AudioLoudnessGateEnabled = true,
                 MaxLoudnessDriftLufs = 0.5,
                 AudioClippingGateEnabled = true,
@@ -510,6 +511,7 @@ public sealed class ConfigPortabilityServiceTests : IDisposable
         Assert.False(library.RequireAudioRetained);
         Assert.True(library.RequireSubtitlesRetained);
         Assert.False(library.RequireSizeReduction);
+        Assert.Equal(10, library.MinimumSizeSavingPercent);
         Assert.True(library.AudioLoudnessGateEnabled);
         Assert.Equal(0.5, library.MaxLoudnessDriftLufs);
         Assert.True(library.AudioClippingGateEnabled);

@@ -798,6 +798,9 @@ duration_tolerance_tip: "Cuánto puede desviarse el tiempo de ejecución de la s
 require_audio: 'Requerir que todas las pistas de audio se mantengan',
 require_subtitles: 'Requerir que todas las pistas de subtítulos se mantengan',
 require_smaller: 'Requerir que la salida sea más pequeña que el original',
+minimum_saving: 'Ahorro mínimo útil',
+minimum_saving_tip: 'Opcional para recodificaciones de vídeo. Con un 10 %, la salida debe ser al menos un 10 % menor. El servidor y los clientes detienen la codificación si ya no pueden cumplirlo. Déjalo vacío para aceptar cualquier reducción; los trabajos de compatibilidad lo ignoran.',
+validation_minimum_saving: 'El ahorro mínimo útil debe ser mayor que 0 % y no superar el 99 %.',
 vmaf_label: 'Calidad perceptual (VMAF)',
 vmaf_hint:
   "Compara los vídeos recodificados con el original mediante libvmaf de FFmpeg y rechaza las salidas por debajo del umbral elegido. Optimisarr selecciona automáticamente el modelo HDTV o 4K y gestiona el escalado, la sincronización, el rango de color y la preparación de la referencia de HDR a SDR. Está desactivado por defecto porque consume mucha CPU: puntuar el archivo completo fotograma a fotograma decodifica ambos archivos, suele ocupar la mayor parte de un núcleo durante varios minutos y casi duplica el tiempo de verificación. La puntuación por fragmentos y el muestreo de fotogramas reducen ese coste. Los niveles superiores son más estrictos; Archivo se aproxima a una calidad sin pérdidas.",

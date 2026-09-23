@@ -802,6 +802,9 @@ export const de: Messages = {
     require_audio: 'Alle Audiospuren müssen erhalten bleiben',
     require_subtitles: 'Alle Untertitelspuren müssen erhalten bleiben',
     require_smaller: 'Ausgabe muss kleiner als das Original sein',
+    minimum_saving: 'Mindesteinsparung',
+    minimum_saving_tip: 'Optional für Video-Neucodierungen. Bei 10 % muss die Ausgabe mindestens 10 % kleiner sein. Server und Sidecars stoppen, wenn das Ziel nicht mehr erreichbar ist. Leer lassen für jede Einsparung; Kompatibilitätsjobs ignorieren den Wert.',
+    validation_minimum_saving: 'Die Mindesteinsparung muss über 0 % und höchstens 99 % betragen.',
     vmaf_label: 'Wahrnehmungsqualität (VMAF)',
     vmaf_hint:
       'Vergleicht neu codierte Videos über FFmpegs libvmaf mit dem Original und lehnt Ausgaben unterhalb der gewählten Grenze ab. Optimisarr wählt automatisch das HDTV- oder 4K-Modell und übernimmt Skalierung, Zeitabgleich, Farbbereich und die HDR-zu-SDR-Aufbereitung der Referenz. Wegen der hohen CPU-Last standardmäßig deaktiviert: Die vollständige Bewertung jedes Frames decodiert beide Dateien, beansprucht oft mehrere Minuten lang den Großteil eines CPU-Kerns und verdoppelt ungefähr die Prüfzeit. Clip-Bewertung und Frame-Abtastung verringern diesen Aufwand. Höhere Stufen sind strenger; Archiv ist nahezu verlustfrei.',

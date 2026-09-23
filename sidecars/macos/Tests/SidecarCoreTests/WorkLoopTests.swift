@@ -706,6 +706,28 @@ struct JobRunnerTests {
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("job-12").path))
     }
 
+    @Test("a successful encode whose final mux exceeds its budget is rejected before quality work")
+    func finalMuxSizeBudgetStopsJob() async throws {
+        let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))
+        let root = scratch()
+        let runner = JobRunner(client: SidecarClient(transport: server),
+            ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
+            runner: FakeTranscodeRunner(),
+            scratchRoot: root,
+            sleep: { _ in try await Task.sleep(nanoseconds: 1_000_000) })
+
+        let outcome = await runner.execute(assignment(maxCandidateBytes: 14), pairing: pairing) { _ in }
+
+        guard case let .failed(_, reason) = outcome else {
+            Issue.record("expected a terminal size failure, got \(outcome)")
+            return
+        }
+        #expect(reason.contains("Size saving"))
+        #expect(server.sizeBudgetFailed)
+        #expect(!server.released)
+        #expect(server.deliveredFile == nil)
+    }
+
     @Test("a healthy job fetches, encodes, hashes and delivers, then leaves no scratch behind")
     func deliversAndCleansUp() async throws {
         let server = FakeWorkerServer(sourceBytes: Data(repeating: 7, count: 4_096))

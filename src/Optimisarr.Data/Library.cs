@@ -269,6 +269,9 @@ public sealed class Library
     /// <summary>Whether the encoded output must be smaller than its source.</summary>
     public bool RequireSizeReduction { get; set; } = true;
 
+    /// <summary>Optional minimum useful saving for a video re-encode, in percent of source bytes.</summary>
+    public double? MinimumSizeSavingPercent { get; set; }
+
     /// <summary>Whether EBU R128 integrated-loudness drift is measured and bounded.</summary>
     public bool AudioLoudnessGateEnabled { get; set; }
 

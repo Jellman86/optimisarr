@@ -135,6 +135,8 @@ disable Smart App Control or other Windows protections to run a preview.
 When a library requires a smaller output, the assignment carries a frozen candidate byte limit.
 The worker stops a full encode that exceeds it and reports a terminal **Size saving** failure; it
 does not hand the job to another worker to repeat the same encode. The source file is retained.
+An optional minimum useful saving on the library tightens that frozen limit (10% means the output
+must be at most 90% of the source); blank retains the any-reduction rule.
 
 Enable **Remote workers** under **Settings → Files & safety** on the server, then pair through
 **Settings → Remote workers**. If these controls are absent, the server operator must enable

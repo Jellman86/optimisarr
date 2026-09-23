@@ -6,8 +6,28 @@ namespace Optimisarr.Core.Queue;
 /// </summary>
 public static class SizeBudget
 {
-    public static long? MaxCandidateBytes(long sourceBytes, bool requireReduction, bool disposable) =>
-        requireReduction && !disposable && sourceBytes > 0 ? sourceBytes - 1 : null;
+    public static long? MaxCandidateBytes(
+        long sourceBytes,
+        bool requireReduction,
+        bool disposable,
+        double? minimumSavingPercent = null)
+    {
+        if (!requireReduction || disposable || sourceBytes <= 0)
+        {
+            return null;
+        }
+
+        if (minimumSavingPercent is { } percent && percent > 0 && percent < 100
+            && double.IsFinite(percent))
+        {
+            // Decimal arithmetic keeps the inclusive final-size threshold exact even for a
+            // multi-terabyte original. A 10% target on 1,000 bytes allows 900, never 901.
+            var maximum = (long)Math.Floor(sourceBytes * (1m - (decimal)percent / 100m));
+            return Math.Min(sourceBytes - 1, maximum);
+        }
+
+        return sourceBytes - 1;
+    }
 
     public static bool Exceeded(long candidateBytes, long maxCandidateBytes) =>
         candidateBytes > maxCandidateBytes;

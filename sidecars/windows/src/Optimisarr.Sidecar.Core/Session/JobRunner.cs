@@ -127,6 +127,17 @@ public sealed class JobRunner(
                     "FFmpeg reported success but produced no candidate file.");
             }
 
+            // The last mux write may happen after the monitor's final poll. Reject before hashing,
+            // VMAF or upload, using the same lease-bound terminal outcome as an in-flight stop.
+            var finalBytes = new FileInfo(candidate).Length;
+            if (assignment.MaxCandidateBytes is { } finalMaximum && finalBytes > finalMaximum)
+            {
+                await client.ReportSizeBudgetExceededAsync(
+                    pairing, assignment.LeaseId, finalBytes, CancellationToken.None);
+                return new JobOutcome(assignment.JobId, false,
+                    $"Size saving: finished candidate exceeded the {finalMaximum:n0}-byte budget.");
+            }
+
             // The server's own measurement, run here and returned as the raw logs. Measuring is the
             // one part of verification a worker may contribute, and it is only an offer: if it
             // cannot be made the candidate is still delivered and the server measures for itself.

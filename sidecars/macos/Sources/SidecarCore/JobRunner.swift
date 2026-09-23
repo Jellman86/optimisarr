@@ -1149,6 +1149,18 @@ public struct JobRunner: WorkExecutor {
                 reason: "ffmpeg exited with code \(encode.0)." + (detail.isEmpty ? "" : " \(detail)"))
         }
 
+        // The final mux can add bytes between the size monitor's last poll and FFmpeg's exit.
+        // Report that as the same terminal lease result before hashing or measuring quality.
+        if let maximum = assignment.maxCandidateBytes,
+           let size = (try? FileManager.default.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)?.int64Value,
+           size > maximum {
+            try await client.reportSizeBudgetExceeded(
+                serverAddress: pairing.serverAddress, credential: pairing.credential,
+                leaseId: assignment.leaseId, observedBytes: size)
+            return .failed(jobId: assignment.jobId,
+                reason: "Size saving: finished candidate exceeded the \(maximum)-byte budget.")
+        }
+
         let candidateHash = try Self.sha256(of: candidate)
 
         // The server's measurement, run here and returned as the raw logs. Measuring is the one

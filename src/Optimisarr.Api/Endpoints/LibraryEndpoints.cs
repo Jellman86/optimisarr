@@ -153,6 +153,7 @@ internal static class LibraryEndpoints
                 RequireAudioRetained = parsed.RequireAudioRetained,
                 RequireSubtitlesRetained = parsed.RequireSubtitlesRetained,
                 RequireSizeReduction = parsed.RequireSizeReduction,
+                MinimumSizeSavingPercent = parsed.MinimumSizeSavingPercent,
                 AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled,
                 MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs,
                 AudioClippingGateEnabled = parsed.AudioClippingGateEnabled,
@@ -248,6 +249,7 @@ internal static class LibraryEndpoints
             library.RequireAudioRetained = parsed.RequireAudioRetained;
             library.RequireSubtitlesRetained = parsed.RequireSubtitlesRetained;
             library.RequireSizeReduction = parsed.RequireSizeReduction;
+            library.MinimumSizeSavingPercent = parsed.MinimumSizeSavingPercent;
             library.AudioLoudnessGateEnabled = parsed.AudioLoudnessGateEnabled;
             library.MaxLoudnessDriftLufs = parsed.MaxLoudnessDriftLufs;
             library.AudioClippingGateEnabled = parsed.AudioClippingGateEnabled;
