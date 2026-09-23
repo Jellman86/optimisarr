@@ -160,7 +160,8 @@ public sealed class VerificationService(
                     originalAudioTimestampResult.LastPresentationSeconds is { } audioEnd
                         ? Math.Max(0, audioEnd - (originalProbe.AudioStartSeconds ?? 0)) : null,
                     timestampResult.LastPresentationSeconds is { } outputEnd
-                        ? Math.Max(0, outputEnd - (outputProbe.VideoStartSeconds ?? 0)) : null);
+                        ? Math.Max(0, outputEnd - (outputProbe.VideoStartSeconds ?? 0)) : null,
+                    originalProbe.VideoDurationSeconds);
 
             // A short source packet read may be transient even when it is only several percent
             // short. Confirm it once before classifying the unchanged original; the scan is not
