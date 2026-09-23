@@ -758,7 +758,7 @@ public sealed class QueueDispatcher(
 
     /// <summary>
     /// Verifies a candidate a remote worker delivered, exactly as a local encode is verified. The
-    /// encode contract is rebuilt for the worker that produced it, so the gates hold the candidate
+    /// encode contract is read from the delivering lease, so the gates hold the candidate
     /// to the picture, tracks and quality it was told to make; the candidate then earns
     /// replacement, or does not, through the same path as everything else.
     /// </summary>
@@ -798,22 +798,24 @@ public sealed class QueueDispatcher(
                 return;
             }
 
-            // A strict lease freezes its plan at assignment. Re-planning after upload would run
-            // local probes and filters, violating sidecar-only verification and changing the question.
-            var work = deliveredLease!.VerificationContractJson is not null
-                ? deliveredLease.VerificationWorkJson is { } frozen
-                    ? JsonSerializer.Deserialize<JobWork>(frozen, ReportJsonOptions)
-                    : throw new InvalidOperationException("The strict verification work snapshot is missing.")
-                : await LoadWorkAsync(jobId, new EncodePlacement(deliveredBy.ToCapabilities()), cancellationToken);
+            // The executed encode plan, including its colour conversion, belongs to the lease.
+            // A later settings edit or a different worker must not change the verification target.
+            // Existing leases without a snapshot cannot be reconstructed safely after settings
+            // or worker capabilities change. Keep their candidate and original for inspection.
+            if (deliveredLease!.VerificationWorkJson is not { } frozen)
+            {
+                throw new InvalidOperationException(
+                    "The worker assignment's frozen verification plan is missing. The original was kept; retry this job to create a new assignment.");
+            }
+            var work = JsonSerializer.Deserialize<JobWork?>(frozen, ReportJsonOptions);
             if (work is null)
             {
                 await CompleteAsync(jobId, JobStatus.Failed, error: "Job or media file no longer exists.");
                 return;
             }
 
-            if (deliveredLease!.VerificationContractJson is not null)
+            await using (var policyScope = scopeFactory.CreateAsyncScope())
             {
-                await using var policyScope = scopeFactory.CreateAsyncScope();
                 var db = policyScope.ServiceProvider.GetRequiredService<OptimisarrDbContext>();
                 var library = await db.Libraries.AsNoTracking()
                     .Where(library => db.Jobs.Any(job => job.Id == jobId && job.LibraryId == library.Id))
@@ -1584,7 +1586,7 @@ public sealed class QueueDispatcher(
             search,
             strictVerification ? new RemoteVerificationContract(1, Guid.NewGuid(),
                 work.VerificationPolicy.AudioLoudnessGateEnabled || work.VerificationPolicy.AudioClippingGateEnabled) : null,
-            strictVerification ? JsonSerializer.Serialize(work, ReportJsonOptions) : null,
+            JsonSerializer.Serialize(work, ReportJsonOptions),
             work.VideoQuality?.Requested,
             work.VideoQuality?.Effective,
             work.VideoQuality?.Mode));
@@ -1835,7 +1837,7 @@ public sealed class QueueDispatcher(
             media.AudioTrackCount ?? 0,
             media.SubtitleTrackCount ?? 0,
             media.IsHdr,
-            rules.Hdr == HdrHandling.TonemapToSdr,
+            spec.TonemapToSdr,
             media.MediaKind,
             // A video job whose audio was re-encoded (not copied) may legitimately normalise
             // the sample rate, so the audio-fidelity gate must treat it like an audio job.

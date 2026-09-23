@@ -37,6 +37,18 @@ public sealed class MediaProbeParseTests
     }
 
     [Fact]
+    public void Parse_retains_video_colour_range_for_verification_evidence()
+    {
+        var result = MediaProbeService.Parse("""
+        { "streams": [ { "codec_type": "video", "codec_name": "h264",
+          "color_primaries": "smpte170m", "color_transfer": "smpte170m",
+          "color_space": "smpte170m", "color_range": "tv" } ] }
+        """, ".mkv");
+
+        Assert.Equal("tv", result.ColorRange);
+    }
+
+    [Fact]
     public void Parse_keeps_the_container_start_so_a_picture_lead_can_be_measured()
     {
         // Audio priming puts the container start 21 ms before the first picture. FFmpeg seeks and

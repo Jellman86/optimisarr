@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Remote verification now uses each worker assignment's frozen colour-conversion plan, preserving SD SMPTE 170M output and reporting source, expected, and output colour tags including range.
 - A failed source video timeline now blocks software-decode and higher-quality retries that cannot repair the unchanged original, with the exact gate named in the job failure reason.
 - Remote software-decode retries now clear the rejected candidate's active verification and encoder details in one transition, preserve its checks as attempt history, and show the retry reason and worker handoff in Queue.
 - AV1 NVENC video re-encodes omit attached-picture streams that can corrupt the primary AV1 output, and use FFmpeg's default timestamps for constant-rate sources to avoid duplicate DTS values.
