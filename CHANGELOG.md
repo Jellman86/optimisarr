@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- AV1 NVENC video re-encodes omit attached-picture streams that can corrupt the primary AV1 output, and use FFmpeg's default timestamps for constant-rate sources to avoid duplicate DTS values.
+
 ## 0.2.14 — 2026-09-19
 
 ### Added
